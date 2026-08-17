@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <process.h>
 #include <tlhelp32.h>
+#include <restartmanager.h>
 #include <stdarg.h>
 
 // ── WinHTTP redirect (MinGW headers may not define) ──
@@ -64,7 +65,7 @@ static void enableTls12(HINTERNET hRequest) {
 // ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
 //   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
 //   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
-#define LAUNCHER_VERSION "20260814.3"
+#define LAUNCHER_VERSION "20260816.1"
 
 // ── 颜色（Solarized Light） ──
 #define COL_BG      RGB(0xfd, 0xf6, 0xe3)
@@ -998,14 +999,48 @@ static int findFreeOldSlot(const WCHAR *exeDir, WCHAR *out, int cap) {
     return 0;
 }
 
-// ★ 终极兜底（2026-08-14）: rename 被 AV/残留占用锁死 → 注册 PendingFileRenameOperations，
-//   smss 在下次重启、任何用户进程运行前执行 rename——唯一在任何占用下都能成功的机制。
-//   顺序对调亦安全（崩溃恢复+版本校验收敛，最坏多一次启动）。非管理员写 HKLM 失败 →
-//   返回 0，保留 .swap-ready 每次启动重试（占用多为瞬时锁，重试通常成功）。
-static int registerSwapPendingReboot(const WCHAR *ghDir, const WCHAR *ghOld, const WCHAR *ghNext) {
+// ★ 锁持有者诊断（2026-08-16）: swap 失败时用 Restart Manager 查出谁在锁 gh555.com，
+//   进程名+PID 直接写进 swap 日志——「err=5 盲猜」时代终结。
+static void logLockHolders(const WCHAR *dirPath, char *logBuf, int bufSize) {
+    DWORD session = 0;
+    WCHAR key[64] = L"qqqide-swap";
+    if (RmStartSession(&session, 0, key) != ERROR_SUCCESS) return;
+    LPCWSTR resources[] = { dirPath };
+    if (RmRegisterResources(session, 1, resources, 0, NULL, 0, NULL) != ERROR_SUCCESS) {
+        RmEndSession(session);
+        return;
+    }
+    UINT nInfo = 16;
+    UINT nInfoNeeded = 0;
+    DWORD reason = 0;
+    RM_PROCESS_INFO info[16];
+    DWORD rc = RmGetList(session, &nInfoNeeded, &nInfo, info, &reason);
+    if (rc == ERROR_SUCCESS && nInfo > 0) {
+        for (UINT i = 0; i < nInfo && i < 16; i++) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "  lock-holder[%u]: pid=%lu app=%.60ls type=%lu",
+                i, (unsigned long)info[i].Process.dwProcessId,
+                info[i].strAppName, (unsigned long)info[i].ApplicationType);
+            swapLogAppend(logBuf, bufSize, "%s", msg);
+        }
+    } else if (rc == ERROR_MORE_DATA) {
+        swapLogAppend(logBuf, bufSize, "  lock-holders: >%u processes (truncated)", nInfo);
+    }
+    RmEndSession(session);
+}
+
+// ★ 终极兜底（2026-08-14，2026-08-16 去重）: rename 被 AV/残留占用锁死 → 注册
+//   PendingFileRenameOperations。★ 去重守卫：已注册过（.pending-reboot 标记存在）
+//   → 返回 2 跳过，防止注册表积压重复条目（16 组 = 16 次来回改名 → 重启连锁损坏安装）。
+//   注册成功 → 写 .pending-reboot 标记，swap 成功/放弃时清除。
+static int registerSwapPendingReboot(const WCHAR *exeDir, const WCHAR *ghDir, const WCHAR *ghOld, const WCHAR *ghNext) {
+    WCHAR marker[MAX_PATH];
+    swprintf(marker, MAX_PATH, L"%s\\.pending-reboot", exeDir);
+    if (fileExistsW(marker)) return 2;
     DWORD flags = MOVEFILE_REPLACE_EXISTING | MOVEFILE_DELAY_UNTIL_REBOOT;
     if (!MoveFileExW(ghDir, ghOld, flags)) return 0;
     if (!MoveFileExW(ghNext, ghDir, flags)) return 0;
+    writeFileText(marker, "1");
     return 1;
 }
 
@@ -1133,6 +1168,7 @@ static int applySwapIfReady(const WCHAR *exeDir) {
         tryRestoreDataFromOldSlots(exeDir, ghDir, logBuf, sizeof(logBuf));
         swapLogAppend(logBuf, sizeof(logBuf), "swap abort: gh555.com-next missing (swap-ready cleared)");
         DeleteFileW(swapReady);
+        { WCHAR prb[MAX_PATH]; swprintf(prb, MAX_PATH, L"%s\\.pending-reboot", exeDir); DeleteFileW(prb); }
         swapLogFlush(exeDir, logBuf);
         return 0;
     }
@@ -1220,11 +1256,16 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     removeDir(ghOldSlot);
     if (!MoveFileW(ghDir, ghOldSlot)) {
         swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: move gh555.com -> old-slot err=%lu", GetLastError());
+        // ★ 锁持有者诊断（2026-08-16）: 谁在锁目录？直接写进日志，终结盲猜
+        logLockHolders(ghDir, logBuf, sizeof(logBuf));
         if (hasBackup) MoveFileW(backupDir, dataDir);   // 尽力还原，失败下次崩溃恢复救
-        // ★ 终极兜底: 注册重启时交换（smss 在任何占用者运行前执行，百分百无占用环境）。
-        //   注册成功 → 保留 .swap-ready，重启后 pending 完成检测搬回 Data 收尾。
-        if (registerSwapPendingReboot(ghDir, ghOldSlot, ghNext)) {
+        int prc = registerSwapPendingReboot(exeDir, ghDir, ghOldSlot, ghNext);
+        if (prc == 1) {
             swapLogAppend(logBuf, sizeof(logBuf), "swap deferred to reboot: pending rename registered");
+            swapLogFlush(exeDir, logBuf);
+            return 0;
+        } else if (prc == 2) {
+            swapLogAppend(logBuf, sizeof(logBuf), "swap deferred to reboot: already pending (dedup)");
             swapLogFlush(exeDir, logBuf);
             return 0;
         }
@@ -1256,6 +1297,7 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     // 旧槽删除失败只留垃圾（每启动重试），不影响本次升级——已由轮换槽机制兜底
     removeDir(ghOldSlot);
     DeleteFileW(swapReady);
+    { WCHAR prb[MAX_PATH]; swprintf(prb, MAX_PATH, L"%s\\.pending-reboot", exeDir); DeleteFileW(prb); }
     swapLogAppend(logBuf, sizeof(logBuf), "swap OK: %s -> %s",
         liveVer[0] ? liveVer : "?", pendVer[0] ? pendVer : "?");
     swapLogFlush(exeDir, logBuf);
@@ -1303,6 +1345,9 @@ static void cleanupRootJunk(const WCHAR *exeDir) {
     if (!fileExistsW(p)) {
         swprintf(p, MAX_PATH, L"%s\\gh555.com-next", exeDir);
         if (fileExistsW(p)) removeDir(p);
+        // .pending-reboot 随 .swap-ready 一起清（交换已放弃）
+        swprintf(p, MAX_PATH, L"%s\\.pending-reboot", exeDir);
+        DeleteFileW(p);
     }
 }
 

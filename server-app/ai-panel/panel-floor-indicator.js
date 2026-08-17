@@ -73,6 +73,12 @@ function _updateFloorIndicator() {
 }
 
 function _showFloorIndicatorBriefly() {
+  // ★ 建楼中（AI 正在回复）不显示指示器：流式渲染/自动滚屏不打扰，仅闲置时用户滚动才浮现
+  if (_sending || streaming) {
+    if (_floorIndicatorTimeout) { clearTimeout(_floorIndicatorTimeout); _floorIndicatorTimeout = null; }
+    _postToHost({ type: 'qqq-floor-indicator', action: 'hide' });
+    return;
+  }
   var data = _updateFloorIndicator();
   if (!data) {
     _postToHost({ type: 'qqq-floor-indicator', action: 'hide' });

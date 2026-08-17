@@ -21,7 +21,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // ── 单一定义（唯一真理源）──────────────────────────────────────────────────
-export const APP_VERSION = '0.2.406';
+export const APP_VERSION = '0.2.430';
 
 /** ★ 强制更新最低版本。客户端版本低于此值 → 启动时弹窗要求重新下载绿色包。 */
 export const MIN_VERSION = '0.2.30';

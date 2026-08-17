@@ -10,7 +10,7 @@ echo [1/3] windres resource.rc -^> resource.o
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 echo [2/3] gcc -^> qqqide.exe
-"%GW%\gcc.exe" -mwindows -O2 -s -o qqqide.exe launcher.c resource.o -lcomctl32 -lwinhttp
+"%GW%\gcc.exe" -mwindows -O2 -s -o qqqide.exe launcher.c resource.o -lcomctl32 -lwinhttp -lrstrtmgr
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 echo.

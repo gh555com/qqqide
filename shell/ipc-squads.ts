@@ -23,6 +23,9 @@ export function registerSquadIpc(): void {
             const s = state.slots[k];
             if (!s) { continue; }
             if (!s.title || !s.folder) {
+                // ★ 2026-08-16: 条目可能属其他实例（winId 跨实例碰撞）——fromId/_windowProjectMap
+                // 都是本进程局部映射，仅本进程条目可补全，防他实例条目显示本窗口标题/文件夹
+                if (s.pid !== process.pid) { continue; }
                 try {
                     const w = BrowserWindow.fromId(s.winId);
                     if (w && !w.isDestroyed()) {

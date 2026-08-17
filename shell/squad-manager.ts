@@ -120,7 +120,12 @@ function _save(): void {
                 if (mine && theirs) {
                     reg.slots[k] = (theirs.ts ?? 0) > (mine.ts ?? 0) ? theirs : mine;
                 } else if (!mine && theirs) {
-                    reg.slots[k] = theirs;   // 他实例刚写入的槽位不得被本实例旧内存态抹掉
+                    // 仅当磁盘条目属于其他实例时才恢复（防本实例故意清空的槽位被复活）
+                    // 2026-08-16 bug: 选 none 无效、改槽位后旧槽残留——_save 合并在 einstance
+                    // 把本实例刚清空的 null 槽用磁盘旧条目填回，导致清除永不生效。
+                    if (theirs.pid !== process.pid) {
+                        reg.slots[k] = theirs;
+                    }
                 }
             }
         }
@@ -180,7 +185,10 @@ export function getSquadOf(winId: number): string | null {
     const reg = _load();
     for (const k of SQUAD_ORDER) {
         const e = reg.slots[k];
-        if (e && e.winId === winId) { return k; }
+        // ★ 2026-08-16 winId 跨实例碰撞: BrowserWindow.id 是 per-instance 计数器（dev+绿色包
+        // 主窗口都是 1），他实例条目（含死进程残留）会幽灵匹配 → 键盘到 x 显示 a 事故实锤。
+        // 必须 pid===process.pid 双条件，winId 单条件匹配一律禁止。
+        if (e && e.pid === process.pid && e.winId === winId) { return k; }
     }
     return null;
 }
@@ -220,7 +228,7 @@ export function releaseSquad(winId: number): void {
     let changed = false;
     for (const k of SQUAD_ORDER) {
         const e = reg.slots[k];
-        if (e && e.winId === winId) { reg.slots[k] = null; changed = true; }
+        if (e && e.pid === process.pid && e.winId === winId) { reg.slots[k] = null; changed = true; }
     }
     if (changed) { _save(); }
 }
@@ -232,7 +240,7 @@ export function refreshWindowEntry(win: BrowserWindow, folder: string, rawTitle:
     const folderClean = String(folder || '').replace(/\\/g, '/').replace(/\/+$/, '');
     for (const k of SQUAD_ORDER) {
         const e = reg.slots[k];
-        if (e && e.winId === win.id) {
+        if (e && e.pid === process.pid && e.winId === win.id) {
             e.folder = folderClean;
             e.title = _titleText(k, folderClean || clean);
             e.ts = Date.now();
@@ -253,7 +261,7 @@ export function setSquad(win: BrowserWindow, target: string, folder: string): { 
         const reg = _loadFresh();
         for (const k of SQUAD_ORDER) {
             const e = reg.slots[k];
-            if (e && e.winId === win.id) { reg.slots[k] = null; }
+            if (e && e.pid === process.pid && e.winId === win.id) { reg.slots[k] = null; }
         }
         _save();
         let name = String(folder || '').replace(/\\/g, '/').replace(/\/+$/, '');
@@ -272,7 +280,7 @@ export function setSquad(win: BrowserWindow, target: string, folder: string): { 
     if (existing && !_isStale(existing)) { return { ok: false, reason: 'occupied' }; }
     for (const k of SQUAD_ORDER) {
         const e = reg.slots[k];
-        if (e && e.winId === win.id) { reg.slots[k] = null; }
+        if (e && e.pid === process.pid && e.winId === win.id) { reg.slots[k] = null; }
     }
     const folderClean = String(folder || '').replace(/\\/g, '/').replace(/\/+$/, '');
     let name = folderClean;
@@ -291,18 +299,19 @@ export function setSquad(win: BrowserWindow, target: string, folder: string): { 
 /** IPC get 状态快照 */
 export function getSquadState(winId: number): {
     squad: string | null;
+    none: boolean;   // 主动 none（解除编队）——按钮显示 —，与 >8 窗口无槽位（■）区分
     order: string[];
-    slots: Record<string, { winId: number; folder: string; title: string } | null>;
+    slots: Record<string, { winId: number; pid: number; folder: string; title: string } | null>;
     updatedAt: number;
 } {
     const reg = _loadFresh(); // 每次 get 强刷磁盘真相（watcher 未就绪/被顶期间下拉也绝不分裂）
     const squad = getSquadOf(winId);
-    const slots: Record<string, { winId: number; folder: string; title: string } | null> = {};
+    const slots: Record<string, { winId: number; pid: number; folder: string; title: string } | null> = {};
     for (const k of SQUAD_ORDER) {
         const e = reg.slots[k];
-        slots[k] = e && !_isStale(e) ? { winId: e.winId, folder: e.folder, title: e.title } : null;
+        slots[k] = e && !_isStale(e) ? { winId: e.winId, pid: e.pid, folder: e.folder, title: e.title } : null;
     }
-    return { squad, order: SQUAD_ORDER, slots, updatedAt: reg.updatedAt };
+    return { squad, none: _manualNone.has(winId), order: SQUAD_ORDER, slots, updatedAt: reg.updatedAt };
 }
 
 /** 状态变更广播 → 各窗口收到后重新 get（秒同步标题+按钮） */

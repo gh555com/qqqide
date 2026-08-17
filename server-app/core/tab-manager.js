@@ -30,6 +30,7 @@
   let _activeTabMenu = null; // track open right-click context menu
   let _groupRatios = null;    // null=flex equal; {ratios:[0.3,0.7]} for proportional restore on resize
   let _resizeTimer = null;
+  var _pinnedPaths = {};    // ★ 文档级 pin 真理（2026-08-16）：filePath → true = 已编辑过 → 正体（全分组一致）；未编辑 → 斜体预览
 
   // ---- DOM builders ----
   function createGroupEl(type) {
@@ -240,8 +241,10 @@
   // ★ 唯一真理中心机器：一切 tab dirty/preview 状态变更必须走此函数。
   //   patch 可含 {dirty, preview}，只更新传入的字段。
   //   穷举一切路径：setTabDirty / replaceFileInTab / openFileIn{Left,Right}Group 预览复用。
+  //   ★ 2026-08-16 定案：dirty 与 preview/pin 同为文档级真理（路径级）——
+  //     一个文档无论在哪个分组，斜体(预览)/正体(已编辑)/星号(脏) 必须 100% 一致（用户明确要求）。
   function _setTabState(filePath, patch) {
-    // 更新 tab 对象
+    // 更新 tab 对象（全量广播所有分组同文件 tab）
     for (const grp of groups) {
       if (grp.type !== 'file') continue;
       for (const t of grp.tabs) {
@@ -262,8 +265,8 @@
 
   function setTabDirty(filePath, dirty) {
     var patch = { dirty: dirty };
-    // First edit → pin the preview tab (exits preview mode)
-    if (dirty) patch.preview = false;
+    // 首次编辑 → 文档级 pin（全部分组同文件 tab 一并正体；保存后不复位斜体，VS Code 同款）
+    if (dirty) { _pinnedPaths[filePath] = true; patch.preview = false; }
     _setTabState(filePath, patch);
   }
 
@@ -345,6 +348,8 @@
   // ---- Add/remove groups ----
   function addGroup(type) {
     if (groups.length >= MAX_GROUPS) return null;
+    // ★ 文件分组硬上限 2（中间+右侧）——gaea 常驻组不计；任何路径不得创建第 3 个文件分组
+    if (type === 'file' && groups.filter(g => g.type === 'file').length >= 2) return null;
 
     const dom = createGroupEl(type);
     const grp = {
@@ -578,10 +583,11 @@
     // ★ dirty 从编辑器真理读：_paneDirtyMap 残留 true（同文件另一格编辑器未保存）时
     //   新预览 tab 必须如实显示星号，不能硬编码 false（旧实现 → 编辑时 _markDirty 不触发 → 星号永不出现）
     tab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
-    tab.preview = true;
+    // ★ 文档级真理：已编辑过的文档（_pinnedPaths）新开仍正体；从未编辑 → 斜体预览
+    tab.preview = !_pinnedPaths[filePath];
 
-    // ★ 中心机器：统一设置 tab 状态并刷新标题
-    _setTabState(filePath, { dirty: tab.dirty, preview: true });
+    // ★ 中心机器：统一设置 tab 状态并刷新标题（dirty+preview 全量广播——文档状态跨分组 100% 一致）
+    _setTabState(filePath, { dirty: tab.dirty, preview: tab.preview });
     const btn = grp.barEl.querySelector(`[data-tab-id="${tab.id}"]`);
     if (btn) btn.dataset.filePath = filePath;
 
@@ -637,8 +643,9 @@
       closable: true,
       onActivate: null,
       onClose: null,
-      preview: (opts && typeof opts.preview === 'boolean') ? opts.preview : true,
-      dirty: false,
+      // ★ 文档级真理：preview = 未编辑过（_pinnedPaths 无记录）；dirty 读编辑器真理
+      preview: !_pinnedPaths[filePath],
+      dirty: !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath)),
     };
 
     const btn = createTabBtn(tab, fileGrp);
@@ -711,8 +718,9 @@
       previewTab.title = fileName;
       // ★ dirty 从编辑器真理读（同 replaceFileInTab）
       previewTab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
-      previewTab.preview = true;
-      _setTabState(filePath, { dirty: previewTab.dirty, preview: true });
+      // ★ 文档级真理：已编辑过 → 正体（全组一致）；从未编辑 → 斜体预览
+      previewTab.preview = !_pinnedPaths[filePath];
+      _setTabState(filePath, { dirty: previewTab.dirty, preview: previewTab.preview });
       const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
       if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);
@@ -722,7 +730,7 @@
     }
 
     const tabId = _nextTabId++;
-    const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: true, dirty: false };
+    const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: !_pinnedPaths[filePath], dirty: !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath)) };
     const btn = createTabBtn(tab, targetGrp);
     btn.dataset.filePath = filePath;
     targetGrp.barEl.appendChild(btn);
@@ -870,8 +878,9 @@
       previewTab.title = fileName;
       // ★ dirty 从编辑器真理读（同 replaceFileInTab）
       previewTab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
-      previewTab.preview = true;
-      _setTabState(filePath, { dirty: previewTab.dirty, preview: true });
+      // ★ 文档级真理：已编辑过 → 正体（全组一致）；从未编辑 → 斜体预览
+      previewTab.preview = !_pinnedPaths[filePath];
+      _setTabState(filePath, { dirty: previewTab.dirty, preview: previewTab.preview });
       const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
       if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);
@@ -881,7 +890,7 @@
     }
 
     const tabId = _nextTabId++;
-    const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: true, dirty: false };
+    const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: !_pinnedPaths[filePath], dirty: !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath)) };
     const btn = createTabBtn(tab, targetGrp);
     btn.dataset.filePath = filePath;
     targetGrp.barEl.appendChild(btn);
@@ -1034,7 +1043,9 @@
         for (var i = 0; i < all.length; i++) {
           var item = all[i];
           if (item.path) {
-            document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: item.path, groupIdx: item.groupIdx, preview: !!item.preview } }));
+            // ★ 重建文档级 pin 真理（持久化 preview=false = 已编辑过 → 正体，跨分组一致）
+            if (!item.preview) _pinnedPaths[item.path] = true;
+            document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: item.path, groupIdx: item.groupIdx } }));
           }
         }
         setTimeout(function () { window.qqqPendingEditorPositions = null; }, 4000);
@@ -1151,7 +1162,9 @@
   document.addEventListener('qqq-tab-dirty', e => {
     const path = e.detail && e.detail.path;
     const dirty = e.detail && e.detail.dirty;
-    if (path) setTabDirty(path, dirty);
+    if (!path) return;
+    // ★ 2026-08-16 定案：dirty/preview 全量广播——文档状态跨分组 100% 一致
+    setTabDirty(path, dirty);
   });
 
   window.qqqTabs = {

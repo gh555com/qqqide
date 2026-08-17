@@ -1066,6 +1066,8 @@
         if (_paneDirtyMap[filePath]) { _paneDirtyMap[filePath] = false; _dispatchDirty(false); }
       }
       function _dispatchDirty(d) {
+        // ★ pane 标识：tab-manager 据此精确定位触发编辑的 tab（pin 只作用于它），
+        //   dirty 仍跨组广播（2026-08-16: 防另一组同文件浏览 tab 被强制正体）
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: d } }));
       }
 

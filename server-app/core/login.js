@@ -122,7 +122,10 @@
     _persistAuthAsync();
   }
 
-  function _clearAuthData() { _authData = null; }
+  function _clearAuthData() {
+    _authData = null;
+    _lvReset();   // ★ 2026-08-16：登出/换号 LV 双 layer 复位（不留旧进度）
+  }
 
   function _persistAuthAsync() {
     if (!_authData) return;
@@ -179,12 +182,14 @@
       var WL = 10 * 10000;
       var f = d.level_floor != null ? d.level_floor : 0;
       var p = Math.min(d.progress_pct || 0, 100);
-      _lvDisplaySnap(p, f);
-      _lvAccWge = f * WL + (p / 100) * WL;
+      if (_lvAccWge === null) {
+        _lvInitWhite(f * WL + (p / 100) * WL);
+      } else {
+        _lvPushWhite(f * WL + (p / 100) * WL, false);   // 已初始化 → 单调推进（等值幂等），被动同步不触发升级
+      }
     } else if (_lvAccWge === null) {
       // ★ 无数据时也渲染零值（保证启动时有 LV 区域可见）
-      _lvDisplaySnap(0, 0);
-      _lvAccWge = 0;
+      _lvInitWhite(0);
     }
   }
 
@@ -247,8 +252,8 @@
   }
 
   // ── LV（事件驱动：每间 house 的 billing 都直接触发动画）──
-  var _lvAccWge = null;       // 本地累计总 wge（null=未从服务器初始化）
-  var _lvLastBillingTs = 0;   // 最后一次 billing 时间戳，用于防回退
+  var _lvAccWge = null;       // ★ 白色层权威 wge（null=未初始化；单调只进不退）
+  var _lvLastBillingTs = 0;   // 最后一次 billing 时间戳，用于静默校正守卫
 
   function _setupLvListener() {
     window.addEventListener('message', function (e) {
@@ -263,11 +268,7 @@
             _updateGeLabel();
           }
           if (_lvAccWge !== null) {
-            _lvAccWge += costWge;
-            var WL = 10 * 10000;
-            var lvFloor = Math.floor(_lvAccWge / WL);
-            var lvPct = (_lvAccWge % WL) / WL * 100;
-            _lvAnimate(lvFloor, lvPct);
+            _lvPushWhite(_lvAccWge + costWge, true);   // ★ 白层权威推进（单调），褐层自动追赶  fromBilling=true
           }
         }
         // ★ T3：转发 billing 到主进程中心大脑（中心大脑拉取服务器真理 + 广播所有窗口）
@@ -303,31 +304,35 @@
         var servFloor = data.level_floor != null ? data.level_floor : 0;
         var servPct = Math.min(data.progress_pct || 0, 100);
         var servWge = servFloor * WL + (servPct / 100) * WL;
-        if (_lvAccWge === null || servWge > _lvAccWge) {
-          _lvAccWge = servWge;
-        } else if (servWge < _lvAccWge && Date.now() - _lvLastBillingTs > 2000) {
-          _lvAccWge = servWge;
+        if (_lvAccWge === null) {
+          _lvInitWhite(servWge);
+        } else if (servWge > _lvAccWge) {
+          _lvPushWhite(servWge, false);   // 被动同步（广播/拉取），不触发升级
+        } else if (servWge < _lvAccWge && Date.now() - _lvLastBillingTs > 3000 && !_lvAnim) {
+          _lvSettleWhite(servWge);   // 静默期 + 无追赶 → 服务器校正回拉，双 layer 归位
         }
-        if (!_lvAnim) { _lvDisplaySnap(servPct, servFloor); }
         if (_$lvBar) _$lvBar.style.display = 'inline-flex';
         if (_$lvLevel && servFloor >= 0) _$lvLevel.textContent = 'Lv' + servFloor;
       }
     } catch (e) {
-      if (!_lvAnim) {
+      if (_lvAccWge === null) {
         var d = _lvData;
         if (d && typeof d.level === 'number' && d.level >= 0) {
           var w = 10 * 10000, f = d.level_floor != null ? d.level_floor : 0, p = Math.min(d.progress_pct || 0, 100);
-          _lvDisplaySnap(p, f);
-          if (_lvAccWge === null) _lvAccWge = f * w + (p / 100) * w;
-        } else if (_lvAccWge === null) {
-          _lvDisplaySnap(0, 0);
-          _lvAccWge = 0;
+          _lvInitWhite(f * w + (p / 100) * w);
+        } else {
+          _lvInitWhite(0);
         }
       }
     }
   }
 
-  // ★ 快照定位：中层+顶层同时到位，零过渡，盖上 #c4b187
+  // ═══ LV 双态模型（2026-08-16 重构）═══
+  // 白色层(_$lvGlow) = 权威位置层：SSE billing / 主进程广播 / 服务器拉取 三路推进，
+  //   只进不退（单调），瞬移到位 —— 「秒同步」只碰这一层。
+  // 褐色层(_$lvSolid) = 纯 UI 追赶层：唯一 rAF 循环驱动，外部事件永不直接定位它，
+  //   每帧实时读取白色层位置作目标（前慢后快 t^2.5）—— 竞态在结构上不存在。
+  // snap 仅用于三个场景：首显 / 静默校正归位 / 登出复位；推进一律走 _lvPushWhite。
   function _lvDisplaySnap(pct, lvFloor) {
     if (_$lvBar) _$lvBar.style.display = 'inline-flex';
     if (_$lvLevel && lvFloor >= 0) _$lvLevel.textContent = 'Lv' + lvFloor;
@@ -340,6 +345,38 @@
       _$lvSolid.style.width = pct + '%';
       _$lvSolid.style.background = '#c4b187';
     }
+  }
+
+  // ★ 白色层权威推进（单调，只进不退）：三路来源的前向统一入口
+  //   fromBilling=true 时才触发升级检测（等级提升动画+音效），被动同步（广播/拉取）永不误触发
+  function _lvPushWhite(wge, fromBilling) {
+    if (_lvAccWge === null || wge > _lvAccWge) {
+      _lvAccWge = wge;
+      var WL = 10 * 10000;
+      _lvAdvanceWhite(Math.floor(wge / WL), (wge % WL) / WL * 100, fromBilling);
+    }
+  }
+
+  // ★ 首显初始化：_lvAccWge===null 时的唯一入口（双 layer 直接到位）
+  function _lvInitWhite(wge) {
+    _lvAccWge = wge;
+    var WL = 10 * 10000;
+    _lvDisplaySnap((wge % WL) / WL * 100, Math.floor(wge / WL));
+  }
+
+  // ★ 静默期服务器校正回拉（退款/修正，罕见）：双 layer 归位
+  function _lvSettleWhite(wge) {
+    _lvAccWge = wge;
+    var WL = 10 * 10000;
+    _lvDisplaySnap((wge % WL) / WL * 100, Math.floor(wge / WL));
+  }
+
+  // ★ 登出/换号复位：清本地累计 + 双 layer 归零
+  function _lvReset() {
+    _lvAccWge = null;
+    _lvLastBillingTs = 0;
+    _lvPrevFloor = -1;
+    _lvDisplaySnap(0, 0);
   }
 
   // ═══ LV 3 层动画引擎（rAF 驱动，精确时长 + 保证 1px 间隙） ═══
@@ -370,71 +407,75 @@
     }
   }
 
-  // 顶层 rAF 追赶（每间 house 独立调用）
-  function _lvChaseSolid(targetPct, isLevelUp, lvFloor) {
+  // ★ 褐色层追赶（纯 UI，2026-08-16）：目标 = 白色层实时位置，外部永不直定位
+  //   锚定策略：无动画 → 新锚；进度 ≥80% → 重锚（防终点瞬间跳变）；
+  //   头中段 → 保持锚点，rAF 实时读白色位置 → 连续消费自动加速（不重启慢启动段）
+  function _lvChaseSolid(isLevelUp) {
     if (!_$lvSolid) return;
-    // 升级时额外音频
-    if (isLevelUp) { _lvPlay(lvFloor > 0 && lvFloor % 10 === 0); }
-    var gen = ++_lvChaseGen;
     var now = performance.now();
-    var baseDuration = isLevelUp ? 500 : 10000;
-
-    // 计算当前顶层实际宽度（px）
+    var WL = 10 * 10000;
+    var targetPct = (_lvAccWge % WL) / WL * 100;   // ★ live 白色层位置
     var curPx = parseFloat(_$lvSolid.style.width) || 0;
 
-    // 如果已有动画且代数相邻 → 延长本次追赶（不重置起点）
-    if (_lvAnim && _lvAnim.gen === gen - 1) {
-      var elapsed = now - _lvAnim.startTime;
-      var remain = Math.max(0, _lvAnim.duration - elapsed);
-      // 新时长 = max(基础时长, 剩余时长) —— 永不缩短
-      baseDuration = Math.max(baseDuration, remain);
-      // 起点用当前动画位置
-      curPx = _lvAnim.startPct + (_lvAnim.targetPct - _lvAnim.startPct) * Math.min(elapsed / _lvAnim.duration, 1);
+    if (_lvAnim) {
+      var prog = (now - _lvAnim.startTime) / _lvAnim.duration;
+      if (prog < 0.8) return;   // 头中段：rAF 已在跑，什么都不用做
+      // 尾段：按旧曲线插值当前位置，重新锚定（新时长重新计时，防终点跳变）
+      curPx = _lvAnim.startPct + (_lvAnim.targetPct - _lvAnim.startPct) * Math.min(prog, 1);
+    }
+
+    // 差距 ≤1px → 直接归位，不启动空转动画（防 1px 幽灵追赶 10s）
+    if (targetPct - curPx <= (1 / TRACK_PX * 100)) {
+      _$lvSolid.style.width = targetPct + '%';
+      _lvAnim = null;
+      return;
     }
 
     // 追赶色 = 停止色 #c4b187（调试：统一颜色，看中层透出效果）
     _$lvSolid.style.background = '#c4b187';
     _$lvSolid.style.transition = 'none';
 
-    _lvAnim = { startTime: now, startPct: curPx, targetPct: targetPct, duration: baseDuration, gen: gen };
+    _lvAnim = { startTime: now, startPct: curPx, targetPct: targetPct, duration: isLevelUp ? 500 : 10000, gen: ++_lvChaseGen };
 
     if (!_lvAnimFrame) {
       _lvAnimFrame = requestAnimationFrame(_lvTick);
     }
   }
 
-  // rAF 帧
+  // rAF 帧：目标 = 白色层实时位置（live，推进/广播随时变）
   function _lvTick() {
     _lvAnimFrame = null;
     if (!_lvAnim || !_$lvSolid) return;
 
     var a = _lvAnim;
     var now = performance.now();
-    var elapsed = now - a.startTime;
-    var progress = Math.min(elapsed / a.duration, 1);
+    var t = Math.min((now - a.startTime) / a.duration, 1);
 
     // 赛贝尔变速：前慢后快，t^2.5 曲线
-    var eased = Math.pow(progress, 2.5);  // 50%→17.7%, 75%→49%, 90%→77%
-    var curPct = a.startPct + (a.targetPct - a.startPct) * eased;
+    var WL = 10 * 10000;
+    var targetPct = (_lvAccWge % WL) / WL * 100;   // ★ live 白色位置
+    var eased = Math.pow(t, 2.5);  // 50%→17.7%, 75%→49%, 90%→77%
+    var curPct = a.startPct + (targetPct - a.startPct) * eased;
 
-    // ★ 保证至少 1px 间隙（60px 轨 = 1.667%），除非已到满时
-    var gapPct = a.targetPct - curPct;
-    var gapPx = gapPct / 100 * TRACK_PX;
-    if (gapPx < 1 && progress < 1) {
-      curPct = a.targetPct - (1 / TRACK_PX * 100);
+    if (t < 1) {
+      // ★ 保证至少 1px 间隙（60px 轨 = 1.667%），除非已到满时
+      var gapPct = targetPct - curPct;
+      var gapPx = gapPct / 100 * TRACK_PX;
+      if (gapPx < 1) {
+        curPct = targetPct - (1 / TRACK_PX * 100);
+      }
+    } else {
+      curPct = targetPct;   // 追平白色层
     }
 
     _$lvSolid.style.width = Math.max(0, curPct) + '%';
 
-    if (progress >= 1) {
+    if (t >= 1) {
       // ★ 追赶结束
       _$lvSolid.style.background = '#c4b187';
       _lvAnim = null;
-    } else if (_lvAnim) {
-      // 检查是否被新 billing 覆盖（gen 变了说明 _lvTick 已重启）
-      if (_lvAnim.gen === a.gen) {
-        _lvAnimFrame = requestAnimationFrame(_lvTick);
-      }
+    } else if (_lvAnim && _lvAnim.gen === a.gen) {
+      _lvAnimFrame = requestAnimationFrame(_lvTick);
     }
   }
 
@@ -506,19 +547,24 @@
     });
   }
 
-  // ★ 动画入口（每间 house 直接调用）
-  function _lvAnimate(lvFloor, lvPct) {
+  // ★ 白色层推进入口（SSE billing / 广播 / fetch 前向唯一路径）
+  //   ① 白色层瞬移（同步唯一动作） ② 褐色层纯 UI 追赶（内部读实时白位）
+  //   fromBilling=true 时检测升级（仅 billing 触发动画+音效），被动同步永不误触发
+  function _lvAdvanceWhite(lvFloor, lvPct, fromBilling) {
     if (!_$lvBar) return;
     _$lvBar.style.display = 'inline-flex';
     if (_$lvLevel) _$lvLevel.textContent = 'Lv' + lvFloor;
-    var isLevelUp = (_lvPrevFloor >= 0 && lvFloor > _lvPrevFloor);
+    var isLevelUp = fromBilling && (_lvPrevFloor >= 0 && lvFloor > _lvPrevFloor);
     _lvPrevFloor = lvFloor;
-    // ① 中层瞬移
+    // ① 中层瞬移（权威位置层）
     _lvSnapGlow(lvPct);
-    // ② 顶层 rAF 追赶
-    _lvChaseSolid(lvPct, isLevelUp, lvFloor);
-    // ③ 升级流光特效（仅升级时触发）
-    if (isLevelUp) _lvLevelUpGlow();
+    // ② 顶层纯 UI 追赶（读实时白色位置）
+    _lvChaseSolid(isLevelUp);
+    // ③ 升级流光特效 + 音频（仅升级时触发）
+    if (isLevelUp) {
+      _lvLevelUpGlow();
+      _lvPlay(lvFloor > 0 && lvFloor % 10 === 0);
+    }
   }
 
   // ── 排行榜缓存（同赛季缓存，跨赛季自动失效）──
@@ -1203,11 +1249,17 @@
               _lvData = snap.lvData;
               var WL = 10 * 10000;
               var servWge = (_lvData.level_floor || 0) * WL + ((_lvData.progress_pct || 0) / 100) * WL;
-              if (_lvAccWge === null || servWge > _lvAccWge || Date.now() - _lvLastBillingTs > 2000) {
-                _lvAccWge = servWge;
+              // ★ 2026-08-16 双态模型：广播只推进白色层（单调）。
+              //   首显 → snap；更高 → 白层瞬移 + 褐层本地追赶（非发送窗口同效果）；
+              //   更低 → 仅静默期（3s 无本地消费 + 无追赶动画）才校正归位 ——
+              //   服务器记账延迟旧值永不把 UI 拉回（F1 竞态在结构上消灭：褐层永不被外部定位）
+              if (_lvAccWge === null) {
+                _lvInitWhite(servWge);
+              } else if (servWge > _lvAccWge) {
+                _lvPushWhite(servWge, false);   // 被动同步（广播/拉取），不触发升级
+              } else if (servWge < _lvAccWge && Date.now() - _lvLastBillingTs > 3000 && !_lvAnim) {
+                _lvSettleWhite(servWge);
               }
-              if (!_lvAnim) _lvDisplaySnap(_lvData.progress_pct || 0, _lvData.level_floor || 0);
-              if (_$lvLevel) _$lvLevel.textContent = 'Lv' + (_lvData.level_floor || 0);
             }
             _updateGeLabel();
             if (_$lvBar) _$lvBar.style.display = 'inline-flex';

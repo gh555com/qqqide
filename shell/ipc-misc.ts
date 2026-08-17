@@ -12,7 +12,7 @@ import * as cp from 'child_process';
 import { URL } from 'url';
 import { BootConfig, getWebappBaseUrl } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
-import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState } from './window-manager';
+import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState, beginQuitAllBatch, recordWindowOpen } from './window-manager';
 import { StateStore } from './state-sqlite';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
@@ -297,6 +297,9 @@ ${escapedPaths}
 
     // ---- app quit (退出全部窗口) — 菜单退出，跳过关闭确认 ——
     ipcMain.handle('qqqide:app:quitAll', async () => {
+        // ★ 整组退出快照先写死 (2026-08-16): 菜单退出 = 整组窗口一次性关闭,
+        //   重启必须还原整组 — 快照在 quitAll 瞬间捕获, 不被后续 close 事件逐步收缩
+        beginQuitAllBatch(stateStore);
         // ★ 给所有窗口打旁路标签，跳过 close 事件确认框
         BrowserWindow.getAllWindows().forEach(function (w) {
             if (!w.isDestroyed()) bypassCloseConfirm(w);
@@ -379,6 +382,8 @@ ${escapedPaths}
             }
             _windowProjectMap.set(newWin.id, normalized);
             _projectWindowMap.set(normalized, newWin.id);
+            // ★ 打开序记录 + 存活快照即时落盘 (2026-08-16)
+            recordWindowOpen(newWin.id, normalized, stateStore);
         }
         // ★ 使用本地 webapp 加载新窗口（与首次启动 bootSequence 一致）
         const baseUrl = getWebappBaseUrl(portableRoot, bootConfig, isDevFlag);
@@ -437,6 +442,8 @@ ${escapedPaths}
         }
         _windowProjectMap.set(win.id, normalized);
         _projectWindowMap.set(normalized, win.id);
+        // ★ 打开序记录 (2026-08-16): renderer 绑定主文件夹 → 记打开序 + 刷存活快照
+        recordWindowOpen(win.id, normalized, stateStore);
         // ★ DevTools 可能已用 fallback "qqqide" 改名，项目确认后重新改名
         const projName = path.basename(normalized);
         console.log('[devtools] claimProject: winId=' + win.id + ' normalized=' + normalized + ' projName=' + projName);

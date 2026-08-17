@@ -807,6 +807,23 @@ function pruneEngines(unpacked) {
     }
   }
 
+  // ── ①c Apply manifest prune list for bundled components (e.g. git portable GUI garbage + docs)
+  //     Same logic as component-checker.ts runtime prune — keeps green pack slim
+  if (manifest && manifest.components) {
+    for (const [name, def] of Object.entries(manifest.components)) {
+      if (!def.bundled || !def.prune || !def.prune.length) continue;
+      const compDir = path.join(engDir, def.install_to || name);
+      if (!fs.existsSync(compDir)) continue;
+      for (const rel of def.prune) {
+        const p = path.join(compDir, rel);
+        try {
+          fs.rmSync(p, { recursive: true, force: true });
+          console.log('[pack] pruned ' + name + '/' + rel);
+        } catch (e) {}
+      }
+    }
+  }
+
   // ── ② Remove non-bundled component directories (e.g. ffprobe — rank1 bg_download) ──
   if (manifest && manifest.components) {
     for (const [name, def] of Object.entries(manifest.components)) {
@@ -1067,7 +1084,7 @@ function compileLauncher() {
   const exe = path.join(ROOT, 'launcher', 'qqqide.exe');
   if (!fs.existsSync(src)) { console.warn('[pack] launcher.c not found'); return; }
   console.log('[pack] compiling launcher...');
-  const r = cp.spawnSync(gcc, ['-mwindows', '-O2', '-s', '-o', exe, src, '-lcomctl32', '-lwinhttp'],
+  const r = cp.spawnSync(gcc, ['-mwindows', '-O2', '-s', '-o', exe, src, '-lcomctl32', '-lwinhttp', '-lrstrtmgr'],
     { stdio: 'inherit' });
   if (r.status !== 0) throw new Error('gcc compile failed');
   console.log('[pack] launcher compiled:', exe, '(' + fs.statSync(exe).size + 'B)');

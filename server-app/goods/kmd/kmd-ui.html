@@ -8,8 +8,8 @@
 <meta charset="UTF-8">
 <title>kmd</title>
 <style>
-:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2;--ph:#b58900}
-[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0;--ph:#c9a227}
+:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2;--ph:#b58900;--icon:#535b61}
+[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0;--ph:#c9a227;--icon:#e8e5dc}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
 body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden;user-select:text;-webkit-user-select:text;position:relative}
@@ -18,19 +18,25 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 #bar button{font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);font-family:inherit}
 #bar button:hover{background:var(--border)}
 #bar .sep{width:1px;height:16px;background:var(--border);margin:0 4px}
-/* 自绘 shell 下拉 — solar 配色（原生 select 弹出层走 OS 渲染，白底蓝条不可控） */
-#shell-pick{position:relative;display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);font-family:inherit;user-select:none}
-#shell-pick .caret{color:var(--dim);font-size:9px}
-#shell-menu{position:absolute;top:calc(100% + 3px);left:0;min-width:100%;background:var(--bg);border:1px solid var(--border);border-radius:3px;box-shadow:0 3px 10px rgba(0,0,0,.35);z-index:100;padding:2px 0}
-#shell-menu.hidden{display:none}
-#shell-menu .item{padding:4px 14px;white-space:nowrap;color:var(--text)}
-#shell-menu .item:hover{background:var(--card)}
-#shell-menu .item.active{color:var(--accent);font-weight:700}
-#shell-menu .item + .item{border-top:1px solid var(--border)}
-#status{font-size:10px;color:var(--dim);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl}
-/* 自定义即时 tooltip（零延迟弹出；native title 有延迟且样式不可控 → 弃用，登录 LV 同款模式） */
-#kmd-tip{position:fixed;z-index:99999;max-width:430px;padding:6px 10px;font-size:11px;line-height:1.55;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.35);pointer-events:none;white-space:pre-line;display:none}
-#kmd-tip b{color:var(--accent)}
+/* shell 三按钮（2026-08-16 定案：下拉 → 按钮，选中态 accent 底一眼可辨） */
+.shell-btn{font-size:11px;padding:2px 9px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);font-family:inherit;flex-shrink:0}
+.shell-btn:hover{background:var(--border)}
+.shell-btn.active{background:var(--accent);border-color:var(--accent);color:#fdf6e3;font-weight:700}
+[data-theme="dark"] .shell-btn.active{color:#1e1e1e}
+#bar-left{display:flex;align-items:center;gap:4px;min-width:0;flex-shrink:0}
+#bar-spacer{flex:1;min-width:0}
+#bar-right{display:flex;gap:4px;flex-shrink:0}
+#terminate-menu-wrap{position:relative;display:flex;flex-shrink:0}
+#terminate-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:500;min-width:112px;padding:4px;background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.35)}
+#terminate-menu.hidden{display:none}
+#terminate-menu button{display:block;width:100%;padding:4px 9px;border:0;border-radius:3px;background:transparent;color:var(--text);font:inherit;font-size:11px;text-align:left;white-space:nowrap}
+#terminate-menu button:hover{background:var(--border)}
+/* 窄窗策略：只压缩弹性空隙；右侧 Clear + 正方形菜单始终存在，贴上左侧三按钮为终点（2026-08-16 定案） */
+#bar .bar-action{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+#bar .bar-action .bar-icon{display:block;width:14px;height:14px;flex:0 0 14px;color:var(--icon)}
+#bar .bar-action.icon-only{width:26px;height:22px;padding:2px 5px;justify-content:center;gap:0}
+#bar .bar-action.icon-only .bar-icon{width:15px;height:15px;flex-basis:15px}
+/* #kmd-tip removed 2026-08-17: user wants no hover text on square button */
 /* 输出区 — 纯文本日志式渲染器（2026-08-13：行内 SGR 彩色 span 整体放弃，每行单一文本节点——
    选中/复制/检索零干扰；ANSI 序列剥离；颜色降级为行级 class）
    ★ contenteditable="plaintext-only" 只读编辑器化——点击任意位置出闪烁光标（原生）、
@@ -73,19 +79,28 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 </head>
 <body>
 <div id="bar">
-  <!-- 自绘 shell 下拉（原生 select 弹出层走 OS 渲染白底蓝条，颜色不可控 → 弃用） -->
-  <div id="shell-pick" title="会话 shell 类型">
-    <span id="shell-label">cmd</span><span class="caret">▾</span>
-    <div id="shell-menu" class="menu hidden">
-      <div class="item" data-shell="cmd">cmd</div>
-      <div class="item" data-shell="powershell">PowerShell</div>
-      <div class="item" data-shell="gitbash">Git Bash</div>
+  <div id="bar-left">
+    <!-- shell 三按钮（2026-08-16：下拉 → 按钮，选中态 accent 底；点击即切换；Clear/正方形菜单在右侧） -->
+    <button class="shell-btn active" data-shell="cmd">cmd</button>
+    <button class="shell-btn" data-shell="powershell">PowerShell</button>
+    <button class="shell-btn" data-shell="gitbash">Git Bash</button>
+  </div>
+  <span id="bar-spacer"></span>
+  <div id="bar-right">
+    <button id="btn-clear" class="bar-action" title="Clear output (Ctrl+L)" aria-label="Clear">
+      <svg class="bar-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 5.2h11.6M7.1 5.2V3.8h5.8v1.4M6 7.3l.7 9h6.6l.7-9M8.4 9.4v4.4M11.6 9.4v4.4" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Clear</span>
+    </button>
+    <div id="terminate-menu-wrap">
+      <button id="btn-kill" class="bar-action icon-only" aria-label="Terminate menu" aria-haspopup="menu" aria-expanded="false">
+        <svg class="bar-icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4.2" y="4.2" width="11.6" height="11.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </button>
+      <div id="terminate-menu" class="hidden" role="menu">
+        <button id="interrupt-item" type="button" role="menuitem">Ctrl+C</button>
+        <button id="terminate-item" type="button" role="menuitem">Terminate</button>
+      </div>
     </div>
   </div>
-  <button id="btn-kill">⏹ 终止</button>
-  <button id="btn-clear" title="清空输出区（Ctrl+L）">⌧ 清屏</button>
-  <span class="sep"></span>
-  <span id="status">准备中…</span>
 </div>
 <div id="out" contenteditable="plaintext-only" spellcheck="false"></div>
 <div id="find-bar" class="hidden">
@@ -112,10 +127,9 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var outEl = document.getElementById('out');
     var inputEl = document.getElementById('input');
     var promptEl = document.getElementById('prompt');
-    var statusEl = document.getElementById('status');
-    var shellPick = document.getElementById('shell-pick');
-    var shellMenu = document.getElementById('shell-menu');
-    var shellLabel = document.getElementById('shell-label');
+    var shellBtns = {};
+    var _sb = document.querySelectorAll('#bar .shell-btn');
+    for (var si = 0; si < _sb.length; si++) shellBtns[_sb[si].dataset.shell] = _sb[si];
 
     var history = [];
     var histIdx = -1;
@@ -158,13 +172,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             appendOut(d.stream, d.data);
         } else if (d.type === 'kmd:exit') {
             running = false;
-            statusEl.textContent = '已退出 (code=' + d.code + ')' + (d.error ? ' · ' + d.error : '');
-            appendLine('dim', '── 进程已退出 (code=' + d.code + ') ──');
+            appendLine('dim', '── 进程已退出 (code=' + d.code + ')' + (d.error ? ' · ' + d.error : '') + ' ──');
         } else if (d.type === 'kmd:restarted') {
             clearOut();
             appendLine('dim', '── 会话已原地重启 ──');
             running = true;
-            statusEl.textContent = '运行中 · ' + shellType;
         } else if (d.type === 'kmd:cd') {
             // roam 空区 x 键/右键：原地切目录（kill + 重 spawn，同 shell 切换模式）
             gbPrompt = 0;
@@ -176,7 +188,6 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 }).then(function (r) {
                     if (r && r.ok) {
                         running = true;
-                        statusEl.textContent = '运行中 · ' + shellType + ' · ' + cwd;
                         appendLine('dim', '── 已切换目录 ' + cwd + ' ──');
                     } else {
                         appendLine('err', '[切换目录失败] ' + ((r && r.error) || 'unknown'));
@@ -234,7 +245,6 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         gbPrompt = 0;
         if (!bridge || !bridge.kmd) {
             appendLine('err', '[错误] 无法访问主进程桥（bridge.kmd 不存在）');
-            statusEl.textContent = '无桥';
             return;
         }
         appendLine('dim', 'kmd · 行模式终端 · ' + shellType + (cwd ? ' · ' + cwd : ''));
@@ -242,14 +252,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         bridge.kmd.spawn(sessionId, shellType, cwd).then(function (r) {
             if (r && r.ok) {
                 running = true;
-                statusEl.textContent = '运行中 · ' + shellType + (cwd ? ' · ' + cwd : '');
             } else {
                 appendLine('err', '[会话启动失败] ' + ((r && r.error) || 'unknown'));
-                statusEl.textContent = '启动失败';
             }
         }).catch(function (err) {
             appendLine('err', '[会话启动异常] ' + String(err && err.message || err));
-            statusEl.textContent = '启动异常';
         });
     }
 
@@ -439,7 +446,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         setCaretEnd();
     });
 
-    // 键盘只读拦截：放行导航（方向/Home/End/PageUp/PageDown，含 Shift 选区）、Ctrl+A/Ctrl+C；
+    // 键盘只读拦截：放行导航（方向/Home/End/PageUp/PageDown，含 Shift 选区）、Ctrl+A/C/V；Ctrl+C 只复制。
     // 禁编辑（字符/退格/删除/粘贴/剪切）；IME 组合中只拦不转移焦点
     outEl.addEventListener('keydown', function (e) {
         if (e.isComposing || e.keyCode === 229) { e.preventDefault(); return; }
@@ -448,8 +455,14 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         if (nav.indexOf(k) !== -1) return; // 光标移动 / Shift 选区 / Ctrl+Shift 按词选区
         if (e.ctrlKey || e.metaKey) {
             var kk = k.toLowerCase();
-            if (kk === 'a' || kk === 'c') return; // 全选 / 复制
-            e.preventDefault(); // Ctrl+V/X 等禁
+            if (kk === 'a' || kk === 'v') return; // 全选 / 粘贴（粘贴由 paste 事件转发键入行）
+            if (kk === 'c') {
+                var os = window.getSelection();
+                var hasOutSelection = !!(os && !os.isCollapsed && outEl.contains(os.anchorNode) && outEl.contains(os.focusNode));
+                if (!hasOutSelection) e.preventDefault(); // 输出区无选区：Ctrl+C 只执行空操作，不发送中断
+                return;
+            }
+            e.preventDefault(); // Ctrl+X 等禁
             return;
         }
         if (k === 'Tab' || k === 'Enter') { e.preventDefault(); inputEl.focus(); return; }
@@ -466,8 +479,25 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
         e.preventDefault(); // Backspace/Delete/其余修饰键全拦
     });
-    outEl.addEventListener('paste', function (e) { e.preventDefault(); });
+    // 粘贴 → 指令编辑区（焦点在输出区时 Ctrl+V / 右键菜单粘贴均走此路；clipboardData 同步可用零 IPC）
+    outEl.addEventListener('paste', function (e) {
+        e.preventDefault();
+        var t = e.clipboardData && e.clipboardData.getData('text/plain');
+        if (t) insertToInput(t);
+    });
     outEl.addEventListener('drop', function (e) { e.preventDefault(); });
+
+    // 插入键入行（光标位插入，保留多行文本；粘贴后焦点 + 光标末尾）
+    function insertToInput(t) {
+        if (!t) return;
+        inputEl.focus();
+        var v = inputEl.value;
+        var s = inputEl.selectionStart != null ? inputEl.selectionStart : v.length;
+        var en = inputEl.selectionEnd != null ? inputEl.selectionEnd : v.length;
+        inputEl.value = v.slice(0, s) + t + v.slice(en);
+        autoResize();
+        try { inputEl.setSelectionRange(s + t.length, s + t.length); } catch (_) { }
+    }
 
     function setCaretEnd() {
         try {
@@ -515,9 +545,9 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 setCaretEnd();
             }
         } else if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
-            // Ctrl+C：发送中断字节（行模式下 shell 可能忽略，⏹ 按钮兜底杀树）
-            e.preventDefault();
-            if (bridge && bridge.kmd && sessionId) bridge.kmd.write(sessionId, '\x03');
+            // Ctrl+C 只专注复制（2026-08-16 定案）：有选区 = 浏览器原生复制；无选区 = 空操作。
+            // 中断功能唯一入口 = 正方形菜单第一成员（Ctrl+C）——键盘路径永不发中断字节。
+            return;
         } else if (e.key === 'l' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             clearOut();
@@ -544,13 +574,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
     }
 
-    // ── 工具栏：自绘 shell 下拉（solar 配色） ──
+    // ── 工具栏：shell 三按钮（选中态 accent 底，setShellUI 维护） ──
     function setShellUI(t) {
         shellType = t;
-        shellLabel.textContent = t === 'powershell' ? 'PowerShell' : (t === 'gitbash' ? 'Git Bash' : 'cmd');
         promptEl.textContent = t === 'gitbash' ? '❯' : (t === 'powershell' ? 'PS>' : 'C>');
-        var items = shellMenu.querySelectorAll('.item');
-        for (var i = 0; i < items.length; i++) items[i].classList.toggle('active', items[i].dataset.shell === t);
+        for (var k in shellBtns) shellBtns[k].classList.toggle('active', k === t);
     }
 
     function switchShell(t) {
@@ -564,7 +592,6 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             }).then(function (r) {
                 if (r && r.ok) {
                     running = true;
-                    statusEl.textContent = '运行中 · ' + t;
                     appendLine('dim', '── 已切换 ' + t + ' ──');
                  if (t === 'gitbash') {
                     var p = gbCwd || winToMsys(cwd);
@@ -579,32 +606,44 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
     }
 
-    shellPick.addEventListener('click', function (e) {
-        if (e.target.closest('#shell-menu')) return;
-        shellMenu.classList.toggle('hidden');
-    });
-    shellMenu.addEventListener('click', function (e) {
-        var item = e.target && e.target.closest ? e.target.closest('.item') : null;
-        if (!item) return;
-        shellMenu.classList.add('hidden');
-        switchShell(item.dataset.shell);
-    });
-    document.addEventListener('click', function (e) {
-        if (!shellPick.contains(e.target)) shellMenu.classList.add('hidden');
-    });
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') shellMenu.classList.add('hidden');
+    // shell 三按钮：点击即切换（选中态由 setShellUI 维护；终止/清屏不在 .shell-btn 内，closest 自然忽略）
+    document.getElementById('bar').addEventListener('click', function (e) {
+        var b = e.target && e.target.closest ? e.target.closest('.shell-btn') : null;
+        if (!b) return;
+        switchShell(b.dataset.shell);
     });
 
-    // ── 终止按钮：强杀进程树 + 原地重启；会话已死时点击 = 重启 ──
+    // ── 危险操作菜单：正方形按钮只展开，不直接终止 ──
     var killBtn = document.getElementById('btn-kill');
-    killBtn.addEventListener('click', function () {
+    var killWrap = document.getElementById('terminate-menu-wrap');
+    var killMenu = document.getElementById('terminate-menu');
+    var interruptItem = document.getElementById('interrupt-item');
+    var killItem = document.getElementById('terminate-item');
+    var killMenuOpen = false;
+
+    function setKillMenu(open) {
+        killMenuOpen = !!open;
+        killMenu.classList.toggle('hidden', !killMenuOpen);
+        killBtn.setAttribute('aria-expanded', killMenuOpen ? 'true' : 'false');
+        // tooltip removed 2026-08-17
+    }
+    function toggleKillMenu() { setKillMenu(!killMenuOpen); }
+
+    // 菜单 Ctrl+C：明确向当前 shell 发送中断字节；键盘 Ctrl+C 的复制语义不受影响
+    function sendInterrupt() {
+        if (!bridge || !bridge.kmd || !sessionId || !running) return;
+        bridge.kmd.write(sessionId, '\x03').catch(function (err) {
+            appendLine('err', '[Ctrl+C 发送失败] ' + String(err && err.message || err));
+        });
+    }
+
+    // 强杀进程树 + 原地重启；会话已死时选择 Terminate = 重启
+    function runKill() {
         if (!bridge || !bridge.kmd || !sessionId) return;
         if (!running) {
             bridge.kmd.spawn(sessionId, shellType, cwd).then(function (r) {
                 if (r && r.ok) {
                     running = true;
-                    statusEl.textContent = '运行中 · ' + shellType;
                 } else {
                     appendLine('err', '[会话启动失败] ' + ((r && r.error) || 'unknown'));
                 }
@@ -612,27 +651,37 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             return;
         }
         bridge.kmd.kill(sessionId, { restart: true }).catch(function () { });
+    }
+
+    killBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleKillMenu();
+    });
+    interruptItem.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setKillMenu(false);
+        sendInterrupt();
+    });
+    killItem.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setKillMenu(false);
+        runKill();
+    });
+    document.addEventListener('mousedown', function (e) {
+        if (killMenuOpen && !killWrap.contains(e.target)) setKillMenu(false);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && killMenuOpen) {
+            e.preventDefault();
+            setKillMenu(false);
+            killBtn.focus();
+        }
     });
 
-    // ── 终止按钮自定义即时 tooltip（零延迟弹出，solar 配色） ──
-    var tipEl = document.createElement('div');
-    tipEl.id = 'kmd-tip';
-    tipEl.innerHTML = '⏹ 强杀当前会话的整个进程树（taskkill /F /T，含全部子进程），然后<b>原地重启</b>一个同 shell 同目录的新会话（清屏 + 打一行「会话已原地重启」）。\n适用场景：命令卡死 / 失控（死循环、无响应程序）。\n与 Ctrl+C 的区别：Ctrl+C 只是发中断字节，行模式下 shell 可能直接忽略；⏹ 是内核级强杀，一定有效。';
-    document.body.appendChild(tipEl);
-    function kmdTipShow() {
-        var r = killBtn.getBoundingClientRect();
-        var left = r.left;
-        var top = r.bottom + 4;
-        if (left + tipEl.offsetWidth > window.innerWidth - 4) left = Math.max(4, window.innerWidth - tipEl.offsetWidth - 4);
-        if (top + tipEl.offsetHeight > window.innerHeight - 4) top = Math.max(4, r.top - tipEl.offsetHeight - 4);
-        tipEl.style.left = left + 'px';
-        tipEl.style.top = top + 'px';
-        tipEl.style.display = 'block';
-    }
-    function kmdTipHide() { tipEl.style.display = 'none'; }
-    killBtn.addEventListener('mouseenter', kmdTipShow);
-    killBtn.addEventListener('mousemove', kmdTipShow);
-    killBtn.addEventListener('mouseleave', kmdTipHide);
+    // tooltip for square button removed 2026-08-17 (user request)
 
     document.getElementById('btn-clear').addEventListener('click', function () {
         clearOut();
@@ -797,6 +846,20 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             openFind(true);
         } else if (e.key === 'F3') {
             if (findOpen) { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); }
+        }
+    }, true);
+
+    // ★ 全局 Ctrl+V → 指令编辑区（2026-08-16）：只要 kmd 获焦点，无论焦点在输出区/工具栏/空白处，
+    //   命令直接粘贴进键入行。输入框与查找框保留原生粘贴语义（不劫持）。
+    //   路径：document capture 拦截 → bridge.clipboard.readText()（主进程读剪贴板，零权限问题）→ insertToInput
+    document.addEventListener('keydown', function (e) {
+        if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'v') return;
+        var el = document.activeElement;
+        if (el && (el === inputEl || el === findInput)) return; // textarea 原生粘贴（多行/选中替换语义）
+        e.preventDefault();
+        e.stopPropagation();
+        if (bridge && bridge.clipboard && bridge.clipboard.readText) {
+            bridge.clipboard.readText().then(function (t) { insertToInput(t); }).catch(function () { });
         }
     }, true);
 

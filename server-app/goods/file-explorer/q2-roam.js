@@ -1284,7 +1284,7 @@ function _openQqqideWindowForFolder(folderPath) {
 		// 写入最近文件夹（与菜单 "开新窗口" 下拉共享同一 key）
 		try {
 			pb.state.get('qqqide', 'recent_folders').then(function(data) {
-				var list = (data && Array.isArray(data)) ? data.slice(0, 20) : [];
+				var list = (data && Array.isArray(data)) ? data.slice(0, 100) : [];
 				var name = folderPath;
 				try {
 					var parts = folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
@@ -1292,8 +1292,14 @@ function _openQqqideWindowForFolder(folderPath) {
 				} catch (_) {}
 				list = list.filter(function(f) { return f.path !== folderPath; });
 				list.unshift({ path: folderPath, name: name, atime: Date.now() });
-				if (list.length > 20) list.length = 20;
+				if (list.length > 100) list.length = 100;
 				pb.state.set('qqqide', 'recent_folders', list).catch(function(){});
+				// ★ OS 双写 (2026-08-16): 与 ai-viewport 同款, 跨启动目录共享记忆
+				try {
+					if (pb.wsState && typeof pb.wsState.set === 'function') {
+						pb.wsState.set('recentFolders', list).catch(function(){});
+					}
+				} catch (_) {}
 			}).catch(function(){});
 		} catch (_) {}
 		pb.window.new(folderPath).then(function(r) {
