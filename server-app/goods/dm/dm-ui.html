@@ -67,17 +67,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   background:var(--bg-sidebar);
   border-right:1px solid var(--border);
 }
-#sidebar-header {
-  padding:14px 16px 10px;
-  font-size:16px;font-weight:700;
-  color:var(--text-bright);
-  letter-spacing:-0.3px;
-}
 #sidebar-search {
-  padding:0 12px 10px;
+  padding:10px 12px 10px;
 }
 #sidebar-search input {
-  width:100%;padding:7px 12px 7px 32px;
+  width:100%;padding:7px 12px;
   border:1px solid var(--border);
   border-radius:8px;font-size:12px;
   background:var(--bg-input);color:var(--text);
@@ -85,10 +79,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 }
 #sidebar-search input:focus { border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow); }
 #sidebar-search-wrap { position:relative; }
-#sidebar-search-icon {
-  position:absolute;left:10px;top:50%;transform:translateY(-50%);
-  font-size:13px;color:var(--text-dim);pointer-events:none;
-}
 
 #conv-list { flex:1;overflow-y:auto;overflow-x:hidden;padding:0 8px; }
 .conv-item {
@@ -350,11 +340,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 <div id="app">
   <!-- ═══ SIDEBAR ═══ -->
   <div id="sidebar">
-    <div id="sidebar-header">Messages</div>
     <div id="sidebar-search">
       <div id="sidebar-search-wrap">
-        <span id="sidebar-search-icon">🔍</span>
-        <input type="text" id="search-input" placeholder="搜索联系人..." autocomplete="off">
+        <input type="text" id="search-input" placeholder="find" autocomplete="off">
       </div>
     </div>
     <div id="conv-list"></div>
@@ -1521,12 +1509,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    if (e.key !== 'F2' && e.key !== 'Tab' && e.key !== 'x') return;
     var el = document.activeElement;
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (editing) return;
-    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    var accel = e.key === 'F2' ? 'F2' : (e.key === 'Tab' ? 'Tab' : 'X');
     try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
     e.preventDefault();
   }, true);

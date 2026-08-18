@@ -44,6 +44,12 @@
       "when": "noEditing"
     },
     {
+      "id": "window.activateKmd",
+      "accel": "x",
+      "scope": "window",
+      "when": "noEditing"
+    },
+    {
       "id": "roam.openInIde",
       "accel": "Q",
       "scope": "iframe:roam",

@@ -256,14 +256,47 @@ async function executeRunCommand(args) {
                 //   拆分 + shell:true 会让 Node 二次拼装 → 嵌套 cmd /c → cd /d 失效、
                 //   相对路径落盘基于 spawn cwd（绿色包根）→ 文件污染（F79 事故）。
                 //   整串 + shell:true → cmd.exe /d /s /c "整串" 单层引号 → cd 生效。
-                result = await bridge.qz.spawn({
-                    cmd: cmd,
-                    args: [],
-                    cwd: args.cwd || '',
-                    timeout: 0,
-                    stallMs: 900000,
-                    shell: true
-                });
+                // ★ 2026-08-18: 多行命令（python -c / node -e 换行脚本）整串交给 cmd 会引号配对错乱——
+                //   cmd /d /s /c "python -c "a\nb"" 的嵌套引号把 & 吞进参数 → 整个命令静默失败
+                //   （无输出、后续命令不执行，F146 实测复现）。多行脚本 = 数组 spawn（shell:false）
+                //   CreateProcess 直传，换行在参数里合法零 cmd 解析。仅引号外无 cmd 语义元字符时走数组。
+                var _hasNL = cmd.indexOf('\n') !== -1;
+                var _arrOk = false;
+                var _arrArgs = [];
+                if (_hasNL) {
+                    var _toks = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [cmd];
+                    var _outer = cmd.replace(/"[^"]*"|'[^']*'/g, '');
+                    var _metaOut = /[&|<>^%]/.test(_outer) || /^cd\s+/i.test(_toks[0] || '');
+                    if (!_metaOut && _toks.length >= 1) {
+                        _arrArgs = _toks.slice(1).map(function (s) {
+                            if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+                                return s.slice(1, -1);
+                            }
+                            return s;
+                        });
+                        cmd = _toks[0];
+                        _arrOk = true;
+                    }
+                }
+                if (_arrOk) {
+                    result = await bridge.qz.spawn({
+                        cmd: cmd,
+                        args: _arrArgs,
+                        cwd: args.cwd || '',
+                        timeout: 0,
+                        stallMs: 900000,
+                        shell: false
+                    });
+                } else {
+                    result = await bridge.qz.spawn({
+                        cmd: cmd,
+                        args: [],
+                        cwd: args.cwd || '',
+                        timeout: 0,
+                        stallMs: 900000,
+                        shell: true
+                    });
+                }
             } else {
                 // POSIX: parse command into cmd + args for proper spawn (shell:false)
                 var cmdArgs = [];

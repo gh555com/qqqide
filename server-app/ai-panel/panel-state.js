@@ -181,36 +181,7 @@ window.addEventListener('message', function (e) {
         _setPanelFocus(false);
         _setBulletGold(false);  // ★ 另一面板接管：褪去子弹金色
     }
-    // ★★ conv goods → 新对话
-    if (e.data.type === 'qqq-conv-new-quest' && e.data.panelId === _panelId) {
-        _handleConvNewQuest(e.data);
-    }
 });
-
-async function _handleConvNewQuest(data) {
-    var ctx = data.context || '';
-    if (!ctx) return;
-    // ★ 登录闸门：未登录禁建 quest（与发送管线同规则）
-    if (typeof _isLoggedIn === 'function' && !_isLoggedIn()) {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_) { }
-        return;
-    }
-    // defer: questStore / switchQuest 定义在 panel-quest.js / panel-quest-ui.js，
-    // 本文件加载更早，postMessage 事件触发时它们已就绪
-    var qs = window.questStore;
-    if (!qs || !qs.create) { console.warn('[conv-new-quest] questStore not ready'); return; }
-    if (typeof switchQuest !== 'function') { console.warn('[conv-new-quest] switchQuest not ready'); return; }
-    try {
-        var newId = await qs.create('');
-        if (!newId) return;
-        if (!questUIStates[newId]) questUIStates[newId] = {};
-        questUIStates[newId].inputValue = '请基于以下上下文回答问题：\n\n' + ctx;
-        if (_panelId === 1) await qs.setActiveId(newId);
-        switchQuest(newId);
-    } catch (e) {
-        console.warn('[conv-new-quest]', e);
-    }
-}
 
 // 通用 postMessage
 var _fwSeq = 0;

@@ -844,16 +844,9 @@ if (_ctxManageBtn) {
                 }
             }
 
-            // ② 新标签：创建 quest 专属背包标签
-            var questLabel = qid;
-            try {
-                if (typeof questStore !== 'undefined' && questStore.getTitle) {
-                    var t = questStore.getTitle(qid);
-                    if (t && t !== 'New Chat') questLabel = qid + ' ' + t;
-                }
-            } catch (_) { }
-
-            qqTabs.addGaeaTab(gaeaId, '📋 ' + questLabel, function (pane, tab) {
+            // ② 新标签：创建 quest 专属背包标签（固定文本「qxxx 上下文背包」，2026-08-18 定案）
+            var questLabel = qid + ' 上下文背包';
+            var newTab = qqTabs.addGaeaTab(gaeaId, questLabel, function (pane, tab) {
                 pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
                 var iframe = document.createElement('iframe');
                 iframe.src = '/qqqide/goods/conv/conv-ui.html?quest=' + encodeURIComponent(qid) + '&panel=' + panelId;

@@ -439,6 +439,8 @@ async function bootKeyHook() {
   document.addEventListener('qqq-key-cmd', function (e) {
     var id = e.detail && e.detail.id;
     if (!id) return;
+    // ★ 2026-08-18: kmd 召回路径透传（iframe qqq-key 消息携带 path，消费即清）
+    window.__qqqLastKeyPath = (e.detail && e.detail.path) || null;
     if (window._shHandleMenuCmd) window._shHandleMenuCmd(id);
   });
   // [silent] keyhook ready

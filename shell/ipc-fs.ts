@@ -296,15 +296,18 @@ export function registerFsIpc(): void {
                 }
                 const gzBuf = fs.readFileSync(blobPath);
                 let content = _gunzipSync(gzBuf);
+                // ★ 2026-08-18: U+FFFD 诊断提示（历史内容损伤 vs 工具解码错，AI 可区分）
+                const _fffdN = (content.match(/\uFFFD/g) || []).length;
+                const _fffdNote = _fffdN ? '\n\n[WARN] 该历史版本含 ' + _fffdN + ' 处 U+FFFD 替换字符（历史写入时编码已损伤，原始字节不可逆）\n' : '';
                 // Line-range pagination (same as normal path)
                 if (args.start_line != null || args.end_line != null) {
                     const lines = content.split('\n');
                     const start = Math.max(0, (args.start_line || 1) - 1);
                     const end = args.end_line != null ? Math.min(args.end_line, lines.length) : lines.length;
                     const header = '[paginated ' + (start + 1) + '-' + end + ' of ' + lines.length + ' lines]\n';
-                    return header + lines.slice(start, end).join('\n');
+                    return header + _fffdNote + lines.slice(start, end).join('\n');
                 }
-                return content;
+                return content + _fffdNote;
             }
 
             // ── 正常路径：读磁盘文件 ──
@@ -315,15 +318,18 @@ export function registerFsIpc(): void {
             let content = await fs.promises.readFile(args.path, 'utf8');
             // Record snapshot for qwr machine (external modification detection)
             try { _sn[args.path] = { mtimeMs: st.mtimeMs, size: st.size }; } catch { /* best-effort */ }
+            // ★ 2026-08-18: U+FFFD 诊断提示（内容损伤 vs 工具解码错，AI 可区分）
+            const _fffdN = (content.match(/\uFFFD/g) || []).length;
+            const _fffdNote = _fffdN ? '\n\n[WARN] 文件含 ' + _fffdN + ' 处 U+FFFD 替换字符（历史写入时编码已损伤，原始字节不可逆）\n' : '';
             // Line-range pagination
             if (args.start_line != null || args.end_line != null) {
                 const lines = content.split('\n');
                 const start = Math.max(0, (args.start_line || 1) - 1);
                 const end = args.end_line != null ? Math.min(args.end_line, lines.length) : lines.length;
                 const header = '[paginated ' + (start + 1) + '-' + end + ' of ' + lines.length + ' lines]\n';
-                return header + lines.slice(start, end).join('\n');
+                return header + _fffdNote + lines.slice(start, end).join('\n');
             }
-            return content;
+            return content + _fffdNote;
         } catch (e: any) {
             if (e.code === 'ENOENT') return 'Error: file not found: ' + args.path;
             if (e.code === 'EACCES') return 'Error: permission denied: ' + args.path;

@@ -68,7 +68,7 @@ function persistState() {
 // 不依赖 key-bindings.json / key-hook 配置链，独立注册 capture 监听（双保险）。
 function bootRoamKeyFallback() {
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    if (e.key !== 'F2' && e.key !== 'Tab' && e.key !== 'x') return;
     var el = document.activeElement;
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
@@ -78,6 +78,14 @@ function bootRoamKeyFallback() {
       p = p.parentElement;
     }
     if (editing) return; // 编辑态不抢键
+    // ★ 2026-08-18: x 键兜底直连——非编辑态打开一个新 kmd（key-hook 配置链再坏也不静默）
+    if (e.key === 'x') {
+      console.log('[shell] kmd-key fallback: x');
+      if (window.__qqqKmdOpen) { try { window.__qqqKmdOpen(null); } catch (_ke) { } }
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     console.log('[shell] roam-key fallback:', e.key);
     var grp = window.qqqTabs && window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
     if (grp) {
