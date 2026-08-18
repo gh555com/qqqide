@@ -987,6 +987,11 @@ window.addEventListener('message', async function (e) {
                 var _sa = _activeAgent;
                 _activeAgent = _ag;
                 var _rt = 0;
+                // ★ 2026-08-18 q181 f77 实锤：_estimateTokensFull 缓存 key 含 biscuit 首尾 40 chars + biscuitLines 条数 + apiVer，
+                //   absolut/edit only 压缩恰好不改饼干首尾（=== F 头行 / A 行尾保留）+ 条数不变 + apiVer 清零在后 →
+                //   缓存 key 全同 → after 命中旧缓存返回压缩前值 → 动画「182k→182k/100%」静止假象（真实收益 81k tokens）。
+                //   强制绕过缓存，每次实时重算。
+                _estCache = null;
                 if (typeof _estimateTokensFull === 'function') _estimateTokensFull();
                 if (_ctxBreakdownData) _rt = _ctxBreakdownData.localTotal;
                 _activeAgent = _sa;

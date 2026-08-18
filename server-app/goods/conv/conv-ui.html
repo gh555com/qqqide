@@ -938,7 +938,8 @@ function showCompressAnimation(title, beforeChars, afterChars) {
     var beforeTokens = _charsToTokens(beforeChars || 0);
     var afterTokens = _charsToTokens(afterChars || 0);
     var maxChars = beforeChars || 1;
-    var targetPct = maxChars > 0 ? Math.round(afterChars / maxChars * 100) : 0;
+    var pctExact = maxChars > 0 ? (afterChars / maxChars * 100) : 0;
+    var targetPct = Math.round(pctExact);
 
     // 读取主题色
     var style = getComputedStyle(document.documentElement);
@@ -960,8 +961,13 @@ function showCompressAnimation(title, beforeChars, afterChars) {
     document.getElementById('cmpBarAfterLabel').textContent = fmtSize(afterTokens);
 
     // 百分比：动画从 100% 滚动到 targetPct
+    // ★ 2026-08-18 q181 f77：收益 <0.5%（取整 100%）时显示一位小数（如 99.8%）——「100%」静止误导（用户无法区分压缩成功与否）
     var pctEl = document.getElementById('cmpSavedPct');
-    _animatePct(pctEl, 100, targetPct, 1500);
+    if (targetPct === 100 && afterChars < beforeChars) {
+        pctEl.textContent = pctExact.toFixed(1) + '%';
+    } else {
+        _animatePct(pctEl, 100, targetPct, 1500);
+    }
 
     // 显示遮罩
     var overlay = document.getElementById('cmpAnimOverlay');
