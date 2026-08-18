@@ -220,7 +220,8 @@ async function executeRunCommand(args) {
             var _script = '#!/bin/sh\n';
             if (args.cwd) {
                 // cwd is inside double quotes; only " needs escaping for the shell script
-                _script += 'cd "' + args.cwd.replace(/"/g, '\\"') + '" 2>/dev/null || true\n';
+                // ★ 2026-08-18: cd 失败不再静默（旧 2>/dev/null || true 吞错误 → 命令在错误目录执行无提示）
+                _script += 'cd "' + args.cwd.replace(/"/g, '\\"') + '" || { echo "[ssh] cd failed: ' + args.cwd.replace(/"/g, '\\"') + '" >&2; exit 2; }\n';
             }
             _script += (args.command || 'true') + '\n';
             // UTF-8 → base64 (no shell-special chars: only A-Za-z0-9+/=)

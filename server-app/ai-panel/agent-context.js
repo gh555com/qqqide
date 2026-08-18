@@ -863,8 +863,16 @@
                 // ★ 收紧（2026-08-08 F10）：仅当前楼层本身是 compress 才截断 —— _newFacts 可能来自
                 //   更早楼层的 compress 消息，误截断正常楼层 → conversation 清空 → all.json conv=0
                 //   （q169 f10/f12/f14 事故链之一）。
-                if (_curMsgs.length > 0 && _curMsgs[0]._compressFloor && self.conversation.length > floorStart) {
-                    self.conversation.length = floorStart;
+                if (_curMsgs.length > 0 && _curMsgs[0]._compressFloor && self.conversation.length > 0) {
+                    // ★ 2026-08-17 修复（q158 f46 压缩白做实锤）：fx 注入 splice 到 biscuit 前（index < 旧 floorStart）
+                    //   → 按旧 floorStart 截断会误删 biscuit 消息（conversation 只剩 Z+fx），后续 restore 从旧
+                    //   ctx.json（未更新的完整饼干）恢复 → 压缩效果彻底消失。截断位置必须在 fx 注入后重新
+                    //   定位（第一个非 persistent/dynamic 消息 = compress 楼层起点），保留 Z + fx + biscuit。
+                    var _v21Start = persistentCount;
+                    for (var _v21i = persistentCount; _v21i < self.conversation.length; _v21i++) {
+                        if (!self.conversation[_v21i]._persistent && !self.conversation[_v21i]._dynamic) { _v21Start = _v21i; break; }
+                    }
+                    if (self.conversation.length > _v21Start) self.conversation.length = _v21Start;
                 }
             }
 

@@ -222,7 +222,7 @@ function bootActivities(boot) {
       '.qqq-act-modal h2{margin:2px 0 2px;font-size:26px;font-weight:900;text-align:center;' +
       'background:linear-gradient(135deg,#34d399,#06b6d4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
       '.qqq-act-modal .qqq-act-sub{margin:0 0 14px;text-align:center;font-size:13px;color:#9aa0b5;}' +
-      '.qqq-act-modal .qqq-act-csub{margin:0 0 6px;text-align:center;font-size:15px;font-weight:700;color:#34d399;}' +
+      '.qqq-act-modal .qqq-act-csub{margin:12px 0 18px;line-height:1.7;text-align:center;font-size:17px;font-weight:700;color:#34d399;}' +
       '.qqq-act-bigbar{margin:14px 0 6px;height:16px;border-radius:9px;background:rgba(255,255,255,.2);overflow:hidden;position:relative;forced-color-adjust:none;}' +
       '.qqq-act-bigfill{display:block;height:100%;border-radius:9px;' +
       'background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;animation:qqqActShimmer 2.4s linear infinite;' +
@@ -254,6 +254,7 @@ function bootActivities(boot) {
       '.qqq-act-task.qqq-act-task-recharge{transition:background .15s,border-color .15s;}' +
       '.qqq-act-task.qqq-act-task-recharge:hover{background:rgba(217,100,92,.14);border-color:#d9645c;}' +
       '.qqq-act-task .qqq-act-task-go{margin-left:auto;font-size:12px;font-weight:800;color:#d9645c;white-space:nowrap;}' +
+      '.qqq-act-task .qqq-act-task-now{font-size:11.5px;color:#9aa0b5;white-space:nowrap;}' +
       '.qqq-act-or{text-align:center;font-size:12px;font-weight:700;color:#b58900;margin:4px 0 6px;}' +
       '.qqq-act-claims{display:flex;gap:10px;margin-top:0;}' +
       '.qqq-act-claim{flex:1;padding:11px 6px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;color:#fff;' +
@@ -261,7 +262,7 @@ function bootActivities(boot) {
       '.qqq-act-claim.qqq-act-claim-phone{background:linear-gradient(90deg,#268bd2,#2aa198);box-shadow:0 4px 14px rgba(38,139,210,.3);forced-color-adjust:none;}' +
       '.qqq-act-claim:disabled{filter:grayscale(1);opacity:.55;box-shadow:none;}' +
       '.qqq-act-claim:hover:not(:disabled){filter:brightness(1.1);}' +
-      '.qqq-act-lockhint{text-align:center;font-size:12px;color:#7a8098;margin-top:8px;}' +
+      
       '.qqq-act-modal2{position:relative;width:420px;max-width:90vw;border-radius:14px;padding:26px 26px 22px;text-align:center;' +
       'background:linear-gradient(165deg,#10131f,#0d0d1a);color:#e6e6e6;border:1.5px solid rgba(52,211,153,.4);' +
       'box-shadow:0 0 30px rgba(52,211,153,.2);animation:qqqActPop .25s cubic-bezier(.34,1.56,.64,1);forced-color-adjust:none;}' +
@@ -362,7 +363,7 @@ function bootActivities(boot) {
       html =
         '<div class="qqq-act-celebrate">🎉</div>' +
         '<h2>' + t('act.cool.p2Title', '恭喜！充能已满') + '</h2>' +
-        '<p class="qqq-act-csub">' + t('act.cool.p2Subtitle', '从2026开始，用更清爽 滴 ide') + '</p>' +
+        '<p class="qqq-act-csub">' + t('act.cool.p2Subtitle', '从2026开始，更轻，更快') + '</p>' +
         '<p class="qqq-act-sub">' + t('act.cool.popSub', '总消费满 10 ge 领 10 元红包') + '</p>' +
         '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-cool-fill qqq-act-full" style="width:100%"></span></div>' +
         '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge ✓</div>' +
@@ -489,8 +490,9 @@ function bootActivities(boot) {
         '<li id="qqq-act-task-recharge" class="qqq-act-task ' + (rechargeOk ? 'qqq-act-task-done' : 'qqq-act-task-locked qqq-act-task-recharge') + '" ' +
         (rechargeOk ? '' : 'title="' + t('act.ge50.task3GoTitle', '点击去充值') + '"') + '>' +
         '<span class="qqq-act-check">' + (rechargeOk ? '✓' : '') + '</span>' +
-        tp('act.ge50.task3', { yuan: reqYuan }, '充值 ' + reqYuan + ' 元') +
-        (rechargeOk ? '' : '<span class="qqq-act-task-go">' + t('act.ge50.task3Go', '去充值 →') + '</span>') +
+        tp('act.ge50.task3', { yuan: reqYuan }, '累计充值满 ' + reqYuan + ' 元') +
+        (rechargeOk ? '' :
+          '<span class="qqq-act-task-go">' + t('act.ge50.task3Go', '去充值 →') + '</span>') +
         '</li>';
     }
 
@@ -499,14 +501,13 @@ function bootActivities(boot) {
       '<div class="qqq-act-claims">' +
       '<button class="qqq-act-claim qqq-act-claim-phone" id="qqq-act-claim-phone" ' +
       (claimable && !claimedPhone ? '' : 'disabled') + '>' +
-      (phone ? phone + '<br>' : '') + (claimedPhone ? t('act.ge50.claimPhoneClaimed', '50 元话费 · 已领取') : t('act.ge50.claimPhone', '额外再领取 50 元话费')) +
+      (phone ? phone + '<br>' : '') + (claimedPhone ? t('act.ge50.claimPhoneClaimed', '额外再领取 50 元话费 · 已领取') : t('act.ge50.claimPhone', '额外再领取 50 元话费')) +
       '</button>' +
       '<button class="qqq-act-claim" id="qqq-act-claim-ge" ' +
       (claimable && !claimedGe ? '' : 'disabled') + '>' +
-      (claimedGe ? t('act.ge50.claimGeClaimed', '50 ge · 已领取') : t('act.ge50.claimGe', '额外再领取 50 ge')) +
+      (claimedGe ? t('act.ge50.claimGeClaimed', '额外再领取 50 ge · 已领取') : t('act.ge50.claimGe', '额外再领取 50 ge')) +
       '</button>' +
-      '</div>' +
-      (claimable ? '' : '<div class="qqq-act-lockhint">' + t('act.ge50.taskLocked', '完成上方任务后解锁') + '</div>');
+      '</div>';
 
     var html =
       '<div class="qqq-act-celebrate">🎁</div>' +

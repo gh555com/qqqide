@@ -572,8 +572,18 @@ async function _restoreAgentFromStore(questId, ag) {
             for (var _rfi = ag.conversation.length - 1; _rfi >= 0; _rfi--) {
                 if (ag.conversation[_rfi]._facts) ag.conversation.splice(_rfi, 1);
             }
-            ag.conversation.splice(ag._persistentCount || 0, 0,
-                { role: 'system', content: _ctxData.facts.join('\n\n'), _dynamic: true, _facts: true });
+            // ★ 2026-08-17: ctx.facts 条目是对象 {source,extracted_at,text}——直接 join 对象数组
+            //   产生 "[object Object]"（15 字符 = 6 tokens，q158 截图 fx=6 实锤：重启后 AI 拿到垃圾事实）
+            var _fxParts = [];
+            for (var _fpi = 0; _fpi < _ctxData.facts.length; _fpi++) {
+                var _fpiItem = _ctxData.facts[_fpi];
+                var _fpiText = (typeof _fpiItem === 'string') ? _fpiItem : ((_fpiItem && (_fpiItem.text || _fpiItem.content)) || '');
+                if (_fpiText) _fxParts.push(_fpiText);
+            }
+            if (_fxParts.length) {
+                ag.conversation.splice(ag._persistentCount || 0, 0,
+                    { role: 'system', content: _fxParts.join('\n\n'), _dynamic: true, _facts: true });
+            }
         }
         // ★ 扫描所有 _error 消息重建分楼层错误日志（跳过已恢复的）
         for (var _eli = 0; _eli < ag.conversation.length; _eli++) {

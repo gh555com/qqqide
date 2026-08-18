@@ -107,6 +107,15 @@ function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean 
 
     var cmdLower = brief.cmd.toLowerCase();
 
+    // ★ 2026-08-18: Windows shell 整串命令统一前置 chcp 65001 — 根治 GBK 乱码
+    //   cmd 默认代码页 936：中文输出是 GBK 字节 → nodeTier/ghrun 按 UTF-8 解码 → �
+    //   附带收益：命令不再以引号开头 → 规避 cmd /S 的引号剥离陷阱（"C:\Program Files\..." 开头类）
+    //   局限：type/findstr 输出 GBK 文件内容仍按原字节（AI 读文件请用 read_file）
+    if (IS_WIN && brief.shell === true && !/^chcp\s+/i.test(cmdLower)) {
+        brief.cmd = 'chcp 65001 >nul & ' + brief.cmd;
+        cmdLower = 'chcp 65001 >nul & ' + cmdLower;
+    }
+
     // ① Only wrap for | < > (pipes/redirects). & ; in args pass through directly.
     var hasMeta = SHELL_WRAP_RE.test(brief.cmd);
     if (!hasMeta && brief.args) {
@@ -284,6 +293,18 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         let killReason: SpawnResult['killReason'] = '';
         let lastIOAt = Date.now();
 
+        // ★ 2026-08-18: 输出改 Buffer 收集 + UTF-8→GBK 兜底解码。
+        //   Windows cmd 代码页 936 时中文输出是 GBK；chcp 65001 前缀后是 UTF-8。
+        //   兜底仅在 chcp 未生效/GBK 文件内容直出时兜住，杜绝 � 乱码。
+        const _winDecode = (chunks: Buffer[]): string => {
+            const buf = Buffer.concat(chunks);
+            if (process.platform !== 'win32') { return buf.toString('utf8'); }
+            try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+            catch { try { return new TextDecoder('gbk').decode(buf); } catch { return buf.toString('utf8'); } }
+        };
+        let stdoutBuf: Buffer[] = [];
+        let stderrBuf: Buffer[] = [];
+
         const killTree = () => {
             if (!proc.pid) { return; }
             try {
@@ -298,12 +319,10 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         };
 
         if (capture && proc.stdout) {
-            proc.stdout.setEncoding('utf8');
-            proc.stdout.on('data', (d: string) => { stdout += d; lastIOAt = Date.now(); });
+            proc.stdout.on('data', (d: Buffer) => { stdoutBuf.push(d); lastIOAt = Date.now(); });
         }
         if (capture && proc.stderr) {
-            proc.stderr.setEncoding('utf8');
-            proc.stderr.on('data', (d: string) => { stderr += d; lastIOAt = Date.now(); });
+            proc.stderr.on('data', (d: Buffer) => { stderrBuf.push(d); lastIOAt = Date.now(); });
         }
 
         // A4: memory guard — poll child WorkingSet64 every 5s, kill if > 2GB
@@ -343,6 +362,8 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
 
         proc.on('exit', (code) => {
             cleanup();
+            stdout = _winDecode(stdoutBuf);
+            stderr = _winDecode(stderrBuf);
             const extra = killed ? `\n[killed: ${killReason} after ${Date.now() - start}ms]` : '';
             resolve({
                 exitCode: killed ? -1 : (code ?? -1),
@@ -356,6 +377,8 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         });
         proc.on('error', (err: Error) => {
             cleanup();
+            stdout = _winDecode(stdoutBuf);
+            stderr = _winDecode(stderrBuf);
             resolve({
                 exitCode: -1,
                 stdout,

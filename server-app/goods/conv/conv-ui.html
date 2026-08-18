@@ -182,7 +182,7 @@ body {
 .cmp-anim-overlay.show { display: flex; }
 .cmp-anim-card {
     background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 20px 28px; min-width: 340px; box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    padding: 20px 28px; min-width: 460px; box-shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
 .cmp-anim-title { font-size: 14px; font-weight: 700; color: var(--fg); margin-bottom: 14px; text-align: center; }
 .cmp-anim-bar-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -273,12 +273,12 @@ body {
     <div class="cmp-anim-card" onclick="event.stopPropagation()">
         <div class="cmp-anim-title" id="cmpAnimTitle">🧹 压缩完成</div>
         <div class="cmp-anim-bar-wrap">
-            <span class="cmp-anim-label">压缩前</span>
+            <span class="cmp-anim-label">压缩前背包</span>
             <div class="cmp-anim-bar-track"><div class="cmp-anim-bar-fill" id="cmpBarBefore" style="width:100%"></div></div>
             <span style="font-size:11px;color:var(--fg2)" id="cmpBarBeforeLabel">100k</span>
         </div>
         <div class="cmp-anim-bar-wrap">
-            <span class="cmp-anim-label">压缩后</span>
+            <span class="cmp-anim-label">压缩后背包</span>
             <div class="cmp-anim-bar-track"><div class="cmp-anim-bar-fill after" id="cmpBarAfter" style="width:100%"></div></div>
             <span style="font-size:11px;color:var(--fg2)" id="cmpBarAfterLabel">60k</span>
         </div>
@@ -479,7 +479,10 @@ function buildCells(ag) {
     if (ctx && ctx.facts && ctx.facts.length) {
         var ft = '';
         for (var fi = 0; fi < ctx.facts.length; fi++) {
-            ft += (fi > 0 ? '\n' : '') + ctx.facts[fi];
+            // ★ 2026-08-17: facts 条目是对象 {source,extracted_at,text}——直接拼接变 "[object Object]"
+            var _fIt = ctx.facts[fi];
+            var _fTx = (typeof _fIt === 'string') ? _fIt : ((_fIt && (_fIt.text || _fIt.content)) || '');
+            ft += (fi > 0 ? '\n' : '') + _fTx;
         }
         cells.push({
             id: 'comp-facts', type: 'system', role: 'system',
@@ -823,16 +826,18 @@ function computeBenefits(ag) {
     }
     result.editonly = _charsToTokens(beforeChars - filtered.join('\n').length);
 
-    // Step 3: only facts — 收益 = 原始 biscuit − editonly 过滤后切半的后半段（与执行端 panel-quest-ui.js 同口径）
-    //   ★ 2026-08-17: 旧口径 hChars(afterAbsolut 切半) 与执行端 editonly 过滤后不一致 → q154 显示 -33k 实际 29.6K 拒绝
+    // Step 3: only facts — 原料 = editonly 过滤后切半的前半段（与执行端 panel-quest-ui.js 守卫同口径）
+    //   ★ 2026-08-17 二次修正：F50 改「收益口径」（before−rChars）虚高 5-9 倍（q158 实测：显示 -98k
+    //   实际原料仅 11k）；守卫=原料 hText ≥32K → 按钮必须显示同一原料数值，「显示 ≥32k 必可执行」成立。
+    //   过滤源用 filtered（非 afterAbsolut）——q154 显示 -33k 实际 29.6K 拒绝的口径分裂由此根治。
     var blocks = filtered.join('\n').split(/\n(?==== F\d+ )/);
     var _totalChars = 0, _blockChars = [];
     for (var bi = 0; bi < blocks.length; bi++) { _blockChars.push(blocks[bi].length); _totalChars += blocks[bi].length; }
     var _half = Math.floor(_totalChars / 2), _acc = 0, _splitIdx = 1;
     for (var bi2 = 0; bi2 < blocks.length; bi2++) { _acc += _blockChars[bi2]; if (_acc >= _half) { _splitIdx = bi2; break; } }
-    var _rChars = 0;
-    for (var bi3 = _splitIdx; bi3 < blocks.length; bi3++) _rChars += _blockChars[bi3];
-    result.onlyfacts = _charsToTokens(beforeChars - _rChars);
+    var _hChars = 0;
+    for (var bi3 = 0; bi3 < _splitIdx; bi3++) _hChars += _blockChars[bi3];
+    result.onlyfacts = _charsToTokens(_hChars);
     return result;
 }
 
