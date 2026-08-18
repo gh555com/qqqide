@@ -576,7 +576,10 @@ function _estimateTokensFull() {
                             if (fp.charAt(bodyStart) === '\n') bodyStart++;
                             var bodyLen = boxEnd - bodyStart;
                             if (!absToolCounts[absName]) { absToolCounts[absName] = 0; absToolSizes[absName] = 0; }
-                            absToolCounts[absName]++; absToolSizes[absName] += bodyLen;
+                            absToolCounts[absName]++;
+                            // ★ 2026-08-17: 统计 = 头行（[A → tool] xxx）+ 体部（╔K...╚）——旧实现只计体部，
+                            //   q158 实测缺口 23k tokens 大头 = 362 个 run_command 头行（15.5k tokens）
+                            absToolSizes[absName] += bodyLen + tm[0].length;
                         }
                     }
                 } else if (!isAbs) {
@@ -589,7 +592,12 @@ function _estimateTokensFull() {
         }
     }
     var absToolTok = {}; var absToolTotalTok = 0;
-    for (var tk in absToolCounts) { absToolTok[tk] = _tk(absToolSizes[tk]); absToolTotalTok += absToolTok[tk]; }
+    var absToolTotalChars = 0;
+    for (var tk in absToolCounts) { absToolTok[tk] = _tk(absToolSizes[tk]); absToolTotalTok += absToolTok[tk]; absToolTotalChars += absToolSizes[tk]; }
+    // ★ 2026-08-17: 结构行 = 饼干总 − Σ子项（数学恒等：子项之和 === 饼干总量，闭环）
+    var structureBiscuitChars = biscuitChars - absToolTotalChars - gentleBiscuitChars - qBiscuitChars - aBiscuitChars;
+    if (structureBiscuitChars < 0) structureBiscuitChars = 0;
+    var structureBiscuitTok = _tk(structureBiscuitChars);
     var qBiscuitTok = _tk(qBiscuitChars);
     var aBiscuitTok = _tk(aBiscuitChars);
     var gentleBiscuitTok = _tk(gentleBiscuitChars);
@@ -650,6 +658,7 @@ function _estimateTokensFull() {
         if (qBiscuitCount > 0) _r("  Q × " + qBiscuitCount, qBiscuitTok, 1, "#268bd2");
         if (aBiscuitCount > 0) _r("  A × " + aBiscuitCount, aBiscuitTok, 1, "#2aa198");
         if (gentleBiscuitCount > 0) _r("  Gentle × " + gentleBiscuitCount, gentleBiscuitTok, 1, "#b58900");
+        if (structureBiscuitChars > 0) _r("  结构行（=== F 分隔 / 时间戳 / [S] 等）", structureBiscuitTok, 1, "#586e75");
     }
     if (deChars > 0) _r("DE Grid × " + deEntryCount + " entries", deTok, 0, "#b58900");
     if (userCount > 0) _r("User × " + userCount, userTok, 0, "#268bd2");
@@ -661,7 +670,7 @@ function _estimateTokensFull() {
     if (errCount > 0) _r("Error messages × " + errCount, errTok, 0, "#f85149");
     _r("JSON overhead (" + msgCount + " msgs)", jsonOverheadTok, 0, "#586e75");
     _r("Body fields (stream, max_tokens, …)", bodyConstTok, 0, "#586e75");
-    var displayTotal = _apiPrompt > 0 ? _apiPrompt : localTotal;
+    var displayTotal = localTotal;  // ★ 2026-08-18: 恒显示当前背包——_lastApiPromptTokens 是上次请求账单数（含已压缩楼层内容），楼层完结/重启后残留僵尸数字（q178 实测 179k vs Local 64k）
     _r("Local sum", localTotal, 0, "#c9d1d9");
     if (_apiPrompt > 0) _r("API prompt_tokens", _apiPrompt, 0, "#3fb950");
     var _free = Math.max(0, CTX_MAX - displayTotal);
@@ -724,7 +733,8 @@ function renderCtxBreakdown() {
     rowsEl.innerHTML = html;
     var btnRect = $ctxBtn.getBoundingClientRect();
     bd.style.bottom = (window.innerHeight - btnRect.top + 10) + 'px';
-    bd.style.right = (window.innerWidth - btnRect.right) + 'px';
+    // ★ 2026-08-17: 卡片整体右移（卡片总宽 380+padding+border≈406px > 面板可用宽，左缘被面板左边界截断，q178 f59）
+    bd.style.right = (window.innerWidth - btnRect.right - 18) + 'px';  
 }
 function showCtxBreakdown() {
     if (!_activeAgent || !_activeAgent.conversation) return;
@@ -754,7 +764,7 @@ function updateCtxBtn() {
     var _ag = _activeAgent;
     var used = _estimateTokensFull();
     if (used === 0 && _ag.conversation && _ag.conversation.length) { console.warn('[ctx-btn] used=0 convLen=' + _ag.conversation.length + ' _floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
-    var displayUsed = (_ag._lastApiPromptTokens > 0) ? _ag._lastApiPromptTokens : used;
+    var displayUsed = used;  // ★ 2026-08-18: 恒用当前背包估算（与图解 Local sum / 压缩动画同口径）；旧偏好 _lastApiPromptTokens = 上次请求账单，中间窗口/重启后僵尸数字
     var pct = Math.min(100, Math.round(displayUsed / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(displayUsed / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
@@ -970,11 +980,24 @@ window.addEventListener('message', async function (e) {
         var conv = ag.conversation;
         var beforeChars = 0, afterChars = 0;
         var found = false;
+        // ★ 2026-08-17: 压缩动画 before/after = 整个上下文背包（与 ctx-breakdown Local sum 同口径）——
+        //   旧实现传饼干 chars：用户看到 110k→11k 与右下角按钮（全背包）数字对不上，互相矛盾
+        var _estBackpackChars = function (_ag) {
+            try {
+                var _sa = _activeAgent;
+                _activeAgent = _ag;
+                var _rt = 0;
+                if (typeof _estimateTokensFull === 'function') _estimateTokensFull();
+                if (_ctxBreakdownData) _rt = _ctxBreakdownData.localTotal;
+                _activeAgent = _sa;
+                return Math.round(_rt * 2.5);
+            } catch (_e) { return 0; }
+        };
 
         for (var i = 0; i < conv.length; i++) {
             var m = conv[i];
             if (m._biscuit && m.content) {
-                beforeChars = m.content.length;
+                if (!beforeChars) beforeChars = _estBackpackChars(ag);
                 var text = m.content;
 
                 // Step 1: absolut — 剥离 ╔K...╚ 体部
@@ -1038,12 +1061,14 @@ window.addEventListener('message', async function (e) {
                         _bpChars0 += 250;
                         _preBackpackK = Math.round(_bpChars0 / _CPT_loc / 1000);
                     } catch (_) {}
-                    // ★ V21: onlyfacts 守卫恢复 32K tokens（F89 曾按 chars÷2.5 换算成 12K，用户明确要求 32K 边界）
-                    //   收益 < 32K tokens 的压缩不值得调一次 tier-4 AI（q147 f97 事故：第二次 h 仅 16K tokens 仍放行）
-                    // ★ 2026-08-17 口径修正：守卫 = 实际收益（原始 biscuit − editonly 过滤后切半的后半段），
-                    //   旧口径 _hText（过滤后前半段）与估算端 afterAbsolut 切半不一致——q154 显示 -33k 实际 29.6K 拒绝
-                    if (Math.round((beforeChars - _rText.length) / _CPT_loc) < 32000) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '压缩收益 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
+                    // ★ V21: onlyfacts 守卫 32K tokens（F89 曾按 chars÷2.5 换算成 12K，用户明确要求 32K 边界）
+                    //   提取原料 < 32K tokens 的压缩不值得调一次 tier-4 AI（q147 f97 事故：第二次 h 仅 16K tokens 仍放行）
+                    // ★ 2026-08-17 二次修正：守卫回「原料口径」=_hText（editonly 过滤后切半前半段）——
+                    //   F50 改「收益口径」（before−rText）虚高 5-9 倍（q158 实测：显示 -98k 实际原料仅 11k
+                    //   → 46 楼用 11k 原料提取质量差）；conv-ui computeBenefits 同步 hChars 同口径，
+                    //   「显示 ≥32k 必可执行」仍成立（两端同口径）
+                    if (Math.round(_hText.length / _CPT_loc) < 32000) {
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '提取原料 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
                     var _bulletDir = '';
@@ -1065,12 +1090,25 @@ window.addEventListener('message', async function (e) {
                         return;
                     }
                     m.content = _rText;
-                    afterChars = _rText.length;
+                    afterChars = _estBackpackChars(ag);
                     found = true;
                     // ★ 2026-08-17 F51: ctx 空指针保护（_writeCtxJson 内部 ctx.lastCompressedFloor 对 null 抛 TypeError 被吞 → 磁盘永不更新）
                     if (!ag._ctx) ag._ctx = {};
-                    if (ag._ctx && typeof _parseBiscuitFromContent === 'function') {
-                        ag._ctx.biscuitLines = _parseBiscuitFromContent(_rText);
+                    // ★ 2026-08-17 修复（q158 f46 压缩白做实锤）：_parseBiscuitFromContent 是 agent-context.js
+                    //   IIFE 内部函数，本文件作用域不可见 → typeof 恒 false → ctx.biscuitLines 从未更新为
+                    //   压缩后饼干 → _writeCtxJson 写完整旧饼干 → 重启 restore 恢复完整饼干 → 压缩效果消失。
+                    //   本地解析 _rText（与 agent-context 的 _parseBiscuitFromContent 同逻辑）。
+                    if (ag._ctx) {
+                        var _rParts = _rText.split(/\n(?==== F\d+ )/);
+                        var _rLines = [];
+                        for (var _rpi = 0; _rpi < _rParts.length; _rpi++) {
+                            var _rpt = _rParts[_rpi].trim();
+                            if (!_rpt) continue;
+                            var _rfm = _rpt.match(/^=== F(\d+)/);
+                            if (_rfm) _rLines.push({ n: parseInt(_rfm[1], 10), text: _rpt });
+                        }
+                        _rLines.sort(function (a, b) { return a.n - b.n; });
+                        ag._ctx.biscuitLines = _rLines;
                         ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
                         ag._ctx.narrative = 'biscuit:' + ag._ctx.biscuitLines.length;
                     }
@@ -1112,8 +1150,18 @@ window.addEventListener('message', async function (e) {
                                 // ★ 2026-08-17 F51: 建楼未真正开始（闸门拦截）→ 恢复饼干原样 + 落盘 + 显式报错
                                 //   （q154 事故实锤：子弹已写、饼干已砍半、楼层未建、toast 假成功）
                                 m.content = _origBiscuit;
-                                if (ag._ctx && typeof _parseBiscuitFromContent === 'function') {
-                                    ag._ctx.biscuitLines = _parseBiscuitFromContent(_origBiscuit);
+                                // ★ 2026-08-17: 与压缩路径同修——_parseBiscuitFromContent 作用域不可见，本地解析
+                                if (ag._ctx) {
+                                    var _obParts = _origBiscuit.split(/\n(?==== F\d+ )/);
+                                    var _obLines = [];
+                                    for (var _obi = 0; _obi < _obParts.length; _obi++) {
+                                        var _obpt = _obParts[_obi].trim();
+                                        if (!_obpt) continue;
+                                        var _obfm = _obpt.match(/^=== F(\d+)/);
+                                        if (_obfm) _obLines.push({ n: parseInt(_obfm[1], 10), text: _obpt });
+                                    }
+                                    _obLines.sort(function (a, b) { return a.n - b.n; });
+                                    ag._ctx.biscuitLines = _obLines;
                                     ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
                                     ag._ctx.narrative = 'biscuit:' + ag._ctx.biscuitLines.length;
                                 }
@@ -1142,9 +1190,18 @@ window.addEventListener('message', async function (e) {
                     return;
                 }
 
+                // absolut / editonly: 无可压缩内容（收益 < 300 tokens = UI 显示阈值）→ 拒绝，不落盘不播动画
+                //   （已压缩过一次后再点：absolut 无 ╔K 体部 / editonly 已是纯骨架 → 旧行为仍弹动画
+                //    显示「重量减小至 100%」，逻辑漏洞，q178 f59）
+                var _savedLen = (m.content || '').length;
+                var _newLen = (text || '').length;
+                if (_savedLen - _newLen < 750) {
+                    _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: '已无可压缩内容（背包已是最精简状态）', beforeChars: beforeChars, afterChars: beforeChars });
+                    return;
+                }
                 // absolut / editonly: 直接应用结果
                 m.content = text;
-                afterChars = text.length;
+                afterChars = _estBackpackChars(ag);
                 found = true;
 
                 // ★ V19: 持久化 ctx.json — 始终执行，不依赖 ag._ctx 预初始化

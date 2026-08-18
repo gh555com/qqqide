@@ -165,11 +165,17 @@ fn tree_kill(pid: u32) {
 /// Emit a valid JSON brief to stdout and exit cleanly.
 /// Output is capped at MAX_OUTPUT — runner.py never had this protection.
 fn emit(exit_code: i32, mut stdout: String, mut stderr: String, kill_reason: &str) {
+    // ★ 2026-08-18: 截断必须落在 UTF-8 字符边界——字节截断会把多字节字符切半 →
+    //   输出非法 UTF-8 → 上层 JSON.parse 失败（ghrun_bad_json）
     if stdout.len() > MAX_OUTPUT {
-        stdout = format!("{}...(truncated)", &stdout[..MAX_OUTPUT]);
+        let mut end = MAX_OUTPUT;
+        while end > 0 && !stdout.is_char_boundary(end) { end -= 1; }
+        stdout = format!("{}...(truncated)", &stdout[..end]);
     }
     if stderr.len() > MAX_OUTPUT {
-        stderr.truncate(MAX_OUTPUT);
+        let mut end = MAX_OUTPUT;
+        while end > 0 && !stderr.is_char_boundary(end) { end -= 1; }
+        stderr.truncate(end);
         stderr.push_str("...(truncated)");
     }
     let brief = serde_json::json!({
