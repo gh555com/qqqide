@@ -107,6 +107,14 @@ function bootActivities(boot) {
     return (Math.round(n * 10) / 10).toString();
   }
 
+  // 手机号脱敏：前5位 + xxxx + 后4位（8615802858204 → 86158xxxx8204），方便用户截图自证
+  function maskPhone(p) {
+    if (!p) return '';
+    var s = String(p);
+    if (s.length <= 8) return s;
+    return s.slice(0, 5) + 'xxxx' + s.slice(-4);
+  }
+
   function copyText(text) {
     return new Promise(function (resolve) {
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -344,6 +352,7 @@ function bootActivities(boot) {
     var target = parseFloat(cool.target_ge) || 10;
     var reached = !!cool.reached;
     var pct = Math.max(0, Math.min(100, total / target * 100));
+    var phone = (_data && _data.phone) || '';
 
     var html;
     if (!reached) {
@@ -362,7 +371,7 @@ function bootActivities(boot) {
       // ★ 阶段二：已满 → 庆祝
       html =
         '<div class="qqq-act-celebrate">🎉</div>' +
-        '<h2>' + t('act.cool.p2Title', '恭喜！充能已满') + '</h2>' +
+        '<h2>' + tp('act.cool.p2Title', { phone: maskPhone(phone) }, '恭喜！' + maskPhone(phone) + ' 充能已满') + '</h2>' +
         '<p class="qqq-act-csub">' + t('act.cool.p2Subtitle', '从2026开始，更轻，更快') + '</p>' +
         '<p class="qqq-act-sub">' + t('act.cool.popSub', '总消费满 10 ge 领 10 元红包') + '</p>' +
         '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-cool-fill qqq-act-full" style="width:100%"></span></div>' +

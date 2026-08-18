@@ -36,6 +36,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 #bar .bar-action .bar-icon{display:block;width:14px;height:14px;flex:0 0 14px;color:var(--icon)}
 #bar .bar-action.icon-only{width:26px;height:22px;padding:2px 5px;justify-content:center;gap:0}
 #bar .bar-action.icon-only .bar-icon{width:15px;height:15px;flex-basis:15px}
+/* 命名输入框（2026-08-18）：标签标题实时同步，多 kmd 窗口的基础；
+   边界保护双层——maxlength(UTF-16) + JS 按 code point 截断(emoji/中文按字符) */
+#name-input{width:110px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:inherit;font-size:11px;padding:2px 6px;outline:none;flex-shrink:0}
+#name-input:focus{border-color:var(--accent)}
+#name-input::placeholder{color:var(--dim)}
 /* #kmd-tip removed 2026-08-17: user wants no hover text on square button */
 /* 输出区 — 纯文本日志式渲染器（2026-08-13：行内 SGR 彩色 span 整体放弃，每行单一文本节点——
    选中/复制/检索零干扰；ANSI 序列剥离；颜色降级为行级 class）
@@ -87,15 +92,13 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
   </div>
   <span id="bar-spacer"></span>
   <div id="bar-right">
-    <button id="btn-clear" class="bar-action" title="Clear output (Ctrl+L)" aria-label="Clear">
-      <svg class="bar-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 5.2h11.6M7.1 5.2V3.8h5.8v1.4M6 7.3l.7 9h6.6l.7-9M8.4 9.4v4.4M11.6 9.4v4.4" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Clear</span>
-    </button>
+    <input id="name-input" maxlength="40" spellcheck="false" autocomplete="off" placeholder="命名此终端" title="命名此终端（实时同步标签标题）">
     <div id="terminate-menu-wrap">
       <button id="btn-kill" class="bar-action icon-only" aria-label="Terminate menu" aria-haspopup="menu" aria-expanded="false">
         <svg class="bar-icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4.2" y="4.2" width="11.6" height="11.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       </button>
       <div id="terminate-menu" class="hidden" role="menu">
+        <button id="clear-item" type="button" role="menuitem">Clear</button>
         <button id="interrupt-item" type="button" role="menuitem">Ctrl+C</button>
         <button id="terminate-item" type="button" role="menuitem">Terminate</button>
       </div>
@@ -166,6 +169,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             cwd = d.cwd || '';
             shellType = d.shellType || 'cmd';
             gbCwd = winToMsys(cwd); // 会话初始目录 → gitbash 路径抬头（OSC 首到后自动校正）
+            nameInput.value = d.title || ''; // 命名输入框初始值 = 当前标签标题（用户可立即改名）
             setShellUI(shellType);
             start();
         } else if (d.type === 'kmd:out') {
@@ -613,12 +617,29 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         switchShell(b.dataset.shell);
     });
 
+    // ── 命名输入框：输入即同步标签标题（多 kmd 窗口基础） ──
+    // 边界保护双层：① maxlength=40（UTF-16 长度，浏览器级）② 此处按 code point 截断（emoji/中文按字符计数）
+    var nameInput = document.getElementById('name-input');
+    nameInput.addEventListener('input', function () {
+        var t = nameInput.value;
+        var cps = Array.from(t);
+        if (cps.length > 40) {
+            t = cps.slice(0, 40).join('');
+            nameInput.value = t;
+        }
+        parent.postMessage({ type: 'kmd:title', title: t }, '*'); // kmd.js → setCustomTabTitle（空标题忽略）
+    });
+    nameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); inputEl.focus(); } // 命名完回车直接回命令框
+    });
+
     // ── 危险操作菜单：正方形按钮只展开，不直接终止 ──
     var killBtn = document.getElementById('btn-kill');
     var killWrap = document.getElementById('terminate-menu-wrap');
     var killMenu = document.getElementById('terminate-menu');
     var interruptItem = document.getElementById('interrupt-item');
     var killItem = document.getElementById('terminate-item');
+    var clearItem = document.getElementById('clear-item');
     var killMenuOpen = false;
 
     function setKillMenu(open) {
@@ -627,7 +648,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         killBtn.setAttribute('aria-expanded', killMenuOpen ? 'true' : 'false');
         // tooltip removed 2026-08-17
     }
-    function toggleKillMenu() { setKillMenu(!killMenuOpen); }
+    var killHoverTimer = null;
 
     // 菜单 Ctrl+C：明确向当前 shell 发送中断字节；键盘 Ctrl+C 的复制语义不受影响
     function sendInterrupt() {
@@ -653,10 +674,17 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         bridge.kmd.kill(sessionId, { restart: true }).catch(function () { });
     }
 
-    killBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleKillMenu();
+    // hover 即展开（不用点两次）；离开范围 0.5s 自动收起
+    killWrap.addEventListener('mouseenter', function () {
+        if (killHoverTimer) { clearTimeout(killHoverTimer); killHoverTimer = null; }
+        setKillMenu(true);
+    });
+    killWrap.addEventListener('mouseleave', function () {
+        if (killHoverTimer) clearTimeout(killHoverTimer);
+        killHoverTimer = setTimeout(function () {
+            killHoverTimer = null;
+            setKillMenu(false);
+        }, 500);
     });
     interruptItem.addEventListener('click', function (e) {
         e.preventDefault();
@@ -670,6 +698,13 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         setKillMenu(false);
         runKill();
     });
+    clearItem.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setKillMenu(false);
+        clearOut();
+        inputEl.focus();
+    });
     document.addEventListener('mousedown', function (e) {
         if (killMenuOpen && !killWrap.contains(e.target)) setKillMenu(false);
     });
@@ -682,11 +717,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     });
 
     // tooltip for square button removed 2026-08-17 (user request)
-
-    document.getElementById('btn-clear').addEventListener('click', function () {
-        clearOut();
-        inputEl.focus();
-    });
+    // btn-clear removed 2026-08-18: Clear 收进正方形菜单第一项，原位改为命名输入框
 
     // ── Ctrl+F 全文检索高亮（editor 那一套：全文匹配高亮 + 导航 + 选区自动填入） ──
     // 实现: CSS Custom Highlight API（Chromium 105+，Electron 22=108 原生）——不改 DOM，contenteditable 安全；

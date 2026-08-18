@@ -105,7 +105,8 @@
     });
 
     // Right-click context menu: only for file groups (not gaea)
-    if (tab.filePath) {
+    // ★ 2026-08-18: custom tab（kmd 等）同样挂载——菜单支持在右/左组重开 + 关闭其他/关闭所有
+    if (tab.filePath || tab.custom) {
       btn.addEventListener('contextmenu', e => {
         e.preventDefault();
         e.stopPropagation();
@@ -355,10 +356,19 @@
     }
 
     // Row 1: open in adjacent group
-    if (isFirstFileGroup) {
-      addRow(window._i('shell.tab.openRight', '在右侧再开'), () => { openFileInRightGroup(tab.filePath); });
-    } else if (isSecondFileGroup) {
-      addRow(window._i('shell.tab.openLeft', '在左侧再开'), () => { openFileInLeftGroup(tab.filePath); });
+    // ★ 2026-08-18: custom tab（kmd）走 onReopen（goods 自管新会话/标题序号）或通用复刻
+    if (tab.custom) {
+      if (isFirstFileGroup) {
+        addRow(window._i('shell.tab.openRight', '在右侧再开'), () => { _reopenCustomInGroup(tab, 'right'); });
+      } else if (isSecondFileGroup) {
+        addRow(window._i('shell.tab.openLeft', '在左侧再开'), () => { _reopenCustomInGroup(tab, 'left'); });
+      }
+    } else if (tab.filePath) {
+      if (isFirstFileGroup) {
+        addRow(window._i('shell.tab.openRight', '在右侧再开'), () => { openFileInRightGroup(tab.filePath); });
+      } else if (isSecondFileGroup) {
+        addRow(window._i('shell.tab.openLeft', '在左侧再开'), () => { openFileInLeftGroup(tab.filePath); });
+      }
     }
 
     // Row 2: close others
@@ -953,27 +963,46 @@
 
   // ---- Public: open custom tab in file group (kmd terminal etc.) ----
   // ★ 2026-08-12: kmd 例外——X 区中间/右侧 editor 分组（非 gaea 分组）。
-  //   单例语义（customId 已打开 → 激活返回）；内容由 renderFn 渲染（iframe/任意 DOM）；
-  //   无 filePath → 不触发 Monaco 挂载、不进 editor.tabs 持久化（_collectAllTabs 只收 filePath）、
-  //   无右键菜单；tab 关闭走常规 closeTabById（pane.remove + onClose）。
+  //   单例语义（customId 已打开 → 激活返回，opts.allowMulti=true 跳过——kmd 多开 2026-08-18）；
+  //   内容由 renderFn 渲染（iframe/任意 DOM）；无 filePath → 不触发 Monaco 挂载、
+  //   不进 editor.tabs 持久化（_collectAllTabs 只收 filePath）；
+  //   ★ 2026-08-18: 右键菜单支持（custom tab 在右/左组重开——onReopen 回调优先，
+  //   否则 tab-manager 通用复刻 renderFn）；opts.group = 'right' | 'left' | 组对象 指定目标分组；
+  //   tab 关闭走常规 closeTabById（pane.remove + onClose）。
   function openFileCustomTab(customId, title, renderFn, opts) {
     opts = opts || {};
-    // 单例：任何 file 分组已打开同 customId → 激活
-    for (const grp of groups) {
-      if (grp.type !== 'file') continue;
-      const existing = grp.tabs.find(t => t.customId === customId);
-      if (existing) {
-        activateTab(grp, existing.id);
-        return existing;
+    // 单例：任何 file 分组已打开同 customId → 激活（allowMulti=true 时跳过，每次新建）
+    if (!opts.allowMulti) {
+      for (const grp of groups) {
+        if (grp.type !== 'file') continue;
+        const existing = grp.tabs.find(t => t.customId === customId);
+        if (existing) {
+          activateTab(grp, existing.id);
+          return existing;
+        }
       }
     }
-    // 找或建第一个 file 分组
-    let fileGrp = groups.find(g => g.type === 'file');
-    if (!fileGrp) fileGrp = addGroup('file');
+    // 目标分组：opts.group 指定（'right'/'left'/组对象）→ 默认第一个 file 分组
+    let fileGrp = null;
+    if (opts.group === 'right') {
+      const fgs = groups.filter(g => g.type === 'file');
+      fileGrp = fgs.length >= 2 ? fgs[fgs.length - 1] : addGroup('file');
+    } else if (opts.group === 'left') {
+      const fgs = groups.filter(g => g.type === 'file');
+      fileGrp = fgs.length >= 1 ? fgs[0] : addGroup('file');
+    } else if (opts.group && typeof opts.group === 'object') {
+      fileGrp = opts.group;
+    }
+    if (!fileGrp) {
+      fileGrp = groups.find(g => g.type === 'file');
+      if (!fileGrp) fileGrp = addGroup('file');
+    }
     if (!fileGrp) return null;
 
     const tabId = _nextTabId++;
     const tab = { id: tabId, customId: customId, title: title, closable: true, onActivate: null, onClose: null, custom: true, preview: false, dirty: false };
+    // ★ 2026-08-18: 保存渲染闭包供右键「重开」通用复刻（goods 注册 onReopen 则优先）
+    tab._custom = { renderFn: renderFn, opts: opts };
     const btn = createTabBtn(tab, fileGrp);
     fileGrp.barEl.appendChild(btn);
     const pane = createTabPane(tab);
@@ -987,6 +1016,45 @@
       catch (e) { pane.textContent = 'render error: ' + (e && e.message); }
     }
     return tab;
+  }
+
+  // ★ 2026-08-18: 右键「在右/左组再开」custom tab（kmd 等）
+  //   优先 tab.onReopen（goods 自管：新会话/标题序号/内部注册表）；未注册 → 通用复刻 renderFn。
+  function _reopenCustomInGroup(tab, side) {
+    // goods 自管重开（kmd.js: openKmdTab(side)）——内部会话注册/标题序号由 goods 闭包掌控
+    if (typeof tab.onReopen === 'function') {
+      try { return tab.onReopen(side); } catch (_) { return null; }
+    }
+    // 通用复刻：同 renderFn/opts 新建 tab
+    var c = tab._custom;
+    if (!c) return null;
+    const fgs = groups.filter(g => g.type === 'file');
+    let targetGrp = null;
+    if (side === 'right') {
+      targetGrp = fgs.length >= 2 ? fgs[fgs.length - 1] : addGroup('file');
+    } else {
+      targetGrp = fgs.length >= 1 ? fgs[0] : addGroup('file');
+    }
+    if (!targetGrp) return null;
+    if (!c.opts.allowMulti) {
+      const existing = targetGrp.tabs.find(t => t.customId === tab.customId);
+      if (existing) { activateTab(targetGrp, existing.id); return existing; }
+    }
+    const tabId = _nextTabId++;
+    const nt = { id: tabId, customId: tab.customId, title: tab.title, closable: true, onActivate: null, onClose: null, custom: true, preview: false, dirty: false, onReopen: tab.onReopen };
+    nt._custom = c;
+    const btn = createTabBtn(nt, targetGrp);
+    targetGrp.barEl.appendChild(btn);
+    const pane = createTabPane(nt);
+    targetGrp.contentEl.appendChild(pane);
+    nt.paneEl = pane;
+    targetGrp.tabs.push(nt);
+    activateTab(targetGrp, tabId);
+    if (c.renderFn) {
+      try { c.renderFn(pane, nt); }
+      catch (e) { pane.textContent = 'render error: ' + (e && e.message); }
+    }
+    return nt;
   }
 
   // ---- Public: close tab ----
@@ -1193,6 +1261,28 @@
   function getActiveGroup() { return groups[groups.length - 1] || null; }
   function getGaeaGroup() { return groups.find(g => g.type === 'gaea') || null; }
 
+  // ---- Rename custom/file tab（kmd 命名：实时同步 + 边界守卫） ----
+  // 守卫：空标题忽略（保留原标题）；按 code point 计数（emoji/中文按字符）超 40 截断；
+  //       textContent 更新（防 HTML 注入）。
+  function setCustomTabTitle(tabId, title) {
+    var t = String(title == null ? '' : title).trim();
+    if (!t) return null;
+    var cps = Array.from(t);
+    if (cps.length > 40) { t = cps.slice(0, 40).join(''); }
+    for (const grp of groups) {
+      const tab = grp.tabs.find(x => x.id === tabId);
+      if (!tab) continue;
+      tab.title = t;
+      const btn = grp.barEl.querySelector('[data-tab-id="' + tabId + '"]');
+      if (btn) {
+        const nameSpan = btn.querySelector('.qqq-tab-name');
+        if (nameSpan) nameSpan.textContent = t;
+      }
+      return tab;
+    }
+    return null;
+  }
+
   // ---- Rename a gaea tab (update title in tab object + button DOM) ----
   function renameGaeaTab(tabId, newTitle) {
     var grp = getGaeaGroup();
@@ -1223,6 +1313,7 @@
     openFileInRightGroup,
     openFileInLeftGroup,
     openFileCustomTab,
+    setCustomTabTitle,
     splitRight,
     closeTab,
     activateTab,

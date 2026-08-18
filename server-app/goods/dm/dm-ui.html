@@ -168,10 +168,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
 #chat-header-name { font-size:14px;font-weight:600;color:var(--text-bright); }
 #chat-header-status { font-size:11px;color:var(--text-dim);margin-top:1px; }
-#chat-header-online {
-  width:8px;height:8px;border-radius:50%;background:var(--green);
-  flex-shrink:0;margin-left:auto;
-}
 
 /* Messages */
 #msg-list { display:none;flex:1;overflow-y:auto;padding:16px 20px; }
@@ -397,9 +393,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     <div id="chat-header">
       <div>
         <div id="chat-header-name"></div>
-        <div id="chat-header-status">离线</div>
+        <div id="chat-header-status"></div>
       </div>
-      <div id="chat-header-online" style="display:none" title="在线"></div>
     </div>
     <div id="msg-list"></div>
     <div id="input-area">
@@ -436,8 +431,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   var $chatHeader = document.getElementById('chat-header');
   var $chatHdrName= document.getElementById('chat-header-name');
   var $chatHdrStat= document.getElementById('chat-header-status');
-
-  var $chatHdrOn  = document.getElementById('chat-header-online');
   var $msgList    = document.getElementById('msg-list');
   var $inputArea  = document.getElementById('input-area');
   var $msgInput   = document.getElementById('msg-input');
@@ -767,8 +760,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         if (cv.peer_name) c.peerName = cv.peer_name;
         if (cv.peer_phone) c.phone = cv.peer_phone;
         if (cv.peer_country) c.country = cv.peer_country;
-        if (typeof cv.online !== 'undefined') c.online = !!cv.online;
-        if (cv.last_seen_at) c.lastSeenAt = cv.last_seen_at;
       });
       // 窗口级徽章由 gaea-host 自己的 WS/轮询管理；此处免 DOM 渲染（不可见无意义）
       _cacheSaveSoon();   // 后台轮询拿到的未读数/预览也入缓存 → 重启后启动即准
@@ -822,12 +813,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       cv.peerName = dm.sender_name || dm.sender_phone || dm.sender_id;
  	      if (_activePeer !== peerID) {
         if (!dup) cv.unread = (cv.unread||0) + 1;
- 	      } else {
-			      // 对方刚发消息 = 必然在线（唯一真理 1h 窗口内的最新证明，零查询）
-			      cv.online = true;
-			      cv.lastSeenAt = Math.floor(Date.now()/1000);
-			      renderPeerStatus(_activePeer);
-		      }
+ 	      }
     }
 
     // Cache（去重后写入）
@@ -922,14 +908,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
             peerName: cv.peer_name||cv.peer_phone||cv.peer_id,
             phone: cv.peer_phone||'',
             country: cv.peer_country||'',  // ISO2 → 国旗
-            online: !!cv.online,           // 唯一真理：wq.doer_state 最近1h ping
-            lastSeenAt: cv.last_seen_at||0 // 离线时显示「最近在线」
+
           };
         });
         renderConvList();
         _cacheSaveSoon();
-        // 会话数据（含在线状态）已更新 → 刷新当前打开对话的头部状态
-        if (_activePeer && !isGroupKey(_activePeer)) renderPeerStatus(_activePeer);
         // Notify parent to reset badge after initial load
         try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
       }
@@ -1165,20 +1148,19 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
     var cv = _convMap[peerID] || {};
     var isG = cv.kind === 'group';
-    $chatHdrOn.style.display = 'none';
 
     if (isG) {
       // 群：👥 群名 · N 人（成员数可点 → 成员管理弹窗）
       $chatHdrName.innerHTML = '<span style="font-size:15px">👥</span> ' + escHtml(cv.gname || '群');
+      $chatHdrStat.style.display = '';
       $chatHdrStat.textContent = (cv.memberCnt ? cv.memberCnt + ' 人' : '') + ' · 成员';
       $chatHdrStat.title = '查看群成员';
     } else {
       // ★ 头部显示名+国旗（不显示数字头像圆，国旗+号码即身份）
       var name = cv.peerName || cv.phone || peerID;
       $chatHdrStat.title = '';
+      $chatHdrStat.style.display = 'none';   // 私聊不显示在线状态（1h ping 窗口有固有滞后，弃用）
       $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + escHtml(name);
-      // 在线状态 = 会话列表随附数据（服务端批量下发，零独立查询）
-      renderPeerStatus(peerID);
     }
 
     // Reset unread
@@ -1304,27 +1286,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     });
   }
 
-	  // ═══ 在线状态渲染（唯一真理 = 服务端随 conversations 批量下发的 wq.doer_state 最近1h ping）═══
-	  // 在线 → 「在线」；离线且有 ping 记录 → 「最近在线 YYYY-MM-DD HH:MM」（右下角在线列表同一列数据）；无记录 → 「离线」
-	  function renderPeerStatus(peerID) {
-	    var cv = _convMap[peerID] || {};
-	    if (cv.online) {
-	      $chatHdrStat.textContent = '在线';
-	      $chatHdrOn.style.display = '';
-	      return;
-	    }
-	    $chatHdrOn.style.display = 'none';
-	    if (cv.lastSeenAt > 0) {
-	      var ls = new Date(cv.lastSeenAt * 1000);
-	      var mon = ('0' + (ls.getMonth() + 1)).slice(-2);
-	      var day = ('0' + ls.getDate()).slice(-2);
-	      var hh = ('0' + ls.getHours()).slice(-2);
-	      var mi = ('0' + ls.getMinutes()).slice(-2);
-	      $chatHdrStat.textContent = '最近在线 ' + ls.getFullYear() + '-' + mon + '-' + day + ' ' + hh + ':' + mi;
-	    } else {
-	      $chatHdrStat.textContent = '离线';
-	    }
-	  }
 
   // ═══ EVENTS ═══
   $sendBtn.addEventListener('click', sendMessage);
