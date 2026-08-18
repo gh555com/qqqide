@@ -696,12 +696,12 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    if (e.key !== 'F2' && e.key !== 'Tab' && e.key !== 'x') return;
     var el = document.activeElement;
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (editing) return;
-    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    var accel = e.key === 'F2' ? 'F2' : (e.key === 'Tab' ? 'Tab' : 'X');
     try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
     e.preventDefault();
   }, true);

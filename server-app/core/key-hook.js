@@ -140,7 +140,8 @@
   }
 
   // ---- dispatch ------------------------------------------------------------
-  function dispatch(accel, scope, originalEvent) {
+  // extra: 附加载荷（iframe 转发消息可携带 path 等，原样透传给 handler / qqq-key-cmd）
+  function dispatch(accel, scope, originalEvent, extra) {
     const map = _byScope.get(scope);
     if (!map) return false;
     const b = map.get(accel);
@@ -148,12 +149,12 @@
     if (!whenOk(b.when)) return false;
     const handler = _handlers.get(b.id);
     if (handler) {
-      try { handler({ id: b.id, accel, scope, event: originalEvent }); }
+      try { handler(Object.assign({ id: b.id, accel, scope, event: originalEvent }, extra || {})); }
       catch (e) { console.warn('[key-hook] handler threw:', b.id, e); }
     } else {
       // Fallback dispatch via DOM event (so shell.js handleMenuCmd can pick up)
       try {
-        document.dispatchEvent(new CustomEvent('qqq-key-cmd', { detail: { id: b.id, accel, scope } }));
+        document.dispatchEvent(new CustomEvent('qqq-key-cmd', Object.assign({ detail: { id: b.id, accel, scope } }, extra ? { detail: { id: b.id, accel, scope, path: extra.path } } : {})));
       } catch {}
     }
     return true;
@@ -199,7 +200,9 @@
     const scope = ev.data.scope || 'iframe:unknown';
     if (!accel) return;
     refreshImplicit();
-    dispatch(accel, scope, null);
+    // ★ 2026-08-18: iframe 可携带 path（kmd 自转发带自身 cwd）→ 透传给 handler
+    const extra = ev.data.path ? { path: ev.data.path } : null;
+    dispatch(accel, scope, null, extra);
   }
 
   // ---- init ----------------------------------------------------------------

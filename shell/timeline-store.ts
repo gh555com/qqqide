@@ -43,7 +43,19 @@ export function _tlDir(projectRoot: string): string {
 }
 
 export function _tlBlobPath(projectRoot: string, sha256: string): string {
-    return path.join(_tlDir(projectRoot), 'blobs', sha256.slice(0, 2), sha256 + '.gz');
+    const dir = path.join(_tlDir(projectRoot), 'blobs', sha256.slice(0, 2));
+    if (sha256.length >= 64) {
+        return path.join(dir, sha256 + '.gz');
+    }
+    // ★ 2026-08-18: 支持 12 位短前缀（timeline_versions 返回的 sha=xxx 截断格式）——
+    //   旧实现直接拼 12 位文件名 → blob 永远不存在。扫描目录找唯一前缀匹配；
+    //   多匹配（冲突概率≈0）取字典序最大，尽力而为。
+    try {
+        const hits = fs.readdirSync(dir).filter(f => f.startsWith(sha256) && f.endsWith('.gz'));
+        if (hits.length === 1) return path.join(dir, hits[0]);
+        if (hits.length > 1) return path.join(dir, hits.sort().pop()!);
+    } catch { /* dir missing */ }
+    return path.join(dir, sha256 + '.gz');
 }
 
 function _tlDbPath(projectRoot: string): string {

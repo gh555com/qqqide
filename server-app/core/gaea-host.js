@@ -113,6 +113,9 @@
   // ★ 菜单行2 仅 search / git 按钮（均无 A 区面板，点不切换 A 区）
   function renderTabBar() {
     if (!_tabBarEl) return;
+    // ★ 2026-08-18: 重建前清理 kmd 按钮残留 tooltip（hover 中切换 goods 会销毁按钮，tip 不残留）
+    var _ktipOld = document.querySelector('.qqq-roam-tip[data-owner="kmd-btn"]');
+    if (_ktipOld) _ktipOld.remove();
     _tabBarEl.innerHTML = '';
     var toolbarIds = ['search', 'git', 'kmd'];
     for (var ti = 0; ti < toolbarIds.length; ti++) {
@@ -132,6 +135,30 @@
       (function (gid) {
         btn.addEventListener('click', function () { open(gid); });
       })(id);
+      // ★ 2026-08-18: kmd 按钮 hover 召回提示（同 Roam 标签 .qqq-roam-tip 大字号风格）
+      if (id === 'kmd') {
+        btn.removeAttribute('title'); // 原生延迟 tooltip 会与自定义 tip 叠加，去掉
+        var _ktip = null;
+        function _showKmdTip() {
+          if (!_ktip) {
+            _ktip = document.createElement('div');
+            _ktip.className = 'qqq-roam-tip';
+            _ktip.dataset.owner = 'kmd-btn';
+            _ktip.textContent = '按 x 键打开一个新 kmd';
+            document.body.appendChild(_ktip);
+          }
+          var r = btn.getBoundingClientRect();
+          _ktip.style.display = 'block';
+          _ktip.style.left = Math.max(4, Math.min(r.left, window.innerWidth - _ktip.offsetWidth - 4)) + 'px';
+          var below = r.bottom + 8;
+          _ktip.style.top = (below + _ktip.offsetHeight > window.innerHeight - 4 && r.top - _ktip.offsetHeight - 8 > 0)
+            ? (r.top - _ktip.offsetHeight - 8) + 'px'
+            : below + 'px';
+        }
+        function _hideKmdTip() { if (_ktip) _ktip.style.display = 'none'; }
+        btn.addEventListener('mouseenter', _showKmdTip);
+        btn.addEventListener('mouseleave', _hideKmdTip);
+      }
       _tabBarEl.appendChild(btn);
     }
 

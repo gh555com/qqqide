@@ -33,21 +33,34 @@
         var iframes = {}; // sessionId → iframe.contentWindow
         var _tabs = {};   // sessionId → tab（命名同步用，2026-08-18 多开）
         var _kmdSeq = 0;  // kmd tab 自增序号（customId 唯一 + 默认标题序号）
-        var lastSid = null; // 最近创建的会话（roam x 键 cd 目标，2026-08-18 多开后不再广播全部）
-        var _pendingKmdCwd = null; // roam 空区 x 键/右键指定的一次性启动目录
+        var _pendingKmdCwd = null; // 一次性启动目录（roam x/右键/全局 x 召回指定）
 
-        // ── roam 空区「kmd」→ 打开 kmd 并定位到指定目录 ──
-        // ★ 2026-08-18 多开：已有会话 → 只对最近创建的 kmd 发 kmd:cd 原地切目录；无 → 新建（pending 由 build 消费）
+        // ── 终端音效（zs861，统一音频机器；_playRoamSfx 自带 300ms 去重）──
+        function _playKmdSfx() {
+            try {
+                if (typeof _playRoamSfx === 'function') { _playRoamSfx('terminal'); return; }
+                if (bridge && bridge.audio) { bridge.audio.play('yz:zs861.mp3').catch(function () { }); }
+            } catch (_) { }
+        }
+
+        // ★ 2026-08-18 多开语义定案：x 键/右键/全局召回一律打开【新】kmd tab（不做 cd 复用），
+        //   并播放终端音效。pending 由 openKmdTab 内 build 一次性消费；失败即清防陈旧目录。
+        function _openNewKmd(path) {
+            _pendingKmdCwd = path || null;
+            var ok = false;
+            try { ok = openKmdTab(); } catch (_) { }
+            if (!ok) _pendingKmdCwd = null;
+            if (ok) _playKmdSfx();
+            return ok;
+        }
+        // 全局 x 键召回入口（key-hook → shell-menu → 此处；shell.js 兜底直连同款）
+        window.__qqqKmdOpen = function (path) { _openNewKmd(path); };
+
+        // ── roam 空区 x 键/右键「kmd」→ 打开一个新 kmd 并进入指定目录 ──
         window.addEventListener('message', function (e) {
             var d = e.data;
             if (!d || d.type !== 'qqq-roam-open-kmd') return;
-            _pendingKmdCwd = d.path || null;
-            if (lastSid && iframes[lastSid]) {
-                try { iframes[lastSid].postMessage({ type: 'kmd:cd', cwd: _pendingKmdCwd }, '*'); } catch (_) { }
-                _pendingKmdCwd = null; // 已消费（kmd:cd），防下次工具栏打开吃到陈旧目录
-            } else if (window.qqqGaea) {
-                try { window.qqqGaea.open('kmd'); } catch (_) { }
-            }
+            _openNewKmd(d.path || null);
         });
 
         // ── IPC → iframe 转发（单例注册，跨 tab 复用） ──
@@ -101,7 +114,6 @@
                     window.removeEventListener('message', kmdInit);
                     iframes[sid] = iframe.contentWindow;
                     _tabs[sid] = tab;
-                    lastSid = sid;
                     try {
                         iframe.contentWindow.postMessage({ type: 'kmd:init', sessionId: sid, cwd: root, shellType: 'cmd', title: tab.title }, '*');
                     } catch (_) { }

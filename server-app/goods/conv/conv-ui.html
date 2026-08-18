@@ -19,44 +19,17 @@
     --magenta: #a06070; --violet: #8a7a60;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+::selection{background:#ffd301;color:#000}
+[data-theme="dark"]::selection{background:#6a5a10;color:#f0e8d8}
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     font-size: 13px; line-height: 1.5; background: var(--bg); color: var(--fg);
     height: 100vh; display: flex; flex-direction: column; overflow: hidden; user-select: none;
 }
 
-/* ── 顶栏 ── */
-.topbar {
-    display: flex; align-items: center; gap: 12px; padding: 6px 10px;
-    background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
-}
-.topbar-title { font-weight: 700; font-size: 14px; color: var(--fg); margin-right: auto; }
-.topbar-stat { font-size: 12px; color: var(--fg2); white-space: nowrap; }
-.topbar-stat b { color: var(--fg); }
-.topbar button {
-    padding: 3px 10px; font-size: 12px; border: 1px solid var(--border);
-    border-radius: 3px; background: var(--bg); color: var(--fg); cursor: pointer;
-}
-.topbar button:hover { background: var(--bg2); }
-
-/* ── 工具栏 ── */
-.toolbar {
-    display: flex; align-items: center; gap: 8px; padding: 4px 10px;
-    background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
-}
-.toolbar button {
-    padding: 4px 12px; font-size: 12px; border: 1px solid var(--border);
-    border-radius: 3px; background: var(--bg2); color: var(--fg); cursor: pointer; white-space: nowrap;
-}
-.toolbar button:hover { background: var(--bg); }
-.toolbar button.primary { background: var(--green); color: #fff; border-color: var(--green); }
-.toolbar button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
-.toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
-.toolbar input {
-    padding: 4px 8px; font-size: 12px; border: 1px solid var(--border);
-    border-radius: 3px; background: var(--bg); color: var(--fg); outline: none; width: 180px;
-}
-.toolbar input:focus { border-color: var(--orange); }
+/* ── 小按钮（仿 goods search .cbtn，百分百同外观：18×18 透明底 1px 边框，hover 变 bg2） ── */
+.cbtn{width:18px;height:18px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--fg2);font-size:11px;line-height:16px;text-align:center;cursor:pointer;padding:0;flex-shrink:0}
+.cbtn:hover{background:var(--bg2);color:var(--fg)}
 
 /* ── 格子列表 ── */
 .cells {
@@ -75,18 +48,11 @@ body {
 
 /* ── 卡片 ── */
 .cell { border-bottom: 1px solid var(--border); transition: background 0.1s; }
-.cell.selected { background: rgba(255,255,255,0.04); }
 .cell-header {
     display: flex; align-items: center; gap: 8px; padding: 5px 10px;
     cursor: pointer; min-height: 34px;
 }
 .cell-header:hover { background: var(--bg2); }
-.cell-check {
-    width: 16px; height: 16px; border: 2px solid var(--border); border-radius: 3px;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    cursor: pointer; font-size: 10px; color: transparent; transition: all 0.15s;
-}
-.cell-check.checked { background: var(--green); border-color: var(--green); color: #fff; }
 .cell-role { font-weight: 700; font-size: 12px; min-width: 70px; flex-shrink: 0; }
 .cell-role.user { color: var(--orange); }
 .cell-role.assistant { color: var(--cyan); }
@@ -110,31 +76,27 @@ body {
 .cell.open .cell-expand { transform: rotate(90deg); }
 
 /* ── 展开内容 ── */
-.cell-body { display: none; padding: 0 10px 6px 10px; margin: 0 10px; }
+.cell-body { display: none; padding: 0 6px 6px 6px; margin: 0; }
 .cell.open .cell-body { display: block; }
 .cell-content {
+    position: relative;
     font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
     font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
-    max-height: 400px; overflow-y: auto; padding: 8px;
+    max-height: 400px; overflow-y: auto; padding: 6px;
     background: var(--bg); border: 1px solid var(--border); border-radius: 3px;
     scrollbar-width: thin; scrollbar-color: var(--border) transparent; user-select: text;
 }
 .cell-content::-webkit-scrollbar { width: 5px; }
 .cell-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-.cell-actions { display: flex; gap: 6px; margin-top: 4px; }
-.cell-actions button {
-    padding: 2px 10px; font-size: 11px; border: 1px solid var(--border);
-    border-radius: 3px; background: var(--bg2); color: var(--fg); cursor: pointer;
+/* ── 复制按钮（仿编辑器面包屑同款：hover 时在右上角浮现） ── */
+.cell-copy-btn {
+    position: absolute; top: 4px; right: 4px; z-index: 5;
+    display: none; padding: 0 4px; font-size: 11px; line-height: 22px;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: var(--bg); color: var(--fg2); white-space: nowrap; cursor: pointer;
 }
-.cell-actions button:hover { background: var(--bg); }
-
-/* ── 底栏 ── */
-.bottombar {
-    display: flex; align-items: center; gap: 10px; padding: 6px 10px;
-    background: var(--bg2); border-top: 1px solid var(--border); flex-shrink: 0;
-}
-.bottombar .count { font-size: 11px; color: var(--fg2); margin-right: auto; }
-.bottombar .count b { color: var(--fg); }
+.cell-content:hover .cell-copy-btn { display: block; }
+.cell-copy-btn:hover { color: var(--fg); border-color: var(--yellow); }
 
 /* ── toast ── */
 .toast {
@@ -226,29 +188,11 @@ body {
 .cmp-benefit.low { color: var(--yellow); font-size: 18px; }
 </style>
 </head>
-<div class="topbar" id="topbar">
-    <span class="topbar-title">📋 <span data-i18n="goods.conv.title">上下文背包</span> <span id="quest-label"></span></span>
-    <span class="topbar-stat" id="stat-cells"><span data-i18n="goods.conv.cells">格子</span>: <b>0</b></span>
-    <span class="topbar-stat" id="stat-chars"><span data-i18n="goods.conv.chars">字符</span>: <b>0</b></span>
-    <span class="topbar-stat" id="stat-tokens"><span data-i18n="goods.conv.estimate">估算</span>: <b>0</b>k</span>
-    <span class="topbar-stat" id="stat-api"><span data-i18n="goods.conv.api">API</span>: <b>--</b></span>
-    <button onclick="refresh()">🔄 <span data-i18n="goods.conv.refresh">刷新</span></button>
-</div>
 
-<div class="toolbar" id="toolbar">
-    <button onclick="selectAll()">☑ <span data-i18n="goods.conv.selectAll">全选</span></button>
-    <button onclick="clearSelection()">☐ <span data-i18n="goods.conv.clearSel">取消</span></button>
-    <span class="sep"></span>
-    <button onclick="expandAll()">▸ <span data-i18n="goods.conv.expandAll">全部展开</span></button>
-    <button onclick="collapseAll()">▹ <span data-i18n="goods.conv.collapseAll">全部折叠</span></button>
-    <span class="sep"></span>
-    <input type="text" id="searchInput" data-i18n-placeholder="goods.conv.searchPlaceholder" placeholder="搜索格子…" oninput="onSearch(this.value)">
-    <span class="sep"></span>
-    <button class="primary" id="btnNewQuest" disabled onclick="openNewQuest()">🚀 <span data-i18n="goods.conv.openNewQuest">选中格子 → 新对话</span></button>
-</div>
-
-<!-- ═══ 压缩工具栏 — 3 按钮体系 ═══ -->
+<!-- ═══ 压缩工具栏 — 展开/折叠 + 3 按钮体系 ═══ -->
 <div class="compress-toolbar" id="compress-toolbar">
+    <button class="cbtn" style="margin:0" onclick="expandAll()" data-i18n-title="goods.conv.expandAll" title="全部展开">⊞</button>
+    <button class="cbtn" style="margin:0 4px 0 2px" onclick="collapseAll()" data-i18n-title="goods.conv.collapseAll" title="全部折叠">⊟</button>
     <span class="cmp-label" data-i18n="goods.conv.compressByValue">压缩背包按性价比</span>
     <button class="cmp-btn" id="btn-absolut" onclick="doCompress('absolut')" data-cmp-hover="goods.conv.compressAbsolutHover">absolut<span class="cmp-benefit" id="bf-absolut"></span></button>
     <span class="cmp-gt">&gt;</span>
@@ -260,11 +204,6 @@ body {
 </div>
 
 <div class="cells" id="cells"></div>
-
-<div class="bottombar">
-    <span class="count" id="selCount">已选 <b>0</b> 格</span>
-    <span style="font-size:10px;color:var(--fg2)">💡 <span data-i18n="goods.conv.hint">勾选格子 → 「选中格子→新对话」会把格子内容作为新对话上下文</span></span>
-</div>
 
 <div class="toast" id="toast"></div>
 
@@ -304,7 +243,6 @@ function _i(key, fallback) {
 
 var CPT = 2.5;
 var _cells = [];
-var _selected = {};
 var _expanded = {};
 var _questId = '';
 var _panelId = 1;
@@ -513,17 +451,6 @@ function buildCells(ag) {
 // ── 渲染 ──
 function render() {
     var container = document.getElementById('cells');
-    var apiPrompt = _agent ? (_agent._lastApiPromptTokens || 0) : 0;
-    var totalChars = 0, totalTok = 0;
-    for (var i = 0; i < _cells.length; i++) {
-        totalChars += _cells[i].chars;
-        totalTok += Math.round(_cells[i].chars / CPT);
-    }
-
-    document.getElementById('stat-cells').innerHTML = _i('goods.conv.cells', '格子') + ': <b>' + _cells.length + '</b>';
-    document.getElementById('stat-chars').innerHTML = _i('goods.conv.chars', '字符') + ': <b>' + fmtNum(totalChars) + '</b>';
-    document.getElementById('stat-tokens').innerHTML = _i('goods.conv.estimate', '估算') + ': <b>' + fmtNum(totalTok) + '</b>';
-    document.getElementById('stat-api').innerHTML = _i('goods.conv.api', 'API') + ': <b>' + (apiPrompt > 0 ? fmtNum(apiPrompt) : '--') + '</b>';
 
     if (_cells.length === 0) {
         container.innerHTML = '<div class="empty"><span class="empty-icon">📭</span><span>' + _i('goods.conv.noData', '没有格子数据') + '</span><span style="font-size:11px">' + _i('goods.conv.noDataHint', '打开对话后，点击 AI 面板右下角「上下文」→「管理」') + '</span></div>';
@@ -535,7 +462,6 @@ function render() {
         var cell = _cells[i];
         var tok = Math.round(cell.chars / CPT);
         var isOpen = !!_expanded[cell.id];
-        var isSel = !!_selected[cell.id];
 
         if (cell.group && cell.group !== lastGroup) {
             html += '<div class="group-hd">' + esc(cell.group) + '</div>';
@@ -547,25 +473,19 @@ function render() {
         var charsStr = fmtNum(cell.chars);
         var tokStr = fmtNum(tok);
 
-        html += '<div class="cell' + (isOpen ? ' open' : '') + (isSel ? ' selected' : '') + '" data-id="' + cell.id + '">';
+        html += '<div class="cell' + (isOpen ? ' open' : '') + '" data-id="' + cell.id + '">';
         html += '<div class="cell-header" onclick="toggleCell(\'' + cell.id + '\')">';
-        html += '<span class="cell-check' + (isSel ? ' checked' : '') + '" onclick="event.stopPropagation();toggleSelect(\'' + cell.id + '\')">' + (isSel ? '✓' : '') + '</span>';
         html += '<span class="cell-role ' + roleClass + '">' + esc(rc) + '</span>';
         html += '<span class="cell-preview">' + esc(truncate(cell.content, 80)) + '</span>';
         html += '<span class="cell-meta"><span>' + charsStr + '</span><span class="tok">~' + tokStr + '</span></span>';
         html += '<span class="cell-expand">▶</span>';
         html += '</div>';
         html += '<div class="cell-body">';
-        html += '<div class="cell-content">' + esc(cell.content) + '</div>';
-        html += '<div class="cell-actions">';
-        html += '<button onclick="event.stopPropagation();copyCell(\'' + cell.id + '\')">📋 ' + _i('goods.conv.copyCell', '复制此格') + '</button>';
-        html += '<button onclick="event.stopPropagation();selectAndGo(\'' + cell.id + '\')">🚀 ' + _i('goods.conv.singleGo', '单格开新对话') + '</button>';
-        html += '</div>';
+        html += '<div class="cell-content">' + esc(cell.content) + '<button class="cell-copy-btn" title="' + _i('goods.conv.copyCell', '复制此格') + '" onclick="event.stopPropagation();copyCell(\'' + cell.id + '\')">📋</button></div>';
         html += '</div></div>';
     }
 
     container.innerHTML = html;
-    updateSelectionUI();
 }
 
 function fmtNum(n) {
@@ -581,9 +501,6 @@ function truncate(s, n) {
 
 // ── 交互 ──
 function toggleCell(id) { _expanded[id] = !_expanded[id]; render(); }
-function toggleSelect(id) { _selected[id] = !_selected[id]; render(); }
-function selectAll() { for (var i = 0; i < _cells.length; i++) _selected[_cells[i].id] = true; render(); }
-function clearSelection() { _selected = {}; render(); }
 function expandAll() { for (var i = 0; i < _cells.length; i++) _expanded[_cells[i].id] = true; render(); }
 function collapseAll() { _expanded = {}; render(); }
 
@@ -592,83 +509,12 @@ function copyCell(id) {
     copyText(cell.content); toast(_i('goods.conv.toastCopied', '已复制'));
 }
 
-function selectAndGo(id) {
-    clearSelection();
-    _selected[id] = true;
-    render();
-    openNewQuest();
-}
-
 function findCell(id) {
     for (var i = 0; i < _cells.length; i++) { if (_cells[i].id === id) return _cells[i]; }
     return null;
 }
 
-function onSearch(q) {
-    if (!q || !q.trim()) { render(); return; }
-    q = q.toLowerCase();
-    for (var i = 0; i < _cells.length; i++) {
-        var cell = _cells[i];
-        var match = cell.label.toLowerCase().indexOf(q) >= 0 || cell.content.toLowerCase().indexOf(q) >= 0;
-        if (match) _expanded[cell.id] = true;
-    }
-    render();
-    // 隐藏不匹配的
-    q = q.toLowerCase();
-    var all = document.querySelectorAll('.cell');
-    for (var i = 0; i < _cells.length; i++) {
-        var el = all[i]; if (!el) continue;
-        var cell = _cells[i];
-        var match = cell.label.toLowerCase().indexOf(q) >= 0 || cell.content.toLowerCase().indexOf(q) >= 0;
-        el.style.display = match ? '' : 'none';
-    }
-}
 
-// ── 核心：选中格子 → 开新对话 ──
-function openNewQuest() {
-    var selIds = Object.keys(_selected).filter(function (k) { return _selected[k]; });
-    if (selIds.length === 0) return;
-
-    var selectedCells = [];
-    for (var i = 0; i < _cells.length; i++) {
-        if (_selected[_cells[i].id]) selectedCells.push(_cells[i]);
-    }
-
-    // 构建新对话上下文（格子内容原样注入）
-    var lines = [
-        '═══ 从对话 ' + (_questId || '?') + ' 提取的上下文格子（共 ' + selectedCells.length + ' 格） ═══',
-        ''
-    ];
-    for (var i = 0; i < selectedCells.length; i++) {
-        var c = selectedCells[i];
-        lines.push('── ' + c.label + ' ──');
-        lines.push(c.content);
-        lines.push('');
-    }
-
-    // 投递给 AI 面板 iframe（通过 zone div → 内嵌 iframe）
-    try {
-        var _zoneId2 = _panelId === 0 ? 'qqq-wing-left' : _panelId === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
-        var _zone2 = window.parent.document.getElementById(_zoneId2);
-        var aiFrame = _zone2 ? _zone2.querySelector('iframe') : null;
-        if (aiFrame && aiFrame.contentWindow) {
-            aiFrame.contentWindow.postMessage({
-                type: 'qqq-conv-new-quest',
-                panelId: _panelId,
-                context: lines.join('\n'),
-                questId: _questId
-            }, '*');
-            toast(_i('goods.conv.toastNewQuest', '已创建新对话，切换到 AI 面板查看'));
-        } else {
-            window.parent.__qqq_convNewQuestCtx = lines.join('\n');
-            window.parent.postMessage({
-                type: 'qqq-conv-new-quest', panelId: _panelId,
-                context: lines.join('\n'), questId: _questId
-            }, '*');
-            toast(_i('goods.conv.toastSent', '已发送（切换到 AI 面板查看）'));
-        }
-    } catch (e) { toast(_i('goods.conv.toastFailed', '失败') + ': ' + e.message); }
-}
 
 function copyText(text) {
     try {
@@ -689,12 +535,6 @@ function copyText(text) {
     }
 }
 
-function updateSelectionUI() {
-    var selCount = Object.keys(_selected).filter(function (k) { return _selected[k]; }).length;
-    document.getElementById('selCount').innerHTML = '已选 <b>' + selCount + '</b> 格';
-    document.getElementById('btnNewQuest').disabled = selCount === 0;
-}
-
 function toast(msg) {
     var el = document.getElementById('toast');
     el.textContent = msg; el.classList.add('show');
@@ -706,11 +546,7 @@ function toast(msg) {
 function refresh() {
     _agent = getAgent();
     _cells = buildCells(_agent);
-    _selected = {};
     syncTheme();
-    // 更新标题栏 quest 标签
-    var ql = document.getElementById('quest-label');
-    if (ql) ql.textContent = _questId ? ('· ' + _questId) : '';
     render();
 }
 
@@ -771,11 +607,28 @@ window.addEventListener('message', function (e) {
     }
 });
 
-// 定时检查 agent 变化 + 工具定义就绪
+// 自动刷新（2026-08-18 定案：删除手动刷新按钮——conversation 指纹检测实时重建）：
+//   指纹 = 消息数 + 尾部 3 条消息（content 长度/tool_calls 数）+ ctx（biscuitLines/facts 条数）。
+//   任何变化自动重建格子（流式追加/新消息/压缩/恢复均覆盖），格子永远实时，手动刷新零价值。
 var _toolsReady = false;
+var _lastSig = null;
 setInterval(function () {
     var ag = getAgent();
-    var needsRebuild = (ag !== _agent);
+    var sig = '';
+    if (ag) {
+        var conv = ag.conversation || [];
+        sig += conv.length + '|';
+        var n = conv.length;
+        for (var i = Math.max(0, n - 3); i < n; i++) {
+            var m = conv[i];
+            if (!m) continue;
+            sig += (typeof m.content === 'string' ? m.content.length : 0) + ':' + (m.tool_calls ? m.tool_calls.length : 0) + '|';
+        }
+        var ctx = ag._ctx;
+        if (ctx) sig += 'c' + (ctx.biscuitLines ? ctx.biscuitLines.length : 0) + ':' + (ctx.facts ? ctx.facts.length : 0);
+    }
+    var needsRebuild = (sig !== _lastSig);
+    _lastSig = sig;
     // 工具定义首次加载时可能还没就绪，定时重试
     if (!_toolsReady && !needsRebuild) {
         var hasTools = false;
@@ -1072,12 +925,12 @@ function _interpolateColor(c1, c2, t) {
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    if (e.key !== 'F2' && e.key !== 'Tab' && e.key !== 'x') return;
     var el = document.activeElement;
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (editing) return;
-    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    var accel = e.key === 'F2' ? 'F2' : (e.key === 'Tab' ? 'Tab' : 'X');
     try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
     e.preventDefault();
   }, true);

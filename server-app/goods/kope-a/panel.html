@@ -347,7 +347,9 @@ body {
     }
 
     function showOfflineBanner() {
-        var existing = el.historyList.querySelector('.kope-offline-banner');
+        // ★ 横幅挂在 historyContainer（historyList 的兄弟节点）——查重必须查同层，
+        // 查 historyList 永远查不到 → 每次断线叠加一个新横幅（434 旧版多次打印根因）
+        var existing = el.historyContainer.querySelector('.kope-offline-banner');
         if (existing) return;
         var banner = document.createElement('div');
         banner.className = 'kope-offline-banner';
@@ -357,8 +359,9 @@ body {
     }
 
     function hideOfflineBanner() {
-        var banner = el.historyList.querySelector('.kope-offline-banner');
-        if (banner) banner.remove();
+        // ★ 作用域同 showOfflineBanner；querySelectorAll 连历史叠加残留一并清干净
+        var banners = el.historyContainer.querySelectorAll('.kope-offline-banner');
+        for (var bi = 0; bi < banners.length; bi++) banners[bi].remove();
         _offlineBanner = false;
     }
 
@@ -830,12 +833,12 @@ body {
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    if (e.key !== 'F2' && e.key !== 'Tab' && e.key !== 'x') return;
     var el = document.activeElement;
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (editing) return;
-    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    var accel = e.key === 'F2' ? 'F2' : (e.key === 'Tab' ? 'Tab' : 'X');
     try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
     e.preventDefault();
   }, true);

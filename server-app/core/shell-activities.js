@@ -107,12 +107,12 @@ function bootActivities(boot) {
     return (Math.round(n * 10) / 10).toString();
   }
 
-  // 手机号脱敏：前5位 + xxxx + 后4位（8615802858204 → 86158xxxx8204），方便用户截图自证
+  // 手机号脱敏：前5位 + 星号 + 后4位（8615802858204 → 86158****8204），方便用户截图自证
   function maskPhone(p) {
     if (!p) return '';
     var s = String(p);
     if (s.length <= 8) return s;
-    return s.slice(0, 5) + 'xxxx' + s.slice(-4);
+    return s.slice(0, 5) + '****' + s.slice(-4);
   }
 
   function copyText(text) {

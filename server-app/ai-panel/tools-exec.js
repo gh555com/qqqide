@@ -308,7 +308,8 @@ async function executeReadFile(args) {
     var _readErr = null;
     if (bridge.ai && bridge.ai.read_file) {
         try {
-            var result = await bridge.ai.read_file({ path: args.path, start_line: args.start_line, end_line: args.end_line });
+            // ★ 2026-08-18: sha256 必须透传（历史 blob 读取）——旧代码吞掉参数 → 主进程静默读磁盘 → 考古返回当前内容
+            var result = await bridge.ai.read_file({ path: args.path, start_line: args.start_line, end_line: args.end_line, sha256: args.sha256 || undefined });
             _readResult = _guardBinaryResult(result);
         } catch (e) { _readErr = e; }
     }

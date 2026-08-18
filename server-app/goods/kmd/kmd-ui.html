@@ -148,6 +148,9 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var gbCwd = '';     // gitbash 当前目录（从 OSC 标题 \x1b]0;MINGW64:/path\x07 提取——2026-08-15 提示符块丢弃后路径抬头回归）
     var gbOscBuf = '', gbOscPending = false; // OSC 标题跨 chunk 切碎状态（与 escPending 同款，但工作在 cleanAnsi 之前）
 
+    // ★ 2026-08-18 全局 x 键召回：kmd 自转发携带自身 cwd → 新 kmd 继承当前目录（转发块读此 getter）
+    window.__kmdCwdGet = function () { return cwd; };
+
     // ── 主题（父窗口同步） ──
     try {
         var pt = parent.document.documentElement.getAttribute('data-theme');
@@ -941,13 +944,15 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    if (e.key !== 'F2' && e.key !== 'Tab' && e.key !== 'x') return;
     var el = document.activeElement;
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (editing) return;
-    var accel = e.key === 'F2' ? 'F2' : 'Tab';
-    try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
+    // F2/Tab → 召回 roam；x → 打开一个新 kmd 并继承当前会话 cwd（2026-08-18）
+    var accel = e.key === 'F2' ? 'F2' : (e.key === 'Tab' ? 'Tab' : 'X');
+    var path = e.key === 'x' && typeof window.__kmdCwdGet === 'function' ? (window.__kmdCwdGet() || '') : undefined;
+    try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window', path: path }, '*'); } catch (_) {}
     e.preventDefault();
   }, true);
 })();

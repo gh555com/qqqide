@@ -756,6 +756,24 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     if (activeFilePath) window.qqqTabs.openFileInRightGroup(activeFilePath);
     return;
   }
+  if (cmd === 'window.activateKmd') {
+    // ★ 2026-08-18 全局 x 键召回 kmd：非编辑态 → 打开一个新 kmd。
+    //   路径优先级：iframe 转发携带（kmd 自转发=自身 cwd）→ 活跃文件 tab 父目录 → 默认（工作空间根）
+    var kmdPath = window.__qqqLastKeyPath || null;
+    window.__qqqLastKeyPath = null;
+    if (!kmdPath && window.qqqTabs) {
+      try {
+        var _kg = window.qqqTabs.getGroups();
+        for (var _ki = _kg.length - 1; _ki >= 0; _ki--) {
+          if (_kg[_ki].type !== 'file') continue;
+          var _kt = _kg[_ki].tabs.find(function (x) { return x.id === _kg[_ki].activeTabId; });
+          if (_kt && _kt.filePath) { kmdPath = String(_kt.filePath).replace(/[\\/][^\\/]*$/, ''); break; }
+        }
+      } catch (_ke) { }
+    }
+    if (window.__qqqKmdOpen) window.__qqqKmdOpen(kmdPath);
+    return;
+  }
   if (cmd === 'window.activateRoam') {
     // F100 诊断：加 console 可见 + qoast 反馈，确认 handler 是否被调用
     console.log('[shell-menu] activateRoam fired');
