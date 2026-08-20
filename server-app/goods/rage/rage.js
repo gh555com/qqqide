@@ -35,7 +35,7 @@
       // ---- X 区 gaea tab: roam 资源管理器 ----
       tabs: {
         roam: {
-          title: 'roam',
+          title: 'Roam',
           closable: false,
           build: function (pane) {
             pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';

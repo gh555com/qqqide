@@ -1558,3 +1558,49 @@ if (emptyCtxMenu) {
 		}
 	});
 })();
+
+// ═══ 外部命令：Roam 定位文件（AI 面板图片 hover Roam 按钮触发）═══
+// 主窗口 → postMessage qqq-roam-cmd {cmd:'roam.revealFile', path} → 本函数
+// 行为: 跳到文件所在目录 + 选中该文件 + 滚动到可视区
+function roamRevealFile(fullPath) {
+	try {
+		var norm = String(fullPath).replace(/\\/g, '/');
+		if (!norm) return;
+		var dir = norm.replace(/\/[^\/]*$/, '');
+		if (!dir) dir = norm;
+		function doSelect() {
+			// dataset.path 分隔符跟随当前目录格式，双向归一比较
+			var all = document.querySelectorAll('#fileList .file-item');
+			for (var i = 0; i < all.length; i++) {
+				var dp = (all[i].dataset.path || '').replace(/\\/g, '/');
+				if (dp === norm) {
+					selectFileItem(all[i], false);
+					try { all[i].scrollIntoView({ block: 'center' }); } catch (_) { all[i].scrollIntoView(); }
+					return true;
+				}
+			}
+			return false;
+		}
+		// 已在目标目录：直接尝试选中；否则先导航
+		if (currentPath && String(currentPath).replace(/\\/g, '/') === dir) {
+			if (doSelect()) return;
+		} else {
+			navigateTo(dir);
+		}
+		// 目录渲染异步（loadFileList），轮询等待选中，最多 2s
+		var tries = 0;
+		var timer = setInterval(function () {
+			tries++;
+			if (doSelect()) { clearInterval(timer); }
+			else if (tries >= 20) { clearInterval(timer); }
+		}, 100);
+	} catch (_) { }
+}
+
+// qqq-roam-cmd 外部命令分发（boot.js 转发为 CustomEvent）
+document.addEventListener('qqq-roam-cmd', function(e) {
+	var d = e.detail || {};
+	if (d.cmd === 'roam.revealFile' && d.path) {
+		roamRevealFile(d.path);
+	}
+});

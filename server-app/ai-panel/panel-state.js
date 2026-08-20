@@ -13,11 +13,20 @@ var questUIStates = {};
 //   var 重复声明安全，真正逻辑在 panel-quest-ui.js 中用 Object.defineProperty 覆盖
 var _queueFallback = [];
 var _queuePausedFallback = false;
+var _queuePausedManualFallback = false; // ★ 人工暂停标志（2026-08-20）：仅暂停按钮置位，楼层完结/草稿清空绝不自动恢复
 var _queueBusy = false;
 var _qa = function () { return (typeof _activeAgent !== 'undefined' && _activeAgent); };
 Object.defineProperty(window, '_queuePaused', {
     get: function () { return _qa() ? _qa()._queuePaused : _queuePausedFallback; },
     set: function (v) { if (_qa()) _qa()._queuePaused = v; else _queuePausedFallback = v; },
+    enumerable: true, configurable: true
+});
+// ★ 人工暂停标志（2026-08-20）：与 _queuePaused 并存——
+//   _queuePaused = 显示态（暂停/继续按钮）；_queuePausedManual = 暂停来源（人工 or 草稿自动）
+//   草稿保护型自动暂停只置 _queuePaused；楼层完结/草稿清空时自动恢复（见 panel-pipeline 完结自愈 + panel-input updateQueueBtn）
+Object.defineProperty(window, '_queuePausedManual', {
+    get: function () { return _qa() ? _qa()._queuePausedManual : _queuePausedManualFallback; },
+    set: function (v) { if (_qa()) _qa()._queuePausedManual = v; else _queuePausedManualFallback = v; },
     enumerable: true, configurable: true
 });
 var _queueSaveTimer = null;

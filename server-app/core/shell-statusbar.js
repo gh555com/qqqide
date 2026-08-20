@@ -13,19 +13,76 @@ function bootStatusbar(boot) {
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
 	if ($onl) $onl.textContent = '0';
 
-	// ═══ 赞助商（状态栏左下角）— 仅公司名带超链接，前缀「赞助商：」不带 ═══
-	var $sponsorLink = document.getElementById('qqq-sponsor-link');
-	if ($sponsorLink) {
-		$sponsorLink.addEventListener('click', function (e) {
+	// ═══ 赞助商轮换播放器（状态栏左下角）— 大20s/中10s/小5s 上下翻滚 ═══
+	// 数据源: GET /api/sponsor/current（三档位当前小时胜出者；无人竞拍 → 默认成都知佳）
+	// 拉取限频 1 次/分钟（轮播完刷新与失败重试共用）；失败保持默认品牌；点击打开当前品牌超链接
+	(function () {
+		var $roll = document.getElementById('qqq-sponsor-roll');
+		var $track = document.getElementById('qqq-sponsor-link');
+		if (!$roll || !$track) return;
+		var DEFAULT_BRAND = '成都知佳知识产权代理有限公司';
+		var DEFAULT_URL = 'http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1';
+		var items = [];
+		var idx = -1;
+		var timer = null;
+
+		function applyItem(item) {
+			// 三段式上下翻滚：瞬移到上方 → 换内容 → 滑入
+			$track.style.transition = 'none';
+			$track.style.transform = 'translateY(-120%)';
+			$track.textContent = item.brand || DEFAULT_BRAND;
+			$track.setAttribute('data-url', item.url || DEFAULT_URL);
+			void $track.offsetHeight;
+			$track.style.transition = 'transform .4s ease';
+			$track.style.transform = 'translateY(0)';
+		}
+
+		var _lastFetchAt = 0;
+		function fetchCurrent() {
+			var now = Date.now();
+			if (now - _lastFetchAt < 60000) return Promise.resolve(); // 限频 1 次/分钟
+			_lastFetchAt = now;
+			return fetch('https://direct-cn.gh555.com/api/sponsor/current', { cache: 'no-cache' })
+				.then(function (r) { if (!r.ok) return null; return r.json(); })
+				.then(function (d) {
+					if (d && d.ok && d.items && d.items.length) {
+						items = d.items;
+						idx = -1;
+					}
+				})
+				.catch(function () { /* 静默 */ });
+		}
+
+		function scheduleNext() {
+			if (timer) clearTimeout(timer);
+			if (items.length) {
+				idx = (idx + 1) % items.length;
+				applyItem(items[idx]);
+				var secs = (items[idx].display_seconds || 5) * 1000;
+				timer = setTimeout(scheduleNext, secs);
+				if (idx === items.length - 1) fetchCurrent(); // 一轮播完刷新
+			} else {
+				timer = setTimeout(function () {
+					fetchCurrent().then(scheduleNext);
+				}, 60000); // 失败重试 60s（与限频同频）
+			}
+		}
+
+		$roll.addEventListener('click', function (e) {
 			e.preventDefault();
-			var url = 'http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1';
+			var url = $track.getAttribute('data-url') || DEFAULT_URL;
 			if (bridge && bridge.shell && bridge.shell.openExternal) {
 				bridge.shell.openExternal(url);
 			} else {
 				window.open(url, '_blank');
 			}
 		});
-	}
+
+		// 首显默认品牌（fetch 返回前）
+		$track.textContent = DEFAULT_BRAND;
+		$track.setAttribute('data-url', DEFAULT_URL);
+		fetchCurrent().then(scheduleNext);
+	})();
 
   // ★ 硬刷新按钮 — 菜单行2，等价 Ctrl+Shift+R
   var $rf = document.getElementById('qqq-refresh-btn');

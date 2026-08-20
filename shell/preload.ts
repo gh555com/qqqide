@@ -222,6 +222,7 @@ const QQQ = {
         readHtml: () => ipcRenderer.invoke('qqqide:clipboard:readHtml'),
         readFiles: () => ipcRenderer.invoke('qqqide:clipboard:readFiles'),
         writeFiles: (paths: string[]) => ipcRenderer.invoke('qqqide:clipboard:writeFiles', paths),
+        writeImage: (payload: { path?: string; dataUrl?: string }) => ipcRenderer.invoke('qqqide:clipboard:writeImage', payload),
     },
 
     // ---- ghrun (qz process manager) ----

@@ -92,6 +92,10 @@
   position: relative;
   overflow: visible;
 }
+/* Roam 标签文字左移 2px（宽度不变，2026-08-20） */
+.qqq-tab-btn.qqq-tab-roam .qqq-tab-name {
+  transform: translateX(-2px);
+}
 .qqq-tab-btn.qqq-tab-roam::after {
   content: '';
   position: absolute;
@@ -464,11 +468,26 @@
   text-decoration: none;
   transition: color .15s;
   forced-color-adjust: none;
+  cursor: pointer;
 }
 
 .qqq-sponsor-link:hover {
   color: #d79921;
   text-decoration: none;
+}
+
+/* 赞助商轮换播放器：大20s/中10s/小5s 上下翻滚（shell-statusbar.js 控制 transform） */
+.qqq-sponsor-roll {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  height: 1.25em;
+  max-width: 320px;
+  cursor: pointer;
+}
+.qqq-sponsor-roll-track {
+  display: block;
+  will-change: transform;
 }
 
 /* ── 窄窗口退避：状态区恒一行，宽度变窄逐级隐藏非核心区块（shell-statusbar.js 加类） ── */

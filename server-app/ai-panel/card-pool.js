@@ -401,6 +401,17 @@ var CardPool = (function () {
     info.textContent = parts.join(' \u00b7 ');
   }
 
+  // ★ 本地图片补齐 Roam 按钮（覆盖旧缓存 ai_html / 裸 img 迁移等历史 DOM）
+  function _ensureRoamBtn(wrap, img) {
+    if (!img || !img.src || !/^file:\/\//i.test(img.src)) return;
+    if (wrap.querySelector(':scope > .table-roam-btn')) return;
+    var b = document.createElement('span');
+    b.className = 'table-roam-btn';
+    b.textContent = '📂 Roam';
+    b.title = '在 Roam 中定位此文件';
+    wrap.insertBefore(b, wrap.firstChild);
+  }
+
   function _populateImgInfos(container) {
     if (!container || !container.querySelectorAll) return;
     var wraps = container.querySelectorAll('.table-wrap');
@@ -408,6 +419,7 @@ var CardPool = (function () {
       var _img = wraps[_wi].querySelector(':scope > img');
       var _inf = wraps[_wi].querySelector(':scope > .img-info');
       if (_img && _inf) _fillImgInfo(_img, _inf);
+      _ensureRoamBtn(wraps[_wi], _img);
     }
   }
 
@@ -521,6 +533,8 @@ var CardPool = (function () {
             })(_imgQuestId, _imgFloorNum, img.fileName);
           }
           if (img.fileName) imgEl.dataset.fileName = img.fileName;
+          // ★ 完整本地路径（展开按钮 open-image 时透传给 overlay，dataUrl 缩略图场景文件/路径按钮依赖）
+          if (img.fileName && fData._fDir) imgEl.dataset.localPath = fData._fDir + img.fileName;
           wrap.appendChild(imgEl);
           var badge = document.createElement('span');
           badge.className = 'msg-img-badge';
@@ -536,13 +550,13 @@ var CardPool = (function () {
                 if (window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
                   window.questStore.resolveFloorDir(_qId, _fNum).then(function (_fDir2) {
                     if (_fDir2 && _fDir2 !== fDir) {
-                      if (typeof openLightbox === 'function') openLightbox(_fDir2 + imgData.fileName, b64);
+                      if (typeof openLightbox === 'function') openLightbox(_fDir2 + imgData.fileName, b64, _fDir2 + imgData.fileName);
                     }
                   });
                 }
               }
               if (typeof openLightbox === 'function') {
-                if (srcUrl) openLightbox(srcUrl, b64);
+                if (srcUrl) openLightbox(srcUrl, b64, (fDir && imgData.fileName) ? fDir + imgData.fileName : null);
               }
             };
           })(img, fData._fDir || '', _imgQuestId, _imgFloorNum);
@@ -613,6 +627,14 @@ var CardPool = (function () {
       _bImg.parentNode.insertBefore(_twrap, _bImg);
       _twrap.appendChild(_tbtn);
       _twrap.appendChild(_iinfo);
+      // ★ 本地图片挂 Roam 按钮（hover 定位到文件目录并选中）
+      if (/^file:\/\//i.test(_bImg.src || '')) {
+        var _rbtn = document.createElement('span');
+        _rbtn.className = 'table-roam-btn';
+        _rbtn.textContent = '📂 Roam';
+        _rbtn.title = '在 Roam 中定位此文件';
+        _twrap.appendChild(_rbtn);
+      }
       _twrap.appendChild(_bImg);
     }
     aiEl.appendChild(aiEl._contentWrap);
@@ -651,6 +673,15 @@ var CardPool = (function () {
         if (typeof scrollToBottom === 'function') scrollToBottom(true);
         return;
       }
+      var roamBtn = e.target.closest('.table-roam-btn');
+      if (roamBtn) {
+        var _wrapR = roamBtn.closest('.table-wrap');
+        var _imgR = _wrapR ? _wrapR.querySelector(':scope > img') : null;
+        if (_imgR && _imgR.src && typeof _postToHost === 'function') {
+          _postToHost({ type: 'qqqide-overlay', action: 'reveal-in-roam', src: _imgR.src });
+        }
+        return;
+      }
       var btn = e.target.closest('.table-view-btn');
       if (btn) {
         var wrap = btn.closest('.table-wrap');
@@ -658,7 +689,7 @@ var CardPool = (function () {
           var img = wrap.querySelector(':scope > img');
           // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
           if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
-            _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src });
+            _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null });
           } else {
             var pre = wrap.querySelector(':scope > pre');
             var inner = wrap.querySelector(':scope > .table-inner');
@@ -891,6 +922,15 @@ var CardPool = (function () {
     aiEl.appendChild(aiEl._contentWrap);
     // ★ 事件委托（点击）：表格/代码块预览 — DOM 自描述，零全局状态
     aiEl._contentWrap.addEventListener('click', function (e) {
+      var roamBtn = e.target.closest('.table-roam-btn');
+      if (roamBtn) {
+        var _wrapR2 = roamBtn.closest('.table-wrap');
+        var _imgR2 = _wrapR2 ? _wrapR2.querySelector(':scope > img') : null;
+        if (_imgR2 && _imgR2.src && typeof _postToHost === 'function') {
+          _postToHost({ type: 'qqqide-overlay', action: 'reveal-in-roam', src: _imgR2.src });
+        }
+        return;
+      }
       var btn = e.target.closest('.table-view-btn');
       if (!btn) return;
       var wrap = btn.closest('.table-wrap');
@@ -898,7 +938,7 @@ var CardPool = (function () {
       var img = wrap.querySelector(':scope > img');
       // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
       if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
-        _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src });
+        _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null });
       } else {
         var pre = wrap.querySelector(':scope > pre');
         var inner = wrap.querySelector(':scope > .table-inner');

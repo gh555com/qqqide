@@ -11,6 +11,14 @@ function updateQueueBtn() {
     var hasText = $input.value.trim().length > 0;
     var hasImages = (typeof pendingImages !== 'undefined') && pendingImages.length > 0;
     $queueBtn.disabled = !(hasText || hasImages);
+    // ★ 自动暂停自愈（2026-08-20）：草稿（文字/图片）清空瞬间自动恢复排水——
+    //   仅非人工暂停（_queuePausedManual=false）才恢复；草稿仍在则保持等待，永不粘死。
+    //   建楼中（_sending/streaming）只恢复标志，排水交给楼层完结路径。
+    if (_queuePaused && !_queuePausedManual && _queue && _queue.length > 0 && !hasText && !hasImages) {
+        _queuePaused = false;
+        renderQueueStrip();
+        if (!_sending && !streaming) _triggerQueueSend();
+    }
 }
 
 // ── 无主文件夹时直接弹文件夹选择 ──
