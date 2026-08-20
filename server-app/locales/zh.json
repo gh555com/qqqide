@@ -439,7 +439,6 @@
       "subtitle": "你滴上下文资产现在归你",
       "tip": "总消费满 50 ge · 50 元话费 / 50 ge 二选一",
       "eitherOr": "二选一",
-      "alreadyOther": "二选一：你已领取另一项奖励",
       "popSub": "实扣 + 白嫖合计达到 50 ge 即可领取",
       "loginDesc": "登录后查看任务进度，满 50 ge 即可领取",
       "task1": "下载并登录 qqqide",
@@ -457,7 +456,6 @@
       "phoneModalDesc": "话费将在 2 个工作日内自动到账，请保持手机号 {phone} 畅通。",
       "geModalTitle": "50 ge 立即到账",
       "geModalDesc": "50 ge 已发放到你的账户，立即到账！",
-      "already": "你已领取过该奖励",
       "err": "领取失败，请稍后重试"
     },
     "vibe": {

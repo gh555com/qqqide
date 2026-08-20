@@ -205,7 +205,9 @@ const _projectStateStores = new Map<string, StateStore>();
 const downloadService = new DownloadService(portable.cache);
 
 
-const indexService = new IndexService(portable.root);
+// ★ 2026-08-20 内存治理：索引根不再默认程序目录 — 由 search_smart IPC 按发起窗口的
+//   主文件夹 setRoot（project-lock），启动零索引零内存，用完即焚。
+const indexService = new IndexService(null);
 
 // ── 认证中心大脑（2026-07-31 T3）──
 const authBrain = initAuthBrain(portable.userData, portable.root, APP_VERSION, isDevFlag);
@@ -744,8 +746,8 @@ app.whenReady().then(async () => {
     } catch (_) { }
     startWqPing(portable.userData);
 
-    // ★ rebuild semantic search index (non-blocking)
-    indexService.init();
+    // ★ 2026-08-20 语义索引改为完全按需（懒加载 + 用完即焚，ghrun 同款语义）：
+    //   启动零索引零内存；首次 search_smart 才按窗口主文件夹构建/读盘。此处不再 init()。
 
     // macOS: re-activate → recreate window
     app.on('activate', () => {

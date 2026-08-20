@@ -51,6 +51,8 @@ interface SearchResult {
     matchType: 'bm25' | 'regex' | 'symbol';
     snippet: string;
     line?: number;
+    /** ★ 2026-08-20: chunk 起始偏移 — snippet/line 由 IPC 层按需读盘补全（fileContents 已移除） */
+    chunkStart?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +67,11 @@ const SKIP_DIRS = new Set([
     'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs',
     '.hg', '.svn', 'bower_components', '.idea', '.vs', 'cache', 'temp',
     'crashDumps', 'dist-pack', 'shell-out', 'shell-build', '.qoder',
-    'Data', 'logs', 'new_log', 'tmp', 'op'
+    'Data', 'logs', 'new_log', 'tmp', 'op',
+    // ★ 2026-08-20 内存治理：索引自身产物 + 程序目录 + 项目元数据一律跳过
+    //   _qqq = 项目元数据/对话（索引进自身 = 噪音 + 无限膨胀）
+    //   engines/resources = 绿色包程序目录（Python 解释器 Lib + PortableGit 数千文本文件）
+    '_qqq', 'engines', 'resources'
 ]);
 
 const SKIP_EXTS = new Set([
@@ -248,18 +254,16 @@ interface Bm25Index {
     inverted: Record<string, Record<number, number>>;
     /** chunkId → { filePath, start, end, tokenCount } */
     chunks: Array<{ file: string; start: number; end: number; tokens: number; type: string }>;
-    /** filePath → file content (for snippet generation) */
-    fileContents: Record<string, string>;
     /** term → document frequency (in how many chunks does this term appear) */
     df: Record<string, number>;
     stats: Bm25Stats;
+    // ★ 2026-08-20 内存治理: fileContents 全量常驻已删除 — snippet 按需读盘（IPC 层）
 }
 
 function createEmptyIndex(): Bm25Index {
     return {
         inverted: {},
         chunks: [],
-        fileContents: {},
         df: {},
         stats: { N: 0, avgdl: 0, lastBuildAt: 0 }
     };
@@ -267,7 +271,6 @@ function createEmptyIndex(): Bm25Index {
 
 function addToIndex(idx: Bm25Index, filePath: string, content: string, ext: string): void {
     const chunks = chunkFile(content, ext);
-    idx.fileContents[filePath] = content;
 
     for (const chunk of chunks) {
         const chunkId = idx.chunks.length;
@@ -336,7 +339,6 @@ function removeFromIndex(idx: Bm25Index, filePath: string): void {
         idx.chunks[cid].file = '';
     }
 
-    delete idx.fileContents[filePath];
 }
 
 // ---------------------------------------------------------------------------
@@ -389,15 +391,13 @@ function bm25Search(idx: Bm25Index, query: string, topK: number): SearchResult[]
         const chunk = idx.chunks[chunkId];
         if (!chunk || !chunk.file) continue;
 
-        const fileContent = idx.fileContents[chunk.file] || '';
-        const snippet = fileContent.slice(chunk.start, chunk.end).slice(0, 300).replace(/\n/g, ' ');
-
+        // ★ 2026-08-20: snippet/line 不再从内存全文取 — 由 IPC 层按需读盘补全（chunkStart 定位）
         results.push({
             filePath: chunk.file,
             score,
             matchType: 'bm25',
-            snippet,
-            line: (fileContent.slice(0, chunk.start).match(/\n/g) || []).length + 1
+            snippet: '',
+            chunkStart: chunk.start
         });
     }
 
@@ -505,8 +505,11 @@ function symbolSearch(symbols: SymbolTable, query: string, topK: number): Search
 // Index Persistence
 // ---------------------------------------------------------------------------
 
+// ★ 2026-08-20: 索引落盘从 {root}/Data/index 迁移到 {root}/_qqq/index — 索引是项目资产
+//   归位项目元数据目录（Data 是绿色包保险库/Electron userData，语义错位；
+//   且 {root}/Data 已被 SKIP_DIRS 排除，索引自身永不被扫回）
 function indexDir(rootDir: string): string {
-    return path.join(rootDir, 'Data', 'index');
+    return path.join(rootDir, '_qqq', 'index');
 }
 
 function ensureIndexDir(rootDir: string): string {
@@ -547,7 +550,7 @@ async function loadIndex(rootDir: string): Promise<{ idx: Bm25Index; manifest: I
         idx.chunks = bm25Data.chunks;
         idx.df = bm25Data.df;
         idx.inverted = bm25Data.inverted;
-        // fileContents will be lazily loaded as needed
+        // ★ 2026-08-20: 无 fileContents（已删除）— snippet 按需读盘
 
         return { idx, manifest, symbols };
     } catch {
@@ -560,34 +563,87 @@ async function loadIndex(rootDir: string): Promise<{ idx: Bm25Index; manifest: I
 // ---------------------------------------------------------------------------
 
 export class IndexService {
-    private rootDir: string;
+    private rootDir: string | null;
     private idx: Bm25Index | null = null;
     private manifest: IndexManifest | null = null;
     private symbols: SymbolTable | null = null;
     private building = false;
     private ready = false;
+    private _readyPromise: Promise<void> | null = null;
+    private _buildFailAt = 0;
+    private _idleTimer: NodeJS.Timeout | null = null;
     private _symbolGraphCache: Record<string, { definingFiles: string[]; importingFiles: string[]; exportingFiles: string[] }> | null = null;  // ★ P3: lazy-built, invalidated on rebuild
 
-    constructor(rootDir: string) {
+    // ★ 2026-08-20 内存治理（启动零索引，用完即焚）:
+    //   ① 启动不再 init() — 首次 search_smart 才 ensureReady（ghrun 同款按需语义）
+    //   ② 索引根 = 当前窗口主文件夹（setRoot 跟随项目锁），程序目录永不索引
+    //   ③ 空闲 IDLE_TTL_MS 无调用 → release() 焚毁全部索引内存；下次调用读盘重建（~1s）
+    static readonly IDLE_TTL_MS = 5 * 60 * 1000;
+    static readonly BUILD_FAIL_COOLDOWN_MS = 30 * 1000;
+
+    constructor(rootDir: string | null = null) {
         this.rootDir = rootDir;
     }
 
-    /** Initialize: load existing index or build from scratch */
-    async init(): Promise<void> {
-        if (this.ready || this.building) return;
+    /** 切换索引根（窗口绑定主文件夹时由 IPC 层驱动）；切换即焚旧索引 */
+    setRoot(dir: string | null): void {
+        const norm = dir ? dir.replace(/\\/g, '/').replace(/\/+$/, '') : null;
+        if (norm === this.rootDir) return;
+        this.release();
+        this.rootDir = norm;
+        this._readyPromise = null;  // 放弃在途 promise（旧构建结果会被 rootDir 校验丢弃）
+        this._buildFailAt = 0;
+    }
 
-        const loaded = await loadIndex(this.rootDir);
+    getRoot(): string | null {
+        return this.rootDir;
+    }
+
+    get hasRoot(): boolean { return !!this.rootDir; }
+
+    /** 按需就绪：有索引读盘，无索引构建；并发去重；rootDir 为空则静默跳过 */
+    async ensureReady(): Promise<void> {
+        this.touch();
+        if (this.ready || !this.rootDir) return;
+        if (this._readyPromise) return this._readyPromise;
+        this._readyPromise = this._doEnsure().finally(() => { this._readyPromise = null; });
+        return this._readyPromise;
+    }
+
+    private async _doEnsure(): Promise<void> {
+        const expectedRoot = this.rootDir;
+        if (!expectedRoot) return;
+        // 构建失败冷却（目录不可读等）——冷却内直接跳过，防每请求反复全量构建
+        if (Date.now() < this._buildFailAt) return;
+
+        const loaded = await loadIndex(expectedRoot);
         if (loaded) {
+            if (this.rootDir !== expectedRoot) return;  // setRoot 竞态 → 丢弃
             this.idx = loaded.idx;
             this.manifest = loaded.manifest;
             this.symbols = loaded.symbols;
             this.ready = true;
-            this._symbolGraphCache = null;  // ★ fresh graph on load
-            console.log('[index] loaded existing index:', loaded.idx.stats.N, 'chunks,', Object.keys(loaded.manifest.files).length, 'files');
+            this._symbolGraphCache = null;
+            console.log('[index] loaded existing index:', loaded.idx.stats.N, 'chunks,', Object.keys(loaded.manifest.files).length, 'files @', expectedRoot);
         } else {
-            // Build in background
-            this.buildAsync();
+            await this.buildAsync();
         }
+    }
+
+    /** 用完即焚：空闲 TTL 后释放全部索引内存（下次调用读盘重建） */
+    private touch(): void {
+        if (this._idleTimer) clearTimeout(this._idleTimer);
+        this._idleTimer = setTimeout(() => this.release(), IndexService.IDLE_TTL_MS);
+        if (this._idleTimer.unref) this._idleTimer.unref();
+    }
+
+    release(): void {
+        if (this._idleTimer) { clearTimeout(this._idleTimer); this._idleTimer = null; }
+        this.idx = null;
+        this.manifest = null;
+        this.symbols = null;
+        this._symbolGraphCache = null;
+        this.ready = false;
     }
 
     get isReady(): boolean { return this.ready; }
@@ -665,11 +721,13 @@ export class IndexService {
     /** Build index asynchronously (does not block caller) */
     async buildAsync(): Promise<void> {
         if (this.building) return;
+        const root = this.rootDir;
+        if (!root) return;
         this.building = true;
-        console.log('[index] building index for:', this.rootDir);
+        console.log('[index] building index for:', root);
 
         try {
-            const files = await this.collectFiles(this.rootDir);
+            const files = await this.collectFiles(root);
             console.log('[index] collected', files.length, 'files for indexing');
 
             const idx = createEmptyIndex();
@@ -688,7 +746,7 @@ export class IndexService {
                     if (content.includes('\x00')) continue;
 
                     const ext = path.extname(filePath).toLowerCase();
-                    const relPath = path.relative(this.rootDir, filePath).replace(/\\/g, '/');
+                    const relPath = path.relative(root, filePath).replace(/\\/g, '/');
 
                     // Only index source code + text files
                     const indexableExts = ['.ts', '.js', '.py', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp',
@@ -724,18 +782,26 @@ export class IndexService {
 
             finalizeIndex(idx);
 
+            // ★ setRoot 竞态守卫：构建期间索引根已切换 → 丢弃本次结果（下次按需重建）
+            if (this.rootDir !== root) {
+                console.log('[index] build discarded (root switched):', root);
+                return;
+            }
+
             this.idx = idx;
             this.manifest = manifest;
             this.symbols = symbols;
             this.ready = true;
             this._symbolGraphCache = null;  // ★ invalidate graph cache on rebuild
 
-            await saveIndex(this.rootDir, idx, manifest, symbols);
+            await saveIndex(root, idx, manifest, symbols);
             console.log('[index] build complete:', idx.stats.N, 'chunks,', processed, 'files');
         } catch (e) {
             console.error('[index] build failed:', e);
+            this._buildFailAt = Date.now() + IndexService.BUILD_FAIL_COOLDOWN_MS;  // 冷却防反复全量构建
         } finally {
             this.building = false;
+            if (this.rootDir === root) this.touch();  // 构建期间保持续命（防刚建好就被焚）
         }
     }
 
@@ -802,6 +868,7 @@ export class IndexService {
 
     /** Main search: BM25 + symbol matching */
     search(query: string, topK: number = 10): { results: SearchResult[]; indexReady: boolean } {
+        this.touch();
         if (!this.idx || !this.symbols) {
             return { results: [], indexReady: false };
         }

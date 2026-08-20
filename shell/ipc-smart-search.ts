@@ -5,10 +5,11 @@
 // 语义搜索 + 正则搜索 + 符号搜索 三路并行合并
 // ============================================================================
 
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { IndexService } from './index-service';
+import { getLockedFolderForWindow } from './project-lock';
 
 // Re-export for external use
 export { IndexService };
@@ -45,6 +46,18 @@ export function registerSmartSearchIpc(indexService: IndexService): void {
         includeRegex?: boolean;  // default true
         returnStructured?: boolean;  // ★ when true, return {text, bm25: [...]} for embedding re-rank
     }) => {
+        // ★ 2026-08-20 按需索引（ghrun 同款语义）：索引根 = 发起窗口的主文件夹（project-lock），
+        //   首次 search_smart 才构建/读盘；空闲 5min 自动焚毁全部索引内存，下次调用读盘重建。
+        //   无窗口锁（未绑定主文件夹）→ 不建立语义索引，正则兜底照旧。
+        try {
+            const win = BrowserWindow.fromWebContents(_e.sender);
+            if (win) {
+                const folder = getLockedFolderForWindow(win.id);
+                if (folder) indexService.setRoot(folder);
+            }
+        } catch { /* 静默降级 */ }
+        if (indexService.hasRoot) await indexService.ensureReady();
+
         const query = args.query;
         const topK = args.topK || 10;
         const includeRegex = args.includeRegex !== false;
@@ -74,10 +87,21 @@ export function registerSmartSearchIpc(indexService: IndexService): void {
         if (indexService.isReady) {
             const { results, indexReady } = indexService.search(query, topK);
             if (indexReady) {
+                // ★ 2026-08-20 snippet 按需读盘（fileContents 全量常驻已移除）：
+                //   并行补全 bm25 结果的 snippet + 行号（chunkStart 定位），符号结果自带内置 snippet 不动
+                const projectRoot = indexService.getRoot() || '';
+                await Promise.all(results.map(async (r) => {
+                    if (r.matchType !== 'bm25' || r.chunkStart === undefined) return;
+                    try {
+                        const absPath = path.join(projectRoot, r.filePath);
+                        const content = await fs.promises.readFile(absPath, 'utf8');
+                        r.snippet = content.slice(r.chunkStart, r.chunkStart + 300).replace(/\n/g, ' ');
+                        r.line = (content.slice(0, r.chunkStart).match(/\n/g) || []).length + 1;
+                    } catch { /* 读失败保留空 snippet */ }
+                }));
+
                 const lines: string[] = [];
                 for (const r of results) {
-                    const projectRoot = (indexService as any).rootDir || '';
-                    const absPath = path.join(projectRoot, r.filePath);
                     const snippet = r.snippet.length > 200 ? r.snippet.slice(0, 200) + '...' : r.snippet;
                     lines.push(`[${r.matchType.toUpperCase()}] ${r.filePath}${r.line ? ':' + r.line : ''} (score:${r.score.toFixed(1)})\n  ${snippet}`);
                     // ★ Capture structured data for embedding re-rank
@@ -107,7 +131,7 @@ export function registerSmartSearchIpc(indexService: IndexService): void {
 
             const matches: string[] = [];
             const startTime = Date.now();
-            const rootDir = (indexService as any).rootDir || process.cwd();
+            const rootDir = indexService.getRoot() || process.cwd();
 
             if (indexService.isReady) {
                 // ★ Fast path: reuse index manifest file list — skip directory walk
