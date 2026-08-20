@@ -178,6 +178,7 @@ function _buildSendIntent(questId, content, opts) {
         noTools: opts.noTools || false,
         backpackEstK: opts.backpackEstK || 0,  // ★ compress 楼层：操作开局背包重量（点击时已捕获）
         forceFloorNum: opts.forceFloorNum || 0,  // ★ 0-house 同层重试：跳过 nextFloorNum，复用旧楼层
+        fromQueue: opts.fromQueue || false,  // ★ 队列直通（2026-08-20）：发送不清空编辑框/图片条
     };
 }
 
@@ -215,6 +216,7 @@ async function _executeSend(intent) {
         // ★ 2026-08-11: fatal 拦截必须显式提示（q184 事故：红框未渲染时用户不知有恢复入口，
         //   Enter 静默吞 → "发任何消息都没反应"）。红框正常时此提示仅作指引
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('该任务已中断，请点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_e2) { }
+        if (intent.fromQueue) _queueBusy = false;  // ★ 队列直通被 fatal 拦截 → 复位排水锁（防永久卡死）
         return;
     }
     if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') return;
@@ -422,10 +424,12 @@ async function _executeSend(intent) {
         }
         if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
     }
-    if (pendingImages && pendingImages.length > 0 && userMsgEl) {
+    // ★ 图片源：队列直通消息用 intent.images，手动发送用编辑框 pendingImages（2026-08-20）
+    var _srcImgs = (intent.images && intent.images.length > 0) ? intent.images : (pendingImages || []);
+    if (_srcImgs.length > 0 && userMsgEl) {
         var imgRow = document.createElement('div');
         imgRow.style.cssText = 'margin-top:6px;';
-        pendingImages.forEach(function (img) {
+        _srcImgs.forEach(function (img) {
             var wrap = document.createElement('span');
             wrap.className = 'msg-img-wrap';
             var imgEl = document.createElement('img');
@@ -452,11 +456,12 @@ async function _executeSend(intent) {
         userMsgEl.appendChild(imgRow);
     }
 
-    var _images = pendingImages && pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; }) : null;
+    var _images = _srcImgs.length > 0 ? _srcImgs.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; }) : null;
 
-    // ★ $input 清理：仅 normal 类型且当前活跃 quest 才清除（防队列/后台发送误清）
+    // ★ $input 清理：仅 normal 类型、当前活跃 quest、非队列直通才清除——
+    //   队列直通（fromQueue）绝不触碰编辑框/图片条（那是用户草稿，2026-08-20 定案）；
     //   compress 类型不清理（机器生成的楼层，不影响用户编辑状态）
-    if (sendType === 'normal' && qid === questActiveId) {
+    if (sendType === 'normal' && qid === questActiveId && !intent.fromQueue) {
         $input.value = '';
         $input._resetUndo();
         pendingImages = [];
@@ -1186,12 +1191,10 @@ async function _executeSend(intent) {
         if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
         _queueBusy = false;
         // ★ 链执行器 .then 已复位 _chainBusy，排水 sendMessage → _enqueueSend 追加链尾串行执行
-        // ★ 自动暂停自愈（2026-08-20）：非人工暂停（草稿保护型）在楼层完结时强制恢复——
-        //   本次发送已消费草稿 → 立即排水；用户又键入了新草稿 → 再入自动暂停，下次完结再自愈，
-        //   结构上永不粘死。人工暂停（_queuePausedManual=true）绝不自动恢复。
-        if (_queue && _queue.length > 0 && _activeAgent === agent) {
-            if (_queuePaused && !_queuePausedManual) _queuePaused = false;
-            if (!_queuePaused) _triggerQueueSend();
+        // ★ 排水（2026-08-20 修订）：自动暂停已整体废除（队列直通发送不触碰编辑框，
+        //   草稿保护无存在必要）——仅人工暂停（_queuePausedManual）阻止排水。
+        if (_queue && _queue.length > 0 && _activeAgent === agent && !_queuePaused) {
+            _triggerQueueSend();
         }
         if (_activeAgent === agent) {
             // ★ 无条件同步按钮 UI：无论正常完成/停止/报错，finally 做最后一次按钮刷新

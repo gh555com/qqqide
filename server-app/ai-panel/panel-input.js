@@ -5,20 +5,14 @@
 // ── 排队按钮状态：有文字或图片即可排队（fatal 态禁用）──
 // ★ 2026-08-16 闭环重构：刷新收敛于两个统一出口（autoResizeInput = value 变更出口 / renderImageStrip = 图片增删出口），
 //   打字/粘贴文本/粘贴图片/删图/undo/redo/切 quest 恢复/发送清空/换行按钮全部自动覆盖，零漏网。
+// ★ 2026-08-20：自动暂停（草稿保护）整体废除——队列发送改为直通载荷不触碰编辑框，此处仅管按钮可用性
 function updateQueueBtn() {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     if (_ag && _ag._stopState === 'fatal') { $queueBtn.disabled = true; return; }
     var hasText = $input.value.trim().length > 0;
     var hasImages = (typeof pendingImages !== 'undefined') && pendingImages.length > 0;
     $queueBtn.disabled = !(hasText || hasImages);
-    // ★ 自动暂停自愈（2026-08-20）：草稿（文字/图片）清空瞬间自动恢复排水——
-    //   仅非人工暂停（_queuePausedManual=false）才恢复；草稿仍在则保持等待，永不粘死。
-    //   建楼中（_sending/streaming）只恢复标志，排水交给楼层完结路径。
-    if (_queuePaused && !_queuePausedManual && _queue && _queue.length > 0 && !hasText && !hasImages) {
-        _queuePaused = false;
-        renderQueueStrip();
-        if (!_sending && !streaming) _triggerQueueSend();
-    }
+    // ★ 2026-08-20 修订：自动暂停已整体废除（队列直通发送不触碰编辑框），此处无自愈逻辑
 }
 
 // ── 无主文件夹时直接弹文件夹选择 ──
