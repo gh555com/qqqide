@@ -93,7 +93,17 @@
       "zoomIn": "放大",
       "zoomOut": "缩小",
       "close": "关闭(Esc 或 光标右键)",
-      "resetPosition": "重置位置"
+      "resetPosition": "重置位置",
+      "mem": "内存",
+      "file": "文件",
+      "path": "路径",
+      "memTitle": "图片进入内存（剪贴板图像），可直接粘贴到聊天或画布",
+      "fileTitle": "复制图片文件，可粘贴到聊天/Roam/资源管理器",
+      "pathTitle": "复制图片路径",
+      "memOk": "图片已进入内存，可直接粘贴",
+      "fileOk": "文件已复制，可直接粘贴",
+      "noLocalFile": "该图片无本地文件，无法复制文件",
+      "noLocalPath": "该图片无本地路径"
     },
     "about": {
       "title": "关于 qqq",
@@ -181,6 +191,7 @@
     "guide": "引导",
     "queue": {
       "full": "队列限宽3，请等待上一条消息发出。",
+      "draftKept": "队列已满，草稿保留在编辑框；发送或清空草稿后队列自动继续",
       "save": "保存",
       "delete": "删除",
       "cancel": "取消",

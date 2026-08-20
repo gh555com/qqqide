@@ -435,7 +435,17 @@ async function _executeSend(intent) {
             var badge = document.createElement('span');
             badge.className = 'msg-img-badge';
             badge.textContent = '#' + img.id;
-            badge.onclick = function () { openLightbox(img.dataUrl, img.base64); };
+            badge.onclick = function () {
+                // ★ 发送时图片已写盘楼层目录（img_N.png）→ 动态解析本地路径传给 overlay
+                //   （dataUrl 缩略图场景文件/路径按钮依赖；解析失败回退纯 dataUrl）
+                if (img.fileName && window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
+                    window.questStore.resolveFloorDir(qid, (agent._currentFloorNum || agent._ctx.totalFloors)).then(function (_fDir) {
+                        openLightbox(img.dataUrl, img.base64, _fDir ? _fDir + img.fileName : null);
+                    }).catch(function () { openLightbox(img.dataUrl, img.base64); });
+                } else {
+                    openLightbox(img.dataUrl, img.base64);
+                }
+            };
             wrap.appendChild(badge);
             imgRow.appendChild(wrap);
         });
@@ -1176,8 +1186,12 @@ async function _executeSend(intent) {
         if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
         _queueBusy = false;
         // ★ 链执行器 .then 已复位 _chainBusy，排水 sendMessage → _enqueueSend 追加链尾串行执行
-        if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === agent) {
-            _triggerQueueSend();
+        // ★ 自动暂停自愈（2026-08-20）：非人工暂停（草稿保护型）在楼层完结时强制恢复——
+        //   本次发送已消费草稿 → 立即排水；用户又键入了新草稿 → 再入自动暂停，下次完结再自愈，
+        //   结构上永不粘死。人工暂停（_queuePausedManual=true）绝不自动恢复。
+        if (_queue && _queue.length > 0 && _activeAgent === agent) {
+            if (_queuePaused && !_queuePausedManual) _queuePaused = false;
+            if (!_queuePaused) _triggerQueueSend();
         }
         if (_activeAgent === agent) {
             // ★ 无条件同步按钮 UI：无论正常完成/停止/报错，finally 做最后一次按钮刷新

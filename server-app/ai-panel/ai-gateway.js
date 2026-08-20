@@ -386,7 +386,15 @@
                 reqBody.images = opts.images;
             }
             var resp = await _postJsonWithFailover(_URLS.imageGenPrimary, _URLS.imageGenFallback, reqBody, token);
-            if (!resp || !resp.ok) return null;
+            if (!resp) return null;
+            if (!resp.ok) {
+                // ★ 透传服务端错误消息（INVALID_SIZE/BILLING_DOWN 等 4xx/5xx，不再盲报 could not create task）
+                try {
+                    var errData = await resp.json();
+                    if (errData && errData.error) return { error: errData.error };
+                } catch (_) { }
+                return null;
+            }
             var data = await resp.json();
             if (!data.ok || !data.task_id) return null;
             return { task_id: data.task_id };

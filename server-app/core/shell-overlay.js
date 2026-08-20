@@ -79,6 +79,8 @@ function bootAiOverlay() {
 
   // ── 选中高亮全文匹配（CSS Highlight API — 零 DOM 操作，不阻复制、零抖动）──
   var _ovLastMatchText = '';
+  // ★ 图片本地路径（open-image 消息 localPath 透传；dataUrl 缩略图场景的文件/路径按钮靠它）
+  var _ovLocalPath = null;
 
   function _ovApplyHighlights(text) {
     _ovClearHighlights();
@@ -205,6 +207,76 @@ function bootAiOverlay() {
     if (img) { doCopy(img.src); return; }
   });
 
+  // ★ 图片专用三按钮（内存/文件/路径）——仅图片预览显示；表格/代码块隐藏，保持原样
+  var memBtn = tbBtn(window._i('shell.overlay.mem', '内存'), window._i('shell.overlay.memTitle', '图片进入内存（剪贴板图像），可直接粘贴到聊天或画布'));
+  var fileBtn = tbBtn(window._i('shell.overlay.file', '文件'), window._i('shell.overlay.fileTitle', '复制图片文件，可粘贴到聊天/Roam/资源管理器'));
+  var pathBtn = tbBtn(window._i('shell.overlay.path', '路径'), window._i('shell.overlay.pathTitle', '复制图片路径'));
+
+  // 当前 overlay 图片 src（仅图片预览存在 <img>）
+  function _currentOverlayImgSrc() {
+    var img = contentEl.querySelector('img');
+    return img ? img.src : null;
+  }
+  // src → 本地文件路径：file:/// URL 解码 / 裸盘符路径（A4/徽章/灯箱直传形态）直接收
+  function _localPathFromSrc(src) {
+    if (typeof src !== 'string') return null;
+    if (/^file:\/\//i.test(src)) {
+      var p = src.replace(/^file:\/\/\//i, '');
+      try { p = decodeURIComponent(p); } catch (_) { }
+      return p;
+    }
+    if (/^[A-Za-z]:[\\/]/.test(src)) return src;
+    return null;
+  }
+  function _ovToast(msg, type) {
+    if (window.qqqideQoast) window.qqqideQoast.show(msg, { type: type || 'info', duration: 2500 });
+  }
+
+  // 内存 — 图片进剪贴板（图像数据），可直接粘贴到聊天/画布
+  memBtn.addEventListener('click', function () {
+    var src = _currentOverlayImgSrc();
+    if (!src) { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+    var p = _ovLocalPath || _localPathFromSrc(src);
+    var payload = p ? { path: p } : (/^data:/i.test(src) ? { dataUrl: src } : null);
+    if (!payload || !bridge || !bridge.clipboard || !bridge.clipboard.writeImage) {
+      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+    }
+    bridge.clipboard.writeImage(payload).then(function (ok) {
+      _ovToast(ok ? window._i('shell.overlay.memOk', '图片已进入内存，可直接粘贴') : window._i('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+    }).catch(function () { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
+  });
+
+  // 文件 — 复制图片文件本体（CF_HDROP），可粘贴到聊天/Roam/资源管理器
+  fileBtn.addEventListener('click', function () {
+    var src = _currentOverlayImgSrc();
+    if (!src) return;
+    var p = _ovLocalPath || _localPathFromSrc(src);
+    if (!p) { _ovToast(window._i('shell.overlay.noLocalFile', '该图片无本地文件，无法复制文件'), 'info'); return; }
+    if (!bridge || !bridge.clipboard || !bridge.clipboard.writeFiles) {
+      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+    }
+    bridge.clipboard.writeFiles([p]).then(function (ok) {
+      _ovToast(ok ? window._i('shell.overlay.fileOk', '文件已复制，可直接粘贴') : window._i('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+    }).catch(function () { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
+  });
+
+  // 路径 — 复制图片文件路径
+  pathBtn.addEventListener('click', function () {
+    var src = _currentOverlayImgSrc();
+    if (!src) return;
+    var p = _ovLocalPath || _localPathFromSrc(src);
+    if (!p) {
+      if (/^data:/i.test(src)) { _ovToast(window._i('shell.overlay.noLocalPath', '该图片无本地路径'), 'info'); return; }
+      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+    }
+    if (!bridge || !bridge.clipboard || !bridge.clipboard.writeText) {
+      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+    }
+    bridge.clipboard.writeText(p).then(function () {
+      _ovToast(window._i('shell.overlay.copied', '已复制'), 'success');
+    }).catch(function () { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
+  });
+
   // Zoom out（跳过冷却护盾，准许快速连按）
   var zoomOutBtn = tbBtn('\u2212', window._i('shell.overlay.zoomOut', '缩小'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
   zoomOutBtn.setAttribute('data-no-cd', '');
@@ -255,6 +327,9 @@ function bootAiOverlay() {
   });
 
   toolbar.appendChild(copyBtn);
+  toolbar.appendChild(memBtn);
+  toolbar.appendChild(fileBtn);
+  toolbar.appendChild(pathBtn);
   toolbar.appendChild(zoomOutBtn);
   toolbar.appendChild(zoomInBtn);
   toolbar.appendChild(closeBtnEl);
@@ -268,6 +343,7 @@ function bootAiOverlay() {
   (_mainEl || document.body).appendChild(overlay);
 
   function close() {
+    _ovLocalPath = null;
     try { _stopRepeat(); } catch (_) { }
     try { _ovClearHighlights(); } catch (_) { }
     _closeTt.style.display = 'none';
@@ -418,6 +494,7 @@ function bootAiOverlay() {
     if (e.data.action === 'open-image') {
       // 强制清理上一轮残留状态（含 close 函数恢复）
       close = _baseClose;
+      _ovLocalPath = e.data.localPath || null;
       _stopRepeat();
       overlay.style.display = 'none';
       contentEl.innerHTML = '';
@@ -488,9 +565,15 @@ function bootAiOverlay() {
       };
       img.src = e.data.src;
       dpad.style.display = 'block';
+      // ★ 图片模式：三按钮（内存/文件/路径），复制按钮隐藏
+      copyBtn.style.display = 'none';
+      memBtn.style.display = '';
+      fileBtn.style.display = '';
+      pathBtn.style.display = '';
     }
 
     if (e.data.action === 'open-table') {
+      _ovLocalPath = null;
       try {
         // 强制清理上一轮残留状态（含 close 函数恢复）
         close = _baseClose;
@@ -598,6 +681,11 @@ function bootAiOverlay() {
         }, { passive: false });
 
         dpad.style.display = 'block';
+        // ★ 表格/代码块模式：复制按钮原样，三按钮隐藏
+        copyBtn.style.display = '';
+        memBtn.style.display = 'none';
+        fileBtn.style.display = 'none';
+        pathBtn.style.display = 'none';
       } catch (_) {
         // 出错时强制复位，避免 overlay 残留 invisible 阻挡 UI
         overlay.style.display = 'none';
@@ -606,7 +694,46 @@ function bootAiOverlay() {
         dpad.style.display = 'none';
       }
     }
+
+    // ★ AI 面板图片 hover「Roam」按钮：激活 roam tab + 聚焦 + 跳到目录选中文件
+    if (e.data.action === 'reveal-in-roam') {
+      _revealInRoam(e.data.src);
+    }
   });
+
+  // 主窗口侧：Roam 定位文件（iframe 未就绪时重试，覆盖首次懒加载窗口）
+  function _revealInRoam(src) {
+    var path = null;
+    if (typeof src === 'string' && /^file:\/\//i.test(src)) {
+      path = src.replace(/^file:\/\/\//i, '');
+      try { path = decodeURIComponent(path); } catch (_) { }
+    }
+    if (!path) {
+      if (window.qqqideQoast) window.qqqideQoast.show('该图片无本地文件，无法在 Roam 定位', { type: 'info', duration: 2500 });
+      return;
+    }
+    // ① 前置显示：激活 roam tab（X 区 gaea 分组，rage 注册）
+    try {
+      var gaeaGrp = window.qqqTabs && window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+      if (gaeaGrp) {
+        var roamTab = gaeaGrp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
+        if (roamTab && window.qqqTabs.activateTab) window.qqqTabs.activateTab(gaeaGrp, roamTab.id);
+      }
+    } catch (_) { }
+    // ② 获得焦点 + ③ 跳转选中：重试直到 roam iframe 就绪
+    var sent = 0;
+    var timer = setInterval(function () {
+      var it = document.querySelector('iframe[src*="q2-roam"]');
+      if (it && it.contentWindow) {
+        try {
+          it.contentWindow.focus();
+          it.contentWindow.postMessage({ type: 'qqq-roam-cmd', cmd: 'roam.revealFile', path: path }, '*');
+        } catch (_) { }
+      }
+      sent++;
+      if (sent >= 10) clearInterval(timer);
+    }, 300);
+  }
 
   // Theme sync
   if (window.qqqideTheme && window.qqqideTheme.onChange) {

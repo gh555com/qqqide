@@ -1349,13 +1349,36 @@ function _debounceSaveQueue() {
     }, 500);
 }
 
+// ★ 草稿随行（2026-08-20）：人工点「继续」时，编辑框文字/图片草稿入队尾（零丢失）
+//   返回 'ok' 已入队 / 'full' 队列满无法入队 / 'empty' 无草稿
+function _rescueDraftToQueue() {
+    var text = getInputText().trim();
+    if (!text && pendingImages.length === 0) return 'empty';
+    if (_queue.length >= QUEUE_MAX) return 'full';
+    _queue.push({
+        id: 'bk_' + Date.now(),
+        text: text,
+        images: pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; }) : [],
+        selectedTier: selectedTier,
+        ts: Date.now()
+    });
+    $input.value = '';
+    $input._resetUndo();
+    pendingImages = [];
+    renderImageStrip();
+    _debounceSaveQueue();
+    return 'ok';
+}
+
 function _triggerQueueSend() {
     if (_queueBusy) return;
     var _q = _queue;
     if (!_q || _q.length === 0) { renderQueueStrip(); return; }
     var inputText = ($input.value || '').trim();
-    // ★ 键入框有文字时暂停队列，保护用户正在编辑的内容不被覆盖
-    if (inputText) {
+    // ★ 草稿保护（2026-08-20 修订）：文字 OR 图片草稿任一存在 → 自动暂停。
+    //   只置 _queuePaused，绝不置 _queuePausedManual——楼层完结/草稿清空时自动恢复，
+    //   永不粘死（旧实现永久暂停；且纯图片草稿不受保护 → 被队列发送静默覆盖丢失）。
+    if (inputText || pendingImages.length > 0) {
         _queuePaused = true;
         renderQueueStrip();
         return;
@@ -1398,13 +1421,38 @@ function renderQueueStrip() {
     var pauseBtn = document.createElement('button');
     pauseBtn.className = 'queue-header-btn';
     pauseBtn.textContent = _queuePaused ? ('▶ ' + _i('ai.queue.resume', '继续')) : ('⏸ ' + _i('ai.queue.pause', '暂停'));
-    pauseBtn.title = _queuePaused ? '恢复自动发送' : '暂停自动发送';
+    pauseBtn.title = _queuePaused
+        ? (_queuePausedManual ? '恢复自动发送' : '编辑框有草稿，队列自动等待；发送/清空草稿或点此立即继续')
+        : '暂停自动发送';
     pauseBtn.onclick = function (e) {
         e.stopPropagation();
-        _queuePaused = !_queuePaused;
-        renderQueueStrip();
-        if (!_queuePaused && _queue.length > 0 && !streaming && !_sending) {
-            _triggerQueueSend();
+        if (_queuePaused) {
+            // ★ 恢复（2026-08-20）：清人工标志；编辑框草稿随行入队尾（零丢失），立即排水
+            _queuePaused = false;
+            _queuePausedManual = false;
+            var _rescued = _rescueDraftToQueue();
+            if (_rescued === 'full') {
+                // 队列已满且仍有草稿 → 保持自动暂停（草稿保护），发送/清空草稿后自动恢复
+                _queuePaused = true;
+                renderQueueStrip();
+                try {
+                    if (window.parent && window.parent.qqqideQoast) {
+                        window.parent.qqqideQoast.show(
+                            (window._i ? window._i('ai.queue.draftKept', '队列已满，草稿保留在编辑框；发送或清空草稿后队列自动继续') : '队列已满，草稿保留在编辑框；发送或清空草稿后队列自动继续'),
+                            { type: 'warning', duration: 5000 });
+                    }
+                } catch (_qerr) { }
+                return;
+            }
+            renderQueueStrip();
+            if (_queue.length > 0 && !streaming && !_sending) {
+                _triggerQueueSend();
+            }
+        } else {
+            // ★ 人工暂停（2026-08-20）：唯一置 _queuePausedManual 的入口，楼层完结绝不自动恢复
+            _queuePaused = true;
+            _queuePausedManual = true;
+            renderQueueStrip();
         }
     };
     header.appendChild(pauseBtn);
@@ -1586,8 +1634,10 @@ $queueBtn.onclick = function () {
     $input.focus();
     _debounceSaveQueue();
     // ★ 空闲时立即触发：若当前无发送/无流式/未暂停，直接排水
-    if (!_sending && !streaming && !_queuePaused) {
-        _triggerQueueSend();
+    //   （2026-08-20：入队后草稿已被本按钮收编清空 → 若此前因草稿自动暂停，立即恢复排水；人工暂停不动）
+    if (!_sending && !streaming) {
+        if (_queuePaused && !_queuePausedManual) _queuePaused = false;
+        if (!_queuePaused) _triggerQueueSend();
     }
 };
 

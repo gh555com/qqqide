@@ -1198,7 +1198,7 @@
 
   // ★ roam 硬创建函数：零依赖 goods/gaea-host，零异步
   function _createRoamTabHard() {
-    addGaeaTab('roam', 'roam', function (pane) {
+    addGaeaTab('roam', 'Roam', function (pane) {
       pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
       var iframe = document.createElement('iframe');
       iframe.src = '/qqqide/goods/file-explorer/q2-roam.html';

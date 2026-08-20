@@ -132,6 +132,7 @@ function _getOrCreateAgent(questId) {
         ag._streaming = false;
         ag._queue = [];
         ag._queuePaused = false;
+        ag._queuePausedManual = false; // ★ 人工暂停标志（2026-08-20），见 panel-state.js
         ag._questId = questId;  // ★ per-agent questId for trace/cross-panel isolation
         pool[questId] = ag;
     }

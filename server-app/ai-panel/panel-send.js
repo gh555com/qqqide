@@ -18,13 +18,7 @@ async function sendMessage(content, opts) {
     var intent = _buildSendIntent(questActiveId, content, opts);
     return _enqueueSend(questActiveId, intent);
 }
-function _continueQueue() {
-    var _qs = document.getElementById('queue-sending-status');
-    if (_qs) _qs.remove();
-    if (_queuePaused) return;
-    if (_activeAgent !== agent) return;
-    _triggerQueueSend();
-}
+
 
 // ═══ 聚合红框：per-floor 单框多行错误 + 单链接（一次渲染永久不变，仅追加） ═══
 // ★ 铁律：红框在楼层间（floor N az 之后、floor N+1 user 气泡之前），不在 _contentWrap 内
@@ -745,8 +739,9 @@ $input.addEventListener('focus', function () {
 });
 
 // \u2550\u2550\u2550 Lightbox \u2550\u2550\u2550
-function openLightbox(src, base64) {
-    _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: src, base64: base64 || null });
+function openLightbox(src, base64, localPath) {
+    // ★ localPath：图片磁盘路径（dataUrl 缩略图场景 overlay 的文件/路径按钮依赖它）
+    _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: src, base64: base64 || null, localPath: localPath || null });
 }
 
 function closeLightbox() {

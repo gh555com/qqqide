@@ -4,7 +4,7 @@
 // ipc-misc.ts — 杂项 IPC: 窗口 / 对话框 / 资产根 / 磁盘 / 新窗口
 // ============================================================================
 
-import { app, ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell } from 'electron';
+import { app, ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell, nativeImage } from 'electron';
 import { openUrl } from './browser-launcher';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -150,6 +150,24 @@ ${escapedPaths}
             return true;
         } catch (e) {
             console.warn('[klipzap] writeFiles failed:', e);
+            return false;
+        }
+    });
+
+    // writeImage — 图片进内存（写图像数据到剪贴板，可粘贴到聊天/画布）
+    ipcMain.handle('qqqide:clipboard:writeImage', async (_e, payload: { path?: string; dataUrl?: string }) => {
+        try {
+            let img: Electron.NativeImage | null = null;
+            if (payload && typeof payload.path === 'string' && payload.path) {
+                img = nativeImage.createFromPath(payload.path);
+            } else if (payload && typeof payload.dataUrl === 'string' && payload.dataUrl) {
+                img = nativeImage.createFromDataURL(payload.dataUrl);
+            }
+            if (!img || img.isEmpty()) return false;
+            clipboard.writeImage(img);
+            return true;
+        } catch (e) {
+            console.warn('[klipzap] writeImage failed:', e);
             return false;
         }
     });

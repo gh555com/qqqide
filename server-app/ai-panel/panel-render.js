@@ -37,7 +37,9 @@ function renderMarkdown(src) {
     // ★ 过滤明显占位/截断路径（含 ... 的 file:/// URL），避免浏览器 404
     s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
         if (/^file:\/\/\/.*\.\.\./.test(url)) { return '<em>[' + (alt || 'image') + ']</em>'; }
-        return '<div class="table-wrap img-wrap"><span class="table-view-btn">▶ 展开</span><span class="img-info"></span><img src="' + url + '" alt="' + alt + '" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
+        // ★ 本地图片（file:///）额外挂 Roam 按钮：hover 定位到文件所在目录并选中
+        var _roamBtn = /^file:\/\//i.test(url) ? '<span class="table-roam-btn">📂 Roam</span>' : '';
+        return '<div class="table-wrap img-wrap"><span class="table-view-btn">▶ 展开</span>' + _roamBtn + '<span class="img-info"></span><img src="' + url + '" alt="' + alt + '" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
     });
     // Links
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');

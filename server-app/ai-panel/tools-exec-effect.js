@@ -463,6 +463,9 @@ async function executeGenerateImage(args) {
             images: imagesBase64.length > 0 ? imagesBase64 : undefined,
             token: token
         });
+        if (submitResult && submitResult.error) {
+            return 'Image generation failed: ' + submitResult.error;
+        }
         if (!submitResult || !submitResult.task_id) {
             return 'Image generation failed: could not create task';
         }
