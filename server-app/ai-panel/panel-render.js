@@ -14,7 +14,7 @@ function renderMarkdown(src) {
         var codeHtml = '<pre><code class="lang-' + (lang || '') + '">' + rawCode + '</code></pre>';
         codeBlocks.push(
             '<div class="table-wrap">' +
-            '<span class="table-view-btn">▶ 展开</span>' +
+            '<span class="table-view-btn">View</span>' +
             codeHtml + '</div>'
         );
         return '\x00CB' + idx + '\x00';
@@ -38,8 +38,8 @@ function renderMarkdown(src) {
     s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
         if (/^file:\/\/\/.*\.\.\./.test(url)) { return '<em>[' + (alt || 'image') + ']</em>'; }
         // ★ 本地图片（file:///）额外挂 Roam 按钮：hover 定位到文件所在目录并选中
-        var _roamBtn = /^file:\/\//i.test(url) ? '<span class="table-roam-btn">📂 Roam</span>' : '';
-        return '<div class="table-wrap img-wrap"><span class="table-view-btn">▶ 展开</span>' + _roamBtn + '<span class="img-info"></span><img src="' + url + '" alt="' + alt + '" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
+        var _roamBtn = /^file:\/\//i.test(url) ? '<span class="table-roam-btn">Roam</span>' : '';
+        return '<div class="table-wrap img-wrap"><span class="table-view-btn">View</span>' + _roamBtn + '<span class="img-info"></span><img src="' + url + '" alt="' + alt + '" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
     });
     // Links
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
@@ -55,7 +55,7 @@ function renderMarkdown(src) {
         }).join('');
         var rawTable = '<table><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';
         return '<div class="table-wrap">' +
-            '<span class="table-view-btn">▶ 展开</span>' +
+            '<span class="table-view-btn">View</span>' +
             '<div class="table-inner">' + rawTable + '</div></div>';
     });
     // Lists: 先转 <li>，再用占位符保护整个 <ul>/<ol> 块，防止后续 <br> 和 <p> 破坏列表间距

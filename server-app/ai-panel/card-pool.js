@@ -407,7 +407,7 @@ var CardPool = (function () {
     if (wrap.querySelector(':scope > .table-roam-btn')) return;
     var b = document.createElement('span');
     b.className = 'table-roam-btn';
-    b.textContent = '📂 Roam';
+    b.textContent = 'Roam';
     b.title = '在 Roam 中定位此文件';
     wrap.insertBefore(b, wrap.firstChild);
   }
@@ -621,7 +621,7 @@ var CardPool = (function () {
       _twrap.className = 'table-wrap img-wrap';
       var _tbtn = document.createElement('span');
       _tbtn.className = 'table-view-btn';
-      _tbtn.textContent = '\u25b6 \u5c55\u5f00';
+      _tbtn.textContent = 'View';
       var _iinfo = document.createElement('span');
       _iinfo.className = 'img-info';
       _bImg.parentNode.insertBefore(_twrap, _bImg);
@@ -631,7 +631,7 @@ var CardPool = (function () {
       if (/^file:\/\//i.test(_bImg.src || '')) {
         var _rbtn = document.createElement('span');
         _rbtn.className = 'table-roam-btn';
-        _rbtn.textContent = '📂 Roam';
+        _rbtn.textContent = 'Roam';
         _rbtn.title = '在 Roam 中定位此文件';
         _twrap.appendChild(_rbtn);
       }
