@@ -757,6 +757,8 @@
             projects.push({ path: folderPath, name: basename(folderPath) });
             _bumpRecent(folderPath);
             _verifyFolderLock(folderPath);
+            // ★ 2026-08-20: fresh 窗口同样恢复出战阵营（OS 优先 → only.sq3 兜底）
+            _restoreFormationForMain(folderPath);
           }
         } catch (_) { }
       }
@@ -773,7 +775,8 @@
             projects.push({ path: rFolderPath, name: basename(rFolderPath) });
             _bumpRecent(rFolderPath);
             _verifyFolderLock(rFolderPath);
-            _restoreFormationFromOnlyStore(rFolderPath);
+            // ★ 2026-08-20: restore 统一走 OS 优先链（旧只查 only.sq3, OS 权威数据丢失）
+            _restoreFormationForMain(rFolderPath);
           }
         } catch (_) { }
       }
@@ -799,6 +802,30 @@
       var onlyDb = window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
       if (onlyDb) onlyDb.set('ai.formation', auxPaths).catch(function () { });
     } catch (_) { }
+  }
+
+  // ★ 主文件夹阵营恢复统一入口（2026-08-20 定案: 加号选中 / restore / fresh 三路径共用）
+  //   链: OS ws.sq3 formation.{main} 优先（工作空间唯一真理源）→ only.sq3 ai.formation 兜底（项目资产）
+  //   收尾统一 saveProjects: formation 一次写完整（杜绝 "先写空再补" 瞬时污染 → 恢复失败永久丢失 b/c）
+  //   调用方必须传主文件夹路径（内部 _normPath 归一, 与 _saveWorkspaceToOs 写入 key 同形态）
+  function _restoreFormationForMain(mainFolderPath) {
+    mainFolderPath = _normPath(mainFolderPath);
+    var ws = _wsBridge();
+    var fromOnly = function () { _restoreFormationFromOnlyStore(mainFolderPath); };
+    if (!ws) { fromOnly(); return; }
+    ws.get(WS_FORM_PREFIX + mainFolderPath).then(function (auxs) {
+      if (!auxs || !Array.isArray(auxs)) { fromOnly(); return; }
+      // OS 权威（含空数组 = 用户明确无辅文件夹, 不走 only.sq3 兜底）
+      for (var _fi = 0; _fi < auxs.length; _fi++) {
+        var _fp = _normPath(auxs[_fi]);
+        if (!_fp || projects.some(function (p) { return p.path === _fp; })) continue;
+        projects.push({ path: _fp, name: basename(_fp) });
+      }
+      _dedupProjects();
+      saveProjects();
+      render();
+      _notifyChanged();
+    }).catch(function () { fromOnly(); });
   }
 
   // ★ 从主项目 only.sq3 恢复出战阵营（项目级资产，跨重启/跨迁移）
@@ -1827,8 +1854,19 @@
   }
 
   function _doAddProject(folderPath, name) {
+    // ★ 空视口 → 该文件夹将成为主文件夹（2026-08-20 修复: 随从阵营丢失）
+    //   旧逻辑立即 saveProjects → formation.{main} 被写空（projects 只有主文件夹）
+    //   → 异步恢复又覆盖（瞬时污染, 恢复失败则 b/c 永久丢失）。
+    //   现先渲染主文件夹, 阵营恢复完成后才统一落盘（formation 一次写完整）。
+    var becameMain = projects.length === 0;
     projects.push({ path: folderPath, name: name });
     _bumpRecent(folderPath);
+    if (becameMain) {
+      render();
+      _notifyChanged();
+      _restoreFormationForMain(folderPath);
+      return;
+    }
     saveProjects();
     render();
     _notifyChanged();

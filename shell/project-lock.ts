@@ -267,6 +267,12 @@ export function releaseAllProjectLocks(): void {
     }
 }
 
+// ── 查询窗口当前持有的主文件夹（index-service 按需索引用） ──
+export function getLockedFolderForWindow(winId: number): string | null {
+    const h = _held.get(winId);
+    return h ? h.folder : null;
+}
+
 // ── 查询（渲染层预检/兜底用；self = 是否本实例持有的锁） ──
 export function queryProjectLock(folderRaw: string): { locked: boolean; holder?: LockHolder | null; stale?: boolean; self?: boolean } {
     const folder = _norm(folderRaw);

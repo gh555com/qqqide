@@ -388,7 +388,7 @@ function bootActivities(boot) {
   // ── 弹窗二：原料与基本权利（任务清单） ──────────────────────────────────
   function claimGe50() {
     var g = _data && _data.ge50;
-    if (!g || !g.claimable || g.claimed_ge50) return;
+    if (!g || !g.claimable || g.claimed_ge50 || g.claimed_phone50) return;
     var token = authToken();
     if (!token) { openLogin(); return; }
     _apiFetch('/qqqide/activity/claim-ge50', {
@@ -399,9 +399,11 @@ function bootActivities(boot) {
       .then(function (data) {
         if (data && data.ok) {
           if (data.already) {
-            qoast(data.other_claimed ? t('act.ge50.alreadyOther', '二选一：你已领取另一项奖励') : t('act.ge50.already', '你已领取过该奖励'), 'info', 5000);
-            if (_data && _data.ge50) _data.ge50.claimed_ge50 = true;
-            if (data.other_claimed && _data && _data.ge50) _data.ge50.claimed_phone50 = true;
+            // 二选一已锁定：静默同步双方 claimed，两按钮置灰（不再弹 qoast）
+            if (_data && _data.ge50) {
+              _data.ge50.claimed_ge50 = true;
+              if (data.other_claimed) _data.ge50.claimed_phone50 = true;
+            }
             render();
             fetchStatus(true);
             return;
@@ -423,7 +425,7 @@ function bootActivities(boot) {
 
   function claimPhone50() {
     var g = _data && _data.ge50;
-    if (!g || !g.claimable || g.claimed_phone50) return;
+    if (!g || !g.claimable || g.claimed_phone50 || g.claimed_ge50) return;
     var token = authToken();
     if (!token) { openLogin(); return; }
     _apiFetch('/qqqide/activity/claim-phone50', {
@@ -434,9 +436,11 @@ function bootActivities(boot) {
       .then(function (data) {
         if (data && data.ok) {
           if (data.already) {
-            qoast(data.other_claimed ? t('act.ge50.alreadyOther', '二选一：你已领取另一项奖励') : t('act.ge50.already', '你已领取过该奖励'), 'info', 5000);
-            if (_data && _data.ge50) _data.ge50.claimed_phone50 = true;
-            if (data.other_claimed && _data && _data.ge50) _data.ge50.claimed_ge50 = true;
+            // 二选一已锁定：静默同步双方 claimed，两按钮置灰（不再弹 qoast）
+            if (_data && _data.ge50) {
+              _data.ge50.claimed_phone50 = true;
+              if (data.other_claimed) _data.ge50.claimed_ge50 = true;
+            }
             render();
             fetchStatus(true);
             return;
@@ -509,11 +513,11 @@ function bootActivities(boot) {
       '<div class="qqq-act-or">' + t('act.ge50.eitherOr', '二选一') + '</div>' +
       '<div class="qqq-act-claims">' +
       '<button class="qqq-act-claim qqq-act-claim-phone" id="qqq-act-claim-phone" ' +
-      (claimable && !claimedPhone ? '' : 'disabled') + '>' +
+      (claimable && !claimedPhone && !claimedGe ? '' : 'disabled') + '>' +
       (phone ? phone + '<br>' : '') + (claimedPhone ? t('act.ge50.claimPhoneClaimed', '额外再领取 50 元话费 · 已领取') : t('act.ge50.claimPhone', '额外再领取 50 元话费')) +
       '</button>' +
       '<button class="qqq-act-claim" id="qqq-act-claim-ge" ' +
-      (claimable && !claimedGe ? '' : 'disabled') + '>' +
+      (claimable && !claimedGe && !claimedPhone ? '' : 'disabled') + '>' +
       (claimedGe ? t('act.ge50.claimGeClaimed', '额外再领取 50 ge · 已领取') : t('act.ge50.claimGe', '额外再领取 50 ge')) +
       '</button>' +
       '</div>';

@@ -132,6 +132,7 @@ function bootStatusbar(boot) {
 				html += '<th style="padding:4px 6px;text-align:right;">消耗</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">最近在线</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">连续(m)</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">独立</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">版本</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">累计(h)</th>';	html += '</tr></thead><tbody>';
 						for (var i = 0; i < users.length; i++) {
@@ -156,6 +157,8 @@ function bootStatusbar(boot) {
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + geStr + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:12px;white-space:nowrap;">' + timeStr + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + contStr + '</td>';
+					var indep = typeof u.independent === 'number' ? u.independent : '-';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + indep + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:11px;">' + ver + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + totalStr + '</td>';
 					html += '</tr>';				}
