@@ -474,16 +474,17 @@
       "tipNext": "🤍 距离下次免费 {time}",
       "shortNext": "距下次",
       "shortFree": "剩",
-      "popSub": "循环免费窗口",
       "popFreeNow": "🟢 免费中 · 免费将结束 {time}",
       "popInWindow": "🟢 正在免费时段 · 随机免费余额已开启",
       "popNext": "⏳ 距离下次免费 {time}",
       "popNotInWindow": "当前不在免费时段",
-      "popWindow": "📅 免费时段：周日全天 + 每日 01:00-03:00 / 13:00-15:00（UTC）",
+      "popWindow": "📅 免费时段：(UTC) 周日全天+每日01:00-03:00/13:00-15:00",
+      "popWindowLocal": "📅 ({tz}) 周日全天+每日{span}",
+      "histTitle": "前 8 次免费窗口：{used} / {budget}",
       "popBonus": "季节加成 +{v} ge",
       "popLogin": "登录后查看随机捞到滴免费余额",
       "popLoading": "随机免费余额加载中…",
-      "popNoBudget": "随机免费余额在免费时段内发放"
+      "popNoBudget": "随机免费额度在免费时间窗发放"
     }
   }
 }

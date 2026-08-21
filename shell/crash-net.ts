@@ -22,8 +22,16 @@ const FLUSH_BATCH = 200;           // events.log 批量落盘阈值(条)
 const FLUSH_DEBOUNCE_MS = 1000;    // events.log 兜底落盘间隔
 const EVENTS_MAX_BYTES = 8 * 1024 * 1024;
 
+// ── 内存看门狗 (2026-08-20 F51 性能审计落地) ──
+const MEM_HISTORY_MS = 5 * 60 * 1000;         // mem.log 历史序列周期 (定位涨速)
+const MEM_HISTORY_MAX_BYTES = 256 * 1024;     // mem.log 上限 (events.log 同款轮转)
+const MEM_WARN_HEAP_MB = 1536;                // heapUsed 告警阈值 (1.5GB)
+const MEM_WARN_COOLDOWN_MS = 60 * 60 * 1000;  // 告警冷却 (1h 防轰炸)
+
 let _dir = '';
 let _hbTimer: NodeJS.Timeout | null = null;
+let _memHistoryTimer: NodeJS.Timeout | null = null;
+let _lastMemWarnTs = 0;
 let _eventsBuf: string[] = [];
 let _flushTimer: NodeJS.Timeout | null = null;
 let _cleanQuitMarked = false;
@@ -107,6 +115,45 @@ function _heartbeat(): void {
         uptimeSec: Math.round(process.uptime()),
         windows: _windowsSnap(),
     }));
+    _maybeWarnMem();   // 内存告警检查挂心跳 (mem 已取, 零额外开销)
+}
+
+// ── 内存看门狗 ──
+
+function _appendMemHistory(): void {
+    try {
+        if (!_ensureDir()) return;
+        const m = process.memoryUsage();
+        const line = JSON.stringify({
+            ts: Date.now(),
+            rssMB: Math.round(m.rss / 1048576),
+            heapMB: Math.round(m.heapUsed / 1048576),
+            heapTotalMB: Math.round(m.heapTotal / 1048576),
+            externalMB: Math.round(m.external / 1048576),
+        });
+        const p = path.join(_dir, 'mem.log');
+        fs.appendFileSync(p, line + '\n', 'utf8');
+        try {
+            const st = fs.statSync(p);
+            if (st.size > MEM_HISTORY_MAX_BYTES) fs.renameSync(p, path.join(_dir, 'mem.1.log'));
+        } catch { /* ignore */ }
+    } catch { /* ignore */ }
+}
+
+function _maybeWarnMem(): void {
+    try {
+        const m = process.memoryUsage();
+        const heapMB = Math.round(m.heapUsed / 1048576);
+        if (heapMB < MEM_WARN_HEAP_MB) return;
+        const now = Date.now();
+        if (now - _lastMemWarnTs < MEM_WARN_COOLDOWN_MS) return;
+        _lastMemWarnTs = now;
+        const payload = { heapMB, rssMB: Math.round(m.rss / 1048576) };
+        _appendEvent('mem-warning', payload);
+        for (const w of BrowserWindow.getAllWindows()) {
+            try { if (!w.isDestroyed()) w.webContents.send('qqqide:mem:warning', payload); } catch { /* ignore */ }
+        }
+    } catch { /* ignore */ }
 }
 
 // ── 崩溃瞬间快照 ──
@@ -239,6 +286,10 @@ export function crashNetInit(userData: string): void {
     // 心跳
     _hbTimer = setInterval(_heartbeat, HB_INTERVAL_MS);
     _heartbeat();
+
+    // 内存看门狗: 5min 历史序列 (告警检查挂 10s 心跳)
+    _memHistoryTimer = setInterval(_appendMemHistory, MEM_HISTORY_MS);
+    _appendMemHistory();
 
     // 渲染层事件
     ipcMain.on('qqqide:crashnet:event', (e, evt) => {

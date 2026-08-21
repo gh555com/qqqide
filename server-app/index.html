@@ -150,12 +150,10 @@ var _orig={};
           <span class="qqq-gw-dot" id="qqq-gw-dot-1" data-panel="1" title="中面板 · 等待连接">●</span>
           <span class="qqq-gw-dot" id="qqq-gw-dot-2" data-panel="2" title="右面板 · 等待连接">●</span>
         </span>
-        <!-- ★ 赞助商（三盏绿灯之右）→ 轮换播放器：大20s/中10s/小5s 上下翻滚，点击打开当前品牌（数据源 /api/sponsor/current） -->
+        <!-- ★ 赞助商（三盏绿灯之右）→ 轮换播放器：大20s/中10s/小5s 瞬间替换文字，点击打开当前品牌（数据源 /api/sponsor/current） -->
         <span class="qqq-status-sponsor" id="qqq-status-sponsor">
           <span data-i18n="act.sponsorLabel">赞助商：</span>
-          <span class="qqq-sponsor-roll" id="qqq-sponsor-roll" title="点击打开">
-            <span class="qqq-sponsor-roll-track" id="qqq-sponsor-link" data-url="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">成都知佳知识产权代理有限公司</span>
-          </span>
+          <a class="qqq-sponsor-link" id="qqq-sponsor-link" href="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">成都知佳知识产权代理有限公司</a>
         </span>
         <span class="qqq-spacer"></span>
         <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="wq 前摇统计">wq: --</span>
@@ -193,6 +191,7 @@ var _orig={};
 <script src="core/audio-volume.js"></script>
 <script src="core/login.js"></script>
 <script src="core/squad-btn.js"></script>
+<script src="core/mem-warning.js"></script>
 <script src="core/menu-schema.js"></script>
 <script src="core/sash.js"></script>
 <script src="core/tab-manager.js"></script>

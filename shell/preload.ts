@@ -626,7 +626,7 @@ const QQQ = {
         },
     },
 
-    // ---- squad (窗口编队, OS 级 %LOCALAPPDATA%/qqqide/squads.json) ----
+    // ---- main-process memory watchdog (crash-net 广播 qqqide:mem:warning, 2026-08-20) ----    mem: {        onWarning: (cb: (data: { heapMB: number; rssMB: number }) => void) => {            const handler = (_e: unknown, data: any) => { try { cb(data); } catch (err) { console.warn('[mem.onWarning]', err); } };            ipcRenderer.on('qqqide:mem:warning', handler);            return () => ipcRenderer.removeListener('qqqide:mem:warning', handler);        },    },    // ---- squad (窗口编队, OS 级 %LOCALAPPDATA%/qqqide/squads.json) ----
     squad: {
         get: () => ipcRenderer.invoke('qqqide:squad:get'),
         set: (slot: string) => ipcRenderer.invoke('qqqide:squad:set', slot),

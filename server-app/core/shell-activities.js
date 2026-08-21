@@ -245,6 +245,24 @@ function bootActivities(boot) {
       '.qqq-act-bignum{text-align:center;font-size:15px;font-weight:700;color:#34d399;font-family:Consolas,monospace;}' +
       '.qqq-act-desc{margin:14px 0 18px;text-align:center;font-size:14px;line-height:1.9;color:#c8c8d8;}' +
       '.qqq-act-desc b{color:#34d399;}' +
+      // 免费时段行：UTC 版 2 秒后渐隐 → 切换用户系统时区版渐显固定（2026-08-20）
+      '.qqq-act-desc .qqq-act-tzswap{display:inline-block;transition:opacity .6s ease;forced-color-adjust:none;}' +
+      '.qqq-act-desc .qqq-act-tzswap.qqq-act-faded{opacity:0;}' +
+
+      // 前8次免费窗口充能框 v7（2026-08-20）：单行 8 个 54×28 圆角矩形 + 标题行总统计（已用合计/额度合计）；
+      //   内部仅数字=摇出额度；填充 = 充能（剩余比例，满=该窗口没用过）；hover 瞬间弹出框只显示实际已用额度
+      //   ★ v7: 参照 ctx-btn 双层 background 模式（ai-panel/index.html #ctx-btn）——上层硬切点遮罩
+      //     linear-gradient(to right, transparent var(--pct), 空区色 var(--pct)) + 下层全宽固定渐变（左偏蓝→右偏黄）
+      //     颜色恒定不随填充长度压缩，且无额外遮罩 DOM（v6 的 .qqq-vibe-hist-empty 缺 width → 遮罩宽度 0 全部满格，已废弃）
+      //     边框 vibe 蓝（F58 误改绿已还原）；数字去阴影纯白；标题行样式恢复 F57 删除前版本（12.5px / 700 / #8fa3c8 / margin 0 0 8px）
+      '.qqq-vibe-hist{margin:10px 0 2px;}' +
+      '.qqq-vibe-hist-title{margin:0 0 8px;font-size:12.5px;font-weight:700;color:#8fa3c8;text-align:center;forced-color-adjust:none;}' +
+      '.qqq-vibe-hist-row{display:flex;gap:4px;justify-content:center;flex-wrap:nowrap;}' +
+      '.qqq-vibe-hist-item{flex:0 0 54px;width:54px;height:28px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;' +
+      'border-radius:8px;border:1px solid rgba(63,150,216,.55);' +
+      'background:linear-gradient(to right,transparent var(--pct,0%),rgba(10,12,20,.8) var(--pct,0%)),' +
+      'linear-gradient(90deg,rgba(42,161,152,.85) 0%,rgba(133,153,0,.8) 100%);forced-color-adjust:none;}' +
+      '.qqq-vibe-hist-num{position:relative;font-size:15px;font-weight:800;color:#fff;font-family:Consolas,monospace;line-height:1;}' +
       '.qqq-act-cta{display:block;width:100%;padding:12px 0;border:none;border-radius:10px;font-size:16px;font-weight:800;' +
       'background:linear-gradient(90deg,#059669,#0d9488);color:#fff;box-shadow:0 4px 18px rgba(5,150,105,.4);forced-color-adjust:none;}' +
       '.qqq-act-cta:hover{filter:brightness(1.12);}' +
@@ -575,6 +593,26 @@ function bootActivities(boot) {
     d.setUTCHours(1, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 1); return d.getTime();
   }
 
+  // 免费时段本地化：把 UTC 小时换算成用户系统时区（按当前偏移，跨日取模），如 +8 时区 → 09:00-11:00/21:00-23:00
+  function localFreeSpan() {
+    var offMin = -new Date().getTimezoneOffset(); // 本地领先 UTC 的分钟数（东八区 = +480）
+    function loc(h) {
+      var m = (h * 60 + offMin) % 1440;
+      if (m < 0) m += 1440;
+      return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    }
+    return loc(1) + '-' + loc(3) + '/' + loc(13) + '-' + loc(15);
+  }
+
+  // 用户系统时区名（Intl 权威，失败兜底 UTC）
+  function localTzName() {
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) return tz;
+    } catch (e) { }
+    return 'UTC';
+  }
+
   function fmtHMS(ms) {
     if (ms <= 0) return '00:00:00';
     var s = Math.ceil(ms / 1000);
@@ -600,19 +638,20 @@ function bootActivities(boot) {
   var _vibeFree = null;
   var _vibeLastFetch = 0;
 
-  function fetchVibeBudget() {
+  // force=true 忽略 30s 冷却（弹窗打开时强制拉最新，含前8次窗口历史）
+  function fetchVibeBudget(force) {
     var token = authToken();
-    if (!token) return;
+    if (!token) return Promise.resolve(null);
     var now = Date.now();
-    if (now - _vibeLastFetch < 30000) return;
+    if (!force && now - _vibeLastFetch < 30000) return Promise.resolve(null);
     _vibeLastFetch = now;
-    fetch('https://direct-cn.gh555.com/api/qqq/free-budget', {
+    return fetch('https://direct-cn.gh555.com/api/qqq/free-budget', {
       headers: { 'Authorization': 'Bearer ' + token },
       cache: 'no-cache'
     })
       .then(function (r) { if (!r.ok) return null; return r.json(); })
-      .then(function (data) { if (data && data.ok) _vibeFree = data; })
-      .catch(function () { });
+      .then(function (data) { if (data && data.ok) _vibeFree = data; return data; })
+      .catch(function () { return null; });
   }
 
   function vibeBudget() {
@@ -684,7 +723,43 @@ function bootActivities(boot) {
     return tp('act.vibe.tipNext', { time: fmtHMS(st.remaining) }, '🤍 距离下次免费 ' + fmtHMS(st.remaining));
   }
 
+  // 弹窗入口：先强制拉最新数据（含前8次窗口历史）再渲染，失败用已有缓存兜底
   function openVibePopup() {
+    fetchVibeBudget(true).then(function () {
+      renderVibePopup();
+    }).catch(function () {
+      renderVibePopup();
+    });
+  }
+
+  // 「前8次免费窗口」区域 v4：单行圆角矩形充能框 + 标题行总统计（已用合计 / 额度合计，如 31.8 / 61.3）
+  //   每框 54×28：内部仅数字 = 该窗口摇出额度；背景填充百分比 = 充能（剩余比例，满=没用过）
+  //   hover → 瞬间弹出框只显示该窗口实际已用额度（data-used 供事件绑定）
+  function vibeHistoryHtml() {
+    var d = _vibeFree;
+    if (!d || !Array.isArray(d.history) || !d.history.length) return '';
+    var sumBud = 0, sumCon = 0, items = [];
+    d.history.forEach(function (h) {
+      var bud = parseFloat(h.budget_ge);
+      var con = parseFloat(h.consumed_ge);
+      var rem = parseFloat(h.remaining_ge);
+      if (!isFinite(bud) || bud <= 0) return;
+      if (!isFinite(rem) || rem < 0) rem = 0;
+      if (!isFinite(con) || con < 0) con = 0;
+      sumBud += bud; sumCon += con;
+      var pct = Math.max(0, Math.min(100, rem / bud * 100));
+      // ★ v7: 参照 ctx-btn 双层 background——item 内联 CSS 变量 --pct，上层硬切点遮罩 + 下层全宽固定渐变，颜色恒定不随填充长度压缩
+      items.push('<div class="qqq-vibe-hist-item" style="--pct:' + pct + '%" data-used="' + fmt1(con) + '">' +
+        '<span class="qqq-vibe-hist-num">' + fmt1(bud) + '</span></div>');
+    });
+    if (!items.length) return '';
+    var title = tp('act.vibe.histTitle', { used: fmt1(sumCon), budget: fmt1(sumBud) },
+      '前 8 次免费窗口：' + fmt1(sumCon) + ' / ' + fmt1(sumBud));
+    return '<div class="qqq-vibe-hist"><div class="qqq-vibe-hist-title">' + title + '</div>' +
+      '<div class="qqq-vibe-hist-row">' + items.join('') + '</div></div>';
+  }
+
+  function renderVibePopup() {
     var st = vibeState(vibeUtcNow());
     var b = vibeBudget();
 
@@ -703,14 +778,14 @@ function bootActivities(boot) {
       budgetHtml = '<p class="qqq-act-desc" style="margin-bottom:6px;">' + t('act.vibe.popLoading', '随机免费余额加载中…') + '</p>';
     } else {
       // 非免费时段：无活动余额可展示
-      budgetHtml = '<p class="qqq-act-desc" style="margin-bottom:6px;">' + t('act.vibe.popNoBudget', '随机免费余额在免费时段内发放') + '</p>';
+      budgetHtml = '<p class="qqq-act-desc" style="margin-bottom:6px;">' + t('act.vibe.popNoBudget', '随机免费额度在免费时间窗发放') + '</p>';
     }
 
     var html =
       '<div class="qqq-act-celebrate">💎</div>' +
       '<h2>' + t('act.vibe.name', '2026, 我, vibe coding') + '</h2>' +
-      '<p class="qqq-act-sub">' + t('act.vibe.popSub', '循环免费窗口') + '</p>' +
       budgetHtml +
+      vibeHistoryHtml() +
       '<p class="qqq-act-desc">' +
       '<span id="qqq-vibe-end">' + (st.free
         ? tp('act.vibe.popFreeNow', { time: fmtHMS(st.remaining) }, '🟢 免费中 · 免费将结束 ' + fmtHMS(st.remaining))
@@ -719,10 +794,33 @@ function bootActivities(boot) {
       '<span id="qqq-vibe-next">' + (st.free
         ? t('act.vibe.popInWindow', '🟢 正在免费时段 · 随机免费余额已开启')
         : tp('act.vibe.popNext', { time: fmtHMS(st.remaining) }, '⏳ 距离下次免费 ' + fmtHMS(st.remaining))) + '</span><br>' +
-      t('act.vibe.popWindow', '📅 免费时段：周日全天 + 每日 01:00-03:00 / 13:00-15:00（UTC）') +
+      '<span id="qqq-vibe-window" class="qqq-act-tzswap">' + t('act.vibe.popWindow', '📅 免费时段：(UTC) 周日全天+每日01:00-03:00/13:00-15:00') + '</span>' +
       '</p>';
 
     openOverlay(html);
+
+    // ★ 历史充能框 hover：瞬间弹出框只显示该窗口实际已用额度（只显示数字，如 6.4）
+    Array.prototype.forEach.call(_overlay.querySelectorAll('.qqq-vibe-hist-item'), function (el) {
+      var used = el.getAttribute('data-used') || '';
+      el.addEventListener('mouseenter', function (e) { showTip(e, used); });
+      el.addEventListener('mousemove', function (e) { showTip(e, used); });
+      el.addEventListener('mouseleave', hideTip);
+    });
+
+    // ★ 免费时段行：先显示 (UTC) 版 2 秒 → 渐隐 → 切换用户系统时区版（时间区间同步换算）→ 渐显固定
+    var $win = document.getElementById('qqq-vibe-window');
+    if ($win) {
+      var tz = localTzName();
+      var localText = tp('act.vibe.popWindowLocal', { tz: tz, span: localFreeSpan() },
+        '📅 (' + tz + ') 周日全天+每日' + localFreeSpan());
+      setTimeout(function () {
+        $win.classList.add('qqq-act-faded');
+        setTimeout(function () {
+          $win.textContent = localText;
+          $win.classList.remove('qqq-act-faded');
+        }, 650);
+      }, 2000);
+    }
   }
 
   // ── 事件绑定 ──────────────────────────────────────────────────────────────

@@ -13,13 +13,12 @@ function bootStatusbar(boot) {
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
 	if ($onl) $onl.textContent = '0';
 
-	// ═══ 赞助商轮换播放器（状态栏左下角）— 大20s/中10s/小5s 上下翻滚 ═══
+	// ═══ 赞助商轮换（状态栏左下角）— 大20s/中10s/小5s，瞬间替换文字（无滚动动画，防视觉分散）═══
 	// 数据源: GET /api/sponsor/current（三档位当前小时胜出者；无人竞拍 → 默认成都知佳）
 	// 拉取限频 1 次/分钟（轮播完刷新与失败重试共用）；失败保持默认品牌；点击打开当前品牌超链接
 	(function () {
-		var $roll = document.getElementById('qqq-sponsor-roll');
-		var $track = document.getElementById('qqq-sponsor-link');
-		if (!$roll || !$track) return;
+		var $link = document.getElementById('qqq-sponsor-link');
+		if (!$link) return;
 		var DEFAULT_BRAND = '成都知佳知识产权代理有限公司';
 		var DEFAULT_URL = 'http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1';
 		var items = [];
@@ -27,14 +26,9 @@ function bootStatusbar(boot) {
 		var timer = null;
 
 		function applyItem(item) {
-			// 三段式上下翻滚：瞬移到上方 → 换内容 → 滑入
-			$track.style.transition = 'none';
-			$track.style.transform = 'translateY(-120%)';
-			$track.textContent = item.brand || DEFAULT_BRAND;
-			$track.setAttribute('data-url', item.url || DEFAULT_URL);
-			void $track.offsetHeight;
-			$track.style.transition = 'transform .4s ease';
-			$track.style.transform = 'translateY(0)';
+			// 瞬间替换文字 + 超链接（零动画，位置/样式与静态版完全一致）
+			$link.textContent = item.brand || DEFAULT_BRAND;
+			$link.href = item.url || DEFAULT_URL;
 		}
 
 		var _lastFetchAt = 0;
@@ -68,9 +62,9 @@ function bootStatusbar(boot) {
 			}
 		}
 
-		$roll.addEventListener('click', function (e) {
+		$link.addEventListener('click', function (e) {
 			e.preventDefault();
-			var url = $track.getAttribute('data-url') || DEFAULT_URL;
+			var url = $link.getAttribute('href') || DEFAULT_URL;
 			if (bridge && bridge.shell && bridge.shell.openExternal) {
 				bridge.shell.openExternal(url);
 			} else {
@@ -79,8 +73,8 @@ function bootStatusbar(boot) {
 		});
 
 		// 首显默认品牌（fetch 返回前）
-		$track.textContent = DEFAULT_BRAND;
-		$track.setAttribute('data-url', DEFAULT_URL);
+		$link.textContent = DEFAULT_BRAND;
+		$link.href = DEFAULT_URL;
 		fetchCurrent().then(scheduleNext);
 	})();
 
