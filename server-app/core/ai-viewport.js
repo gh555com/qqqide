@@ -59,6 +59,12 @@
       var count = (r.stdout || '').split('\n').filter(Boolean).length;
       _gitBadgeCache[proj.path] = { count: count, error: false };
       _updateBadgeDOM(proj.path, count);
+      // ★ 密钥脱敏触发器（secret-guard.js）：porcelain 原文变化才干活（上升沿）
+      try {
+        window.dispatchEvent(new CustomEvent('qqq:git-dirty', {
+          detail: { path: proj.path, porcelain: r.stdout || '', count: count }
+        }));
+      } catch (_) {}
     } catch (e) {
       _gitBadgeCache[proj.path] = { error: true };
     }

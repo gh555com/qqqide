@@ -138,8 +138,11 @@ function _copyDirContentsSync(src: string, dest: string): void {
  * ★ 2026-08-10 补漏（载荷更新失效）：交换时旧 Data 整体备份恢复 → Data/webapp 恒为旧版；
  *   热更通道删除后无任何机制刷新该运行副本 → 自动更新后 UI/功能永不变化。
  *   现加版本戳校验：戳 = versions.json 清单 id（.qqq-webapp-version），不一致 → 清旧重拷
- *   （保留 goods/：u 管线独立管理），重拷源优先 resources/app/server-app（webapp 单元
- *   增量更新的目标），webapp bundle 仅兜底（bundle 不随增量刷新）。
+ *   （★ 2026-08-21 修正：不再保留 goods/——u 管线 2026-08-10 已整体删除，goods 无独立
+ *   更新通道，旧保留逻辑致 Data/webapp/goods 永留首建版本：客户 0.3.24 菜单行2 仍显示
+ *   Search Git Kmd inbox / 上下文背包旧 UI 实锤；goods 状态全在 OS 级 sq3/.gaea-state.json/
+ *   userData localStorage，目录内零用户数据 → 全量重拷安全），重拷源优先 resources/app/server-app
+ *   （webapp 单元增量更新的目标），webapp bundle 仅兜底（bundle 不随增量刷新）。
  */
 export function ensureLocalWebapp(portableRoot: string): string | null {
     const localDir = path.join(portableRoot, 'Data', 'webapp');
@@ -155,16 +158,9 @@ export function ensureLocalWebapp(portableRoot: string): string | null {
         return localDir;
     }
 
-    // 戳缺失/不一致 → 清理旧副本（保留 goods 由 u 管线管理），失败则降级合并覆盖
-    let goodsTmp: string | null = null;
+    // 戳缺失/不一致 → 清理旧副本全量重拷（含 goods，2026-08-21 起不再保留），失败则降级合并覆盖
     if (haveLocal) {
         try {
-            const goodsDir = path.join(localDir, 'goods');
-            if (fs.existsSync(goodsDir)) {
-                goodsTmp = path.join(portableRoot, 'Data', '.webapp-goods-tmp');   // 必须在 localDir 外，rmSync(localDir) 不会误删
-                fs.rmSync(goodsTmp, { recursive: true, force: true });
-                fs.cpSync(goodsDir, goodsTmp, { recursive: true });
-            }
             fs.rmSync(localDir, { recursive: true, force: true });
             bootLog('webapp: stale copy (stamp=' + (stamp || '(none)') + ') removed for manifest ' + manifestId);
         } catch (e: any) {
@@ -183,11 +179,6 @@ export function ensureLocalWebapp(portableRoot: string): string | null {
         if (fs.existsSync(path.join(src, 'index.html'))) {
             try {
                 fs.cpSync(src, localDir, { recursive: true });
-                if (goodsTmp) {
-                    fs.mkdirSync(path.join(localDir, 'goods'), { recursive: true });
-                    fs.cpSync(goodsTmp, path.join(localDir, 'goods'), { recursive: true });
-                    fs.rmSync(goodsTmp, { recursive: true, force: true });
-                }
                 try { fs.writeFileSync(stampPath, manifestId); } catch (_) { }
                 bootLog('webapp: copied from package → ' + localDir);
                 return localDir;
@@ -196,8 +187,6 @@ export function ensureLocalWebapp(portableRoot: string): string | null {
             }
         }
     }
-    if (goodsTmp) { try { fs.rmSync(goodsTmp, { recursive: true, force: true }); } catch (_) { } }
-    try { fs.rmSync(path.join(portableRoot, 'Data', '.webapp-goods-tmp'), { recursive: true, force: true }); } catch (_) { }
     return null;
 }
 

@@ -232,6 +232,20 @@
 
     grp.tabs.splice(idx, 1);
 
+    // ★ 2026-08-21: 关闭最后一个同路径 tab → 释放文档级真理（pin/dirty/deleted）
+    //   否则全部关闭后重开同一文件仍显示正体（_pinnedPaths 残留）——预期是斜体预览
+    if (tab.filePath) {
+      var _stillAny = false;
+      for (var _g of groups) {
+        if (_g.type !== 'file') continue;
+        if (_g.tabs.some(function (t) { return t.filePath === tab.filePath; })) { _stillAny = true; break; }
+      }
+      if (!_stillAny) {
+        delete _pinnedPaths[tab.filePath];
+        delete _deletedPaths[tab.filePath];
+      }
+    }
+
     if (grp.tabs.length === 0 && grp.type === 'file') {
       // remove entire file group
       removeGroup(grp);
