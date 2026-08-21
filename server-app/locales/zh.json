@@ -486,5 +486,17 @@
       "popLoading": "随机免费余额加载中…",
       "popNoBudget": "随机免费额度在免费时间窗发放"
     }
+  },
+  "secretGuard": {
+    "qoastMsg": "⚠️ 检测到 {n} 处疑似密钥（无法自动确认），提交前请处理",
+    "btnGo": "去处理",
+    "panelTitle": "密钥脱敏 · 协同处理",
+    "panelDesc": "以下内容疑似包含密钥，无法自动确认。已打码展示，请人工判断后处理。",
+    "btnErase": "抹除",
+    "btnKeep": "保留",
+    "btnIgnoreFile": "忽略此文件",
+    "btnEraseAll": "全部抹除",
+    "btnKeepAll": "全部保留",
+    "editorOpenHint": "提示：已在编辑器中打开的文件会被跳过，避免覆盖未保存的编辑"
   }
 }

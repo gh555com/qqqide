@@ -10,7 +10,12 @@ function renderMarkdown(src) {
     const codeBlocks = [];
     let s = _src.replace(/```(\w*)\n?([\s\S]*?)```/g, function (_, lang, code) {
         const idx = codeBlocks.length;
-        var rawCode = escHtml(code);
+        // ★ 代码块保护（2026-08-21 底层 bug 修复）：escHtml 只转义 &<>"，markdown 链接语法
+        //   [文字](URL) 转义后原样保留；若代码块立即恢复进 s，后续 Links 规则会把代码块内
+        //   的 [文字](URL) 误转成真实 <a>（悬浮预览层里代码块文本变蓝色链接实锤）。
+        //   故：代码块延迟到最后恢复（占位符 \x00CBn\x00 不含任何正则匹配字符，全程安全），
+        //   同时换行用 \x00N 占位保护，避免经过 \n→<br> 规则破坏 <pre> 语义。
+        var rawCode = escHtml(code).replace(/\n/g, '\x00N');
         var codeHtml = '<pre><code class="lang-' + (lang || '') + '">' + rawCode + '</code></pre>';
         codeBlocks.push(
             '<div class="table-wrap">' +
@@ -20,10 +25,15 @@ function renderMarkdown(src) {
         return '\x00CB' + idx + '\x00';
     });
     s = escHtml(s);
-    // Restore code blocks
-    s = s.replace(/\x00CB(\d+)\x00/g, function (_, i) { return codeBlocks[+i]; });
-    // Inline code
-    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // ★ 代码块恢复延后：必须等全部行内规则（inline code/headers/hr/bold/italic/images/links/tables/lists/blockquote）
+    //   处理完再恢复，杜绝代码块内文本被行内规则误转（Links 误转实锤）
+    // Inline code（同样延迟恢复 + escHtml：`[文字](URL)` 防被 Links 误转，<script> 防 XSS）
+    var inlineCodes = [];
+    s = s.replace(/`([^`]+)`/g, function (_, code) {
+        var idx = inlineCodes.length;
+        inlineCodes.push('<code>' + escHtml(code) + '</code>');
+        return '\x00IC' + idx + '\x00';
+    });
     // Headers
     s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     s = s.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -83,6 +93,10 @@ function renderMarkdown(src) {
     // Restore list blocks（去掉包裹它们的 <p> 标签，<ul> 不能在 <p> 内）
     s = s.replace(/<p>\x00UL(\d+)\x00<\/p>/g, function (_, i) { return listBlocks[+i]; });
     s = s.replace(/\x00UL(\d+)\x00/g, function (_, i) { return listBlocks[+i]; });
+    // ★ 最后恢复代码块 + 行内代码（所有行内规则已处理完；\x00N 还原为 \n）
+    s = s.replace(/\x00CB(\d+)\x00/g, function (_, i) { return codeBlocks[+i]; });
+    s = s.replace(/\x00IC(\d+)\x00/g, function (_, i) { return inlineCodes[+i]; });
+    s = s.replace(/\x00N/g, '\n');
     return s;
 }
 function escHtml(s) {

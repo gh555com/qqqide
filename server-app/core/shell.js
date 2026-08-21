@@ -12,6 +12,24 @@ var _shMin = 123;
 var _shSashW = 6;
 // _shAiW = 389 定义在 shell-wings.js（先加载）
 
+// ★ 全局链接兜底（2026-08-21 底层 bug）：主窗口任何 target=_blank 链接 → 外部浏览器，绝不产生裸窗口。
+//   capture 阶段拦截（先于一切 bubble 处理），preventDefault 掐断默认导航，bridge.openExternal 外部打开。
+//   覆盖：悬浮预览层（overlay 在主窗口 document）/ 菜单 / 设置等全部主窗口内容；
+//   iframe（AI 面板/视口）由主进程 setWindowOpenHandler deny 兑底（hardenWebContents 提前注册）。
+document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var a = t.closest('a[target="_blank"]');
+    if (a && a.href) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+            var b = window.qqqideBridge;
+            if (b && b.openExternal) b.openExternal(a.href);
+        } catch (_) { }
+    }
+}, true);
+
 // ---- Layout state (persisted via StateStore, not localStorage) ----
 var _shLayoutState = {
   aZoneW: 123,

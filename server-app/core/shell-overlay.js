@@ -39,6 +39,13 @@ function bootAiOverlay() {
     '#qqqide-overlay-content>div::-webkit-scrollbar{display:none}';
   document.head.appendChild(_scrollStyle);
 
+  // ── 链接主题色（2026-08-21：禁蓝色链接——悬浮预览层内 <a> 一律继承前景色，仅保留下划线）──
+  var _ovLinkStyle = document.createElement('style');
+  _ovLinkStyle.textContent =
+    '#qqq-ai-overlay-content a{color:inherit;text-decoration:underline;}' +
+    '#qqq-ai-overlay-content a:hover{color:inherit;text-decoration:underline;}';
+  document.head.appendChild(_ovLinkStyle);
+
   // ── 选中色 + 高亮匹配色 ──
   //    ::selection（用户拖选）= 实心 #ffd301
   //    ::highlight(ov-matches)（全文匹配）= 半透明同色，区分用户选区

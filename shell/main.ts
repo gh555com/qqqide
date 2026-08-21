@@ -46,7 +46,7 @@ import { registerTimelineIpc } from './ipc-timeline';
 import { registerGitDiffIpc } from './ipc-git-diff';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
-import { hardenSession, registerExitHandlers } from './shutdown';
+import { hardenSession, registerExitHandlers, hardenWebContents } from './shutdown';
 import { crashNetInit } from './crash-net';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broker';
@@ -565,6 +565,10 @@ app.whenReady().then(async () => {
             }
         } catch (e) { /* ignore */ }
     })();
+
+    // ★ 窗口拦截加固必须先于任何窗口创建：否则主窗口 webContents 无 setWindowOpenHandler，
+    //   target=_blank 链接点击会弹裸窗口（2026-08-21 事故：overlay 链接双开浏览器+空窗口）
+    hardenWebContents(bootConfig);
 
     // Create main windowdow
     mainWindow = createWindow(

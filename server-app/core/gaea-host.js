@@ -117,7 +117,7 @@
     var _ktipOld = document.querySelector('.qqq-roam-tip[data-owner="kmd-btn"]');
     if (_ktipOld) _ktipOld.remove();
     _tabBarEl.innerHTML = '';
-    var toolbarIds = ['search', 'git', 'kmd'];
+    var toolbarIds = ['search', 'git', 'kmd', 'dsecret']; // dsecret 2026-08-21 密钥脱敏专职控制台
     for (var ti = 0; ti < toolbarIds.length; ti++) {
       var id = toolbarIds[ti];
       if (!goods.has(id)) continue;

@@ -294,8 +294,14 @@ export function registerExitHandlers(
         console.log('[window-all-closed] FIRED — all windows closed, quitting');
         if (process.platform !== 'darwin') { app.quit(); }
     });
+}
 
-    // Block new window attempts
+// ---- Window-open hardening（2026-08-21 从 registerExitHandlers 提前，任何窗口创建前必须注册）----
+// ★ 事故根因：原注册在 registerExitHandlers（主窗口创建之后才调用）→ 主窗口 webContents 没有
+//   setWindowOpenHandler → 点击 target=_blank 链接 → Electron 默认创建裸 BrowserWindow → 新窗口
+//   will-navigate 拦截 + openUrl（用户看到「外部浏览器 + 空窗口」双开）。
+//   调用时机：main.ts 在 createWindow 之前调用 hardenWebContents(bootConfig)。
+export function hardenWebContents(bootConfig: BootConfig): void {
     app.on('web-contents-created', (_e, contents) => {
         contents.setWindowOpenHandler(({ url }) => {
             openUrl(url);
