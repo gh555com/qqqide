@@ -31,6 +31,11 @@ export const SQUAD_ORDER = ['1', '2', 'q', 'w', 'a', 's', 'z', 'x'];
 
 const TITLE_PREFIX_RE = /^[1-2qwaszx]\u25A0/;
 
+// ★ 存活心跳窗口（2026-08-20 自动公证机构）: 窗口活着 → 30s poll 心跳刷 ts；
+//   ts 超过该阈值且 pid 活 → 判定窗口已亡（释放事件丢失/被合并复活）→ 可回收。
+//   90s = 3 个心跳周期，休眠唤醒误判由 watcher 自愈纠正（标题/重认领）。
+const SQUAD_STALE_MS = 90_000;
+
 interface SquadEntry {
     winId: number;
     hwnd: string;   // 字符串存储，防 64 位精度丢失
@@ -123,7 +128,9 @@ function _save(): void {
                     // 仅当磁盘条目属于其他实例时才恢复（防本实例故意清空的槽位被复活）
                     // 2026-08-16 bug: 选 none 无效、改槽位后旧槽残留——_save 合并在 einstance
                     // 把本实例刚清空的 null 槽用磁盘旧条目填回，导致清除永不生效。
-                    if (theirs.pid !== process.pid) {
+                    // ★ 2026-08-20: 再叠加 !_isStale——死条目（pid 亡/心跳超时）绝不恢复，
+                    //   否则 A 实例释放的槽会被 B 实例内存旧态复活 → 槽位永久卡死（实锤现场）。
+                    if (theirs.pid !== process.pid && !_isStale(theirs)) {
                         reg.slots[k] = theirs;
                     }
                 }
@@ -141,13 +148,18 @@ function _save(): void {
     }
 }
 
-/** 槽位是否陈旧可回收: 同进程 winId 精确验证；跨进程 pid 存活验证 */
+/** 槽位是否陈旧可回收（自动公证机构 2026-08-20）:
+ *  同进程 → winId 精确验证（窗口销毁即 stale，强证明）；
+ *  跨进程 → pid 存活 + ts 心跳双条件——pid 活但 ts 超 SQUAD_STALE_MS（窗口已亡、
+ *  释放事件丢失/被他实例 _save 合并复活）→ stale 可回收（旧实现只看 pid：
+ *  joker 主进程活着而窗口全关 → 槽位永久锁死，无论开多少新窗口都拿不到，实锤）。 */
 function _isStale(e: SquadEntry): boolean {
     if (e.pid === process.pid) {
         const win = BrowserWindow.fromId(e.winId);
         return !win || win.isDestroyed();
     }
-    try { process.kill(e.pid, 0); return false; } catch { return true; }
+    try { process.kill(e.pid, 0); } catch { return true; }
+    return Date.now() - (e.ts || 0) > SQUAD_STALE_MS;
 }
 
 function _hwndOf(win: BrowserWindow): string {
@@ -393,13 +405,35 @@ function _onRegistryChanged(): void {
     broadcastSquadState();
 }
 
+/** 心跳（2026-08-20 自动公证机构）: 本实例在册活窗口刷新条目 ts（存活证明）。
+ *  窗口关闭但释放事件丢失/被合并复活 → 该窗口条目 ts 停止更新 → 90s 后他实例
+ *  凭 _isStale 自动回收，无需任何窗口事件参与（公证机构不依赖当事人申报）。
+ *  25s 防抖阈值（< poll 30s）：每次 poll 至多刷一次，自写事件零循环。 */
+function _heartbeat(): void {
+    const reg = _load();
+    const now = Date.now();
+    let dirty = false;
+    for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) { continue; }
+        const slot = getSquadOf(win.id);
+        if (!slot) { continue; }
+        const e = reg.slots[slot];
+        if (e && e.pid === process.pid && e.winId === win.id && now - e.ts > 25000) {
+            e.ts = now;
+            dirty = true;
+        }
+    }
+    if (dirty) { _save(); }
+}
+
 /** 启动跨实例监听（registerSquadIpc 时调用一次；幂等） */
 export function startSquadWatcher(): void {
     if (_watchStarted) { return; }
     _watchStarted = true;
     _cleanStaleTmp();
-    // ★ 30s 兜底 poll 总是启动：watcher 静默死亡（目录被删/句柄失效无 error）也有界收敛
-    _watchPoll = setInterval(_onRegistryChanged, 30000);
+    // ★ 30s 兜底 poll 总是启动：watcher 静默死亡（目录被删/句柄失效无 error）也有界收敛；
+    //   同时驱动心跳（先心跳刷 ts 再自愈，本实例条目 ts 新鲜不被误判）
+    _watchPoll = setInterval(() => { _heartbeat(); _onRegistryChanged(); }, 30000);
     _startWatcher();
 }
 
