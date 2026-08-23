@@ -126,7 +126,7 @@ async function _ensureDb(): Promise<void> {
         _SQL = await initSqlJs();
         const dbPath = getDbPath();
         _db = _loadOrRecreate(dbPath, 'ws_state');
-        _db.run('PRAGMA journal_mode=WAL');
+        _db.run('PRAGMA journal_mode=DELETE');
         _db.run(`CREATE TABLE IF NOT EXISTS ws_state (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
@@ -209,13 +209,13 @@ function _reloadIfChanged(): void {
         const buf = fs.readFileSync(dbPath);
         if (_db) _db.close();
         _db = new _SQL.Database(buf);
-        _db.run('PRAGMA journal_mode=WAL');
+        _db.run('PRAGMA journal_mode=DELETE');
         _lastDiskMtime = mtime;
     } catch (e: any) {
         console.warn('[ws-state] reload failed, restoring:', e.message);
         if (_db) { try { _db.close(); } catch { /* ignore */ } }
         _db = _loadOrRecreate(dbPath, 'ws_state');
-        _db.run('PRAGMA journal_mode=WAL');
+        _db.run('PRAGMA journal_mode=DELETE');
         _lastDiskMtime = 0; // 强制下次 _saveDb 重新评估外部修改
     }
 }

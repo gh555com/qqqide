@@ -223,7 +223,7 @@ export class StateStore extends EventEmitter {
             PRIMARY KEY (ns, key)
         )`);
         this._db.run('CREATE INDEX IF NOT EXISTS idx_state_ns ON state(ns)');
-        this._db.run('PRAGMA journal_mode=WAL');
+        this._db.run('PRAGMA journal_mode=DELETE');
         this._db.run('PRAGMA synchronous=FULL');
         this._db.run('PRAGMA busy_timeout=30000');
         // Load persisted schemas from registry table
