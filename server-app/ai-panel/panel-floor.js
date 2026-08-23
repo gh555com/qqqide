@@ -456,6 +456,8 @@ async function _restoreAgentFromStore(questId, ag) {
         var _restoredNarrative = _ctxData.narrative || '';
         // ★ BugFix #1: ctx.biscuitLines 必须在 V12 注入之前恢复
         if (_ctxData.biscuitLines) ag._ctx.biscuitLines = _ctxData.biscuitLines;
+        // ★ per-quest 独立压缩策略覆盖恢复（2026-08-23）
+        if (_ctxData.compressLevel) ag._ctx.compressLevel = _ctxData.compressLevel;
         // V13: DE 概念消除，不再恢复 deEntries
         // V10/V11: ctx.narrative 存完整饼干文本
         // V12:     ctx.narrative 是摘要(biscuit:X)，饼干在 conversation 的 _biscuit 消息

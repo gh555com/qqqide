@@ -125,6 +125,10 @@
     if (/^[a-z][a-z0-9+]*:\/\//i.test(val)) return true;    // URL
     if (/^[\/\\]/.test(val)) return true;                   // 路径
     if (/^[.#]/.test(val)) return true;                     // 相对路径/注释
+    // ★ 2026-08-23 四次误伤修复：括号开头表达式（(_activeAgent 等）——T2 token 标签
+    //   抓到 `var token = ***REDACTED*** && ...` 的值 = `(_activeAgent`（12 字符≥阈值）被自动抹除
+    //   → panel-quest-ui.js 语法炸（q178 f85 实锤）。base64 字符集无 ( 开头 → 零误报风险。
+    if (/^[(\[]/.test(val)) return true;                     // 括号包裹的代码表达式
     // ★ 2026-08-21 误伤修复：表达式形态（函数调用 parsed.xxx.get('token') / 属性访问
     //   config.token / 数组取值 env['KEY']）→ 非字面量密钥值，跳过。
     //   事故：const token = ***REDACTED***'token') 被 T2 抹成 ***REDACTED*** 破坏源码（构建失败）。
@@ -133,6 +137,11 @@
     //   旧正则要求 ( [ 结尾，属性链漏网被 T2 抹坏 gaea-host.js L472/L512（F7 实测）。
     //   代价：JWT 形态（eyJ..xx.yy）会被误判为属性链跳过 → 漏报可接受，源码被抹坏不可接受。
     if (/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+$/.test(val)) return true;
+    // ★ 2026-08-23 三次误伤修复：单标识符（CHAR_PER_TOKEN 等变量引用，无点无括号）——
+    //   表达式正则要求 ( [ 结尾、属性链正则要求至少一个点，单标识符两不满足漏网，
+    //   值 14 字符+熵 3.25 ≥ T2 阈值被自动抹除 → content-gateway.js 语法炸（q178 f75 实锤）。
+    //   代价：纯字母数字形态的密钥值会漏报 → 漏报可接受，源码被抹坏不可接受（同二次修复原则）。
+    if (/^[A-Za-z_$][\w$]*$/.test(val)) return true;
     return false;
   }
 

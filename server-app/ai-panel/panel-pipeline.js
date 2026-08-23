@@ -229,6 +229,15 @@ async function _executeSend(intent) {
 
     // ★ 所有闸门已过 → 链执行器已置 _chainBusy（_enqueueSend），直接进入发送
 
+    // ★ 2026-08-23: 自动压缩机器 preFloor 兜底判定（full 档 onlyFacts，楼层建立前）
+    //   fire-and-forget 派发：被 sending 闸门拒绝时无副作用（pending 不结算），postFloor 自然补试。
+    //   （网络中断等导致提取楼层 fatal 后，下一正常楼层建立前即可重试，无需等完结）
+    try {
+        if (window.__qqqCompressMachine && window.__qqqCompressMachine.maybeAutoOnlyFactsPreFloor && _activeAgent) {
+            await window.__qqqCompressMachine.maybeAutoOnlyFactsPreFloor(_activeAgent, questId);
+        }
+    } catch (_) { }
+
     // ★ 天罗地网: 发送开始（死前最后动作链起点）
     try { if (window.__crashNet) window.__crashNet.log({ kind: 'send', q: questId, state: 'sending', type: sendType, detail: isRecovery ? 'recovery' : (_isCompress ? 'compress' : 'normal') }); } catch (_e3) { }
 
@@ -1153,6 +1162,13 @@ async function _executeSend(intent) {
             if (typeof _writeCtxJson === 'function') {
                 try { await _writeCtxJson(qid, agent._ctx); } catch (_) { }
             }
+            // ★ 2026-08-23: 自动压缩机器 postFloor 主入口（compress-machine.js 三档机器）
+            //   medium = editOnly 一锅端（收益 ≥64K）/ full = 阈值减半 + onlyFacts（G1-G5 守卫在机器内）
+            try {
+                if (window.__qqqCompressMachine && window.__qqqCompressMachine.maybeAutoCompress) {
+                    await window.__qqqCompressMachine.maybeAutoCompress(agent, qid);
+                }
+            } catch (_) { }
         }
         if (agent && qid && !agent._floorCompletedCleanly && (agent._stopState === 'sending' || agent._floorFatal)) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }

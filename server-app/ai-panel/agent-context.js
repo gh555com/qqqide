@@ -173,21 +173,8 @@
     }
 
     // ═══ 工具函数 ═══
-    function _readCompressThreshold() {
-        try {
-            if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
-                var k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold'), 10);
-                if (!isNaN(k) && k >= 100 && k <= 1000) return k * 1000;
-            }
-        } catch (_) { }
-        try {
-            if (typeof parent !== 'undefined' && parent.window && parent.window.qqqideDefaults) {
-                return parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;
-            }
-        } catch (_) { }
-        if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD) return ContentGateway.COMPRESS_THRESHOLD;
-        return 600000;
-    }
+    // ★ 2026-08-23: _readCompressThreshold 已删除——自动压缩收敛至 compress-machine.js 三档机器，
+    //   用户不再设置任何阀门值（F80 一锅端定案）。
 
     AgentLoop.prototype._estimateMsgTokens = function (msg) {
         if (!msg) return 0;
@@ -940,69 +927,9 @@
         return '';
     };
 
-    // ════════════════════════════════════════════════
-    // _stripAbsoluteBoxes — 阀值压缩：剥离所有 ╔K...╚ 绝对包装盒体部
-    //   保留头行（[A → run_command] "cmd" 2318c）和温柔包装盒，仅移除体部。
-    //   正则 ╔K[\s\S]*?\n╚\n 锚定行首 ╚，非贪婪，绝不跨越到下一盒子。
-    //   可用于手动触发或自动（饼干超阈值）。
-    // ════════════════════════════════════════════════
-    AgentLoop.prototype._stripAbsoluteBoxes = function (biscuitContent) {
-        if (!biscuitContent || typeof biscuitContent !== 'string') return biscuitContent;
-        // ★ V14 fix: (?=\n|$) 前瞻不吞 \n，防相邻 ╚\n╔K 共享 \n 被吃掉导致漏网 (6/63=9.5%)
-        return biscuitContent.replace(/\n╔K\n[\s\S]*?\n╚(?=\n|$)/g, '\n');
-    };
-
-    // ════════════════════════════════════════════════
-    // _estimateAbsolutBenefit — 估算 absolut 可回收收益（biscuit 内 ╔K 体部总量，tokens）
-    //   V23: 自动阀值压缩的触发依据 = 按钮一上的数字，而非背包总尺寸
-    // ════════════════════════════════════════════════
-    AgentLoop.prototype._estimateAbsolutBenefit = function () {
-        var self = this;
-        for (var i = 0; i < self.conversation.length; i++) {
-            var m = self.conversation[i];
-            if (m._biscuit && m.content) {
-                var stripped = self._stripAbsoluteBoxes(m.content);
-                return Math.round((m.content.length - stripped.length) / CHAR_PER_TOKEN_EST);
-            }
-        }
-        return 0;
-    };
-
-    // ════════════════════════════════════════════════
-    // _tryAutoValveCompress — 自动/手动阀值压缩入口
-    //   threshold=0 → 强制剥离（手动触发），否则仅当 _lastApiPromptTokens > threshold 时剥离
-    //   找 biscuit 消息 → 剥离 ╔K...╚ 体部 → 更新 ctx.biscuitLines
-    // ════════════════════════════════════════════════
-    AgentLoop.prototype._tryAutoValveCompress = function (threshold) {
-        var self = this;
-        for (var i = 0; i < self.conversation.length; i++) {
-            var m = self.conversation[i];
-            if (m._biscuit && m.content) {
-                var before = m.content.length;
-                m.content = self._stripAbsoluteBoxes(m.content);
-                var after = m.content.length;
-                if (after < before) {
-                    self._ctx.biscuitLines = _parseBiscuitFromContent(m.content);
-                    // ★ V14 fix: 同步更新 lastCompressedFloor + narrative，防止 ctx.json 持久化脏数据
-                    self._ctx.lastCompressedFloor = self._ctx.totalFloors || self._ctx.biscuitLines.length || 0;
-                    self._ctx.narrative = 'biscuit:' + self._ctx.biscuitLines.length;
-                    self.log('◆ Valve: stripped ' + (before - after) + ' chars from ╔K...╚ boxes, biscuit ' + self._ctx.biscuitLines.length + ' floors');
-                    return true;
-                }
-                break;
-            }
-        }
-        return false;
-    };
-
-    // ★ 阀值压缩入口：传入 biscuit 文本，返回剥离后的文本
-    //   暴露为全局函数供 UI 按钮调用
-    if (typeof window !== 'undefined') {
-        window._stripAbsoluteBoxes = function (text) {
-            return AgentLoop.prototype._stripAbsoluteBoxes(text);
-        };
-    }
-
-    // ★ V13: DE 概念消除，不再需要 _serializeDeBlock 导出。biscuit 包含一切。
+    // ★ 2026-08-23: _stripAbsoluteBoxes/_estimateAbsolutBenefit/_tryAutoValveCompress 已删除——
+    //   V23 preHouse absolut 自动压缩退役（F80 一锅端定案：从不单独做 absolut），唯一实现
+    //   收敛至 compress-machine.js（stripAbsoluteBoxes/filterEditOnly/estimateEditOnlyGain）。
+    //   手动 absolut 按钮走 panel-quest-ui.js handler 内联正则，不依赖本文件。
 
 })();

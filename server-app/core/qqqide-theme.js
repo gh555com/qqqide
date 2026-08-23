@@ -373,6 +373,13 @@
           'editor.findMatchBackground': '#e0a010cc',
           'editor.findMatchHighlightBackground': '#e0a01066',
           'editor.findRangeHighlightBackground': '#e0a01025',
+          // ═══ 右键菜单配色 — Solarized Light（Monaco inline style 唯一来源，CSS 覆盖不了）═══
+          'menu.background': '#eee8d5',
+          'menu.foreground': '#656360',
+          'menu.selectionBackground': '#ffd301',
+          'menu.selectionForeground': '#000000',
+          'menu.separatorBackground': '#d3c6aa',
+          'menu.border': '#d3c6aa',
         },
         rules: MONACO_LIGHT_RULES,
       });
@@ -402,6 +409,13 @@
           'editor.findMatchBackground': '#d4a017cc',
           'editor.findMatchHighlightBackground': '#d4a01766',
           'editor.findRangeHighlightBackground': '#d4a01725',
+          // ═══ 右键菜单配色 — Solarized Dark ═══
+          'menu.background': '#2a2a2a',
+          'menu.foreground': '#dcd8d0',
+          'menu.selectionBackground': '#b58900',
+          'menu.selectionForeground': '#002b36',
+          'menu.separatorBackground': '#333333',
+          'menu.border': '#333333',
         },
         rules: MONACO_DARK_RULES,
       });

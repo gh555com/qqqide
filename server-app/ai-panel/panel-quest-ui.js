@@ -777,7 +777,88 @@ function updateCtxBtn() {
 $ctxBtn.onclick = function () {
     hideCtxBreakdown();
     document.getElementById('ctx-panel').style.display = 'flex';
+    _ctxPerqRender();
 };
+
+// ═══ 独立滴压缩策略 — per-quest 覆盖（ctx.json compressLevel，2026-08-23）═══
+// 勾选 → 显示三点拉杆（关闭/中等/全托管），仅对当前任务生效，立即生效；
+// 取消 → 删除覆盖字段，立即回退全局设置，拉杆消失。
+var _CTX_LEVELS = ['off', 'medium', 'full'];
+var _CTX_LEVEL_LABELS = ['关闭', '中等', '全托管'];
+var _ctxPerqCheck = document.getElementById('ctx-perq-level');
+var _ctxPerqSlider = document.getElementById('ctx-perq-slider');
+
+function _ctxPerqCurrent() {
+    var ag = _activeAgent;
+    if (ag && ag._ctx && _CTX_LEVELS.indexOf(ag._ctx.compressLevel) >= 0) return ag._ctx.compressLevel;
+    return null;
+}
+
+function _ctxPerqRender() {
+    if (!_ctxPerqCheck || !_ctxPerqSlider) return;
+    var _titleEl = document.getElementById('ctx-perq-title');
+    if (_titleEl) _titleEl.textContent = '独立滴压缩策略' + (questActiveId ? ' 对于 ' + questActiveId : '');
+    var ov = _ctxPerqCurrent();
+    _ctxPerqCheck.checked = !!ov;
+    _ctxPerqSlider.style.display = ov ? 'block' : 'none';
+    if (!ov) return;
+    var idx = _CTX_LEVELS.indexOf(ov);
+    var label = document.getElementById('ctx-perq-label');
+    if (label) label.textContent = _CTX_LEVEL_LABELS[idx];
+    var fill = document.getElementById('ctx-perq-fill');
+    if (fill) fill.style.width = (idx * 50) + '%';
+    var dots = _ctxPerqSlider.querySelectorAll('.ctx-perq-dot');
+    for (var i = 0; i < dots.length; i++) {
+        var active = i <= idx;
+        dots[i].style.borderColor = active ? 'var(--blue)' : 'var(--border-color,#555)';
+        dots[i].style.background = active ? 'var(--blue)' : 'var(--card-bg,#fdf6e3)';
+    }
+}
+
+function _ctxPerqPersist(level) {
+    var ag = _activeAgent;
+    if (!ag || !questActiveId) return;
+    if (!ag._ctx) ag._ctx = {};
+    if (level) {
+        ag._ctx.compressLevel = level;
+    } else {
+        delete ag._ctx.compressLevel;
+    }
+    try { if (typeof _writeCtxJson === 'function') _writeCtxJson(questActiveId, ag._ctx).catch(function () { }); } catch (_) { }
+}
+
+if (_ctxPerqCheck) {
+    _ctxPerqCheck.addEventListener('change', function () {
+        if (this.checked) {
+            // 无覆盖 → 复制全局当前档作为初始独立值（立即生效）
+            if (!_ctxPerqCurrent()) {
+                var g = 'medium';
+                try {
+                    if (parent.window.qqqSettings && parent.window.qqqSettings.get) {
+                        var v = parent.window.qqqSettings.get('ai.compressLevel');
+                        if (_CTX_LEVELS.indexOf(v) >= 0) g = v;
+                    }
+                } catch (_) { }
+                _ctxPerqPersist(g);
+            }
+        } else {
+            _ctxPerqPersist(null);
+        }
+        _ctxPerqRender();
+    });
+}
+
+var _ctxPerqTrack = document.getElementById('ctx-perq-track');
+if (_ctxPerqTrack) {
+    _ctxPerqTrack.addEventListener('click', function (e) {
+        var rect = this.getBoundingClientRect();
+        var idx = Math.round(((e.clientX - rect.left) / rect.width) * 2);
+        if (idx < 0) idx = 0;
+        if (idx > 2) idx = 2;
+        _ctxPerqPersist(_CTX_LEVELS[idx]);
+        _ctxPerqRender();
+    });
+}
 // ★ hover 显示上下文占用拆解面板
 $ctxBtn.addEventListener('mouseenter', function () {
     showCtxBreakdown();
@@ -1059,14 +1140,17 @@ window.addEventListener('message', async function (e) {
                         _bpChars0 += 250;
                         _preBackpackK = Math.round(_bpChars0 / _CPT_loc / 1000);
                     } catch (_) {}
-                    // ★ V21: onlyfacts 守卫 32K tokens（F89 曾按 chars÷2.5 换算成 12K，用户明确要求 32K 边界）
-                    //   提取原料 < 32K tokens 的压缩不值得调一次 tier-4 AI（q147 f97 事故：第二次 h 仅 16K tokens 仍放行）
-                    // ★ 2026-08-17 二次修正：守卫回「原料口径」=_hText（editonly 过滤后切半前半段）——
-                    //   F50 改「收益口径」（before−rText）虚高 5-9 倍（q158 实测：显示 -98k 实际原料仅 11k
-                    //   → 46 楼用 11k 原料提取质量差）；conv-ui computeBenefits 同步 hChars 同口径，
-                    //   「显示 ≥32k 必可执行」仍成立（两端同口径）
-                    if (Math.round(_hText.length / _CPT_loc) < 32000) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '提取原料 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
+                    // ★ 2026-08-23 用户定案：原料 = 大 Q + 大 A（editonly 过滤后骨架中 Q:/A: 行）≥ 64K tokens
+                    //   才准许一次 tier-4 提取（三端口径统一：panel-quest-ui / compress-machine / conv-ui 同算法）。
+                    //   数学：Q/A 占骨架 ~90%，Q/A ≥ 64K ⇒ 切半 hText ≈ 32K——与旧 32K 守卫触发时机等价，
+                    //   但数字语义直白（全部历史问答量，非半块饼干）；在骨架上统计防 ╔K 体部假 Q: 行。
+                    //   执行仍切半喂 hText（前半段）——64K 全喂浪费且贵，保留后半段给 AI 继续用。
+                    var _qaChars = 0;
+                    for (var _qai = 0; _qai < filtered.length; _qai++) {
+                        if (/^(Q:|A:)/.test(filtered[_qai])) _qaChars += filtered[_qai].length;
+                    }
+                    if (Math.round(_qaChars / _CPT_loc) < 64000) {
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '历史问答 < 64K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
                     var _bulletDir = '';
@@ -1282,7 +1366,7 @@ $guideBtn.onclick = async function () {
     // ═══ 异步视觉分析 ═══
     var visionText = '';
     if (capturedImages.length > 0) {
-        var token = (_activeAgent && _activeAgent._token) || ((typeof getLoginToken === 'function') ? getLoginToken() : '');
+        var token = ***REDACTED*** && _activeAgent._token) || ((typeof getLoginToken === 'function') ? getLoginToken() : '');
         if (token) {
             try {
                 var visionResults = await _activeAgent._analyzeImages(capturedImages, token, text);
