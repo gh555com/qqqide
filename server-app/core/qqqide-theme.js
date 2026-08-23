@@ -374,9 +374,10 @@
           'editor.findMatchHighlightBackground': '#e0a01066',
           'editor.findRangeHighlightBackground': '#e0a01025',
           // ═══ 右键菜单配色 — Solarized Light（Monaco inline style 唯一来源，CSS 覆盖不了）═══
+          // hover 底色与 AI 面板大中小搜索右键菜单对调（2026-08-23）：白主题统一用 AI 面板 hover 色 #fdf6e3
           'menu.background': '#eee8d5',
           'menu.foreground': '#656360',
-          'menu.selectionBackground': '#ffd301',
+          'menu.selectionBackground': '#fdf6e3',
           'menu.selectionForeground': '#000000',
           'menu.separatorBackground': '#d3c6aa',
           'menu.border': '#d3c6aa',

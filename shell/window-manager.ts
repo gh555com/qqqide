@@ -568,18 +568,21 @@ export function createWindow(
     });
 
     // Dev mode extras
-    if (extractFlags().isDev) {
-        win.webContents.on('devtools-opened', () => {
-            // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
-            const _doRename = (attempt: number) => {
-                const p = _windowProjectMap.get(win.id);
-                const n = p ? path.basename(p) : 'qqqide';
-                console.log('[devtools] rename attempt=' + attempt + ' winId=' + win.id + ' projPath=' + (p || '(none)') + ' name=' + n);
-                renameDevToolsViaBroker(win, n);
-            };
-            for (let _ri = 1; _ri <= 8; _ri++) {
-                setTimeout(() => _doRename(_ri), 1500 * _ri);
-            }
+    if (extractFlags().isDev) {        win.webContents.on('devtools-opened', () => {
+            // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
+            // ★ 2026-08-23: 成功后即停 — 旧实现 renamed 成功仍打满 8 次重试（devtools 窗口已存在时
+            //   EnumWindows 扫不到 → 8 条 FAILED 日志噪音）；devtools 重开触发新闭包重新循环，覆盖不丢。
+            let _renameDone = false;
+            const _doRename = async (attempt: number) => {
+                const p = _windowProjectMap.get(win.id);
+                const n = p ? path.basename(p) : 'qqqide';
+                console.log('[devtools] rename attempt=' + attempt + ' winId=' + win.id + ' projPath=' + (p || '(none)') + ' name=' + n);
+                const ok = await renameDevToolsViaBroker(win, n);
+                if (ok) _renameDone = true;
+            };
+            for (let _ri = 1; _ri <= 8; _ri++) {
+                setTimeout(() => { if (!_renameDone) _doRename(_ri); }, 1500 * _ri);
+            }
         });
         win.webContents.openDevTools({ mode: 'detach' });
         win.webContents.on('before-input-event', (ev, input) => {

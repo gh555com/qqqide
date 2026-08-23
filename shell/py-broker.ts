@@ -184,12 +184,12 @@ function _sendCommand(action: string, params: Record<string, any> = {}): Promise
     });
 }
 
-/** 改名 DevTools 窗口 — node-broker 优先（koffi），失败回退 Python broker */
-export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: string): Promise<void> {
+/** 改名 DevTools 窗口 — node-broker 优先（koffi），失败回退 Python broker。返回是否成功（供调用方停止重试） */
+export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: string): Promise<boolean> {
     // ── 路径 A: node-broker（koffi → Win32 API，零子进程）──
     if (isNodeBrokerAvailable()) {
         const ok = renameDevToolsViaNodeBroker(mainWin, projName);
-        if (ok) return;
+        if (ok) return true;
         console.log('[py-broker] node-broker failed, falling back to Python broker');
     }
 
@@ -209,12 +209,14 @@ export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: 
         const result = await _sendCommand('rename-devtools', { mainHwnd, title });
         if (result.ok) {
             console.log('[py-broker] renameDevTools (py) OK: renamed=' + (result.renamed || 1) + ' title=' + title);
+            return true;
         } else {
             console.log('[py-broker] renameDevTools (py) FAILED:', result.error);
         }
     } catch (e: any) {
         console.log('[py-broker] renameDevTools (py) ERROR:', e.message || e);
     }
+    return false;
 }
 
 export function stopPyBroker(): void {

@@ -92,6 +92,7 @@
 
         var _editorReadOnly = _editing ? false : true;
         _diffEditor = monaco.editor.createDiffEditor($diffContainer, {
+            useShadowDOM: false,
             renderSideBySide: true,
             readOnly: _editorReadOnly,
             originalEditable: false,

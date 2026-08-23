@@ -1366,7 +1366,7 @@ $guideBtn.onclick = async function () {
     // ═══ 异步视觉分析 ═══
     var visionText = '';
     if (capturedImages.length > 0) {
-        var token = ***REDACTED*** && _activeAgent._token) || ((typeof getLoginToken === 'function') ? getLoginToken() : '');
+        var token = (_activeAgent && _activeAgent._token) || ((typeof getLoginToken === 'function') ? getLoginToken() : '');
         if (token) {
             try {
                 var visionResults = await _activeAgent._analyzeImages(capturedImages, token, text);

@@ -76,7 +76,7 @@
         if (_oldModifiedModel) { _oldModifiedModel.dispose(); _oldModifiedModel = null; }
         if (_diffEditor) { _diffEditor.dispose(); _diffEditor = null; }
         $emptyState.style.display = 'none'; $diffContainer.style.display = '';
-        _diffEditor = monaco.editor.createDiffEditor($diffContainer, { renderSideBySide: true, readOnly: false, originalEditable: false, automaticLayout: true, minimap: { enabled: true, showSlider: 'mouseover' }, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, wordWrap: 'on', wordWrapColumn: 0, renderIndicators: false, renderOverviewRuler: true, fontSize: _editorFontSize, lineNumbers: 'on', lineNumbersMinChars: 2, lineDecorationsWidth: 10, scrollBeyondLastLine: 20, theme: THEME });
+        _diffEditor = monaco.editor.createDiffEditor($diffContainer, { useShadowDOM: false, renderSideBySide: true, readOnly: false, originalEditable: false, automaticLayout: true, minimap: { enabled: true, showSlider: 'mouseover' }, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, wordWrap: 'on', wordWrapColumn: 0, renderIndicators: false, renderOverviewRuler: true, fontSize: _editorFontSize, lineNumbers: 'on', lineNumbersMinChars: 2, lineDecorationsWidth: 10, scrollBeyondLastLine: 20, theme: THEME });
         var originalModel = monaco.editor.createModel(leftContent, lang);
         var modifiedModel = monaco.editor.createModel(latestContent, lang);
         _oldOriginalModel = originalModel; _oldModifiedModel = modifiedModel;
@@ -333,7 +333,7 @@
                     'editor.findRangeHighlightBackground': '#e0a01025',
                     'menu.background': '#eee8d5',
                     'menu.foreground': '#656360',
-                    'menu.selectionBackground': '#ffd301',
+                    'menu.selectionBackground': '#fdf6e3',
                     'menu.selectionForeground': '#000000',
                     'menu.separatorBackground': '#d3c6aa',
                     'menu.border': '#d3c6aa',
