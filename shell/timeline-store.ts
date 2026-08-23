@@ -160,7 +160,7 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
         try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { }
         db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
         db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_seq ON versions(file_path, file_seq)');
-        db.run('PRAGMA journal_mode=WAL');
+        db.run('PRAGMA journal_mode=DELETE');
         db.run('PRAGMA synchronous=FULL');
         db.run('PRAGMA busy_timeout=30000');
 
