@@ -413,6 +413,8 @@
   // 全局安装一次 contextmenu 捕获（Monaco 菜单渲染在 body，需在捕获阶段拿坐标）
   document.addEventListener('contextmenu', function (e) {
     _lastEditorContextMenuEvent = e;
+    // ★ 菜单构建前刷新喂给 AI 标签（方向箭头跟随焦点面板）
+    _refreshFeedToAiLabels();
   }, true);
   _ensureContextMenuGuard();
 
@@ -513,12 +515,29 @@
   // ── 喂给 AI：编辑器右键 → 注入 📎"path" L15-L18 到焦点面板键入框 ──
   var _feedToAiActions = typeof WeakMap !== 'undefined' ? new WeakMap() : new Map();
 
+  // ★ 标签按焦点面板方向带左右箭头（Roam 右键菜单传统：←喂给 AI / 喂给 AI / 喂给 AI→）
+  function _feedToAiLabel() {
+    var t = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
+    return t === 0 ? '\u2190\uD83D\uDCCE \u5582\u7ED9 AI' : t === 2 ? '\uD83D\uDCCE \u5582\u7ED9 AI\u2192' : '\uD83D\uDCCE \u5582\u7ED9 AI';
+  }
+
+  // ★ 右键弹出前刷新喂给 AI 标签（Monaco action label 创建后不可改，dispose 重建）
+  function _refreshFeedToAiLabels() {
+    if (typeof window.__qqq_aiTarget !== 'number') return;
+    // WeakMap 无 forEach → 遍历 _allMonacoEditors（dispose 时已 splice）
+    for (var i = 0; i < _allMonacoEditors.length; i++) {
+      var ed = _allMonacoEditors[i];
+      var v = _feedToAiActions.get(ed);
+      if (v && v.monaco) { try { _addFeedToAiAction(ed, v.monaco, v.filePath); } catch (_) { } }
+    }
+  }
+
   function _addFeedToAiAction(ed, monaco, filePath) {
     if (!ed || !monaco) return;
     var prev = _feedToAiActions.get(ed);
     if (prev && prev.disposable) { try { prev.disposable.dispose(); } catch (_) { } }
 
-    var label = '\uD83D\uDCCE \u5582\u7ED9 AI';  // 📎 喂给 AI
+    var label = _feedToAiLabel();
 
     var disposable = ed.addAction({
       id: 'qqq-feed-to-ai',
@@ -545,7 +564,7 @@
         }
       }
     });
-    _feedToAiActions.set(ed, { disposable: disposable, filePath: filePath });
+    _feedToAiActions.set(ed, { disposable: disposable, filePath: filePath, monaco: monaco });
   }
 
   // ---------------- Editor build ----------------

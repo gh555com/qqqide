@@ -7,7 +7,7 @@
 //    hover 瞬间弹出自定义文字框「清爽从2026」
 //    点击 → 拼多多式活动弹窗（两阶段：未满 / 已满）→ 加 QQ 群 524906522 领 10 元红包
 // ② 原料与基本权利（qqq-act-ge50）：总消费 0→50 ge 进度条
-//    点击 → 任务清单弹窗（下载登录 ✓ / 消费50ge ✓ / 充值门槛(可配置,0=隐藏) / 二选一领取行）
+//    点击 → 任务清单弹窗（下载登录 ✓ / 消费50ge ✓ / 赞助门槛(可配置,0=隐藏) / 二选一领取行）
 //    领取：50 元话费（人工发放 ~2 工作日）或 50 ge（立即到账），二者二选一互斥
 // ③ 2026, 我, vibe coding（qqq-act-vibe）：循环免费窗口豆腐块
 //    免费时段（UTC）：周日全天 + 每日 01:00-03:00 / 13:00-15:00
@@ -278,7 +278,7 @@ function bootActivities(boot) {
       '.qqq-act-task.qqq-act-task-done .qqq-act-check{border-color:#859900;background:#859900;color:#0d0d0d;}' +
       '.qqq-act-task.qqq-act-task-locked{opacity:.55;}' +
       '.qqq-act-task.qqq-act-task-recharge{transition:background .15s,border-color .15s;}' +
-      '.qqq-act-task.qqq-act-task-recharge:hover{background:rgba(217,100,92,.14);border-color:#d9645c;}' +
+      '#qqq-act-task-recharge:hover{background:rgba(217,100,92,.14);border-color:#d9645c;}' +
       '.qqq-act-task .qqq-act-task-go{margin-left:auto;font-size:12px;font-weight:800;color:#d9645c;white-space:nowrap;}' +
       '.qqq-act-task .qqq-act-task-now{font-size:11.5px;color:#9aa0b5;white-space:nowrap;}' +
       '.qqq-act-or{text-align:center;font-size:12px;font-weight:700;color:#b58900;margin:4px 0 6px;}' +
@@ -395,9 +395,9 @@ function bootActivities(boot) {
         '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-cool-fill qqq-act-full" style="width:100%"></span></div>' +
         '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge ✓</div>' +
         '<p class="qqq-act-desc">' +
-        t('act.cool.p2', '你的总消费已达 <b>10 ge</b>（含白嫖）！<br>现在就可以加 QQ 群 <b>524906522</b> 领 <b>10 元红包</b>。') +
+        t('act.cool.p2', '你的总消费已达 <b>10 ge</b>（含白嫖）！<br>加 QQ 群 <b>524906522</b>，发本窗口截图，领 <b>10 元红包</b>。') +
         '</p>' +
-        '<button class="qqq-act-cta" id="qqq-act-copy">' + t('act.cool.copyGroup2', '复制群号 524906522 去加群') + '</button>';
+        '<button class="qqq-act-cta" id="qqq-act-copy">' + t('act.cool.copyGroup2', '复制群号 524906522') + '</button>';
     }
     openOverlay(html);
     _overlay.querySelector('#qqq-act-copy').addEventListener('click', copyQqGroup);
@@ -514,16 +514,15 @@ function bootActivities(boot) {
       t('act.ge50.task2', '总消费达到 50 ge（实扣 + 白嫖合计）') + ' · ' + fmt(total) + '/' + target +
       '</li>';
 
-    // ★ 第三行：充值门槛（服务器配置 >0 才显示；当前 0 = 隐藏，直接到领取行）
-    // 未充值 → 整行可点击，直达网站充值卡片（gh555.com/viewer/geflow?recharge=N，自动弹赞助卡+预选金额）
+    // ★ 第三行：赞助门槛（服务器配置 >0 才显示；当前 0 = 隐藏，直接到领取行）
+    // 未赞助 → 整行可点击，直达网站赞助卡片（gh555.com/viewer/geflow?recharge=N，自动弹赞助卡+预选金额）
     if (reqYuan > 0) {
       tasks +=
         '<li id="qqq-act-task-recharge" class="qqq-act-task ' + (rechargeOk ? 'qqq-act-task-done' : 'qqq-act-task-locked qqq-act-task-recharge') + '" ' +
-        (rechargeOk ? '' : 'title="' + t('act.ge50.task3GoTitle', '点击去充值') + '"') + '>' +
+        'title="' + t('act.ge50.task3GoTitle', '点击赞助') + '">' +
         '<span class="qqq-act-check">' + (rechargeOk ? '✓' : '') + '</span>' +
-        tp('act.ge50.task3', { yuan: reqYuan }, '累计充值满 ' + reqYuan + ' 元') +
-        (rechargeOk ? '' :
-          '<span class="qqq-act-task-go">' + t('act.ge50.task3Go', '去充值 →') + '</span>') +
+        tp('act.ge50.task3', { yuan: reqYuan }, '赞助 ' + reqYuan + ' 元') +
+        '<span class="qqq-act-task-go">' + t('act.ge50.task3Go', '赞助 →') + '</span>' +
         '</li>';
     }
 
@@ -555,9 +554,9 @@ function bootActivities(boot) {
     var $ge = _overlay.querySelector('#qqq-act-claim-ge');
     if ($ph) $ph.addEventListener('click', claimPhone50);
     if ($ge) $ge.addEventListener('click', claimGe50);
-    // ★ 充值门槛行点击 → 网站充值卡片直达（自动弹赞助卡 + 预选 ¥{reqYuan}，广告页豁免）
+    // ★ 赞助门槛行点击 → 网站赞助卡片直达（自动弹赞助卡 + 预选 ¥{reqYuan}，广告页豁免）
     var $task3 = _overlay.querySelector('#qqq-act-task-recharge');
-    if ($task3 && !rechargeOk) {
+    if ($task3) {
       $task3.addEventListener('click', function () {
         var url = 'https://gh555.com/viewer/geflow?lang=zh&recharge=' + reqYuan;
         if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {

@@ -912,6 +912,7 @@ function _writeCtxJson(questId, ctx) {
             if (!bridge || !bridge.fs) return false;
             var payload = {
                 lastCompressedFloor: ctx.lastCompressedFloor || 0,
+                compressLevel: ctx.compressLevel || '', // per-quest 独立压缩策略覆盖（2026-08-23）
                 floorArchives: ctx.floorArchives || [],
                 totalFloors: ctx.totalFloors || 0,
                 narrative: ctx.narrative || '',

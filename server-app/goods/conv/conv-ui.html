@@ -679,18 +679,16 @@ function computeBenefits(ag) {
     }
     result.editonly = _charsToTokens(beforeChars - filtered.join('\n').length);
 
-    // Step 3: only facts — 原料 = editonly 过滤后切半的前半段（与执行端 panel-quest-ui.js 守卫同口径）
-    //   ★ 2026-08-17 二次修正：F50 改「收益口径」（before−rChars）虚高 5-9 倍（q158 实测：显示 -98k
-    //   实际原料仅 11k）；守卫=原料 hText ≥32K → 按钮必须显示同一原料数值，「显示 ≥32k 必可执行」成立。
+    // Step 3: only facts — 原料 = 骨架 Q/A 行（大 Q + 大 A）≥ 64K tokens 才可执行
+    //   ★ 2026-08-23 用户定案（三端口径统一：panel-quest-ui 守卫 / compress-machine / 本显示同算法）：
+    //   数学：Q/A 占骨架 ~90%，Q/A ≥ 64K ⇒ 切半 hText ≈ 32K——与旧 32K 守卫触发时机等价，
+    //   但数字 = 全部历史问答量（非半块饼干），「显示 ≥64k 必可执行」成立。
     //   过滤源用 filtered（非 afterAbsolut）——q154 显示 -33k 实际 29.6K 拒绝的口径分裂由此根治。
-    var blocks = filtered.join('\n').split(/\n(?==== F\d+ )/);
-    var _totalChars = 0, _blockChars = [];
-    for (var bi = 0; bi < blocks.length; bi++) { _blockChars.push(blocks[bi].length); _totalChars += blocks[bi].length; }
-    var _half = Math.floor(_totalChars / 2), _acc = 0, _splitIdx = 1;
-    for (var bi2 = 0; bi2 < blocks.length; bi2++) { _acc += _blockChars[bi2]; if (_acc >= _half) { _splitIdx = bi2; break; } }
-    var _hChars = 0;
-    for (var bi3 = 0; bi3 < _splitIdx; bi3++) _hChars += _blockChars[bi3];
-    result.onlyfacts = _charsToTokens(_hChars);
+    var _qaChars = 0;
+    for (var qi = 0; qi < filtered.length; qi++) {
+        if (/^(Q:|A:)/.test(filtered[qi])) _qaChars += filtered[qi].length;
+    }
+    result.onlyfacts = _charsToTokens(_qaChars);
     return result;
 }
 

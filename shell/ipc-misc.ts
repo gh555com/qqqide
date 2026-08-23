@@ -186,7 +186,9 @@ ${escapedPaths}
     ipcMain.handle('qqqide:shell:openRecycleBin', async () => {
         try {
             if (process.platform === 'win32') {
-                cp.spawn('explorer.exe', ['shell:RecycleBinFolder'], { windowsHide: true });
+                // ★ 2026-08-23 F147: explorer.exe 经 CreateProcess 直启时参数转发失败（实测恒 exit=1，单实例桌面 explorer 收不到），
+                //   必须走 cmd start（ShellExecute 语义）才能打开 shell:RecycleBinFolder（对照实测 exit=0）。
+                cp.spawn('cmd.exe', ['/c', 'start', '""', 'shell:RecycleBinFolder'], { windowsHide: true });
             } else if (process.platform === 'darwin') {
                 cp.spawn('open', [path.join(require('os').homedir(), '.Trash')], { detached: true }).unref();
             } else {

@@ -5,7 +5,7 @@
 //   SETTINGS_DEF 在 settings.js 里自动引用这里的值
 window.qqqideDefaults = {
     'ai.defaultTier': 3,
-    'ai.compressThreshold': 100,    // k tokens（×1000 = 实际 token 数）
+    'ai.compressLevel': 'medium',   // 上下文背包自动压缩三档（off/medium/full，唯一档位设置，2026-08-23 定案）
     'editor.undoMode': 'char',
     'timeline.trackRunCommand': false,
     'desktop.shortcut': true,

@@ -30,14 +30,8 @@
 
     // ═══ 模型上下文窗口参数 ═══
     var CTX_MAX_TOKENS = 1048565;
-    var COMPRESS_THRESHOLD = (function () {
-        try {
-            if (typeof parent !== 'undefined' && parent.window && parent.window.qqqideDefaults) {
-                return parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;
-            }
-        } catch (_) { }
-        return 600000;
-    })();
+    // ★ 2026-08-23: COMPRESS_THRESHOLD 已删除——自动压缩收敛至 compress-machine.js 三档机器，
+    //   阈值常量（64K/32K/32K）唯一存于该文件，用户不再设置任何阀门值。
     var MAX_TOKENS_SAFETY = 10000;
     var CHAR_PER_TOKEN = 2.5;   // ★ 字符→token 估算系数 — 唯一真理源（AI iframe 内 agent-context / panel-pipeline / panel-quest-ui 均引用此值）。恒定常量，禁止任何运行时校准/改写（铁律附录表2）
     var COMPACT_MAX_TOKENS = 65536;
@@ -116,7 +110,8 @@
         HARD_FETCH_DEADLINE_MS: HARD_FETCH_DEADLINE_MS,
         // 模型上下文
         CTX_MAX_TOKENS: CTX_MAX_TOKENS,
-        COMPRESS_THRESHOLD: COMPRESS_THRESHOLD,
+
+
         MAX_TOKENS_SAFETY: MAX_TOKENS_SAFETY,
         CHAR_PER_TOKEN: CHAR_PER_TOKEN,
         COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,

@@ -64,15 +64,15 @@
       ]
     },
     {
-      key: 'ai.compressThreshold',
-      label: '上下文背包自动 absolut 压缩',
-      desc: 'absolut 可回收收益超此值 → 自动剥离绝对包装盒（做absolut 压缩）',
-      type: 'number',
+      key: 'ai.compressLevel',
+      label: '自动压缩 上下文背包',
+      desc: '默认值为中等',
+      type: 'slider-stepped',
       tab: 'general',
-      defaultValue: String(_D['ai.compressThreshold'] || 600),
-      min: 100,
-      max: 1000,
-      unit: 'k'
+      defaultValue: _D['ai.compressLevel'] || 'medium',
+      showLabel: true,
+      stopsLabels: ['关闭', '中等', '全托管'],
+      stops: ['off', 'medium', 'full']
     },
     {
       key: 'audio.volume',
@@ -292,7 +292,15 @@
       var def = tabDefs[i];
       var currentVal = get(def.key, def.defaultValue);
       html += '<div class="qqq-setting-item" style="margin-bottom:16px; padding:12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg2 + ';">';
-      html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + def.label + '</div>';
+      if (def.key === 'ai.compressLevel') {
+        // ★ 标题行右侧问号按钮（外观照搬 ctx-panel #ctx-help），点击跳转上下文背包文档
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
+        html += '<span style="font-size:13px;font-weight:bold;color:' + text + ';">' + def.label + '</span>';
+        html += '<button class="qqq-compress-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;background:transparent;color:var(--text-primary,#eee);line-height:1;">?</button>';
+        html += '</div>';
+      } else {
+        html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + def.label + '</div>';
+      }
       // ★ 无 desc 项不渲染描述行（防 undefined）
       if (def.desc) html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
 
@@ -302,9 +310,15 @@
         if (curIdx < 0) curIdx = stops.length - 1;
         var pct = Math.round((curIdx / (stops.length - 1)) * 100);
         // ★ 紧凑一行：左边标签 + 右边拉杆（无刻度数字）
+        // ★ 2026-08-23: showLabel 变体（压缩档位三档）——左侧显示 stopsLabels 中文，非百分比
+        var _sliderLabel = def.showLabel
+          ? (def.stopsLabels ? def.stopsLabels[curIdx] : stops[curIdx])
+          : (stops[curIdx] + '%');
         html += '<div style="display:flex; align-items:center; gap:12px;">';
-        html += '<span style="font-size:12px; color:' + textDim + '; white-space:nowrap; min-width:32px;">' + stops[curIdx] + '%</span>';
-        html += '<div class="qqq-vol-slider" style="position:relative;flex:1;height:24px;display:flex;align-items:center;user-select:none;" data-setting-key="' + def.key + '" data-stops="' + stops.join(',') + '">';
+        html += '<span style="font-size:12px; color:' + textDim + '; white-space:nowrap; min-width:32px;">' + _sliderLabel + '</span>';
+        // ★ 压缩档位 3 点拉杆宽度 = 音量 5 点拉杆的一半（点间距百分百一致：calc(50%-22px) = (X-44)/2，X=行宽）
+        var _sliderFlex = (def.key === 'ai.compressLevel') ? 'flex:0 0 calc(50% - 22px);' : 'flex:1;';
+        html += '<div class="qqq-vol-slider" style="position:relative;' + _sliderFlex + 'height:24px;display:flex;align-items:center;user-select:none;" data-setting-key="' + def.key + '" data-stops="' + stops.join(',') + '">';
         html += '<div style="position:absolute;left:0;right:0;height:4px;border-radius:2px;background:' + border + ';"></div>';
         html += '<div style="position:absolute;left:0;height:4px;border-radius:2px;background:' + accent + ';width:' + pct + '%;"></div>';
         for (var si = 0; si < stops.length; si++) {
@@ -456,6 +470,14 @@
           _renderPanel();
         });
       })(sliderTracks[st]);
+    }
+
+    // 绑定自动压缩帮助问号（跳转上下文背包文档，无 hover 提示）
+    var helpBtns = _$panel.querySelectorAll('.qqq-compress-help');
+    for (var hb = 0; hb < helpBtns.length; hb++) {
+      helpBtns[hb].addEventListener('click', function () {
+        window.open('https://www.gh555.com/gaea/d/qqqide?lang=zh#docs/qqqide-2', '_blank');
+      });
     }
 
     // 绑定 number 变更（debounce 500ms 后写入）

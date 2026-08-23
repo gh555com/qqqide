@@ -55,12 +55,34 @@ function renderMarkdown(src) {
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
     // Tables (must run before lists to avoid confusing | with list markers)
     // ★ 防护：用 \x0a 代替 \n，防止 search_replace 工具将正则中的 \n 断裂成真换行
+    // ★ 转义管道符（2026-08-21 二次根治，逐字符扫描）：\| → 字面 |（不拆列）；
+    //   \\ → 字面 \；\\| → 字面 \ + 列分隔符（GFM 严格语义）。
+    //   split('|') 占位符版无法区分 \\| 与 \|（占位法把 \\| 误当 \| 不拆列）
+    function _splitRowCells(row) {
+        var cells = [], cur = '', i = 0;
+        while (i < row.length) {
+            var ch = row.charAt(i);
+            if (ch === '\\' && i + 1 < row.length) {
+                var nx = row.charAt(i + 1);
+                if (nx === '|') { cur += '|'; i += 2; continue; }
+                if (nx === '\\') { cur += '\\'; i += 2; continue; }
+                cur += ch; i++; continue;
+            }
+            if (ch === '|') { cells.push(cur.trim()); cur = ''; i++; continue; }
+            cur += ch; i++;
+        }
+        cells.push(cur.trim());
+        // 剥首尾语法管道产生的空单元格（表格行以 | 开头/结尾）
+        if (cells.length && cells[0] === '' && row.charAt(0) === '|') cells.shift();
+        if (cells.length && cells[cells.length - 1] === '' && row.charAt(row.length - 1) === '|') cells.pop();
+        return cells;
+    }
     s = s.replace(/(?:\x0a|^)(\|.+\|)\x0a\|[-:\s|]+\|\x0a((?:\|.+\|\x0a?)*)/g, function (_, header, rows) {
         if (!header || rows === undefined) return _;
         // slice(1,-1) 去掉首尾 | 产生的空串，保留中间空列（filter 会吞掉空表头）
-        const ths = header.split('|').slice(1, -1).map(function (c) { return '<th>' + c.trim() + '</th>'; }).join('');
+        const ths = _splitRowCells(header).map(function (c) { return '<th>' + c + '</th>'; }).join('');
         const trs = rows.split('\n').filter(function (r) { return r.trim(); }).map(function (r) {
-            const tds = r.split('|').slice(1, -1).map(function (c) { return '<td>' + c.trim() + '</td>'; }).join('');
+            const tds = _splitRowCells(r).map(function (c) { return '<td>' + c + '</td>'; }).join('');
             return '<tr>' + tds + '</tr>';
         }).join('');
         var rawTable = '<table><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';

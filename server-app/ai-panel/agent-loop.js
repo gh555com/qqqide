@@ -670,21 +670,9 @@ var AgentLoop = (function () {
                     continue;
                 }
 
-                // V23: 阀值压缩 — 检查 absolut 可回收收益（biscuit 内 ╔K 体部总量，tokens），超阈值才剥离
-                //   触发依据 = 按钮一上的数字，而非背包总尺寸。零网络零费用，纯本地正则操作。
-                var _threshold = 100000; // 默认 100K tokens
-                try {
-                    if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
-                        var _k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold'), 10);
-                        if (!isNaN(_k) && _k >= 100 && _k <= 1000) _threshold = _k * 1000;
-                    }
-                } catch (_) { }
-                if (typeof self._estimateAbsolutBenefit === 'function') {
-                    var _absTokens = self._estimateAbsolutBenefit();
-                    if (_absTokens > 0 && _absTokens > _threshold && typeof self._tryAutoValveCompress === 'function') {
-                        self._tryAutoValveCompress(_threshold);
-                    }
-                }
+                // ★ 2026-08-23: V23 preHouse absolut 自动压缩已退役——自动压缩收敛至
+                //   compress-machine.js 三档机器（off/medium/full，楼层完结后 editOnly 一锅端，
+                //   从不单独做 absolut——F80 定案：editOnly ⊇ absolut，单独做是白工分支）。
 
                 self._houseIndex++;
                 opts._netRetryCount = 0;  // ★ 每 house 重置网络重试预算
