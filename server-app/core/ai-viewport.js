@@ -1994,6 +1994,15 @@
     return true;
   }
 
+  // ★ 焦点面板路由：AI 面板获得焦点 → 更新 __qqq_aiTarget（0左/1中/2右）
+  //   编辑器右键「喂给 AI」标签箭头 + 层级水印位置 + 视口注入目标全部跟随
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'qqq-ai-panel-focused' && typeof e.data.panel === 'number') {
+      if (e.data.panel >= 0 && e.data.panel <= 2) window.__qqq_aiTarget = e.data.panel;
+      return;
+    }
+  });
+
   // 监听 AI 面板发来的锁冲突通知：从视口移除被锁的项目 / 清空整个视口
   window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-ai-viewport-clear-all') {

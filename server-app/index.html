@@ -290,7 +290,15 @@ var _orig={};
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=337').catch(() => {});
+    navigator.serviceWorker.register('./service-worker.js?v=337')
+      .then(function (reg) {
+        // ★ 新 SW 已就绪（waiting）→ 立即激活（service-worker 收 skipWaiting 后 activate + claim）
+    //   2026-08-23 删除 controllerchange 自动 reload：该事件在 SW 首次接管页面时同样触发
+    //   → 每次启动（缓存清空/SW 字节变化）无条件 reload → 「启动完立即又重启一次/闪两个窗口」
+    //   资源走 network-first 旧 SW 控制期间照样回源拿最新，无需 reload；skipWaiting 保留静默激活
+        if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+      })
+      .catch(() => {});
   }
 </script>
 

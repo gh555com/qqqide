@@ -17,7 +17,7 @@
 //   {项目}/_qqq/secret-guard/whitelist.json  用户白名单（文件级 / 值级）
 //   {项目}/_qqq/secret-guard.log             审计日志（append）
 //
-// 开关: 设置 → 高级 → 协助密钥脱敏（secret.maskHelp，默认开）
+// 开关: 设置 → 高级 → 协助密钥脱敏（secret.maskHelp，默认关——绿色包出厂不自动开，用户手动开启）
 // ============================================================================
 
 (function () {
@@ -32,6 +32,7 @@
   var T3_ENTROPY = 2.5;                   // T3 宽标签熵阈值
   var STATE_TTL = 30 * 24 * 3600 * 1000;  // 值级去重 30 天
   var SKIP_DIRS = ['_qqq/', '_qqqvault/', '.git/'];
+  var SG_VER = '20260823_01';  // 引擎规则版本（防线3: 陈旧引擎零自动抹除，只读协同）
 
   // ═══════════ 状态 ═══════════
   var _lastPorcelain = {};   // path → porcelain 原文（上升沿检测）
@@ -51,9 +52,9 @@
 
   function _enabled() {
     try {
-      var v = window.qqqSettings && window.qqqSettings.get('secret.maskHelp', 'true');
+      var v = window.qqqSettings && window.qqqSettings.get('secret.maskHelp', 'false');
       return v !== false && v !== 'false';
-    } catch (_) { return true; }
+    } catch (_) { return false; }
   }
 
   function _t(key, fallback, vars) {
@@ -142,7 +143,50 @@
     //   值 14 字符+熵 3.25 ≥ T2 阈值被自动抹除 → content-gateway.js 语法炸（q178 f75 实锤）。
     //   代价：纯字母数字形态的密钥值会漏报 → 漏报可接受，源码被抹坏不可接受（同二次修复原则）。
     if (/^[A-Za-z_$][\w$]*$/.test(val)) return true;
+    // ★ 2026-08-23 协同噪音收紧（F6 实测 75 条 T3 几乎全业务 key）:
+    //   全大写枚举（TITLE_REQUIRED 等）与冒号组合（viewerID:postID 等）是业务字典不是密钥——
+    //   真密钥值无冒号（连接串由 T1 url 规则覆盖）。
+    if (/^[A-Z][A-Z0-9_]{3,}$/.test(val)) return true;
+    if (val.indexOf(':') !== -1) return true;
     return false;
+  }
+
+  // ★ 2026-08-23 防线1.5 文件类型分流（五次误伤全在源码文件实锤）:
+  //   自动抹除仅限配置/文档类（.env/.conf/.ini/.txt/.md/.yaml/.yml/.toml/.json/.cfg/.properties/.xml）;
+  //   源码类一律只进协同——源码里 99% 的"密钥"是变量引用，真密钥该进 .env。
+  function _isAutoKind(relPath) {
+    var base = relPath.split('/').pop().toLowerCase();
+    if (base === '.env' || base.indexOf('.env.') === 0) return true;
+    return /\.(conf|ini|txt|md|yaml|yml|toml|json|cfg|properties|xml)$/.test(base);
+  }
+
+  // ★ 2026-08-23 防线2 语法门: 自动抹除落盘前语法验证，失败 → 不落盘（自动回滚）+ 转协同 + 审计。
+  //   无论未来出现第 N 种形态误伤，语法错误 100% 可测——误伤成本从「源码被破坏到人发现」
+  //   降到「毫秒级无声自愈」。js/json 严格检查；其他类型（配置/文档无严格语法）→ 不检查。
+  function _syntaxCheck(relPath, content) {
+    var base = relPath.toLowerCase();
+    if (base.indexOf('.json') !== -1) {
+      try { JSON.parse(content); return null; } catch (e) { return 'JSON 语法错误: ' + e.message; }
+    }
+    if (base.indexOf('.js') !== -1 || base.indexOf('.mjs') !== -1 || base.indexOf('.cjs') !== -1) {
+      try { new Function(content); return null; } catch (e) { return 'JS 语法错误: ' + e.message; }
+    }
+    return null;
+  }
+
+  // ★ 2026-08-23 防线3 引擎陈旧自检（第5次误伤根治: 规则落盘 ≠ 规则生效——已加载页面
+  //   继续用内存旧引擎跑到下一次热更，旧规则再抹同款）: 每次扫描前 fetch 自身源文件比对
+  //   SG_VER，不一致 → 本次零自动抹除（只读协同）。fetch 失败（file:// 等）→ 不降级
+  //   （防线1.5 + 语法门仍在，破坏面已收窄到配置类 T1）。
+  var _engineReadOnly = false;
+  async function _selfCheck() {
+    try {
+      var r = await fetch('core/secret-guard.js', { cache: 'no-store' });
+      if (!r.ok) return false;
+      var txt = await r.text();
+      var m = txt.match(/SG_VER\s*=\s*'([^']+)'/);
+      return !m || m[1] !== SG_VER;
+    } catch (_) { return false; }
   }
 
   function _redactUrl(url) {
@@ -362,6 +406,8 @@
   async function _processProject(projPath, porcelain) {
     try {
       if (!_enabled()) return;
+      _engineReadOnly = await _selfCheck();
+      if (_engineReadOnly) _appendLog(projPath, 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）');
       var files = _parsePorcelain(porcelain);
       if (!files.length) { _clearPending(projPath); return; }
 
@@ -384,6 +430,8 @@
       else { _clearPending(projPath); }
     } catch (err) {
       _appendLog(projPath, 'ERROR ' + (err && err.message ? err.message : err));
+    } finally {
+      _engineReadOnly = false;
     }
   }
 
@@ -393,6 +441,8 @@
       var b = _b();
       if (!b || !b.fs) return null;
       var st = await b.fs.stat(fullPath);
+      // ★ 2026-08-23: git porcelain 对未跟踪目录输出 "?? dir/" 条目 → 直接 fs.read 目录 → EISDIR（启动日志 ×2 实锤）
+      if (st && st.isDir) return null;
       if (st && st.size > MAX_FILE_BYTES) return null;
       var raw = await b.fs.read(fullPath);
       if (typeof raw !== 'string' || !raw) return null;
@@ -413,7 +463,11 @@
         if (wl.values[vKey]) continue;
         if (state[vKey] && Date.now() - state[vKey] < STATE_TTL) continue;
         f._vh = vh; f._vKey = vKey;
-        if (f.tier <= 2) todo.push(f);
+        // ★ 2026-08-23 防线1（T2 降级）: 五次误伤全是 T2 自动抹除（表达式/属性链/裸标识符/
+        //   括号开头四种形态），T2 彻底失去自动权 → 一律协同。
+        //   ★ 防线1.5: T1 自动抹除仅限配置/文档类；源码类 T1 也进协同。
+        //   ★ 防线3: _engineReadOnly（陈旧引擎）→ 零自动抹除。
+        if (f.tier === 1 && _isAutoKind(relPath) && !_engineReadOnly) todo.push(f);
         else t3.push(f);
       }
       if (!todo.length && !t3.length) return null;
@@ -433,20 +487,27 @@
       if (todo.length) {
         var red = _applyRedactions(raw, todo);
         if (red.applied.length) {
-          await b.fs.write(fullPath, red.content);
-          if (staged) {
-            try {
-              await b.qz.spawn({ cmd: await _gitBin(), args: ['-C', projPath, 'add', '--', relPath], timeout: 8000 });
-            } catch (_) {}
+          // ★ 防线2 语法门: 抹除后内容语法验证失败 → 不落盘（自动回滚）+ 全部转协同 + 审计
+          var gateErr = _syntaxCheck(relPath, red.content);
+          if (gateErr) {
+            _appendLog(projPath, 'GATE-FAIL ' + relPath + ' ' + gateErr);
+            for (var gi = 0; gi < todo.length; gi++) t3.push(todo[gi]);
+          } else {
+            await b.fs.write(fullPath, red.content);
+            if (staged) {
+              try {
+                await b.qz.spawn({ cmd: await _gitBin(), args: ['-C', projPath, 'add', '--', relPath], timeout: 8000 });
+              } catch (_) {}
+            }
+            var now = Date.now();
+            for (var ai = 0; ai < red.applied.length; ai++) {
+              var af = red.applied[ai];
+              state[af._vKey] = now;
+              auto.push({ tier: af.tier, name: af.name, file: relPath, line: af.line, value: af.value.slice(0, 16) + '...', context: _maskedContext(raw, af.start, af.end) });
+              _appendLog(projPath, 'REDACT[T1:' + af.name + '] ' + relPath + ':' + af.line + ' ' + af.value.slice(0, 16) + '...');
+            }
+            _saveJson(_stateFile(projPath), state);
           }
-          var now = Date.now();
-          for (var ai = 0; ai < red.applied.length; ai++) {
-            var af = red.applied[ai];
-            state[af._vKey] = now;
-            auto.push({ tier: af.tier, name: af.name, file: relPath, line: af.line, value: af.value.slice(0, 16) + '...', context: _maskedContext(raw, af.start, af.end) });
-            _appendLog(projPath, 'REDACT[' + (af.tier === 1 ? 'T1' : 'T2') + ':' + af.name + '] ' + relPath + ':' + af.line + ' ' + af.value.slice(0, 16) + '...');
-          }
-          _saveJson(_stateFile(projPath), state);
         }
       }
 
@@ -620,6 +681,12 @@
       if (idx === -1) { _appendLog(projPath, 'SKIP(t3-value-missing) ' + item.file); return; }
       var rep = (item.quote || '') + REDACTED + (item.quote || '');
       var out = raw.slice(0, idx) + rep + raw.slice(idx + item.value.length);
+      // ★ 防线2 语法门（人工路径同样生效）: 抹除导致语法错误 → 不落盘、不移出队列
+      var gateErr = _syntaxCheck(item.file, out);
+      if (gateErr) {
+        _appendLog(projPath, 'GATE-FAIL(manual) ' + item.file + ' ' + gateErr);
+        return;
+      }
       await b.fs.write(full, out);
       if (item.staged) {
         try {
@@ -715,6 +782,8 @@
   // 未提交扫描（dirty）：同后台事件路径，自动抹除 T1/T2 + 收集 T3
   async function _sgScanDirty(projPath) {
     if (!_enabled()) return { disabled: true };
+    _engineReadOnly = await _selfCheck();
+    if (_engineReadOnly) _appendLog(projPath, 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）');
     var porcelain = await _gitPorcelain(projPath);
     var files = _parsePorcelain(porcelain);
     var auto = [], t3 = [], skip = [];
@@ -734,6 +803,7 @@
     }
     if (t3.length) { _pendingT3[projPath] = t3; _showCoopQoast(projPath); }
     else { _clearPending(projPath); }
+    _engineReadOnly = false;
     return { mode: 'dirty', porcelain: porcelain, fileCount: files.length, auto: auto, t3: t3, skip: skip };
   }
 

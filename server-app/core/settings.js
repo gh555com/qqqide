@@ -104,7 +104,7 @@
       desc: '发现项目有未提交更改时，自动识别并抹除其中的密钥（API Key/密码/Token 等）。无法自动确认的会弹窗请你协同处理。',
       type: 'bool',
       tab: 'advanced',
-      defaultValue: 'true'
+      defaultValue: 'false'
     }
   ];
 

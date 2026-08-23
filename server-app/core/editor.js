@@ -303,6 +303,11 @@
   // ── 共享编辑器选项（build/openInPane 唯一真理源）──
   function _makeEditorBaseOptions() {
     return {
+      // ★ 禁用 shadow DOM（2026-08-23 终局）：Monaco 0.34.1 默认 useShadowDOM=true →
+      //   右键菜单 .context-view 渲染在 shadow root 内，document 层 CSS/clamp 全部失效
+      //   （颜色/箭头走主题与 addAction 内部链路所以正常）。显式 false 后菜单回 document，
+      //   shell-main.css .context-view 规则 + 右键菜单边缘躲避 clamp 全部生效。
+      useShadowDOM: false,
       automaticLayout: true,
       fontSize: _editorFontSize,
       fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
@@ -369,45 +374,121 @@
   }
 
   // ═══ Monaco 右键菜单边缘躲避 ═══
+  // ★ 时序根因（2026-08-23 修正）：Monaco ContextView 惰性创建、常驻复用——
+  //    appendChild 只在构造时发生一次，之后每次菜单打开都是 clearNode→render→doLayout。
+  //    旧实现监听 body appendChild 只在构造时触发一次，且 Monaco doLayout 同步覆盖修正值 → 完全无效。
+  //    现改为：①观察 .context-view 内容变化（MutationObserver 回调 = microtask，
+  //    天然执行在 doLayout（同步）之后 → 修正值永不被覆盖）②rAF 兜底异步打开路径。
   var _lastEditorContextMenuEvent = null;
-  var _editorContextMenuObserver = null;
+  var _menuContentObserver = null;
+  var _menuBodyObserver = null;
 
   function _ensureContextMenuGuard() {
-    if (_editorContextMenuObserver) return;
-    _editorContextMenuObserver = new MutationObserver(function (mutations) {
-      for (var i = 0; i < mutations.length; i++) {
-        var addedNodes = mutations[i].addedNodes;
-        for (var j = 0; j < addedNodes.length; j++) {
-          var node = addedNodes[j];
-          if (node.nodeType === 1 && node.classList && node.classList.contains('context-view')) {
-            _clampContextMenu(node);
-          }
-        }
-      }
-    });
-    _editorContextMenuObserver.observe(document.body, { childList: true, subtree: true });
+    if (_menuContentObserver) return;
+    if (!_menuBodyObserver) {
+      // ① body 观察：等 .context-view 首次出现（Monaco 惰性创建），挂观察器
+      _menuBodyObserver = new MutationObserver(function () {
+        _attachMenuContentObserver();
+      });
+      try { _menuBodyObserver.observe(document.body, { childList: true }); } catch (_) { }
+    }
+    // ② 立即尝试：view 已存在（容器非 body 时 bodyObserver 兜不住）→ 直接挂
+    _attachMenuContentObserver();
   }
 
-  function _clampContextMenu(menuEl) {
-    if (!_lastEditorContextMenuEvent) return;
-    var ev = _lastEditorContextMenuEvent;
-    // 让 Monaco 先完成定位，下一帧再修正
-    requestAnimationFrame(function () {
-      var rect = menuEl.getBoundingClientRect();
-      var mw = rect.width || 200;
-      var mh = rect.height || 100;
-      var l = ev.clientX, t = ev.clientY;
-      // 太靠右 → 移到光标左边
-      if (l + mw > window.innerWidth - 4) {
-        l = Math.max(4, ev.clientX - mw);
-      }
-      // 太靠下 → 上移
-      if (t + mh > window.innerHeight - 4) {
-        t = Math.max(4, window.innerHeight - mh - 4);
-      }
-      menuEl.style.left = Math.max(4, l) + 'px';
-      menuEl.style.top = Math.max(4, t) + 'px';
+  function _attachMenuContentObserver() {
+    if (_menuContentObserver) return;
+    var menuEl = document.querySelector('.context-view');
+    if (!menuEl) return;
+    // ② 观察 style 写入 + 内容变化：Monaco 每次 doLayout 写 left/top（含后续帧
+    //    再定位）都触发 → 修正值永不被覆盖。旧 childList 只在 render 时触发一次，
+    //    doLayout 再定位直接覆盖修正值——F3 方案失效根因。
+    _menuContentObserver = new MutationObserver(function () {
+      _clampContextMenuIfVisible();
     });
+    _menuContentObserver.observe(menuEl, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
+    _clampContextMenuIfVisible();
+  }
+
+  function _clampContextMenuIfVisible() {
+    if (!_lastEditorContextMenuEvent) return;
+    var menuEl = document.querySelector('.context-view');
+    if (!menuEl || menuEl.offsetWidth <= 0) return; // display:none（菜单已关）跳过
+    _applyContextMenuClamp(menuEl, _lastEditorContextMenuEvent);
+  }
+
+  function _findContextMenuEditor(ev) {
+    try {
+      var el = ev.target && ev.target.closest ? ev.target.closest('.monaco-editor') : null;
+      if (el) return el;
+    } catch (_) { }
+    // 兑底：target 不在 .monaco-editor 子树（closest 失败场景）→ 遍历已注册编辑器
+    for (var i = 0; i < _allMonacoEditors.length; i++) {
+      try {
+        var domNode = _allMonacoEditors[i].getDomNode();
+        if (domNode && domNode.contains && domNode.contains(ev.target)) return domNode;
+      } catch (_) { }
+    }
+    return null;
+  }
+
+  function _scheduleContextMenuClamp() {
+    _ensureContextMenuGuard(); // ★ 每次右键重试挂 observer（view 惰性创建/容器非 body 时 bodyObserver 兜不住）
+    var tries = 0;
+    (function tick() {
+      var menuEl = document.querySelector('.context-view');
+      if (menuEl && menuEl.offsetWidth > 0) {
+        _applyContextMenuClamp(menuEl, _lastEditorContextMenuEvent);
+        // ★ 多帧持续修正：Monaco 若在后续帧再定位（异步 doLayout），下一帧纠正回来
+        if (++tries < 8) requestAnimationFrame(tick);
+        return;
+      }
+      if (++tries < 8) requestAnimationFrame(tick); // 最多 ~8 帧等异步打开
+    })();
+  }
+
+  function _applyContextMenuClamp(menuEl, ev) {
+    // 子菜单 holder 不修正（跟随父菜单定位，独立翻转会破坏父子关联）
+    if (menuEl.classList && menuEl.classList.contains('menubar-menu-items-holder')) return;
+    // 边界 = 触发菜单的编辑器 DOM（光标靠近右缘 → 右上角锚定向左展开）
+    var editorEl = _findContextMenuEditor(ev);
+    var leftEdge = 4, topEdge = 4, rightEdge = window.innerWidth - 4, bottomEdge = window.innerHeight - 4;
+    if (editorEl) {
+      var er = editorEl.getBoundingClientRect();
+      if (er.width > 50 && er.height > 50) { // 编辑器尺寸有效才收紧边界（未布局/隐藏编辑器不误判）
+        leftEdge = er.left + 4;
+        topEdge = er.top + 4;
+        rightEdge = er.right - 4;
+        bottomEdge = er.bottom - 4;
+      }
+    }
+    var rect = menuEl.getBoundingClientRect();
+    var mw = rect.width || 220;
+    var mh = rect.height || 120;
+    if (rect.width <= 0 || rect.height <= 0) return; // 未渲染/已关闭
+    var l = ev.clientX, t = ev.clientY;
+    // 水平：光标靠右放不下且左侧放得下 → 右上角锚定（菜单右缘贴光标向左展开）
+    if (l + mw > rightEdge && l - mw > leftEdge) {
+      l = l - mw;
+    } else {
+      // 左上角锚定，钳制不出左右缘（窄编辑器放不下时右缘对齐）
+      l = Math.max(leftEdge, Math.min(l, rightEdge - mw));
+    }
+    // 垂直：太靠下 → 上移保证完整可见
+    if (t + mh > bottomEdge) {
+      t = Math.max(topEdge, bottomEdge - mh);
+    }
+    // ★ 相对修正（2026-08-23 终局）：Monaco 定位是「相对偏移」语义（style 值 = 目标 -
+    //   当前页面位置，doLayout 自纠正会把修正值吃回），直接写目标坐标必被覆盖。改为读
+    //   当前实际位置算 delta 叠加——fixed/absolute/container 偏移全免疫；delta=0 即到位
+    //   不再写 style（防 observer 自激循环）。
+    var dx = l - rect.left;
+    var dy = t - rect.top;
+    if (dx === 0 && dy === 0) return;
+    var curL = parseFloat(menuEl.style.left) || 0;
+    var curT = parseFloat(menuEl.style.top) || 0;
+    menuEl.style.left = Math.max(0, curL + dx) + 'px';
+    menuEl.style.top = Math.max(0, curT + dy) + 'px';
   }
 
   // 全局安装一次 contextmenu 捕获（Monaco 菜单渲染在 body，需在捕获阶段拿坐标）
@@ -415,6 +496,10 @@
     _lastEditorContextMenuEvent = e;
     // ★ 菜单构建前刷新喂给 AI 标签（方向箭头跟随焦点面板）
     _refreshFeedToAiLabels();
+    // ★ 右键菜单边缘躲避：style 属性观察（每次 Monaco 定位后 microtask 修正，永不被覆盖）+ rAF 兜底
+    _ensureContextMenuGuard();
+    _clampContextMenuIfVisible();
+    _scheduleContextMenuClamp();
   }, true);
   _ensureContextMenuGuard();
 
