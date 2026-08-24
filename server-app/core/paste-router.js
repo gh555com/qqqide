@@ -124,6 +124,13 @@
     'image/svg+xml': '.svg',
   };
 
+  // ═══ 文件名 → 扩展名（drop 锚点兜底用）═══
+  function _extFromName(name) {
+    if (!name) return '';
+    var dot = String(name).lastIndexOf('.');
+    return dot >= 0 ? String(name).slice(dot).toLowerCase() : '';
+  }
+
   // ═══ Blob → ArrayBuffer → Base64 ═══
   function blobToArrayBuffer(blob) {
     return new Promise(function (resolve, reject) {
@@ -401,6 +408,101 @@
     }
   }
 
+  // ═══ 拖放接收（2026-08-24）═══
+  // 文件拖入 Monaco 编辑器 = 粘贴一切（WYSIWYG）:
+  //   · 图片（有路径）→ copyFile 进 _qqqvault/ 保原名；无路径（浏览器拖入）→ blob 写盘
+  //   · 其他文件/文件夹 → copyFile 进 _qqqvault/（目录感知递归复制）
+  //   统一插入 📎 锚点 → ContentWidget 所见即所得。
+  // 由主窗口 drop-overlay.js 在拖放悬停于编辑器时调用。
+  async function handleDrop(e) {
+    var targetEd = _findEditorFromEvent(e);
+    if (!targetEd) return false;
+    var dt = e.dataTransfer;
+    if (!dt || !dt.files || dt.files.length === 0) return false;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    var imageFiles = [];
+    var otherFiles = [];
+    for (var i = 0; i < dt.files.length; i++) {
+      var f = dt.files[i];
+      if (f.type && f.type.indexOf('image/') === 0) imageFiles.push(f);
+      else otherFiles.push(f);
+    }
+
+    var pdir = _getPasteDir(e);
+    if (pdir) {
+      try { if (bridge && bridge.fs && bridge.fs.mkdir) await bridge.fs.mkdir(pdir); } catch (_) {}
+    }
+
+    var copiedOk = 0, copiedFail = 0;
+    var seen = {};
+
+    // 统一落盘函数: 有完整路径 → 原生流式复制（保原名，目录感知）；无路径 → 图片 blob 写盘
+    async function _land(f, isImage) {
+      var name = f.name || 'file';
+      if (seen[name]) return;
+      seen[name] = true;
+
+      if (!pdir) {
+        // 无法确定落盘目录 → 仅插文件名锚点（无真实路径，所见即所得降级）
+        _insertTokenAtCursor(_makeAnchorToken('', name), { path: null, sha256: '', fileName: name }, targetEd);
+        return;
+      }
+      var sep = pdir.indexOf('\\') >= 0 ? '\\' : '/';
+
+      // 有路径 → copyFile（流式 + 去重 + 唯一化，与 roam/粘贴共用主进程单一真理）
+      if (f.path) {
+        var dst = pdir + sep + name;
+        try {
+          var landed = await bridge.fs.copyFile(f.path, dst);
+          copiedOk++;
+          var landedPath = (typeof landed === 'string' && landed) ? landed : dst;
+          var landedName = landedPath.replace(/\\/g, '/').split('/').pop() || name;
+          if (bridge && bridge.assetRoots && bridge.assetRoots.add) {
+            bridge.assetRoots.add(pdir).catch(function () {});
+          }
+          _insertTokenAtCursor(_makeAnchorToken('', landedName), { path: landedPath, sha256: '', fileName: landedName }, targetEd);
+        } catch (err) {
+          copiedFail++;
+          console.warn('[paste-router] drop 复制失败:', f.path, err && err.message);
+        }
+        return;
+      }
+
+      // 无路径图片 → blob 写盘（生成名）
+      if (isImage) {
+        var ext = mimeToExt[f.type] || _extFromName(name) || '.png';
+        var result = await _saveImage(f, ext, e);
+        if (result && result.path) {
+          copiedOk++;
+          _insertTokenAtCursor(_makeAnchorToken(result.sha256, result.fileName), { path: result.path, sha256: result.sha256, fileName: result.fileName }, targetEd);
+        } else {
+          copiedFail++;
+          _insertTokenAtCursor(_makeAnchorToken('', name), { path: null, sha256: '', fileName: name }, targetEd);
+          var errMsg = (result && result.error) ? result.error : '未知错误';
+          console.error('[paste-router] drop 图片写盘失败: ' + errMsg);
+          if (window.qqqideQoast) {
+            window.qqqideQoast.show('拖放图片失败: ' + errMsg, { duration: 5000 });
+          }
+        }
+        return;
+      }
+
+      // 无路径非图片 → 仅文件名锚点
+      _insertTokenAtCursor(_makeAnchorToken('', name), { path: null, sha256: '', fileName: name }, targetEd);
+    }
+
+    for (var k = 0; k < imageFiles.length; k++) await _land(imageFiles[k], true);
+    for (var n = 0; n < otherFiles.length; n++) await _land(otherFiles[n], false);
+
+    if (copiedFail > 0 && window.qqqideQoast) {
+      window.qqqideQoast.show('拖放: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败', { duration: 4000 });
+    }
+    return true;
+  }
+
   // ═══ 附加/分离 ═══
   // ★ 2026-08-02 重构: 监听 document（capture）而非 per-editor DOM。
   //   旧架构 _domNode = editor.getDomNode() + _attached 只绑一次 →
@@ -469,6 +571,7 @@
     attach: attach,
     dispose: dispose,
     isActive: function () { return _attached; },
+    handleDrop: handleDrop,
     _makeAnchorToken: _makeAnchorToken,
   };
 

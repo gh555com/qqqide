@@ -571,4 +571,9 @@
 	// Attach paste handler on load
 	_attachRoamPaste();
 
+	// ★ 拖放复制入口暴露（2026-08-24）: q2-roam.js document 级 drop 使用。
+	//   旧实现 fl 级 drop 直接引用本 IIFE 内函数 → ReferenceError，拖放复制从未生效。
+	window.qqqRoamCopyPaths = _copyPathsToCurrentDir;
+	window.qqqRoamCopyFiles = _copyFilesToCurrentDir;
+
 })();

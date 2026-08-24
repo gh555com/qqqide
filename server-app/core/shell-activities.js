@@ -13,6 +13,9 @@
 //    免费时段（UTC）：周日全天 + 每日 01:00-03:00 / 13:00-15:00
 //    进度条 = 随机免费余额剩余比例；数字 = 免费中显示余额 / 非免费显示距下次倒计时
 //    点击 → 活动弹窗（余额 + 免费结束倒计时 + 距离下次免费 + 时段说明）
+// ④ 美丽滴眼睛（qqq-act-eye）：清爽达标（总消费≥10ge）才显示，位置紧跟最右已完成豆腐块
+//    点击 → 弹窗（介绍文案一字不变 + 已入累计金额，数据源 eye_paid_yuan 运营手动录入）
+// ★ 已完成活动精简：清爽/原料满格后豆腐块只显示 活动名+✓（进度条/数字/图标隐藏，外边框不变）
 //
 // 数据源: GET  /api/qqqide/activity             （登录）
 //         POST /api/qqqide/activity/claim-ge50
@@ -60,6 +63,7 @@ function bootActivities(boot) {
   var $vibeNum = document.getElementById('qqq-act-vibe-num');
   var $vibeName = null;    // 「2026, 我, vibe coding」名称 — 免费窗口内替换为「剩余/预算」数字
   var $vibePrefix = null; // 「剩/距下次」前缀 — 独立于等宽数字，与赞助商文字同外观
+  var $eye = document.getElementById('qqq-act-eye'); // 美丽滴眼睛（清爽达标才显示，位置动态插）
   if (!$cool || !$ge50) return;
 
   // ── 工具 ──────────────────────────────────────────────────────────────────
@@ -176,6 +180,8 @@ function bootActivities(boot) {
     if ($coolFill) $coolFill.style.width = coolPct + '%';
     if ($coolNum) $coolNum.textContent = fmt(total) + '/' + coolTarget;
     if ($cool) $cool.classList.toggle('qqq-act-done', !!cool.reached);
+    // ★ 已完成 → 精简豆腐块（只显示 活动名+✓）
+    if ($cool) $cool.classList.toggle('qqq-act-compact', !!cool.reached);
 
     // 原料与基本权利
     var g50Target = parseFloat(g50.target_ge) || 50;
@@ -183,6 +189,21 @@ function bootActivities(boot) {
     if ($ge50Fill) $ge50Fill.style.width = g50Pct + '%';
     if ($ge50Num) $ge50Num.textContent = fmt(total) + '/' + g50Target;
     if ($ge50) $ge50.classList.toggle('qqq-act-done', !!g50.reached);
+    if ($ge50) $ge50.classList.toggle('qqq-act-compact', !!g50.reached);
+
+    // 美丽滴眼睛：清爽达标（总消费≥10）才显示；位置 = 已完成豆腐块最右一个的右边
+    //   仅清爽完成 → [清爽✓][眼睛][原料][vibe]；清爽+原料都完成 → [清爽✓][原料✓][眼睛][vibe]
+    if ($eye) {
+      var eyeShow = !!cool.reached;
+      $eye.style.display = eyeShow ? '' : 'none';
+      if (eyeShow) {
+        if (!!g50.reached) {
+          if ($eye.nextElementSibling !== $vibe) $ge50.parentNode.insertBefore($eye, $vibe);
+        } else {
+          if ($eye.nextElementSibling !== $ge50) $ge50.parentNode.insertBefore($eye, $ge50);
+        }
+      }
+    }
   }
 
   // ── 自定义即时 hover 文字框 ───────────────────────────────────────────────
@@ -215,18 +236,25 @@ function bootActivities(boot) {
       '.qqq-act-modal{position:relative;width:520px;max-width:94vw;max-height:86vh;overflow-y:auto;border-radius:16px;' +
       'background:linear-gradient(165deg,#0d1a12 0%,#0d0d1a 55%,#10131f 100%);color:#e6e6e6;' +
       'border:1.5px solid rgba(52,211,153,.35);box-shadow:0 0 34px rgba(52,211,153,.22),0 10px 40px rgba(0,0,0,.5);' +
-      'animation:qqqActPop .28s cubic-bezier(.34,1.56,.64,1);padding:26px 28px 24px;forced-color-adjust:none;}' +
+      'animation:qqqActPop .28s cubic-bezier(.34,1.56,.64,1);padding:26px 28px 24px;forced-color-adjust:none;' +
+      'user-select:text;-webkit-user-select:text;}' +
       '.qqq-act-modal.qqq-act-ge50-modal{background:linear-gradient(165deg,#141b2e 0%,#0d0d1a 60%,#1a1024 100%);' +
-      'border-color:rgba(217,100,92,.4);box-shadow:0 0 34px rgba(217,100,92,.25),0 10px 40px rgba(0,0,0,.5);forced-color-adjust:none;}' +
-      // 原料弹窗全窗淡红主题（2026-08-09 定案）：标题/数字/高亮/关闭/CTA 全部归位淡红 #d9645c，消灭绿色残留
-      '.qqq-act-modal.qqq-act-ge50-modal h2{background:linear-gradient(135deg,#d9645c,#e28c85);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
-      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-bignum{color:#d9645c;}' +
-      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-desc b{color:#e28c85;}' +
-      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-close:hover{background:rgba(217,100,92,.25);border-color:#d9645c;}' +
-      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-cta{background:linear-gradient(90deg,#d9645c,#c9554e);box-shadow:0 4px 18px rgba(217,100,92,.4);}' +
-      '.qqq-act-close{position:absolute;top:10px;right:12px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.18);' +
-      'background:rgba(255,255,255,.08);color:#ddd;font-size:15px;line-height:26px;text-align:center;}' +
-      '.qqq-act-close:hover{background:rgba(52,211,153,.25);border-color:#34d399;}' +
+      'border-color:rgba(181,137,0,.4);box-shadow:0 0 34px rgba(181,137,0,.25),0 10px 40px rgba(0,0,0,.5);forced-color-adjust:none;}' +
+      // 原料弹窗：暗金全链路（2026-08-24 定案）——标题/数字/高亮/CTA/进度/按钮全部 #b58900 系
+      '.qqq-act-modal.qqq-act-ge50-modal h2{background:linear-gradient(135deg,#b58900,#d79921);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
+      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-bignum{color:#b58900;}' +
+      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-desc b{color:#d79921;}' +
+
+      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-cta{background:linear-gradient(90deg,#b58900,#a07400);box-shadow:0 4px 18px rgba(181,137,0,.4);}' +
+      // 美丽滴眼睛弹窗：淡玫瑰边框 #e8829e（2026-08-24 回退），标题字淡樱花粉 #f2a6ba 与眼睛 SVG 配对
+      '.qqq-act-modal.qqq-act-eye-modal{background:linear-gradient(165deg,#24101f 0%,#0d0d1a 60%,#160f24 100%);' +
+      'border-color:rgba(232,130,158,.4);box-shadow:0 0 34px rgba(232,130,158,.25),0 10px 40px rgba(0,0,0,.5);forced-color-adjust:none;}' +
+      '.qqq-act-modal.qqq-act-eye-modal h2{background:linear-gradient(135deg,#f2a6ba,#e88ca4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
+      // 眼睛介绍文案左对齐（2026-08-24，仅眼睛弹窗，其余弹窗描述保持居中）
+      '.qqq-act-modal.qqq-act-eye-modal .qqq-act-desc{text-align:left;}' +
+      '.qqq-act-eye-paid{text-align:center;font-size:20px;font-weight:900;color:#f2a6ba;margin-top:2px;forced-color-adjust:none;}' +
+      '.qqq-act-eye-svg{display:block;margin:0 auto 4px;animation:qqqActFloat 2.4s ease-in-out infinite;forced-color-adjust:none;}' +
+
       '.qqq-act-modal h2{margin:2px 0 2px;font-size:26px;font-weight:900;text-align:center;' +
       'background:linear-gradient(135deg,#34d399,#06b6d4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
       '.qqq-act-modal .qqq-act-sub{margin:0 0 14px;text-align:center;font-size:13px;color:#9aa0b5;}' +
@@ -235,13 +263,13 @@ function bootActivities(boot) {
       '.qqq-act-bigfill{display:block;height:100%;border-radius:9px;' +
       'background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;animation:qqqActShimmer 2.4s linear infinite;' +
       'transition:width .8s;forced-color-adjust:none;}' +
-      // 弹窗进度条配色与状态区豆腐块一一对应（2026-08-09 清爽↔vibe 互换；原料 2026-08-09 橙金→纯色淡红 #d9645c 无渐变）: 清爽=绿黄 / 原料=淡红纯色 / vibe=蓝
+      // 弹窗进度条配色与状态区豆腐块一一对应（2026-08-09 清爽↔vibe 互换；原料 2026-08-24 纯色暗金 #b58900 无渐变）: 清爽=绿黄 / 原料=暗金纯色 / vibe=蓝
       '.qqq-act-bigfill.qqq-act-cool-fill{background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;}' +
-      '.qqq-act-bigfill.qqq-act-ge50-fill{background:#d9645c;}' +
+      '.qqq-act-bigfill.qqq-act-ge50-fill{background:#b58900;}' +
       '.qqq-act-bigfill.qqq-act-vibe-fill{background:linear-gradient(90deg,#268bd2,#2aa198,#268bd2);background-size:200% 100%;}' +
       '.qqq-act-bigfill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);background-size:200% 100%;animation:qqqActShimmer 1.2s linear infinite;}' +
       '.qqq-act-bigfill.qqq-act-cool-fill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);animation:qqqActShimmer 1.2s linear infinite;}' +
-      '.qqq-act-bigfill.qqq-act-ge50-fill.qqq-act-full{background:#d9645c;}' +
+      '.qqq-act-bigfill.qqq-act-ge50-fill.qqq-act-full{background:#b58900;}' +
       '.qqq-act-bignum{text-align:center;font-size:15px;font-weight:700;color:#34d399;font-family:Consolas,monospace;}' +
       '.qqq-act-desc{margin:14px 0 18px;text-align:center;font-size:14px;line-height:1.9;color:#c8c8d8;}' +
       '.qqq-act-desc b{color:#34d399;}' +
@@ -278,24 +306,27 @@ function bootActivities(boot) {
       '.qqq-act-task.qqq-act-task-done .qqq-act-check{border-color:#859900;background:#859900;color:#0d0d0d;}' +
       '.qqq-act-task.qqq-act-task-locked{opacity:.55;}' +
       '.qqq-act-task.qqq-act-task-recharge{transition:background .15s,border-color .15s;}' +
-      '#qqq-act-task-recharge:hover{background:rgba(217,100,92,.14);border-color:#d9645c;}' +
-      '.qqq-act-task .qqq-act-task-go{margin-left:auto;font-size:12px;font-weight:800;color:#d9645c;white-space:nowrap;}' +
+      '#qqq-act-task-recharge:hover{background:rgba(181,137,0,.14);border-color:#b58900;}' +
+      '.qqq-act-task .qqq-act-task-go{margin-left:auto;font-size:12px;font-weight:800;color:#b58900;white-space:nowrap;}' +
       '.qqq-act-task .qqq-act-task-now{font-size:11.5px;color:#9aa0b5;white-space:nowrap;}' +
       '.qqq-act-or{text-align:center;font-size:12px;font-weight:700;color:#b58900;margin:4px 0 6px;}' +
       '.qqq-act-claims{display:flex;gap:10px;margin-top:0;}' +
       '.qqq-act-claim{flex:1;padding:11px 6px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;color:#fff;' +
-      'background:#d9645c;box-shadow:0 4px 14px rgba(217,100,92,.3);forced-color-adjust:none;}' +
+      'background:#b58900;box-shadow:0 4px 14px rgba(181,137,0,.3);forced-color-adjust:none;}' +
       '.qqq-act-claim.qqq-act-claim-phone{background:linear-gradient(90deg,#268bd2,#2aa198);box-shadow:0 4px 14px rgba(38,139,210,.3);forced-color-adjust:none;}' +
       '.qqq-act-claim:disabled{filter:grayscale(1);opacity:.55;box-shadow:none;}' +
       '.qqq-act-claim:hover:not(:disabled){filter:brightness(1.1);}' +
       
-      '.qqq-act-modal2{position:relative;width:420px;max-width:90vw;border-radius:14px;padding:26px 26px 22px;text-align:center;' +
+      '.qqq-act-modal2{position:relative;width:420px;max-width:90vw;border-radius:14px;padding:26px 26px 22px;text-align:center;user-select:text;-webkit-user-select:text;' +
       'background:linear-gradient(165deg,#10131f,#0d0d1a);color:#e6e6e6;border:1.5px solid rgba(52,211,153,.4);' +
       'box-shadow:0 0 30px rgba(52,211,153,.2);animation:qqqActPop .25s cubic-bezier(.34,1.56,.64,1);forced-color-adjust:none;}' +
       '.qqq-act-modal2 h3{margin:0 0 8px;font-size:19px;color:#34d399;}' +
       '.qqq-act-modal2 p{margin:0 0 18px;font-size:13.5px;line-height:1.8;color:#c8c8d8;word-break:break-all;}' +
       '.qqq-act-modal2 button{padding:9px 34px;border:none;border-radius:9px;font-size:14px;font-weight:700;color:#fff;' +
-      'background:linear-gradient(90deg,#059669,#0d9488);}';
+      'background:linear-gradient(90deg,#059669,#0d9488);}' +
+      // 卡片选中色：默认浏览器蓝 → 淡红（2026-08-24，用户不喜欢蓝色）
+      '.qqq-act-modal ::selection,.qqq-act-modal2 ::selection{background:#d9645c;color:#fff;}' +
+      '.qqq-act-modal ::-moz-selection,.qqq-act-modal2 ::-moz-selection{background:#d9645c;color:#fff;}';
     document.head.appendChild(st);
   }
 
@@ -311,14 +342,13 @@ function bootActivities(boot) {
     closeOverlay();
     _overlay = document.createElement('div');
     _overlay.className = 'qqq-act-overlay';
+    // ★ 2026-08-24：弹窗不设关闭按钮，点击外部/Esc 即关闭（按钮曾因 CSS 规则丢失裸排内容前=左上角）
     _overlay.innerHTML =
       '<div class="qqq-act-modal ' + (modalClass || '') + '">' +
-      '<button class="qqq-act-close" title="' + t('common.close', '关闭') + '">✕</button>' +
       innerHtml +
       '</div>';
     document.body.appendChild(_overlay);
     _overlay.addEventListener('click', function (e) { if (e.target === _overlay) closeOverlay(); });
-    _overlay.querySelector('.qqq-act-close').addEventListener('click', closeOverlay);
     document.addEventListener('keydown', escHandler);
     _overlay._esc = escHandler;
     return _overlay;
@@ -568,6 +598,31 @@ function bootActivities(boot) {
     }
   }
 
+  // ── 弹窗四：美丽滴眼睛（真实用户福利 · 现金发放记录） ──────────────────
+  function openEyePopup() {
+    if (!isLoggedIn()) {
+      openOverlay(
+        '<div class="qqq-act-celebrate"><svg class="qqq-act-eye-svg" width="110" height="56" viewBox="0 0 110 56" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qqqEyeLid" x1="0" y1="0" x2="110" y2="0"><stop offset="0" stop-color="#f6b8c8"/><stop offset="1" stop-color="#e88ca4"/></linearGradient><radialGradient id="qqqEyeIris" cx="50%" cy="42%" r="58%"><stop offset="0" stop-color="#fadce4"/><stop offset="1" stop-color="#ee9fb5"/></radialGradient></defs><path d="M9 30 Q55 10 101 30 Q55 50 9 30 Z" fill="#fbe7ec" stroke="url(#qqqEyeLid)" stroke-width="2.8" stroke-linejoin="round"/><circle cx="55" cy="29" r="12" fill="url(#qqqEyeIris)"/><circle cx="55" cy="29" r="12" fill="none" stroke="#f0a7bc" stroke-width="1.4"/><circle cx="55" cy="29" r="4.6" fill="#b75c79"/><circle cx="59" cy="25" r="3.4" fill="#fff" opacity=".95"/><circle cx="52" cy="31" r="1.4" fill="#fff" opacity=".6"/></svg></div>' +
+        '<h2>' + t('act.eye.name', '美丽滴眼睛') + '</h2>' +
+        '<p class="qqq-act-desc">' + t('act.eye.loginDesc', '登录后查看已入金额') + '</p>' +
+        '<button class="qqq-act-cta" id="qqq-act-login">' + t('act.ge50.loginBtn', '登录') + '</button>',
+        'qqq-act-eye-modal'
+      );
+      _overlay.querySelector('#qqq-act-login').addEventListener('click', function () { closeOverlay(); openLogin(); });
+      return;
+    }
+    var eyePaid = (_data && _data.eye_paid_yuan !== undefined && _data.eye_paid_yuan !== null) ? parseFloat(_data.eye_paid_yuan) : 0;
+    if (isNaN(eyePaid)) eyePaid = 0;
+    openOverlay(
+      '<div class="qqq-act-celebrate"><svg class="qqq-act-eye-svg" width="110" height="56" viewBox="0 0 110 56" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qqqEyeLid" x1="0" y1="0" x2="110" y2="0"><stop offset="0" stop-color="#f6b8c8"/><stop offset="1" stop-color="#e88ca4"/></linearGradient><radialGradient id="qqqEyeIris" cx="50%" cy="42%" r="58%"><stop offset="0" stop-color="#fadce4"/><stop offset="1" stop-color="#ee9fb5"/></radialGradient></defs><path d="M9 30 Q55 10 101 30 Q55 50 9 30 Z" fill="#fbe7ec" stroke="url(#qqqEyeLid)" stroke-width="2.8" stroke-linejoin="round"/><circle cx="55" cy="29" r="12" fill="url(#qqqEyeIris)"/><circle cx="55" cy="29" r="12" fill="none" stroke="#f0a7bc" stroke-width="1.4"/><circle cx="55" cy="29" r="4.6" fill="#b75c79"/><circle cx="59" cy="25" r="3.4" fill="#fff" opacity=".95"/><circle cx="52" cy="31" r="1.4" fill="#fff" opacity=".6"/></svg></div>' +
+      '<h2>' + t('act.eye.name', '美丽滴眼睛') + '</h2>' +
+      '<p class="qqq-act-csub">' + t('act.eye.sub', 'qqqide 真实用户福利') + '</p>' +
+      '<p class="qqq-act-desc">' + t('act.eye.intro', '征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 300人民币，现金立入。') + '</p>' +
+      '<div class="qqq-act-eye-paid">' + tp('act.eye.paid', { v: fmt(eyePaid) }, '已入：' + fmt(eyePaid)) + '</div>',
+      'qqq-act-eye-modal'
+    );
+  }
+
   // ── ③ 2026, 我, vibe coding（循环免费窗口豆腐块） ──────────────────────
   // 免费时段: 周日全天 + 每日 01:00-03:00 / 13:00-15:00 (UTC)
   function isFreeWindow(utcMs) {
@@ -777,7 +832,7 @@ function bootActivities(boot) {
       budgetHtml = '<p class="qqq-act-desc" style="margin-bottom:6px;">' + t('act.vibe.popLoading', '随机免费余额加载中…') + '</p>';
     } else {
       // 非免费时段：无活动余额可展示
-      budgetHtml = '<p class="qqq-act-desc" style="margin-bottom:6px;">' + t('act.vibe.popNoBudget', '随机免费额度在免费时间窗发放') + '</p>';
+      budgetHtml = '<p class="qqq-act-csub">' + t('act.vibe.popNoBudget', '随机免费额度在免费时间窗发放') + '</p>';
     }
 
     var html =
@@ -832,6 +887,14 @@ function bootActivities(boot) {
   $ge50.addEventListener('mousemove', function (e) { showTip(e, t('act.ge50.tip', '总消费满 50 ge · 50 元话费 / 50 ge 二选一')); });
   $ge50.addEventListener('mouseleave', hideTip);
   $ge50.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openGe50Popup(); });
+
+  // 美丽滴眼睛
+  if ($eye) {
+    $eye.addEventListener('mouseenter', function (e) { showTip(e, t('act.eye.tip', '美丽滴眼睛 · qqqide 真实用户福利')); });
+    $eye.addEventListener('mousemove', function (e) { showTip(e, t('act.eye.tip', '美丽滴眼睛 · qqqide 真实用户福利')); });
+    $eye.addEventListener('mouseleave', hideTip);
+    $eye.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openEyePopup(); });
+  }
 
   if ($vibe) {
     $vibe.addEventListener('mouseenter', function (e) { showTip(e, vibeTipText()); });

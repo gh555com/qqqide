@@ -193,6 +193,66 @@ async function _tryEmbeddingRerank(query, structuredResult) {
 // run_command
 // ============================================================
 
+// ═══ Windows cmd 引号地狱专用分词（2026-08-24）═══
+// cmd 引号地狱（F11/F146 教训）: cmd 不认反斜杠转义，\" 是字面反斜杠+引号，
+// 其引号参与配对 → python -c "...\"..." 配对错乱 → 静默失败/乱串（q153 实测）。
+// 状态机按 POSIX 转义语义扫描: 引号段内 \" 不关闭引号段；无 \" 时与旧正则逐 token 等价。
+// 同时收集引号外字符（cmd 元字符检测用，正确处理 \" 段）。
+function _splitCmdLine(s) {
+    var toks = [], cur = '', outer = '', i = 0, n = s.length;
+    while (i < n) {
+        var c = s[i];
+        if (c === '"' || c === "'") {
+            if (cur) { toks.push(cur); cur = ''; }
+            var q = c, j = i + 1, seg = q;
+            while (j < n) {
+                var ch = s[j];
+                if (q === '"' && ch === '\\' && j + 1 < n) {
+                    seg += ch + s[j + 1]; j += 2; continue;
+                }
+                if (ch === q) { seg += ch; j += 1; break; }
+                seg += ch; j += 1;
+            }
+            toks.push(seg);
+            i = j;
+        } else if (c === ' ' || c === '\t') {
+            if (cur) { toks.push(cur); cur = ''; }
+            i += 1;
+        } else {
+            cur += c; outer += c; i += 1;
+        }
+    }
+    if (cur) toks.push(cur);
+    return { toks: toks, outer: outer };
+}
+
+// 剥引号 + 双引号段内 \" → " 解转义（仅此一种；\\ 保留——Windows 路径/cmd 语义零破坏）
+function _unquoteCmdTok(s) {
+    if (s.length >= 2) {
+        var f = s[0], l = s[s.length - 1];
+        if (f === '"' && l === '"') {
+            var inner = s.slice(1, -1), out = '', i = 0, n = inner.length;
+            while (i < n) {
+                if (inner[i] === '\\' && inner[i + 1] === '"') { out += '"'; i += 2; }
+                else { out += inner[i]; i += 1; }
+            }
+            return out;
+        }
+        if (f === "'" && l === "'") return s.slice(1, -1);
+    }
+    return s;
+}
+
+// cmd 内部命令黑名单（无对应 .exe，CreateProcess 找不到）
+var _CMD_BUILTINS = {
+    assoc: 1, break: 1, call: 1, cd: 1, chdir: 1, cls: 1, color: 1, copy: 1,
+    date: 1, del: 1, dir: 1, dpath: 1, echo: 1, endlocal: 1, erase: 1, exit: 1,
+    for: 1, ftype: 1, goto: 1, if: 1, md: 1, mkdir: 1, mklink: 1, move: 1,
+    path: 1, pause: 1, popd: 1, prompt: 1, pushd: 1, rd: 1, rem: 1, ren: 1,
+    rename: 1, rmdir: 1, set: 1, setlocal: 1, shift: 1, start: 1, time: 1,
+    title: 1, type: 1, ver: 1, verify: 1, vol: 1
+};
+
 async function executeRunCommand(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
@@ -260,22 +320,27 @@ async function executeRunCommand(args) {
                 //   cmd /d /s /c "python -c "a\nb"" 的嵌套引号把 & 吞进参数 → 整个命令静默失败
                 //   （无输出、后续命令不执行，F146 实测复现）。多行脚本 = 数组 spawn（shell:false）
                 //   CreateProcess 直传，换行在参数里合法零 cmd 解析。仅引号外无 cmd 语义元字符时走数组。
+                // ★ 2026-08-24: 引号地狱扩展——单行含 \"（反斜杠引号）同样触发数组路径。
+                //   cmd 下 \" 必然配对错乱（F11 教训，q153 静默失败实锤）；状态机按 POSIX 语义
+                //   识别 \" 段，CreateProcess 直传 + 仅 \"→" 解转义（\\ 保留防破坏 Windows 路径）。
+                //   守卫: 引号外无 &|<>^% 元字符 + 非 cmd 内部命令 + 非 cd 开头 + 非 .bat/.cmd。
                 var _hasNL = cmd.indexOf('\n') !== -1;
+                var _escDQ = new RegExp('\\\\"').test(cmd);
                 var _arrOk = false;
                 var _arrArgs = [];
-                if (_hasNL) {
-                    var _toks = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [cmd];
-                    var _outer = cmd.replace(/"[^"]*"|'[^']*'/g, '');
-                    var _metaOut = /[&|<>^%]/.test(_outer) || /^cd\s+/i.test(_toks[0] || '');
-                    if (!_metaOut && _toks.length >= 1) {
-                        _arrArgs = _toks.slice(1).map(function (s) {
-                            if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-                                return s.slice(1, -1);
-                            }
-                            return s;
-                        });
-                        cmd = _toks[0];
-                        _arrOk = true;
+                if (_hasNL || _escDQ) {
+                    var _sp = _splitCmdLine(cmd);
+                    var _toks = _sp.toks;
+                    var _metaOut = /[&|<>^%]/.test(_sp.outer) || /^cd\s+/i.test(_toks[0] || '');
+                    if (!_metaOut && _toks.length >= 2) {
+                        var _head = _unquoteCmdTok(_toks[0]);
+                        var _isBuiltin = _CMD_BUILTINS[_head.toLowerCase()] === 1
+                            || /\.(bat|cmd)$/i.test(_head);
+                        if (!_isBuiltin) {
+                            _arrArgs = _toks.slice(1).map(_unquoteCmdTok);
+                            cmd = _head;
+                            _arrOk = true;
+                        }
                     }
                 }
                 if (_arrOk) {
@@ -892,12 +957,86 @@ async function executeRemoveBackground(args) {
     }
 }
 
+// ★ 本地搜索引擎（engines/websearch.py，直连 bing/yandex，零服务器依赖零成本）
+// 返回: {results:[...]} 成功（含空数组） / null 无法执行（→兜底服务器） / 'failed' 执行出错（→兜底服务器）
+async function _localWebSearch(query, maxResults) {
+    var bridge = getBridge();
+    if (!bridge || !bridge.app || typeof bridge.app.root !== 'function') return null;
+    if (!bridge.fs || typeof bridge.fs.exists !== 'function') return null;
+    if (!bridge.qz || !bridge.qz.spawn) return null;
+    var root = '';
+    try { root = await bridge.app.root(); } catch (_) { return null; }
+    if (!root) return null;
+    root = String(root).replace(/\\/g, '/').replace(/\/+$/, '');
+    // 双候选：dev 项目根 / 绿色包 resources/app（audio-engine 同款解析）
+    var candidates = [
+        root + '/engines/websearch.py',
+        root + '/gh555.com/resources/app/engines/websearch.py'
+    ];
+    var scriptPath = null;
+    for (var i = 0; i < candidates.length; i++) {
+        try {
+            if (await bridge.fs.exists(candidates[i])) { scriptPath = candidates[i]; break; }
+        } catch (_) { }
+    }
+    if (!scriptPath) return null;
+    var lang = /[\u4e00-\u9fff]/.test(query) ? 'zh' : 'en';
+    try {
+        var result = await bridge.qz.spawn({
+            cmd: 'python',
+            args: ['-X', 'utf8', scriptPath, '--engines', 'bing,yandex',
+                   '--max', String(maxResults || 20), '--lang', lang, query],
+            timeout: 25000
+        });
+        if (!result || result.exitCode !== 0) return 'failed';
+        var data = JSON.parse(result.stdout || '');
+        if (!data || data.ok !== true) return 'failed';
+        return { results: data.results || [] };
+    } catch (err) {
+        if (typeof console !== 'undefined') console.log('[search] local failed: ' + (err && err.message || err));
+        return 'failed';
+    }
+}
+
+function _formatSearchResults(query, results) {
+    var lines = ['═══ Web Search: "' + query + '" ═══', ''];
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i];
+        lines.push((i + 1) + '. ' + r.title);
+        lines.push('   ' + r.url);
+        if (r.snippet) lines.push('   ' + r.snippet);
+        lines.push('');
+    }
+    lines.push('── ' + results.length + ' results ──');
+    return lines.join('\n');
+}
+
 async function executeSearchWeb(args, ownerAgent) {
     // ★ 参数别名
     args.query = args.query || args.q || '';
 
     var query = args.query || '';
     if (!query.trim()) return 'Error: query is required';
+
+    // ═══ 主路：本地搜索引擎（零服务器依赖，零计费） ═══
+    try {
+        var local = await _localWebSearch(query, args.maxResults || 20);
+        if (local && local.results) {
+            if (local.results.length === 0) {
+                return 'No results found for: ' + query;
+            }
+            var text = _formatSearchResults(query, local.results);
+            // ★ Land to floor dir → sha256 reference for biscuit
+            if (typeof _landToFloorDir === 'function') {
+                var _stampL = await _landToFloorDir(text, 'web_search', ownerAgent);
+                text = text + _stampL;
+            }
+            return text;
+        }
+        // local === null / 'failed' → 兜底服务器（旧绿色包无 websearch.py 等场景）
+    } catch (err) {
+        if (typeof console !== 'undefined') console.log('[search] local error, fallback: ' + (err && err.message || err));
+    }
 
     var token = _getAuthToken();
     if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
@@ -921,22 +1060,13 @@ async function executeSearchWeb(args, ownerAgent) {
             return 'No results found for: ' + query;
         }
 
-        var lines = ['═══ Web Search: "' + query + '" ═══', ''];
-        for (var i = 0; i < results.length; i++) {
-            var r = results[i];
-            lines.push((i + 1) + '. ' + r.title);
-            lines.push('   ' + r.url);
-            if (r.snippet) lines.push('   ' + r.snippet);
-            lines.push('');
-        }
-        lines.push('── ' + results.length + ' results ──');
-        var text = lines.join('\n');
+        var text2 = _formatSearchResults(query, results);
         // ★ Land to floor dir → sha256 reference for biscuit
         if (typeof _landToFloorDir === 'function') {
-            var _stamp = await _landToFloorDir(text, 'web_search', ownerAgent);
-            text = text + _stamp;
+            var _stamp = await _landToFloorDir(text2, 'web_search', ownerAgent);
+            text2 = text2 + _stamp;
         }
-        return text;
+        return text2;
 
     } catch (err) {
         return 'Error searching web: ' + (err.message || err);

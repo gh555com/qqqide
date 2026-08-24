@@ -468,6 +468,14 @@
       "geModalDesc": "50 ge 已发放到你的账户，立即到账！",
       "err": "领取失败，请稍后重试"
     },
+    "eye": {
+      "name": "美丽滴眼睛",
+      "tip": "美丽滴眼睛 · qqqide 真实用户福利",
+      "sub": "qqqide 真实用户福利",
+      "loginDesc": "登录后查看已入金额",
+      "intro": "征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 300人民币，现金立入。",
+      "paid": "已入：{v}"
+    },
     "vibe": {
       "name": "2026, 我, vibe coding",
       "tipFree": "💎 免费中 · 免费将结束 {time} · 余额 {ge} ge",

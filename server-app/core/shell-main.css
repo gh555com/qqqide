@@ -507,26 +507,64 @@
 }
 
 /*/* 三豆腐块外边框统一：同宽度 1px · 同圆角 6px · 同强度发光（常态微光 + hover 增强，仅颜色微差）
-   清爽绿 #859900 / 原料淡红 #d98a86 / vibe 蓝 #3f96d8（2026-08-09 清爽↔vibe 互换；2026-08-09 原料橙→淡红定案） */
+   清爽绿 #859900 / 原料暗金 #b58900 / vibe 蓝 #3f96d8（2026-08-09 清爽↔vibe 互换；2026-08-24 原料淡红→暗金全链路定案） */
 .qqq-act-widget.qqq-act-vibe {
   border-color: #3f96d8;
   box-shadow: 0 0 6px rgba(63, 150, 216, .28);
 }
 
-/* 原料与基本权利 — 淡红边框 #d98a86（与网站徽章同色，2026-08-09 定案） */
+/* 原料与基本权利 — 暗金全链路 #b58900（2026-08-24 定案：外框/进度条/打勾/弹窗全部暗金） */
 .qqq-act-widget.qqq-act-ge50 {
-  border-color: #d98a86;
-  box-shadow: 0 0 6px rgba(217, 138, 134, .28);
+  border-color: #b58900;
+  box-shadow: 0 0 6px rgba(181, 137, 0, .28);
+}
+
+/* 美丽滴眼睛 — 淡玫瑰边框 #e8829e（2026-08-24 回退：介于樱花粉与深玫瑰之间；眼睛 SVG 保持淡粉），同规范 1px/6px/发光 */
+.qqq-act-widget.qqq-act-eye {
+  border-color: #e8829e;
+  box-shadow: 0 0 6px rgba(232, 130, 158, .28);
+}
+
+.qqq-act-widget.qqq-act-eye:hover {
+  border-color: #e8829e;
+  box-shadow: 0 0 8px rgba(232, 130, 158, .45);
 }
 
 .qqq-act-widget.qqq-act-ge50:hover {
-  border-color: #d98a86;
-  box-shadow: 0 0 8px rgba(217, 138, 134, .45);
+  border-color: #b58900;
+  box-shadow: 0 0 8px rgba(181, 137, 0, .45);
 }
 
 .qqq-act-widget:hover {
   border-color: #859900;
   box-shadow: 0 0 8px rgba(133, 153, 0, .45);
+}
+
+/* 已完成活动 → 精简豆腐块：只显示活动名 + ✓（进度条/数字/图标隐藏），外边框颜色不变，整体变窄 */
+.qqq-act-widget.qqq-act-compact {
+  padding: 3px 8px;
+  gap: 0;
+}
+
+.qqq-act-widget.qqq-act-compact .qqq-act-track,
+.qqq-act-widget.qqq-act-compact .qqq-act-num,
+.qqq-act-widget.qqq-act-compact .qqq-act-icon {
+  display: none;
+}
+
+.qqq-act-widget.qqq-act-compact .qqq-act-head::after {
+  content: "✓";
+  margin-left: 3px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.qqq-act-widget.qqq-act-cool.qqq-act-compact .qqq-act-head::after {
+  color: #859900;
+}
+
+.qqq-act-widget.qqq-act-ge50.qqq-act-compact .qqq-act-head::after {
+  color: #b58900;
 }
 
 .qqq-act-widget.qqq-act-vibe:hover {
@@ -581,8 +619,8 @@
 }
 
 .qqq-act-widget.qqq-act-ge50 .qqq-act-fill {
-  /* 进度条大色块显粉 → 偏红 #d9645c（外边框保持 #d98a86，2026-08-09） */
-  background: #d9645c;
+  /* 2026-08-24 全链路暗金：进度条统一 #b58900 */
+  background: #b58900;
 }
 
 .qqq-act-widget.qqq-act-vibe .qqq-act-fill {
@@ -599,7 +637,7 @@
 }
 
 .qqq-act-widget.qqq-act-ge50.qqq-act-done {
-  box-shadow: 0 0 8px rgba(217, 138, 134, .5);
+  box-shadow: 0 0 8px rgba(181, 137, 0, .5);
 }
 
 /* 满格渐变归清爽（绿黄高亮），vibe 满格保持蓝渐变（同正常态，靠发光+✓区分） */
@@ -608,7 +646,7 @@
 }
 
 .qqq-act-widget.qqq-act-ge50.qqq-act-done .qqq-act-fill {
-  background: #d9645c;
+  background: #b58900;
 }
 
 /* vibe 倒计时前缀文字（「剩/距下次」）— 与赞助商文字 100% 同外观：

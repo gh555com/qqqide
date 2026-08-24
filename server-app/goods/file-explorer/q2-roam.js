@@ -1538,25 +1538,61 @@ if (emptyCtxMenu) {
 		em.style.display = 'flex';
 	});
 
-	// ---- Drag & drop paste (M8.3) ----
-	fl.addEventListener('dragover', function(e) {
-		e.preventDefault();
-		e.stopPropagation();
-	});
-	fl.addEventListener('drop', function(e) {
-		e.preventDefault();
-		e.stopPropagation();
-		if (!currentPath) return;
-		var dt = e.dataTransfer;
-		if (!dt || !dt.files || dt.files.length === 0) return;
-		var paths = [];
-		for (var i = 0; i < dt.files.length; i++) {
-			if (dt.files[i].path) paths.push(dt.files[i].path);
+	// ---- Drag & drop paste (M8.3, 2026-08-24 升级) ----
+	// ★ document 级接收：橙色虚线框覆盖整个 roam（接收范围）→ drop 复制到当前目录。
+	//   多选/文件夹混合由主进程 copyFile 目录感知递归复制统一处理（ioast 任务坞聚合进度）。
+	(function () {
+		var ov = document.createElement('div');
+		ov.id = 'roam-drop-overlay';
+		ov.style.cssText =
+			'position:fixed;left:0;top:0;right:0;bottom:0;display:none;pointer-events:none;' +
+			'z-index:999999;border:3px dashed #e07020;border-radius:4px;' +
+			'box-shadow:inset 0 0 0 2px rgba(224,112,32,0.12), 0 0 0 2px rgba(224,112,32,0.18);';
+		document.body.appendChild(ov);
+		function _ovShow() { ov.style.display = 'block'; }
+		function _ovHide() { ov.style.display = 'none'; }
+		function _isFileDrag(e) {
+			var dt = e.dataTransfer;
+			if (!dt || !dt.types) return false;
+			return Array.prototype.indexOf.call(dt.types, 'Files') !== -1;
 		}
-		if (paths.length > 0) {
-			_copyPathsToCurrentDir(paths);
-		}
-	});
+		var depth = 0;
+		document.addEventListener('dragenter', function(e) {
+			if (!_isFileDrag(e)) return;
+			e.preventDefault();
+			depth++;
+			_ovShow();
+		}, true);
+		document.addEventListener('dragover', function(e) {
+			if (!_isFileDrag(e)) return;
+			e.preventDefault();
+			_ovShow();
+		}, true);
+		document.addEventListener('dragleave', function(e) {
+			if (!_isFileDrag(e)) return;
+			depth--;
+			if (depth <= 0) { depth = 0; _ovHide(); }
+		}, true);
+		// 失焦兜底（ALT+TAB 中途取消拖拽可能无 dragleave）
+		window.addEventListener('blur', function() { depth = 0; _ovHide(); });
+		document.addEventListener('drop', function(e) {
+			depth = 0;
+			_ovHide();
+			if (!_isFileDrag(e)) return;
+			e.preventDefault();
+			e.stopPropagation();
+			if (!currentPath) return;
+			var dt = e.dataTransfer;
+			if (!dt || !dt.files || dt.files.length === 0) return;
+			var paths = [];
+			for (var i = 0; i < dt.files.length; i++) {
+				if (dt.files[i].path) paths.push(dt.files[i].path);
+			}
+			if (paths.length > 0 && window.qqqRoamCopyPaths) {
+				window.qqqRoamCopyPaths(paths);
+			}
+		}, true);
+	})();
 })();
 
 // ═══ 外部命令：Roam 定位文件（AI 面板图片 hover Roam 按钮触发）═══
