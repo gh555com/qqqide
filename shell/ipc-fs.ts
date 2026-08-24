@@ -243,6 +243,236 @@ function _cancelErr(streamId: string): Error {
     return new Error('copy cancelled (stream ' + streamId + ')');
 }
 
+// ============================================================================
+// ★ 复制事务层（2026-08-24 移植 q3 TransactionManager）—
+//   事务 id = streamId（渲染层任务即事务）。记录落盘 OS 级 copy-tx.json
+//   （squads.json 同目录模式）→ 进程崩溃后下次启动 recover 精确清理半成品。
+//   语义对齐 q3: ① tempFiles 预注册（取消/恢复可删未落地文件）
+//   ② landedFiles 只记新文件（去重命中复用旧文件不记，绝不误删）
+//   ③ 恢复 = tempFiles − landedFiles 精确差集（无时间猜测，安全方向）
+//   ④ 200/100 截断（closed/过期优先，旧者先删）
+//   取消清理不再整树 rm 目标目录（曾误删已落地文件）→ 按事务差集精确删。
+// ============================================================================
+interface CopyTx {
+    id: string;
+    targetDir: string;      // 粘贴目标目录
+    tempFiles: string[];    // 本次任务创建的 dest（未落地/半成品，恢复时删）
+    landedFiles: string[];  // 已成功落地的最终路径（恢复时保护）
+    dirs: string[];         // 本次新建目录（恢复时仅删空目录）
+    status: 'pending' | 'done' | 'cancelled';
+    createdAt: number;
+    lastActiveAt: number;
+}
+
+function _txStorePath(): string {
+    // %LOCALAPPDATA%/qqqide/ —— squads.json 同目录（USERPROFILE 推导，零 env 依赖）
+    // QQQIDE_COPY_TX 环境变量可覆盖（测试隔离用）
+    try {
+        const override = process.env.QQQIDE_COPY_TX;
+        if (override) return override;
+        const base = process.env.LOCALAPPDATA || (process.env.USERPROFILE ? process.env.USERPROFILE + '\\AppData\\Local' : '');
+        return base ? path.join(base, 'qqqide', 'copy-tx.json') : '';
+    } catch { return ''; }
+}
+
+const _txStore = new Map<string, CopyTx>();
+let _txPersistTimer: any = null;
+// ★ 本实例显式终结/回滚的事务 id（合并时跳过——防「删除后写前合并把旧快照读回 → 记录复活」）
+const _txRemoved = new Set<string>();
+
+function _txLoadFromDisk(): void {
+    const p = _txStorePath();
+    if (!p || !fs.existsSync(p)) return;
+    try {
+        const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (raw && Array.isArray(raw.transactions)) {
+            for (const t of raw.transactions) {
+                if (!t || typeof t.id !== 'string' || !t.id) continue;
+                if (_txRemoved.has(t.id)) continue; // 本实例已删除 → 绝不复活
+                if (_txStore.has(t.id)) continue; // 内存新态优先（LWW：磁盘只补缺不覆盖）
+                _txStore.set(t.id, {
+                    id: t.id,
+                    targetDir: typeof t.targetDir === 'string' ? t.targetDir : '',
+                    tempFiles: Array.isArray(t.tempFiles) ? t.tempFiles : [],
+                    landedFiles: Array.isArray(t.landedFiles) ? t.landedFiles : [],
+                    dirs: Array.isArray(t.dirs) ? t.dirs : [],
+                    status: t.status === 'pending' ? 'pending' : (t.status === 'done' ? 'done' : 'cancelled'),
+                    createdAt: typeof t.createdAt === 'number' ? t.createdAt : Date.now(),
+                    lastActiveAt: typeof t.lastActiveAt === 'number' ? t.lastActiveAt : Date.now()
+                });
+            }
+        }
+    } catch { /* 损坏 → 忽略（下一轮原子写重建干净状态） */ }
+}
+
+// ★ 200/100 截断（q3 权重语义）：closed（done/cancelled）+2、>60 天 +1，权重高者先删，平局旧者先删
+function _txTruncate(list: CopyTx[]): CopyTx[] {
+    if (list.length <= 200) return list;
+    const SIXTY_DAYS = 5184000000;
+    const now = Date.now();
+    const getWeight = (t: CopyTx) => {
+        let w = 0;
+        if (t.status === 'done' || t.status === 'cancelled') w += 2;
+        if (now - t.createdAt > SIXTY_DAYS) w += 1;
+        return w;
+    };
+    const sorted = [...list].sort((a, b) => {
+        const wA = getWeight(a), wB = getWeight(b);
+        if (wA !== wB) return wB - wA;
+        return a.createdAt - b.createdAt;
+    });
+    const del = new Set(sorted.slice(0, 100).map(t => t.id));
+    return list.filter(t => !del.has(t.id));
+}
+
+function _txPersistNow(): void {
+    const p = _txStorePath();
+    if (!p) return;
+    try {
+        // ★ 写前磁盘合并（dev+绿色包同跑互不覆盖）：磁盘条目不在内存 → 补入
+        _txLoadFromDisk();
+        const list = _txTruncate([..._txStore.values()]);
+        _txPersistTimer = null;
+        _atomicWrite(p, Buffer.from(JSON.stringify({ transactions: list }), 'utf8')).catch(() => { /* 写失败不阻塞复制 */ });
+    } catch { /* ignore */ }
+}
+
+function _txPersist(): void {
+    if (_txPersistTimer) return;
+    _txPersistTimer = setTimeout(_txPersistNow, 300); // 300ms 防抖（崩溃窗口内缺失条目=残留半成品不删，安全方向）
+}
+
+// 惰性创建事务（streamId 首次出现时；targetDir = 粘贴目标）
+function _txEnsure(streamId: string, targetDir: string): void {
+    if (!streamId) return;
+    if (_txStore.has(streamId)) return;
+    const now = Date.now();
+    _txStore.set(streamId, {
+        id: streamId,
+        targetDir: targetDir || '',
+        tempFiles: [],
+        landedFiles: [],
+        dirs: [],
+        status: 'pending',
+        createdAt: now,
+        lastActiveAt: now
+    });
+    _txPersistNow(); // 创建即时落盘（崩溃时事务必须可见）
+}
+
+// 注册半成品（dest 确定新建后、写流前调用；幂等）
+function _txRegister(streamId: string, filePath: string): void {
+    if (!streamId || !filePath) return;
+    const tx = _txStore.get(streamId);
+    if (!tx) return;
+    const n = path.normalize(filePath);
+    if (!tx.tempFiles.includes(n)) tx.tempFiles.push(n);
+    tx.lastActiveAt = Date.now();
+    _txPersist();
+}
+
+// 注册新建目录（目录复制；恢复时仅删空目录）
+function _txRegisterDir(streamId: string, dirPath: string): void {
+    if (!streamId || !dirPath) return;
+    const tx = _txStore.get(streamId);
+    if (!tx) return;
+    const n = path.normalize(dirPath);
+    if (!tx.dirs.includes(n)) tx.dirs.push(n);
+    tx.lastActiveAt = Date.now();
+    _txPersist();
+}
+
+// 落地：从 tempFiles 移除 dest，landedFiles 追加最终路径（仅新文件；去重命中复用旧文件不记）
+function _txMarkLanded(streamId: string, dest: string, finalPath: string): void {
+    if (!streamId) return;
+    const tx = _txStore.get(streamId);
+    if (!tx) return;
+    const d = path.normalize(dest);
+    tx.tempFiles = tx.tempFiles.filter(f => f !== d);
+    const f = path.normalize(finalPath);
+    if (f === d || fs.existsSync(f)) {
+        if (!tx.landedFiles.includes(f)) tx.landedFiles.push(f);
+    }
+    tx.lastActiveAt = Date.now();
+    _txPersist();
+}
+
+// 半成品已删 → 从 tempFiles 移除（取消 unlink 后调用，防恢复时再删一次）
+function _txUnregister(streamId: string, filePath: string): void {
+    if (!streamId || !filePath) return;
+    const tx = _txStore.get(streamId);
+    if (!tx) return;
+    const n = path.normalize(filePath);
+    tx.tempFiles = tx.tempFiles.filter(f => f !== n);
+    _txPersist();
+}
+
+// ★ 事务级回滚（替代整树 rm）：tempFiles − landedFiles 精确删 + 空目录清理（从深到浅）
+function _txRollback(streamId: string): void {
+    const tx = _txStore.get(streamId);
+    if (!tx) return;
+    try {
+        const landed = new Set(tx.landedFiles.map(f => _cacheKeyForPath(f)));
+        for (const f of tx.tempFiles) {
+            if (landed.has(_cacheKeyForPath(f))) continue;
+            try {
+                const st = fs.statSync(f);
+                if (st.isDirectory()) fs.rmSync(f, { recursive: true, force: true });
+                else fs.unlinkSync(f);
+            } catch { /* 已删/占用/权限 → 跳过 */ }
+        }
+        // 空目录清理：叶子优先（dirs 按创建序，倒序遍历即深处优先）
+        const dirs = [...tx.dirs];
+        for (let i = dirs.length - 1; i >= 0; i--) {
+            try {
+                const st = fs.statSync(dirs[i]);
+                if (st.isDirectory() && fs.readdirSync(dirs[i]).length === 0) {
+                    fs.rmdirSync(dirs[i]);
+                }
+            } catch { /* ignore */ }
+        }
+        // 目标目录本身若为空且为本次新建的顶层目录 → 也删（仅当任务只复制了目录且全部回滚）
+        try {
+            const td = tx.targetDir;
+            if (td && fs.existsSync(td)) {
+                const st = fs.statSync(td);
+                if (st.isDirectory() && fs.readdirSync(td).length === 0 && tx.dirs.includes(path.normalize(td))) {
+                    fs.rmdirSync(td);
+                }
+            }
+        } catch { /* ignore */ }
+    } catch { /* ignore */ }
+}
+
+// 事务终结（渲染层任务收尾调用）：删除记录（removed 标记防合并复活）
+function _txEnd(streamId: string): void {
+    if (!streamId) return;
+    _txStore.delete(streamId);
+    _txRemoved.add(streamId);
+    _txPersistNow();
+}
+
+// ★ 崩溃恢复（registerFsIpc 启动时异步执行）：pending 事务 → 差集精确清理 → 删记录
+async function _txRecover(): Promise<void> {
+    try {
+        _txLoadFromDisk();
+        if (_txStore.size === 0) return;
+        const pending = [..._txStore.values()].filter(t => t.status === 'pending');
+        if (pending.length === 0) { _txStore.clear(); return; }
+        let cleaned = 0;
+        for (const tx of pending) {
+            try {
+                _txRollback(tx.id);
+                cleaned += tx.tempFiles.length;
+            } catch { /* 单事务失败不阻断 */ }
+            _txStore.delete(tx.id);
+            _txRemoved.add(tx.id);
+        }
+        _txPersistNow();
+        console.log('[copy-tx] recover: cleaned', cleaned, 'leftover item(s) from', pending.length, 'crashed transaction(s)');
+    } catch { /* ignore */ }
+}
+
 export function registerFsIpc(): void {
     ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
 
@@ -347,9 +577,15 @@ export function registerFsIpc(): void {
         return true;
     });
 
-    // ★ 取消复制（2026-08-24 ioast 中断）：置取消标志 → 各复制路径检查后中止 + 清理半成品
+    // ★ 取消复制（2026-08-24 ioast 中断）：置取消标志 → 各复制路径检查后中止 + 事务级半成品清理
     ipcMain.handle('qqqide:fs:cancelCopy', (_e, streamId: string) => {
         if (streamId) _copyCancels.add(streamId);
+        return true;
+    });
+
+    // ★ 复制事务终结（渲染层批量任务收尾显式调用；进程崩溃则由 _txRecover 兜底）
+    ipcMain.handle('qqqide:fs:copyTxEnd', (_e, streamId: string) => {
+        if (streamId) _txEnd(streamId);
         return true;
     });
 
@@ -373,14 +609,19 @@ export function registerFsIpc(): void {
             }
             if (st.isDirectory()) {
                 // ── 目录：递归复制；目标已存在 → 唯一化（q3 语义，防合并覆盖）──
-                if (fs.existsSync(dest)) dest = getUniquePath(path.dirname(dest), path.basename(dest));
+                 if (fs.existsSync(dest)) dest = getUniquePath(path.dirname(dest), path.basename(dest));
                 await fs.promises.mkdir(dest, { recursive: true });
+                // ★ 事务：目标目录 + 新建顶层目录注册（必须在复制前——
+                //   worker 的 _txRegister 依赖事务已存在，注册迟到即半成品记录全丢）
+                _txEnsure(streamId, path.dirname(dest));
+                _txRegisterDir(streamId, dest);
                 try {
                     await _copyDirRecursive(e, src, dest, streamId);
                 } catch (err) {
-                    // ★ 取消 → 清理半成品（dest 必为本次新建目录，整树删除安全）
+                    // ★ 取消 → 事务级精确回滚（tempFiles − landedFiles 差集，不再整树 rm——
+                    //   曾误删已落地文件；目录仅删空的，有文件落地的保留）
                     if (_copyCancelled(streamId)) {
-                        try { await fs.promises.rm(dest, { recursive: true, force: true }); } catch { /* ignore */ }
+                        _txRollback(streamId);
                     }
                     throw err;
                 }
@@ -388,6 +629,8 @@ export function registerFsIpc(): void {
             }
             // ── 文件 ──
             await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+            // ★ 事务：目标目录确定后惰性创建（targetDir = 粘贴目标）
+            _txEnsure(streamId, path.dirname(dest));
             // ★ dest 已存在 → 指纹判断：同内容跳过复制（去重命中复用），不同内容唯一化（防覆盖）
             if (fs.existsSync(dest)) {
                 const sfp = computeFingerprint(src);
@@ -398,6 +641,8 @@ export function registerFsIpc(): void {
                 }
                 dest = getUniquePath(path.dirname(dest), path.basename(dest));
             }
+            // ★ 事务：dest 确定新建 → 注册半成品（取消/崩溃恢复时精确删）
+            _txRegister(streamId, dest);
             const totalSize = st.size;
             const readStream = fs.createReadStream(src, { highWaterMark: 1024 * 1024 }); // 1MB chunks
             const writeStream = fs.createWriteStream(dest);
@@ -424,8 +669,9 @@ export function registerFsIpc(): void {
                     readStream.pipe(writeStream);
                 });
             } catch (err) {
-                // ★ 取消/流中断 → 删除半成品（dest 必为本次新建，unlink 安全）
+                // ★ 取消/流中断 → 半成品删除 + 事务登记移除（dest 为本次新建）
                 if (_copyCancelled(streamId)) {
+                    _txUnregister(streamId, dest);
                     try { await fs.promises.unlink(dest); } catch { /* ignore */ }
                     throw _cancelErr(streamId);
                 }
@@ -435,11 +681,15 @@ export function registerFsIpc(): void {
             _aggReport(e, streamId, true);
             // ★ 复制完成但取消已置位（finish 与取消竞态）→ 删掉并报取消
             if (_copyCancelled(streamId)) {
+                _txUnregister(streamId, dest);
                 try { await fs.promises.unlink(dest); } catch { /* ignore */ }
                 throw _cancelErr(streamId);
             }
             // ★ 复制后同目录指纹去重：命中 → 新副本已删，返回既有文件路径（q3 语义）
-            return _tryLocalDeduplicate(dest);
+            //   landed 记最终路径（仅新文件；去重命中复用旧文件不记，绝不误删）
+            const finalPath = _tryLocalDeduplicate(dest);
+            _txMarkLanded(streamId, dest, finalPath);
+            return finalPath;
         } catch (e: any) {
             // ★ 2026-08-24: ENOENT 静默 return false → 渲染层若不检查返回值即"假成功"
             //   （roam 粘贴曾实锤: 路径乱码 stat 失败仍显示 "1 copied"）。必须抛错让调用方感知。
@@ -502,6 +752,8 @@ export function registerFsIpc(): void {
                     }
                     out = getUniquePath(path.dirname(out), path.basename(out));
                 }
+                // ★ 事务：dest 确定新建 → 注册半成品（q3 预注册语义；取消/恢复时精确删）
+                _txRegister(streamId, out);
                 await new Promise<void>((resolve, reject) => {
                     const rs = fs.createReadStream(f, { highWaterMark: 1024 * 1024 });
                     const ws = fs.createWriteStream(out);
@@ -518,14 +770,18 @@ export function registerFsIpc(): void {
                     ws.on('finish', () => resolve());
                     rs.pipe(ws);
                 });
-                // ★ 复制后同目录指纹去重（命中 → 新副本已删）
-                _tryLocalDeduplicate(out);
+                // ★ 复制后同目录指纹去重（命中 → 新副本已删；复用旧文件不记 landed）
+                const fin = _tryLocalDeduplicate(out);
+                _txMarkLanded(streamId, out, fin);
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONC, files.length || 1) }, () => worker()));
         _aggReport(e, streamId, true); // 收尾强制刷新（节流窗口内最后一帧不丢）
         return true;
     }
+
+    // ★ 崩溃恢复（启动即跑，不阻塞）：pending 事务半成品精确清理
+    _txRecover().catch(() => { /* ignore */ });
 
     // ★ read_file — 主进程直接读，1 IPC，50MB 守卫 + qwr 快照
     //   可选 sha256：读 timeline 中该文件的历史版本
