@@ -100,6 +100,41 @@
 		await _copyPathsToCurrentDir(filePaths);
 	}
 
+	// ★ 2026-08-24: q3 getUniquePath 语义——目标已存在（含同目录粘贴 src===dest）→ 追加 " (n)" 改名。
+	//   防覆盖同名文件 + 防同目录粘贴 createReadStream+createWriteStream 同一路径截断源文件。
+	async function _uniqueDestPath(dest) {
+		try {
+			var exists = await bridge.fs.exists(dest);
+			if (!exists) return dest;
+		} catch (e) { return dest; }
+		var sep = dest.indexOf('\\') >= 0 ? '\\' : '/';
+		var slash = dest.lastIndexOf(sep);
+		var dir = slash >= 0 ? dest.slice(0, slash) : '';
+		var name = slash >= 0 ? dest.slice(slash + 1) : dest;
+		var dot = name.lastIndexOf('.');
+		// .gitignore 等隐藏文件: extname 返回全名 → 特殊处理（q3 同款）
+		var base, ext;
+		if (dot > 0 && dot < name.length - 1) { base = name.slice(0, dot); ext = name.slice(dot); }
+		else if (dot === 0) { base = name; ext = ''; }
+		else { base = name; ext = ''; }
+		for (var n = 1; n < 1000; n++) {
+			var cand = (dir ? dir + sep : '') + base + ' (' + n + ')' + ext;
+			try {
+				var ok = await bridge.fs.exists(cand);
+				if (!ok) return cand;
+			} catch (e) { return cand; }
+		}
+		return dest;
+	}
+
+	// ★ 字节格式化（B/KB/MB/GB，q3 formatBytesCompact 对齐）
+	function _fmtBytes(b) {
+		if (b >= 1073741824) return (b / 1073741824).toFixed(1) + 'GB';
+		if (b >= 1048576) return (b / 1048576).toFixed(1) + 'MB';
+		if (b >= 1024) return Math.round(b / 1024) + 'KB';
+		return b + 'B';
+	}
+
 	async function _copyPathsToCurrentDir(paths) {
 		var tip = document.getElementById('addressPasteTip');
 		if (tip) { tip.textContent = 'Pasting ' + paths.length + ' files...'; tip.classList.add('show'); }
@@ -116,12 +151,27 @@
 				if (i >= paths.length) return;
 				var src = paths[i];
 				var name = src.replace(/\\/g, '/').split('/').pop();
+				// ★ 2026-08-24: 唯一化/去重决策上移主进程 copyFile（单一真理）——
+				//   不再预查 _uniqueDestPath：同内容已存在文件可零复制去重命中；
+				//   不同内容自动 " (n)" 唯一化；返回值为最终落盘路径（去重/改名后仍正确）。
 				var dest = currentPath + sep + name;
 				try {
-					await bridge.fs.copyFile(src, dest);
+					// ★ 2026-08-24: 必须检查返回值——主进程 ENOENT 曾静默 return false，
+					//   不检查即 "1 copied 假成功"（中文路径 GBK 乱码事故根因链）。
+					var ok = await bridge.fs.copyFile(src, dest, function(p) {
+						if (!tip || !p) return;
+						tip.textContent = 'Pasting ' + (done + 1) + '/' + paths.length + ': ' + name + ' (' + _fmtBytes(p.copied) + '/' + _fmtBytes(p.total) + ')';
+					});
+					if (ok === false) throw new Error('copy returned false');
+					// 去重命中/唯一化改名 → 最终路径可能与 dest 不同，用返回值刷新显示
+					if (typeof ok === 'string' && ok !== dest) {
+						var lname = ok.replace(/\\/g, '/').split('/').pop();
+						if (lname) name = lname;
+					}
 					successCount++;
 				} catch(err) {
 					failCount++;
+					console.warn('[roam] paste copy failed:', src, err && err.message);
 				}
 				done++;
 				if (tip) tip.textContent = 'Pasting ' + done + '/' + paths.length + ': ' + name;
@@ -149,7 +199,7 @@
 
 		for (var i = 0; i < files.length; i++) {
 			var f = files[i];
-			var dest = currentPath + sep + (f.name || ('paste_' + i));
+			var dest = await _uniqueDestPath(currentPath + sep + (f.name || ('paste_' + i)));
 			try {
 				// For DOM File objects, read as ArrayBuffer and write via bridge
 				var ab = await new Promise(function(resolve, reject) {

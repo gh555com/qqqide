@@ -335,13 +335,17 @@
             var dstP = pdir + psep + fnP;
             try {
               if (!bridge || !bridge.fs || !bridge.fs.copyFile) throw new Error('fs.copyFile missing');
-              await bridge.fs.copyFile(fp, dstP);
+              // ★ 2026-08-24: copyFile 返回最终落盘路径——去重命中（同内容已存在）或
+              //   唯一化改名（" (n)"）后锚点必须指向真实文件，禁死用 dstP。
+              var landed = await bridge.fs.copyFile(fp, dstP);
               copiedOk++;
+              var landedPath = (typeof landed === 'string' && landed) ? landed : dstP;
+              var landedName = landedPath.replace(/\\/g, '/').split('/').pop() || fnP;
               // 注册资产根目录（缩略图/打开可用）
               if (bridge && bridge.assetRoots && bridge.assetRoots.add) {
                 bridge.assetRoots.add(pdir).catch(function () {});
               }
-              _insertTokenAtCursor(_makeAnchorToken('', fnP), { path: dstP, sha256: '', fileName: fnP }, targetEd);
+              _insertTokenAtCursor(_makeAnchorToken('', landedName), { path: landedPath, sha256: '', fileName: landedName }, targetEd);
             } catch (err) {
               copiedFail++;
               console.warn('[paste-router] 复制失败:', fp, err && err.message);
