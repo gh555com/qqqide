@@ -102,7 +102,11 @@ export function registerMiscIpc(
     ipcMain.handle('qqqide:clipboard:readFiles', async () => {
         if (process.platform !== 'win32') return [];
         try {
+            // ★ 2026-08-24: PowerShell 5.1 管道输出默认 ANSI(GBK)——中文路径经 execFile
+            //   UTF-8 解码变乱码 → stat ENOENT → copyFile 静默 false → roam "1 copied 假成功"。
+            //   脚本首行强制 [Console]::OutputEncoding=UTF8 + execFile 显式 utf8，双保险。
             const psScript = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
 $list = [System.Windows.Forms.Clipboard]::GetFileDropList()
 if ($list -and $list.Count -gt 0) {
@@ -113,6 +117,7 @@ if ($list -and $list.Count -gt 0) {
                 cp.execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
                     timeout: 5000,
                     windowsHide: true,
+                    encoding: 'utf8',
                 }, (err, stdout) => {
                     if (err) { reject(err); return; }
                     resolve(stdout || '');
@@ -183,12 +188,15 @@ ${escapedPaths}
     // ★ roam 空白区右键 → 在当前目录打开管理员终端 (CMD / PowerShell)
     // 与 q3 openAdminTerminal 百分百一致
     // ★ roam 盘符区 Recycle Bin 点击 → 打开系统回收站（与 q3 openRecycleBin 一致）
+    // ★ 2026-08-24 F148 实测定案：explorer 直启参数转发恒失败 / cmd start+windowsHide 弹窗被隐藏 / shell.openExternal ShellExecuteEx 语义零闪窗 ✅
     ipcMain.handle('qqqide:shell:openRecycleBin', async () => {
         try {
             if (process.platform === 'win32') {
-                // ★ 2026-08-23 F147: explorer.exe 经 CreateProcess 直启时参数转发失败（实测恒 exit=1，单实例桌面 explorer 收不到），
-                //   必须走 cmd start（ShellExecute 语义）才能打开 shell:RecycleBinFolder（对照实测 exit=0）。
-                cp.spawn('cmd.exe', ['/c', 'start', '""', 'shell:RecycleBinFolder'], { windowsHide: true });
+                // ★ 2026-08-24 F148 实测定案（窗口枚举实证）：
+                //   ① explorer.exe 直启: CreateProcess 参数转发恒失败（exit=1，单实例桌面 explorer 收不到）
+                //   ② cmd /c start: spawn+windowsHide:true 时 ShellExecute 打开的窗口被隐藏（实测 spawn 空串标题 弹窗/隐藏 对照）；exec 可弹但闪 cmd 黑窗
+                //   ③ electron shell.openExternal: ShellExecuteEx 语义，零闪窗零 cmd 零转义坑，实测弹『回收站』窗口 ✅
+                await electronShell.openExternal('shell:RecycleBinFolder');
             } else if (process.platform === 'darwin') {
                 cp.spawn('open', [path.join(require('os').homedir(), '.Trash')], { detached: true }).unref();
             } else {
@@ -197,7 +205,7 @@ ${escapedPaths}
                     cp.spawn('xdg-open', [trashPath], { detached: true }).unref();
                 }
             }
-        } catch (e) { console.warn('[shell:openRecycleBin]', e); }
+        } catch (e) { console.warn('[openRecycleBin]', e); }
         return true;
     });
 

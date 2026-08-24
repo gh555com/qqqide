@@ -7,6 +7,7 @@
 import { ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { _sn } from './ipc-state';
 import { _tlBlobPath, _gunzipSync } from './timeline-store';
 
@@ -73,6 +74,131 @@ async function _atomicWrite(absPath: string, data: Buffer): Promise<void> {
             throw e;
         }
     }
+}
+
+// ============================================================================
+// ★ 指纹去重（2026-08-24 移植 q3 h.js）— 采样 MD5 + 同目录去重
+//   指纹 = size(8B) + 头128B + 中128B + 尾128B 的 MD5；空文件指纹 = path+mtime
+//   （杜绝空文件互相去重）；缓存 mtime+size 校验（次秒级时间戳防 FS 精度抖动）。
+//   语义对齐 q3: 去重仅限同目录（禁跨文件夹引用）；目标已存在同内容 → 跳过复制；
+//   复制后同目录扫描命中 → 删新副本复用既有文件。
+// ============================================================================
+const _fingerprintCache = new Map<string, { mtime: number; size: number; fp: string }>();
+const FINGERPRINT_HEAD = 128;
+const FINGERPRINT_MID = 128;
+const FINGERPRINT_TAIL = 128;
+
+function _cacheKeyForPath(p: string): string {
+    return process.platform === 'win32' ? p.toLowerCase() : p;
+}
+
+function computeFingerprint(filePath: string): string | null {
+    try {
+        const st = fs.statSync(filePath);
+        if (!st.isFile()) return null;
+        const size = st.size;
+        const mtime = Math.floor(st.mtimeMs);
+        const key = _cacheKeyForPath(filePath);
+        const cached = _fingerprintCache.get(key);
+        if (cached && cached.mtime === mtime && cached.size === size) return cached.fp;
+        let fp: string;
+        if (size === 0) {
+            fp = crypto.createHash('md5').update('empty:0:' + key + ':' + mtime).digest('hex');
+        } else {
+            const chunks: Buffer[] = [];
+            const sizeBuf = Buffer.alloc(8);
+            sizeBuf.writeBigUInt64LE(BigInt(size));
+            chunks.push(sizeBuf);
+            const fd = fs.openSync(filePath, 'r');
+            try {
+                if (size <= FINGERPRINT_HEAD) {
+                    const buf = Buffer.alloc(size);
+                    fs.readSync(fd, buf, 0, size, 0);
+                    chunks.push(buf);
+                } else if (size <= FINGERPRINT_HEAD + FINGERPRINT_TAIL) {
+                    const head = Buffer.alloc(FINGERPRINT_HEAD);
+                    fs.readSync(fd, head, 0, FINGERPRINT_HEAD, 0);
+                    chunks.push(head);
+                    const tailSize = Math.min(FINGERPRINT_TAIL, size - FINGERPRINT_HEAD);
+                    const tail = Buffer.alloc(tailSize);
+                    fs.readSync(fd, tail, 0, tailSize, size - tailSize);
+                    chunks.push(tail);
+                } else {
+                    const head = Buffer.alloc(FINGERPRINT_HEAD);
+                    fs.readSync(fd, head, 0, FINGERPRINT_HEAD, 0);
+                    chunks.push(head);
+                    const midPos = Math.floor(size / 2) - Math.floor(FINGERPRINT_MID / 2);
+                    const mid = Buffer.alloc(FINGERPRINT_MID);
+                    fs.readSync(fd, mid, 0, FINGERPRINT_MID, midPos);
+                    chunks.push(mid);
+                    const tail = Buffer.alloc(FINGERPRINT_TAIL);
+                    fs.readSync(fd, tail, 0, FINGERPRINT_TAIL, size - FINGERPRINT_TAIL);
+                    chunks.push(tail);
+                }
+            } finally {
+                fs.closeSync(fd);
+            }
+            fp = crypto.createHash('md5').update(Buffer.concat(chunks)).digest('hex');
+        }
+        _fingerprintCache.set(key, { mtime, size, fp });
+        if (_fingerprintCache.size > 2000) _fingerprintCache.clear();
+        return fp;
+    } catch {
+        return null;
+    }
+}
+
+function prefillFingerprint(filePath: string, fingerprint: string): void {
+    try {
+        const st = fs.statSync(filePath);
+        const key = _cacheKeyForPath(filePath);
+        _fingerprintCache.set(key, { mtime: st.mtimeMs, size: st.size, fp: fingerprint });
+    } catch { /* ignore */ }
+}
+
+// ★ 同目录指纹去重（q3 _tryLocalDeduplicate）— 仅限同文件夹，禁跨文件夹引用；
+//   命中 → 删新副本返回既有文件路径；.part/.ytdl/.tmp 不参与扫描（下载中文件）
+function _tryLocalDeduplicate(filePath: string): string {
+    if (!filePath || !fs.existsSync(filePath)) return filePath;
+    try {
+        const currentFp = computeFingerprint(filePath);
+        if (!currentFp) return filePath;
+        const dir = path.dirname(filePath);
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        const normSelf = _cacheKeyForPath(filePath);
+        for (const entry of entries) {
+            if (!entry.isFile()) continue;
+            const f = entry.name;
+            if (f.endsWith('.part') || f.endsWith('.ytdl') || f.endsWith('.tmp')) continue;
+            const full = path.join(dir, f);
+            if (_cacheKeyForPath(full) === normSelf) continue;
+            const otherFp = computeFingerprint(full);
+            if (otherFp === currentFp) {
+                try {
+                    fs.unlinkSync(filePath);
+                    return full;
+                } catch { /* 删除失败（占用/权限）→ 保留新副本 */ }
+            }
+        }
+    } catch { /* ignore */ }
+    return filePath;
+}
+
+// ★ 唯一路径（q3 getUniquePath，命名风格对齐 roam F1 已用格式 " (n)"）— 防覆盖
+function getUniquePath(baseDir: string, originalName: string): string {
+    const ext = path.extname(originalName);
+    let nameWithoutExt = path.basename(originalName, ext);
+    // 隐藏文件（.gitignore 等）特殊处理：extname 返回全名时视为无扩展名
+    if (!nameWithoutExt && ext.startsWith('.')) {
+        nameWithoutExt = ext;
+    }
+    let targetPath = path.join(baseDir, originalName);
+    let counter = 1;
+    while (fs.existsSync(targetPath)) {
+        targetPath = path.join(baseDir, nameWithoutExt + ' (' + counter + ')' + ext);
+        counter++;
+    }
+    return targetPath;
 }
 
 export function registerFsIpc(): void {
@@ -179,20 +305,42 @@ export function registerFsIpc(): void {
         return true;
     });
 
-    // ★ copyFile — 流式复制 + 进度回调（通过 IPC event 通道）
+    // ★ copyFile — 流式复制 + 进度回调 + 指纹去重（通过 IPC event 通道）
     //  渲染层调 bridge.fs.copyFile(src, dest, onProgress) → 主进程流式复制
     //  ★ 2026-08-13 目录感知升级：src 为目录 → 递归复制（8 路并发 + 字节级进度）
     //     roam 粘贴文件夹 / 编辑框所见即所得粘贴文件夹 统一走此引擎（单一入口）
+    //  ★ 2026-08-24 指纹去重（q3 语义）：
+    //    ① src===dest（同目录粘贴）→ 先唯一化（防 createReadStream+createWriteStream 同路径截断）
+    //    ② dest 已存在 → 指纹相同跳过复制（复用既有文件，零副本）；不同 → 唯一化（防覆盖）
+    //    ③ 复制后 _tryLocalDeduplicate 同目录扫描（命中删新副本复用既有文件）
+    //    返回最终落盘路径（string）——去重命中/唯一化改名后消费方可用返回值建锚点；
+    //    旧布尔判断调用方（!== false / === false）语义不变（string 恒真）。
     ipcMain.handle('qqqide:fs:copyFile', async (e, src: string, dest: string, streamId?: string) => {
         try {
             const st = await fs.promises.stat(src);
-            if (st.isDirectory()) {
-                // ── 目录：递归复制（合并语义，逐文件覆盖，同 robocopy /E）──
-                await fs.promises.mkdir(dest, { recursive: true });
-                return await _copyDirRecursive(e, src, dest, streamId);
+            // ★ 同目录粘贴 src===dest 守卫：先唯一化，防自截断（F1 曾实锤 0 字节事故）
+            if (_cacheKeyForPath(path.resolve(src)) === _cacheKeyForPath(path.resolve(dest))) {
+                dest = getUniquePath(path.dirname(dest), path.basename(dest));
             }
-            // ── 文件：原流式路径 ──
+            if (st.isDirectory()) {
+                // ── 目录：递归复制；目标已存在 → 唯一化（q3 语义，防合并覆盖）──
+                if (fs.existsSync(dest)) dest = getUniquePath(path.dirname(dest), path.basename(dest));
+                await fs.promises.mkdir(dest, { recursive: true });
+                await _copyDirRecursive(e, src, dest, streamId);
+                return dest;
+            }
+            // ── 文件 ──
             await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+            // ★ dest 已存在 → 指纹判断：同内容跳过复制（去重命中复用），不同内容唯一化（防覆盖）
+            if (fs.existsSync(dest)) {
+                const sfp = computeFingerprint(src);
+                const dfp = computeFingerprint(dest);
+                if (sfp && dfp === sfp) {
+                    if (sfp) prefillFingerprint(dest, sfp);
+                    return dest;
+                }
+                dest = getUniquePath(path.dirname(dest), path.basename(dest));
+            }
             const totalSize = st.size;
             const readStream = fs.createReadStream(src, { highWaterMark: 1024 * 1024 }); // 1MB chunks
             const writeStream = fs.createWriteStream(dest);
@@ -207,14 +355,18 @@ export function registerFsIpc(): void {
                 });
             }
 
-            return new Promise<boolean>((resolve, reject) => {
+            await new Promise<boolean>((resolve, reject) => {
                 readStream.on('error', reject);
                 writeStream.on('error', reject);
                 writeStream.on('finish', () => resolve(true));
                 readStream.pipe(writeStream);
             });
+            // ★ 复制后同目录指纹去重：命中 → 新副本已删，返回既有文件路径（q3 语义）
+            return _tryLocalDeduplicate(dest);
         } catch (e: any) {
-            if (e.code === 'ENOENT') return false;
+            // ★ 2026-08-24: ENOENT 静默 return false → 渲染层若不检查返回值即"假成功"
+            //   （roam 粘贴曾实锤: 路径乱码 stat 失败仍显示 "1 copied"）。必须抛错让调用方感知。
+            if (e.code === 'ENOENT') throw new Error('copyFile source not found: ' + src);
             throw e;
         }
     });
@@ -257,8 +409,19 @@ export function registerFsIpc(): void {
                 if (i >= files.length) return;
                 const f = files[i];
                 const rel = path.relative(src, f);
-                const out = path.join(dest, rel);
+                let out = path.join(dest, rel);
                 await fs.promises.mkdir(path.dirname(out), { recursive: true });
+                // ★ 2026-08-24 指纹去重（q3 语义）：目标已存在 → 指纹相同跳过复制（零副本）；
+                //   不同 → 唯一化（防覆盖，合并语义改为不覆盖）。
+                if (fs.existsSync(out)) {
+                    const sfp = computeFingerprint(f);
+                    const dfp = computeFingerprint(out);
+                    if (sfp && dfp === sfp) {
+                        if (sfp) prefillFingerprint(out, sfp);
+                        continue;
+                    }
+                    out = getUniquePath(path.dirname(out), path.basename(out));
+                }
                 await new Promise<void>((resolve, reject) => {
                     const rs = fs.createReadStream(f, { highWaterMark: 1024 * 1024 });
                     const ws = fs.createWriteStream(out);
@@ -268,6 +431,8 @@ export function registerFsIpc(): void {
                     ws.on('finish', () => resolve());
                     rs.pipe(ws);
                 });
+                // ★ 复制后同目录指纹去重（命中 → 新副本已删）
+                _tryLocalDeduplicate(out);
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONC, files.length || 1) }, () => worker()));
