@@ -139,14 +139,65 @@
 		var tip = document.getElementById('addressPasteTip');
 		if (tip) { tip.textContent = 'Pasting ' + paths.length + ' files...'; tip.classList.add('show'); }
 
-		var sep = currentPath.indexOf('\\') >= 0 ? '\\' : '/';
+		// ★ 2026-08-24: ioast 任务坞（独立于 qoast 的任务卡）——
+		//   统一 streamId → 主进程聚合 4 路并发进度（copied/total 全任务字节）；
+		//   取消按钮 → cancelCopy → 主进程中止所有该 streamId 复制 + 清理半成品。
+		var ioast = (window.parent && window.parent.qqqideIoast) || null;
+		var streamId = 'roam-paste-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+		var cancelled = false;
+		var startTs = Date.now();
+		var elapsedTimer = null;
 		var successCount = 0;
 		var failCount = 0;
+		var cancelCount = 0;
+		var lastSubtitle = '';
+		var lastProgress = null;
 
+		function _ioastPush(extra) {
+			if (!ioast) return;
+			var opts = {
+				title: '粘贴 ' + paths.length + ' 项',
+				count: { done: successCount + failCount + cancelCount, total: paths.length },
+				elapsed: (Date.now() - startTs) / 1000
+			};
+			if (lastSubtitle) opts.subtitle = lastSubtitle;
+			if (typeof lastProgress === 'number') opts.progress = lastProgress;
+			if (extra) { for (var k in extra) opts[k] = extra[k]; }
+			ioast.task(streamId, opts);
+		}
+		function _ioastStart() {
+			if (!ioast) return;
+			ioast.task(streamId, {
+				title: '粘贴 ' + paths.length + ' 项',
+				cancelable: true,
+				onCancel: function() {
+					cancelled = true;
+					try { bridge.fs.cancelCopy(streamId); } catch(e) {}
+					_ioastPush({ cancelable: false, subtitle: '正在取消…' });
+				}
+			});
+			elapsedTimer = setInterval(_ioastPush, 500);
+		}
+		function _ioastFinish() {
+			if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+			if (!ioast) return;
+			if (cancelCount > 0) {
+				ioast.fail(streamId, { summary: '已取消 · ' + successCount + ' 项完成' + (failCount > 0 ? '，' + failCount + ' 失败' : '') });
+			} else if (failCount > 0) {
+				ioast.fail(streamId, { summary: successCount + ' 项成功，' + failCount + ' 项失败' });
+			} else {
+				ioast.done(streamId, { summary: successCount + ' 项已复制' });
+			}
+		}
+
+		_ioastStart();
+
+		var sep = currentPath.indexOf('\\') >= 0 ? '\\' : '/';
 		// ★ 2026-08-13: 并发复制（4 路）—— 多文件+文件夹混合一次粘贴不串行等待
-		var CONC = 4, qi = 0, done = 0;
+		var CONC = 4, qi = 0;
 		async function _pasteWorker() {
 			while (true) {
+				if (cancelled) return;
 				var i = qi++;
 				if (i >= paths.length) return;
 				var src = paths[i];
@@ -158,10 +209,14 @@
 				try {
 					// ★ 2026-08-24: 必须检查返回值——主进程 ENOENT 曾静默 return false，
 					//   不检查即 "1 copied 假成功"（中文路径 GBK 乱码事故根因链）。
+					// ★ 2026-08-24: 统一 streamId → 主进程聚合多路进度 + 支持取消。
 					var ok = await bridge.fs.copyFile(src, dest, function(p) {
-						if (!tip || !p) return;
-						tip.textContent = 'Pasting ' + (done + 1) + '/' + paths.length + ': ' + name + ' (' + _fmtBytes(p.copied) + '/' + _fmtBytes(p.total) + ')';
-					});
+						if (!p) return;
+						lastProgress = p.total > 0 ? Math.min(1, p.copied / p.total) : null;
+						lastSubtitle = name + ' (' + _fmtBytes(p.copied) + '/' + _fmtBytes(p.total) + ')';
+						if (tip) tip.textContent = 'Pasting ' + (successCount + failCount + cancelCount + 1) + '/' + paths.length + ': ' + lastSubtitle;
+						_ioastPush();
+					}, streamId);
 					if (ok === false) throw new Error('copy returned false');
 					// 去重命中/唯一化改名 → 最终路径可能与 dest 不同，用返回值刷新显示
 					if (typeof ok === 'string' && ok !== dest) {
@@ -170,19 +225,22 @@
 					}
 					successCount++;
 				} catch(err) {
-					failCount++;
-					console.warn('[roam] paste copy failed:', src, err && err.message);
+					if (cancelled || (err && err.message && err.message.indexOf('cancelled') >= 0)) cancelCount++;
+					else { failCount++; console.warn('[roam] paste copy failed:', src, err && err.message); }
 				}
-				done++;
-				if (tip) tip.textContent = 'Pasting ' + done + '/' + paths.length + ': ' + name;
+				lastSubtitle = name;
+				lastProgress = null;
+				if (tip) tip.textContent = 'Pasting ' + (successCount + failCount + cancelCount) + '/' + paths.length + ': ' + name;
+				_ioastPush();
 			}
 		}
 		await Promise.all(Array.from({ length: Math.min(CONC, paths.length || 1) }, function() { return _pasteWorker(); }));
 
 		loadFileList(currentPath);
+		_ioastFinish();
 
 		if (tip) {
-			tip.textContent = successCount + ' copied' + (failCount > 0 ? ', ' + failCount + ' failed' : '');
+			tip.textContent = successCount + ' copied' + (failCount > 0 ? ', ' + failCount + ' failed' : '') + (cancelCount > 0 ? ', ' + cancelCount + ' cancelled' : '');
 			setTimeout(function() { tip.classList.remove('show'); }, 3000);
 		}
 
@@ -193,11 +251,26 @@
 		var tip = document.getElementById('addressPasteTip');
 		if (tip) { tip.textContent = 'Pasting ' + files.length + ' files...'; tip.classList.add('show'); }
 
+		// ★ 2026-08-24: ioast 任务坞（DOM File 路径：无字节进度 → 文件级计数 + 取消）
+		var ioast = (window.parent && window.parent.qqqideIoast) || null;
+		var ioastId = 'roam-paste-dom-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+		var cancelled = false;
+
+		if (ioast) {
+			ioast.task(ioastId, {
+				title: '粘贴 ' + files.length + ' 个文件',
+				count: { done: 0, total: files.length },
+				cancelable: true,
+				onCancel: function() { cancelled = true; }
+			});
+		}
+
 		var sep = currentPath.indexOf('\\') >= 0 ? '\\' : '/';
 		var successCount = 0;
 		var failCount = 0;
 
 		for (var i = 0; i < files.length; i++) {
+			if (cancelled) break;
 			var f = files[i];
 			var dest = await _uniqueDestPath(currentPath + sep + (f.name || ('paste_' + i)));
 			try {
@@ -228,9 +301,18 @@
 				console.warn('[roam] paste file failed:', f.name, err);
 				failCount++;
 			}
+			if (ioast) {
+				ioast.task(ioastId, { count: { done: successCount + failCount, total: files.length }, subtitle: f.name || '' });
+			}
 		}
 
 		loadFileList(currentPath);
+
+		if (ioast) {
+			if (cancelled) ioast.fail(ioastId, { summary: '已取消 · ' + successCount + ' 个完成' });
+			else if (failCount > 0) ioast.fail(ioastId, { summary: successCount + ' 个成功，' + failCount + ' 个失败' });
+			else ioast.done(ioastId, { summary: successCount + ' 个已复制' });
+		}
 
 		if (tip) {
 			tip.textContent = successCount + ' copied' + (failCount > 0 ? ', ' + failCount + ' failed' : '');
