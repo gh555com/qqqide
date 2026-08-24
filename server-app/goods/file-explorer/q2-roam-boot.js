@@ -236,6 +236,10 @@
 		}
 		await Promise.all(Array.from({ length: Math.min(CONC, paths.length || 1) }, function() { return _pasteWorker(); }));
 
+		// ★ 2026-08-24: 事务终结——主进程 copy-tx 记录（半成品已由引擎清理；
+		//   若进程此刻崩溃，pending 记录由下次启动 _txRecover 兜底精确清理）
+		try { if (bridge.fs && bridge.fs.copyTxEnd) bridge.fs.copyTxEnd(streamId); } catch(e) {}
+
 		loadFileList(currentPath);
 		_ioastFinish();
 

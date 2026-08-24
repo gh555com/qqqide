@@ -95,8 +95,10 @@ const QQQ = {
                 });
             });
         },
-        // ★ 取消复制（ioast 中断按钮）：同 streamId 的全部复制路径立即中止 + 清理半成品
-        cancelCopy: (streamId: string) => ipcRenderer.invoke('qqqide:fs:cancelCopy', streamId),
+        // ★ 取消复制（ioast 中断按钮）：同 streamId 的全部复制路径立即中止 + 事务级半成品清理
+        cancelCopy: (streamId: string) => ipcRenderer.invoke('qqqide:fs:cancelCopy', streamId),
+        // ★ 复制事务终结（批量任务收尾显式调用；进程崩溃由主进程 _txRecover 兜底）
+        copyTxEnd: (streamId: string) => ipcRenderer.invoke('qqqide:fs:copyTxEnd', streamId),
         drives: () => ipcRenderer.invoke('qqqide:fs:drives'),
         diskFree: (d: string[]) => ipcRenderer.invoke('qqqide:fs:diskFree', d),
     },
