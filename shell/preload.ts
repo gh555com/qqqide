@@ -75,16 +75,18 @@ const QQQ = {
         mkdir: (p: string) => ipcRenderer.invoke('qqqide:fs:mkdir', p),
         remove: (p: string) => ipcRenderer.invoke('qqqide:fs:remove', p),
         rename: (oldP: string, newP: string) => ipcRenderer.invoke('qqqide:fs:rename', oldP, newP),
-        // ★ 流式复制 + 进度回调。onProgress({copied,total})，返回 Promise<true>
-        copyFile: (src: string, dest: string, onProgress?: (p: { copied: number; total: number }) => void): Promise<boolean> => {
-            const streamId = 'cp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        // ★ 流式复制 + 进度回调。onProgress({copied,total})，返回 Promise<最终落盘路径|boolean>
+        //   streamId 可选：多路并发共享同一 streamId → 主进程聚合进度（ioast 任务坞）；
+        //   缺省自动生成（单发场景零改动）。
+        copyFile: (src: string, dest: string, onProgress?: (p: { copied: number; total: number }) => void, streamId?: string): Promise<boolean> => {
+            const sid = streamId || ('cp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
             return new Promise((resolve, reject) => {
                 const handler = (_e: any, msg: { streamId: string; copied: number; total: number }) => {
-                    if (!msg || msg.streamId !== streamId) return;
+                    if (!msg || msg.streamId !== sid) return;
                     try { if (onProgress) onProgress({ copied: msg.copied, total: msg.total }); } catch { }
                 };
                 ipcRenderer.on('qqqide:fs:copy-progress', handler);
-                ipcRenderer.invoke('qqqide:fs:copyFile', src, dest, streamId).then((result: boolean) => {
+                ipcRenderer.invoke('qqqide:fs:copyFile', src, dest, sid).then((result: boolean) => {
                     ipcRenderer.removeListener('qqqide:fs:copy-progress', handler);
                     resolve(result);
                 }).catch((err: any) => {
@@ -92,7 +94,9 @@ const QQQ = {
                     reject(err);
                 });
             });
-        },
+        },
+        // ★ 取消复制（ioast 中断按钮）：同 streamId 的全部复制路径立即中止 + 清理半成品
+        cancelCopy: (streamId: string) => ipcRenderer.invoke('qqqide:fs:cancelCopy', streamId),
         drives: () => ipcRenderer.invoke('qqqide:fs:drives'),
         diskFree: (d: string[]) => ipcRenderer.invoke('qqqide:fs:diskFree', d),
     },

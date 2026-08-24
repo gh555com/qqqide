@@ -201,6 +201,48 @@ function getUniquePath(baseDir: string, originalName: string): string {
     return targetPath;
 }
 
+// ============================================================================
+// ★ ioast 任务级进度聚合 + 取消（2026-08-24）—
+//   多路并发复制共享同一 streamId → 主进程按 streamId 聚合 total/copied，
+//   渲染层收统一进度（不感知并发路数）；cancelCopy 置取消标志，
+//   各复制路径检查后中止并清理半成品（目标必为本次新建，删除安全）。
+// ============================================================================
+const _copyAgg = new Map<string, { total: number; copied: number }>();
+const _copyCancels = new Set<string>();
+const _aggLastReport = new Map<string, number>();
+
+function _aggAdd(streamId: string, total: number): void {
+    if (!streamId || total <= 0) return;
+    let agg = _copyAgg.get(streamId);
+    if (!agg) { agg = { total: 0, copied: 0 }; _copyAgg.set(streamId, agg); }
+    agg.total += total;
+}
+
+function _aggReport(e: any, streamId: string, force = false): void {
+    const agg = _copyAgg.get(streamId);
+    if (!agg || agg.total <= 0) return;
+    const now = Date.now();
+    const last = _aggLastReport.get(streamId) || 0;
+    if (!force && now - last < 100) return; // 100ms 节流（进度条 10Hz 足够）
+    _aggLastReport.set(streamId, now);
+    try { e.sender.send('qqqide:fs:copy-progress', { streamId, copied: agg.copied, total: agg.total }); } catch { /* ignore */ }
+}
+
+function _aggCleanup(streamId: string): void {
+    if (!streamId) return;
+    _copyAgg.delete(streamId);
+    _copyCancels.delete(streamId);
+    _aggLastReport.delete(streamId);
+}
+
+function _copyCancelled(streamId: string): boolean {
+    return !!streamId && _copyCancels.has(streamId);
+}
+
+function _cancelErr(streamId: string): Error {
+    return new Error('copy cancelled (stream ' + streamId + ')');
+}
+
 export function registerFsIpc(): void {
     ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
 
@@ -305,6 +347,12 @@ export function registerFsIpc(): void {
         return true;
     });
 
+    // ★ 取消复制（2026-08-24 ioast 中断）：置取消标志 → 各复制路径检查后中止 + 清理半成品
+    ipcMain.handle('qqqide:fs:cancelCopy', (_e, streamId: string) => {
+        if (streamId) _copyCancels.add(streamId);
+        return true;
+    });
+
     // ★ copyFile — 流式复制 + 进度回调 + 指纹去重（通过 IPC event 通道）
     //  渲染层调 bridge.fs.copyFile(src, dest, onProgress) → 主进程流式复制
     //  ★ 2026-08-13 目录感知升级：src 为目录 → 递归复制（8 路并发 + 字节级进度）
@@ -318,6 +366,7 @@ export function registerFsIpc(): void {
     ipcMain.handle('qqqide:fs:copyFile', async (e, src: string, dest: string, streamId?: string) => {
         try {
             const st = await fs.promises.stat(src);
+            if (_copyCancelled(streamId)) throw _cancelErr(streamId);
             // ★ 同目录粘贴 src===dest 守卫：先唯一化，防自截断（F1 曾实锤 0 字节事故）
             if (_cacheKeyForPath(path.resolve(src)) === _cacheKeyForPath(path.resolve(dest))) {
                 dest = getUniquePath(path.dirname(dest), path.basename(dest));
@@ -326,7 +375,15 @@ export function registerFsIpc(): void {
                 // ── 目录：递归复制；目标已存在 → 唯一化（q3 语义，防合并覆盖）──
                 if (fs.existsSync(dest)) dest = getUniquePath(path.dirname(dest), path.basename(dest));
                 await fs.promises.mkdir(dest, { recursive: true });
-                await _copyDirRecursive(e, src, dest, streamId);
+                try {
+                    await _copyDirRecursive(e, src, dest, streamId);
+                } catch (err) {
+                    // ★ 取消 → 清理半成品（dest 必为本次新建目录，整树删除安全）
+                    if (_copyCancelled(streamId)) {
+                        try { await fs.promises.rm(dest, { recursive: true, force: true }); } catch { /* ignore */ }
+                    }
+                    throw err;
+                }
                 return dest;
             }
             // ── 文件 ──
@@ -345,22 +402,42 @@ export function registerFsIpc(): void {
             const readStream = fs.createReadStream(src, { highWaterMark: 1024 * 1024 }); // 1MB chunks
             const writeStream = fs.createWriteStream(dest);
 
-            if (streamId && totalSize > 0) {
-                let copied = 0;
-                readStream.on('data', (chunk: Buffer) => {
-                    copied += chunk.length;
-                    try {
-                        e.sender.send('qqqide:fs:copy-progress', { streamId, copied, total: totalSize });
-                    } catch { /* ignore */ }
-                });
-            }
-
-            await new Promise<boolean>((resolve, reject) => {
-                readStream.on('error', reject);
-                writeStream.on('error', reject);
-                writeStream.on('finish', () => resolve(true));
-                readStream.pipe(writeStream);
+            if (streamId && totalSize > 0) _aggAdd(streamId, totalSize);
+            readStream.on('data', (chunk: Buffer) => {
+                if (_copyCancelled(streamId)) {
+                    // ★ 取消 → 立即中止流。必须 destroy(error)——无参 destroy 不触发 'error' 事件，
+                    //   promise 永不 settle → 复制永久挂起（2026-08-24 实测）。
+                    readStream.destroy(_cancelErr(streamId));
+                    writeStream.destroy();
+                    return;
+                }
+                const agg = _copyAgg.get(streamId);
+                if (agg) agg.copied += chunk.length;
+                _aggReport(e, streamId);
             });
+
+            try {
+                await new Promise<boolean>((resolve, reject) => {
+                    readStream.on('error', reject);
+                    writeStream.on('error', reject);
+                    writeStream.on('finish', () => resolve(true));
+                    readStream.pipe(writeStream);
+                });
+            } catch (err) {
+                // ★ 取消/流中断 → 删除半成品（dest 必为本次新建，unlink 安全）
+                if (_copyCancelled(streamId)) {
+                    try { await fs.promises.unlink(dest); } catch { /* ignore */ }
+                    throw _cancelErr(streamId);
+                }
+                throw err;
+            }
+            // ★ 收尾强制刷新（100ms 节流窗口内最后一帧不丢，UI 进度恒达 100%）
+            _aggReport(e, streamId, true);
+            // ★ 复制完成但取消已置位（finish 与取消竞态）→ 删掉并报取消
+            if (_copyCancelled(streamId)) {
+                try { await fs.promises.unlink(dest); } catch { /* ignore */ }
+                throw _cancelErr(streamId);
+            }
             // ★ 复制后同目录指纹去重：命中 → 新副本已删，返回既有文件路径（q3 语义）
             return _tryLocalDeduplicate(dest);
         } catch (e: any) {
@@ -368,6 +445,9 @@ export function registerFsIpc(): void {
             //   （roam 粘贴曾实锤: 路径乱码 stat 失败仍显示 "1 copied"）。必须抛错让调用方感知。
             if (e.code === 'ENOENT') throw new Error('copyFile source not found: ' + src);
             throw e;
+        } finally {
+            // ★ 聚合/取消记录清理（成功、失败、取消三路径统一回收）
+            if (streamId) _aggCleanup(streamId);
         }
     });
 
@@ -398,13 +478,13 @@ export function registerFsIpc(): void {
         const CONC = 8;
         let idx = 0;
         let copiedBytes = 0;
+        if (streamId && totalBytes > 0) _aggAdd(streamId, totalBytes);
         const report = () => {
-            if (streamId && totalBytes > 0) {
-                try { e.sender.send('qqqide:fs:copy-progress', { streamId, copied: copiedBytes, total: totalBytes }); } catch { /* ignore */ }
-            }
+            if (streamId && totalBytes > 0) _aggReport(e, streamId);
         };
         const worker = async (): Promise<void> => {
             while (true) {
+                if (_copyCancelled(streamId)) throw _cancelErr(streamId);
                 const i = idx++;
                 if (i >= files.length) return;
                 const f = files[i];
@@ -425,7 +505,14 @@ export function registerFsIpc(): void {
                 await new Promise<void>((resolve, reject) => {
                     const rs = fs.createReadStream(f, { highWaterMark: 1024 * 1024 });
                     const ws = fs.createWriteStream(out);
-                    rs.on('data', (chunk: Buffer) => { copiedBytes += chunk.length; report(); });
+                    rs.on('data', (chunk: Buffer) => {
+                        // ★ destroy(error)：无参 destroy 不触发 'error' → promise 永不 settle（实测挂起）
+                        if (_copyCancelled(streamId)) { rs.destroy(_cancelErr(streamId)); ws.destroy(); return; }
+                        copiedBytes += chunk.length;
+                        const agg = _copyAgg.get(streamId);
+                        if (agg) agg.copied += chunk.length;
+                        report();
+                    });
                     rs.on('error', reject);
                     ws.on('error', reject);
                     ws.on('finish', () => resolve());
@@ -436,7 +523,7 @@ export function registerFsIpc(): void {
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONC, files.length || 1) }, () => worker()));
-        report();
+        _aggReport(e, streamId, true); // 收尾强制刷新（节流窗口内最后一帧不丢）
         return true;
     }
 
