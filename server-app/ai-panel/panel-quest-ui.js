@@ -308,9 +308,12 @@ async function createNewQuest() {
         }
     }
     saveQuestUIState(questActiveId);
-    // ★ 先保存再停流：stopStream() 会改变 _stopState，保存必须在此之前
+    // ★ 先保存快照：建楼中 agent 的流式 buffer 落盘（跨面板迁移安全）
     if (!_isDraft(questActiveId) && _activeAgent && _activeAgent._stopState === 'sending') await saveQuestData();
-    if (streaming) stopStream();
+    // ★ 2026-08-24 根治：此处禁停流。streaming 是 per-agent 代理，此刻 _activeAgent 仍指向旧 quest
+    //   的建楼 agent → 旧代码 if (streaming) stopStream() 等于掐断正在建的楼（q152 f8 事故实锤：
+    //   _streaming:true 落盘 + content 断句「③ 铁」+ floorFatal:false 非 fatal 停止痕迹）。
+    //   新建 quest 绝不停后台建楼，UI 流式状态由 _unloadQuest → setStreaming(false) 复位。
     if (questActiveId && !_isDraft(questActiveId)) {
         _parentReleaseQuest(questActiveId);
         _broadcast('owner-released', questActiveId);

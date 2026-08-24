@@ -98,9 +98,14 @@ var CardPool = (function () {
       return this._cards[questId];
     }
     // 检查上限
+    // ★ 2026-08-24 根治：池满时从最老向后扫描，驱逐第一个非建楼的 card；
+    //   全部在建 → 临时扩容（建楼完成后的驱逐自然回收），绝不 abort 正在建的楼
     while (this._lru.length >= CARD_POOL_MAX) {
-      var evictId = this._lru[0];
-      this._evict(evictId);
+      var _evictedAny = false;
+      for (var _li = 0; _li < this._lru.length; _li++) {
+        if (this._evict(this._lru[_li])) { _evictedAny = true; break; }
+      }
+      if (!_evictedAny) break;
     }
     var card = new Card(questId);
     card._initDOM();
@@ -125,13 +130,21 @@ var CardPool = (function () {
   };
 
   // ═══ 驱逐 Card ═══
+  // ★ 返回 true = 已驱逐；false = 不可驱逐（正在建楼，调用方跳过）
   CardPool.prototype._evict = function (questId) {
     var card = this._cards[questId];
-    if (!card) return;
+    if (!card) return true;
     // [silent] evicting card
 
-    // abort 该 quest 的 agent（如果还在跑）
+    // ★ 2026-08-24 根治：正在建楼的 quest 不可驱逐——abort/删 DOM/删共享池条目 = 中断建楼
+    //   （q152 f8 事故链之二：createNewQuest→removeCard 与池满 LRU 驱逐都走本路径；
+    //   建楼中 card 保留，agent 后台继续渲染，建楼完成后由后续驱逐自然回收）
     var _evictAgent = parent.__qqq_agentPool && parent.__qqq_agentPool[questId];
+    if (_evictAgent && _evictAgent._stopState === 'sending') {
+      return false;
+    }
+
+    // abort 该 quest 的 agent（如果还在跑）
     if (_evictAgent) {
       if (_evictAgent._floorTimerId) { clearInterval(_evictAgent._floorTimerId); _evictAgent._floorTimerId = null; }
       try { _evictAgent.abort(); } catch (_) { }
@@ -159,6 +172,7 @@ var CardPool = (function () {
     delete this._cards[questId];
     var idx = this._lru.indexOf(questId);
     if (idx >= 0) this._lru.splice(idx, 1);
+    return true;
   };
 
   // ═══ 切换到指定 quest ═══

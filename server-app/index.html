@@ -170,6 +170,11 @@ var _orig={};
           <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-ge50-fill"></span></span>
           <span class="qqq-act-num" id="qqq-act-ge50-num">0/50</span>
         </span>
+        <!-- ★ 美丽滴眼睛：清爽达标（总消费≥10 ge）才显示，位置由 shell-activities.js 动态插到已完成豆腐块最右一个右边 -->
+        <!-- 美丽滴眼睛：状态区无图标，只有活动名（2026-08-24 定案）；弹窗内保留睫毛眼睛 SVG -->
+        <span class="qqq-act-widget qqq-act-eye" id="qqq-act-eye" style="display:none">
+          <span class="qqq-act-head"><span class="qqq-act-name" data-i18n="act.eye.name">美丽滴眼睛</span></span>
+        </span>
         <span class="qqq-act-widget qqq-act-vibe" id="qqq-act-vibe">
           <span class="qqq-act-head"><span class="qqq-act-icon">💎</span><span class="qqq-act-name" data-i18n="act.vibe.name">2026, 我, vibe coding</span></span>
           <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-vibe-fill"></span></span>
@@ -259,6 +264,7 @@ var _orig={};
 <script src="core/content-widget.js"></script>
 <script src="core/qqq-viewzone.js"></script>
 <script src="core/paste-router.js"></script>
+<script src="core/drop-overlay.js"></script>
 <script src="core/viewport-machine.js"></script>
 <script src="core/editor-breadcrumb.js"></script>
 <script src="core/editor.js"></script>

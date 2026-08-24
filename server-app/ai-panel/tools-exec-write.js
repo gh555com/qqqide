@@ -38,7 +38,7 @@ function _autoSyntaxCheck(filePath) {
 
     timeout = _isTs ? 12000 : 5000;
     return bridge.qz.spawn({ cmd: cmd, args: args, timeout: timeout, cwd: cwd || '' }).then(function (r) {
-        if (r.code === 0) return '\n[SYNTAX OK] ' + ext;
+        if (r.exitCode === 0) return '\n[SYNTAX OK] ' + ext;
         var output = (r.stderr || '') + '\n' + (r.stdout || '');
         if (_isTs) {
             // Filter: only errors referencing this file (not other files in project)

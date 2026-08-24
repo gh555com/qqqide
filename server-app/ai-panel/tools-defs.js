@@ -378,7 +378,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_web',
-            description: 'Web search via US server. Returns 20 results (title+URL+snippet). Follow with fetch_webpage for full content.',
+            description: 'Web search (local engine, bing+yandex, no VPN needed). Returns up to 20 results (title+URL+snippet). Follow with fetch_webpage for full content.',
             parameters: {
                 type: 'object',
                 properties: {
