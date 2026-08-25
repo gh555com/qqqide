@@ -402,7 +402,12 @@ async function updateDriveDisplay() {
 		}
 		if (k === 'x') {
 			e.preventDefault();
-			_openKmdAt(currentPath);
+			// ★ 2026-08-25 极简规则：单文件选中 → 文件名预填 kmd 键入行（不带路径，任何类型都填）；
+			//   多选 / 文件夹 / 无选中 → 只开 kmd + cd，不预填
+			//   <= 1 而非 === 1：覆盖 selectedItem 有值但 selectedItems 数组未同步的边缘路径
+			//   （length=0 时 selectedItem 必为 null/非 file → fn 仍 undefined，多选 length>1 仍拒绝）
+			var fn = (selectedItems.length <= 1 && selectedItem && selectedItem.type === 'file' && selectedItem.name && selectedItem.name !== '..') ? selectedItem.name : undefined;
+			_openKmdAt(currentPath, fn);
 			return;
 		}
 		if (k === 'm') {

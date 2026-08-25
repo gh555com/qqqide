@@ -661,6 +661,21 @@ app.whenReady().then(async () => {
         try {
             const openWindows = await readOpenWindows();
             if (openWindows && openWindows.length > 1) {
+                // ★ 最后关闭窗口 (2026-08-25): openWindows 条目 lastClosed 标记 = 上次退出最后关闭的窗口。
+                //   boot.ts 主窗口晚 show+focus 会抢焦点（“卡到 a”根因）→ 启动后焦点必须还给最后关闭的窗口
+                let lastClosedFolder: string | null = null;
+                const lastClosedEntry = openWindows.find((w: any) => !!(w && w.lastClosed));
+                if (lastClosedEntry && lastClosedEntry.mainFolder) {
+                    lastClosedFolder = lastClosedEntry.mainFolder.replace(/\\/g, '/').replace(/\/$/, '') || null;
+                }
+                if (lastClosedFolder && lastClosedFolder !== _mainRestoreFolder) {
+                    // ★ 主窗口任何时刻 show（boot.ts 晚 show+focus 抢焦点）→ 焦点夺回给最后关闭窗口
+                    mainWindow.on('show', () => {
+                        const wid = _projectWindowMap.get(lastClosedFolder!);
+                        const w = wid !== undefined ? BrowserWindow.fromId(wid) : null;
+                        if (w && !w.isDestroyed()) { try { w.focus(); } catch (_) { } }
+                    });
+                }
                 // ★ 预注册主窗口项目（open_windows[0]），防后续还原重复创建；
                 //   仅当主窗口真的拿到了该文件夹（_mainRestoreFolder 非空）才预注册 —
                 //   否则让还原循环尝试在额外窗口恢复（2026-08-16: 旧代码无条件注册 →
@@ -699,6 +714,10 @@ app.whenReady().then(async () => {
                     _projectWindowMap.set(normalized, newWin.id);
                     // ★ 打开序记录 (2026-08-16)
                     recordWindowOpen(newWin.id, normalized, stateStore);
+                    // ★ 最后关闭窗口可见即置前 (2026-08-25)
+                    if (lastClosedFolder && normalized === lastClosedFolder) {
+                        newWin.on('show', () => { try { if (!newWin.isDestroyed()) newWin.focus(); } catch (_) { } });
+                    }
 
                     const baseUrl = getWebappBaseUrl(portable.root, bootConfig, isDevFlag);
                     const url = baseUrl + '?restore=1&folder=' + encodeURIComponent(normalized);
@@ -725,6 +744,22 @@ app.whenReady().then(async () => {
                     await new Promise(r => setTimeout(r, RESTORE_WINDOW_GAP_MS));
                 }
                 if (restored > 0) console.log('[restore] ' + restored + ' additional window(s) restored');
+                // ★ 焦点仲裁轮询 (2026-08-25): 主窗口 boot.ts 晚 show+focus 抢焦点 → 轮询直到
+                //   最后关闭窗口可见置前（任何时序的最终赢家 = lastClosed）
+                if (lastClosedFolder && lastClosedFolder !== _mainRestoreFolder) {
+                    let tries = 0;
+                    const iv = setInterval(() => {
+                        tries++;
+                        const wid = _projectWindowMap.get(lastClosedFolder!);
+                        const w = wid !== undefined ? BrowserWindow.fromId(wid) : null;
+                        if (w && !w.isDestroyed() && w.isVisible()) {
+                            try { w.focus(); } catch (_) { }
+                            clearInterval(iv);
+                        } else if (tries >= 10) {
+                            clearInterval(iv); // 5s 兑底放弃 (窗口可能被锁跳过/路径不存在)
+                        }
+                    }, 500);
+                }
             }
         } catch (e) {
             console.warn('[restore] multi-window restore failed:', e);

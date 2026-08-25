@@ -554,11 +554,76 @@ function bootSashes() {
   }
 }
 
-// ---- Resize grip ----
+// ---- Resize grip（q.py ResizeGrip 移植 v2：pointer capture + rAF 节流 + 主进程 setBounds）----
+// v1 用 window.resizeTo + document 级 mouse 监听：无 capture 时鼠标拖出窗口边缘后
+// document 收不到 mousemove/mouseup → 松手永远退不出拖拽态；且 mousemove 125-1000Hz
+// 每事件同步 resizeTo → 渲染线程阻塞雪崩（缩小尤甚，每次触发三面板 reflow）。
 function bootResizeGrip() {
   var grip = document.getElementById('qqq-resize-grip');
-  if (!grip || !_shBridge || !_shBridge.window) return;
-  // In Electron, resize grip is handled via -webkit-app-region or IPC
+  if (!grip) return;
+  var dragging = false;
+  var rafId = 0;
+  var pending = null;
+  var startX = 0, startY = 0, startW = 0, startH = 0;
+
+  function sendSize(w, h) {
+    try {
+      if (_shBridge && _shBridge.window && _shBridge.window.resizeGrip) {
+        // fire-and-forget：主进程 clamp（翼 min 宽度动态生效）+ setBounds，不阻塞渲染 JS
+        _shBridge.window.resizeGrip(w, h);
+        return;
+      }
+    } catch (_) { }
+    try { window.resizeTo(w, h); } catch (_) { } // 无桥兜底
+  }
+
+  function flushPending() {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    if (!pending) return;
+    var p = pending;
+    pending = null;
+    sendSize(p.w, p.h);
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    pending = null;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    window.removeEventListener('blur', endDrag);
+  }
+
+  grip.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragging = true;
+    startX = e.screenX;
+    startY = e.screenY;
+    startW = window.outerWidth;
+    startH = window.outerHeight;
+    // ★ pointer capture：指针移出窗口后 move/up 仍派发到 grip —— 松手必收 pointerup，根治 v1 永锁
+    try { grip.setPointerCapture(e.pointerId); } catch (_) { }
+    // blur 兜底：拖拽中窗口失焦（Alt+Tab / 点其他应用）强制退出拖拽态
+    window.addEventListener('blur', endDrag);
+  });
+
+  grip.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    // 屏幕坐标差值（绝对稳定）+ 起始 outer 基准 → 同时改宽高、左上角固定（q.py 语义）
+    pending = {
+      w: Math.max(startW + (e.screenX - startX), 100),
+      h: Math.max(startH + (e.screenY - startY), 100)
+    };
+    // ★ rAF 节流：只记最新坐标，每帧最多执行一次 resize（60fps），杜绝事件雪崩
+    if (!rafId) rafId = requestAnimationFrame(flushPending);
+  });
+
+  function onPointerEnd() {
+    flushPending(); // 松手前应用最后一帧
+    endDrag();
+  }
+  grip.addEventListener('pointerup', onPointerEnd);
+  grip.addEventListener('pointercancel', onPointerEnd);
 }
 
 // ---- Boot info ----

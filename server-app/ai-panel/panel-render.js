@@ -28,12 +28,53 @@ function renderMarkdown(src) {
     // ★ 代码块恢复延后：必须等全部行内规则（inline code/headers/hr/bold/italic/images/links/tables/lists/blockquote）
     //   处理完再恢复，杜绝代码块内文本被行内规则误转（Links 误转实锤）
     // Inline code（同样延迟恢复 + escHtml：`[文字](URL)` 防被 Links 误转，<script> 防 XSS）
-    var inlineCodes = [];
-    s = s.replace(/`([^`]+)`/g, function (_, code) {
-        var idx = inlineCodes.length;
-        inlineCodes.push('<code>' + escHtml(code) + '</code>');
-        return '\x00IC' + idx + '\x00';
-    });
+    // ★ 2026-08-25 扫描器重写（q229 表格截断事故根治，q181 f87 实锤）：
+    //   旧正则 /`([^`]+)`/g 两大缺陷：① 只认单反引号定界符——`` ` ``（双反引号定界包裹字面
+    //   反引号，标准 GFM 写法）被错配拆碎；② [^`]+ 跨换行贪婪——错配后一路吞到全文下一个
+    //   反引号（PowerShell 行尾 `` ` `` 第三游程吞掉整段：剩余表格行+段落 → 表格截断成 3 行+
+    //   后续文本变无格式干打印）。新实现：反引号游程等长配对（GFM 严格语义，开闭定界符必须
+    //   等长）+ 无闭合 → 字面输出零吞噬。
+    function _scanInlineCodes(src) {
+        var codes = [];
+        var out = '', i = 0, n = src.length;
+        while (i < n) {
+            var ch = src.charAt(i);
+            if (ch !== '`') { out += ch; i++; continue; }
+            var j = i;
+            while (j < n && src.charAt(j) === '`') j++;
+            var len = j - i;
+            // 快速路径：后面无任何反引号 → 剩余全部字面输出
+            if (src.indexOf('`', j) === -1) { out += src.slice(i); break; }
+            // 向前找等长游程作为闭合定界符（GFM：开闭必须等长，异长游程只算内容）
+            var k = j, close = -1;
+            while (k < n) {
+                if (src.charAt(k) === '`') {
+                    var k2 = k;
+                    while (k2 < n && src.charAt(k2) === '`') k2++;
+                    if (k2 - k === len) { close = k; break; }
+                    k = k2;
+                } else { k++; }
+            }
+            if (close !== -1) {
+                var idx = codes.length;
+                var content = src.slice(j, close);
+                // GFM 归一：内容首尾均为空格且非全空格 → 各剥一个
+                if (content.length > 1 && content.charAt(0) === ' ' && content.charAt(content.length - 1) === ' ' && /[^ ]/.test(content)) {
+                    content = content.slice(1, -1);
+                }
+                codes.push('<code>' + escHtml(content) + '</code>');
+                out += '\x00IC' + idx + '\x00';
+                i = close + len;
+            } else {
+                out += src.slice(i, j); // 无闭合：反引号按字面输出，绝不吞后续内容
+                i = j;
+            }
+        }
+        return { text: out, codes: codes };
+    }
+    var _ic = _scanInlineCodes(s);
+    s = _ic.text;
+    var inlineCodes = _ic.codes;
     // Headers
     s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     s = s.replace(/^## (.+)$/gm, '<h2>$1</h2>');

@@ -476,6 +476,20 @@
   text-decoration: none;
 }
 
+/* 「赞助商」三字超链接 — 跳转 gaea 赞助商竞价页，hover 变红，冒号不带链接 */
+.qqq-sponsor-label {
+  color: inherit;
+  text-decoration: none;
+  transition: color .15s;
+  forced-color-adjust: none;
+  cursor: pointer;
+}
+
+.qqq-sponsor-label:hover {
+  color: #e11d48;
+  text-decoration: none;
+}
+
 
 
 
@@ -689,23 +703,32 @@
 
 
 /* ============================================================================
-   Resize Grip (bottom-right)
+   Resize Grip (bottom-right) — q.py ResizeGrip 移植 (2026-08-25)
+   外观: 两条平行斜线 (q.py 坐标原样), 36x36 命中区, nwse-resize 光标
    ============================================================================ */
 .qqq-resize-grip {
   position: fixed;
   bottom: 0;
   right: 0;
-  width: 16px;
-  height: 16px;
+  width: 36px;
+  height: 36px;
   z-index: 999;
   -webkit-app-region: no-drag;
-  background: linear-gradient(135deg, transparent 50%, var(--base1) 50%);
-  opacity: 0.5;
-  transition: opacity 120ms;
+  cursor: nwse-resize;
+  background: transparent;
+  touch-action: none;
 }
 
-.qqq-resize-grip:hover {
-  opacity: 1;
+.qqq-resize-grip svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.qqq-resize-grip line {
+  stroke: var(--yellow);
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
 /* ============================================================================

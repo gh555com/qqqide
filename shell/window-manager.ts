@@ -279,18 +279,21 @@ export function beginQuitAllBatch(stateStore: StateStore): void {
 function _saveOpenWindowsNow(closingWin: BrowserWindow, stateStore: StateStore): void {
     try {
         _closingWinIds.add(closingWin.id);
+        const selfFolder = _windowProjectMap.get(closingWin.id) || '';
+        const selfFolderN = _normFolder(selfFolder);
         // ★ 菜单退出批次: 整组快照保留 (批次成员逐窗 close 事件全部写同一完整列表, 幂等)
+        //   ★ lastClosed (2026-08-25): 批次按 close 到达顺序, 最后关闭的窗口标记置前 — 下次启动的活跃窗口
         if (_quitAllBatch && _quitAllBatch.members.some((m: any) => m.winId === closingWin.id)) {
             const list = _quitAllBatch.members
                 .filter((m: any) => m.mainFolder)
-                .map((m: any) => ({ mainFolder: m.mainFolder, bounds: m.bounds, wings: m.wings, openedAt: m.openedAt }));
+                .map((m: any) => ({ mainFolder: m.mainFolder, bounds: m.bounds, wings: m.wings, openedAt: m.openedAt, lastClosed: _normFolder(m.mainFolder) === selfFolderN }));
             if (list.length > 0) _persistOpenWindows(list, stateStore);
             return; // 批次关闭不记单窗日志 (批记录已含完整成员列表)
         }
         // ★ 单窗 X 关闭: 存活快照 = 打开序 - 本窗 - 半销毁窗
         let list = _snapshotOpenWindows(closingWin.id);
-        const self = _snapshotOf(closingWin, _windowProjectMap.get(closingWin.id) || '');
-        if (list.length === 0 && self) list.push(self); // 最后一个窗口 → 含自身快照
+        const self = _snapshotOf(closingWin, selfFolder);
+        if (list.length === 0 && self) { self.lastClosed = true; list.push(self); } // 最后一个窗口 → 含自身快照 + 标记最后关闭
         // 关闭序日志 (仅记录带项目的窗口)
         const folder = _windowProjectMap.get(closingWin.id);
         if (folder) {
