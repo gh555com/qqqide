@@ -192,6 +192,17 @@
       });
     }
 
+    // ★ 2026-08-25: custom tab 可见性事件驱动通知（kmd here 指示牌/焦点态零轮询）——
+    //   tab 切走/切回唯一中心路径（点击/滚轮/右键重开/单例激活/恢复全收敛于此）；
+    //   active 标志供 renderFn/kmd:init 初始态兜底（快速切走窗口期消息丢失时 kmd:init 读真实值）
+    if (newTab && newTab !== oldTab) {
+      // 同 tab 重复激活（单例复用路径）→ 零派发零翻转，状态不变
+      if (oldTab && oldTab._onVisible) oldTab._onVisible(false);
+      if (oldTab) oldTab.active = false;
+      if (newTab._onVisible) newTab._onVisible(true);
+      newTab.active = true;
+    }
+
     // fire callback
     if (newTab && newTab.onActivate) newTab.onActivate(newTab);
 

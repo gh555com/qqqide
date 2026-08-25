@@ -33,7 +33,7 @@
         var iframes = {}; // sessionId → iframe.contentWindow
         var _tabs = {};   // sessionId → tab（命名同步用，2026-08-18 多开）
         var _kmdSeq = 0;  // kmd tab 自增序号（customId 唯一 + 默认标题序号）
-        var _pendingKmdCwd = null; // 一次性启动目录（roam x/右键/全局 x 召回指定）
+        var _pendingKmd = null; // 一次性启动 {cwd, fileName}（roam x/右键/全局 x 召回指定；fileName=单文件选中时预填键入行）
 
         // ── 终端音效（zs861，统一音频机器；_playRoamSfx 自带 300ms 去重）──
         function _playKmdSfx() {
@@ -45,11 +45,11 @@
 
         // ★ 2026-08-18 多开语义定案：x 键/右键/全局召回一律打开【新】kmd tab（不做 cd 复用），
         //   并播放终端音效。pending 由 openKmdTab 内 build 一次性消费；失败即清防陈旧目录。
-        function _openNewKmd(path) {
-            _pendingKmdCwd = path || null;
+        function _openNewKmd(path, fileName) {
+            _pendingKmd = { cwd: path || null, fileName: fileName || null };
             var ok = false;
             try { ok = openKmdTab(); } catch (_) { }
-            if (!ok) _pendingKmdCwd = null;
+            if (!ok) _pendingKmd = null;
             if (ok) _playKmdSfx();
             return ok;
         }
@@ -60,7 +60,7 @@
         window.addEventListener('message', function (e) {
             var d = e.data;
             if (!d || d.type !== 'qqq-roam-open-kmd') return;
-            _openNewKmd(d.path || null);
+            _openNewKmd(d.path || null, d.fileName || null);
         });
 
         // ── IPC → iframe 转发（单例注册，跨 tab 复用） ──
@@ -92,7 +92,13 @@
             _kmdSeq++;
             var customId = 'kmd-' + _kmdSeq;
             var title = _kmdSeq === 1 ? '⌨ kmd' : '⌨ kmd ' + _kmdSeq;
-            var tab = window.qqqTabs.openFileCustomTab(customId, title, function (pane) {
+            // ★ 2026-08-25 时序陷阱修复（render error 实锤）: openFileCustomTab 在 return 之前同步执行
+            //   renderFn(pane, tab) → 闭包 var tab 此刻恒 undefined → tab._onVisible 赋值抛
+            //   "Cannot set properties of undefined (setting '_onVisible')"。改从 renderFn 第二参数取
+            //   真实 tab（tab-manager 侧本就传了），返回值仅作外层兜底，二者同一对象引用。
+            var tab = window.qqqTabs.openFileCustomTab(customId, title, function (pane, _tab) {
+                tab = _tab || tab;
+                if (!tab) return false; // 防御：openFileCustomTab 必传 tab，理论不可达
                 pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
                 var iframe = document.createElement('iframe');
                 iframe.src = '/qqqide/goods/kmd/kmd-ui.html';
@@ -103,11 +109,20 @@
                 var sid = 'kmd-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
                 // 工作空间根：主窗口直接读；AI 面板 iframe 设置的是 parent（同窗口）
                 // ★ roam 空区指定目录优先（一次性消费，工具栏打开仍回工作空间根）
-                var root = _pendingKmdCwd || window._workspaceRoot || '';
-                _pendingKmdCwd = null;
+                var root = (_pendingKmd && _pendingKmd.cwd) || window._workspaceRoot || '';
+                var kmdFile = _pendingKmd ? _pendingKmd.fileName : null; // 单文件选中 → 预填文件名（2026-08-25 极简规则）
+                _pendingKmd = null;
                 if (!root && window.parent && window.parent._workspaceRoot) root = window.parent._workspaceRoot;
 
-                // iframe ready → init（带上会话 id / cwd / 默认 shell / 默认标题）
+                // ★ 2026-08-25: tab 可见性事件驱动（kmd-ui 焦点态/here 指示牌零轮询）——
+                //   tab-manager.activateTab 统一派发（active 标志 + _onVisible 双通道）
+                tab._onVisible = function (v) {
+                    var w = iframes[sid];
+                    if (!w) return; // iframe 未 ready → kmd:init 带 active 兜底
+                    try { w.postMessage({ type: 'kmd:active', active: !!v }, '*'); } catch (_) { }
+                };
+
+                // iframe ready → init（带上会话 id / cwd / 默认 shell / 默认标题 / 当前可见性）
                 var kmdInit = function (e) {
                     if (!e.data || e.data.type !== 'kmd:ready') return;
                     if (e.source !== iframe.contentWindow) return;
@@ -115,7 +130,7 @@
                     iframes[sid] = iframe.contentWindow;
                     _tabs[sid] = tab;
                     try {
-                        iframe.contentWindow.postMessage({ type: 'kmd:init', sessionId: sid, cwd: root, shellType: 'cmd', title: tab.title }, '*');
+                        iframe.contentWindow.postMessage({ type: 'kmd:init', sessionId: sid, cwd: root, shellType: 'cmd', title: tab.title, fileName: kmdFile, active: !!tab.active }, '*');
                     } catch (_) { }
                 };
                 window.addEventListener('message', kmdInit);

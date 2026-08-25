@@ -134,6 +134,7 @@ const QQQ = {
         claimProject: (projectRoot: string) => ipcRenderer.invoke('qqqide:window:claimProject', projectRoot),
         releaseProject: (projectRoot: string) => ipcRenderer.invoke('qqqide:window:releaseProject', projectRoot),
         adjustBounds: (deltaLeft: number, deltaRight: number) => ipcRenderer.invoke('qqqide:window:adjust-bounds', deltaLeft, deltaRight),
+        resizeGrip: (w: number, h: number) => ipcRenderer.send('qqqide:window:resize-grip', w, h),
         setWingState: (leftOpen: boolean, rightOpen: boolean) => ipcRenderer.invoke('qqqide:wing:state', leftOpen, rightOpen),
         onWingRestore: (cb: (w: { left: boolean; right: boolean }) => void) => {
             const h = (_e: unknown, w: any) => { try { cb({ left: !!w.left, right: !!w.right }); } catch (_) {} };

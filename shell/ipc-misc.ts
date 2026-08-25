@@ -512,6 +512,24 @@ ${escapedPaths}
         win.setBounds({ x: newX, y: b.y, width: newW, height: b.height });
     });
 
+    // ---- resize grip: renderer reports desired w/h per frame; main clamps min/max then setBounds (left-top fixed, q.py semantics) ----
+    // fire-and-forget (hot path @60fps): no promise overhead; clamp in main so wing min-width is honored live
+    ipcMain.on('qqqide:window:resize-grip', (e, w: number, h: number) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (!win || win.isDestroyed()) return;
+        const b = win.getBounds();
+        const [minW, minH] = win.getMinimumSize();
+        const [maxW, maxH] = win.getMaximumSize();
+        let nw = Math.round(Number(w) || 0);
+        let nh = Math.round(Number(h) || 0);
+        if (minW) nw = Math.max(nw, minW);
+        if (minH) nh = Math.max(nh, minH);
+        if (maxW) nw = Math.min(nw, maxW);
+        if (maxH) nh = Math.min(nh, maxH);
+        if (nw === b.width && nh === b.height) return;
+        win.setBounds({ x: b.x, y: b.y, width: nw, height: nh });
+    });
+
     // ---- wing state: renderer tells main process which wings are open → update min size ----
     ipcMain.handle('qqqide:wing:state', async (e, leftOpen: boolean, rightOpen: boolean) => {
         const win = BrowserWindow.fromWebContents(e.sender);

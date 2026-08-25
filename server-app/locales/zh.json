@@ -429,7 +429,8 @@
     "snapFailed": "打快照失败"
   },
   "act": {
-    "sponsorLabel": "赞助商：",
+    "sponsorLabelWord": "赞助商",
+    "sponsorLabelColon": "：",
     "sponsorName": "成都知佳知识产权代理有限公司",
     "cool": {
       "name": "清爽从2026",

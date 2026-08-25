@@ -1492,8 +1492,8 @@ function _feedFolderToAi() {
 }
 
 // ★ 空区专用：打开 kmd 终端并定位到当前文件夹
-function _openKmdAt(p) {
-	try { window.parent.postMessage({ type: 'qqq-roam-open-kmd', path: p }, '*'); } catch (_) { }
+function _openKmdAt(p, fileName) {
+	try { window.parent.postMessage({ type: 'qqq-roam-open-kmd', path: p, fileName: fileName || undefined }, '*'); } catch (_) { }
 	_playSfx('terminal');
 }
 

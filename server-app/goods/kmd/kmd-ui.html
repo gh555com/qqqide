@@ -8,8 +8,8 @@
 <meta charset="UTF-8">
 <title>kmd</title>
 <style>
-:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2;--ph:#b58900;--icon:#535b61}
-[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0;--ph:#c9a227;--icon:#e8e5dc}
+:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--card-focus:#fdf6e3;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2;--ph:#b58900;--icon:#535b61}
+[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--card-focus:#3a3a3a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0;--ph:#c9a227;--icon:#e8e5dc}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
 body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden;user-select:text;-webkit-user-select:text;position:relative}
@@ -49,6 +49,16 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
    ★ .wrap hover 背景 = 命令召回行暗示（gitbash ❯ 回显行带 data-cmd），点击 ❯ 箭头填入键入行
    ★ 双击 = 原生扩选单词 → selectionchange → 全局匹配高亮（editor 同款） */
 #out{flex:1;overflow-y:auto;padding:6px 8px;line-height:1.45;white-space:pre-wrap;word-break:break-all;user-select:text;outline:none;caret-color:var(--accent)}
+/* here 指示牌（2026-08-25）——q 位置浮层：红底白字实体豆腐块，锚定最后一行行尾（提示符右侧）。
+   浮层在 #out 外（body 相对定位）+ pointer-events:none + user-select:none + ::after 生成文本
+   （不进 DOM）→ 百分百不可选中不可复制；Ctrl+F 检索范围是 #out 内 TreeWalker，天然搜不到 */
+#here-marker{position:absolute;z-index:300;display:none;pointer-events:none;user-select:none;-webkit-user-select:none;background:#dc322f;color:#fdf6e3;font-size:11px;font-weight:700;line-height:1;padding:2px 8px;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.35);white-space:nowrap}
+#here-marker::after{content:'Type here'}
+/* 滚动条刻度层（2026-08-25）— 对齐 AI 面板：全文匹配项在滑轨上打刻度（Ctrl+F + 选区匹配两套合并）。
+   JS 每帧同步几何到 #out 右缘 5px 滚动条区；pointer-events:none 零交互；颜色同高亮黄色系 */
+#out-marks{position:absolute;display:none;pointer-events:none;user-select:none;z-index:150}
+#out-marks .kmd-mark{position:absolute;right:1px;width:3px;height:5px;border-radius:1px;background:#b58900}
+[data-theme="dark"] #out-marks .kmd-mark{background:#c9a227}
 .line{min-height:1.45em;white-space:pre-wrap;word-break:break-all}
 .line.self{color:var(--prompt)}
 .line.err{color:var(--err)}
@@ -59,10 +69,16 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 /* 键入行 — 真编辑器控件：点击任意位置移动光标（招牌能力）
    ★ 2026-08-13: input → textarea（默认 3 行高 / 最大 8 行高 / 自动换行，长命令多行显示）
    行高 1.45 与输出区一致：min-height=3行, max-height=8行（calc 固定，JS autoResize 读取 clamp） */
-#line-wrap{display:flex;align-items:flex-start;border-top:1px solid var(--border);background:var(--card);padding:4px 8px;gap:6px;flex-shrink:0}
+#line-wrap{display:flex;align-items:flex-start;border-top:1px solid var(--border);background-color:var(--card);padding:4px 8px;gap:6px;flex-shrink:0}
+/* ★ 2026-08-25 可输入态：kmd tab 可见 && 窗口聚焦 → 背景变亮 + 四边滚动虚线（repeating-linear-gradient 四条边 + background-position 动画，10px=虚线周期无缝循环；2026-08-25 换回 accent 绿，粗细保持 2px） */
+#line-wrap.active{background-color:var(--card-focus);background-image:repeating-linear-gradient(90deg,var(--accent) 0 4px,transparent 4px 10px),repeating-linear-gradient(90deg,var(--accent) 0 4px,transparent 4px 10px),repeating-linear-gradient(0deg,var(--accent) 0 4px,transparent 4px 10px),repeating-linear-gradient(0deg,var(--accent) 0 4px,transparent 4px 10px);background-size:100% 2px,100% 2px,2px 100%,2px 100%;background-repeat:no-repeat;background-position:0 0,0 100%,0 0,100% 0;animation:kmd-dash .6s linear infinite}
+@keyframes kmd-dash{from{background-position:0 0,0 100%,0 0,100% 0}to{background-position:10px 0,-10px 100%,0 10px,100% -10px}}
 #prompt{color:var(--accent);font-weight:700;white-space:nowrap;user-select:none;font-size:13px;line-height:1.45;margin-top:3px}
 #input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:13px;line-height:1.45;caret-color:var(--accent);padding:2px 0;min-width:0;resize:none;overflow-y:hidden;min-height:calc(1.45em * 3 + 4px);max-height:calc(1.45em * 8 + 4px)}
 /* placeholder — 淡黄色（solarized yellow 系：亮 #b58900 / 暗 #c9a227，经 opacity 呈淡黄，弱于正文可见于背景） */
+/* 换行按钮 — 对齐 AI 聊天编辑框 newline-btn 形态（⏎ 字符，点击光标处插入换行；kmd 主题化：border/dim 色） */
+#newline-btn{align-self:flex-start;flex-shrink:0;width:24px;height:18px;margin-top:3px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--dim);font-size:13px;line-height:1;padding:0}
+#newline-btn:hover{background:var(--border);color:var(--text)}
 #input::placeholder{color:var(--ph);opacity:.5}
 [data-theme="dark"] #input::placeholder{opacity:.7}
 /* 选区颜色 — 对齐 X 区 editor（solarized 官方 editor.selectionBackground）：light #d6d6d6 / dark #274642 */
@@ -106,6 +122,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
   </div>
 </div>
 <div id="out" contenteditable="plaintext-only" spellcheck="false"></div>
+<div id="here-marker"></div>
+<div id="out-marks"></div>
 <div id="find-bar" class="hidden">
   <input id="find-input" placeholder="查找（Enter 下一个 / Shift+Enter 上一个）" spellcheck="false">
   <span id="find-count"></span>
@@ -117,7 +135,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 <div id="line-wrap">
   <span id="prompt">❯</span>
   <textarea id="input" rows="3" wrap="soft" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-         placeholder="键入命令回车执行 · 点击键入行任意位置移动光标 · ↑↓ 历史"></textarea>
+         placeholder="键入命令回车执行 · Shift+Enter 换行 · 点击键入行任意位置移动光标 · ↑↓ 历史"></textarea>
+  <button id="newline-btn" title="插入换行" data-no-cd>&#8629;</button>
 </div>
 <script>
 (function () {
@@ -147,6 +166,14 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var escPending = false; // cleanAnsi：未闭合 OSC 序列跨 chunk 状态
     var gbCwd = '';     // gitbash 当前目录（从 OSC 标题 \x1b]0;MINGW64:/path\x07 提取——2026-08-15 提示符块丢弃后路径抬头回归）
     var gbOscBuf = '', gbOscPending = false; // OSC 标题跨 chunk 切碎状态（与 escPending 同款，但工作在 cleanAnsi 之前）
+    // ★ 2026-08-25 可输入态（焦点态/here 指示牌，零轮询事件驱动）：
+    //   kmdActive = tab 可见性（tab-manager.activateTab 唯一中心 → kmd.js → kmd:active 消息；
+    //   kmd:init 带 active 兜底快速切走窗口期）；winFocus = 窗口聚焦（iframe 原生 focus/blur，
+    //   父窗口失焦/最小化/切走同步触发）。双信号 AND = 可输入。
+    var kmdActive = true; // 初始 true：openFileCustomTab 先 activateTab 后 renderFn，创建即激活
+    var winFocus = document.hasFocus();
+    var hereMarker = document.getElementById('here-marker');
+    var hereRaf = null;
 
     // ★ 2026-08-18 全局 x 键召回：kmd 自转发携带自身 cwd → 新 kmd 继承当前目录（转发块读此 getter）
     window.__kmdCwdGet = function () { return cwd; };
@@ -168,6 +195,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         var d = e.data;
         if (!d) return;
         if (d.type === 'kmd:init') {
+            kmdActive = d.active !== false; // tab 可见性初始态（快速切走时 _onVisible 消息丢失 → 此处兜底）
+            updateInputState();
             sessionId = d.sessionId;
             cwd = d.cwd || '';
             shellType = d.shellType || 'cmd';
@@ -175,6 +204,24 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             nameInput.value = d.title || ''; // 命名输入框初始值 = 当前标签标题（用户可立即改名）
             setShellUI(shellType);
             start();
+            // ★ 2026-08-25 roam 单文件选中 + x：文件名预填键入行（不带路径，任何类型都填）——用户补命令/解释器即回车
+            if (d.fileName) {
+                inputEl.value = String(d.fileName);
+                autoResize();
+                try { inputEl.focus(); inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length); } catch (_) { }
+                // ★ 2026-08-25 双保险：下一帧若 value 为空（被任何同步/微任务覆盖）则补回——
+                //   用户已输入内容则不动，成本一次 rAF，零冲突
+                requestAnimationFrame(function () {
+                    if (!inputEl.value) {
+                        inputEl.value = String(d.fileName);
+                        autoResize();
+                    }
+                });
+            }
+        } else if (d.type === 'kmd:active') {
+            // tab 切走/切回（tab-manager activateTab 事件驱动，零轮询）
+            kmdActive = !!d.active;
+            updateInputState();
         } else if (d.type === 'kmd:out') {
             appendOut(d.stream, d.data);
         } else if (d.type === 'kmd:exit') {
@@ -382,6 +429,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             if (!shouldSkipGitBashLine(stream, rest)) renderStreamLine(stream, rest);
         }
         scrollToBottom();
+        updateHereMarker(); // 流式追加后重锚（可输入态 + 滚到底才真正计算，其余零开销早退）
     }
 
     function renderStreamLine(stream, line) {
@@ -425,6 +473,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         lineCount++;
         trimLines();
         scrollToBottom();
+        updateHereMarker();
     }
 
     function clearOut() {
@@ -432,13 +481,87 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         lineCount = 0;
         outBuf = '';
         curLine = null;
+        findRanges = [];
+        selHlRanges = [];
         if (hasHighlightAPI()) CSS.highlights.delete('kmd-sel-hits');
+        renderMarks();
+        updateHereMarker();
     }
 
     // 滚动暂停跟随（用户上滚看历史 → 停止自动滚动）
     outEl.addEventListener('scroll', function () {
         autoScroll = (outEl.scrollTop + outEl.clientHeight >= outEl.scrollHeight - 8);
+        // here 指示牌跟随滚动（rAF 节流：避免 scroll 高频回调内强制 layout，每帧最多一次）
+        if (hereRaf) return;
+        hereRaf = requestAnimationFrame(function () { hereRaf = null; updateHereMarker(); });
     });
+
+    // ── 可输入态（2026-08-25）：kmd tab 可见 && 窗口聚焦 → 编辑框亮背景+滚动虚线 + here 指示牌 ──
+    function updateInputState() {
+        var lw = document.getElementById('line-wrap');
+        if (lw) lw.classList.toggle('active', kmdActive && winFocus);
+        updateHereMarker();
+    }
+
+    // 锚定行尾：非 collapsed range 的 getClientRects() 最后一个 line box 的右缘 = 行尾字符右缘。
+    // ★ 2026-08-25 二次修复：collapsed range 在无尾随空白的行尾返回零矩形（Chrome 已知行为）→
+    //   旧 fallback 用整行元素 rect（.line 是 block 宽 100%）→ right=容器右缘 → marker 贴右边界。
+    //   getClientRects 对 selectNodeContents 返回真实 line box 矩形，短行右缘精确落在 > 右侧。
+    function lineEndRect(lineEl) {
+        try {
+            var r = document.createRange();
+            r.selectNodeContents(lineEl);
+            var rects = r.getClientRects();
+            if (rects && rects.length) {
+                var lr = rects[rects.length - 1]; // 最后一行 line box（长行 break-all 换行时取末行）
+                if (lr && lr.width > 0 && lr.height > 0) return lr;
+            }
+        } catch (_) { }
+        // 兜底：collapsed 到最后一个非空文本节点末尾（仍零矩形 → 返回 null → 隐藏）
+        try {
+            var lastTn = null;
+            var w = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT);
+            while (w.nextNode()) {
+                if (w.currentNode.nodeValue && w.currentNode.nodeValue.trim() !== '') lastTn = w.currentNode;
+            }
+            if (lastTn) {
+                var r2 = document.createRange();
+                r2.setStart(lastTn, lastTn.length);
+                r2.setEnd(lastTn, lastTn.length);
+                var cr = r2.getBoundingClientRect();
+                if (cr && cr.height > 0) return cr;
+            }
+        } catch (_) { }
+        return null;
+    }
+
+    // here 指示牌：仅 可输入态 + 滚动到底（autoScroll，最后一行必在可视区底部）时，锚定最后一行行尾
+    // （q 位置 = 提示符右侧）。浮层在 #out 外 → 不在 contenteditable 内：Ctrl+F 检索不到（TreeWalker
+    // 范围是 #out）、选区/复制不可达（user-select:none + pointer-events:none）、文本 ::after 生成
+    // （不进 DOM 双保险）——百分百不可选中不可复制。
+    function updateHereMarker() {
+        if (!hereMarker) return;
+        if (!(kmdActive && winFocus) || !autoScroll) { hereMarker.style.display = 'none'; return; }
+        // ★ 2026-08-25 修复：锚定最后一个【非空】行——末尾空行（流式空壳/空 .line）无行框，
+        //   Chrome 对空 range 返回 (0,0,0,0) 全零矩形 → marker 定位到 body 原点 (6,0) =
+        //   左上角 cmd 按钮处（实锤截图）。从后往前找最后一个非空行。
+        var last = null;
+        for (var i = outEl.children.length - 1; i >= 0; i--) {
+            var el = outEl.children[i];
+            if (el.textContent && el.textContent.trim() !== '') { last = el; break; }
+        }
+        if (!last) { hereMarker.style.display = 'none'; return; }
+        var er = lineEndRect(last);
+        if (!er) { hereMarker.style.display = 'none'; return; }
+        var br = document.body.getBoundingClientRect();
+        hereMarker.style.display = 'block';
+        hereMarker.style.left = (er.right - br.left + 3) + 'px';
+        hereMarker.style.top = (er.top - br.top - 2) + 'px'; // 中线再上移 2px（2026-08-25）
+    }
+
+    // 窗口聚焦信号（iframe 原生 focus/blur：父窗口失焦/最小化/切走时 iframe 同步 blur）
+    window.addEventListener('focus', function () { winFocus = true; updateInputState(); });
+    window.addEventListener('blur', function () { winFocus = false; updateInputState(); });
 
     // ── 输出区 = 只读编辑器（contenteditable plaintext-only） ──
     // 单击 → 浏览器原生放光标（闪烁）+ 拖选/Shift 选区/复制；双击 → 原生扩选单词
@@ -524,8 +647,23 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     }
     inputEl.addEventListener('input', autoResize);
 
+    // 换行按钮（2026-08-25，对齐 AI 聊天编辑框）：光标处插入换行，回车仍是发送
+    var nlBtn = document.getElementById('newline-btn');
+    if (nlBtn) {
+        nlBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            inputEl.focus();
+            var v = inputEl.value;
+            var s = inputEl.selectionStart != null ? inputEl.selectionStart : v.length;
+            var en = inputEl.selectionEnd != null ? inputEl.selectionEnd : v.length;
+            inputEl.value = v.slice(0, s) + '\n' + v.slice(en);
+            autoResize();
+            try { inputEl.setSelectionRange(s + 1, s + 1); } catch (_) { }
+        });
+    }
+
     inputEl.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.shiftKey) { // Shift+Enter 放行原生换行（textarea 默认行为）
             e.preventDefault();
             var v = inputEl.value;
             inputEl.value = '';
@@ -738,8 +876,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     function applyHlTheme() {
         var dark = document.documentElement.getAttribute('data-theme') === 'dark';
         hlStyle.textContent = dark
-            ? '::highlight(kmd-find-all){background:#4a4412;color:#fdf6e3}::highlight(kmd-find-cur){background:#b58900;color:#1e1e1e}::highlight(kmd-sel-hits){background:#35412b}'
-            : '::highlight(kmd-find-all){background:#ffe792;color:#073642}::highlight(kmd-find-cur){background:#b58900;color:#fdf6e3}::highlight(kmd-sel-hits){background:#e2e8b5}';
+            ? '::highlight(kmd-find-all){background:#4a4412;color:#fdf6e3}::highlight(kmd-find-cur){background:#b58900;color:#1e1e1e}::highlight(kmd-sel-hits){background:#c9a227;color:#1e1e1e}'
+            : '::highlight(kmd-find-all){background:#ffe792;color:#073642}::highlight(kmd-find-cur){background:#b58900;color:#fdf6e3}::highlight(kmd-sel-hits){background:#b6c04a}';
     }
     applyHlTheme();
 
@@ -803,6 +941,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         setHighlights(findRanges, findRanges.length ? findRanges[findIdx] : null);
         findCount.textContent = findRanges.length ? (findIdx + 1) + '/' + findRanges.length : '0/0';
         if (doScroll && findRanges.length) scrollToRange(findRanges[findIdx]);
+        renderMarks();
     }
 
     function scrollToRange(r) {
@@ -904,6 +1043,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             findRecomputeTimer = null;
             if (findOpen) updateFind(false, false);
             if (selHlRanges.length) updateSelHl(); // 流式追加后选区高亮坐标已失效 → 重算
+            else renderMarks(); // 流式追加 → scrollHeight 变化 → 刻度比例重算
         }, 120);
     });
     findObserver.observe(outEl, { childList: true, subtree: true, characterData: true });
@@ -929,10 +1069,53 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             for (var i = 0; i < selHlRanges.length; i++) hl.add(selHlRanges[i]);
             CSS.highlights.set('kmd-sel-hits', hl);
         }
+        renderMarks();
     }
     document.addEventListener('selectionchange', function () {
         if (selHlTimer) clearTimeout(selHlTimer);
         selHlTimer = setTimeout(updateSelHl, 250); // 拖选防抖；双击扩选（原生）→ 同一路径
+    });
+
+    // ── 滚动条刻度（2026-08-25，AI 面板同款）──
+    // 合并 Ctrl+F（findRanges）+ 选区匹配（selHlRanges）全部命中 → 在右侧 5px 滚动条区打刻度；
+    // 比例 = 匹配项内容坐标 / scrollHeight，滚动不重算（全文比例固定）；流式追加/清屏/resize 重算。
+    var marksRaf = null;
+    function renderMarks() {
+        if (marksRaf) { cancelAnimationFrame(marksRaf); marksRaf = null; }
+        var m = document.getElementById('out-marks');
+        if (!m) return;
+        var ranges = [];
+        if (findRanges && findRanges.length) for (var i = 0; i < findRanges.length; i++) ranges.push(findRanges[i]);
+        if (selHlRanges && selHlRanges.length) for (var j = 0; j < selHlRanges.length; j++) ranges.push(selHlRanges[j]);
+        if (!ranges.length) { m.style.display = 'none'; return; }
+        var oRect = outEl.getBoundingClientRect();
+        var sh = outEl.scrollHeight, ch = outEl.clientHeight;
+        if (!sh || !ch) { m.style.display = 'none'; return; }
+        // 几何同步：贴 #out 右缘 5px（滚动条占位区），与 here 指示牌同款视口坐标算法
+        m.style.display = 'block';
+        m.style.left = (oRect.left + oRect.width - 5) + 'px';
+        m.style.top = oRect.top + 'px';
+        m.style.width = '5px';
+        m.style.height = oRect.height + 'px';
+        var tickH = 5;
+        var frag = document.createDocumentFragment();
+        for (var k = 0; k < ranges.length; k++) {
+            try {
+                var rr = ranges[k].getBoundingClientRect();
+                if (!rr || rr.height === 0) continue; // 零矩形（空行/离屏未布局）跳过
+                var top = rr.top - oRect.top + outEl.scrollTop; // 内容坐标
+                var ratio = top / sh;
+                var t = document.createElement('div');
+                t.className = 'kmd-mark';
+                t.style.top = Math.max(0, Math.min(1, ratio)) * (ch - tickH) + 'px';
+                frag.appendChild(t);
+            } catch (_) { }
+        }
+        m.appendChild(frag);
+    }
+    window.addEventListener('resize', function () {
+        if (marksRaf) return;
+        marksRaf = requestAnimationFrame(function () { marksRaf = null; renderMarks(); });
     });
 
     // 首次聚焦
