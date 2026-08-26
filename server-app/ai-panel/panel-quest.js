@@ -343,6 +343,21 @@ async function _initWorkspace(root) {
         questUIStates = savedStates;
         // [silent] restored questUIStates
     }
+    // ★ 断电恢复（2026-08-26）：高频草稿文本（ai.draftText.{panelId}，输入时 800ms 节流实时写）
+    //   比 ai.uiStates 完整快照更新 → 非空文本覆盖 inputValue（断电最多丢最后 ~3s 输入）
+    try {
+        var _dtAll = await onlyStore.getAsync('ai.draftText.' + _panelId);
+        if (_dtAll && typeof _dtAll === 'object') {
+            var _dtKeys = Object.keys(_dtAll);
+            for (var _dti = 0; _dti < _dtKeys.length; _dti++) {
+                var _dtq = _dtKeys[_dti];
+                var _dtv = _dtAll[_dtq];
+                if (typeof _dtv !== 'string' || _dtv.length === 0) continue;
+                if (!questUIStates[_dtq]) questUIStates[_dtq] = {};
+                questUIStates[_dtq].inputValue = _dtv;
+            }
+        }
+    } catch (_) { }
     // ★ 豆沙包：启动时从 onlyStore 扫描三面板草稿，初始化 parent.__qqq_draftFlags
     //   仅中面板执行（避免三面板重复扫描）；侧面板等中面板初始化完成后读共享对象
     if (_panelId === 1 && parent) {

@@ -253,9 +253,12 @@ function bootActivities(boot) {
       // 眼睛介绍文案左对齐（2026-08-24，仅眼睛弹窗，其余弹窗描述保持居中）
       '.qqq-act-modal.qqq-act-eye-modal .qqq-act-desc{text-align:left;}' +
       '.qqq-act-eye-paid{text-align:center;font-size:20px;font-weight:900;color:#f2a6ba;margin-top:2px;forced-color-adjust:none;}' +
+      '.qqq-act-eye-link{color:#f2a6ba;text-decoration:underline;forced-color-adjust:none;}' +
+      '.qqq-act-eye-link:hover{color:#ffd7e4;text-decoration:underline;}' +
       '.qqq-act-eye-list{margin:12px auto 2px;width:fit-content;min-width:230px;max-width:92%;text-align:left;forced-color-adjust:none;}' +
       '.qqq-act-eye-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:5px 12px;border-radius:6px;background:rgba(242,166,186,.08);margin-bottom:5px;font-size:13px;forced-color-adjust:none;}' +
       '.qqq-act-eye-amt{font-weight:800;color:#f2a6ba;font-family:Consolas,monospace;white-space:nowrap;forced-color-adjust:none;}' +
+      '.qqq-act-eye-spark{display:inline-block;background:linear-gradient(135deg,#dcdcdc,#a9a9a9);color:#000;font-weight:700;font-size:11px;padding:1px 8px;border-radius:999px;margin-left:8px;vertical-align:1px;white-space:nowrap;forced-color-adjust:none;}' +
       '.qqq-act-eye-info{color:#c8c8d8;font-size:12px;line-height:1.6;word-break:break-all;forced-color-adjust:none;}' +
       '.qqq-act-eye-svg{display:block;margin:0 auto 4px;animation:qqqActFloat 2.4s ease-in-out infinite;forced-color-adjust:none;}' +
 
@@ -624,7 +627,9 @@ function bootActivities(boot) {
         var d = new Date(it.created_at);
         var ds = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
         var note = it.note ? ' · ' + it.note : '';
-        return '<div class="qqq-act-eye-row"><span class="qqq-act-eye-amt">+¥' + fmt(it.amount_yuan) + '</span><span class="qqq-act-eye-info">' + ds + note + '</span></div>';
+        var spark = (it.spark_enabled && it.spark_paid_yuan > 0)
+          ? '<span class="qqq-act-eye-spark">' + tp('act.eye.sparkPaid', { v: fmt(it.spark_paid_yuan) }, '✨星火已入 ¥' + fmt(it.spark_paid_yuan)) + '</span>' : '';
+        return '<div class="qqq-act-eye-row"><span class="qqq-act-eye-amt">+¥' + fmt(it.amount_yuan) + '</span><span class="qqq-act-eye-info">' + ds + note + spark + '</span></div>';
       }).join('');
       eyeListHtml = '<div class="qqq-act-eye-list">' + rows2 + '</div>';
     }
@@ -632,10 +637,26 @@ function bootActivities(boot) {
       '<div class="qqq-act-celebrate"><svg class="qqq-act-eye-svg" width="110" height="56" viewBox="0 0 110 56" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qqqEyeLid" x1="0" y1="0" x2="110" y2="0"><stop offset="0" stop-color="#f6b8c8"/><stop offset="1" stop-color="#e88ca4"/></linearGradient><radialGradient id="qqqEyeIris" cx="50%" cy="42%" r="58%"><stop offset="0" stop-color="#fadce4"/><stop offset="1" stop-color="#ee9fb5"/></radialGradient></defs><path d="M9 30 Q55 10 101 30 Q55 50 9 30 Z" fill="#fbe7ec" stroke="url(#qqqEyeLid)" stroke-width="2.8" stroke-linejoin="round"/><circle cx="55" cy="29" r="12" fill="url(#qqqEyeIris)"/><circle cx="55" cy="29" r="12" fill="none" stroke="#f0a7bc" stroke-width="1.4"/><circle cx="55" cy="29" r="4.6" fill="#b75c79"/><circle cx="59" cy="25" r="3.4" fill="#fff" opacity=".95"/><circle cx="52" cy="31" r="1.4" fill="#fff" opacity=".6"/></svg></div>' +
       '<h2>' + t('act.eye.name', '美丽滴眼睛') + '</h2>' +
       '<p class="qqq-act-csub">' + t('act.eye.sub', 'qqqide 真实用户福利') + '</p>' +
-      '<p class="qqq-act-desc">' + t('act.eye.intro', '征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 300人民币，现金立入。') + '</p>' +
+      '<p class="qqq-act-desc">' + t('act.eye.intro', '征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币），现金立入。') +
+      ' <a class="qqq-act-eye-link" data-eye-link="records">' + t('act.eye.linkRecords', '查看成交记录') + '</a></p>' +
+      '<p class="qqq-act-desc">' + t('act.eye.tail', '当视频播放量逐渐增大，会自动接入“') +
+      '<a class="qqq-act-eye-link" data-eye-link="spark">' + t('act.eye.linkSpark', '星火计划') + '</a>' + t('act.eye.tailEnd', '”。') + '</p>' +
       '<div class="qqq-act-eye-paid">' + tp('act.eye.paid', { v: fmt(eyePaid) }, '已入：' + fmt(eyePaid)) + '</div>' + eyeListHtml,
       'qqq-act-eye-modal'
     );
+    // ★ 两外链：查看成交记录 → 网站 #eye；星火计划 → 网站 #video&spark=1（自动触发星火卡片光效）
+    var $eyeLinks = _overlay.querySelectorAll('.qqq-act-eye-link');
+    Array.prototype.forEach.call($eyeLinks, function (el) {
+      el.addEventListener('click', function () {
+        var isRecords = el.getAttribute('data-eye-link') === 'records';
+        var url = 'https://www.gh555.com/gaea/d/qqqide?lang=zh' + (isRecords ? '#eye' : '&spark=1#video');
+        if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+          window.qqqideBridge.shell.openExternal(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      });
+    });
   }
 
   // ── ③ 2026, 我, vibe coding（循环免费窗口豆腐块） ──────────────────────

@@ -264,6 +264,22 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     return null;
                 }
 
+                // ★ 二次认证裁决（2026-08-26）：401 + code=SECOND_AUTH_REQUIRED → 自动触发正常登录流程（同右上角登录按钮）
+                if (resp.status === 401 && _json && _json.code === 'SECOND_AUTH_REQUIRED') {
+                    self._lastHttpStatus = 401;
+                    self._lastGatewayError = 401;
+                    self._exitReason = 'second_auth_required';
+                    self._sendTerminated = true;
+                    self._lastGatewayMessage = '\u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\uFF0C\u5B8C\u6210\u9A8C\u8BC1\u540E\u5373\u53EF\u7EE7\u7EED\u4F7F\u7528';
+                    try {
+                        if (window.parent && window.parent.qqqLogin && window.parent.qqqLogin.login) {
+                            window.parent.qqqLogin.login();
+                        } else if (window.parent && window.parent.qqqideQoast) {
+                            window.parent.qqqideQoast.show('\u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\uFF1A\u8BF7\u70B9\u51FB\u53F3\u4E0A\u89D2\u767B\u5F55\u6309\u94AE\u5B8C\u6210\u9A8C\u8BC1', { type: 'warn', duration: 0 });
+                        }
+                    } catch (_) {}
+                    return null;
+                }
                 var friendly = resp.status === 401 ? '认证失败，请检查 Token'
                     : resp.status === 402 ? (_serverMsg || 'ge 余额不足，请充值')
                         : resp.status === 429 ? '请求过于频繁，请稍后再试'
