@@ -1338,4 +1338,48 @@
 
   window.qqqLogin = api;
   setTimeout(function () { api.init(); }, 200);
+
+  // ── 全站二次认证拦截（2026-08-26 冠军闭环）──
+  // 服务端 24h01m 起任何业务通信裁决 401 SECOND_AUTH_REQUIRED → 全局 fetch 拦截
+  // → qoast「进行二次认证」按钮 → 走正常登录流程（与右上角登录按钮同路径 _doLogin）
+  // 60s 防抖防风暴；qoast 常驻直到用户操作；登录成功由 onAuthChanged 自动清场
+  var _saShownAt = 0;
+  var _saQoast = null;
+  function _promptSecondAuth() {
+    var now = Date.now();
+    if (now - _saShownAt < 60000) return;
+    _saShownAt = now;
+    if (_saQoast) { try { _saQoast.dismiss(); } catch (_) {} _saQoast = null; }
+    _saQoast = window.qqqideQoast.show('\uD83D\uDD10 \u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\n\u70B9\u51FB\u6309\u94AE\u8D70\u6B63\u5E38\u767B\u5F55\u6D41\u7A0B\uFF08\u4E0E\u53F3\u4E0A\u89D2\u767B\u5F55\u4E00\u81F4\uFF09', {
+      duration: 0,
+      type: 'warn',
+      action: {
+        label: '\uD83D\uDEE1\uFE0F \u4E8C\u6B21\u8BA4\u8BC1',
+        onClick: function () {
+          _saQoast = null;
+          _doLogin().catch(function (err) { console.error('[second-auth] login error:', err); });
+        }
+      }
+    });
+  }
+  var _origFetch = window.fetch;
+  if (typeof _origFetch === 'function') {
+    window.fetch = function (input, init) {
+      return _origFetch.call(window, input, init).then(function (resp) {
+        try {
+          if (resp && resp.status === 401) {
+            var ct = (resp.headers.get('content-type') || '');
+            if (ct.indexOf('application/json') >= 0) {
+              resp.clone().json().then(function (body) {
+                if (body && (body.code === 'SECOND_AUTH_REQUIRED' || body.error === 'SECOND_AUTH_REQUIRED')) {
+                  _promptSecondAuth();
+                }
+              }).catch(function () {});
+            }
+          }
+        } catch (_) {}
+        return resp;
+      });
+    };
+  }
 })();

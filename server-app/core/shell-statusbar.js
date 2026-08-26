@@ -181,6 +181,7 @@ function bootStatusbar(boot) {
 				html += '<th style="padding:4px 6px;text-align:left;">手机号</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">day</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">消耗</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">独立消耗</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">最近在线</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">连续(m)</th>';
 				html += '<th style="padding:4px 6px;text-align:right;">独立</th>';
@@ -202,10 +203,14 @@ function bootStatusbar(boot) {
 					var paidGe = typeof u.total_consumed_ge === 'number' ? u.total_consumed_ge : 0;
 					var freeGe = typeof u.free_consumed_ge === 'number' ? u.free_consumed_ge : 0;
 					var geStr = paidGe + '+' + freeGe;
+					var indPaidGe = typeof u.independent_consumed === 'number' ? u.independent_consumed : 0;
+					var indFreeGe = typeof u.independent_free === 'number' ? u.independent_free : 0;
+					var indGeStr = indPaidGe + '+' + indFreeGe;
 					html += '<tr style="border-bottom:1px solid ' + (isDark ? '#2a2a2a' : '#eee8d5') + ';">';
 					html += '<td style="padding:4px 6px;font-family:monospace;">' + u.phone + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + daysReg + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + geStr + '</td>';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + indGeStr + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:12px;white-space:nowrap;">' + timeStr + '</td>';
 					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + contStr + '</td>';
 					var indep = typeof u.independent === 'number' ? u.independent : '-';

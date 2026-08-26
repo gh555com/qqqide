@@ -369,6 +369,8 @@ async function deleteQuest(id) {
     if (quests.length <= 1) { await createNewQuest(); return; }
     await questStore.deleteQuest(id);
     delete questUIStates[id];
+    // ★ 断电草稿通道：删除 quest 时清理高频草稿键
+    if (typeof _clearDraftTextNow === 'function') _clearDraftTextNow(id);
     // ★ 豆沙包：删除 quest 时清理 draft flag
     if (parent && parent.__qqq_draftFlags && parent.__qqq_draftFlags[id]) {
         delete parent.__qqq_draftFlags[id];

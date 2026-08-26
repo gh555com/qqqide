@@ -164,6 +164,8 @@ function getLoginToken() {
 var _inputLineHeight = 0;
 var _inputMaxHeight = 333;
 function autoResizeInput() {
+    // ★ 断电安全：任何输入变更统一排程高频草稿保存（text 通道 800ms 节流）
+    _scheduleDraftSave();
     var el = $input;
     if (!_inputLineHeight) {
         _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
@@ -321,6 +323,7 @@ $input.addEventListener('keydown', function (e) {
                 return;
             }
             $input.value = '';
+            _clearDraftTextNow(questActiveId);  // ★ 发送即清高频草稿键（防断电窗口旧文本复活）
             if ($input._resetUndo) $input._resetUndo();
             if (typeof autoResizeInput === 'function') autoResizeInput();
             if (typeof updateQueueBtn === 'function') updateQueueBtn();
@@ -443,12 +446,14 @@ function addImage(dataUrl, base64) {
     var id = pendingImages.length + 1;
     pendingImages.push({ id: id, base64: base64, dataUrl: dataUrl });
     renderImageStrip();
+    _scheduleDraftSave(true);  // ★ 图片变更 → 完整快照（低频，1.2s 合并）
 }
 
 function removeImage(idx) {
     pendingImages.splice(idx, 1);
     pendingImages.forEach(function (img, i) { img.id = i + 1; });
     renderImageStrip();
+    _scheduleDraftSave(true);  // ★ 图片变更 → 完整快照（低频，1.2s 合并）
 }
 
 function renderImageStrip() {
@@ -684,3 +689,75 @@ $sendBtn.onclick = function () {
         sendMessage();
     }
 };
+
+// ═══ 断电安全草稿高频落盘（2026-08-26）═══
+// 根因：编辑框内容原先仅 saveQuestUIState（切 quest/关闭/发送）时落盘，
+//       连续打字期间只在内存 → 断电（beforeunload 不执行）全丢。
+// 设计（性能最优）：
+//   text 通道：800ms 节流写 ai.draftText.{panelId}（纯文本几 KB，零图片负载），
+//              走 onlyStore 延迟刷盘（500ms 空闲/3s 强制）→ 断电最多丢最后 ~3s
+//   full 通道：图片增删（低频）1.2s 节流写完整快照（setNow，一次性成本可接受）
+//   merge：panel-quest.js 启动恢复时 draftText 覆盖 ai.uiStates 的 inputValue
+//   清理：发送/晋升/删除时 _clearDraftTextNow 删键，防断电窗口旧文本复活
+var _draftSaveTimer = null;
+var _draftSaveFull = false;
+var _draftTextCache = null;      // 会话内高频草稿 map 缓存（首次读 DB，之后纯内存）
+var _draftTextLoaded = false;
+
+// 首次读 DB，之后纯内存（避免每 800ms 一次 IPC 读）
+async function _ensureDraftTextMap() {
+    if (_draftTextLoaded) return _draftTextCache || {};
+    try {
+        var _m = await onlyStore.getAsync('ai.draftText.' + _panelId);
+        _draftTextCache = (_m && typeof _m === 'object') ? _m : {};
+    } catch (_) { _draftTextCache = {}; }
+    _draftTextLoaded = true;
+    return _draftTextCache;
+}
+
+function _scheduleDraftSave(full) {
+    if (full) _draftSaveFull = true;
+    if (_draftSaveTimer) { clearTimeout(_draftSaveTimer); _draftSaveTimer = null; }
+    _draftSaveTimer = setTimeout(function () {
+        _draftSaveTimer = null;
+        var _fullNow = _draftSaveFull;
+        _draftSaveFull = false;
+        if (_fullNow) {
+            if (typeof saveQuestUIState === 'function') saveQuestUIState(questActiveId);
+        } else {
+            _saveDraftText();
+        }
+    }, full ? 1200 : 800);
+}
+
+// 轻量文本草稿保存（仅文本，不含图片 base64）
+async function _saveDraftText() {
+    if (!questActiveId) return;
+    try {
+        if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
+        questUIStates[questActiveId].inputValue = $input.value;
+        if (typeof $input.selectionStart === 'number') {
+            questUIStates[questActiveId].inputCaret = $input.selectionStart;
+        }
+        var _m = await _ensureDraftTextMap();
+        _m[questActiveId] = $input.value;
+        if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+            onlyStore.set('ai.draftText.' + _panelId, _m);
+        }
+        if (typeof _updateDraftFlag === 'function') _updateDraftFlag(questActiveId);
+    } catch (_) { }
+}
+
+// 同步清除某 quest 的高频草稿键（发送/晋升/删除时调用，防断电恢复旧文本）
+async function _clearDraftTextNow(id) {
+    if (!id) return;
+    try {
+        var _m = await _ensureDraftTextMap();
+        if (_m[id] !== undefined) {
+            delete _m[id];
+            if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+                onlyStore.set('ai.draftText.' + _panelId, _m);
+            }
+        }
+    } catch (_) { }
+}

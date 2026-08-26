@@ -304,6 +304,8 @@ async function _executeSend(intent) {
             }
             if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
                 onlyStore.setNow('ai.uiStates.' + _panelId, questUIStates);
+                // ★ 断电草稿通道：晋升后清旧草稿键（防重启恢复出已发送的旧文本）
+                if (typeof _clearDraftTextNow === 'function') _clearDraftTextNow(_dOldId);
             }
             if (parent.__qqq_agentPool && parent.__qqq_agentPool[_dOldId]) {
                 parent.__qqq_agentPool[_dOldId]._queue = [];
