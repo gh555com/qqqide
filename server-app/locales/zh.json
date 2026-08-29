@@ -431,7 +431,7 @@
     "act": {
         "sponsorLabelWord": "赞助商",
         "sponsorLabelColon": "：",
-        "sponsorName": "成都知佳知识产权代理有限公司",
+        "sponsorName": "知佳",
         "cool": {
             "name": "清爽从2026",
             "tip": "清爽从2026",
@@ -476,9 +476,9 @@
             "loginDesc": "登录后查看已入金额",
             "intro": "征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币），现金立入。",
             "linkRecords": "查看成交记录",
-            "tail": "当视频播放量逐渐增大，会自动接入“",
+            "tail": "当视频播放量逐渐增大，会自动接入",
             "linkSpark": "星火计划",
-            "tailEnd": "”。",
+            "tailEnd": "。",
             "paid": "已入：{v}",
             "sparkPaid": "✨星火已入 ¥{v}"
         },

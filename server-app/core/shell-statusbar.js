@@ -19,7 +19,7 @@ function bootStatusbar(boot) {
 	(function () {
 		var $link = document.getElementById('qqq-sponsor-link');
 		if (!$link) return;
-		var DEFAULT_BRAND = '成都知佳知识产权代理有限公司';
+		var DEFAULT_BRAND = '知佳'; // 离线兜底（服务器不可达时）；正常以 /api/sponsor/current 返回为准（服务端 sponsor_config 可配置）
 		var DEFAULT_URL = 'http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1';
 		var items = [];
 		var idx = -1;
@@ -93,10 +93,9 @@ function bootStatusbar(boot) {
 	}
 
 	// ═══ 全球在线人数 — fetch 极轻轮询（30字节/5分钟，跨窗口稳定）═══
+	// ★ 隐藏链接：hover 零外观零 tooltip，点击仍打开在线用户面板
 	(function () {
 		if (!$onl) return;
-		$onl.style.cursor = 'pointer';
-		$onl.title = '点击查看在线用户';
 
 		var _onlLastFetch = 0;
 		var _onlUsersOpen = false;
@@ -230,8 +229,57 @@ function bootStatusbar(boot) {
 
 		$onl.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openOnlineUsers(); });
 
+		// ═══ 总在线时间（累计陪伴小时）— 纯展示，hover 零外观零 tooltip ═══
+		// 数据源: /api/qqqide/online-users 当前用户行 total_m（分钟，服务端 companion_seconds 权威累计）
+		// 口径: Math.round(total_m/60)+'h' 与在线面板「累计(h)」完全一致；客户端零记录，直接打印服务器值
+		var $tot = document.getElementById('qqq-status-total');
+
+		// 与服务端 maskPhone 同款（phone[:5] + **** + 后4位）
+		function maskPhoneLikeServer(p) {
+			if (!p || p.length < 9) return p;
+			return p.slice(0, 5) + '****' + p.slice(p.length - 4);
+		}
+
+		function fetchMyTotal() {
+			if (!$tot) return;
+			var target = '';
+			try { if (window.qqqLogin) target = window.qqqLogin.getPhone() || ''; } catch (e) { }
+			target = maskPhoneLikeServer(target);
+			if (!target) { $tot.textContent = '--'; return; }
+			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache' })
+				.then(function (r) { if (!r.ok) return null; return r.json(); })
+				.then(function (data) {
+					if (!data || !data.ok || !data.users || !data.users.length) return;
+					for (var i = 0; i < data.users.length; i++) {
+						if (data.users[i].phone === target && typeof data.users[i].total_m === 'number') {
+							$tot.textContent = Math.round(data.users[i].total_m / 60) + 'h';
+							return;
+						}
+					}
+					$tot.textContent = '--';
+				})
+				.catch(function () { /* 静默 */ });
+		}
+		// 登录状态变化 → 立即刷新（登录/登出都走这里）
+		try { if (window.qqqLogin && window.qqqLogin.onStateChange) window.qqqLogin.onStateChange(fetchMyTotal); } catch (e) { }
+
+		// ★ 版本号隐藏链接 — 点击打开更新日志，hover 零外观零 tooltip（与在线人数同款）
+		if ($ver) {
+			$ver.addEventListener('click', function (e) {
+				e.preventDefault();
+				var url = 'https://www.gh555.com/gaea/d/qqqide#changelog';
+				if (bridge && bridge.shell && bridge.shell.openExternal) {
+					bridge.shell.openExternal(url);
+				} else {
+					window.open(url, '_blank');
+				}
+			});
+		}
+
 		fetchOnline();
+		fetchMyTotal();
 		setInterval(fetchOnline, 300000);
+		setInterval(fetchMyTotal, 300000);
 	})();
 
   // ═══ 单调时钟锚点（变速齿轮免疫，三保险） ═══

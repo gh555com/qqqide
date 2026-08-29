@@ -124,6 +124,14 @@ function selectTier(tierIndex) {
     if (questActiveId) {
         if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
         questUIStates[questActiveId].selectedTier = tierIndex;
+        // ★ per-quest 等级偏好独立落盘（ai.questTier.{questId}，三面板共享同一 key）：
+        //   selectTier 即写，不依赖 saveQuestUIState 触发时机（切 quest/发送/关闭）
+        //   → 切面板/切后台/刷新/重启均保持用户明确选择的等级，不被全局默认覆盖
+        try {
+            if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+                onlyStore.set('ai.questTier.' + questActiveId, tierIndex);
+            }
+        } catch (_) { }
     }
 }
 

@@ -20,6 +20,7 @@ const fs = require('fs');
 const cp = require('child_process');
 const https = require('https');
 const os = require('os');
+const crypto = require('crypto');
 
 // ★ 打包进程内剥离代理环境变量：Electron 二进制统一走国内 npmmirror 直连，
 // 环境代理（如 127.0.0.1:10808）若未运行 → electron-builder 下载 proxyconnect 被拒（2026-08-09 F17 事故）。
@@ -584,6 +585,7 @@ function buildUnits(unpacked, rFile) {
   ];
 
   const manifestUnits = [];
+  const hashUnits = [];
   for (const u of units) {
     if (!fs.existsSync(u.src)) {
       console.warn('[pack] unit source missing, skipping:', u.name, u.src);
@@ -605,11 +607,18 @@ function buildUnits(unpacked, rFile) {
     cp.spawnSync('cmd', ['/c', 'copy', '/b', sfx, '+', arc, sfxBlob], { stdio: 'inherit' });
     fs.rmSync(arc);
     fs.renameSync(sfxBlob, arc);
+    // ★ sha512 hex（2026-08-27 安全）: 客户端按已验签清单逐单元校验内容。
+    //   ★ 2026-08-28 移出 units.json → units.hash.json sidecar: 128 字符 hash 撑爆
+    //   C 解析器 127 字符上限（parseJsonString outSize-1）→ parseUnitObject 断流 →
+    //   units manifest parse FAIL → 全量 178MB 死循环（全启动器受影响实锤）。
+    //   units.json 内禁止任何 >127 字符字符串。
+    const hash = crypto.createHash('sha512').update(fs.readFileSync(arc)).digest('hex');
     manifestUnits.push({
       name: u.name, rel: u.rel, version: u.version,
       bytes: fs.statSync(arc).size,
       file: `u/${APP_VERSION}/${u.name}.7z`,
     });
+    hashUnits.push({ name: u.name, hash });
     console.log('[pack] unit:', u.name, '(' + (u.rel || '(root)') + ')',
       Math.round(fs.statSync(arc).size / 1024), 'KB');
   }
@@ -617,8 +626,13 @@ function buildUnits(unpacked, rFile) {
 
   const manifest = { id: APP_VERSION, r_bytes: fs.statSync(rFile).size, versions, units: manifestUnits };
   fs.writeFileSync(path.join(upRoot, 'units.json'), JSON.stringify(manifest));
+  // ★ 单元哈希 sidecar（2026-08-28）: 独立文件独立签名，新启动器验签后 overlay；
+  //   老启动器无视此文件（其 units.json 解析恢复兼容）。
+  fs.writeFileSync(path.join(upRoot, 'units.hash.json'),
+    JSON.stringify({ id: APP_VERSION, units: hashUnits }));
 
   console.log('[pack] units manifest:', manifest.id, manifestUnits.length, 'units, r_bytes =', manifest.r_bytes);
+  console.log('[pack] units.hash.json sidecar:', hashUnits.length, 'hashes');
 }
 
 // 3.6b) inject VC runtime (app-local deployment) — assets/runtimes/win32-x64 → engines/vc_runtime/win32-x64

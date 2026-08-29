@@ -497,7 +497,8 @@
 .qqq-status-area.qqq-dense-1 .qqq-status-sponsor { display: none; }
 .qqq-status-area.qqq-dense-2 .qqq-act-name { display: none; }
 .qqq-status-area.qqq-dense-3 #qqq-status-wq,
-.qqq-status-area.qqq-dense-3 #qqq-status-version { display: none; }
+.qqq-status-area.qqq-dense-3 #qqq-status-version,
+.qqq-status-area.qqq-dense-3 #qqq-status-total { display: none; }
 .qqq-status-area.qqq-dense-4 #qqq-status-online,
 .qqq-status-area.qqq-dense-4 .qqq-gw-dots { display: none; }
 
@@ -803,14 +804,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  height: 15px;
+  min-width: 18px;
+  height: 16px;
   border-radius: 8px;
   background: #dc322f;
   color: #fff;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  padding: 0 4px;
+  padding: 0 5px;
   line-height: 1;
   flex-shrink: 0;
   margin: 0 2px;
@@ -885,6 +886,12 @@
 [data-theme="dark"] .aiv-recent-row:hover {
   background: rgba(255, 255, 255, 0.16) !important;
   color: #fff !important;
+}
+
+/* ★ 家目录恒红：_qqq / _qqqvault 行 hover 文字保持红色不变色 */
+.aiv-dd-row.aiv-dd-home:hover,
+[data-theme="dark"] .aiv-dd-row.aiv-dd-home:hover {
+  color: var(--red) !important;
 }
 
 /* ── 面包屑：�?hover 更深的高亮背景，文字色与 hover 一�?── */

@@ -259,6 +259,13 @@ async function _executeSend(intent) {
                 if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
                 questUIStates[questActiveId].selectedTier = questUIStates[_dOldId].selectedTier;
                 selectedTier = questUIStates[_dOldId].selectedTier;
+                // ★ per-quest 等级偏好：草稿晋升 → 继承到新 quest 键，清草稿键（防旧草稿复活）
+                try {
+                    if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+                        onlyStore.set('ai.questTier.' + questActiveId, questUIStates[_dOldId].selectedTier);
+                        onlyStore.set('ai.questTier.' + _dOldId, null);
+                    }
+                } catch (_) { }
             }
             _activeAgent = _getOrCreateAgent(questActiveId);
             if (_panelId === 1) await questStore.setActiveId(questActiveId);
@@ -724,6 +731,7 @@ async function _executeSend(intent) {
     //   仅在「20 分钟零进展」时终止（网关重试风暴 / IPC 挂死 / SSE 静默），防三面板永久禁发；
     //   进展信号 = 内容 token（onToken）+ house 完结（onCost，每 house 必触发）+ 工具开始（onToolCall）
     var _sendCapTimer = null;
+    var _toolSaveT = null;  // ★ 断电保护：工具结果防抖落盘计时器
     var _capAbort = function () {
         try {
             if (!agent || agent._floorCompletedCleanly) return;
@@ -802,8 +810,26 @@ async function _executeSend(intent) {
             token: token,
             tier: _actualTier,
             noTools: intent.noTools || false,
-            onCost: function () { _touchCap(); },
+            onCost: function () {
+                _touchCap();
+                // ★ 断电保护（2026-08-27）：house 完结（conversation 已 push 完整消息）→ 立即落盘。
+                //   旧 5s 定时器按「消息条数」去重——流式/工具执行期间条数不变全部空转，
+                //   house 完结后断电窗口可达 5s（深思考 house 内完成的工具结果/回复全丢）。
+                //   onCost 每 house 必触发（4 路径均在 push 之后）→ 此处提前写盘与定时器写盘
+                //   总次数≈相等（onCost 写完 _lastAutoSaveLen 更新 → 定时器去重跳过），零额外 IO
+                if (typeof _saveAgentFloor === 'function') _saveAgentFloor(agent, qid);
+            },
             onToolCall: function () { _touchCap(); },
+            onToolResult: function () {
+                // ★ 断电保护（2026-08-27）：工具结果防抖落盘——工具有副作用（写文件/发布等），
+                //   结果丢失 → 恢复后 AI 重发 → 副作用重复执行。防抖 500ms 保证 agent-loop
+                //   原子推入（assistant tool_calls + 全部结果，同步无缝隙）完成后才保存
+                if (_toolSaveT) clearTimeout(_toolSaveT);
+                _toolSaveT = setTimeout(function () {
+                    _toolSaveT = null;
+                    if (typeof _saveAgentFloor === 'function') _saveAgentFloor(agent, qid);
+                }, 500);
+            },
             onToken: function (chunk) {
                 _touchCap();
                 if (agent._deferRenderUntilHouse1) {

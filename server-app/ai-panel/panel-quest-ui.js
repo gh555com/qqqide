@@ -165,7 +165,7 @@ async function switchQuest(id) {
             }
         }
 
-        restoreQuestUIState(id);
+        await restoreQuestUIState(id);
         renderQueueStrip();
         updateCostDisplay();
         updateCtxBtn();
@@ -322,7 +322,7 @@ async function createNewQuest() {
         cardPool.removeCard(questActiveId);
     }
     _unloadQuest();
-    restoreQuestUIState(_draftId);  // ★ 恢复 ~New quest~ 草稿（_unloadQuest 清空 input 后立即还原）
+    await restoreQuestUIState(_draftId);  // ★ 恢复 ~New quest~ 草稿（_unloadQuest 清空 input 后立即还原）
 }
 
 function _unloadQuest() {
@@ -371,6 +371,12 @@ async function deleteQuest(id) {
     delete questUIStates[id];
     // ★ 断电草稿通道：删除 quest 时清理高频草稿键
     if (typeof _clearDraftTextNow === 'function') _clearDraftTextNow(id);
+    // ★ per-quest 等级偏好：删除 quest 时同步清理（null=删除语义，防幽灵键残留）
+    try {
+        if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+            onlyStore.set('ai.questTier.' + id, null);
+        }
+    } catch (_) { }
     // ★ 豆沙包：删除 quest 时清理 draft flag
     if (parent && parent.__qqq_draftFlags && parent.__qqq_draftFlags[id]) {
         delete parent.__qqq_draftFlags[id];
@@ -391,7 +397,7 @@ async function deleteQuest(id) {
         _activeAgent = _getOrCreateAgent(questActiveId);
         await cardPool.switchTo(questActiveId);
         await _restoreAgentFromStore(questActiveId, _activeAgent);
-        restoreQuestUIState(questActiveId);
+        await restoreQuestUIState(questActiveId);
         _parentClaimQuest(questActiveId);
         _broadcast('owner-claimed', questActiveId);
     }

@@ -28,6 +28,7 @@
 #include <tlhelp32.h>
 #include <restartmanager.h>
 #include <stdarg.h>
+#include "ed25519.h"   // Ed25519 验签（2026-08-27，TweetNaCl 公有领域裁剪）
 
 // ── WinHTTP redirect (MinGW headers may not define) ──
 #ifndef WINHTTP_OPTION_REDIRECT_POLICY
@@ -65,7 +66,16 @@ static void enableTls12(HINTERNET hRequest) {
 // ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
 //   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
 //   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
-#define LAUNCHER_VERSION "20260816.1"
+#define LAUNCHER_VERSION "20260828.1"
+
+// ── Ed25519 验证公钥（2026-08-27 签名验证安全防线）──
+//   唯一硬编码信任根: 服务器一切下载物（r / units.json）必须带此公钥可验证的签名。
+//   私钥离线加密保管（gaea/cf/qqqide/keys/sign_key.bin + 口令），公钥随启动器二进制分发。
+//   攻击者入侵 CDN/发布流程无私钥 = 造不出合法签名 = 投毒被拒。
+static const u8 SIGN_PUBKEY[32] = {
+    0x82, 0xa6, 0x1e, 0x3a, 0xe4, 0xd3, 0x0b, 0x47, 0x01, 0x5e, 0xf6, 0x52, 0xb6, 0x87, 0x84, 0x15,
+    0xb2, 0x13, 0xc2, 0x5b, 0x27, 0x2d, 0xb7, 0xdd, 0x05, 0x07, 0xbf, 0xc4, 0xdd, 0xc3, 0x94, 0x6d
+};
 
 // ── 颜色（Solarized Light） ──
 #define COL_BG      RGB(0xfd, 0xf6, 0xe3)
@@ -787,6 +797,80 @@ static int downloadFile(const char *host, const char *path,
     return totalDownloaded > 0 ? 0 : -1;
 }
 
+// ── Ed25519 签名验证工具（2026-08-27 安全防线）──────────────────
+//   读取文件全部内容（上限 512MB，覆盖 r 载荷尺寸）
+static u8 *readFileAlloc(const WCHAR *path, size_t *outLen) {
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return NULL;
+    LARGE_INTEGER sz;
+    if (!GetFileSizeEx(h, &sz) || sz.QuadPart <= 0 || sz.QuadPart > 512LL * 1024 * 1024) {
+        CloseHandle(h); return NULL;
+    }
+    u8 *buf = (u8 *)malloc((size_t)sz.QuadPart);
+    if (!buf) { CloseHandle(h); return NULL; }
+    DWORD rd = 0, total = 0;
+    while (total < (DWORD)sz.QuadPart) {
+        if (!ReadFile(h, buf + total, (DWORD)sz.QuadPart - total, &rd, NULL) || rd == 0) {
+            free(buf); CloseHandle(h); return NULL;
+        }
+        total += rd;
+    }
+    CloseHandle(h);
+    *outLen = (size_t)sz.QuadPart;
+    return buf;
+}
+
+// 内存验签: data + 64B 签名 + 内嵌公钥。返回 0 = 有效
+// ★ m 与 sm 必须不重叠（TweetNaCl crypto_sign_open 会向 m 写 R||pk 中间态，
+//   同址时覆盖 sm 的 S 段 → 验证恒失败，2026-08-27 实锤）
+static int verifySignedBuf(const u8 *data, size_t dataLen, const u8 *sig, int sigLen) {
+    if (!data || sigLen != 64 || dataLen == 0) return -1;
+    u8 *sm = (u8 *)malloc(dataLen + 64);
+    if (!sm) return -1;
+    u8 *m = (u8 *)malloc(dataLen);
+    if (!m) { free(sm); return -1; }
+    memcpy(sm, sig, 64);
+    memcpy(sm + 64, data, dataLen);
+    u64 mlen = 0;
+    int rc = crypto_sign_open(m, &mlen, sm, dataLen + 64, SIGN_PUBKEY);
+    free(m);
+    free(sm);
+    return rc == 0 ? 0 : -1;
+}
+
+// 文件验签: filePath 内容 + sigPath 64B 签名。返回 0 = 有效
+static int verifySignedFile(const WCHAR *filePath, const WCHAR *sigPath) {
+    u8 sig[64];
+    if (readFileRaw(sigPath, (char *)sig, sizeof(sig)) != 64) return -1;
+    size_t dataLen = 0;
+    u8 *data = readFileAlloc(filePath, &dataLen);
+    if (!data) return -1;
+    int rc = verifySignedBuf(data, dataLen, sig, 64);
+    free(data);
+    return rc;
+}
+
+// 文件 sha512 hex（128 字符小写）
+static void sha512FileHex(const WCHAR *path, char *hexOut) {
+    size_t len = 0;
+    u8 *data = readFileAlloc(path, &len);
+    hexOut[0] = '\0';
+    if (!data) return;
+    u8 h[64];
+    crypto_hash(h, data, len);
+    free(data);
+    for (int i = 0; i < 64; i++) sprintf(hexOut + i * 2, "%02x", h[i]);
+    hexOut[128] = '\0';
+}
+
+// 文件 sha512 与期望 hex 比对。返回 1 = 匹配
+static int fileSha512Matches(const WCHAR *path, const char *expectedHex) {
+    char actual[129];
+    sha512FileHex(path, actual);
+    return actual[0] != '\0' && _stricmp(actual, expectedHex) == 0;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 更新逻辑（参数全部来自 g_cfg）
 // ═══════════════════════════════════════════════════════════════
@@ -1317,7 +1401,7 @@ static int applySwapIfReady(const WCHAR *exeDir) {
 static void cleanupRootJunk(const WCHAR *exeDir) {
     WCHAR p[MAX_PATH];
     static const WCHAR *plainFiles[] = {
-        L"r", L"r.next", L".version-next", L"debug.log",
+        L"r", L"r.next", L"r.next.sig", L".version-next", L"debug.log",
         L"launcher-config.json", L"loading-status", L"qqqide.old.exe"
     };
     for (int i = 0; i < (int)(sizeof(plainFiles) / sizeof(plainFiles[0])); i++) {
@@ -1384,9 +1468,10 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     InterlockedExchange(&g_applyRunning, 1);
     WCHAR *exeDir = (WCHAR *)param;
 
-    WCHAR rNext[MAX_PATH], vNext[MAX_PATH];
+    WCHAR rNext[MAX_PATH], vNext[MAX_PATH], rNextSig[MAX_PATH];
     swprintf(rNext, MAX_PATH, L"%s\\r.next", exeDir);
     swprintf(vNext, MAX_PATH, L"%s\\.version-next", exeDir);
+    swprintf(rNextSig, MAX_PATH, L"%s\\r.next.sig", exeDir);
 
     if (!fileExistsW(rNext) || !fileExistsW(vNext)) {
         InterlockedExchange(&g_applyRunning, 0);
@@ -1398,7 +1483,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     if (rd <= 0) {
         swapLogNow(exeDir, "extract abort: .version-next unreadable");
         applyFailMark(exeDir);
-        DeleteFileW(rNext); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0;
+        DeleteFileW(rNext); DeleteFileW(rNextSig); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0;
     }
 
     // ★ 交换已完成（live 已是目标版本）→ 清理残留暂存，不再重复解压
@@ -1435,10 +1520,25 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
             swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
             writeFileText(swapReady, newVer);
             applyFailClear(exeDir);
-            DeleteFileW(rNext); DeleteFileW(vNext);
+            DeleteFileW(rNext); DeleteFileW(rNextSig); DeleteFileW(vNext);
             InterlockedExchange(&g_applyRunning, 0);
             return 0;
         }
+    }
+
+    // ★ Ed25519 验签（2026-08-27 安全）: r.next 必须带合法签名（r.next.sig）
+    //   防 CDN 投毒/中间人替换。验签失败 → 删暂存 + 失败计数，拒绝解压
+    //   （方向安全: 保留旧版，下次启动重试）。验证点统一在此 —— 下载路径与
+    //   skip-re-download 路径都汇聚于此，无旁路。
+    {
+        if (!fileExistsW(rNextSig) || verifySignedFile(rNext, rNextSig) != 0) {
+            swapLogNow(exeDir, "extract abort: r.next signature INVALID (security, keep old version)");
+            DeleteFileW(rNext); DeleteFileW(rNextSig); DeleteFileW(vNext);
+            applyFailMark(exeDir);
+            InterlockedExchange(&g_applyRunning, 0);
+            return 0;
+        }
+        swapLogNow(exeDir, "extract: r.next signature OK (%s)", newVer);
     }
 
     removeDir(ghNext);
@@ -1514,6 +1614,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
 
     // 清理暂存文件
     DeleteFileW(rNext);
+    DeleteFileW(rNextSig);
     DeleteFileW(vNext);
 
     InterlockedExchange(&g_applyRunning, 0);
@@ -1566,6 +1667,8 @@ typedef struct {
     char version[64];
     long bytes;
     char file[128];
+    char hash[160];   // sha512 hex 128 字符（2026-08-27 安全: 已验签清单锁定的单元完整性哈希；
+                    //   2026-08-28: 128 缓冲 + parseJsonString 127 上限 = 断流，必须 ≥129）
 } UnitDef;
 
 typedef struct {
@@ -1599,7 +1702,7 @@ static int captureRawJsonObject(const char **p, char *out, int outSize) {
 // 跳过任意 JSON 值（未知 key 容错，向前兼容）
 static void skipJsonValue(const char **p) {
     skipWhitespace(p);
-    if (**p == '"') { char dummy[128]; parseJsonString(p, dummy, sizeof(dummy)); }
+    if (**p == '"') { char dummy[256]; parseJsonString(p, dummy, sizeof(dummy)); }  // 256: 127 上限曾吞 128 字符 sha512 断流
     else if (**p == '{') { int d = 1; (*p)++; while (**p && d > 0) { if (**p == '{') d++; if (**p == '}') d--; (*p)++; } }
     else if (**p == '[') { int d = 1; (*p)++; while (**p && d > 0) { if (**p == '[') d++; if (**p == ']') d--; (*p)++; } }
     else if (**p == 't' || **p == 'f') { int v; parseJsonBool(p, &v); }
@@ -1627,6 +1730,7 @@ static int parseUnitObject(const char **p, UnitDef *u) {
         else if (strcmp(key, "version") == 0) { skipWhitespace(p); parseJsonString(p, u->version, sizeof(u->version)); }
         else if (strcmp(key, "bytes") == 0) { skipWhitespace(p); char *end = NULL; u->bytes = strtol(*p, &end, 10); if (end) *p = end; }
         else if (strcmp(key, "file") == 0) { skipWhitespace(p); parseJsonString(p, u->file, sizeof(u->file)); }
+        else if (strcmp(key, "hash") == 0) { skipWhitespace(p); parseJsonString(p, u->hash, sizeof(u->hash)); }
         else { skipJsonValue(p); }
     }
     return 1;
@@ -1829,6 +1933,67 @@ static int collectNeededUnits(const UnitsManifest *m, const UnitsManifest *ls, i
     return n;
 }
 
+// ★ 单元哈希 sidecar 解析（2026-08-28）: {"id":..,"units":[{"name":..,"hash":..}]}
+//   128 字符 sha512 移出 units.json（127 解析上限撑爆 → 全量 178MB 死循环实锤），
+//   sidecar 独立签名，overlay 到清单单元（sidecar 权威）。
+static int parseSidecarHashes(const char *json, UnitsManifest *m) {
+    const char *p = json;
+    skipWhitespace(&p);
+    if (*p != '{') return 0;
+    p++;
+    int overlay = 0;
+    while (1) {
+        skipWhitespace(&p);
+        if (*p == '}') { p++; break; }
+        if (*p == ',') { p++; continue; }
+        if (*p == '\0') break;
+        char key[64];
+        if (!parseJsonString(&p, key, sizeof(key))) return 0;
+        skipWhitespace(&p);
+        if (*p != ':') return 0;
+        p++;
+        if (strcmp(key, "units") == 0) {
+            skipWhitespace(&p);
+            if (*p == '[') {
+                p++;
+                while (1) {
+                    skipWhitespace(&p);
+                    if (*p == ']') { p++; break; }
+                    if (*p == ',') { p++; continue; }
+                    if (*p != '{') return 0;
+                    p++;
+                    char uname[48] = {0}, uhash[160] = {0};
+                    while (1) {
+                        skipWhitespace(&p);
+                        if (*p == '}') { p++; break; }
+                        if (*p == ',') { p++; continue; }
+                        if (*p == '\0') return 0;
+                        char k2[48];
+                        if (!parseJsonString(&p, k2, sizeof(k2))) return 0;
+                        skipWhitespace(&p);
+                        if (*p != ':') return 0;
+                        p++;
+                        if (strcmp(k2, "name") == 0) { skipWhitespace(&p); parseJsonString(&p, uname, sizeof(uname)); }
+                        else if (strcmp(k2, "hash") == 0) { skipWhitespace(&p); parseJsonString(&p, uhash, sizeof(uhash)); }
+                        else skipJsonValue(&p);
+                    }
+                    if (uname[0] && uhash[0]) {
+                        for (int i = 0; i < m->n_units; i++) {
+                            if (strcmp(m->units[i].name, uname) == 0) {
+                                strncpy(m->units[i].hash, uhash, sizeof(m->units[i].hash) - 1);
+                                overlay++;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else skipJsonValue(&p);
+    }
+    return overlay > 0;
+}
+
 // ★ 单元增量装配: 返回 1=成功(swap-ready 已写) / 0=失败 → 调用方走全量 r 兜底
 static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
     char liveVer[64] = {0};
@@ -1845,6 +2010,22 @@ static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
         return 0;
     }
 
+    // ★ Ed25519 验签（2026-08-27 安全）: units.json 必须带合法签名
+    //   （防 CDN 投毒绕过全量签名——增量路径与全量同一信任门）
+    {
+        char sigPath[300];
+        snprintf(sigPath, sizeof(sigPath), "%s.sig", g_cfg.units_path);
+        char sigBuf[128];
+        int sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), g_cfg.use_https);
+        if (sigLen <= 0 && g_cfg.use_https) {
+            sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), 0);
+        }
+        if (sigLen != 64 || verifySignedBuf((const u8 *)json, (size_t)len, (const u8 *)sigBuf, sigLen) != 0) {
+            swapLogNow(exeDir, "incremental abort: units.json signature INVALID (security, fallback full r)");
+            return 0;
+        }
+    }
+
     UnitsManifest m;
     if (!parseUnitsManifest(json, &m)) {
         swapLogNow(exeDir, "incremental abort: units manifest parse FAIL (fallback full r)");
@@ -1855,6 +2036,48 @@ static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
         return 0;
     }
     if (m.versions_raw[0] == '\0') return 0;
+
+    // ★ 单元完整性哈希（2026-08-28 sidecar）: units.hash.json + 签名验签 → overlay 到清单。
+    //   过渡期（旧 CDN units.json 内嵌 hash）自动回退清单内值。
+    //   ★ 127 字符解析上限教训: units.json 内禁止任何 >127 字符字符串——128 字符 sha512
+    //   曾撑爆 parseJsonString 缓冲 → 全部启动器增量解析失败 → 全量 178MB 死循环。
+    {
+        char sidecar[8192];
+        int slen = downloadToString(g_cfg.update_host, "/dl/qqqide-up/units.hash.json",
+            sidecar, sizeof(sidecar), g_cfg.use_https);
+        if (slen <= 0 && g_cfg.use_https) {
+            slen = downloadToString(g_cfg.update_host, "/dl/qqqide-up/units.hash.json",
+                sidecar, sizeof(sidecar), 0);
+        }
+        if (slen > 0) {
+            char sigPath[300];
+            snprintf(sigPath, sizeof(sigPath), "/dl/qqqide-up/units.hash.json.sig");
+            char sigBuf[128];
+            int sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), g_cfg.use_https);
+            if (sigLen <= 0 && g_cfg.use_https) {
+                sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), 0);
+            }
+            if (sigLen == 64 && verifySignedBuf((const u8 *)sidecar, (size_t)slen, (const u8 *)sigBuf, sigLen) == 0) {
+                if (!parseSidecarHashes(sidecar, &m)) {
+                    swapLogNow(exeDir, "incremental abort: units.hash.json parse FAIL (security, fallback full r)");
+                    return 0;
+                }
+                swapLogNow(exeDir, "incremental: unit hashes from signed sidecar (%d units)", m.n_units);
+            } else {
+                swapLogNow(exeDir, "incremental abort: units.hash.json signature INVALID (security, fallback full r)");
+                return 0;
+            }
+        } else {
+            // sidecar 缺失（过渡期 CDN）→ 依赖清单内嵌 hash（老格式）
+            int inJson = 0;
+            for (int i = 0; i < m.n_units; i++) if (m.units[i].hash[0]) inJson = 1;
+            if (!inJson) {
+                swapLogNow(exeDir, "incremental abort: no unit hashes (security, fallback full r)");
+                return 0;
+            }
+            swapLogNow(exeDir, "incremental: units.hash.json absent, using in-manifest hashes (transitional)");
+        }
+    }
 
     // 本地单元状态缺失（旧包）→ 全量兜底
     WCHAR lsPath[MAX_PATH];
@@ -1915,6 +2138,13 @@ static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
         if (rc != 0) {
             swapLogNow(exeDir, "incremental FAIL: download unit %s (fallback full r)", u->name);
             ok = 0; break;
+        }
+
+        // ★ 清单 sha512 校验（2026-08-27 安全）: 单元内容必须匹配已验签清单的 hash
+        //   （7z CRC 防损坏不防篡改，攻击者可构造自洽恶意 7z）
+        if (u->hash[0] && !fileSha512Matches(dest, u->hash)) {
+            swapLogNow(exeDir, "incremental FAIL: unit %s hash mismatch (security, fallback full r)", u->name);
+            DeleteFileW(dest); ok = 0; break;
         }
 
         // ② 解压到临时目录（绝不对 next 内硬链接文件原地写——共享 inode 会污染 live）
@@ -2035,8 +2265,9 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
         }
     }
     // 下载到暂存
-    WCHAR rNext[MAX_PATH];
+    WCHAR rNext[MAX_PATH], rSigPath[MAX_PATH];
     swprintf(rNext, MAX_PATH, L"%s\\r.next", g_exeDir);
+    swprintf(rSigPath, MAX_PATH, L"%s\\r.next.sig", g_exeDir);
 
     // ★ 下载去重（2026-08-14）: r.next 已在盘且 .version-next 已是目标版本
     //   → 跳过重复下载，留给解压线程重试（解压持续失败时每启动重下 159MB = 纯带宽浪费，
@@ -2045,7 +2276,7 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
         WCHAR vnPath[MAX_PATH];
         swprintf(vnPath, MAX_PATH, L"%s\\.version-next", g_exeDir);
         char vnVer[64] = {0};
-        if (fileExistsW(rNext) && readFileText(vnPath, vnVer, sizeof(vnVer)) > 0 &&
+        if (fileExistsW(rNext) && fileExistsW(rSigPath) && readFileText(vnPath, vnVer, sizeof(vnVer)) > 0 &&
             strcmp(vnVer, serverVer) == 0) {
             swapLogNow(g_exeDir, "update: skip re-download r (%s staged, retry extract)", serverVer);
             InterlockedExchange(&g_updateRunning, 0);
@@ -2063,6 +2294,25 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
     if (result != 0) {
         swapLogNow(g_exeDir, "update: download r FAIL (err=%d, fallback next boot)", result);
         DeleteFileW(rNext); InterlockedExchange(&g_updateRunning, 0); return 0;
+    }
+
+    // ★ 下载签名（2026-08-27 安全）: r.next 必须配 r.next.sig（64B Ed25519），
+    //   解压线程验签通过才解压。sig 下载失败 → 删 r.next 下次重试（方向安全）。
+    {
+        DeleteFileW(rSigPath);
+        char sigPath[300];
+        snprintf(sigPath, sizeof(sigPath), "%s.sig", g_cfg.r_path);
+        int sr = downloadFile(g_cfg.update_host, sigPath, rSigPath, g_cfg.use_https);
+        if (sr != 0 && g_cfg.use_https) {
+            DeleteFileW(rSigPath);
+            sr = downloadFile(g_cfg.update_host, sigPath, rSigPath, 0);
+        }
+        if (sr != 0) {
+            swapLogNow(g_exeDir, "update: r.sig download FAIL (err=%d, security keep old version)", sr);
+            DeleteFileW(rNext); DeleteFileW(rSigPath);
+            InterlockedExchange(&g_updateRunning, 0);
+            return 0;
+        }
     }
 
     // 写 .version-next

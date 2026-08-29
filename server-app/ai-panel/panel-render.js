@@ -24,7 +24,6 @@ function renderMarkdown(src) {
         );
         return '\x00CB' + idx + '\x00';
     });
-    s = escHtml(s);
     // ★ 代码块恢复延后：必须等全部行内规则（inline code/headers/hr/bold/italic/images/links/tables/lists/blockquote）
     //   处理完再恢复，杜绝代码块内文本被行内规则误转（Links 误转实锤）
     // Inline code（同样延迟恢复 + escHtml：`[文字](URL)` 防被 Links 误转，<script> 防 XSS）
@@ -75,6 +74,66 @@ function renderMarkdown(src) {
     var _ic = _scanInlineCodes(s);
     s = _ic.text;
     var inlineCodes = _ic.codes;
+    // ★ 数学公式 KaTeX 渲染（2026-08-29）：行内 $...$ / 独立 $$...$$
+    //   扫描器位置铁律：行内代码占位之后（代码内 $ 已保护）→ 表格之前（$P(A|B)$ 的 | 不破表）
+    //   守卫（remark-math 同款）：开 $ 前非字母数字 / 后非空白数字；闭 $ 前非空白 / 后非数字；\\$ 字面
+    //   KaTeX 未加载/解析失败 → 原样回退字面文本，零渲染中断
+    function _renderMath(body, displayMode) {
+        try {
+            if (typeof katex === 'undefined' || !katex || !katex.renderToString) return '$' + body + '$';
+            return katex.renderToString(body, { displayMode: !!displayMode, throwOnError: false });
+        } catch (_) { return '$' + body + '$'; }
+    }
+    function _scanMath(src) {
+        var maths = [], out = '', i = 0, n = src.length;
+        while (i < n) {
+            var ch = src.charAt(i);
+            if (ch === '\\' && i + 1 < n && src.charAt(i + 1) === '$') { out += '$'; i += 2; continue; }  // \\$ → 字面 $
+            if (ch !== '$') { out += ch; i++; continue; }
+            var prev = i > 0 ? src.charAt(i - 1) : '';
+            if (/[A-Za-z0-9]/.test(prev)) { out += '$'; i++; continue; }  // 5$ / abc$ 不触发
+            if (i + 1 < n && src.charAt(i + 1) === '$') {
+                // 独立公式 $$...$$
+                var close = src.indexOf('$$', i + 2);
+                if (close !== -1 && close > i + 2) {
+                    var body = src.slice(i + 2, close);
+                    if (body.charAt(0) !== ' ' && body.charAt(body.length - 1) !== ' ') {
+                        var idx = maths.length;
+                        maths.push(_renderMath(body, true));
+                        out += '\x00MK' + idx + '\x00';
+                        i = close + 2; continue;
+                    }
+                }
+                out += '$'; i += 1; continue;  // 无闭合/空体 → 字面
+            }
+            var nx = src.charAt(i + 1);
+            if (!nx || /\s/.test(nx) || /\d/.test(nx)) { out += '$'; i++; continue; }  // $ 5 / $5 不触发
+            var k = src.indexOf('$', i + 1), matched = false;
+            while (k !== -1) {
+                if (src.slice(i + 1, k).indexOf('\n') !== -1) break;  // 行内公式不跨行
+                var pv = src.charAt(k - 1), nn = src.charAt(k + 1);
+                if (pv !== ' ' && pv !== '\t' && !(nn && /\d/.test(nn))) {
+                    var b2 = src.slice(i + 1, k);
+                    if (b2.charAt(0) !== ' ' && b2.charAt(b2.length - 1) !== ' ') {
+                        var idx2 = maths.length;
+                        maths.push(_renderMath(b2, false));
+                        out += '\x00MK' + idx2 + '\x00';
+                        i = k + 1; matched = true; break;
+                    }
+                }
+                k = src.indexOf('$', k + 1);
+            }
+            if (!matched) { out += '$'; i++; }
+        }
+        return { text: out, maths: maths };
+    }
+    var _mk = _scanMath(s);
+    s = _mk.text;
+    var mathBlocks = _mk.maths;
+    // ★ 2026-08-29 顺序定案：行内代码 + 数学公式扫描在 escHtml 之前——
+    //   数学 body 保持原始字符（$a<b$ 的 < 原样进 KaTeX；实体转义版 &lt; 在 KaTeX 中渲染错误实锤），
+    //   行内代码内容单次转义（旧顺序双重转义：`<b>` 显示成 &lt;b&gt; 的老 bug 顺带根治）
+    s = escHtml(s);
     // Headers
     s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     s = s.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -159,6 +218,8 @@ function renderMarkdown(src) {
     // ★ 最后恢复代码块 + 行内代码（所有行内规则已处理完；\x00N 还原为 \n）
     s = s.replace(/\x00CB(\d+)\x00/g, function (_, i) { return codeBlocks[+i]; });
     s = s.replace(/\x00IC(\d+)\x00/g, function (_, i) { return inlineCodes[+i]; });
+    // ★ 数学公式最后恢复（KaTeX 成品 HTML 不再经过任何行内规则）
+    s = s.replace(/\x00MK(\d+)\x00/g, function (_, i) { return mathBlocks[+i]; });
     s = s.replace(/\x00N/g, '\n');
     return s;
 }
