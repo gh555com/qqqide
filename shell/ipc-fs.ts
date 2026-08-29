@@ -262,6 +262,7 @@ interface CopyTx {
     status: 'pending' | 'done' | 'cancelled';
     createdAt: number;
     lastActiveAt: number;
+    ownerPid?: number;      // ★ 所属实例进程 pid (2026-08-29 多实例修复: 恢复前存活检查, 防误删他实例进行中复制)
 }
 
 function _txStorePath(): string {
@@ -298,7 +299,8 @@ function _txLoadFromDisk(): void {
                     dirs: Array.isArray(t.dirs) ? t.dirs : [],
                     status: t.status === 'pending' ? 'pending' : (t.status === 'done' ? 'done' : 'cancelled'),
                     createdAt: typeof t.createdAt === 'number' ? t.createdAt : Date.now(),
-                    lastActiveAt: typeof t.lastActiveAt === 'number' ? t.lastActiveAt : Date.now()
+                    lastActiveAt: typeof t.lastActiveAt === 'number' ? t.lastActiveAt : Date.now(),
+                    ownerPid: typeof t.ownerPid === 'number' ? t.ownerPid : undefined
                 });
             }
         }
@@ -355,7 +357,8 @@ function _txEnsure(streamId: string, targetDir: string): void {
         dirs: [],
         status: 'pending',
         createdAt: now,
-        lastActiveAt: now
+        lastActiveAt: now,
+        ownerPid: process.pid  // ★ 归属实例 pid — 他实例启动恢复据此判断是否存活, 存活则绝不动
     });
     _txPersistNow(); // 创建即时落盘（崩溃时事务必须可见）
 }
@@ -452,15 +455,42 @@ function _txEnd(streamId: string): void {
     _txPersistNow();
 }
 
+// ★ 进程存活探测（仅探测不杀）: true=存活 / false=已死 / null=无记录不可判定
+function _pidAlive(pid: number | undefined): boolean | null {
+    if (typeof pid !== 'number' || !isFinite(pid) || pid <= 0) return null;
+    try { process.kill(pid, 0); return true; }
+    catch (e: any) { return (e && e.code === 'ESRCH') ? false : true; } // EPERM=存在; 其他异常按存活处理(安全方向)
+}
+
 // ★ 崩溃恢复（registerFsIpc 启动时异步执行）：pending 事务 → 差集精确清理 → 删记录
+//   ★ 2026-08-29 多实例修复: 恢复判定 = ownerPid 存活检查（主）+ lastActiveAt 新鲜度（辅）。
+//     实例 B 启动瞬间实例 A 正在复制大文件 → A 的 pending 事务 ownerPid 存活 → 跳过，绝不误删
+//     他实例半成品（旧实现无归属校验，无条件全清 → A 复制必断）。安全方向: 不确定 → 不删
+//     （残留半成品无害；删错他实例进行中文件 = 复制中断）。
+//     活事务 lastActiveAt 距现在理论上无硬上界（单文件大复制期间不更新），
+//     但 pid 存活 + 超 6h 无任何活动 → pid 必已被系统复用（原进程早死）→ 可清；
+//     无 pid 记录（旧版遗留）→ 仅新鲜度判定，阈值放宽到 24h 防误伤旧版实例长复制。
+const _TX_STALE_OWNED_MS = 6 * 3600 * 1000;    // pid 存活但超 6h 无活动 → pid 复用, 可清
+const _TX_STALE_UNOWNED_MS = 24 * 3600 * 1000; // 无 pid 记录 (旧版) → 仅按新鲜度, 保守
 async function _txRecover(): Promise<void> {
     try {
         _txLoadFromDisk();
         if (_txStore.size === 0) return;
         const pending = [..._txStore.values()].filter(t => t.status === 'pending');
         if (pending.length === 0) { _txStore.clear(); return; }
-        let cleaned = 0;
+        let cleaned = 0, skipped = 0;
+        const now = Date.now();
         for (const tx of pending) {
+            let shouldClean: boolean;
+            if (tx.ownerPid === process.pid) {
+                shouldClean = false; // 自己的事务（启动时理论上不存在，防御）
+            } else {
+                const alive = _pidAlive(tx.ownerPid);
+                if (alive === false) shouldClean = true;                                      // 主人已死 → 必清
+                else if (alive === true) shouldClean = now - tx.lastActiveAt > _TX_STALE_OWNED_MS;   // 活进程但超 6h 无活动 → pid 复用
+                else shouldClean = now - tx.lastActiveAt > _TX_STALE_UNOWNED_MS;               // 无 pid 记录 → 仅新鲜度
+            }
+            if (!shouldClean) { skipped++; continue; } // 他实例进行中/近期崩溃 → 保留, 由所属实例下次启动清理
             try {
                 _txRollback(tx.id);
                 cleaned += tx.tempFiles.length;
@@ -469,7 +499,9 @@ async function _txRecover(): Promise<void> {
             _txRemoved.add(tx.id);
         }
         _txPersistNow();
-        console.log('[copy-tx] recover: cleaned', cleaned, 'leftover item(s) from', pending.length, 'crashed transaction(s)');
+        if (cleaned > 0 || skipped > 0) {
+            console.log('[copy-tx] recover: cleaned ' + cleaned + ' leftover item(s) from crashed tx, skipped ' + skipped + ' live/pending tx');
+        }
     } catch { /* ignore */ }
 }
 

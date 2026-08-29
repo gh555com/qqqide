@@ -179,10 +179,34 @@ function _normFolder(p: string): string {
     return (p || '').replace(/\\/g, '/').replace(/\/$/, '');
 }
 
+// ★ 多实例窗口记忆隔离 (2026-08-29): ws.sq3 是 OS 级共享库 (dev+绿色包+多启动目录共用),
+//   openWindows 是「整列表快照」语义 — 与共享单 key 结构性冲突: 实例 B 关窗 → B 的列表整体覆盖
+//   A 的列表 → 重启只恢复最后写者, 其余实例窗口记忆全丢 (结构性必发生)。
+//   修复: 窗口记忆 key 按启动目录分槽 openWindows.{root} — 不同启动目录零互踩;
+//   同目录单实例 (launcher Mutex) 无同 key 并发。global.sq3 open_windows 在包内 (天然 per-pack) 不动。
+let _packRoot = '';
+export function setPackRoot(root: string): void {
+    if (root) _packRoot = _normFolder(root);
+}
+function _detectPackRoot(): string {
+    try {
+        // 绿色包: {root}/gh555.com/joker.exe (execPath 含 /gh555.com/ 段); dev electron.exe 探测不到 → ''
+        const exe = process.execPath.replace(/\\/g, '/');
+        const i = exe.indexOf('/gh555.com/');
+        if (i > 0) return exe.slice(0, i);
+    } catch { /* ignore */ }
+    return '';
+}
+/** ws.sq3 按启动目录分槽的 key; 探测失败 (dev) → 回退旧 key (dev 单实例无并发) */
+export function packWsKey(base: string): string {
+    if (!_packRoot) setPackRoot(_detectPackRoot());
+    return _packRoot ? base + '.' + _packRoot : base;
+}
+
 function _persistOpenWindows(list: any[], stateStore: StateStore): void {
     try {
         stateStore.setNow('qqqide', 'open_windows', list).catch(() => { });
-        wsStateSetKey('openWindows', list).catch(() => { });
+        wsStateSetKey(packWsKey('openWindows'), list).catch(() => { });
     } catch { /* ignore */ }
 }
 
@@ -190,8 +214,8 @@ function _persistWindowLogs(stateStore: StateStore): void {
     try {
         stateStore.setNow('qqqide', 'window_open_log', _windowOpenLog.slice()).catch(() => { });
         stateStore.setNow('qqqide', 'window_close_log', _windowCloseLog.slice()).catch(() => { });
-        wsStateSetKey('windowOpenLog', _windowOpenLog.slice()).catch(() => { });
-        wsStateSetKey('windowCloseLog', _windowCloseLog.slice()).catch(() => { });
+        wsStateSetKey(packWsKey('windowOpenLog'), _windowOpenLog.slice()).catch(() => { });
+        wsStateSetKey(packWsKey('windowCloseLog'), _windowCloseLog.slice()).catch(() => { });
     } catch { /* ignore */ }
 }
 
@@ -314,16 +338,16 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
     (win as any).__qqqCloseBypass = true;
 }
 
-// ---- createWindow ----
-export function createWindow(
+// ---- createWindow ----export function createWindow(
     portableRoot: string,
     portableCache: string,
     appVersion: string,
     // lspBridge: LspBridge,  // LSP OFF — 2026-06-23
     lspBridge: any,
     downloadService: DownloadService,
-    stateStore: StateStore,
-): BrowserWindow {
+    stateStore: StateStore,): BrowserWindow {
+    // ★ 窗口记忆分槽: 启动目录即实例身份 (多实例互踩修复 2026-08-29)
+    setPackRoot(portableRoot);
     const preloadPath = path.join(__dirname, 'preload.js');
     const win = new BrowserWindow({
         width: 1400,

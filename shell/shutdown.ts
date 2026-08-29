@@ -13,7 +13,7 @@ import { BootConfig } from './boot';
 import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
-import { _windowProjectMap, snapshotOpenWindows } from './window-manager';
+import { _windowProjectMap, snapshotOpenWindows, packWsKey } from './window-manager';
 import { releaseAllProjectLocks } from './project-lock';
 import { wsStateSetKey } from './ipc-ws-state';
 import { crashNetMarkCleanQuit } from './crash-net';
@@ -119,8 +119,8 @@ export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<nu
         const windows = snapshotOpenWindows();
         if (windows.length > 0) {
             stateStore.setNow('qqqide', 'open_windows', windows);
-            // ★ OS 级兜底（删包/换包后回写）
-            try { wsStateSetKey('openWindows', windows); } catch { /* ignore */ }
+            // ★ OS 级兜底（删包/换包后回写）— 按启动目录分槽, 多实例零互踩 (2026-08-29)
+            try { wsStateSetKey(packWsKey('openWindows'), windows); } catch { /* ignore */ }
             console.log('[shutdown] saved ' + windows.length + ' open window(s) for next-startup restore');
         }
     } catch (e) {

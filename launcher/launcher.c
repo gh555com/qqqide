@@ -66,7 +66,7 @@ static void enableTls12(HINTERNET hRequest) {
 // ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
 //   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
 //   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
-#define LAUNCHER_VERSION "20260828.1"
+#define LAUNCHER_VERSION "20260829.1"
 
 // ── Ed25519 验证公钥（2026-08-27 签名验证安全防线）──
 //   唯一硬编码信任根: 服务器一切下载物（r / units.json）必须带此公钥可验证的签名。
@@ -2506,6 +2506,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         case PHASE_WAITING: {
             // ★ 核心：检测 joker.exe 的主窗口是否出现
             int applyBusy = (InterlockedCompareExchange(&g_applyRunning, 0, 0) != 0);
+            // ★ 更新线程守护（2026-08-29 竞态实锤）: 后台下载线程未结束 → 启动器绝不退出
+            //   （进程退出=线程被杀 → 增量/全量下载每次启动都从头来 → 永远升不上去；
+            //   旧代码只等解压线程 applyBusy，下载线程被连坐终止）
+            int updateBusy = (InterlockedCompareExchange(&g_updateRunning, 0, 0) != 0);
 
             // ★ 下载完成即解压（2026-08-14）: 后台下载完 r.next+.version-next → 本会话立即解压
             //   → 全量升级 2 次启动完成（下载+解压同会话，仅交换等下次启动）
@@ -2515,8 +2519,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
             if (g_jokerPid != 0) {
                 HWND jwnd = findJokerMainWindow(g_jokerPid);
                 if (jwnd != NULL) {
-                    if (applyBusy) {
-                        // 后台还在解压 → 隐藏窗口，进程继续跑
+                    if (applyBusy || updateBusy) {
+                        // 后台还在解压/下载 → 隐藏窗口，进程继续跑（下载完成自动接解压）
                         ShowWindow(hwnd, SW_HIDE);
                     } else {
                         g_phase = PHASE_DONE;
@@ -2527,7 +2531,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
             }
 
             // 方式2：loading-status 兜底（"ready" 信号）
-            if (!applyBusy) {
+            if (!applyBusy && !updateBusy) {
                 WCHAR candidates[2][MAX_PATH];
                 WCHAR myDir[MAX_PATH];
                 GetModuleFileNameW(NULL, myDir, MAX_PATH);
@@ -2565,7 +2569,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
 
             // 方式4：超时 30s → joker 还在跑就静默关闭（仅当无后台任务时）
             if (g_tickCount >= 120 && g_phase == PHASE_WAITING) {
-                if (!applyBusy) {
+                if (!applyBusy && !updateBusy) {
                     if (g_hProcess) {
                         DWORD ec = 0;
                         if (GetExitCodeProcess(g_hProcess, &ec) && ec == STILL_ACTIVE) {
@@ -2576,6 +2580,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
                     }
                     g_phase = PHASE_ERROR;
                     g_closeCountdown = ERROR_CLOSE_TICKS;
+                } else if (g_tickCount >= 2400) {
+                    // ★ 10 分钟硬上限（2026-08-29）: WinHTTP 超时（30-60s）应早已复位线程，
+                    //   此为最后保险——僵尸下载线程永不拖住启动器（joker 退出路径方式3不受此限）
+                    g_phase = PHASE_DONE;
+                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                    return 0;
                 }
             }
             break;

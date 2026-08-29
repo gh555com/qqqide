@@ -76,6 +76,8 @@
     if (count > 0) {
       el.style.display = '';
       el.textContent = String(count);  // ★ 真实数字全显示，禁 99+ 截断
+      // ★ 仅超三位（≥1000）才加宽适配，1-3 位豆腐块/字号零变化
+      el.classList.toggle('aiv-git-wide', String(count).length > 3);
     } else {
       el.style.display = 'none';
     }
