@@ -607,15 +607,28 @@ function saveQuestUIState(id) {
     _updateDraftFlag(id);
 }
 
-function restoreQuestUIState(id) {
+async function restoreQuestUIState(id) {
     var state = questUIStates[id];
+    // ★ per-quest 等级偏好（2026-08-27）：ai.questTier.{questId} 三面板共享唯一 key
+    //   优先级：per-quest 偏好 → 面板快照旧值（兼容迁移）→ 全局默认
+    //   → 切面板/切后台/刷新/重启均保持用户明确选择的等级
+    var tier = null;
+    try {
+        if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+            var _qTier = await onlyStore.getAsync('ai.questTier.' + id);
+            if (typeof _qTier === 'number') tier = _qTier;
+        }
+    } catch (_) { }
+    if (tier == null) {
+        tier = (state && state.selectedTier != null) ? state.selectedTier : ((typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3);
+    }
     if (state) {
         $input.value = state.inputValue || '';
         $input._resetUndo();
         pendingImages = state.pendingImages || [];
         // ★ 旧数据可能为 null（A 已改为信息弹窗），回退默认
-        selectedTier = (state.selectedTier != null) ? state.selectedTier : ((typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3);
-        updateTierButtons(selectedTier);
+        selectedTier = tier;
+        updateTierButtons(tier);
         renderImageStrip();
         updateQueueBtn();
         if (typeof state.inputCaret === 'number') {
@@ -625,8 +638,8 @@ function restoreQuestUIState(id) {
         $input.value = '';
         $input._resetUndo();
         pendingImages = [];
-        selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
-        updateTierButtons(selectedTier);
+        selectedTier = tier;
+        updateTierButtons(tier);
         renderImageStrip();
         updateQueueBtn();
     }
@@ -763,7 +776,7 @@ async function initQuests() {
         // ★ 刷新按钮状态（init 缺此 → restart 后 fatal 态按钮未被锁死且无视觉反馈）
         if (typeof setStreaming === 'function') setStreaming(!!(_activeAgent && _activeAgent._streaming));
 
-        restoreQuestUIState(questActiveId);
+        await restoreQuestUIState(questActiveId);
         // ★ 延迟恢复滚动位置（等 DOM 布局完成后）
         // 自动恢复标记：连接中断自愈 reload 后强制滚到底
         var _forceBottom = false;

@@ -20,7 +20,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Ctx {
-    /// IDE portable root, e.g. /path/to/qqq-ide/
+    /// IDE portable root, e.g. /path/to/qqqide/
     pub qdir: PathBuf,
     /// f/ — VS Code portable data folder (triggers portable mode)
     pub f: PathBuf,

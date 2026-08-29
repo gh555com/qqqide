@@ -59,6 +59,7 @@ var _orig={};
 <link rel="stylesheet" href="core/shell-base.css">
 <link rel="stylesheet" href="core/shell-main.css">
 <link rel="stylesheet" href="core/shell-widgets.css">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <script src="core/qqqide-theme.js"></script>
 <script src="core/cooldown-guard.js"></script>
 <script src="core/char-undo.js"></script>
@@ -154,10 +155,12 @@ var _orig={};
         <!-- ★ 赞助商（三盏绿灯之右）→ 轮换播放器：大20s/中10s/小5s 瞬间替换文字，点击打开当前品牌（数据源 /api/sponsor/current） -->
         <span class="qqq-status-sponsor" id="qqq-status-sponsor">
           <a class="qqq-sponsor-label" id="qqq-sponsor-label" href="https://www.gh555.com/gaea/d/qqqide#sponsors" data-i18n="act.sponsorLabelWord">赞助商</a><span data-i18n="act.sponsorLabelColon">：</span>
-          <a class="qqq-sponsor-link" id="qqq-sponsor-link" href="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">成都知佳知识产权代理有限公司</a>
+          <a class="qqq-sponsor-link" id="qqq-sponsor-link" href="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">知佳</a>
         </span>
         <span class="qqq-spacer"></span>
         <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="wq 前摇统计">wq: --</span>
+        <!-- ★ 总在线时间（累计陪伴小时）：服务器 wq.doer_state.companion_seconds 权威值，客户端零记录直接打印 -->
+        <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace;font-size:11px;">--</span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
         <!-- ★ 三活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding）→ core/shell-activities.js -->
         <span class="qqq-act-widget qqq-act-cool" id="qqq-act-cool" title="">
@@ -302,7 +305,7 @@ var _orig={};
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=337')
+    navigator.serviceWorker.register('./service-worker.js?v=338')
       .then(function (reg) {
         // ★ 新 SW 已就绪（waiting）→ 立即激活（service-worker 收 skipWaiting 后 activate + claim）
     //   2026-08-23 删除 controllerchange 自动 reload：该事件在 SW 首次接管页面时同样触发

@@ -75,7 +75,7 @@
     if (!el) return;
     if (count > 0) {
       el.style.display = '';
-      el.textContent = count > 99 ? '99+' : String(count);
+      el.textContent = String(count);  // ★ 真实数字全显示，禁 99+ 截断
     } else {
       el.style.display = 'none';
     }
@@ -1266,6 +1266,11 @@
         'display:flex; align-items:center; padding:4px 10px; cursor:pointer; ' +
         'font-size:14px; font-weight:300; color:var(--text-primary); white-space:nowrap; position:relative; ' +
         'width:100%; box-sizing:border-box;';
+      // ★ 家目录高亮：_qqq / _qqqvault 文件夹加大一号 + 粗体 + 红色（仅此两目录）
+      if (ent.isDir && (ent.name === '_qqq' || ent.name === '_qqqvault')) {
+        row.style.cssText += 'font-size:16px; font-weight:700; color:var(--red);';
+        row.classList.add('aiv-dd-home');  // ★ hover 时保持红色不变色（CSS 兜底）
+      }
       // ★ 标记行属性，供快照还原匹配
       row.dataset.name = ent.name;
       row.dataset.isDir = ent.isDir ? 'true' : 'false';

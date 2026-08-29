@@ -605,8 +605,65 @@ function bootActivities(boot) {
     }
   }
 
+  // ── 美丽滴眼睛文案：联网抓服务器最新（doc 系统 page qqqide-video），离线/失败兜底 zh.json ──
+  var _eyeDoc = null;        // 解析后的服务器文案 HTML（<p class="qqq-act-desc">…×N）
+  var _eyeDocFetched = false;
+
+  // 服务器段落内两个已知站内链接 → 客户端外链映射；其余标签剥成纯文本（安全兜底）
+  function mapEyeLinks(p) {
+    var s = String(p);
+    s = s.replace(/<a href="#eye"[^>]*>([\s\S]*?)<\/a>/g, function (m, txt) { return '\u0001R' + txt + '\u0001'; });
+    s = s.replace(/<a href="javascript:[^"]*"[^>]*>([\s\S]*?)<\/a>/g, function (m, txt) { return '\u0001S' + txt + '\u0001'; });
+    s = s.replace(/<[^>]+>/g, '');
+    s = s.replace(/\u0001R([\s\S]*?)\u0001/g, '<a class="qqq-act-eye-link" data-eye-link="records">$1</a>');
+    s = s.replace(/\u0001S([\s\S]*?)\u0001/g, '<a class="qqq-act-eye-link" data-eye-link="spark">$1</a>');
+    return s;
+  }
+
+  // 从 doc 系统 HTML 提取「美丽滴眼睛」卡片正文（badge 标题匹配，body 内每 <p> 一段）
+  function parseEyeCard(html) {
+    try {
+      var cards = String(html).split('<div class="qqq-activity-card"');
+      for (var i = 1; i < cards.length; i++) {
+        var card = cards[i];
+        var bm = card.match(/qqq-activity-badge[^>]*>([^<]*)</);
+        if (!bm) continue;
+        if (bm[1].trim() !== '美丽滴眼睛') continue; // 服务器内容恒为中文源
+        var bodyM = card.match(/qqq-activity-body">([\s\S]*?)<\/div>\s*<\/div>/);
+        if (!bodyM) return null;
+        var ps = [];
+        var pre = /<p>([\s\S]*?)<\/p>/g;
+        var m;
+        while ((m = pre.exec(bodyM[1])) !== null) ps.push(mapEyeLinks(m[1]));
+        if (!ps.length) return null;
+        var out = [];
+        for (var j = 0; j < ps.length; j++) out.push('<p class="qqq-act-desc">' + ps[j] + '</p>');
+        return out.join('');
+      }
+    } catch (e) { }
+    return null;
+  }
+
+  // 拉取服务器最新眼睛文案（_apiFetch 双线路 failover），成功且弹窗正开 → 立即重渲染
+  function fetchEyeDocText() {
+    if (_eyeDocFetched) return;
+    _eyeDocFetched = true;
+    _apiFetch('/docs/page?product=qqqide&slug=qqqide-video&format=html')
+      .then(function (r) { return r ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !data.ok || !data.page || !data.page.content) return;
+        var parsed = parseEyeCard(data.page.content);
+        if (!parsed) return;
+        _eyeDoc = parsed;
+        if (_overlay && _overlay.querySelector('.qqq-act-eye-modal')) openEyePopup();
+      })
+      .catch(function () { });
+  }
+
   // ── 弹窗四：美丽滴眼睛（真实用户福利 · 现金发放记录） ──────────────────
   function openEyePopup() {
+    // 尚未拉到服务器文案 → 每次打开重试（成功一次后永久生效）；弹窗开着时拉取成功会自动重渲染
+    if (!_eyeDoc) { _eyeDocFetched = false; fetchEyeDocText(); }
     if (!isLoggedIn()) {
       openOverlay(
         '<div class="qqq-act-celebrate"><svg class="qqq-act-eye-svg" width="110" height="56" viewBox="0 0 110 56" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qqqEyeLid" x1="0" y1="0" x2="110" y2="0"><stop offset="0" stop-color="#f6b8c8"/><stop offset="1" stop-color="#e88ca4"/></linearGradient><radialGradient id="qqqEyeIris" cx="50%" cy="42%" r="58%"><stop offset="0" stop-color="#fadce4"/><stop offset="1" stop-color="#ee9fb5"/></radialGradient></defs><path d="M9 30 Q55 10 101 30 Q55 50 9 30 Z" fill="#fbe7ec" stroke="url(#qqqEyeLid)" stroke-width="2.8" stroke-linejoin="round"/><circle cx="55" cy="29" r="12" fill="url(#qqqEyeIris)"/><circle cx="55" cy="29" r="12" fill="none" stroke="#f0a7bc" stroke-width="1.4"/><circle cx="55" cy="29" r="4.6" fill="#b75c79"/><circle cx="59" cy="25" r="3.4" fill="#fff" opacity=".95"/><circle cx="52" cy="31" r="1.4" fill="#fff" opacity=".6"/></svg></div>' +
@@ -637,10 +694,12 @@ function bootActivities(boot) {
       '<div class="qqq-act-celebrate"><svg class="qqq-act-eye-svg" width="110" height="56" viewBox="0 0 110 56" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="qqqEyeLid" x1="0" y1="0" x2="110" y2="0"><stop offset="0" stop-color="#f6b8c8"/><stop offset="1" stop-color="#e88ca4"/></linearGradient><radialGradient id="qqqEyeIris" cx="50%" cy="42%" r="58%"><stop offset="0" stop-color="#fadce4"/><stop offset="1" stop-color="#ee9fb5"/></radialGradient></defs><path d="M9 30 Q55 10 101 30 Q55 50 9 30 Z" fill="#fbe7ec" stroke="url(#qqqEyeLid)" stroke-width="2.8" stroke-linejoin="round"/><circle cx="55" cy="29" r="12" fill="url(#qqqEyeIris)"/><circle cx="55" cy="29" r="12" fill="none" stroke="#f0a7bc" stroke-width="1.4"/><circle cx="55" cy="29" r="4.6" fill="#b75c79"/><circle cx="59" cy="25" r="3.4" fill="#fff" opacity=".95"/><circle cx="52" cy="31" r="1.4" fill="#fff" opacity=".6"/></svg></div>' +
       '<h2>' + t('act.eye.name', '美丽滴眼睛') + '</h2>' +
       '<p class="qqq-act-csub">' + t('act.eye.sub', 'qqqide 真实用户福利') + '</p>' +
+      (_eyeDoc || (
       '<p class="qqq-act-desc">' + t('act.eye.intro', '征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币），现金立入。') +
       ' <a class="qqq-act-eye-link" data-eye-link="records">' + t('act.eye.linkRecords', '查看成交记录') + '</a></p>' +
-      '<p class="qqq-act-desc">' + t('act.eye.tail', '当视频播放量逐渐增大，会自动接入“') +
-      '<a class="qqq-act-eye-link" data-eye-link="spark">' + t('act.eye.linkSpark', '星火计划') + '</a>' + t('act.eye.tailEnd', '”。') + '</p>' +
+      '<p class="qqq-act-desc">' + t('act.eye.tail', '当视频播放量逐渐增大，会自动接入') +
+      '<a class="qqq-act-eye-link" data-eye-link="spark">' + t('act.eye.linkSpark', '星火计划') + '</a>' + t('act.eye.tailEnd', '。') + '</p>'
+      )) +
       '<div class="qqq-act-eye-paid">' + tp('act.eye.paid', { v: fmt(eyePaid) }, '已入：' + fmt(eyePaid)) + '</div>' + eyeListHtml,
       'qqq-act-eye-modal'
     );
@@ -958,4 +1017,7 @@ function bootActivities(boot) {
   // 定时轮询
   fetchStatus(true);
   setInterval(function () { fetchStatus(false); }, POLL_MS);
+
+  // 眼睛文案：后台预热拉取服务器最新（失败静默，弹窗打开时自动重试）
+  fetchEyeDocText();
 }
