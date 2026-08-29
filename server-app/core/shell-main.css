@@ -449,6 +449,27 @@
   margin-right: 16px;
 }
 
+/* ★ 内存数字与图标同色（--mem-icon 统一中间色，2026-08-29） */
+#qqq-status-mem {
+  color: var(--mem-icon);
+}
+
+/* ── 内存图标（手绘 CSS 内存条：芯片主体 11×6 + 4 引脚，同色渐变=纯色块零模糊零阴影，色 var(--mem-icon) 更深黑/更亮白，2026-08-29） ── */
+.qqq-mem-icon {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 4px;
+  vertical-align: -2px;
+  background:
+    linear-gradient(var(--mem-icon), var(--mem-icon)) 0 0 / 11px 6px no-repeat,
+    linear-gradient(var(--mem-icon), var(--mem-icon)) 0 8px / 2px 3px no-repeat,
+    linear-gradient(var(--mem-icon), var(--mem-icon)) 3px 8px / 2px 3px no-repeat,
+    linear-gradient(var(--mem-icon), var(--mem-icon)) 6px 8px / 2px 3px no-repeat,
+    linear-gradient(var(--mem-icon), var(--mem-icon)) 9px 8px / 2px 3px no-repeat;
+  -webkit-app-region: no-drag;
+}
+
 /* ── 赞助商文字（状态栏左下角，纯文字素雅款） ── */
 .qqq-status-sponsor {
   margin-right: 16px;
@@ -498,7 +519,9 @@
 .qqq-status-area.qqq-dense-2 .qqq-act-name { display: none; }
 .qqq-status-area.qqq-dense-3 #qqq-status-wq,
 .qqq-status-area.qqq-dense-3 #qqq-status-version,
-.qqq-status-area.qqq-dense-3 #qqq-status-total { display: none; }
+.qqq-status-area.qqq-dense-3 #qqq-status-total,
+.qqq-status-area.qqq-dense-3 #qqq-status-mem,
+.qqq-status-area.qqq-dense-3 .qqq-mem-icon { display: none; }
 .qqq-status-area.qqq-dense-4 #qqq-status-online,
 .qqq-status-area.qqq-dense-4 .qqq-gw-dots { display: none; }
 
@@ -804,17 +827,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 16px;
+  min-width: 16px;
+  height: 15px;
   border-radius: 8px;
   background: #dc322f;
   color: #fff;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 0 5px;
+  padding: 0 4px;
   line-height: 1;
   flex-shrink: 0;
   margin: 0 2px;
+}
+
+/* ★ 超三位（≥1000）自动增宽适配：数字保持原字号，豆腐块随内容撑宽 */
+.aiv-git-badge.aiv-git-wide {
+  min-width: auto;
+  padding: 0 6px;
 }
 
 .aiv-block-plus {
@@ -1040,4 +1069,356 @@
 
 .gaea-search-input:focus {
   border-color: var(--primary-color);
+}
+
+/* ============================================================================
+   MEM 24H hover 面板 — 启动包内存曲线（shell-mem-hover.js，2026-08-29）
+   高科技风：渐变边框 + 发光 + 曲线渐变描边 + 尾点脉冲；瞬间弹出零延迟
+   ============================================================================ */
+.qqq-mem-hover {
+  position: fixed;
+  z-index: 2147483000;
+  width: 360px;
+  height: 450px; /* v5 固定高：flex 布局进程区撑满，绝不随内容自动扩大 */
+  display: flex;
+  flex-direction: column;
+  padding: 9px 12px 7px;
+  border-radius: 10px;
+  background: var(--card-bg);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(5px) scale(0.985);
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 100ms ease-out, transform 100ms ease-out;
+  /* 渐变边框（mask 双图层） */
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  /* 顶部细高光 */
+  overflow: hidden;
+}
+
+.qqq-mem-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--cyan), transparent 38%, var(--green));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.qqq-mem-hover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.qqq-mem-hover-show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* v6: 点击固定（pin）——面板可交互（滚动进程列表），金色锁定视觉 */
+.qqq-mem-hover.qqq-mem-hover-pinned {
+  pointer-events: auto;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(181, 137, 0, 0.4);
+}
+.qqq-mem-hover-pinned::before {
+  background: linear-gradient(135deg, var(--cyan), transparent 38%, #b58900);
+}
+.qqq-mem-hover-pinned::after {
+  background: linear-gradient(90deg, transparent, #b58900, transparent);
+  opacity: 0.8;
+}
+.qqq-mem-hover-pinned .qqq-mem-hover-dot {
+  background: #b58900;
+  animation: none;
+  box-shadow: 0 0 6px 1px rgba(181, 137, 0, 0.7);
+}
+
+.qqq-mem-hover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.qqq-mem-hover-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  font-weight: bold;
+}
+
+/* live 脉冲点 */
+.qqq-mem-hover-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: qqq-mem-live 2s ease-in-out infinite;
+}
+
+@keyframes qqq-mem-live {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); opacity: 1; }
+  50% { box-shadow: 0 0 6px 1px var(--green); opacity: 0.75; }
+}
+
+.qqq-mem-hover-procs {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: normal; /* v12: 标题 MEM 是粗体，procs 继承会变粗——进程数字保持常规字重（用户定案） */
+  margin-left: 4px; /* v12: 与 ● 之间加一个空格空隙 */
+}
+
+/* v11: reset 按钮（右上角，固定 pin 后可点）——清除曲线脏历史从零重记 */
+.qqq-mem-hover-reset {
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 6px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+.qqq-mem-hover-reset:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  opacity: 1;
+}
+
+/* v8: 徽章放大后行占用反而压缩（1px 3px，配合徽章 translateY(-8px)） */
+.qqq-mem-hover-num {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 1px 0 3px;
+}
+
+.qqq-mem-hover-num-main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+/* 均值徽章（右上）：当前窗口均值，满 24h 即「24h 均值」；v8 字号 15px + 上移 8px + 压缩行高（放大不增占用） */
+.qqq-mem-hover-avg {
+  font-family: Consolas, monospace;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--green);
+  background: rgba(133, 153, 0, 0.12); /* solarized green 双主题同值，禁 color-mix（Chromium 108 不支持） */
+  border: 1px solid rgba(133, 153, 0, 0.35);
+  border-radius: 6px;
+  padding: 2px 6px 0; /* v12: 文字再下移 1px（豆腐块位置不变，padding-top 1→2px） */
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+  transform: translateY(-4px); /* v11: 5px → 4px（用户定案再下移 1px） */
+}
+.qqq-mem-hover-avg b {
+  font-weight: 800;
+}
+
+/* v12: 平均内存 > 1GB → 豆腐块主题色转红（触发点弹 qoast 见 shell-mem-hover.js） */
+.qqq-mem-hover-avg.hot {
+  color: var(--red);
+  background: rgba(220, 50, 47, 0.12); /* solarized red 双主题同值，禁 color-mix */
+  border-color: rgba(220, 50, 47, 0.35);
+}
+
+/* v7: 重启垂线——每次实例启动一根浅白虚线（暗色主题浅白发光，浅色主题蓝灰半透明保证可见） */
+.qqq-mem-hover-chart .qqq-mem-bootline {
+  fill: none;
+  stroke: rgba(238, 232, 213, 0.8);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.9;
+}
+html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
+  stroke: rgba(101, 123, 131, 0.55);
+}
+
+.qqq-mem-hover-val {
+  font-family: Consolas, monospace;
+  font-size: 28px;
+  font-weight: bold;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: 0.5px;
+}
+
+.qqq-mem-hover-unit {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.qqq-mem-hover-chart svg {
+  display: block;
+}
+
+.qqq-mem-hover-chart .qqq-mem-grid line {
+  stroke: var(--border-color);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.7;
+}
+
+.qqq-mem-hover-chart .qqq-mem-labels text {
+  fill: var(--text-secondary);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+/* y 轴刻度（左缘刻度区，随数据 min/max 动态；v9: 去粗体，字号保持 12px） */
+.qqq-mem-hover-chart .qqq-mem-ylbl {
+  fill: var(--text-secondary);
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+/* 最新点值标签（halo 描边压线可读；等于左上角当前值） */
+.qqq-mem-hover-chart .qqq-mem-curval {
+  fill: var(--green);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  font-weight: bold;
+  paint-order: stroke;
+  stroke: var(--card-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* 曲线渐变 + 面积渐变（stop 颜色经 CSS 变量注入，双主题自适应） */
+.qqq-mem-hover .qqq-mem-stop-a { stop-color: var(--cyan); stop-opacity: 0.30; }
+.qqq-mem-hover .qqq-mem-stop-b { stop-color: var(--cyan); stop-opacity: 0.02; }
+.qqq-mem-hover .qqq-mem-stop-c { stop-color: var(--cyan); }
+.qqq-mem-hover .qqq-mem-stop-d { stop-color: var(--green); }
+
+.qqq-mem-hover .qqq-mem-line {
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.qqq-mem-hover .qqq-mem-dot {
+  fill: var(--green);
+  stroke: var(--card-bg);
+  stroke-width: 1.2;
+}
+
+/* 尾点脉冲光圈 */
+.qqq-mem-hover .qqq-mem-dot-pulse {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 1;
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: qqq-mem-pulse 2s ease-out infinite;
+}
+
+@keyframes qqq-mem-pulse {
+  0% { opacity: 0.9; transform: scale(0.5); }
+  70% { opacity: 0; transform: scale(2.6); }
+  100% { opacity: 0; transform: scale(2.6); }
+}
+
+.qqq-mem-hover-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+
+/* 进程列表（树序：主进程加粗，后代缩进；数据 = 快照 rows 原样透传零额外查询） */
+.qqq-mem-hover-plist-head {
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.qqq-mem-hover-plist {
+  margin-top: 4px;
+  flex: 1; /* v5: 撑满剩余空间，面板恒高 450px 进程区恒高 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-right: -4px; /* v12: 容器右扩 4px → 滚动条右移 4px */
+  padding-right: 4px; /* 内容右边界保持原位（滚动条右移，进程行不动） */
+}
+/* 统一 IDE 风格滚动条（a 等级弹窗/在线人数弹窗同款，shell-base.css 基准） */
+.qqq-mem-hover-plist::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.qqq-mem-hover-plist::-webkit-scrollbar-track {
+  background: transparent;
+}
+.qqq-mem-hover-plist::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 3px;
+}
+.qqq-mem-hover-plist::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.55);
+}
+.qqq-mem-hover-plist::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.qqq-mem-hover-prow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 20px;
+  color: var(--text-primary);
+}
+
+.qqq-mem-hover-prow.root .qqq-mem-hover-pname {
+  color: var(--text-primary);
+  font-weight: bold;
+}
+
+.qqq-mem-hover-prow .qqq-mem-hover-pname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.qqq-mem-hover-prow .qqq-mem-hover-pmb {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.qqq-mem-hover-prow.muted {
+  opacity: 0.5;
 }

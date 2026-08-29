@@ -59,6 +59,7 @@
       '--card-bg': dark ? '#2a2a2a' : p.base2,
       '--quest-tofu-bg': dark ? '#211f1c' : '#ebe3ca',  // 置顶卡片背景（暖米色，介于 base2/base3 之间）
       '--text-primary': dark ? '#dcd8d0' : '#656360',
+      '--mem-icon': dark ? '#e2ded6' : '#4b4a46',  // 状态区内存图标+文字统一中间色（图标浅一档/文字深一档，两者一致，2026-08-29）
       '--text-secondary': dark ? '#a8a49c' : p.base01,
       '--text-dim': dark ? '#6a6660' : p.base1,
       '--border-color': dark ? '#333333' : '#d3c6aa',

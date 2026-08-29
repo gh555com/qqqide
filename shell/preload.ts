@@ -633,7 +633,30 @@ const QQQ = {
         },
     },
 
-    // ---- main-process memory watchdog (crash-net 广播 qqqide:mem:warning, 2026-08-20) ----    mem: {        onWarning: (cb: (data: { heapMB: number; rssMB: number }) => void) => {            const handler = (_e: unknown, data: any) => { try { cb(data); } catch (err) { console.warn('[mem.onWarning]', err); } };            ipcRenderer.on('qqqide:mem:warning', handler);            return () => ipcRenderer.removeListener('qqqide:mem:warning', handler);        },    },    // ---- squad (窗口编队, OS 级 %LOCALAPPDATA%/qqqide/squads.json) ----
+    // ---- main-process memory watchdog (crash-net 广播 qqqide:mem:warning, 2026-08-20) ----
+    // ---- 启动包内存真理机器 (mem-meter 广播 qqqide:mem:metrics, 2026-08-29) ----
+    mem: {
+        onWarning: (cb: (data: { heapMB: number; rssMB: number }) => void) => {
+            const handler = (_e: unknown, data: any) => { try { cb(data); } catch (err) { console.warn('[mem.onWarning]', err); } };
+            ipcRenderer.on('qqqide:mem:warning', handler);
+            return () => ipcRenderer.removeListener('qqqide:mem:warning', handler);
+        },
+        onMetrics: (cb: (data: any) => void) => {
+            const handler = (_e: unknown, data: any) => { try { cb(data); } catch (err) { console.warn('[mem.onMetrics]', err); } };
+            ipcRenderer.on('qqqide:mem:metrics', handler);
+            return () => ipcRenderer.removeListener('qqqide:mem:metrics', handler);
+        },
+        getMetrics: () => ipcRenderer.invoke('qqqide:mem:get-metrics'),
+        // 24h 曲线全量（hover 面板首拉，之后增量广播）
+        history: () => ipcRenderer.invoke('qqqide:mem:history'),
+        // v11: 清除曲线脏历史（删 mem-curve.log + 内存缓冲），广播全窗口同步
+        reset: () => ipcRenderer.invoke('qqqide:mem:reset'),
+        onReset: (cb: () => void) => {
+            const handler = () => { try { cb(); } catch (err) { console.warn('[mem.onReset]', err); } };
+            ipcRenderer.on('qqqide:mem:reset', handler);
+            return () => ipcRenderer.removeListener('qqqide:mem:reset', handler);
+        },
+    },    // ---- squad (窗口编队, OS 级 %LOCALAPPDATA%/qqqide/squads.json) ----
     squad: {
         get: () => ipcRenderer.invoke('qqqide:squad:get'),
         set: (slot: string) => ipcRenderer.invoke('qqqide:squad:set', slot),

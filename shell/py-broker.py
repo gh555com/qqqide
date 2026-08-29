@@ -36,6 +36,81 @@ def _log(msg: str):
         pass
 
 
+# =============================================================================
+#  ★ 启动包集合内存快照 — NtQuerySystemInformation (Win) ~7.5ms/次
+#   画圈 = 主进程 + 全部后代进程树（递归）: IDE 本体 + py-broker + miniaudio +
+#   goods python 全家。Σ 专用工作集（SYSTEM_PROCESS_INFORMATION offset 8
+#   LARGE_INTEGER, 任务管理器「内存」列同口径——2026-08-29 实测 8/8 逐字节
+#   命中 WMI WorkingSetPrivate）。mem-meter 每 5s 调用一次。
+# =============================================================================
+
+def _win_mem_snapshot(root_pid: int):
+    """NtQuery 全系统进程表 → root_pid + 全部后代 → Σ 专用工作集。
+    返回 {totalMB, nodes, rows:[{pid,ppid,ws_KB}]} 或 None（查询失败）。"""
+    import ctypes
+    import struct as _struct
+    ntdll = ctypes.WinDLL('ntdll', use_last_error=True)
+    STATUS_INFO_LENGTH_MISMATCH = 0xC0000004
+    buf = None
+    for size in (1 << 20, 4 << 20, 16 << 20):
+        b = ctypes.create_string_buffer(size)
+        status = ntdll.NtQuerySystemInformation(5, b, size, None)  # 5 = SystemProcessInformation
+        if status == 0:
+            buf = b
+            break
+        if status != STATUS_INFO_LENGTH_MISMATCH:
+            return None
+    if buf is None:
+        return None
+    raw = buf.raw
+    n = len(raw)
+    base = ctypes.addressof(b)  # 缓冲区基址（ImageName.Buffer 指针换算偏移用）
+    procs = {}
+    off = 0
+    while off + 8 <= n:
+        next_off = _struct.unpack_from('<I', raw, off)[0]
+        pid = _struct.unpack_from('<Q', raw, off + 80)[0]
+        ppid = _struct.unpack_from('<Q', raw, off + 88)[0]
+        if pid:
+            # ImageName UNICODE_STRING @ 0x38: Length(2) MaxLen(2) pad(4) Buffer(8)
+            name_len = _struct.unpack_from('<H', raw, off + 0x38)[0]
+            name_ptr = _struct.unpack_from('<Q', raw, off + 0x40)[0]
+            name = ''
+            noff = name_ptr - base if name_ptr else -1
+            if 0 <= noff < n and name_len > 0:
+                try:
+                    name = raw[noff:noff + name_len].decode('utf-16-le', 'replace')
+                    name = name.split('\\')[-1]
+                except Exception:
+                    name = ''
+            procs[pid] = (ppid, _struct.unpack_from('<Q', raw, off + 8)[0], name)  # (ppid, private_ws_bytes, name)
+        if not next_off:
+            break
+        off += next_off
+    children = {}
+    for pid, (ppid, _ws, _nm) in procs.items():
+        children.setdefault(ppid, []).append(pid)
+    queue = [root_pid]
+    seen = set()
+    while queue:
+        p = queue.pop(0)
+        if p in seen:
+            continue
+        seen.add(p)
+        queue.extend(children.get(p, []))
+    total = 0
+    rows = []
+    for p in seen:
+        info = procs.get(p)
+        if not info:
+            continue
+        ppid, ws, nm = info
+        total += ws
+        rows.append({'pid': p, 'ppid': ppid, 'ws': ws >> 10, 'n': nm})  # ws 单位 KB
+    _log(f"mem-snapshot: root={root_pid} nodes={len(seen)} totalMB={round(total / 1048576)}")
+    return {'totalMB': round(total / 1048576), 'nodes': len(seen), 'rows': rows}
+
+
 def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:
     """
     Windows: EnumWindows 枚举所有顶层窗口 →
@@ -478,6 +553,19 @@ def main():
                 sys.stdout.flush()
                 _log("EXIT command received")
                 break
+            elif action == "mem-snapshot":
+                root_pid = int(cmd.get("rootPid") or 0)
+                if OS == "Windows" and root_pid > 0:
+                    r = _win_mem_snapshot(root_pid)
+                    if r is None:
+                        result["ok"] = False
+                        result["error"] = "NtQuery failed"
+                    else:
+                        result["ok"] = True
+                        result.update(r)
+                else:
+                    result["ok"] = False
+                    result["error"] = "unsupported platform or missing rootPid"
             elif action == "rename-devtools":
                 _log(f"rename-devtools: mainHwnd={cmd.get('mainHwnd')} title={cmd.get('title')}")
                 if OS == "Windows":

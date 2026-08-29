@@ -229,6 +229,19 @@ function bootStatusbar(boot) {
 
 		$onl.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openOnlineUsers(); });
 
+		// ═══ 启动包内存显示 — 主进程 mem-meter 真理机器广播（2026-08-29 v2），一包多窗口同值零重复统计 ═══
+		// 口径 = 专用工作集 Private WS（任务管理器「内存」列同口径，三值合一唯一值，F12/F13 定案）
+		// hover 细节 = core/shell-mem-hover.js 高科技面板（24h 曲线），此元素零 title
+		var $mem = document.getElementById('qqq-status-mem');
+		if ($mem && bridge && bridge.mem) {
+			function renderMem(m) {
+				if (!m || typeof m.mb !== 'number' || m.mb <= 0) return;
+				$mem.textContent = m.mb + ' MB';
+			}
+			if (bridge.mem.getMetrics) bridge.mem.getMetrics().then(renderMem).catch(function () { /* 静默 */ });
+			bridge.mem.onMetrics(renderMem);
+		}
+
 		// ═══ 总在线时间（累计陪伴小时）— 纯展示，hover 零外观零 tooltip ═══
 		// 数据源: /api/qqqide/online-users 当前用户行 total_m（分钟，服务端 companion_seconds 权威累计）
 		// 口径: Math.round(total_m/60)+'h' 与在线面板「累计(h)」完全一致；客户端零记录，直接打印服务器值

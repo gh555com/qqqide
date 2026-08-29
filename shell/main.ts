@@ -32,7 +32,7 @@ import * as fs from 'fs';
 // ── 子模块 ──
 import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, BootMode, BootConfig } from './boot';
 import { APP_VERSION, checkForcedUpdate } from './version';
-import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen } from './window-manager';
+import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen, setPackRoot, packWsKey } from './window-manager';
 import { claimProject, registerProjectLockIpc } from './project-lock';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
@@ -48,6 +48,7 @@ import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers, hardenWebContents } from './shutdown';
 import { crashNetInit } from './crash-net';
+import { memMeterInit } from './mem-meter';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getOsGaeaFullState, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
@@ -452,6 +453,9 @@ app.whenReady().then(async () => {
     // ★ 天罗地网: 必须在任何窗口/服务之前初始化 — 崩溃记录网络 (2026-08-08 F14)
     try { crashNetInit(portable.userData); } catch (e) { try { console.warn('[crash-net] init failed:', e); } catch (_) { } }
 
+    // ★ 启动包内存真理机器: getAppMetrics 聚合 → 广播所有窗口 (2026-08-29; v3 传 userData 持久化 24h 曲线)
+    try { memMeterInit(portable.userData); } catch (e) { try { console.warn('[mem-meter] init failed:', e); } catch (_) { } }
+
     // ★ If another instance already holds the lock, quit immediately — don't create windows
     if (_shouldQuitEarly) {
         app.quit();
@@ -612,12 +616,16 @@ app.whenReady().then(async () => {
     // Boot
     // ★ 多窗口还原 — 第一步：确保主窗口加载正确的项目文件夹
     //   恢复链: 绿色包级 global.sq3 → OS 级 ws.sq3（2026-08-09 删包/换包后 OS 兜底）
+    //   ★ 2026-08-29 多实例修复: ws.sq3 窗口记忆按启动目录分槽 (openWindows.{root}),
+    //     各启动目录只读自己的槽 → 不同实例窗口列表零互踩; 旧版整列表 key 兜底兼容
     // ★ 组还原两两间隔 (2026-08-16): 菜单退出整组还原时窗口错峰打开, 防竞争态
     const RESTORE_WINDOW_GAP_MS = 500;
+    setPackRoot(portable.root);
     const readOpenWindows = async (): Promise<any[]> => {
         try {
             let v: any = await stateStore.get('qqqide', 'open_windows');
-            if (!v) { try { v = await wsStateGetKey('openWindows'); } catch { /* ignore */ } }
+            if (!v) { try { v = await wsStateGetKey(packWsKey('openWindows')); } catch { /* ignore */ } }
+            if (!v) { try { v = await wsStateGetKey('openWindows'); } catch { /* ignore */ } } // ★ 旧版遗留整列表 key 兜底 (分槽前数据)
             return (v && Array.isArray(v)) ? v : [];
         } catch { return []; }
     };
