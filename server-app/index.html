@@ -58,6 +58,7 @@ var _orig={};
 </script>
 <link rel="stylesheet" href="core/shell-base.css">
 <link rel="stylesheet" href="core/shell-main.css">
+
 <link rel="stylesheet" href="core/shell-widgets.css">
 <link rel="stylesheet" href="vendor/katex/katex.min.css">
 <script src="core/qqqide-theme.js"></script>
@@ -161,8 +162,8 @@ var _orig={};
         <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="wq 前摇统计">wq: --</span>
         <!-- ★ 总在线时间（累计陪伴小时）：服务器 wq.doer_state.companion_seconds 权威值，客户端零记录直接打印 -->
         <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace;font-size:11px;">--</span>
-        <!-- ★ 启动包内存：主进程 mem-meter 真理机器广播（2026-08-29），一包多窗口恒同值；工作集口径同任务管理器「工作集」列 -->
-        <span class="qqq-mem-icon" aria-hidden="true"></span><span class="qqq-status-item" id="qqq-status-mem" style="font-family:Consolas,monospace;font-size:12px;">--</span>
+        <!-- ★ 启动包监控 a 区域（2026-08-30 合并定案）：内存图标 + 内存占用 + CPU 占用（CPU 图标已移除），hover/点击弹合并卡片（MEM+CPU 双段 + 共用进程列表），一包多窗口恒同值 -->
+        <span id="qqq-status-mem" class="qqq-mem-block" style="font-family:Consolas,monospace;font-size:12px;"><span class="qqq-mem-icon" aria-hidden="true"></span><span class="qqq-mem-val">--</span><span class="qqq-cpu-val">--</span></span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
         <!-- ★ 三活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding）→ core/shell-activities.js -->
         <span class="qqq-act-widget qqq-act-cool" id="qqq-act-cool" title="">
@@ -304,12 +305,13 @@ var _orig={};
 <script src="core/shell-statusbar.js"></script>
 <!-- MEM 24H 曲线 hover 面板（数据源 mem-meter 主进程真理机器广播；须在 statusbar 后加载） -->
 <script src="core/shell-mem-hover.js"></script>
+
 <script src="core/shell-activities.js"></script>
 <script src="core/shell-rpc.js"></script>
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=338')
+    navigator.serviceWorker.register('./service-worker.js?v=340')
       .then(function (reg) {
         // ★ 新 SW 已就绪（waiting）→ 立即激活（service-worker 收 skipWaiting 后 activate + claim）
     //   2026-08-23 删除 controllerchange 自动 reload：该事件在 SW 首次接管页面时同样触发

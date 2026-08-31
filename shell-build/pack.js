@@ -631,6 +631,48 @@ function buildUnits(unpacked, rFile) {
   fs.writeFileSync(path.join(upRoot, 'units.hash.json'),
     JSON.stringify({ id: APP_VERSION, units: hashUnits }));
 
+  // ★ units 兼容性自检（2026-08-31，F26 hash 事故发布闸门）:
+  //   模拟最老在野启动器（20260816.1，无 hash 分支）解析器——parseJsonString
+  //   127 字符硬上限（i < outSize-1）：任何字符串 >127 字符 → 断流 → parse FAIL →
+  //   全域回退全量 178MB 死循环。任何字段变更/加长必须过此闸门才能发布。
+  {
+    const bad = [];
+    const walk = (o, kp) => {
+      if (typeof o === 'string') {
+        if (o.length > 127) bad.push((kp || '?') + '=' + o.length + ' chars');
+      } else if (Array.isArray(o)) {
+        o.forEach((v, i) => walk(v, kp + '[' + i + ']'));
+      } else if (o && typeof o === 'object') {
+        for (const k of Object.keys(o)) walk(o[k], kp ? kp + '.' + k : k);
+      }
+    };
+    walk(manifest, '');
+    if (bad.length) {
+      console.error('[pack] FATAL: units.json 兼容性自检失败——老启动器 (20260816.1) 无法解析:');
+      bad.forEach(b => console.error('  ', b));
+      console.error('[pack] units.json 内禁任何 >127 字符字符串（铁律 §2.1，F26 hash 事故）');
+      process.exit(1);
+    }
+    const hp = path.join(upRoot, 'units.hash.json');
+    if (!fs.existsSync(hp)) {
+      console.error('[pack] FATAL: units.hash.json sidecar 缺失');
+      process.exit(1);
+    }
+    const h = JSON.parse(fs.readFileSync(hp, 'utf8'));
+    for (const k of Object.keys(h)) {
+      const hv = h[k];
+      if (typeof hv === 'object' && hv.units) {
+        for (const u of hv.units) {
+          if (typeof u.hash !== 'string' || u.hash.length !== 128) {
+            console.error('[pack] FATAL: sidecar hash ' + u.name + ' 非法 (' + String(u.hash).length + ' chars, 需 128)');
+            process.exit(1);
+          }
+        }
+      }
+    }
+    console.log('[pack] units 兼容性自检通过: 全部字符串 ≤127 字符, sidecar hash 128 字符');
+  }
+
   console.log('[pack] units manifest:', manifest.id, manifestUnits.length, 'units, r_bytes =', manifest.r_bytes);
   console.log('[pack] units.hash.json sidecar:', hashUnits.length, 'hashes');
 }
@@ -1114,6 +1156,24 @@ function compileLauncher() {
   } else {
     console.warn('[pack] rcedit or icon.ico not found, skipping icon');
   }
+
+  // ★ 公钥一致性（2026-08-31）: 壳层 auto-updater.ts 的 AUTO_UPDATE_PUBKEY_HEX 必须与
+  //   launcher.c 的 SIGN_PUBKEY 逐字节一致——否则壳层验签公钥与启动器二次验签公钥分裂
+  //   （改任一侧不同步 = 更新链路静默失效，构建即拒绝）
+  try {
+    const csrc = fs.readFileSync(src, 'utf8');
+    const m1 = csrc.match(/SIGN_PUBKEY\[32\] = \{([\s\S]*?)\};/);
+    if (m1) {
+      const chex = m1[1].replace(/0x/g, '').replace(/[,\s]/g, '').toLowerCase();
+      if (chex.length !== 64) throw new Error('PUBKEY PARSE FAIL: launcher.c SIGN_PUBKEY');
+      const tsrc = fs.readFileSync(path.join(ROOT, 'shell', 'auto-updater.ts'), 'utf8');
+      const m2 = tsrc.match(/AUTO_UPDATE_PUBKEY_HEX = '([0-9a-f]{64})'/);
+      if (!m2 || m2[1] !== chex) {
+        throw new Error('PUBKEY MISMATCH: launcher.c SIGN_PUBKEY != shell/auto-updater.ts AUTO_UPDATE_PUBKEY_HEX');
+      }
+      console.log('[pack] pubkey consistency OK (launcher.c == auto-updater.ts)');
+    }
+  } catch (e) { throw e; }
 
 
 }

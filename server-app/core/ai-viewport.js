@@ -412,6 +412,41 @@
   var _recentsReady = null; // Promise — resolve 后 _recentFolders 才是真实数据
   var _recentsLoaded = false; // load 完成标记（失败也置 true）→ 防空数组在 load 完成前覆盖 OS recentFolders
 
+  // ★ 2026-08-30 垃圾路径过滤：历史列表只收录项目根目录——quest 楼层目录
+  //   （_qqq/quests/...）与 _qqqvault 粘贴目录曾混入 recent_folders（客户实锤）
+  function _isValidRecentPath(p) {
+    p = _normPath(p || '');
+    if (!p) return false;
+    var lower = p.toLowerCase();
+    if (lower.indexOf('/_qqq') !== -1 || lower.indexOf('/_qqqvault') !== -1) return false;
+    return true;
+  }
+
+  // ★ 2026-08-30 跨实例并集合并（幽灵历史实锤）：任何 bump/写回前，先读 OS 现有
+  //   列表按 atime 并集再写——旧实现整表覆盖会抹掉其他实例（dev/绿色包并存）
+  //   的历史。local 与 OS 各自的读写仍是独立 key，合并只发生在写 OS 时。
+  function _mergeRecentsWithOs(localList, ws) {
+    return ws.get(WS_RECENT_KEY).then(function (osList) {
+      var map = {};
+      function put(f) {
+        if (!f || !f.path) return;
+        var p = (f.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+        if (!_isValidRecentPath(p)) return;
+        var at = f.atime || 0;
+        var ex = map[p];
+        if (!ex) { map[p] = { path: p, name: f.name || basename(p) || '', atime: at }; }
+        else if (at >= ex.atime) { ex.atime = at; if (f.name) ex.name = f.name; }
+        else if (!ex.name && f.name) { ex.name = f.name; }
+      }
+      (localList || []).forEach(put);
+      ((osList && Array.isArray(osList)) ? osList : []).forEach(put);
+      var merged = Object.keys(map).map(function (k) { return map[k]; });
+      merged.sort(function (a, b) { return (b.atime || 0) - (a.atime || 0); });
+      if (merged.length > MAX_RECENT) merged.length = MAX_RECENT;
+      return merged;
+    }).catch(function () { return null; });
+  }
+
   function _qgsNs() {
     if (window.qgs && typeof window.qgs.ns === 'function') {
       return window.qgs.ns('qqqide', { v: 1, form: 'doc' });
@@ -432,6 +467,7 @@
               for (var i = 0; i < data.length && _recentFolders.length < MAX_RECENT; i++) {
                 var p = (data[i].path || '').replace(/\\/g, '/').replace(/\/$/, '');
                 if (seen[p]) continue;
+                if (!_isValidRecentPath(p)) continue; // ★ 2026-08-30 存量垃圾过滤
                 seen[p] = true;
                 _recentFolders.push(data[i]);
               }
@@ -448,14 +484,21 @@
       var s = _qgsNs();
       if (s) s.set(RECENT_KEY, _recentFolders).catch(function () { });
       // ★ OS 级双写 (2026-08-16): 与 ws.sq3 同步 — 任意启动目录添加过的目录永久留存
+      // ★ 2026-08-30 并集合并：读 OS 现有列表合并后写回，防整表覆盖抹掉其他实例历史
       var ws = _wsBridge();
       if (ws && _recentsLoaded) {
-        ws.set(WS_RECENT_KEY, _recentFolders.slice(0, MAX_RECENT)).catch(function () { });
+        _mergeRecentsWithOs(_recentFolders, ws).then(function (merged) {
+          if (merged && merged.length > 0) {
+            ws.set(WS_RECENT_KEY, merged).catch(function () { });
+          }
+        });
       }
     } catch (_) { }
   }
 
   function _bumpRecent(folderPath) {
+    // ★ 2026-08-30 垃圾路径拒绝：quest 楼层目录/_qqqvault 等非项目根不得入历史
+    if (!_isValidRecentPath(folderPath)) return;
     var name = basename(folderPath);
     var now = Date.now();
     // ★ 必须先等 load 完成，否则 _saveRecents 会用空数组覆盖 global.sq3
@@ -594,6 +637,7 @@
         function put(p, name, atime) {
           p = _normPath(p || '');
           if (!p) return;
+          if (!_isValidRecentPath(p)) return; // ★ 2026-08-30 存量垃圾不参与合并回写
           atime = atime || 0;
           var ex = map[p];
           if (!ex) { map[p] = { path: p, name: name || basename(p) || '', atime: atime }; }

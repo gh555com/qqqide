@@ -53,6 +53,8 @@
       '--yellow': p.yellow, '--orange': p.orange, '--red': p.red,
       '--magenta': p.magenta, '--violet': p.violet, '--blue': p.blue,
       '--cyan': p.cyan, '--green': p.green,
+      // CPU 统计主题色（2026-08-30 用户定案：比 --orange 偏黄，与 MEM green 区分；仅 MEM 面板 CPU 段使用）
+      '--cpu': dark ? '#d9a020' : '#bd7d0a',
 
       // 语义角色（一切组件只应引用这些）
       '--background-color': dark ? '#1e1e1e' : p.base3,
@@ -60,6 +62,7 @@
       '--quest-tofu-bg': dark ? '#211f1c' : '#ebe3ca',  // 置顶卡片背景（暖米色，介于 base2/base3 之间）
       '--text-primary': dark ? '#dcd8d0' : '#656360',
       '--mem-icon': dark ? '#e2ded6' : '#4b4a46',  // 状态区内存图标+文字统一中间色（图标浅一档/文字深一档，两者一致，2026-08-29）
+      '--hover-bg': dark ? 'rgba(238,232,213,0.09)' : 'rgba(255,255,255,0.55)',  // v18: 进程行 hover——暗色微提亮 / 浅色主题白色提亮「变得更白而不是更暗」（用户定案，原微加深 rgba(0,0,0,0.055) 已废；禁止直接引用 --base02——基础色盘低阶档 LIGHT/DARK 命名反置，2026-08-30 实锤）
       '--text-secondary': dark ? '#a8a49c' : p.base01,
       '--text-dim': dark ? '#6a6660' : p.base1,
       '--border-color': dark ? '#333333' : '#d3c6aa',

@@ -939,16 +939,27 @@ async function executeRemoveBackground(args) {
             outDir = '.';
         }
 
-        var imgHash = b64.slice(0, 8) + Date.now().toString(36);
+        // ★ 2026-08-31 修复：b64 前缀可能含 /（JPEG 以 /9j/ 开头）→ 拼入文件名即被拆成子目录 → curl -o 静默失败假成功（5 连实锤；PNG 前缀 iVBORw0K 无斜杠故历史正常）
+        var imgHash = b64.slice(0, 8).replace(/[\/\\]/g, '_') + Date.now().toString(36);
         var fileName = 'remove_bg_' + imgHash + '.png';
         var outPath = outDir + '/' + fileName;
 
-        // curl 下载
+        // curl 下载（★ 2026-08-31：下载失败必须报真错，禁假成功）
         var dlResult = await bridge.qz.spawn({
             cmd: 'curl',
             args: ['-s', '-o', outPath, '-L', segResult.image_url],
             timeout: 30000
         });
+        var dlFailed = !dlResult || dlResult.exitCode !== 0;
+        if (!dlFailed) {
+            try {
+                var _st = await bridge.fs.stat(outPath);
+                dlFailed = !_st || !_st.size;
+            } catch (_) { dlFailed = true; }
+        }
+        if (dlFailed) {
+            return 'Error removing background: download failed (exit ' + ((dlResult && dlResult.exitCode) || '?') + ') ' + ((dlResult && (dlResult.stderr || dlResult.stdout)) || '').slice(0, 300);
+        }
 
         return 'Background removed successfully. Output: ![](file:///' + outPath.replace(/\\/g, '/') + ')';
 

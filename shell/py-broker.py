@@ -37,16 +37,20 @@ def _log(msg: str):
 
 
 # =============================================================================
-#  ★ 启动包集合内存快照 — NtQuerySystemInformation (Win) ~7.5ms/次
+#  ★ 启动包集合内存+CPU 快照 — NtQuerySystemInformation (Win) ~7.5ms/次
 #   画圈 = 主进程 + 全部后代进程树（递归）: IDE 本体 + py-broker + miniaudio +
 #   goods python 全家。Σ 专用工作集（SYSTEM_PROCESS_INFORMATION offset 8
 #   LARGE_INTEGER, 任务管理器「内存」列同口径——2026-08-29 实测 8/8 逐字节
-#   命中 WMI WorkingSetPrivate）。mem-meter 每 5s 调用一次。
+#   命中 WMI WorkingSetPrivate）。CPU 差分原料: UserTime @ 0x28 + KernelTime
+#   @ 0x30（各 8 字节 LARGE_INTEGER, 100ns ticks, 同结构体链——ImageName
+#   @ 0x38/0x40 已实测验证, 前两字段位置必然正确, 2026-08-29 F36 实测 8/8
+#   命中任务管理器）。mem-meter 每 5s 调用一次, 差分算利用率。
 # =============================================================================
 
 def _win_mem_snapshot(root_pid: int):
-    """NtQuery 全系统进程表 → root_pid + 全部后代 → Σ 专用工作集。
-    返回 {totalMB, nodes, rows:[{pid,ppid,ws_KB}]} 或 None（查询失败）。"""
+    """NtQuery 全系统进程表 → root_pid + 全部后代 → Σ 专用工作集 + CPU 时间。
+    返回 {totalMB, nodes, ncpu, rows:[{pid,ppid,ws_KB,n,ut,kt}]} 或 None（查询失败）。
+    ut/kt = UserTime/KernelTime 原始 100ns ticks（不做归一化, mem-meter 差分）。"""
     import ctypes
     import struct as _struct
     ntdll = ctypes.WinDLL('ntdll', use_last_error=True)
@@ -83,12 +87,15 @@ def _win_mem_snapshot(root_pid: int):
                     name = name.split('\\')[-1]
                 except Exception:
                     name = ''
-            procs[pid] = (ppid, _struct.unpack_from('<Q', raw, off + 8)[0], name)  # (ppid, private_ws_bytes, name)
+            # (ppid, private_ws_bytes, name, ut_ticks, kt_ticks) — ut@0x28 kt@0x30 (100ns)
+            procs[pid] = (ppid, _struct.unpack_from('<Q', raw, off + 8)[0], name,
+                          _struct.unpack_from('<Q', raw, off + 0x28)[0],
+                          _struct.unpack_from('<Q', raw, off + 0x30)[0])
         if not next_off:
             break
         off += next_off
     children = {}
-    for pid, (ppid, _ws, _nm) in procs.items():
+    for pid, (ppid, _ws, _nm, _ut, _kt) in procs.items():
         children.setdefault(ppid, []).append(pid)
     queue = [root_pid]
     seen = set()
@@ -104,11 +111,11 @@ def _win_mem_snapshot(root_pid: int):
         info = procs.get(p)
         if not info:
             continue
-        ppid, ws, nm = info
+        ppid, ws, nm, ut, kt = info
         total += ws
-        rows.append({'pid': p, 'ppid': ppid, 'ws': ws >> 10, 'n': nm})  # ws 单位 KB
+        rows.append({'pid': p, 'ppid': ppid, 'ws': ws >> 10, 'n': nm, 'ut': ut, 'kt': kt})  # ws 单位 KB
     _log(f"mem-snapshot: root={root_pid} nodes={len(seen)} totalMB={round(total / 1048576)}")
-    return {'totalMB': round(total / 1048576), 'nodes': len(seen), 'rows': rows}
+    return {'totalMB': round(total / 1048576), 'nodes': len(seen), 'ncpu': os.cpu_count() or 0, 'rows': rows}
 
 
 def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:

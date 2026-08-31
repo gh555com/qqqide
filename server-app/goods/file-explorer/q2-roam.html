@@ -119,6 +119,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .file-item.selected { background-color: var(--selection-bg) !important; color: var(--selection-text); }
 .file-item.selected .sz-area, .file-item.selected .file-select-area, .file-item.selected .folder-name-area, .file-item.selected .file-name-area { background-color: transparent !important; color: var(--selection-text); }
 .file-item.selected:hover { background-color: var(--selection-bg) !important; }
+.file-item.roam-home-dir .folder-name-area { color: var(--red) !important; font-weight: 700; }   /* 家目录（_qqq/_qqqvault）恒红加粗：!important 压过 selected 文字色，红系已从随机选中配色池移除（2026-08-31），任何状态不改色 */
 .sz-area { width: var(--sz-area-width); height: 100%; min-height: 20px; font-style: normal; font-size: 12px; color: var(--text-dim); text-align: right; padding: 3px 0 0 0; line-height: 1.2; flex-shrink: 0; white-space: pre; cursor: pointer; z-index: 10; position: relative; display: inline-block; }
 .file-select-area { display: flex; align-items: center; padding: 2px 4px 2px 8px; cursor: pointer; flex-shrink: 0; height: 100%; }
 .folder-name-area { flex: 1; padding: 2px 8px 2px -2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }

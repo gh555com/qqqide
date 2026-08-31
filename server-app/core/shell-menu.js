@@ -223,9 +223,19 @@ function _openWindowFromRecent(folderPath) {
 }
 
 // ---- 写入最近文件夹到 global.sq3（与 ai-viewport.js 共享同一 key）----
+function _isValidRecentPath(p) {
+  p = String(p || '').replace(/\\/g, '/').replace(/\/$/, '');
+  if (!p) return false;
+  // ★ 2026-08-30 垃圾路径拒绝（与 ai-viewport 同款）: quest 楼层目录/_qqqvault 不入历史
+  var lower = p.toLowerCase();
+  if (lower.indexOf('/_qqq') !== -1 || lower.indexOf('/_qqqvault') !== -1) return false;
+  return true;
+}
+
 function _bumpMenuRecent(folderPath) {
   var bridge = window.qqqideBridge;
   if (!bridge || !bridge.state) return;
+  if (!_isValidRecentPath(folderPath)) return;
   var name = '';
   try {
     var parts = folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
@@ -238,8 +248,26 @@ function _bumpMenuRecent(folderPath) {
     if (list.length > 100) list.length = 100;
     bridge.state.set('qqqide', 'recent_folders', list).catch(function () { });
     // ★ OS 双写 (2026-08-16): 与 ai-viewport 同款, 跨启动目录共享记忆
+    // ★ 2026-08-30 并集合并: 读 OS 现有列表合并后写回, 防整表覆盖抹掉其他实例历史
     if (bridge.wsState && typeof bridge.wsState.set === 'function') {
-      bridge.wsState.set('recentFolders', list).catch(function () { });
+      bridge.wsState.get('recentFolders').then(function (osList) {
+        var map = {};
+        function put(f) {
+          if (!f || !f.path) return;
+          var p = String(f.path).replace(/\\/g, '/').replace(/\/$/, '');
+          if (!_isValidRecentPath(p)) return;
+          var at = f.atime || 0;
+          var ex = map[p];
+          if (!ex) map[p] = { path: p, name: f.name || '', atime: at };
+          else if (at >= ex.atime) { ex.atime = at; if (f.name) ex.name = f.name; }
+        }
+        list.forEach(put);
+        ((osList && Array.isArray(osList)) ? osList : []).forEach(put);
+        var merged = Object.keys(map).map(function (k) { return map[k]; });
+        merged.sort(function (a, b) { return (b.atime || 0) - (a.atime || 0); });
+        if (merged.length > 100) merged.length = 100;
+        bridge.wsState.set('recentFolders', merged).catch(function () { });
+      }).catch(function () { });
     }
   }).catch(function () { });
 }

@@ -579,7 +579,7 @@ function bootActivities(boot) {
     var html =
       '<div class="qqq-act-celebrate">🎁</div>' +
       '<h2>' + t('act.ge50.name', '原料与基本权利') + '</h2>' +
-      '<p class="qqq-act-csub">' + t('act.ge50.subtitle', '你滴上下文资产现在归你') + '</p>' +
+      '<p class="qqq-act-csub">' + t('act.ge50.subtitle', '你滴上下文资产现在归你，即便你不再用 qqqide，一切历史，仍在你手上') + '</p>' +
       '<p class="qqq-act-sub">' + t('act.ge50.popSub', '实扣 + 白嫖合计达到 50 ge 即可领取') + '</p>' +
       '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-ge50-fill' + (total >= target ? ' qqq-act-full' : '') + '" style="width:' + pct + '%"></span></div>' +
       '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge</div>' +
@@ -697,7 +697,7 @@ function bootActivities(boot) {
       (_eyeDoc || (
       '<p class="qqq-act-desc">' + t('act.eye.intro', '征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币），现金立入。') +
       ' <a class="qqq-act-eye-link" data-eye-link="records">' + t('act.eye.linkRecords', '查看成交记录') + '</a></p>' +
-      '<p class="qqq-act-desc">' + t('act.eye.tail', '当视频播放量逐渐增大，会自动接入') +
+      '<p class="qqq-act-desc">' + t('act.eye.tail', '当视频播放量逐渐增大，自动接入') +
       '<a class="qqq-act-eye-link" data-eye-link="spark">' + t('act.eye.linkSpark', '星火计划') + '</a>' + t('act.eye.tailEnd', '。') + '</p>'
       )) +
       '<div class="qqq-act-eye-paid">' + tp('act.eye.paid', { v: fmt(eyePaid) }, '已入：' + fmt(eyePaid)) + '</div>' + eyeListHtml,

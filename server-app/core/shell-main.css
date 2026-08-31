@@ -449,9 +449,17 @@
   margin-right: 16px;
 }
 
-/* ★ 内存数字与图标同色（--mem-icon 统一中间色，2026-08-29） */
-#qqq-status-mem {
+/* ★ a 区域（内存图标+内存文字+CPU文字，2026-08-30 合并）：图标/文字同色 --mem-icon，CPU 无图标以文字前缀标识，整体可 hover/点击弹合并卡片 */
+.qqq-mem-block {
   color: var(--mem-icon);
+  white-space: nowrap;
+  margin-right: 16px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-color);
+  -webkit-app-region: no-drag;
+}
+.qqq-mem-block .qqq-cpu-val {
+  margin-left: 12px;
 }
 
 /* ── 内存图标（手绘 CSS 内存条：芯片主体 11×6 + 4 引脚，同色渐变=纯色块零模糊零阴影，色 var(--mem-icon) 更深黑/更亮白，2026-08-29） ── */
@@ -469,6 +477,8 @@
     linear-gradient(var(--mem-icon), var(--mem-icon)) 9px 8px / 2px 3px no-repeat;
   -webkit-app-region: no-drag;
 }
+
+/* CPU 图标已移除（2026-08-30 合并卡片定案：状态区 a 区域 = 内存图标 + 内存文字 + CPU 文字） */
 
 /* ── 赞助商文字（状态栏左下角，纯文字素雅款） ── */
 .qqq-status-sponsor {
@@ -521,7 +531,7 @@
 .qqq-status-area.qqq-dense-3 #qqq-status-version,
 .qqq-status-area.qqq-dense-3 #qqq-status-total,
 .qqq-status-area.qqq-dense-3 #qqq-status-mem,
-.qqq-status-area.qqq-dense-3 .qqq-mem-icon { display: none; }
+.qqq-status-area.qqq-dense-3 .qqq-mem-icon { display: none; } /* 2026-08-30: a 区域容器隐藏整体（含 CPU 文字），cpu 图标已移除 */
 .qqq-status-area.qqq-dense-4 #qqq-status-online,
 .qqq-status-area.qqq-dense-4 .qqq-gw-dots { display: none; }
 
@@ -917,9 +927,13 @@
   color: #fff !important;
 }
 
-/* ★ 家目录恒红：_qqq / _qqqvault 行 hover 文字保持红色不变色 */
+/* ★ 家目录恒红：_qqq / _qqqvault 行 常态 + hover + 子菜单打开(面包屑) 文字全部保持红色不变色 */
+.aiv-dd-row.aiv-dd-home,
 .aiv-dd-row.aiv-dd-home:hover,
-[data-theme="dark"] .aiv-dd-row.aiv-dd-home:hover {
+.aiv-dd-row.aiv-dd-home.aiv-breadcrumb,
+[data-theme="dark"] .aiv-dd-row.aiv-dd-home,
+[data-theme="dark"] .aiv-dd-row.aiv-dd-home:hover,
+[data-theme="dark"] .aiv-dd-row.aiv-dd-home.aiv-breadcrumb {
   color: var(--red) !important;
 }
 
@@ -1079,7 +1093,7 @@
   position: fixed;
   z-index: 2147483000;
   width: 360px;
-  height: 450px; /* v5 固定高：flex 布局进程区撑满，绝不随内容自动扩大 */
+  height: 732px; /* v11: 进程打印区回落 180px（912→732，用户定案：太宽了）——flex:1 自动吃增量，图表/q行/简介行纹丝不动 */
   display: flex;
   flex-direction: column;
   padding: 9px 12px 7px;
@@ -1140,11 +1154,7 @@
   background: linear-gradient(90deg, transparent, #b58900, transparent);
   opacity: 0.8;
 }
-.qqq-mem-hover-pinned .qqq-mem-hover-dot {
-  background: #b58900;
-  animation: none;
-  box-shadow: 0 0 6px 1px rgba(181, 137, 0, 0.7);
-}
+
 
 .qqq-mem-hover-head {
   display: flex;
@@ -1153,6 +1163,8 @@
   margin-bottom: 2px;
 }
 
+/* v7: 独立 CPU 面板已合并回本卡（2026-08-30 用户定案「数据同源应合二为一」）——
+   下区 CPU 段橙色系，共用进程列表，状态区 CPU 图标移除 */
 .qqq-mem-hover-title {
   display: inline-flex;
   align-items: center;
@@ -1178,12 +1190,15 @@
   50% { box-shadow: 0 0 6px 1px var(--green); opacity: 0.75; }
 }
 
-.qqq-mem-hover-procs {
+/* q 行（进程列表头）：标题 + 进程数 + 已启动 同排（v13: 进程数/已启动 从顶部/简介行移入 q 行，用户定案；v14: 字号/外观恢复 12px 原貌） */
+.qqq-mem-hover-ph-procs,
+.qqq-mem-hover-ph-up {
   font-family: Consolas, monospace;
   font-size: 12px;
   color: var(--text-secondary);
-  font-weight: normal; /* v12: 标题 MEM 是粗体，procs 继承会变粗——进程数字保持常规字重（用户定案） */
-  margin-left: 4px; /* v12: 与 ● 之间加一个空格空隙 */
+  font-weight: normal;
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 /* v11: reset 按钮（右上角，固定 pin 后可点）——清除曲线脏历史从零重记 */
@@ -1344,7 +1359,8 @@ html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
 .qqq-mem-hover-stats {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center; /* v11: 峰值/谷值居中靠近（用户定案：放下方中央区域） */
+  gap: 26px;
   margin-top: 4px;
   font-family: Consolas, monospace;
   font-size: 12px;
@@ -1360,8 +1376,23 @@ html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
   border-top: 1px dashed var(--border-color);
   font-size: 12px;
   color: var(--text-secondary);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.5px; /* v15: q 行拆两行（用户定案）——行1 标题 / 行2 进程数+已启动；字号外观不变 */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
+.qqq-mem-hover-ph-row {
+  display: flex;
+  align-items: baseline;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.qqq-mem-hover-ph-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 
 .qqq-mem-hover-plist {
   margin-top: 4px;
@@ -1369,7 +1400,7 @@ html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
   overflow-y: auto;
   overscroll-behavior: contain;
   margin-right: -4px; /* v12: 容器右扩 4px → 滚动条右移 4px */
-  padding-right: 4px; /* 内容右边界保持原位（滚动条右移，进程行不动） */
+  padding-right: 10px; /* v16: 内容整体左移 6px（内存列+CPU 列各左移 6px），滚动条位置不变 */
 }
 /* 统一 IDE 风格滚动条（a 等级弹窗/在线人数弹窗同款，shell-base.css 基准） */
 .qqq-mem-hover-plist::-webkit-scrollbar {
@@ -1392,12 +1423,17 @@ html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
 
 .qqq-mem-hover-prow {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   font-family: Consolas, monospace;
   font-size: 11.5px;
   line-height: 20px;
   color: var(--text-primary);
+  border-radius: 3px;
+  transition: background 0.12s ease;
+}
+/* v16: 进程行 hover 高亮——v17 弃 --base02 改 --hover-bg 语义变量（基础色盘低阶档 LIGHT/DARK 命名反置实锤）；v18: 浅色主题改白色提亮 rgba(255,255,255,0.55)（用户定案「变得更白而不是更暗」），暗色微提亮不变 */
+.qqq-mem-hover-prow:hover {
+  background: var(--hover-bg);
 }
 
 .qqq-mem-hover-prow.root .qqq-mem-hover-pname {
@@ -1406,10 +1442,11 @@ html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
 }
 
 .qqq-mem-hover-prow .qqq-mem-hover-pname {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 220px;
 }
 
 .qqq-mem-hover-prow .qqq-mem-hover-pmb {
@@ -1419,6 +1456,212 @@ html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
   margin-left: 8px;
 }
 
+
 .qqq-mem-hover-prow.muted {
   opacity: 0.5;
 }
+
+/* ============================================================================
+   CPU 段（合并卡片下层，橙色系，2026-08-30 v7）——MEM+CPU 合并面板，橙色与 MEM green/cyan 区分
+   ============================================================================ */
+.qqq-cpu-hover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px dashed var(--border-color);
+  margin-top: 7px;
+  padding-top: 6px;
+}
+
+/* live 脉冲点（橙色系与 MEM green 区分） */
+.qqq-cpu-hover-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cpu);
+  animation: qqq-cpu-live 2s ease-in-out infinite;
+}
+
+@keyframes qqq-cpu-live {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); opacity: 1; }
+  50% { box-shadow: 0 0 6px 1px var(--cpu); opacity: 0.75; }
+}
+
+.qqq-cpu-hover-num {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 1px 0 3px;
+}
+
+.qqq-cpu-hover-num-main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+/* 均值徽章（右上）：窗口平均核数——橙色系 */
+.qqq-cpu-hover-avg {
+  font-family: Consolas, monospace;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--cpu);
+  background: rgba(203, 143, 22, 0.12); /* cpu 黄橙双主题近值，禁 color-mix（Chromium 108 不支持） */
+  border: 1px solid rgba(203, 143, 22, 0.35);
+  border-radius: 6px;
+  padding: 2px 6px 0;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+  transform: translateY(-4px);
+}
+.qqq-cpu-hover-avg b {
+  font-weight: 800;
+}
+
+.qqq-cpu-hover-val {
+  font-family: Consolas, monospace;
+  font-size: 28px;
+  font-weight: bold;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: 0.5px;
+}
+
+.qqq-cpu-hover-unit {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.qqq-cpu-hover-chart svg {
+  display: block;
+}
+
+.qqq-cpu-hover-chart .qqq-cpu-grid line {
+  stroke: var(--border-color);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.7;
+}
+
+.qqq-cpu-hover-chart .qqq-cpu-labels text {
+  fill: var(--text-secondary);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+/* y 轴刻度（左缘刻度区；'12.5核' 5 字符，PAD_L=40 容纳） */
+.qqq-cpu-hover-chart .qqq-cpu-ylbl {
+  fill: var(--text-secondary);
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+/* 最新点值标签（halo 描边压线可读，橙色） */
+.qqq-cpu-hover-chart .qqq-cpu-curval {
+  fill: var(--cpu);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  font-weight: bold;
+  paint-order: stroke;
+  stroke: var(--card-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* 曲线渐变 + 面积渐变（橙色系；stop 颜色经 CSS 变量注入，双主题自适应） */
+.qqq-mem-hover .qqq-cpu-stop-a { stop-color: var(--cpu); stop-opacity: 0.30; }
+.qqq-mem-hover .qqq-cpu-stop-b { stop-color: var(--cpu); stop-opacity: 0.02; }
+.qqq-mem-hover .qqq-cpu-stop-c { stop-color: var(--cpu); }
+.qqq-mem-hover .qqq-cpu-stop-d { stop-color: var(--cpu); }
+
+.qqq-mem-hover .qqq-cpu-line {
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.qqq-mem-hover .qqq-cpu-dot {
+  fill: var(--cpu);
+  stroke: var(--card-bg);
+  stroke-width: 1.2;
+}
+
+/* 尾点脉冲光圈（橙色） */
+.qqq-mem-hover .qqq-cpu-dot-pulse {
+  fill: none;
+  stroke: var(--cpu);
+  stroke-width: 1;
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: qqq-cpu-pulse 2s ease-out infinite;
+}
+
+@keyframes qqq-cpu-pulse {
+  0% { opacity: 0.9; transform: scale(0.5); }
+  70% { opacity: 0; transform: scale(2.6); }
+  100% { opacity: 0; transform: scale(2.6); }
+}
+
+.qqq-cpu-hover-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center; /* v11: 峰值/谷值居中靠近（用户定案） */
+  gap: 26px;
+  margin-top: 4px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 共用进程列表独立三列（2026-08-30 用户定案）：名称左对齐 flex:1 / 内存右对齐固定宽 / CPU 右对齐固定宽 + 整体左移 6px——每行三列位置恒同，不再 space-between 歪歪扭扭 */
+.qqq-mem-hover-prow .qqq-mem-hover-pmb {
+  width: 58px;
+  text-align: right;
+}
+
+.qqq-mem-hover-prow .qqq-mem-hover-pcpu {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  flex-shrink: 0;
+  width: 64px;
+  text-align: right;
+  margin-right: 6px; /* CPU 列整体往左移 6px（右缘离容器右缘 6px） */
+}
+
+/* ============================================================================
+   峰值/谷值 hover 时间戳（v11: 简介行不再打印 [MM-DD HH:MM]，hover 自定义瞬间弹出）
+   ============================================================================ */
+.qqq-mem-hover-stats,
+.qqq-cpu-hover-stats {
+  position: relative; /* v17: tip 改为相对容器定位（跟随光标），span 不再做定位祖先 */
+}
+.qqq-mem-hover-tip {
+  position: absolute;
+  left: 0;
+  top: 0; /* v18: left/top 由 JS 跟随光标设置（默认光标下方 12px，近面板底缘翻上方），transform translateX(-50%) 居中保留 */
+  transform: translateX(-50%) translateY(3px) scale(0.96);
+  transform-origin: bottom center;
+  background: var(--card-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-style: normal;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms ease-out, transform 90ms ease-out;
+  z-index: 5;
+}
+.qqq-mem-hover-stats span.qqq-tip-show .qqq-mem-hover-tip,
+.qqq-cpu-hover-stats span.qqq-tip-show .qqq-mem-hover-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
