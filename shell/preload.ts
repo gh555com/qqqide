@@ -649,10 +649,10 @@ const QQQ = {
         getMetrics: () => ipcRenderer.invoke('qqqide:mem:get-metrics'),
         // 24h 曲线全量（hover 面板首拉，之后增量广播）
         history: () => ipcRenderer.invoke('qqqide:mem:history'),
-        // v11: 清除曲线脏历史（删 mem-curve.log + 内存缓冲），广播全窗口同步
-        reset: () => ipcRenderer.invoke('qqqide:mem:reset'),
-        onReset: (cb: () => void) => {
-            const handler = () => { try { cb(); } catch (err) { console.warn('[mem.onReset]', err); } };
+        // v13: 清除曲线脏历史——scope 'mem'/'cpu'/'all'（v7 定案各区独立 reset），广播全窗口同步
+        reset: (scope?: string) => ipcRenderer.invoke('qqqide:mem:reset', scope),
+        onReset: (cb: (scope?: string) => void) => {
+            const handler = (_e: unknown, data: any) => { try { cb(data && data.scope); } catch (err) { console.warn('[mem.onReset]', err); } };
             ipcRenderer.on('qqqide:mem:reset', handler);
             return () => ipcRenderer.removeListener('qqqide:mem:reset', handler);
         },

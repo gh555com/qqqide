@@ -171,8 +171,14 @@ export function claimProject(winId: number, folderRaw: string): { ok: boolean; r
     if (!folder) return { ok: false, reason: 'no-folder', holder: null };
     const lp = _lockPath(folder);
 
-    // 幂等：本窗口已持有 → 刷新 atime
+    // ★ 2026-08-30 幽灵锁根治：本窗口切换主文件夹时，必须先释放旧锁文件
+    //   （旧实现直接 _startHeartbeat 覆盖 _held，旧锁文件成为孤儿——atime 停更
+    //   但持有实例主进程 pid 存活 → 其他实例/窗口永远打不开该文件夹，实锤）。
     const held = _held.get(winId);
+    if (held && held.folder !== folder) {
+        releaseProject(winId);
+    }
+    // 幂等：本窗口已持有 → 刷新 atime
     if (held && held.folder === folder) {
         const cur = _readLock(lp);
         if (_isMine(cur, winId)) _writeLockAtomic(lp, { ...(cur as LockHolder), atime: Date.now() });
@@ -230,9 +236,14 @@ export function claimProject(winId: number, folderRaw: string): { ok: boolean; r
         return { ok: false, reason: 'same-instance-other-window', holder: cur };
     }
     // ★ 旧格式锁（渲染层 30s 心跳）必须用 60s 阈值，否则新壳层周期性误判僵尸抢锁（双开事故）
+    // ★ 2026-08-30 判活修正（幽灵锁实锤）：心跳新鲜 = 真活锁；陈旧 = 心跳停止 =
+    //   持有者已退出 / 窗口已换主文件夹 / 锁被遗弃——pid 存活不再视为活锁充分条件
+    //   （pid 是持有实例主进程的，实例活着 ≠ 窗口还持有这把锁；pid 复用同样会
+    //   让陈旧锁永远拒绝）。陈旧即回收，wx 原子重抢收敛；若原持有者仍活着，
+    //   watcher 会发现锁丢失 → lock-lost → 渲染层重新仲裁（安全方向）。
     const stale = Date.now() - (cur.atime || 0) >= (cur.instanceId ? STALE_MS : STALE_MS_LEGACY);
-    if (!stale || _pidAlive(cur.pid)) {
-        return { ok: false, reason: 'locked', holder: cur }; // ★ 硬拒绝：跨实例活锁
+    if (!stale) {
+        return { ok: false, reason: 'locked', holder: cur }; // ★ 硬拒绝：心跳新鲜 = 跨实例真活锁
     }
     // 僵尸锁 → 清除重抢（并发清除者唯一 wx 赢家，败者读回活锁拒绝）
     try { fs.unlinkSync(lp); } catch { }
@@ -279,9 +290,10 @@ export function queryProjectLock(folderRaw: string): { locked: boolean; holder?:
     if (!folder) return { locked: false, holder: null, stale: false, self: false };
     const cur = _readLock(_lockPath(folder));
     if (!cur) return { locked: false, holder: null, stale: false, self: false };
+    // ★ 2026-08-30 判活修正（与 claimProject 同语义）：仅心跳新鲜才算活锁；
+    //   陈旧锁（含 pid 存活但心跳停止的孤儿锁）一律视为可回收。
     const fresh = Date.now() - (cur.atime || 0) < (cur.instanceId ? STALE_MS : STALE_MS_LEGACY);
-    const alive = fresh || _pidAlive(cur.pid);
-    return { locked: alive, holder: cur, stale: !alive, self: cur.instanceId === INSTANCE_ID };
+    return { locked: fresh, holder: cur, stale: !fresh, self: cur.instanceId === INSTANCE_ID };
 }
 
 // ── IPC 注册 ──

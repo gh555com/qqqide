@@ -62,6 +62,7 @@ import { registerKmdIpc } from './ipc-kmd';
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
 import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain';
+import { startAutoUpdater } from './auto-updater';
 
 // ── 服务 ──
 
@@ -792,6 +793,10 @@ app.whenReady().then(async () => {
         fs.appendFileSync(bootLogPath, new Date().toISOString() + ' [main.ts] calling startWqPing userData=' + portable.userData + '\n');
     } catch (_) { }
     startWqPing(portable.userData);
+
+    // ★ 壳层后台更新器（2026-08-31 架构）: 下载/验签/解压 100% 在 IDE 正常运行期间执行
+    //   ——C 启动器不再持有下载线程（启动/退出/第二实例零等待，点击必弹窗）
+    try { startAutoUpdater(portable.root); } catch (e) { try { console.warn('[auto-updater] start failed:', e); } catch (_) { } }
 
     // ★ 2026-08-20 语义索引改为完全按需（懒加载 + 用完即焚，ghrun 同款语义）：
     //   启动零索引零内存；首次 search_smart 才按窗口主文件夹构建/读盘。此处不再 init()。

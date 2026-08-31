@@ -16,14 +16,12 @@
 	var lightSchemes = [
 		{ name: 'Coral', bg: '#e8d0c0', text: '#000000', weight: 30 },
 		{ name: 'Warm Apricot', bg: '#e8d0b0', text: '#000000', weight: 30 },
-		{ name: 'Bean Paste', bg: '#e7e4c2', text: '#000000', weight: 30 },
-		{ name: 'Vivid Red', bg: '#cb4b16', text: '#fdf6e3', weight: 10 }
+		{ name: 'Bean Paste', bg: '#e7e4c2', text: '#000000', weight: 30 }
 	];
 	var darkSchemes = [
 		{ name: 'Ember', bg: '#5a3a2a', text: '#f0e8d8', weight: 30 },
 		{ name: 'Bronze', bg: '#4a3520', text: '#e8d8c0', weight: 30 },
-		{ name: 'Olive Night', bg: '#3a3a20', text: '#d8d0b0', weight: 30 },
-		{ name: 'Dark Flame', bg: '#6a2a10', text: '#fdf6e3', weight: 10 }
+		{ name: 'Olive Night', bg: '#3a3a20', text: '#d8d0b0', weight: 30 }
 	];
 	var schemes = isDark ? darkSchemes : lightSchemes;
 	var totalWeight = schemes.reduce(function(s, x) { return s + x.weight; }, 0);
@@ -999,6 +997,8 @@ function buildFileItem(entry, fullPath) {
 	item.dataset.path = fullPath;
 	item.dataset.type = entry.isDir ? 'folder' : 'file';
 	item.dataset.name = entry.name;
+	// ★ 家目录恒红（与 AI 视口同特性 2026-08-31）：_qqq/_qqqvault 加粗变红且永不改色
+	if (entry.isDir && (entry.name === '_qqq' || entry.name === '_qqqvault')) item.classList.add('roam-home-dir');
 
 	var clone = document.importNode(entry.isDir ? _folderTpl.content : _fileTpl.content, true);
 
@@ -1283,24 +1283,47 @@ function _openQqqideWindowForFolder(folderPath) {
 		}
 		// 写入最近文件夹（与菜单 "开新窗口" 下拉共享同一 key）
 		try {
-			pb.state.get('qqqide', 'recent_folders').then(function(data) {
-				var list = (data && Array.isArray(data)) ? data.slice(0, 100) : [];
-				var name = folderPath;
-				try {
-					var parts = folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
-					name = parts[parts.length - 1] || folderPath;
-				} catch (_) {}
-				list = list.filter(function(f) { return f.path !== folderPath; });
-				list.unshift({ path: folderPath, name: name, atime: Date.now() });
-				if (list.length > 100) list.length = 100;
-				pb.state.set('qqqide', 'recent_folders', list).catch(function(){});
-				// ★ OS 双写 (2026-08-16): 与 ai-viewport 同款, 跨启动目录共享记忆
-				try {
-					if (pb.wsState && typeof pb.wsState.set === 'function') {
-						pb.wsState.set('recentFolders', list).catch(function(){});
-					}
-				} catch (_) {}
-			}).catch(function(){});
+			// ★ 2026-08-30 垃圾路径拒绝（与 ai-viewport/menu 同款）
+			var _rp = String(folderPath || '').replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
+			if (_rp.indexOf('/_qqq') === -1 && _rp.indexOf('/_qqqvault') === -1) {
+				pb.state.get('qqqide', 'recent_folders').then(function(data) {
+					var list = (data && Array.isArray(data)) ? data.slice(0, 100) : [];
+					var name = folderPath;
+					try {
+						var parts = folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
+						name = parts[parts.length - 1] || folderPath;
+					} catch (_) {}
+					list = list.filter(function(f) { return f.path !== folderPath; });
+					list.unshift({ path: folderPath, name: name, atime: Date.now() });
+					if (list.length > 100) list.length = 100;
+					pb.state.set('qqqide', 'recent_folders', list).catch(function(){});
+					// ★ OS 双写 (2026-08-16): 与 ai-viewport 同款, 跨启动目录共享记忆
+					// ★ 2026-08-30 并集合并: 读 OS 现有列表合并后写回, 防整表覆盖抹掉其他实例历史
+					try {
+						if (pb.wsState && typeof pb.wsState.set === 'function') {
+							pb.wsState.get('recentFolders').then(function(osList) {
+								var map = {};
+								function put(f) {
+									if (!f || !f.path) return;
+									var p = String(f.path).replace(/\\/g, '/').replace(/\/$/, '');
+									var pl = p.toLowerCase();
+									if (pl.indexOf('/_qqq') !== -1 || pl.indexOf('/_qqqvault') !== -1) return;
+									var at = f.atime || 0;
+									var ex = map[p];
+									if (!ex) map[p] = { path: p, name: f.name || '', atime: at };
+									else if (at >= ex.atime) { ex.atime = at; if (f.name) ex.name = f.name; }
+								}
+								list.forEach(put);
+								((osList && Array.isArray(osList)) ? osList : []).forEach(put);
+								var merged = Object.keys(map).map(function(k) { return map[k]; });
+								merged.sort(function(a, b) { return (b.atime || 0) - (a.atime || 0); });
+								if (merged.length > 100) merged.length = 100;
+								pb.wsState.set('recentFolders', merged).catch(function(){});
+							}).catch(function(){});
+						}
+					} catch (_) {}
+				}).catch(function(){});
+			}
 		} catch (_) {}
 		pb.window.new(folderPath).then(function(r) {
 			if (r && !r.ok && r.locked) {

@@ -8,10 +8,12 @@
 //   配置可随时在服务器更新，用户永不需要重新下载绿色包。
 //   配置缓存到本地，离线时用缓存+内置默认值兜底。
 //
-// 非阻塞 100% 托管更新：
-//   ① 加载配置（缓存→服务器→默认值）→ 立即启动 joker.exe → 用户先用着
-//   ② 后台线程 → 按配置检查服务器 → 下载 r.next → 写 .version-next
-//   ③ 下次启动 → 检测暂存更新 → 删旧 gh555.com/ → 解压 → 100% 精确一致
+// ★ 架构（2026-08-31 定案）: 下载/验签/解压 100% 由壳层在 IDE 正常运行期间后台执行
+//   （shell/auto-updater.ts）。启动器职责: 秒弹窗 → 启动 joker → 下次开机原子交换
+//   （交换前对 r.next 二次验签）。启动器零下载线程 → 启动零等待 / 退出零等待 /
+//   第二实例零等待（点击必弹窗）。
+//   更新契约文件（与 auto-updater.ts 共享）: r.next / r.next.sig / .version-next /
+//   r.next.meta / .swap-ready / gh555.com-next / Data/launcher-swap.log / .apply-fails
 //
 // 编译：build.bat（一键：windres + gcc → qqqide.exe，带 shell/icon.ico 图标）
 // ============================================================================
@@ -66,7 +68,7 @@ static void enableTls12(HINTERNET hRequest) {
 // ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
 //   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
 //   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
-#define LAUNCHER_VERSION "20260829.1"
+#define LAUNCHER_VERSION "20260831.3"
 
 // ── Ed25519 验证公钥（2026-08-27 签名验证安全防线）──
 //   唯一硬编码信任根: 服务器一切下载物（r / units.json）必须带此公钥可验证的签名。
@@ -140,11 +142,6 @@ static char g_status[128] = "";
 static HWND    g_hwnd           = NULL;
 static HANDLE  g_hProcess       = NULL;
 static DWORD   g_jokerPid       = 0;
-static HANDLE  g_hUpdateThread  = NULL;
-static volatile LONG g_updateRunning = 0;
-static HANDLE  g_hApplyThread   = NULL;
-static volatile LONG g_applyRunning  = 0;
-static int     g_applyLaunches  = 0;
 static WCHAR   g_exeDir[MAX_PATH] = {0};
 static int     g_tickCount      = 0;
 static int     g_closeCountdown = 0;
@@ -197,6 +194,7 @@ static void setStatus(const char *s, int isErr) {
 
 // ── 通过 PID 查找 joker.exe 的主窗口 ──
 typedef struct { DWORD pid; HWND found; } FindWindowCtx;
+typedef struct { HWND self; HWND found; } FindWindowCtx2;
 static BOOL CALLBACK findWindowByPid(HWND hwnd, LPARAM lParam) {
     FindWindowCtx *ctx = (FindWindowCtx*)lParam;
     DWORD wpid = 0;
@@ -252,6 +250,23 @@ static void bringJokerToFront(const WCHAR *name) {
         } while (Process32NextW(snap, &pe));
     }
     CloseHandle(snap);
+}
+
+// ★ 第二实例: 找到另一个启动器窗口（排除本窗口）——旧启动器正在收尾/首装/交换时唤起它
+static BOOL CALLBACK findOtherLauncher(HWND hwnd, LPARAM lParam) {
+    FindWindowCtx2 *ctx = (FindWindowCtx2 *)lParam;
+    if (hwnd == ctx->self) return TRUE;
+    WCHAR cls[64];
+    if (GetClassNameW(hwnd, cls, 64) > 0 && wcscmp(cls, L"QqqIdeLauncher") == 0) {
+        ctx->found = hwnd;
+        return FALSE;
+    }
+    return TRUE;
+}
+static HWND findOtherLauncherWindow(HWND self) {
+    FindWindowCtx2 ctx = { self, NULL };
+    EnumWindows(findOtherLauncher, (LPARAM)&ctx);
+    return ctx.found;
 }
 
 static void pumpMessages(void) {
@@ -649,70 +664,6 @@ static void toWide(const char *src, WCHAR *dst, int dstMax) {
     MultiByteToWideChar(CP_UTF8, 0, src, -1, dst, dstMax);
 }
 
-// 下载字符串到内存
-static int downloadToString(const char *host, const char *path,
-                             char *buf, int bufSize, int useHttps) {
-    WCHAR wHost[256], wPath[512];
-    toWide(host, wHost, 256);
-    toWide(path, wPath, 512);
-
-    HINTERNET hSession = WinHttpOpen(L"qqqide-launcher/1.0",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) return -1;
-
-    HINTERNET hConnect = WinHttpConnect(hSession, wHost,
-        useHttps ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 0);
-    if (!hConnect) { WinHttpCloseHandle(hSession); return -1; }
-
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", wPath, NULL,
-        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-        useHttps ? WINHTTP_FLAG_SECURE : 0);
-    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
-
-    enableTls12(hRequest);
-
-    DWORD timeout = (DWORD)(g_cfg.timeout_sec * 1000);
-    WinHttpSetOption(hRequest, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
-    WinHttpSetOption(hRequest, WINHTTP_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
-
-    if (g_cfg.follow_redirect) {
-        DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
-        WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect));
-    }
-
-    BOOL ok = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-        WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-    if (!ok) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
-
-    ok = WinHttpReceiveResponse(hRequest, NULL);
-    if (!ok) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
-
-    DWORD statusCode = 0, statusSize = sizeof(statusCode);
-    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
-    if (statusCode != 200) {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
-        return -1;
-    }
-
-    int total = 0;
-    DWORD avail = 0, rd = 0;
-    while (WinHttpQueryDataAvailable(hRequest, &avail) && avail > 0) {
-        DWORD toRead = avail;
-        if (total + (int)toRead >= bufSize) toRead = bufSize - total - 1;
-        if (toRead == 0) break;
-        if (!WinHttpReadData(hRequest, buf + total, toRead, &rd)) break;
-        total += rd;
-        if (total >= bufSize - 1) break;
-    }
-    buf[total] = '\0';
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-    return total;
-}
-
 // 下载文件到磁盘
 static int downloadFile(const char *host, const char *path,
                          const WCHAR *dest, int useHttps) {
@@ -723,16 +674,29 @@ static int downloadFile(const char *host, const char *path,
     HINTERNET hSession = WinHttpOpen(L"qqqide-launcher/1.0",
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) return -1;
+    if (!hSession) {
+        swapLogPersist(g_exeDir, "download: WinHttpOpen FAIL");
+        return -1;
+    }
 
     HINTERNET hConnect = WinHttpConnect(hSession, wHost,
         useHttps ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 0);
-    if (!hConnect) { WinHttpCloseHandle(hSession); return -1; }
+    if (!hConnect) {
+        char dbg[160];
+        snprintf(dbg, sizeof(dbg), "download %hs: WinHttpConnect FAIL err=%lu", path, GetLastError());
+        swapLogPersist(g_exeDir, dbg);
+        WinHttpCloseHandle(hSession); return -1;
+    }
 
     HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", wPath, NULL,
         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
         useHttps ? WINHTTP_FLAG_SECURE : 0);
-    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
+    if (!hRequest) {
+        char dbg[160];
+        snprintf(dbg, sizeof(dbg), "download %hs: WinHttpOpenRequest FAIL err=%lu", path, GetLastError());
+        swapLogPersist(g_exeDir, dbg);
+        WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1;
+    }
 
     enableTls12(hRequest);
 
@@ -745,31 +709,82 @@ static int downloadFile(const char *host, const char *path,
         WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect));
     }
 
-    BOOL ok = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+    // ★ 断点续传（2026-08-31 慢网络死循环根治）: dest 已存在 → Range 从现有大小续传。
+    //   65MB 增量 @90KB/s 需 12+ 分钟，任何中断（用户重开/硬上限/看门狗）进度清零
+    //   → 永远升不上去（E:\s\w 机器三次 begin 零后续实锤）。CDN（R2/OSS）均支持 Range。
+    //   安全: 后续 sha512 清单校验 + 7z CRC + Ed25519 验签三重裁决，损坏必重下。
+    DWORD existingSize = 0;
+    if (fileExistsW(dest)) {
+        HANDLE hf = CreateFileW(dest, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hf != INVALID_HANDLE_VALUE) {
+            existingSize = GetFileSize(hf, NULL);
+            CloseHandle(hf);
+        }
+    }
+    WCHAR wRange[64];
+    const WCHAR *headers = WINHTTP_NO_ADDITIONAL_HEADERS;
+    if (existingSize > 0) {
+        swprintf(wRange, 64, L"Range: bytes=%lu-\r\n", existingSize);
+        headers = wRange;
+    }
+
+    BOOL ok = WinHttpSendRequest(hRequest, headers, -1L,
         WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-    if (!ok) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
+    if (!ok) {
+        char dbg[160];
+        snprintf(dbg, sizeof(dbg), "download %hs: WinHttpSendRequest FAIL err=%lu", path, GetLastError());
+        swapLogPersist(g_exeDir, dbg);
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1;
+    }
 
     ok = WinHttpReceiveResponse(hRequest, NULL);
-    if (!ok) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
+    if (!ok) {
+        char dbg[160];
+        snprintf(dbg, sizeof(dbg), "download %hs: WinHttpReceiveResponse FAIL err=%lu", path, GetLastError());
+        swapLogPersist(g_exeDir, dbg);
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1;
+    }
 
     DWORD statusCode = 0, statusSize = sizeof(statusCode);
     WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
         WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
-    if (statusCode != 200) {
+    if (statusCode != 200 && statusCode != 206 && statusCode != 416) {
+        char dbg[128];
+        snprintf(dbg, sizeof(dbg), "download %hs: unexpected status %lu", path, statusCode);
+        swapLogPersist(g_exeDir, dbg);
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
+        return -1;
+    }
+    // 416 Range Not Satisfiable = 本地文件已 ≥ 服务器大小 → 视为无需再下，
+    //   由调用方校验层（hash/验签/CRC）裁决完整性，不符自然删除重下。
+    if (statusCode == 416) {
+        char dbg[128];
+        snprintf(dbg, sizeof(dbg), "download %hs: 416 (local already complete, ex=%lu)", path, existingSize);
+        swapLogPersist(g_exeDir, dbg);
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
+        return 0;
+    }
+
+    DWORD contentLen = 0, clSize = sizeof(contentLen);
+    BOOL clOk = WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+        WINHTTP_HEADER_NAME_BY_INDEX, &contentLen, &clSize, WINHTTP_NO_HEADER_INDEX);
+    // ★ 完整性检查前置（2026-08-31 应急通道实锤）: Content-Length 查询失败 →
+    //   expectTotal=0 → 完整性检查被跳过 → 半截文件假成功（rc=0）→ 验签失败删文件
+    //   → 每启动重下 179MB 死循环。查询失败/无 CL 一律拒绝（方向安全）。
+    if (!clOk || contentLen == 0) {
+        swapLogPersist(g_exeDir, "download FAIL: no Content-Length (cannot verify completeness)");
         WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
         return -1;
     }
 
-    DWORD contentLen = 0, clSize = sizeof(contentLen);
-    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX, &contentLen, &clSize, WINHTTP_NO_HEADER_INDEX);
-
+    // 206 → 追加写（断点续传）；200 → 从头写（服务器忽略 Range）
     HANDLE hFile = CreateFileW(dest, GENERIC_WRITE, 0, NULL,
-        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        (statusCode == 206) ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
         WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
         return -1;
     }
+    if (statusCode == 206) SetFilePointer(hFile, 0, NULL, FILE_END);
 
     DWORD totalDownloaded = 0, avail = 0, rd = 0;
     char buf[65536];
@@ -789,11 +804,31 @@ static int downloadFile(const char *host, const char *path,
         pumpMessages();
     }
     CloseHandle(hFile);
-    WinHttpCloseHandle(hRequest);
     WinHttpCloseHandle(hConnect);
     WinHttpCloseHandle(hSession);
 
-    if (contentLen > 0 && totalDownloaded < contentLen * 0.99) return -1;
+    // 校验: 206 → 完整大小 = existingSize + contentLen（contentLen 为剩余量）；200 → contentLen 全量
+    DWORD expectTotal = contentLen;
+    if (statusCode == 206) expectTotal += existingSize;
+    if (statusCode == 206 && totalDownloaded == 0) {
+        swapLogPersist(g_exeDir, "download: 206 but 0 bytes read (stalled)");
+        return -1;
+    }
+    if (expectTotal > 0 && existingSize + totalDownloaded < expectTotal * 0.99) {
+        char dbg[160];
+        snprintf(dbg, sizeof(dbg), "download %hs: INCOMPLETE got=%luB clen=%lu ex=%lu (partial, retry next)",
+            path, totalDownloaded, contentLen, existingSize);
+        swapLogPersist(g_exeDir, dbg);
+        return -1;
+    }
+    // ★ 下载诊断日志（2026-08-31）: 任何下载结果留痕（code/got/clen/ex/total），终结盲猜
+    {
+        char dbg[256];
+        snprintf(dbg, sizeof(dbg), "download %hs: code=%lu got=%luB clen=%lu ex=%lu total=%luB rc=%d",
+            path, statusCode, totalDownloaded, contentLen, existingSize,
+            existingSize + totalDownloaded, (totalDownloaded > 0) ? 0 : -1);
+        swapLogPersist(g_exeDir, dbg);
+    }
     return totalDownloaded > 0 ? 0 : -1;
 }
 
@@ -828,7 +863,12 @@ static int verifySignedBuf(const u8 *data, size_t dataLen, const u8 *sig, int si
     if (!data || sigLen != 64 || dataLen == 0) return -1;
     u8 *sm = (u8 *)malloc(dataLen + 64);
     if (!sm) return -1;
-    u8 *m = (u8 *)malloc(dataLen);
+    // ★ m 必须分配 n = dataLen+64 字节（2026-08-31 实锤）: crypto_sign_open 向 m 写入
+    //   R||pk||message 全量（n 字节），不是只写消息——malloc(dataLen) 越界 64 字节，
+    //   小文件靠堆对齐侥幸通过，179MB 真实 r 必挂 → 全量更新验签恒失败（"signature
+    //   INVALID" + 清暂存 + 每启动重下 179MB 死循环）。F22 只修了 m/sm 同址问题，
+    //   漏了这个缓冲区尺寸错误。
+    u8 *m = (u8 *)malloc(dataLen + 64);
     if (!m) { free(sm); return -1; }
     memcpy(sm, sig, 64);
     memcpy(sm + 64, data, dataLen);
@@ -842,34 +882,41 @@ static int verifySignedBuf(const u8 *data, size_t dataLen, const u8 *sig, int si
 // 文件验签: filePath 内容 + sigPath 64B 签名。返回 0 = 有效
 static int verifySignedFile(const WCHAR *filePath, const WCHAR *sigPath) {
     u8 sig[64];
-    if (readFileRaw(sigPath, (char *)sig, sizeof(sig)) != 64) return -1;
+    // ★ 专用二进制读取（2026-08-31 实锤）: readFileRaw 是文本语义（ReadFile bufSize-1
+    //   + 尾部 \0）——读 64B 签名只返回 63 字节 → 验签恒败（"sig read rc=63"）。
+    //   C 端全量验签从 20260827.1 起双重失效（此截断 + verifySignedBuf m 缓冲越界），
+    //   所有走全量 r 的客户端下载完成后必被拒——本函数必须一次读满 64 字节。
+    HANDLE hs = CreateFileW(sigPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hs == INVALID_HANDLE_VALUE) {
+        char dbg[192];
+        snprintf(dbg, sizeof(dbg), "verify: sig open FAIL err=%lu (%ls)", GetLastError(), sigPath);
+        swapLogPersist(g_exeDir, dbg);
+        return -1;
+    }
+    DWORD rd = 0;
+    BOOL ok = ReadFile(hs, sig, 64, &rd, NULL);
+    CloseHandle(hs);
+    if (!ok || rd != 64) {
+        char dbg[192];
+        snprintf(dbg, sizeof(dbg), "verify: sig read rc=%lu err=%lu (%ls)", rd, GetLastError(), sigPath);
+        swapLogPersist(g_exeDir, dbg);
+        return -1;
+    }
     size_t dataLen = 0;
     u8 *data = readFileAlloc(filePath, &dataLen);
-    if (!data) return -1;
+    if (!data) {
+        swapLogPersist(g_exeDir, "verify: data read FAIL (missing/locked/oversize)");
+        return -1;
+    }
+    char dbg[128];
+    snprintf(dbg, sizeof(dbg), "verify: dataLen=%llu (0x%llx)", (unsigned long long)dataLen, (unsigned long long)dataLen);
+    swapLogPersist(g_exeDir, dbg);
     int rc = verifySignedBuf(data, dataLen, sig, 64);
     free(data);
     return rc;
 }
 
-// 文件 sha512 hex（128 字符小写）
-static void sha512FileHex(const WCHAR *path, char *hexOut) {
-    size_t len = 0;
-    u8 *data = readFileAlloc(path, &len);
-    hexOut[0] = '\0';
-    if (!data) return;
-    u8 h[64];
-    crypto_hash(h, data, len);
-    free(data);
-    for (int i = 0; i < 64; i++) sprintf(hexOut + i * 2, "%02x", h[i]);
-    hexOut[128] = '\0';
-}
 
-// 文件 sha512 与期望 hex 比对。返回 1 = 匹配
-static int fileSha512Matches(const WCHAR *path, const char *expectedHex) {
-    char actual[129];
-    sha512FileHex(path, actual);
-    return actual[0] != '\0' && _stricmp(actual, expectedHex) == 0;
-}
 
 // ═══════════════════════════════════════════════════════════════
 // 更新逻辑（参数全部来自 g_cfg）
@@ -924,7 +971,7 @@ static int removeDir(const WCHAR *dir) {
     return 0;
 }
 
-static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir) {
+static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir, int keepR) {
     if (!fileExistsW(rPath)) {
         setStatus("missing payload file", 1);
         return -1;
@@ -951,7 +998,13 @@ static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir) {
     while (ec == STILL_ACTIVE) {
         Sleep(250);
         if (GetExitCodeProcess(pi.hProcess, &ec) && ec == STILL_ACTIVE) {
-            ticks++;
+            // ★ 解压总超时（2026-08-30）: SFX 卡死 → 10 分钟强杀，防永久挂起
+            if (++ticks > 2400) {
+                TerminateProcess(pi.hProcess, 1);
+                WaitForSingleObject(pi.hProcess, 5000);
+                GetExitCodeProcess(pi.hProcess, &ec);
+                break;
+            }
             if (ticks < 36 && ticks % 4 == 0 && g_pct < 90) {
                 g_pct += 9;
                 if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
@@ -962,26 +1015,157 @@ static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir) {
     if (ec != 0) { setStatus("extract error", 1); return -1; }
 
     // 验证 joker.exe 存在
+    //   ★ 回退 DEFAULT_CFG（2026-08-31）: 应急通道在 loadConfig 前执行，g_cfg 为零值
     WCHAR check[MAX_PATH];
     WCHAR wJoker[256];
-    toWide(g_cfg.joker_exe, wJoker, 256);
+    toWide(g_cfg.joker_exe[0] ? g_cfg.joker_exe : DEFAULT_CFG.joker_exe, wJoker, 256);
     swprintf(check, MAX_PATH, L"%s\\%s", exeDir, wJoker);
     if (!fileExistsW(check)) { setStatus("extract incomplete", 1); return -1; }
 
-    // 清理 r 文件
-    for (int retry = 0; retry < 5; retry++) {
-        if (DeleteFileW(rPath)) break;
-        Sleep(400);
-    }
-    if (fileExistsW(rPath)) {
-        Sleep(2000);
+    // 清理 r 文件（keepR=1: 应急通道保留 r.next 供交换前二次验签，不删）
+    if (!keepR) {
         for (int retry = 0; retry < 5; retry++) {
             if (DeleteFileW(rPath)) break;
-            Sleep(500);
+            Sleep(400);
         }
+        if (fileExistsW(rPath)) {
+            Sleep(2000);
+            for (int retry = 0; retry < 5; retry++) {
+                if (DeleteFileW(rPath)) break;
+                Sleep(500);
+            }
+        }
+        if (fileExistsW(rPath)) MoveFileExW(rPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
     }
-    if (fileExistsW(rPath)) MoveFileExW(rPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
     return 0;
+}
+
+
+// ★ 应急全量更新通道（2026-08-31，壳层单点故障兜底）:
+//   正常架构: 更新下载/验签/解压 100% 在壳层（IDE 正常运行期间后台执行），启动器零下载。
+//   兜底: 壳层通道连续失败 ≥3 次（.apply-fails≥3，壳层自身损坏/被杀/增量死循环）→ 启动器
+//   亲自走旧式全量链路: 下载 r.next(+r.next.sig，断点续传) → Ed25519 验签 → 解压
+//   gh555.com-next → 写 .swap-ready → 下次启动走交换全守卫（二次验签+防降级+数据备份）。
+//   方向安全: 验签失败拒更新保留旧版；正常时零开销（一次 stat 判定）。
+static void emergencyFullUpdate(const WCHAR *exeDir) {
+    char logBuf[4096] = {0};
+    WCHAR failPath[MAX_PATH], swapReady[MAX_PATH], rNext[MAX_PATH], rSig[MAX_PATH];
+    WCHAR ghNext[MAX_PATH], tmpDir[MAX_PATH], extracted[MAX_PATH], vPath[MAX_PATH];
+    WCHAR vNext[MAX_PATH], metaPath[MAX_PATH];
+    char fbuf[32] = {0};
+    char ver[64] = {0};
+    char sigPath[300];
+    int dlRc = -1;
+    HANDLE hf;
+
+    // 1. 仅当壳层连续失败确认（≥3）才激活；已有挂起交换 → 无事可做
+    swprintf(failPath, MAX_PATH, L"%s\\.apply-fails", exeDir);
+    if (readFileText(failPath, fbuf, sizeof(fbuf)) <= 0 || atoi(fbuf) < 3) return;
+    swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
+    if (fileExistsW(swapReady)) return;
+
+    swprintf(rNext, MAX_PATH, L"%s\\r.next", exeDir);
+    swprintf(rSig, MAX_PATH, L"%s\\r.next.sig", exeDir);
+    swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
+    swprintf(tmpDir, MAX_PATH, L"%s\\.r-extract-tmp", exeDir);
+
+    swapLogAppend(logBuf, sizeof(logBuf), "emergency update: activated (.apply-fails=%s, full r fallback)", fbuf);
+    setStatus("emergency update: downloading…", 0);
+    if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
+
+    // 2. 下载 r.next —— downloadFile 天然幂等: 缺 → 全量；半截 → 206 断点续传；
+    //    完整 → 416 视为无需再下（返回 0）。绝不能只按存在性跳过（半截文件
+    //    会被验签拒绝后删除 = 续传破坏，每次启动重下 179MB）。
+    //    ★ 用 DEFAULT_CFG（2026-08-31）: 应急通道在 loadConfig 之前执行（避免 39 秒
+    //   配置网络阻塞），g_cfg 此时为零——默认配置与正式更新同源（编译期常量）。
+    dlRc = downloadFile(DEFAULT_CFG.update_host, DEFAULT_CFG.r_path, rNext, DEFAULT_CFG.use_https);
+    if (dlRc != 0 && DEFAULT_CFG.use_https) {
+        dlRc = downloadFile(DEFAULT_CFG.update_host, DEFAULT_CFG.r_path, rNext, 0);
+    }
+    if (dlRc != 0 || !fileExistsW(rNext)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: r.next download err");
+        swapLogFlush(exeDir, logBuf);
+        return;
+    }
+    // 3. 下载签名（r_path + ".sig"，与壳层同款 URL 构造；同样幂等）
+    snprintf(sigPath, sizeof(sigPath), "%s.sig", DEFAULT_CFG.r_path);
+    dlRc = downloadFile(DEFAULT_CFG.update_host, sigPath, rSig, DEFAULT_CFG.use_https);
+    if (dlRc != 0 && DEFAULT_CFG.use_https) {
+        dlRc = downloadFile(DEFAULT_CFG.update_host, sigPath, rSig, 0);
+    }
+    if (dlRc != 0 || !fileExistsW(rSig)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: r.sig download err (keep old version)");
+        DeleteFileW(rNext);
+        swapLogFlush(exeDir, logBuf);
+        return;
+    }
+    // 4. 强制验签（方向安全: 失败拒更新保留旧版）
+    {
+        char dbg[192];
+        DWORD szr = 0, szs = 0;
+        HANDLE hf = CreateFileW(rNext, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hf != INVALID_HANDLE_VALUE) { szr = GetFileSize(hf, NULL); CloseHandle(hf); }
+        HANDLE hs = CreateFileW(rSig, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hs != INVALID_HANDLE_VALUE) { szs = GetFileSize(hs, NULL); CloseHandle(hs); }
+        snprintf(dbg, sizeof(dbg), "verify pre: r.next=%luB r.next.sig=%luB (both open err=%lu)", szr, szs, GetLastError());
+        swapLogPersist(g_exeDir, dbg);
+    }
+    if (verifySignedFile(rNext, rSig) != 0) {
+        swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: r.next signature INVALID (security, keep old version)");
+        // ★ 现场保留（2026-08-31 诊断）: 改名而非删除——r.next.fail 可离线验签定位
+        //   （下载层 vs 验签层），下次启动 downloadFile 看不到 r.next 自然重下，不阻塞
+        {
+            WCHAR failR[MAX_PATH], failS[MAX_PATH];
+            swprintf(failR, MAX_PATH, L"%s\\r.next.fail", exeDir);
+            swprintf(failS, MAX_PATH, L"%s\\r.next.sig.fail", exeDir);
+            DeleteFileW(failR); DeleteFileW(failS);
+            MoveFileW(rNext, failR);
+            MoveFileW(rSig, failS);
+        }
+        swapLogFlush(exeDir, logBuf);
+        return;
+    }
+    // 5. 解压到临时目录（keepR=1: r.next 保留，供交换前二次验签）
+    //   ★ tmpDir 必须先创建（2026-08-31 实锤）: CreateProcessW 的 lpCurrentDirectory
+    //   不存在 → 直接失败（err=267）→ "extract err" 死循环。
+    removeDir(tmpDir);
+    CreateDirectoryW(tmpDir, NULL);
+    if (extractPayload(rNext, tmpDir, 1) != 0) {
+        swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: extract err");
+        removeDir(tmpDir);
+        swapLogFlush(exeDir, logBuf);
+        return;
+    }
+    swprintf(extracted, MAX_PATH, L"%s\\gh555.com", tmpDir);
+    if (!fileExistsW(extracted)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: payload has no gh555.com");
+        removeDir(tmpDir);
+        swapLogFlush(exeDir, logBuf);
+        return;
+    }
+    // 6. 上移为 gh555.com-next（旧 next 未交换 → 过期/残缺，先清）
+    removeDir(ghNext);
+    if (!MoveFileW(extracted, ghNext)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: move gh555.com-next err=%lu", GetLastError());
+        removeDir(tmpDir);
+        swapLogFlush(exeDir, logBuf);
+        return;
+    }
+    removeDir(tmpDir);
+    // 7. 写 .version-next / r.next.meta / .swap-ready（下次启动 applySwapIfReady 全守卫交换）
+    swprintf(vPath, MAX_PATH, L"%s\\versions.json", ghNext);
+    readManifestIdFile(vPath, ver, sizeof(ver));
+    swprintf(vNext, MAX_PATH, L"%s\\.version-next", exeDir);
+    hf = CreateFileW(vNext, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hf != INVALID_HANDLE_VALUE) { DWORD wb; WriteFile(hf, ver, (DWORD)strlen(ver), &wb, NULL); CloseHandle(hf); }
+    swprintf(metaPath, MAX_PATH, L"%s\\r.next.meta", exeDir);
+    { char meta[96]; snprintf(meta, sizeof(meta), "{\"v\":\"%s\"}", ver);
+      hf = CreateFileW(metaPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+      if (hf != INVALID_HANDLE_VALUE) { DWORD wb; WriteFile(hf, meta, (DWORD)strlen(meta), &wb, NULL); CloseHandle(hf); } }
+    hf = CreateFileW(swapReady, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hf != INVALID_HANDLE_VALUE) { DWORD wb; WriteFile(hf, ver, (DWORD)strlen(ver), &wb, NULL); CloseHandle(hf); }
+    swapLogAppend(logBuf, sizeof(logBuf), "emergency update OK: staged %s (swap at next boot, apply-fails kept till swap)", ver[0] ? ver : "?");
+    swapLogFlush(exeDir, logBuf);
 }
 
 
@@ -1268,6 +1452,30 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     //   的 cwd/映像句柄锁死目录 → rename 必失败）。只杀 exe 位于本包内的进程，零误伤。
     killStalePackProcesses(exeDir);
 
+    // ★ 交换前二次验签（2026-08-31 架构）: 下载/验签/解压已移至壳层（正常运行期间后台执行）。
+    //   此处防御: r.next 仍在盘（全量路径）→ 必须仍带合法签名才交换——防本地篡改/磁盘损坏/
+    //   壳层异常写 .swap-ready。增量路径无 r.next → 跳过（单元完整性由壳层按已验签 sidecar
+    //   sha512 校验，签名边界在壳层）。验签失败 → 清暂存，下次壳层会话重新下载（方向安全）。
+    {
+        WCHAR rNextV[MAX_PATH], rNextSigV[MAX_PATH];
+        swprintf(rNextV, MAX_PATH, L"%s\\r.next", exeDir);
+        swprintf(rNextSigV, MAX_PATH, L"%s\\r.next.sig", exeDir);
+        if (fileExistsW(rNextV)) {
+            if (!fileExistsW(rNextSigV) || verifySignedFile(rNextV, rNextSigV) != 0) {
+                swapLogAppend(logBuf, sizeof(logBuf), "swap abort: r.next signature INVALID (security)");
+                DeleteFileW(swapReady);
+                removeDir(ghNext);
+                DeleteFileW(rNextV); DeleteFileW(rNextSigV);
+                { WCHAR tmp[MAX_PATH];
+                  swprintf(tmp, MAX_PATH, L"%s\\.version-next", exeDir); DeleteFileW(tmp);
+                  swprintf(tmp, MAX_PATH, L"%s\\r.next.meta", exeDir); DeleteFileW(tmp); }
+                swapLogFlush(exeDir, logBuf);
+                return 0;
+            }
+            swapLogAppend(logBuf, sizeof(logBuf), "swap: r.next signature OK (full-path update)");
+        }
+    }
+
     // ★ 守卫 2: next 完整性最小校验（joker + versions.json + resources/app）→ 残缺版绝不交换
     //   versions.json = 唯一版本权威（清单编号 + 组件精确矩阵），缺失即判残缺。
     {
@@ -1382,6 +1590,14 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     removeDir(ghOldSlot);
     DeleteFileW(swapReady);
     { WCHAR prb[MAX_PATH]; swprintf(prb, MAX_PATH, L"%s\\.pending-reboot", exeDir); DeleteFileW(prb); }
+    // ★ 交换完成 → r.next 全家消费完毕，清理（2026-08-31: r.next 由壳层下载，启动器交换后删除）
+    {
+        WCHAR tmp[MAX_PATH];
+        swprintf(tmp, MAX_PATH, L"%s\\r.next", exeDir); DeleteFileW(tmp);
+        swprintf(tmp, MAX_PATH, L"%s\\r.next.sig", exeDir); DeleteFileW(tmp);
+        swprintf(tmp, MAX_PATH, L"%s\\.version-next", exeDir); DeleteFileW(tmp);
+        swprintf(tmp, MAX_PATH, L"%s\\r.next.meta", exeDir); DeleteFileW(tmp);
+    }
     swapLogAppend(logBuf, sizeof(logBuf), "swap OK: %s -> %s",
         liveVer[0] ? liveVer : "?", pendVer[0] ? pendVer : "?");
     swapLogFlush(exeDir, logBuf);
@@ -1400,8 +1616,11 @@ static int applySwapIfReady(const WCHAR *exeDir) {
 //   - 未知文件一律不动（防误删用户自放文件）
 static void cleanupRootJunk(const WCHAR *exeDir) {
     WCHAR p[MAX_PATH];
+    // ★ 断点续传保留（2026-08-31）: r.next/r.next.sig/.version-next 半截或暂存文件不再启动即清——
+    //   慢网络中断后下次启动 Range 续传（曾无条件删 → 每启动重下 178MB 永远升不上去）。
+    //   完整下载/解压成功后由下载与解压线程自然清理；.version-next 匹配时下载去重守卫直接跳过。
     static const WCHAR *plainFiles[] = {
-        L"r", L"r.next", L"r.next.sig", L".version-next", L"debug.log",
+        L"r", L"debug.log",
         L"launcher-config.json", L"loading-status", L"qqqide.old.exe"
     };
     for (int i = 0; i < (int)(sizeof(plainFiles) / sizeof(plainFiles[0])); i++) {
@@ -1418,9 +1637,23 @@ static void cleanupRootJunk(const WCHAR *exeDir) {
         if (fileExistsW(slotData)) continue;
         removeDir(p);
     }
-    // 单元增量暂存（下载中断残留，启动即清）
-    swprintf(p, MAX_PATH, L"%s\\u.next", exeDir);
-    if (fileExistsW(p)) removeDir(p);
+    // ★ 嵌套载荷污染（2026-08-30 实锤）: r 载荷被错误解压进活目录 → gh555.com\gh555.com
+    //   （含 versions.json = 载荷特征，活目录永不应含嵌套 gh555.com）+ gh555.com\qqqide.exe。
+    //   自动清除；仅当嵌套目录含 versions.json 才删（防误删用户自建目录）；
+    //   被占用删不掉 → 下次启动再清。
+    swprintf(p, MAX_PATH, L"%s\\gh555.com\\gh555.com", exeDir);
+    if (fileExistsW(p)) {
+        WCHAR nestedV[MAX_PATH];
+        swprintf(nestedV, MAX_PATH, L"%s\\versions.json", p);
+        if (fileExistsW(nestedV)) {
+            swapLogNow(exeDir, "cleanup: nested payload gh555.com\\gh555.com removed (pollution)");
+            removeDir(p);
+        }
+    }
+    swprintf(p, MAX_PATH, L"%s\\gh555.com\\qqqide.exe", exeDir);
+    if (fileExistsW(p)) DeleteFileW(p);
+    // 单元增量暂存（2026-08-31 起保留: 半截单元 7z 是断点续传资本；
+    //   解压成功/装配失败由 tryIncrementalUpdate 自行清理）
     // 全量解压暂存（解压中途被杀残留，启动即清）
     swprintf(p, MAX_PATH, L"%s\\_swap_tmp", exeDir);
     if (fileExistsW(p)) removeDir(p);
@@ -1463,867 +1696,13 @@ static void migrateLegacyRootData(const WCHAR *exeDir) {
 }
 
 
-// ★ 后台解压线程 — 将 r.next 解压到 gh555.com-next/（不阻塞用户使用 IDE）
-static unsigned __stdcall backgroundApplyUpdate(void *param) {
-    InterlockedExchange(&g_applyRunning, 1);
-    WCHAR *exeDir = (WCHAR *)param;
 
-    WCHAR rNext[MAX_PATH], vNext[MAX_PATH], rNextSig[MAX_PATH];
-    swprintf(rNext, MAX_PATH, L"%s\\r.next", exeDir);
-    swprintf(vNext, MAX_PATH, L"%s\\.version-next", exeDir);
-    swprintf(rNextSig, MAX_PATH, L"%s\\r.next.sig", exeDir);
 
-    if (!fileExistsW(rNext) || !fileExistsW(vNext)) {
-        InterlockedExchange(&g_applyRunning, 0);
-        return 0;
-    }
 
-    char newVer[64] = {0};
-    int rd = readFileText(vNext, newVer, sizeof(newVer));
-    if (rd <= 0) {
-        swapLogNow(exeDir, "extract abort: .version-next unreadable");
-        applyFailMark(exeDir);
-        DeleteFileW(rNext); DeleteFileW(rNextSig); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0;
-    }
 
-    // ★ 交换已完成（live 已是目标版本）→ 清理残留暂存，不再重复解压
-    {
-        char liveVer[64] = {0};
-        if (readLocalVersion(exeDir, liveVer, sizeof(liveVer)) > 0 &&
-            strcmp(liveVer, newVer) == 0) {
-            swapLogNow(exeDir, "extract skip: live already %s (stale r.next cleaned)", liveVer);
-            applyFailClear(exeDir);
-            DeleteFileW(rNext); DeleteFileW(vNext);
-            InterlockedExchange(&g_applyRunning, 0);
-            return 0;
-        }
-    }
 
-    // 创建临时解压目录
-    WCHAR tmpDir[MAX_PATH], ghNext[MAX_PATH];
 
-    swprintf(tmpDir, MAX_PATH, L"%s\\_swap_tmp", exeDir);
-    swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
 
-    // ★ 幂等守卫（2026-08-06）: gh555.com-next 已存在且版本匹配 → 补写 .swap-ready 即结束
-    //   禁止每次启动重复解压 120MB（交换推迟期间每启动全量重做 = 严重 bug）
-    //   版本读取 = next/versions.json 的 id（唯一权威，2026-08-10）
-    {
-        WCHAR nextVerPath[MAX_PATH];
-        swprintf(nextVerPath, MAX_PATH, L"%s\\versions.json", ghNext);
-        char nextVer[64] = {0};
-        if (fileExistsW(ghNext) &&
-            readManifestIdFile(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
-            strcmp(nextVer, newVer) == 0) {
-            swapLogNow(exeDir, "extract skip: next already %s (idempotent, no re-extract)", newVer);
-            WCHAR swapReady[MAX_PATH];
-            swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
-            writeFileText(swapReady, newVer);
-            applyFailClear(exeDir);
-            DeleteFileW(rNext); DeleteFileW(rNextSig); DeleteFileW(vNext);
-            InterlockedExchange(&g_applyRunning, 0);
-            return 0;
-        }
-    }
-
-    // ★ Ed25519 验签（2026-08-27 安全）: r.next 必须带合法签名（r.next.sig）
-    //   防 CDN 投毒/中间人替换。验签失败 → 删暂存 + 失败计数，拒绝解压
-    //   （方向安全: 保留旧版，下次启动重试）。验证点统一在此 —— 下载路径与
-    //   skip-re-download 路径都汇聚于此，无旁路。
-    {
-        if (!fileExistsW(rNextSig) || verifySignedFile(rNext, rNextSig) != 0) {
-            swapLogNow(exeDir, "extract abort: r.next signature INVALID (security, keep old version)");
-            DeleteFileW(rNext); DeleteFileW(rNextSig); DeleteFileW(vNext);
-            applyFailMark(exeDir);
-            InterlockedExchange(&g_applyRunning, 0);
-            return 0;
-        }
-        swapLogNow(exeDir, "extract: r.next signature OK (%s)", newVer);
-    }
-
-    removeDir(ghNext);
-    removeDir(tmpDir);
-    CreateDirectoryW(tmpDir, NULL);
-
-    // 解压 r.next → tmpDir
-    WCHAR cmdLine[1024];
-    swprintf(cmdLine, 1024, L"\"%s\" -y", rNext);
-    STARTUPINFOW si = { sizeof(si) };
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    PROCESS_INFORMATION pi = {0};
-    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-        CREATE_NO_WINDOW, NULL, tmpDir, &si, &pi)) {
-        swapLogNow(exeDir, "extract FAIL: spawn 7z err=%lu", GetLastError());
-        applyFailMark(exeDir);
-        removeDir(tmpDir);
-        InterlockedExchange(&g_applyRunning, 0);
-        return 0;
-    }
-    CloseHandle(pi.hThread);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD ec = 0;
-    GetExitCodeProcess(pi.hProcess, &ec);
-    CloseHandle(pi.hProcess);
-
-    if (ec != 0) {
-        swapLogNow(exeDir, "extract FAIL: 7z exit=%lu (corrupt r.next)", ec);
-        applyFailMark(exeDir);
-        removeDir(tmpDir); InterlockedExchange(&g_applyRunning, 0); return 0;
-    }
-
-    // 移出解压出的 gh555.com → gh555.com-next
-    WCHAR extractedGh[MAX_PATH];
-    swprintf(extractedGh, MAX_PATH, L"%s\\gh555.com", tmpDir);
-    if (!fileExistsW(extractedGh)) {
-        swapLogNow(exeDir, "extract FAIL: payload has no gh555.com (bad r.next)");
-        applyFailMark(exeDir);
-        removeDir(tmpDir);
-        InterlockedExchange(&g_applyRunning, 0);
-        return 0;
-    }
-
-    if (!MoveFileW(extractedGh, ghNext)) {
-        swapLogNow(exeDir, "extract FAIL: move to gh555.com-next err=%lu", GetLastError());
-        applyFailMark(exeDir);
-        removeDir(tmpDir); removeDir(ghNext);
-        InterlockedExchange(&g_applyRunning, 0);
-        return 0;
-    }
-
-    // ★ 自更新: r 载荷根目录含新 qqqide.exe → 移入 gh555.com-next/ 供 swap 时替换
-    {
-        WCHAR newLauncherSrc[MAX_PATH], newLauncherDst[MAX_PATH];
-        swprintf(newLauncherSrc, MAX_PATH, L"%s\\qqqide.exe", tmpDir);
-        swprintf(newLauncherDst, MAX_PATH, L"%s\\launcher-next.exe", ghNext);
-        if (fileExistsW(newLauncherSrc)) {
-            CopyFileW(newLauncherSrc, newLauncherDst, FALSE);
-        }
-    }
-
-    removeDir(tmpDir);
-
-    // ★ 版本号不再写：versions.json 已随 r 冻结在 gh555.com 内（唯一权威，2026-08-10）
-
-    // 写 .swap-ready → 下次启动原子交换
-    WCHAR swapReady[MAX_PATH];
-    swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
-    writeFileText(swapReady, newVer);
-    swapLogNow(exeDir, "extract OK: %s staged (swap-ready written)", newVer);
-    applyFailClear(exeDir);
-
-    // 清理暂存文件
-    DeleteFileW(rNext);
-    DeleteFileW(rNextSig);
-    DeleteFileW(vNext);
-
-    InterlockedExchange(&g_applyRunning, 0);
-
-    // 通知主线程：如果启动器已隐藏，可以关闭了
-    if (g_hwnd) PostMessageW(g_hwnd, WM_USER + 1, 0, 0);
-
-    return 0;
-}
-
-// ★ 解压线程调度（2026-08-14）: 下载完 r.next+.version-next 即在本会话解压
-//   → 全量升级从 3 次启动压到 2 次（与增量路径一致）。每会话最多 2 次（防解压失败洪泛），
-//   失败（r.next 残留）下次启动重试。
-static void maybeStartApplyThread(void) {
-    if (g_applyLaunches >= 2) return;
-    if (InterlockedCompareExchange(&g_applyRunning, 0, 0) != 0) return;  // 上一线程仍在跑
-    if (g_hApplyThread) {
-        if (WaitForSingleObject(g_hApplyThread, 0) == WAIT_OBJECT_0) {
-            CloseHandle(g_hApplyThread); g_hApplyThread = NULL;
-        } else {
-            return;
-        }
-    }
-    WCHAR rNextPath[MAX_PATH], vNextPath[MAX_PATH];
-    swprintf(rNextPath, MAX_PATH, L"%s\\r.next", g_exeDir);
-    swprintf(vNextPath, MAX_PATH, L"%s\\.version-next", g_exeDir);
-    if (fileExistsW(rNextPath) && fileExistsW(vNextPath)) {
-        g_applyLaunches++;
-        g_hApplyThread = (HANDLE)_beginthreadex(NULL, 0, backgroundApplyUpdate, g_exeDir, 0, NULL);
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ★ 单元增量更新（2026-08-10 B 方案落地）
-//   哲学: 增量 = 纯传输层优化，正确性零责任。
-//   ① 版本权威不变 = versions.json 清单编号（F33 重构），任何异常 → 全量 r 兜底
-//   ② 单元 = 架构层目录（launcher/core/app/shell-out/webapp 固定 5 个），
-//      单元数不随项目复杂度增长（新文件自动落入 core/app 补集）
-//   ③ engines/* 不参与增量（component-checker 已按 manifest 独立增量管理，
-//      防启动器覆盖组件升级导致静默回退）
-//   ④ 增量字节数 >= 全量 r → 直接全量（带宽不劣化）
-//   ⑤ 本地状态 = gh555.com/Data/units.json（随交换 Data 备份恢复，天然幂等）
-// ═══════════════════════════════════════════════════════════════
-
-#define MAX_UNITS 12
-
-typedef struct {
-    char name[48];
-    char rel[256];
-    char version[64];
-    long bytes;
-    char file[128];
-    char hash[160];   // sha512 hex 128 字符（2026-08-27 安全: 已验签清单锁定的单元完整性哈希；
-                    //   2026-08-28: 128 缓冲 + parseJsonString 127 上限 = 断流，必须 ≥129）
-} UnitDef;
-
-typedef struct {
-    char id[64];
-    long r_bytes;
-    char versions_raw[2048];   // "versions" 键的原始 JSON（逐字写 next/versions.json）
-    int n_units;
-    UnitDef units[MAX_UNITS];
-} UnitsManifest;
-
-// 抓取 "versions" 键的原始 JSON 值（含花括号）
-static int captureRawJsonObject(const char **p, char *out, int outSize) {
-    skipWhitespace(p);
-    if (**p != '{') return 0;
-    int depth = 0;
-    int i = 0;
-    while (**p && i < outSize - 1) {
-        char c = **p;
-        out[i++] = c;
-        if (c == '{') depth++;
-        else if (c == '}') {
-            depth--;
-            if (depth == 0) { (*p)++; out[i] = '\0'; return 1; }
-        }
-        (*p)++;
-    }
-    out[i] = '\0';
-    return 0;
-}
-
-// 跳过任意 JSON 值（未知 key 容错，向前兼容）
-static void skipJsonValue(const char **p) {
-    skipWhitespace(p);
-    if (**p == '"') { char dummy[256]; parseJsonString(p, dummy, sizeof(dummy)); }  // 256: 127 上限曾吞 128 字符 sha512 断流
-    else if (**p == '{') { int d = 1; (*p)++; while (**p && d > 0) { if (**p == '{') d++; if (**p == '}') d--; (*p)++; } }
-    else if (**p == '[') { int d = 1; (*p)++; while (**p && d > 0) { if (**p == '[') d++; if (**p == ']') d--; (*p)++; } }
-    else if (**p == 't' || **p == 'f') { int v; parseJsonBool(p, &v); }
-    else { while (**p && **p != ',' && **p != '}' && **p != ']') (*p)++; }
-}
-
-// 解析一个单元对象 {"name":..,"rel":..,"version":..,"bytes":..,"file":..}
-static int parseUnitObject(const char **p, UnitDef *u) {
-    skipWhitespace(p);
-    if (**p != '{') return 0;
-    (*p)++;
-    memset(u, 0, sizeof(*u));
-    while (1) {
-        skipWhitespace(p);
-        if (**p == '}') { (*p)++; break; }
-        if (**p == ',') { (*p)++; continue; }
-        if (**p == '\0') return 0;
-        char key[48];
-        if (!parseJsonString(p, key, sizeof(key))) return 0;
-        skipWhitespace(p);
-        if (**p != ':') return 0;
-        (*p)++;
-        if (strcmp(key, "name") == 0) { skipWhitespace(p); parseJsonString(p, u->name, sizeof(u->name)); }
-        else if (strcmp(key, "rel") == 0) { skipWhitespace(p); parseJsonString(p, u->rel, sizeof(u->rel)); }
-        else if (strcmp(key, "version") == 0) { skipWhitespace(p); parseJsonString(p, u->version, sizeof(u->version)); }
-        else if (strcmp(key, "bytes") == 0) { skipWhitespace(p); char *end = NULL; u->bytes = strtol(*p, &end, 10); if (end) *p = end; }
-        else if (strcmp(key, "file") == 0) { skipWhitespace(p); parseJsonString(p, u->file, sizeof(u->file)); }
-        else if (strcmp(key, "hash") == 0) { skipWhitespace(p); parseJsonString(p, u->hash, sizeof(u->hash)); }
-        else { skipJsonValue(p); }
-    }
-    return 1;
-}
-
-// 解析远端单元清单 units.json
-static int parseUnitsManifest(const char *json, UnitsManifest *m) {
-    const char *p = json;
-    skipWhitespace(&p);
-    if (*p != '{') return 0;
-    p++;
-    memset(m, 0, sizeof(*m));
-    while (1) {
-        skipWhitespace(&p);
-        if (*p == '}') { p++; break; }
-        if (*p == ',') { p++; continue; }
-        if (*p == '\0') break;
-        char key[64];
-        if (!parseJsonString(&p, key, sizeof(key))) return 0;
-        skipWhitespace(&p);
-        if (*p != ':') return 0;
-        p++;
-        if (strcmp(key, "id") == 0) { skipWhitespace(&p); parseJsonString(&p, m->id, sizeof(m->id)); }
-        else if (strcmp(key, "r_bytes") == 0) { skipWhitespace(&p); char *end = NULL; m->r_bytes = strtol(p, &end, 10); if (end) p = end; }
-        else if (strcmp(key, "versions") == 0) { captureRawJsonObject(&p, m->versions_raw, sizeof(m->versions_raw)); }
-        else if (strcmp(key, "units") == 0) {
-            skipWhitespace(&p);
-            if (*p == '[') {
-                p++;
-                while (m->n_units < MAX_UNITS) {
-                    skipWhitespace(&p);
-                    if (*p == ']') { p++; break; }
-                    if (*p == ',') { p++; continue; }
-                    if (!parseUnitObject(&p, &m->units[m->n_units])) break;
-                    m->n_units++;
-                }
-            }
-        }
-        else { skipJsonValue(&p); }
-    }
-    return m->n_units > 0 && m->id[0] != '\0';
-}
-
-// 解析本地单元状态 gh555.com/Data/units.json（复用 UnitsManifest，仅 id + name/version 有意义）
-static int parseLocalUnitsState(const char *json, UnitsManifest *ls) {
-    const char *p = json;
-    skipWhitespace(&p);
-    if (*p != '{') return 0;
-    p++;
-    memset(ls, 0, sizeof(*ls));
-    while (1) {
-        skipWhitespace(&p);
-        if (*p == '}') { p++; break; }
-        if (*p == ',') { p++; continue; }
-        if (*p == '\0') break;
-        char key[64];
-        if (!parseJsonString(&p, key, sizeof(key))) return 0;
-        skipWhitespace(&p);
-        if (*p != ':') return 0;
-        p++;
-        if (strcmp(key, "id") == 0) { skipWhitespace(&p); parseJsonString(&p, ls->id, sizeof(ls->id)); }
-        else if (strcmp(key, "units") == 0) {
-            skipWhitespace(&p);
-            if (*p == '{') {
-                p++;
-                while (ls->n_units < MAX_UNITS) {
-                    skipWhitespace(&p);
-                    if (*p == '}') { p++; break; }
-                    if (*p == ',') { p++; continue; }
-                    char uname[48];
-                    if (!parseJsonString(&p, uname, sizeof(uname))) break;
-                    skipWhitespace(&p);
-                    if (*p != ':') break;
-                    p++;
-                    skipWhitespace(&p);
-                    char uver[64];
-                    if (!parseJsonString(&p, uver, sizeof(uver))) break;
-                    strncpy(ls->units[ls->n_units].name, uname, sizeof(ls->units[0].name) - 1);
-                    strncpy(ls->units[ls->n_units].version, uver, sizeof(ls->units[0].version) - 1);
-                    ls->n_units++;
-                }
-            }
-        }
-        else { skipJsonValue(&p); }
-    }
-    return ls->n_units > 0 || ls->id[0] != '\0';
-}
-
-// 生成本地单元状态 JSON
-static void buildLocalUnitsJson(char *buf, int bufSize, const UnitsManifest *m) {
-    int n = 0;
-    n += snprintf(buf + n, bufSize - n, "{\"id\":\"%s\",\"units\":{", m->id);
-    for (int i = 0; i < m->n_units; i++) {
-        n += snprintf(buf + n, bufSize - n, "\"%s\":\"%s\",", m->units[i].name, m->units[i].version);
-    }
-    if (n > 2 && buf[n - 1] == ',') { buf[n - 1] = '}'; buf[n] = '\0'; }
-    n = (int)strlen(buf);
-    n += snprintf(buf + n, bufSize - n, "}");
-}
-
-// 判断 rel 是否命中跳过清单（'|' 分隔的多段路径，'\\' 分隔段）
-static int relSkipped(const WCHAR *rel, const WCHAR *skipList) {
-    if (!skipList || !skipList[0]) return 0;
-    const WCHAR *start = skipList;
-    while (*start) {
-        const WCHAR *end = wcschr(start, L'|');
-        size_t len = end ? (size_t)(end - start) : wcslen(start);
-        if (wcslen(rel) == len && wcsncmp(rel, start, len) == 0) return 1;
-        if (!end) break;
-        start = end + 1;
-    }
-    return 0;
-}
-
-// ★ 合并树: 把解压产物 src 合并进 dst（next 目标路径）
-//   文件用 MoveFileEx(REPLACE_EXISTING) → 仅替换目录项，硬链接共享 inode 的 live 零损伤
-//   失败回退: 删目录项 + 物理复制（同样安全，绝不原地写硬链接）
-static int mergeTreeW(const WCHAR *src, const WCHAR *dst) {
-    DWORD attr = GetFileAttributesW(src);
-    if (attr == INVALID_FILE_ATTRIBUTES) return -1;
-    if (!(attr & FILE_ATTRIBUTE_DIRECTORY)) {
-        // 单文件单元（launcher-next.exe）
-        WCHAR parent[MAX_PATH];
-        wcscpy(parent, dst);
-        WCHAR *slash = wcsrchr(parent, L'\\');
-        if (slash) { *slash = L'\0'; CreateDirectoryW(parent, NULL); }
-        if (MoveFileExW(src, dst, MOVEFILE_REPLACE_EXISTING)) return 0;
-        DeleteFileW(dst);
-        return CopyFileW(src, dst, FALSE) ? 0 : -1;
-    }
-    WCHAR searchPath[MAX_PATH];
-    swprintf(searchPath, MAX_PATH, L"%s\\*", src);
-    WIN32_FIND_DATAW fd;
-    HANDLE hFind = FindFirstFileW(searchPath, &fd);
-    if (hFind == INVALID_HANDLE_VALUE) return -1;
-    CreateDirectoryW(dst, NULL);
-    int rc = 0;
-    do {
-        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
-        WCHAR s[MAX_PATH], d[MAX_PATH];
-        swprintf(s, MAX_PATH, L"%s\\%s", src, fd.cFileName);
-        swprintf(d, MAX_PATH, L"%s\\%s", dst, fd.cFileName);
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            if (mergeTreeW(s, d) != 0) { rc = -1; break; }
-        } else {
-            if (MoveFileExW(s, d, MOVEFILE_REPLACE_EXISTING)) continue;
-            DeleteFileW(d);
-            if (!CopyFileW(s, d, FALSE)) { rc = -1; break; }
-            DeleteFileW(s);
-        }
-    } while (FindNextFileW(hFind, &fd));
-    FindClose(hFind);
-    return rc;
-}
-
-// ★ 硬链接克隆目录树（NTFS 同卷零拷贝秒级；失败回退物理复制）
-//   skipList: '|' 分隔的相对路径（如 "Data|versions.json|.version"）
-static int cloneTreeW(const WCHAR *src, const WCHAR *dst, const WCHAR *rel, const WCHAR *skipList) {
-    WCHAR searchPath[MAX_PATH];
-    swprintf(searchPath, MAX_PATH, L"%s\\*", src);
-    WIN32_FIND_DATAW fd;
-    HANDLE hFind = FindFirstFileW(searchPath, &fd);
-    if (hFind == INVALID_HANDLE_VALUE) return -1;
-    CreateDirectoryW(dst, NULL);
-    int rc = 0;
-    do {
-        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
-        WCHAR childRel[MAX_PATH];
-        if (rel[0]) swprintf(childRel, MAX_PATH, L"%s\\%s", rel, fd.cFileName);
-        else wcscpy(childRel, fd.cFileName);
-        if (relSkipped(childRel, skipList)) continue;
-        WCHAR s[MAX_PATH], d[MAX_PATH];
-        swprintf(s, MAX_PATH, L"%s\\%s", src, fd.cFileName);
-        swprintf(d, MAX_PATH, L"%s\\%s", dst, fd.cFileName);
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            if (cloneTreeW(s, d, childRel, skipList) != 0) { rc = -1; break; }
-        } else {
-            if (!CreateHardLinkW(d, s, NULL) && !CopyFileW(s, d, FALSE)) { rc = -1; break; }
-        }
-    } while (FindNextFileW(hFind, &fd));
-    FindClose(hFind);
-    return rc;
-}
-
-// 计算需要下载的单元（本地缺失或版本不一致）；返回需要数
-static int collectNeededUnits(const UnitsManifest *m, const UnitsManifest *ls, int *needed, int maxNeeded, long *neededBytes) {
-    int n = 0;
-    long total = 0;
-    for (int i = 0; i < m->n_units && n < maxNeeded; i++) {
-        int have = 0;
-        for (int j = 0; j < ls->n_units; j++) {
-            if (strcmp(ls->units[j].name, m->units[i].name) == 0) {
-                if (strcmp(ls->units[j].version, m->units[i].version) == 0) have = 1;
-                break;
-            }
-        }
-        if (!have) { needed[n++] = i; total += m->units[i].bytes; }
-    }
-    *neededBytes = total;
-    return n;
-}
-
-// ★ 单元哈希 sidecar 解析（2026-08-28）: {"id":..,"units":[{"name":..,"hash":..}]}
-//   128 字符 sha512 移出 units.json（127 解析上限撑爆 → 全量 178MB 死循环实锤），
-//   sidecar 独立签名，overlay 到清单单元（sidecar 权威）。
-static int parseSidecarHashes(const char *json, UnitsManifest *m) {
-    const char *p = json;
-    skipWhitespace(&p);
-    if (*p != '{') return 0;
-    p++;
-    int overlay = 0;
-    while (1) {
-        skipWhitespace(&p);
-        if (*p == '}') { p++; break; }
-        if (*p == ',') { p++; continue; }
-        if (*p == '\0') break;
-        char key[64];
-        if (!parseJsonString(&p, key, sizeof(key))) return 0;
-        skipWhitespace(&p);
-        if (*p != ':') return 0;
-        p++;
-        if (strcmp(key, "units") == 0) {
-            skipWhitespace(&p);
-            if (*p == '[') {
-                p++;
-                while (1) {
-                    skipWhitespace(&p);
-                    if (*p == ']') { p++; break; }
-                    if (*p == ',') { p++; continue; }
-                    if (*p != '{') return 0;
-                    p++;
-                    char uname[48] = {0}, uhash[160] = {0};
-                    while (1) {
-                        skipWhitespace(&p);
-                        if (*p == '}') { p++; break; }
-                        if (*p == ',') { p++; continue; }
-                        if (*p == '\0') return 0;
-                        char k2[48];
-                        if (!parseJsonString(&p, k2, sizeof(k2))) return 0;
-                        skipWhitespace(&p);
-                        if (*p != ':') return 0;
-                        p++;
-                        if (strcmp(k2, "name") == 0) { skipWhitespace(&p); parseJsonString(&p, uname, sizeof(uname)); }
-                        else if (strcmp(k2, "hash") == 0) { skipWhitespace(&p); parseJsonString(&p, uhash, sizeof(uhash)); }
-                        else skipJsonValue(&p);
-                    }
-                    if (uname[0] && uhash[0]) {
-                        for (int i = 0; i < m->n_units; i++) {
-                            if (strcmp(m->units[i].name, uname) == 0) {
-                                strncpy(m->units[i].hash, uhash, sizeof(m->units[i].hash) - 1);
-                                overlay++;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        else skipJsonValue(&p);
-    }
-    return overlay > 0;
-}
-
-// ★ 单元增量装配: 返回 1=成功(swap-ready 已写) / 0=失败 → 调用方走全量 r 兜底
-static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
-    char liveVer[64] = {0};
-    readLocalVersion(exeDir, liveVer, sizeof(liveVer));
-    swapLogNow(exeDir, "incremental: begin %s -> %s", liveVer[0] ? liveVer : "?", serverVer);
-
-    char json[8192];
-    int len = downloadToString(g_cfg.update_host, g_cfg.units_path, json, sizeof(json), g_cfg.use_https);
-    if (len <= 0 && g_cfg.use_https) {
-        len = downloadToString(g_cfg.update_host, g_cfg.units_path, json, sizeof(json), 0);
-    }
-    if (len <= 0) {
-        swapLogNow(exeDir, "incremental abort: units.json fetch FAIL (fallback full r)");
-        return 0;
-    }
-
-    // ★ Ed25519 验签（2026-08-27 安全）: units.json 必须带合法签名
-    //   （防 CDN 投毒绕过全量签名——增量路径与全量同一信任门）
-    {
-        char sigPath[300];
-        snprintf(sigPath, sizeof(sigPath), "%s.sig", g_cfg.units_path);
-        char sigBuf[128];
-        int sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), g_cfg.use_https);
-        if (sigLen <= 0 && g_cfg.use_https) {
-            sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), 0);
-        }
-        if (sigLen != 64 || verifySignedBuf((const u8 *)json, (size_t)len, (const u8 *)sigBuf, sigLen) != 0) {
-            swapLogNow(exeDir, "incremental abort: units.json signature INVALID (security, fallback full r)");
-            return 0;
-        }
-    }
-
-    UnitsManifest m;
-    if (!parseUnitsManifest(json, &m)) {
-        swapLogNow(exeDir, "incremental abort: units manifest parse FAIL (fallback full r)");
-        return 0;
-    }
-    if (m.id[0] == '\0' || strcmp(m.id, serverVer) != 0) {
-        swapLogNow(exeDir, "incremental abort: manifest id %s != latest %s (fallback full r)", m.id[0] ? m.id : "?", serverVer);
-        return 0;
-    }
-    if (m.versions_raw[0] == '\0') return 0;
-
-    // ★ 单元完整性哈希（2026-08-28 sidecar）: units.hash.json + 签名验签 → overlay 到清单。
-    //   过渡期（旧 CDN units.json 内嵌 hash）自动回退清单内值。
-    //   ★ 127 字符解析上限教训: units.json 内禁止任何 >127 字符字符串——128 字符 sha512
-    //   曾撑爆 parseJsonString 缓冲 → 全部启动器增量解析失败 → 全量 178MB 死循环。
-    {
-        char sidecar[8192];
-        int slen = downloadToString(g_cfg.update_host, "/dl/qqqide-up/units.hash.json",
-            sidecar, sizeof(sidecar), g_cfg.use_https);
-        if (slen <= 0 && g_cfg.use_https) {
-            slen = downloadToString(g_cfg.update_host, "/dl/qqqide-up/units.hash.json",
-                sidecar, sizeof(sidecar), 0);
-        }
-        if (slen > 0) {
-            char sigPath[300];
-            snprintf(sigPath, sizeof(sigPath), "/dl/qqqide-up/units.hash.json.sig");
-            char sigBuf[128];
-            int sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), g_cfg.use_https);
-            if (sigLen <= 0 && g_cfg.use_https) {
-                sigLen = downloadToString(g_cfg.update_host, sigPath, sigBuf, sizeof(sigBuf), 0);
-            }
-            if (sigLen == 64 && verifySignedBuf((const u8 *)sidecar, (size_t)slen, (const u8 *)sigBuf, sigLen) == 0) {
-                if (!parseSidecarHashes(sidecar, &m)) {
-                    swapLogNow(exeDir, "incremental abort: units.hash.json parse FAIL (security, fallback full r)");
-                    return 0;
-                }
-                swapLogNow(exeDir, "incremental: unit hashes from signed sidecar (%d units)", m.n_units);
-            } else {
-                swapLogNow(exeDir, "incremental abort: units.hash.json signature INVALID (security, fallback full r)");
-                return 0;
-            }
-        } else {
-            // sidecar 缺失（过渡期 CDN）→ 依赖清单内嵌 hash（老格式）
-            int inJson = 0;
-            for (int i = 0; i < m.n_units; i++) if (m.units[i].hash[0]) inJson = 1;
-            if (!inJson) {
-                swapLogNow(exeDir, "incremental abort: no unit hashes (security, fallback full r)");
-                return 0;
-            }
-            swapLogNow(exeDir, "incremental: units.hash.json absent, using in-manifest hashes (transitional)");
-        }
-    }
-
-    // 本地单元状态缺失（旧包）→ 全量兜底
-    WCHAR lsPath[MAX_PATH];
-    swprintf(lsPath, MAX_PATH, L"%s\\gh555.com\\Data\\units.json", exeDir);
-    char lsRaw[4096];
-    if (readFileRaw(lsPath, lsRaw, sizeof(lsRaw)) <= 0) {
-        swapLogNow(exeDir, "incremental abort: no local unit state (legacy pack, fallback full r)");
-        return 0;
-    }
-    UnitsManifest ls;
-    if (!parseLocalUnitsState(lsRaw, &ls)) {
-        swapLogNow(exeDir, "incremental abort: local units.json parse FAIL (fallback full r)");
-        return 0;
-    }
-    if (strcmp(ls.id, m.id) == 0) return 0;                          // 已是目标版本（幂等兜底）
-
-    int needed[MAX_UNITS];
-    long neededBytes = 0;
-    int nNeed = collectNeededUnits(&m, &ls, needed, MAX_UNITS, &neededBytes);
-    if (nNeed == 0) {
-        swapLogNow(exeDir, "incremental abort: no unit changes (fallback full r)");
-        return 0;
-    }
-    if (m.r_bytes > 0 && neededBytes >= m.r_bytes) {
-        swapLogNow(exeDir, "incremental abort: delta %ld >= full %ld (fallback full r)", neededBytes, m.r_bytes);
-        return 0;
-    }
-
-    // ── 装配 gh555.com-next: ① 硬链接克隆 live（同卷零拷贝，秒级） ② 覆盖变化单元 ──
-    //   next 必须是完整 gh555.com（swap 门同全量 r），未变化单元从 live 克隆；
-    //   变化单元删除克隆旧路径（断链安全）后解压新内容 → 结果 = 完整新矩阵。
-    WCHAR uDir[MAX_PATH], ghNext[MAX_PATH], liveCore[MAX_PATH];
-    swprintf(uDir, MAX_PATH, L"%s\\u.next", exeDir);
-    swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
-    swprintf(liveCore, MAX_PATH, L"%s\\gh555.com", exeDir);
-    removeDir(uDir);
-    CreateDirectoryW(uDir, NULL);
-    removeDir(ghNext);
-
-    int ok = 1;
-    // ① 全量硬链接克隆（Data/versions.json/.version 不克隆，由本函数重写）
-    if (cloneTreeW(liveCore, ghNext, L"", L"Data|versions.json|.version") != 0) ok = 0;
-    for (int i = 0; i < nNeed && ok; i++) {
-        UnitDef *u = &m.units[needed[i]];
-        WCHAR dest[MAX_PATH], outDir[MAX_PATH];
-        swprintf(dest, MAX_PATH, L"%s\\%s.7z", uDir, u->name);
-        swprintf(outDir, MAX_PATH, L"%s\\out", uDir);
-        DeleteFileW(dest);
-        removeDir(outDir);
-
-        char cdnPath[512];
-        snprintf(cdnPath, sizeof(cdnPath), "/dl/qqqide-up/%s", u->file);
-        int rc = downloadFile(g_cfg.update_host, cdnPath, dest, g_cfg.use_https);
-        if (rc != 0 && g_cfg.use_https) {
-            DeleteFileW(dest);
-            rc = downloadFile(g_cfg.update_host, cdnPath, dest, 0);
-        }
-        if (rc != 0) {
-            swapLogNow(exeDir, "incremental FAIL: download unit %s (fallback full r)", u->name);
-            ok = 0; break;
-        }
-
-        // ★ 清单 sha512 校验（2026-08-27 安全）: 单元内容必须匹配已验签清单的 hash
-        //   （7z CRC 防损坏不防篡改，攻击者可构造自洽恶意 7z）
-        if (u->hash[0] && !fileSha512Matches(dest, u->hash)) {
-            swapLogNow(exeDir, "incremental FAIL: unit %s hash mismatch (security, fallback full r)", u->name);
-            DeleteFileW(dest); ok = 0; break;
-        }
-
-        // ② 解压到临时目录（绝不对 next 内硬链接文件原地写——共享 inode 会污染 live）
-        CreateDirectoryW(outDir, NULL);
-        WCHAR cmdLine[1024];
-        swprintf(cmdLine, 1024, L"\"%s\" -y", dest);
-        STARTUPINFOW si = { sizeof(si) };
-        si.dwFlags = STARTF_USESHOWWINDOW;
-        si.wShowWindow = SW_HIDE;
-        PROCESS_INFORMATION pi = {0};
-        if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-            CREATE_NO_WINDOW, NULL, outDir, &si, &pi)) {
-            swapLogNow(exeDir, "incremental FAIL: spawn 7z for unit %s err=%lu (fallback full r)", u->name, GetLastError());
-            ok = 0; break;
-        }
-        CloseHandle(pi.hThread);
-        WaitForSingleObject(pi.hProcess, INFINITE);
-        DWORD ec = 0;
-        GetExitCodeProcess(pi.hProcess, &ec);
-        CloseHandle(pi.hProcess);
-        if (ec != 0) {
-            swapLogNow(exeDir, "incremental FAIL: 7z exit=%lu for unit %s (CRC, fallback full r)", ec, u->name);
-            ok = 0; break;                                           // 7z CRC 校验失败 → 丢弃
-        }
-
-        // ③ 合并入 next 根（单元档案内路径 = 相对 gh555.com 根，自描述无需 rel）
-        //    REPLACE 目录项 → 断链安全，live 零损伤
-        if (mergeTreeW(outDir, ghNext) != 0) { ok = 0; break; }
-        removeDir(outDir);
-        DeleteFileW(dest);
-    }
-
-    if (!ok) {
-        swapLogNow(exeDir, "incremental FAIL: assemble aborted (fallback full r)");
-        removeDir(ghNext); removeDir(uDir); return 0;                // 任一失败 → 丢弃暂存 → 全量兜底
-    }
-
-    // ── 元数据落盘（先于 gate：版本权威逐字 = 全量 r 的 versions.json） ──
-    WCHAR vPath[MAX_PATH], dotVPath[MAX_PATH], dataDir[MAX_PATH], luPath[MAX_PATH], swPath[MAX_PATH];
-    swprintf(vPath, MAX_PATH, L"%s\\versions.json", ghNext);
-    writeFileText(vPath, m.versions_raw);
-    swprintf(dotVPath, MAX_PATH, L"%s\\.version", ghNext);
-    writeFileText(dotVPath, m.id);
-    swprintf(dataDir, MAX_PATH, L"%s\\Data", ghNext);
-    CreateDirectoryW(dataDir, NULL);
-    swprintf(luPath, MAX_PATH, L"%s\\Data\\units.json", ghNext);
-    { char lbuf[4096]; buildLocalUnitsJson(lbuf, sizeof(lbuf), &m); writeFileText(luPath, lbuf); }
-
-    // ── gate 校验（与全量 r 交换同一门） ──
-    {
-        WCHAR chk[MAX_PATH];
-        swprintf(chk, MAX_PATH, L"%s\\joker.exe", ghNext);
-        if (!fileExistsW(chk)) { removeDir(ghNext); removeDir(uDir); return 0; }
-        swprintf(chk, MAX_PATH, L"%s\\resources\\app", ghNext);
-        if (!fileExistsW(chk)) { removeDir(ghNext); removeDir(uDir); return 0; }
-        swprintf(chk, MAX_PATH, L"%s\\versions.json", ghNext);
-        if (!fileExistsW(chk)) { removeDir(ghNext); removeDir(uDir); return 0; }
-    }
-
-    swprintf(swPath, MAX_PATH, L"%s\\.swap-ready", exeDir);
-    writeFileText(swPath, m.id);
-
-    removeDir(uDir);
-    swapLogNow(exeDir, "incremental OK: %s -> %s (%d units, %ld bytes)",
-        liveVer[0] ? liveVer : "?", m.id, nNeed, neededBytes);
-    return 1;
-}
-
-// ── 后台更新线程 ──
-static unsigned __stdcall backgroundUpdateProc(void *param) {
-    InterlockedExchange(&g_updateRunning, 1);
-
-    char serverVer[64] = {0};
-    int len = downloadToString(g_cfg.update_host, g_cfg.latest_path,
-        serverVer, sizeof(serverVer), g_cfg.use_https);
-    if (len <= 0 && g_cfg.use_https) {
-        len = downloadToString(g_cfg.update_host, g_cfg.latest_path,
-            serverVer, sizeof(serverVer), 0);
-    }
-    if (len <= 0) {
-        swapLogNow(g_exeDir, "update: fetch latest.txt FAIL (len=%d)", len);
-        InterlockedExchange(&g_updateRunning, 0); return 0;
-    }
-
-    char *nl = strchr(serverVer, '\n'); if (nl) *nl = '\0';
-    nl = strchr(serverVer, '\r'); if (nl) *nl = '\0';
-    while (len > 0 && (serverVer[len-1] == ' ' || serverVer[len-1] == '\t')) serverVer[--len] = '\0';
-    if (len == 0) { InterlockedExchange(&g_updateRunning, 0); return 0; }
-
-    char localVer[64] = {0};
-    int localLen = readLocalVersion(g_exeDir, localVer, sizeof(localVer));
-    // ★ 仅服务器版本严格更高才升级（旧实现 "版本不等即下载" → 反向降级）
-    if (localLen > 0 && compareVersion(serverVer, localVer) <= 0) {
-        InterlockedExchange(&g_updateRunning, 0); return 0;
-    }
-
-    // ★ 幂等守卫（2026-08-06）: swap-ready 已就绪 + gh555.com-next 已是目标版本
-    //   → 暂存完成，仅等用户退出后交换。禁止每启动重复下载 120MB r.next。
-    {
-        WCHAR swPath[MAX_PATH], nextVerPath[MAX_PATH];
-        swprintf(swPath, MAX_PATH, L"%s\\.swap-ready", g_exeDir);
-        swprintf(nextVerPath, MAX_PATH, L"%s\\gh555.com-next\\versions.json", g_exeDir);
-        char swVer[64] = {0}, nextVer[64] = {0};
-        if (readFileText(swPath, swVer, sizeof(swVer)) > 0 &&
-            strcmp(swVer, serverVer) == 0 &&
-            readManifestIdFile(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
-            strcmp(nextVer, serverVer) == 0) {
-            InterlockedExchange(&g_updateRunning, 0); return 0;
-        }
-    }
-    // ★ 单元增量优先（2026-08-10 B 方案）: 只下载版本变化的架构单元
-    //   （launcher/core/app/shell-out/webapp），任何异常自动回退全量 r。
-    //   engines/* 不参与（component-checker 独立按 manifest 增量管理）。
-    if (g_cfg.units_enabled && g_cfg.units_path[0] != '\0') {
-        if (tryIncrementalUpdate(g_exeDir, serverVer) == 1) {
-            InterlockedExchange(&g_updateRunning, 0);
-            return 0;
-        }
-    }
-    // 下载到暂存
-    WCHAR rNext[MAX_PATH], rSigPath[MAX_PATH];
-    swprintf(rNext, MAX_PATH, L"%s\\r.next", g_exeDir);
-    swprintf(rSigPath, MAX_PATH, L"%s\\r.next.sig", g_exeDir);
-
-    // ★ 下载去重（2026-08-14）: r.next 已在盘且 .version-next 已是目标版本
-    //   → 跳过重复下载，留给解压线程重试（解压持续失败时每启动重下 159MB = 纯带宽浪费，
-    //   客户 40 次循环同款）。服务器出新版 → serverVer 变化 → 守卫自然放行重下。
-    {
-        WCHAR vnPath[MAX_PATH];
-        swprintf(vnPath, MAX_PATH, L"%s\\.version-next", g_exeDir);
-        char vnVer[64] = {0};
-        if (fileExistsW(rNext) && fileExistsW(rSigPath) && readFileText(vnPath, vnVer, sizeof(vnVer)) > 0 &&
-            strcmp(vnVer, serverVer) == 0) {
-            swapLogNow(g_exeDir, "update: skip re-download r (%s staged, retry extract)", serverVer);
-            InterlockedExchange(&g_updateRunning, 0);
-            return 0;
-        }
-    }
-
-    DeleteFileW(rNext);
-
-    int result = downloadFile(g_cfg.update_host, g_cfg.r_path, rNext, g_cfg.use_https);
-    if (result != 0 && g_cfg.use_https) {
-        DeleteFileW(rNext);
-        result = downloadFile(g_cfg.update_host, g_cfg.r_path, rNext, 0);
-    }
-    if (result != 0) {
-        swapLogNow(g_exeDir, "update: download r FAIL (err=%d, fallback next boot)", result);
-        DeleteFileW(rNext); InterlockedExchange(&g_updateRunning, 0); return 0;
-    }
-
-    // ★ 下载签名（2026-08-27 安全）: r.next 必须配 r.next.sig（64B Ed25519），
-    //   解压线程验签通过才解压。sig 下载失败 → 删 r.next 下次重试（方向安全）。
-    {
-        DeleteFileW(rSigPath);
-        char sigPath[300];
-        snprintf(sigPath, sizeof(sigPath), "%s.sig", g_cfg.r_path);
-        int sr = downloadFile(g_cfg.update_host, sigPath, rSigPath, g_cfg.use_https);
-        if (sr != 0 && g_cfg.use_https) {
-            DeleteFileW(rSigPath);
-            sr = downloadFile(g_cfg.update_host, sigPath, rSigPath, 0);
-        }
-        if (sr != 0) {
-            swapLogNow(g_exeDir, "update: r.sig download FAIL (err=%d, security keep old version)", sr);
-            DeleteFileW(rNext); DeleteFileW(rSigPath);
-            InterlockedExchange(&g_updateRunning, 0);
-            return 0;
-        }
-    }
-
-    // 写 .version-next
-    WCHAR vNext[MAX_PATH];
-    swprintf(vNext, MAX_PATH, L"%s\\.version-next", g_exeDir);
-    writeFileText(vNext, serverVer);
-    swapLogNow(g_exeDir, "update: r.next downloaded OK (%s), extracting in-session", serverVer);
-
-    InterlockedExchange(&g_updateRunning, 0);
-    return 0;
-}
 
 // ═══════════════════════════════════════════════════════════════
 // 窗口 + 启动
@@ -2490,11 +1869,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
             break;
 
         case PHASE_LAUNCHING:
-            if (!g_hUpdateThread) {
-                g_hUpdateThread = (HANDLE)_beginthreadex(NULL, 0, backgroundUpdateProc, NULL, 0, NULL);
-            }
-            // ★ 后台解压 r.next → gh555.com-next/（不阻塞，用户已在 IDE 中工作）
-            maybeStartApplyThread();
+            // ★ 2026-08-31 架构: 启动器零下载/解压线程（全部移至壳层正常运行期间后台执行）
             if (g_tickCount <= 20 && g_tickCount % 4 == 0 && g_pct < 60) {
                 g_pct += 8;
             }
@@ -2504,85 +1879,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
             break;
 
         case PHASE_WAITING: {
-            // ★ 核心：检测 joker.exe 的主窗口是否出现
-            int applyBusy = (InterlockedCompareExchange(&g_applyRunning, 0, 0) != 0);
-            // ★ 更新线程守护（2026-08-29 竞态实锤）: 后台下载线程未结束 → 启动器绝不退出
-            //   （进程退出=线程被杀 → 增量/全量下载每次启动都从头来 → 永远升不上去；
-            //   旧代码只等解压线程 applyBusy，下载线程被连坐终止）
-            int updateBusy = (InterlockedCompareExchange(&g_updateRunning, 0, 0) != 0);
-
-            // ★ 下载完成即解压（2026-08-14）: 后台下载完 r.next+.version-next → 本会话立即解压
-            //   → 全量升级 2 次启动完成（下载+解压同会话，仅交换等下次启动）
-            maybeStartApplyThread();
-
-            // 方式1：通过 PID 查找 joker 的可见窗口
+            // ★ 2026-08-31 架构: 启动器唯一职责 = 持有单实例 Mutex + 等 joker。
+            //   joker 主窗口出现 → 隐藏自身（进程保持存活持有 Mutex，二次点击唤起已有实例）；
+            //   joker 进程退出 → 立即退出（零等待——旧实现等后台线程最长 30 分钟 =
+            //   关闭卡死 + 第二实例「点击半天没反应」根因，已随下载线程整体移除）
             if (g_jokerPid != 0) {
                 HWND jwnd = findJokerMainWindow(g_jokerPid);
-                if (jwnd != NULL) {
-                    if (applyBusy || updateBusy) {
-                        // 后台还在解压/下载 → 隐藏窗口，进程继续跑（下载完成自动接解压）
-                        ShowWindow(hwnd, SW_HIDE);
-                    } else {
-                        g_phase = PHASE_DONE;
-                        PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                        return 0;
-                    }
+                if (jwnd != NULL && IsWindowVisible(hwnd)) {
+                    ShowWindow(hwnd, SW_HIDE);
                 }
             }
-
-            // 方式2：loading-status 兜底（"ready" 信号）
-            if (!applyBusy && !updateBusy) {
-                WCHAR candidates[2][MAX_PATH];
-                WCHAR myDir[MAX_PATH];
-                GetModuleFileNameW(NULL, myDir, MAX_PATH);
-                WCHAR *slash = wcsrchr(myDir, L'\\');
-                if (slash) *slash = L'\0';
-                swprintf(candidates[0], MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
-                swprintf(candidates[1], MAX_PATH, L"%s\\loading-status", myDir);
-                for (int ci = 0; ci < 2; ci++) {
-                    char buf[256] = {0};
-                    int rd = readFileText(candidates[ci], buf, sizeof(buf));
-                    if (rd > 0 && strcmp(buf, "ready") == 0) {
-                        g_phase = PHASE_DONE;
-                        PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                        return 0;
-                    }
-                    if (rd > 0) {
-                        char *pipe2 = strchr(buf, '|');
-                        if (pipe2) {
-                            *pipe2 = '\0';
-                            int p = atoi(buf);
-                            if (p > g_pct && p <= 100) g_pct = p;
-                        }
-                    }
-                }
-            }
-
-            // 方式3：joker.exe 进程退出 → 关闭
             if (g_hProcess) {
                 DWORD ec = 0;
                 if (GetExitCodeProcess(g_hProcess, &ec) && ec != STILL_ACTIVE) {
-                    g_phase = PHASE_ERROR;
-                    g_closeCountdown = ERROR_CLOSE_TICKS;
-                }
-            }
-
-            // 方式4：超时 30s → joker 还在跑就静默关闭（仅当无后台任务时）
-            if (g_tickCount >= 120 && g_phase == PHASE_WAITING) {
-                if (!applyBusy && !updateBusy) {
-                    if (g_hProcess) {
-                        DWORD ec = 0;
-                        if (GetExitCodeProcess(g_hProcess, &ec) && ec == STILL_ACTIVE) {
-                            g_phase = PHASE_DONE;
-                            PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                            return 0;
-                        }
-                    }
-                    g_phase = PHASE_ERROR;
-                    g_closeCountdown = ERROR_CLOSE_TICKS;
-                } else if (g_tickCount >= 2400) {
-                    // ★ 10 分钟硬上限（2026-08-29）: WinHTTP 超时（30-60s）应早已复位线程，
-                    //   此为最后保险——僵尸下载线程永不拖住启动器（joker 退出路径方式3不受此限）
                     g_phase = PHASE_DONE;
                     PostMessageW(hwnd, WM_CLOSE, 0, 0);
                     return 0;
@@ -2608,16 +1917,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
 
+    case WM_CLOSE:
+        // ★ 2026-08-31 架构: 无后台线程 → 直接退出（旧退出闸门/30 分钟硬上限已随下载线程移除）
+        return DefWindowProcW(hwnd, msg, w, l);
+
     case WM_LBUTTONDOWN:
         SendMessage(hwnd, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, 0);
-        return 0;
-
-    case WM_USER + 1:
-        // ★ 后台解压完成 → 如果窗口已隐藏，关闭进程
-        if (!IsWindowVisible(hwnd)) {
-            g_phase = PHASE_DONE;
-            PostMessageW(hwnd, WM_CLOSE, 0, 0);
-        }
         return 0;
 
     default:
@@ -2645,48 +1950,15 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     };
     if (!RegisterClassExW(&wc)) return 1;
 
-    // ★ 单实例 Mutex（OS 内核对象，100% 原子，零竞态窗口）
-    //   替代旧 FindWindowW 先行检测（旧方案存在窗口创建前的毫秒级竞态窗口）
-    //   流程：Mutex 原子检测 → 非首例则杀旧进程 → 重试 → 继续启动
-    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"QqqIdeLauncher");
-    int firstInstance = (hMutex != NULL && GetLastError() != ERROR_ALREADY_EXISTS);
-
-    if (!firstInstance) {
-        if (hMutex) { CloseHandle(hMutex); hMutex = NULL; }
-        // 已有实例 → 找到旧窗口 → 强杀 → 重试 Mutex
-        HWND existing = FindWindowW(CLASS, NULL);
-        if (existing) {
-            PostMessageW(existing, WM_CLOSE, 0, 0);
-            for (int i = 0; i < 20; i++) {
-                Sleep(100);
-                if (!IsWindow(existing)) break;
-            }
-            if (IsWindow(existing)) {
-                DWORD pid = 0;
-                GetWindowThreadProcessId(existing, &pid);
-                if (pid != GetCurrentProcessId()) {
-                    HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-                    if (hp) { TerminateProcess(hp, 0); CloseHandle(hp); }
-                }
-                DestroyWindow(existing);
-            }
-        }
-        // 重试 Mutex（旧 launcher 进程可能已销毁窗口但仍在清理中）
-        hMutex = CreateMutexW(NULL, TRUE, L"QqqIdeLauncher");
-        if (hMutex && GetLastError() == ERROR_ALREADY_EXISTS) {
-            // ★ 旧实例还活着（通常正等后台解压线程退出）→ 绝不双开：
-            //   把已运行的 joker 窗口带到前台，本实例直接退出。
-            if (hMutex) { CloseHandle(hMutex); hMutex = NULL; }
-            bringJokerToFront(L"joker.exe");
-            return 0;
-        }
-    }
-    // hMutex 随进程退出由 OS 自动释放，无需显式 CloseHandle
-
+    // ★★★ 窗口最先创建并显示（2026-08-31 实锤: 旧代码先拉配置/检查首装才建窗，
+    //   慢网络下点击半天无窗口——「点击必弹窗」硬保证，无论任何情况）
     g_hwnd = CreateWindowExW(0, CLASS, L"qqqide",
         WS_POPUP | WS_BORDER, 0, 0, WW, WH, NULL, NULL, hi, NULL);
     if (!g_hwnd) return 1;
     centerWindow(g_hwnd);
+    ShowWindow(g_hwnd, (nShow == SW_SHOWMINIMIZED || nShow == 0) ? SW_SHOW : nShow);
+    UpdateWindow(g_hwnd);
+    setStatus("starting…", 0);
 
     // ── 确定工作目录 ──
     WCHAR myDir[MAX_PATH];
@@ -2694,6 +1966,42 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     WCHAR *s = wcsrchr(myDir, L'\\');
     if (s) *s = L'\0';
     wcscpy(g_exeDir, myDir);
+
+    // ★ 单实例 Mutex（OS 内核对象，100% 原子，零竞态窗口）
+    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"QqqIdeLauncher");
+    int firstInstance = (hMutex != NULL && GetLastError() != ERROR_ALREADY_EXISTS);
+
+    if (!firstInstance) {
+        // ★ 第二实例（2026-08-31）: 窗口已秒弹 → 零等待零强杀零 15 分钟等待——
+        //   旧实现等旧实例后台线程最长 15 分钟 = 「点击半天没反应」根因，已整体移除
+        //   （新架构启动器无后台线程: joker 在跑 → 唤起 IDE；joker 没跑 → 旧启动器
+        //   正在收尾/首装/交换，最多等 5s 接棒，接不到则唤起旧窗口后退出）
+        setStatus("already running…", 0);
+        InvalidateRect(g_hwnd, NULL, TRUE);
+        UpdateWindow(g_hwnd);
+        pumpMessages();
+        if (isProcessRunning(L"joker.exe")) {
+            bringJokerToFront(L"joker.exe");
+        } else {
+            for (int i = 0; i < 50; i++) {   // 最多等 5s（旧启动器收尾是秒级）
+                if (hMutex) { CloseHandle(hMutex); hMutex = NULL; }
+                hMutex = CreateMutexW(NULL, TRUE, L"QqqIdeLauncher");
+                if (hMutex && GetLastError() != ERROR_ALREADY_EXISTS) { firstInstance = 1; break; }
+                Sleep(100);
+            }
+            if (!firstInstance) {
+                HWND other = findOtherLauncherWindow(g_hwnd);
+                if (other) { ShowWindow(other, SW_RESTORE); SetForegroundWindow(other); }
+            }
+        }
+        if (!firstInstance) {
+            if (hMutex) { CloseHandle(hMutex); hMutex = NULL; }
+            Sleep(300);
+            DestroyWindow(g_hwnd);
+            return 0;
+        }
+    }
+    // hMutex 随进程退出由 OS 自动释放，无需显式 CloseHandle
 
     // ★ 启动器自更新善后（2026-08-06）: 清理上次三明治替换残留的 .old.exe
     {
@@ -2703,6 +2011,19 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
             DeleteFileW(oldPath);
         }
     }
+
+    // ★ 快速交换优先（2026-08-31 架构）: 交换/自替换不依赖网络配置——
+    //   先于 loadConfig 执行，慢网络拉配置不再拖延「更新已生效」（沙箱实测
+    //   配置拉取曾拖 50s；窗口虽已秒弹，交换越早越稳）
+    tryLauncherSelfReplace(myDir);
+    applySwapIfReady(myDir);
+
+    // ★ 应急全量更新（2026-08-31）: 壳层连续失败 ≥3 次 → 启动器亲自下载+验签+解压
+    //   并写 .swap-ready，下次启动交换——单点故障兜底，正常时零开销。
+    //   ★ 必须在 loadConfig 之前（沙箱实测 loadConfig 网络拉取可阻塞 39 秒——
+    //   应急通道用户已连续失败 ≥3 次，绝不能让它再等配置网络）；g_cfg 有编译期
+    //   默认值（update_host/r_path/use_https），与正式更新同源，零风险。
+    emergencyFullUpdate(myDir);
 
     // ★ 加载配置（缓存 → 服务器 → 默认值）
     //   注意：服务器拉取在这里做（启动前），因为需要 host/path 等配置。
@@ -2743,7 +2064,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
             if (dlRc != 0 || !fileExistsW(rPath)) {
                 setStatus("download failed", 1);
             } else {
-                if (extractPayload(rPath, myDir) == 0) {
+                if (extractPayload(rPath, myDir, 0) == 0) {
                     g_pct = 100;
                     setStatus("ready", 0);
                     InvalidateRect(g_hwnd, NULL, TRUE);
@@ -2752,7 +2073,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
                 }
             }
         } else {
-            if (extractPayload(rPath, myDir) == 0) {
+            if (extractPayload(rPath, myDir, 0) == 0) {
                 g_pct = 100;
                 setStatus("ready", 0);
                 InvalidateRect(g_hwnd, NULL, TRUE);
@@ -2761,12 +2082,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
             }
         }
     } else {
-        // ── 已安装 → 快速交换（如果有 .swap-ready）+ 清理残留 ──
-        // ★ 上次三明治替换失败的补救（失败时 next 保留，此处重试）
-        tryLauncherSelfReplace(myDir);
-        // ★ applySwapIfReady: 检测上次后台解压的 gh555.com-next，原子 rename（<1s）
-        applySwapIfReady(myDir);
-
+        // ── 已安装 → 清理残留 r（交换已在上方快速执行）──
         ShowWindow(g_hwnd, SW_SHOW);
         UpdateWindow(g_hwnd);
 
@@ -2815,17 +2131,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
         DispatchMessage(&msg);
     }
 
-    // 清理
-    if (g_hApplyThread) {
-        DWORD waitResult = WaitForSingleObject(g_hApplyThread, 120000);
-        if (waitResult == WAIT_TIMEOUT) TerminateThread(g_hApplyThread, 0);
-        CloseHandle(g_hApplyThread);
-    }
-    if (g_hUpdateThread) {
-        DWORD waitResult = WaitForSingleObject(g_hUpdateThread, 120000);
-        if (waitResult == WAIT_TIMEOUT) TerminateThread(g_hUpdateThread, 0);
-        CloseHandle(g_hUpdateThread);
-    }
+    // ★ 2026-08-31: 无后台线程，无线程清理（旧实现等下载/解压线程最长 120s = 退出卡死根因）
     {
         WCHAR rPath[MAX_PATH];
         WCHAR wFirstR[128];

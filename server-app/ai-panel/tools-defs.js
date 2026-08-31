@@ -326,7 +326,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: '🔴 ONLY tool for image gen/editing. Generate or edit images via cloud AI. 🚫 NEVER write Python/PIL/opencv scripts for image tasks — this tool IS the only way. Styles: photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature. 4K only for text-to-image; editing max 2K.',
+            description: '🔴 ONLY tool for image gen/editing. ★ MUST-DISPLAY: after the cloud returns image path(s), you MUST print EVERY returned image in your chat reply via Markdown ![](file:///abs/path.png) (full file:/// URL prefix) — never omit, never bare-path only. Only exception: user explicitly says do NOT print. Generate or edit images via cloud AI. 🚫 NEVER write Python/PIL/opencv scripts for image tasks — this tool IS the only way. Styles: photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature. 4K only for text-to-image; editing max 2K.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -363,7 +363,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'remove_background',
-            description: '🔴 ONLY tool for background removal. Remove background → RGBA transparent PNG. 🚫 NEVER write Python/PIL/opencv/oss2 for background removal — this is THE only way. Auto-routes standard/HD by image size.',
+            description: '🔴 ONLY tool for background removal. ★ MUST-DISPLAY: after the cloud returns the transparent PNG path, you MUST print it in your chat reply via Markdown ![](file:///abs/path.png) (full file:/// URL prefix). Only exception: user explicitly says do NOT print. Remove background → RGBA transparent PNG. 🚫 NEVER write Python/PIL/opencv/oss2 for background removal — this is THE only way. Auto-routes standard/HD by image size.',
             parameters: {
                 type: 'object',
                 properties: {
