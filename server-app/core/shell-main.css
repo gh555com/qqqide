@@ -1270,6 +1270,60 @@
 html:not([data-theme="dark"]) .qqq-mem-hover-chart .qqq-mem-bootline {
   stroke: rgba(101, 123, 131, 0.55);
 }
+/* v23: CPU 段重启垂线同款样式——旧实现只写了 .qqq-mem-hover-chart 容器规则，CPU 段同名元素无任何 stroke 规则 → 垂线画了但不可见（实锤补漏） */
+.qqq-cpu-hover-chart .qqq-mem-bootline {
+  fill: none;
+  stroke: rgba(238, 232, 213, 0.8);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.9;
+}
+html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
+  stroke: rgba(101, 123, 131, 0.55);
+}
+/* K 线式 crosshair（2026-09-01：固定态 hover 图表竖线+命中点+值时间标签；MEM 绿 / CPU 橙，双主题自适应） */
+.qqq-mem-hover-chart .qqq-xl-line {
+  stroke: var(--green);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.85;
+}
+.qqq-cpu-hover-chart .qqq-xl-line {
+  stroke: var(--cpu);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.85;
+}
+.qqq-mem-hover-chart .qqq-xl-dot {
+  fill: var(--green);
+  stroke: var(--card-bg);
+  stroke-width: 1.5;
+}
+.qqq-cpu-hover-chart .qqq-xl-dot {
+  fill: var(--cpu);
+  stroke: var(--card-bg);
+  stroke-width: 1.5;
+}
+.qqq-mem-hover-chart .qqq-xl-txt {
+  fill: var(--green);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  font-weight: bold;
+  paint-order: stroke;
+  stroke: var(--card-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.qqq-cpu-hover-chart .qqq-xl-txt {
+  fill: var(--cpu);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  font-weight: bold;
+  paint-order: stroke;
+  stroke: var(--card-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
 
 .qqq-mem-hover-val {
   font-family: Consolas, monospace;

@@ -20,7 +20,7 @@
     window.qqqGaea.register({
       id: 'inbox',
       title: 'inbox',
-      version: '2.0.0',
+      version: '2.2.0',  // 2026-09-01: 对话备注昵称（双方独立，仅自己可见）
       protoVer: 2,
 
       // 仅 X 区标签 — 无 A 区 panel

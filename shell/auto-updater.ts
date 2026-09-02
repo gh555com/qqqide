@@ -577,7 +577,10 @@ function readConfig(ctx: UpdaterCtx): Cfg {
     if (raw.update_host) def.update_host = raw.update_host;
     if (raw.latest_path) def.latest_path = raw.latest_path;
     if (raw.r_path) def.r_path = raw.r_path;
-    if (raw.units_path) def.units_path = raw.units_path;
+    // ★ 2026-09-02 双清单分路: units_path 仅供老启动器（恒指桥接 units.bridge.json）;
+    //   壳层恒读 units_full_path（全量 5 单元清单）——绝不可回退读 units_path（等号陷阱: 桥接 id 落后主清单一版,
+    //   旧壳层若读它会在主清单推进后永远差一版/卡等号）。
+    if (raw.units_full_path) def.units_path = raw.units_full_path;
     if (typeof raw.units_enabled === 'boolean') def.units_enabled = raw.units_enabled;
     if (typeof raw.use_https === 'boolean') def.use_https = raw.use_https;
     if (raw.timeout_sec) def.timeout_sec = raw.timeout_sec;
