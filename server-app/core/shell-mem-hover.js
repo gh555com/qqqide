@@ -113,6 +113,9 @@
       '<circle class="qqq-mem-dot-pulse" r="3.5"/>' +
       '<circle class="qqq-mem-dot" r="2.5"/>' +
       '<text class="qqq-mem-curval"></text>' +
+      '<line class="qqq-xl-line" style="display:none"/>' +
+      '<circle class="qqq-xl-dot" r="3" style="display:none"/>' +
+      '<text class="qqq-xl-txt" style="display:none"></text>' +
       '<g class="qqq-mem-labels"></g>' +
       '</svg>' +
       '</div>' +
@@ -143,6 +146,9 @@
       '<circle class="qqq-cpu-dot-pulse" r="3.5"/>' +
       '<circle class="qqq-cpu-dot" r="2.5"/>' +
       '<text class="qqq-cpu-curval"></text>' +
+      '<line class="qqq-xl-line" style="display:none"/>' +
+      '<circle class="qqq-xl-dot" r="3" style="display:none"/>' +
+      '<text class="qqq-xl-txt" style="display:none"></text>' +
       '<g class="qqq-cpu-labels"></g>' +
       '</svg>' +
       '</div>' +
@@ -190,6 +196,7 @@
     wireReset();
     wireStatsTip($stats);
     wireStatsTip($cStats);
+    wireCrosshair();
   }
 
   // 网格（3 条水平线）+ y 轴刻度文本 + 时间刻度（一次性；刻度文案每次渲染动态刷新）
@@ -211,6 +218,9 @@
       '<text x="' + PAD_L + '" y="' + (H - 3) + '">-24h</text>' +
       '<text class="qqq-mem-lbl-mid" x="' + (PAD_L + plotW / 2) + '" y="' + (H - 3) + '" text-anchor="middle">-12h</text>' +
       '<text x="' + (W - PAD_R) + '" y="' + (H - 3) + '" text-anchor="end">now</text>';
+    // v20: 刻度元素缓存必须在元素建好后取（旧版缓存块在模块底部加载即执行、面板惰性构建 $labels 恒 null → 动态刻度从未生效）
+    $labels._left = $labels.querySelector('text');
+    $labels._mid = $labels.querySelector('.qqq-mem-lbl-mid');
     // CPU 段同款框架
     cg += '<line x1="' + PAD_L + '" y1="' + (PAD_T + plotH / 2).toFixed(1) + '" x2="' + (W - PAD_R) + '" y2="' + (PAD_T + plotH / 2).toFixed(1) + '"/>';
     cg += '<text class="qqq-cpu-ylbl" x="2" y="' + (PAD_T + 5) + '">--</text>' +
@@ -222,6 +232,8 @@
       '<text x="' + PAD_L + '" y="' + (H - 3) + '">-24h</text>' +
       '<text class="qqq-cpu-lbl-mid" x="' + (PAD_L + plotW / 2) + '" y="' + (H - 3) + '" text-anchor="middle">-12h</text>' +
       '<text x="' + (W - PAD_R) + '" y="' + (H - 3) + '" text-anchor="end">now</text>';
+    $cLabels._left = $cLabels.querySelector('text');
+    $cLabels._mid = $cLabels.querySelector('.qqq-cpu-lbl-mid');
   }
 
   // 定位：锚定状态区 a 区域上方右对齐（元素位置变化实时跟随）
@@ -276,8 +288,8 @@
   function spanTxt(spanMin) {
     if (spanMin >= 1440) return '24h';
     if (spanMin >= 60) {
-      var h = Math.round(spanMin / 60), m = spanMin % 60;
-      return (h ? h + 'h' : '') + (m ? m + 'm' : '');
+      var h = Math.floor(spanMin / 60), m = spanMin % 60; // Math.round 会把分钟重复计入（95min → 2h35m 错，floor → 1h35m 对）
+      return h + 'h' + (m ? m + 'm' : '');
     }
     return spanMin + 'min';
   }
@@ -352,6 +364,12 @@
       for (i = 0; i < use.length; i++) { if (use[i].cu > max) max = use[i].cu; }
     }
     max = Math.min(max * 1.08, latest.ncpu || 64); // 8% 顶余量 + 顶封 ncpu
+    // v20 当前值跟随（2026-09-02 用户实锤「实际 0.7 核但顶刻度只到 0.5」）：曲线点是 60s 分钟平均——
+    // 刚起的负载最新点还没跟上（滞后 ≤60s）+ 短脉冲被尾部 5 点均值摊平 → y 域无视当前，顶刻度
+    // 卡在历史 p95 之下。大数字 = 15s 平滑瞬时（smoothCores）：当前 ×1.15 纳入上界 → 顶刻度恒 ≥
+    // 当前值；单 5s 脉冲只短暂抬升，随 15s 滑动窗回落（不用再攒 5 分钟「新常态」才抬坐标）。
+    var curNow = smoothCores();
+    if (curNow !== null && curNow * 1.15 > max && curNow * 1.15 < (latest.ncpu || 64)) max = curNow * 1.15;
     if (max < 0.5) max = 0.5;
     return { min: 0, max: max };
   }
@@ -404,9 +422,16 @@
     o.curVal.setAttribute('y', (ly - 5).toFixed(1));
     o.curVal.setAttribute('text-anchor', anchor);
     o.curVal.textContent = curTxt;
+    // K 线式 hover 上下文（同 xAt/yAt 数学：鼠标 x → 反解运行时长 → 最近点值+时间）
+    var host = o.poly.closest ? o.poly.closest('.qqq-mem-hover-chart, .qqq-cpu-hover-chart') : null;
+    if (host) host._ctx = { dom: dom, spanMs: spanMs, totalRun: totalRun, step: step, xAt: xAt, yAt: yAt, use: use, runTArr: runTArr, valOf: o.valOf, fmt: o.fmt };
   }
 
   function clearChart(o) {
+    if (o.poly) {
+      var host = o.poly.closest ? o.poly.closest('.qqq-mem-hover-chart, .qqq-cpu-hover-chart') : null;
+      if (host) { host._ctx = null; clearCrosshair(host); }
+    }
     o.poly.setAttribute('points', '');
     o.area.setAttribute('points', '');
     o.dot.setAttribute('cx', W - PAD_R); o.dot.setAttribute('cy', PLOT_H - PAD_B);
@@ -465,6 +490,74 @@
       ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
 
+  // ── K 线式 crosshair（2026-09-01 用户需求：卡片固定时 hover 图表 → 竖线+命中点+值时间标签，
+  //    像看 K 线那样光标指到哪 x 轴就显示那个时刻的值和时间；仅 pinned 固定态指针可达，天然生效） ──
+  function clearCrosshair(host) {
+    if (!host) return;
+    var els = host.querySelectorAll('.qqq-xl-line, .qqq-xl-dot, .qqq-xl-txt');
+    for (var i = 0; i < els.length; i++) els[i].style.display = 'none';
+  }
+  function renderCrosshair(host, ev) {
+    if (!pinned) return; // 仅固定态（指针不可达时无事件，双保险）
+    var ctx = host._ctx;
+    if (!ctx || !ctx.use || ctx.use.length < 2) return;
+    var rect = host.getBoundingClientRect();
+    if (!rect.width) return;
+    var x = (ev.clientX - rect.left) / rect.width * W;
+    if (x < PAD_L || x > W - PAD_R) { clearCrosshair(host); return; }
+    // 鼠标 x → 反解运行时长 → 二分最近曲线点
+    var runT = ctx.totalRun - (W - PAD_R - x) / ctx.step * 60000;
+    var arr = ctx.runTArr;
+    var lo = 0, hi = arr.length - 1, mid;
+    while (lo < hi - 1) { mid = (lo + hi) >> 1; if (arr[mid] < runT) lo = mid; else hi = mid; }
+    var i = (Math.abs(arr[lo] - runT) <= Math.abs(arr[hi] - runT)) ? lo : hi;
+    var px = ctx.xAt(arr[i]);
+    var py = ctx.yAt(ctx.valOf(ctx.use[i]));
+    var $l = host.querySelector('.qqq-xl-line');
+    var $d = host.querySelector('.qqq-xl-dot');
+    var $t = host.querySelector('.qqq-xl-txt');
+    if (!$l || !$d || !$t) return;
+    $l.style.display = '';
+    $l.setAttribute('x1', px.toFixed(1)); $l.setAttribute('y1', PAD_T);
+    $l.setAttribute('x2', px.toFixed(1)); $l.setAttribute('y2', PLOT_H - PAD_B);
+    $d.style.display = '';
+    $d.setAttribute('cx', px.toFixed(1)); $d.setAttribute('cy', py.toFixed(1));
+    var txt = ctx.fmt(ctx.valOf(ctx.use[i])) + ' ' + hmd(ctx.use[i].t);
+    $t.textContent = txt;
+    var tx = px + 6, anchor = 'start';
+    if (tx + 96 > W - PAD_R) { tx = px - 6; anchor = 'end'; }
+    $t.setAttribute('x', tx.toFixed(1));
+    $t.setAttribute('y', PAD_T + 10);
+    $t.setAttribute('text-anchor', anchor);
+    $t.style.display = '';
+  }
+  function wireCrosshair() {
+    var charts = [$panel.querySelector('.qqq-mem-hover-chart'), $panel.querySelector('.qqq-cpu-hover-chart')];
+    for (var i = 0; i < charts.length; i++) {
+      (function (ch) {
+        if (!ch || ch.__qqqXlBound) return;
+        ch.__qqqXlBound = true;
+        ch.addEventListener('mousemove', function (e) { renderCrosshair(ch, e); });
+        ch.addEventListener('mouseleave', function () { clearCrosshair(ch); });
+      })(charts[i]);
+    }
+  }
+
+  // v20: CPU y 域当前值跟随——每次 5s 广播用当前平滑值复算上界，域变化才重绘 CPU 图
+  // （stats/均值/tip 不碰，防 5s 重建掐 hover；域未变零开销）
+  var lastCpuYMax = -1;
+  function refreshCpuScale() {
+    if (!shown || cpuPts.length < 2) return;
+    buildRunT(cpuPts, cpuRunT);
+    var dom = cpuYDomain(cpuPts);
+    if (Math.abs(dom.max - lastCpuYMax) < 1e-3) return;
+    lastCpuYMax = dom.max;
+    drawChart(cpuPts, cpuRunT, dom, {
+      poly: $cPoly, area: $cArea, dot: $cDot, dotPulse: $cDotPulse, curVal: $cCurVal, ylbl: $cGrid._ylbl,
+      valOf: function (p) { return p.cu; }, fmt: fmtCores
+    }, spanOf(cpuPts, cpuRunT));
+  }
+
   // ── CPU 段独立渲染（v18: mem reset 后 CPU 图/统计/均值完全不受影响——旧 n<2 分支连带清 CPU 显示，用户实锤「内存一重置 CPU 也被重置」）──
   function renderCpuCurve() {
     if (cpuPts.length >= 2) {
@@ -474,6 +567,7 @@
         poly: $cPoly, area: $cArea, dot: $cDot, dotPulse: $cDotPulse, curVal: $cCurVal, ylbl: $cGrid._ylbl,
         valOf: function (p) { return p.cu; }, fmt: fmtCores
       }, spanOf(cpuPts, cpuRunT));
+      lastCpuYMax = cdom.max;
       var cpi = 0, cvi = 0, i;
       for (i = 1; i < cpuPts.length; i++) {
         if (cpuPts[i].cu > cpuPts[cpi].cu) cpi = i;
@@ -485,10 +579,21 @@
       for (i = 0; i < cpuPts.length; i++) s += cpuPts[i].cu;
       var cSpanMin = Math.round(cpuRunT[cpuRunT.length - 1] / 60000); // CPU 窗口 = CPU 流运行时长（独立 reset 后各自窗口）
       $cAvg.innerHTML = '<span>' + (cSpanMin >= 1440 ? '24h 均占 ' : spanTxt(cSpanMin) + ' 均占 ') + '</span><b>' + fmtCores(s / cpuPts.length) + '</b>';
+      // v20: CPU x 刻度 = CPU 流自己的窗口（独立 reset 后与 mem 不同步——2026-09-02 用户实锤
+      // 「左边固定 -24h」：数据不足 24h 时左边刻度应是实际最早时间，够 24h 才到 -24h）
+      if ($cLabels._left) {
+        var clt, cmt;
+        if (cSpanMin >= 1440) { clt = '-24h'; cmt = '-12h'; }
+        else { clt = '-' + spanTxt(cSpanMin); cmt = '-' + spanTxt(Math.max(1, Math.round(cSpanMin / 2))); }
+        $cLabels._left.textContent = clt;
+        $cLabels._mid.textContent = cmt;
+      }
     } else {
       clearChart({ poly: $cPoly, area: $cArea, dot: $cDot, dotPulse: $cDotPulse, curVal: $cCurVal, ylbl: $cGrid._ylbl });
       $cStats.textContent = '采样中…';
       $cAvg.textContent = '--';
+      if ($cLabels._left) { $cLabels._left.textContent = '--'; $cLabels._mid.textContent = '--'; }
+      lastCpuYMax = -1;
     }
   }
 
@@ -503,6 +608,7 @@
       if ($bootPath) $bootPath.setAttribute('d', '');
       $stats.textContent = n === 0 ? '采样中 · 每 60s 一个点' : '采样中…';
       $avg.textContent = '--';
+      if ($labels._left) { $labels._left.textContent = '--'; $labels._mid.textContent = '--'; }
       if ($avg) $avg.classList.remove('hot'); // 曲线清空时红态同步复位
       avgWasOver = false; // 边沿复位：重新累积后再超限可再弹
       drawBoots();      // 垂线按流各自换算（mem 空则只画 cpu 垂线）
@@ -539,17 +645,15 @@
     $avg.innerHTML = '<span>' + (spanMin >= 1440 ? '24h 均值 ' : spanTxt(spanMin) + ' 均值 ') + '</span><b>' + avg + 'M</b>';
     checkAvgThreshold(avg);
     // CPU 均值徽章 → renderCpuCurve() 内（v18 抽出）
-    // 动态刻度（弹性：span < 24h 时按实际跨度标注左/中，> 24h 固定 -24h/-12h）——运行时长语义
-    if ($labels._mid) {
+    // 动态刻度：MEM 标签 = MEM 流窗口；CPU 标签 = CPU 流窗口（renderCpuCurve 内各自换算——
+    // 2026-09-02 用户实锤「左边固定 -24h」：双流独立窗口必须各标各的跨度，旧代码把 CPU 标签
+    // 抄成 MEM 的 span，cpu reset 后曲线按自己窗口铺满但标签仍写 -24h）——运行时长语义
+    if ($labels._left) {
       var lt, mt;
       if (spanMin >= 1440) { lt = '-24h'; mt = '-12h'; }
-      else { lt = '-' + spanTxt(spanMin); mt = '-' + spanTxt(Math.round(spanMin / 2)); }
+      else { lt = '-' + spanTxt(spanMin); mt = '-' + spanTxt(Math.max(1, Math.round(spanMin / 2))); }
       $labels._left.textContent = lt;
       $labels._mid.textContent = mt;
-      if ($cLabels._mid) {
-        $cLabels._left.textContent = lt;
-        $cLabels._mid.textContent = mt;
-      }
     }
   }
 
@@ -664,6 +768,7 @@
       coresSmooth.push(m.cpu.cores);
       if (coresSmooth.length > 3) coresSmooth.shift();
       $cpuVal.textContent = 'CPU ' + fmtCores(smoothCores());
+      refreshCpuScale(); // v20: y 域跟随当前平滑值——顶刻度不再卡在历史 p95 之下（用户实锤 0.7 核只显示 0.5）
     }
     if (m.cpu && typeof m.cpu.totalSec === 'number') {
       latest.totalSec = m.cpu.totalSec;
@@ -851,15 +956,9 @@
     return s / coresSmooth.length;
   }
 
-  // 标签元素缓存（renderCurve 动态改刻度文案）
-  if ($labels) {
-    $labels._left = $labels.querySelector('text');
-    $labels._mid = $labels.querySelector('.qqq-mem-lbl-mid');
-  }
-  if ($cLabels) {
-    $cLabels._left = $cLabels.querySelector('text');
-    $cLabels._mid = $cLabels.querySelector('.qqq-cpu-lbl-mid');
-  }
+  // v20: 标签元素缓存已移入 buildFrame（惰性面板构建后元素才存在——旧缓存块在模块底部
+  // 加载即执行时 $labels 恒 null → 缓存从未填充 → 动态刻度从未生效，-24h/-12h 永远静态
+  // 显示（2026-09-02 用户实锤「最左边不应该固定是负24」）
 
   // ── 交互（状态区 a 区域：hover 即弹 / 点击固定 / 点卡外任意区域关闭） ──
   $mem.addEventListener('mouseenter', show);
