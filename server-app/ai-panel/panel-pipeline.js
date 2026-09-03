@@ -725,6 +725,52 @@ async function _executeSend(intent) {
         }
     } catch (_) { }
 
+    // ★ 楼层尘埃落定音效 — 局部函数，_capAbort（停滞终止）与 finally 共用
+    //   正常建完（agent._floorCompletedCleanly）→ ok endfloor；除此之外滴一切尘埃落定（异常/用户停止/停滞）→ bad endfloor
+    // ★ 诊断追踪（2026-09-03 临时）：_qqq/logs/chime-trace.jsonl + console——验证 finally 触发与 play 结果，确认后删除
+    var _chimeTrace = function (_tline) {
+        try {
+            if (typeof console !== 'undefined') console.log('[chime] ' + _tline);
+            var _tp = '';
+            try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) _tp = questStore.getProjectRoot(); } catch (_q) { }
+            if (!_tp) {
+                try { if (typeof parent !== 'undefined' && parent.__qqq_projectRoot) _tp = parent.__qqq_projectRoot; } catch (_q2) { }
+            }
+            if (_tp && parent.window && parent.window.qqqideBridge && parent.window.qqqideBridge.fs && typeof parent.window.qqqideBridge.fs.append === 'function') {
+                parent.window.qqqideBridge.fs.append(_tp + '/_qqq/logs/chime-trace.jsonl', new Date().toISOString() + ' ' + _tline + '\n').catch(function () { });
+            }
+        } catch (_) { }
+    };
+    var _chimeSettled = function (_chimeKind) {
+        // floorNum>0 = 楼层真正开始建（早退/分配失败路径不经主 finally，不响）
+        try {
+            if (floorNum > 0 && agent) {
+                // ★ 双响根治（2026-09-03）：主触发已收敛至 stopFloorTimer（电子钟变黑权威点，panel-clock.js）；
+                //   此处仅兜底（后台 agent 失败等 stopFloorTimer 未达路径），共享 agent._floorEndSfxDone 标记 → 全局单响
+                if (agent._floorEndSfxDone) return;
+                agent._floorEndSfxDone = true;
+                var _chimeBridge = (window.parent && window.parent.qqqideBridge) || window.qqqideBridge || null;
+                if (_chimeBridge && _chimeBridge.audio && typeof _chimeBridge.audio.play === 'function') {
+                    var _chimeVol = 1.0;
+                    try { _chimeVol = (window.parent && window.parent.qqqAudio && window.parent.qqqAudio.getMainVolume) ? window.parent.qqqAudio.getMainVolume() : 1.0; } catch (_cv) { }
+                    var _chimeFile = _chimeKind === 'ok' ? 'yz:ok endfloor.mp3' : 'yz:bad endfloor.mp3';
+                    _chimeTrace('fire kind=' + _chimeKind + ' floor=' + floorNum + ' vol=' + _chimeVol + ' file=' + _chimeFile);
+                    _chimeBridge.audio.play(_chimeFile, { volume: _chimeVol }).then(function (_r) {
+                        _chimeTrace('RESULT ' + JSON.stringify(_r));
+                    }).catch(function (_e) {
+                        _chimeTrace('ERR ' + _e);
+                    });
+                } else {
+                    _chimeTrace('NO_BRIDGE kind=' + _chimeKind);
+                }
+            } else {
+                _chimeTrace('SKIP floor=' + floorNum + ' agent=' + !!agent);
+            }
+        } catch (_ce) {
+            try { if (typeof console !== 'undefined') console.log('[chime] CATCH ' + _ce); } catch (_) { }
+        }
+    };
+
     // ── agent.send ──
     // ★ 发送停滞看门狗（2026-08-11，q184 20 分钟强拉断事故修案）：不是总时长上限——
     //   长任务（60 houses / 深度思考 / 压缩）总时长远超 20 分钟是常态，正在干活绝不能拉断。
@@ -791,6 +837,7 @@ async function _executeSend(intent) {
             } catch (_) { }
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_) { }
+            _chimeSettled('bad');  // ★ 停滞终止 = 异常中断 → bad；_sendTerminated 标记防止 finally 再补一响
         } catch (_) { }
     };
     var _touchCap = function () {
@@ -1170,6 +1217,10 @@ async function _executeSend(intent) {
             if ($queueBtn) $queueBtn.disabled = true;
         }
     } finally {
+        // ★ 楼层尘埃落定音效：主链唯一汇聚出口——正常建完（_floorCompletedCleanly）→ ok endfloor；
+        //   异常/用户停止/静默终止 → bad endfloor；_sendTerminated（停滞看门狗已响 bad）跳过防双响
+        try { _chimeTrace('finally cleanly=' + !!(agent && agent._floorCompletedCleanly) + ' term=' + !!(agent && agent._sendTerminated)); } catch (_) { }
+        if (!(agent && agent._sendTerminated)) _chimeSettled(agent && agent._floorCompletedCleanly ? 'ok' : 'bad');
         if (_sendCapTimer) { clearTimeout(_sendCapTimer); _sendCapTimer = null; }
         if (agent && qid && agent._floorCompletedCleanly) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }

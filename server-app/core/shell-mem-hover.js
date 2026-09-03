@@ -71,6 +71,11 @@
     if (c === null || typeof c !== 'number' || c < 0) return '--';
     return (c < 10 ? c.toFixed(1) : Math.round(c)) + '核';
   }
+  // 核数三位小数（均占徽章专用：10h55m均占 0.056核，2026-09-03 用户定案）
+  function fmtCores3(c) {
+    if (c === null || typeof c !== 'number' || c < 0) return '--';
+    return c.toFixed(3) + '核';
+  }
   // 行级累计时间
   function fmtRowTime(sec) {
     if (!sec || sec <= 0) return '0s';
@@ -126,7 +131,7 @@
       '<button class="qqq-mem-hover-reset" data-scope="cpu" title="清除 CPU 曲线历史，从零重记（删 cpu-curve.log）">reset</button>' +
       '</div>' +
       '<div class="qqq-cpu-hover-num">' +
-      '<span class="qqq-cpu-hover-num-main"><span class="qqq-cpu-hover-val">--</span><span class="qqq-cpu-hover-unit">CPU时间</span></span>' +
+      '<span class="qqq-cpu-hover-num-main"><span class="qqq-cpu-hover-val">--</span><span class="qqq-cpu-hover-unit">CPU单核时间</span></span>' +
       '<span class="qqq-cpu-hover-avg">--</span>' +
       '</div>' +
       '<div class="qqq-cpu-hover-chart">' +
@@ -578,7 +583,7 @@
       var s = 0;
       for (i = 0; i < cpuPts.length; i++) s += cpuPts[i].cu;
       var cSpanMin = Math.round(cpuRunT[cpuRunT.length - 1] / 60000); // CPU 窗口 = CPU 流运行时长（独立 reset 后各自窗口）
-      $cAvg.innerHTML = '<span>' + (cSpanMin >= 1440 ? '24h 均占 ' : spanTxt(cSpanMin) + ' 均占 ') + '</span><b>' + fmtCores(s / cpuPts.length) + '</b>';
+      $cAvg.innerHTML = '<span>' + (cSpanMin >= 1440 ? '24h 均占 ' : spanTxt(cSpanMin) + ' 均占 ') + '</span><b>' + fmtCores3(s / cpuPts.length) + '</b>';
       // v20: CPU x 刻度 = CPU 流自己的窗口（独立 reset 后与 mem 不同步——2026-09-02 用户实锤
       // 「左边固定 -24h」：数据不足 24h 时左边刻度应是实际最早时间，够 24h 才到 -24h）
       if ($cLabels._left) {

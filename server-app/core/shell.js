@@ -25,7 +25,10 @@ document.addEventListener('click', function (e) {
         e.stopPropagation();
         try {
             var b = window.qqqideBridge;
-            if (b && b.openExternal) b.openExternal(a.href);
+            // ★ 2026-09-03 修复：真实桥路径是 b.shell.openExternal（preload.ts L192），
+            //   顶层 b.openExternal 从未暴露 → 旧代码掐断导航后静默死亡 → 主窗口一切
+            //   target=_blank 链接点击零反应（first-run 弹窗「借由 Roam…」超链接实锤）。
+            if (b && b.shell && b.shell.openExternal) b.shell.openExternal(a.href);
         } catch (_) { }
     }
 }, true);

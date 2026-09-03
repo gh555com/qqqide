@@ -132,16 +132,18 @@
         var btnAgree = document.createElement('button');
         btnAgree.setAttribute('data-i18n', 'firstRun.agree');
         btnAgree.textContent = '同意并继续';
-        btnAgree.style.cssText = 'padding:7px 20px;border:1px solid var(--button-ok-bg);border-radius:6px;' +
-            'background:var(--button-ok-bg);color:var(--button-ok-text);font-size:13px;font-weight:600;';
+        // 2026-09-03 用户定案：两按钮统一取消按钮原色（透明底+主题描边，黑白主题自适应），同意在左/退出在右
+        btnAgree.style.cssText = 'padding:7px 20px;border:1px solid var(--border-strong);border-radius:6px;' +
+            'background:transparent;color:var(--text-secondary);font-size:13px;';
         btnAgree.addEventListener('click', function (e) {
             e.preventDefault();
             _markAgreed();
             _dismiss();
         });
 
-        row.appendChild(btnExit);
+        // 2026-09-03 用户定案：同意并继续在左（主操作先），退出在右
         row.appendChild(btnAgree);
+        row.appendChild(btnExit);
         panel.appendChild(row);
         ov.appendChild(panel);
         document.body.appendChild(ov);

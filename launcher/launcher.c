@@ -68,7 +68,7 @@ static void enableTls12(HINTERNET hRequest) {
 // ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
 //   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
 //   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
-#define LAUNCHER_VERSION "20260831.3"
+#define LAUNCHER_VERSION "20260903.2"
 
 // ── Ed25519 验证公钥（2026-08-27 签名验证安全防线）──
 //   唯一硬编码信任根: 服务器一切下载物（r / units.json）必须带此公钥可验证的签名。
@@ -631,7 +631,30 @@ static int fetchConfigFromServer(char *buf, int bufSize) {
     return total;
 }
 
+// 本地缓存新鲜度（秒）: 新鲜 → 跳过网络拉取（启动零网络等待）
+static int cachedConfigFresh(const WCHAR *exeDir, unsigned long long maxAgeSec) {
+    WCHAR cfgPath[MAX_PATH];
+    swprintf(cfgPath, MAX_PATH, L"%s\\gh555.com\\Data\\launcher-config.json", exeDir);
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (!GetFileAttributesExW(cfgPath, GetFileExInfoStandard, &fad)) return 0;
+    ULARGE_INTEGER ft, now;
+    ft.LowPart = fad.ftLastWriteTime.dwLowDateTime;
+    ft.HighPart = fad.ftLastWriteTime.dwHighDateTime;
+    SYSTEMTIME st;
+    GetSystemTime(&st);
+    FILETIME nowFt;
+    SystemTimeToFileTime(&st, &nowFt);
+    now.LowPart = nowFt.dwLowDateTime;
+    now.HighPart = nowFt.dwHighDateTime;
+    if (now.QuadPart < ft.QuadPart) return 1;  // 时钟回拨 → 视为新鲜
+    return (now.QuadPart - ft.QuadPart) / 10000000ULL < maxAgeSec;
+}
+
 // 主配置加载: 缓存 → 服务器 → 默认值
+// ★ 启动零网络等待（2026-09-03）: 本地缓存新鲜（<12h）→ 直接使用跳过网络拉取——
+//   旧实现每次启动同步 fetchConfigFromServer（15s×超时，CF TLS 抖动时实测卡 39s+）
+//   → 每次启动巨慢（E:\s\w 机器 15:09-15:24 五次重启全卡实锤）。launcher-config.json
+//   低频变更（双键分路以来 8-31→9-3 只改一次），12h 刷新粒度足够；缓存缺失/过期才拉。
 static void loadConfig(const WCHAR *exeDir) {
     // ① 先尝试本地缓存（最快，离线可用）
     if (loadCachedConfig(exeDir, &g_cfg)) {
@@ -642,7 +665,10 @@ static void loadConfig(const WCHAR *exeDir) {
         g_cfgLoaded = 1;
     }
 
-    // ③ 尝试从服务器拉取最新配置（非阻塞，失败用现有值）
+    // ③ 缓存新鲜 → 跳过网络（启动零等待）；缺失/过期才拉取刷新
+    if (g_cfgLoaded && cachedConfigFresh(exeDir, 12ULL * 3600)) return;
+
+    // ④ 尝试从服务器拉取最新配置（失败用现有值，不阻塞启动流程）
     char cfgBuf[4096];
     int cfgLen = fetchConfigFromServer(cfgBuf, sizeof(cfgBuf));
     if (cfgLen > 0 && cfgBuf[0] == '{') {
@@ -1611,7 +1637,7 @@ static int applySwapIfReady(const WCHAR *exeDir) {
 //   - 保留: LICENSE / qqqide.exe / gh555.com
 //   - 挂起更新保留: .swap-ready + gh555.com-next（joker 还在跑→交换被推迟，绝不能丢）
 //   - 删除: r / r.next / .version-next / debug.log / 旧根位置 launcher-config.json /
-//           loading-status / gh555.com-old / qqqide.old.exe / 无挂起标记的 gh555.com-next
+//           loading-status / gh555.com-old / qqqide.old.exe / qqqide.exe.bak-* / 无挂起标记的 gh555.com-next
 //   - 旧根 Data（历史泄漏残留）由 migrateLegacyRootData 救援 alphal 后整树删除
 //   - 未知文件一律不动（防误删用户自放文件）
 static void cleanupRootJunk(const WCHAR *exeDir) {
@@ -1626,6 +1652,22 @@ static void cleanupRootJunk(const WCHAR *exeDir) {
     for (int i = 0; i < (int)(sizeof(plainFiles) / sizeof(plainFiles[0])); i++) {
         swprintf(p, MAX_PATH, L"%s\\%s", exeDir, plainFiles[i]);
         if (fileExistsW(p)) DeleteFileW(p);
+    }
+    // ★ 手工部署残留备份（2026-09-03）: qqqide.exe.bak-* 是开发侧手动覆盖根 exe 前的旧版备份
+    //   （如 .bak-20260831 / .bak-20260831.3），非包根白名单成员——通配符整清，残留启动即消。
+    {
+        WCHAR pat[MAX_PATH];
+        WIN32_FIND_DATAW fd;
+        HANDLE hf;
+        swprintf(pat, MAX_PATH, L"%s\\qqqide.exe.bak-*", exeDir);
+        hf = FindFirstFileW(pat, &fd);
+        if (hf != INVALID_HANDLE_VALUE) {
+            do {
+                swprintf(p, MAX_PATH, L"%s\\%s", exeDir, fd.cFileName);
+                DeleteFileW(p);
+            } while (FindNextFileW(hf, &fd));
+            FindClose(hf);
+        }
     }
     // 交换失败/崩溃残留目录（轮换槽系列，2026-08-14）:
     //   含 Data 的槽永不删（用户数据安全，由 applySwapIfReady 搬回后收尾）

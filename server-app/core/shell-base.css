@@ -763,6 +763,11 @@ body {
 }
 .qqq-onl-table tbody tr {
   border-bottom: 1px solid var(--base2);
+  transition: background 0.12s ease;
+}
+/* 行 hover 高亮——配色同内存卡进程区（.qqq-mem-hover-prow:hover 同款 --hover-bg 语义变量，2026-09-03） */
+.qqq-onl-table tbody tr:hover {
+  background: var(--hover-bg);
 }
 .qqq-onl-table td {
   padding: 4px 6px;
