@@ -118,7 +118,7 @@
 		else if (dot === 0) { base = name; ext = ''; }
 		else { base = name; ext = ''; }
 		for (var n = 1; n < 1000; n++) {
-			var cand = (dir ? dir + sep : '') + base + ' (' + n + ')' + ext;
+			var cand = (dir ? dir + sep : '') + base + '_' + n + ext;
 			try {
 				var ok = await bridge.fs.exists(cand);
 				if (!ok) return cand;
