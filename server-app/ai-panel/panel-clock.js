@@ -303,6 +303,7 @@ function _initClockBlock(aiDiv) {
 
 function startFloorTimer(aiDiv, ag, resume) {
     ag._activeAiDiv = aiDiv;
+    ag._floorEndSfxDone = false;  // ★ 新楼层开始 → 复位尘埃落定音效标记（每层一响）
     if (!resume || !ag._floorStartPerf) {
         ag._floorStartPerf = performance.now();
     }
@@ -369,6 +370,44 @@ function startFloorTimer(aiDiv, ag, resume) {
     }, 1000);
 }
 
+// ★ 楼层尘埃落定音效 — 唯一权威触发点 = 电子钟变黑瞬间（stopFloorTimer，2026-09-03 用户定案）
+//   正常建完（ag._floorCompletedCleanly）→ ok endfloor；除此之外滴一切尘埃落定（异常/用户停止/停滞/后台失败）→ bad endfloor
+//   去重：agent._floorEndSfxDone（startFloorTimer 新楼层清零）——panel-pipeline finally/_capAbort 同标记仅兜底，全局单响
+var _chimeTraceFile = function (_tline) {
+    try {
+        if (typeof console !== 'undefined') console.log('[endfloor] ' + _tline);
+        var _tp = '';
+        try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) _tp = questStore.getProjectRoot(); } catch (_) { }
+        if (!_tp) { try { if (parent && parent.__qqq_projectRoot) _tp = parent.__qqq_projectRoot; } catch (_) { } }
+        if (_tp && parent.window && parent.window.qqqideBridge && parent.window.qqqideBridge.fs && typeof parent.window.qqqideBridge.fs.append === 'function') {
+            parent.window.qqqideBridge.fs.append(_tp + '/_qqq/logs/chime-trace.jsonl', new Date().toISOString() + ' ' + _tline + '\n').catch(function () { });
+        }
+    } catch (_) { }
+};
+function _playFloorEndSfx(ag) {
+    try {
+        if (!ag || ag._floorEndSfxDone) return;
+        if (!(ag._currentFloorNum > 0) || !ag._floorStartPerf) return;  // 楼层真正建过才响
+        ag._floorEndSfxDone = true;  // ★ 先置位：无论成败仅试一次，杜绝一切路径双响
+        var _bridge = parent.window && parent.window.qqqideBridge;
+        if (!_bridge || !_bridge.audio || typeof _bridge.audio.play !== 'function') {
+            _chimeTraceFile('NO_BRIDGE kind=' + (ag._floorCompletedCleanly ? 'ok' : 'bad') + ' floor=' + ag._currentFloorNum);
+            return;
+        }
+        var _vol = 1.0;
+        try { _vol = (parent.window.qqqAudio && parent.window.qqqAudio.getMainVolume) ? parent.window.qqqAudio.getMainVolume() : 1.0; } catch (_) { }
+        var _file = ag._floorCompletedCleanly ? 'yz:ok endfloor.mp3' : 'yz:bad endfloor.mp3';
+        _chimeTraceFile('fire kind=' + (ag._floorCompletedCleanly ? 'ok' : 'bad') + ' floor=' + ag._currentFloorNum + ' vol=' + _vol + ' file=' + _file);
+        _bridge.audio.play(_file, { volume: _vol }).then(function (_r) {
+            _chimeTraceFile('RESULT ' + JSON.stringify(_r));
+        }).catch(function (_e) {
+            _chimeTraceFile('ERR ' + _e);
+        });
+    } catch (_ce) {
+        try { if (typeof console !== 'undefined') console.log('[endfloor] CATCH ' + _ce); } catch (_) { }
+    }
+}
+
 function stopFloorTimer(timing, ag) {
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
     ag._floorCurrentTiming = timing;
@@ -378,8 +417,9 @@ function stopFloorTimer(timing, ag) {
     var sec = totalS % 60;
     var aiDiv = ag._activeAiDiv;
     if (aiDiv && aiDiv._clockBlock) {
-        aiDiv._clockBlock.className = 'msg-ai-clock';
+        aiDiv._clockBlock.className = 'msg-ai-clock';  // ★ 电子钟变黑 = 尘埃落定 → 音效权威触发点
     }
+    _playFloorEndSfx(ag);
     if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
         aiDiv._clockMin.textContent = min + 'm';
         aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';

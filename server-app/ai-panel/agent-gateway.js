@@ -198,14 +198,45 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             resp = await Promise.race([_chatFetchPromise, _hardDeadlinePromise]);
             if (resp && resp._hardDeadline) {
                 // ★ HTTP/2 死连接：abort 已尝试（_fetchDeadline 触发过）但 Chromium 108 不响应
-                //   唯一逃生：Promise.race 硬超时 → 返回 null → agent loop 自然结束楼层
-                var _hangMsg = '⏰ HARD fetch deadline ' + (_hardDeadlineMs / 1000) + 's — HTTP/2 connection hung, abort unresponsive (Chromium 108) — force exit';
+                //   唯一逃生：Promise.race 硬超时。
+                //   ★ 2026-09-03 修复：旧实现直接 return null → 死连接属连接池级（同 URL
+                //     重试无意义正确，但换 URL = 换连接池即可绕过）→ 永不换线 → 用户每次
+                //     「继续任务」都再卡 220s 无限循环（q249 f2/f3 反复卡死 11:42→12:43 实锤）。
+                //     现切线路重试一轮，两线皆 hang（网络服务级坏死）才结束楼层。
+                var _hangMsg = '⏰ HARD fetch deadline ' + (_hardDeadlineMs / 1000) + 's — HTTP/2 connection hung, abort unresponsive (Chromium 108) → line switch attempt #' + (_lineSwitches + 1) + '/' + MAX_LINE_SWITCHES;
                 self._log(_hangMsg);
                 if (typeof self._writeFileLog === 'function') self._writeFileLog(_hangMsg);
-                self._lastGatewayError = -1;  // ★ -1 跳过 SSE 重试（HTTP/2 死连接重试无意义）
-                self._lastGatewayMessage = '连接超时（HTTP/2 死连接，已自动恢复。对话完整保留，可继续）';
-                self._exitReason = 'deadline';
+                self._lastGatewayError = -1;  // ★ -1 跳过 SSE 无意义重试
                 clearTimeout(_fetchDeadline);
+                var _didHangSwitch = false;
+                if (typeof _gwSwitch === 'function' && _lineSwitches < MAX_LINE_SWITCHES) {
+                    if (GATEWAY_URL === GATEWAY_URL_PRIMARY) { _gwSwitch(true); _didHangSwitch = true; }
+                    else if (GATEWAY_URL === GATEWAY_URL_FALLBACK) { _gwSwitch(false); _didHangSwitch = true; }
+                }
+                if (_didHangSwitch) {
+                    _lineSwitches++;
+                    retry = -1;
+                    self._consecutiveFetchErrors = 0;
+                    var _hangSwitchMsg = '  ↳ hang recovery: line switch #' + _lineSwitches + ' → ' + GATEWAY_URL.replace('https://', '').split('/')[0] + ' (new connection pool)';
+                    self._log(_hangSwitchMsg);
+                    if (typeof self._writeFileLog === 'function') self._writeFileLog(_hangSwitchMsg);
+                    if (self._stopCtrl.signal.aborted) return null;
+                    continue;
+                }
+                // ★ 两线皆 hang = 连接池/网络服务级坏死，同渲染进程继续也大概率复卡 → 明确提示刷新
+                self._aiHangCount = (self._aiHangCount || 0) + 1;
+                try {
+                    if (window.__crashNet) window.__crashNet.throttled('ai-hang', 10000, { kind: 'ai-hang', count: self._aiHangCount, floor: self._ctx ? self._ctx.totalFloors : '?' });
+                } catch (_) { }
+                var _nowMs = Date.now();
+                if (!self._hangQoastAt || _nowMs - self._hangQoastAt > 600000) {
+                    self._hangQoastAt = _nowMs;
+                    var _hangNote = self._aiHangCount >= 2 ? '（第 ' + self._aiHangCount + ' 次）' : '';
+                    self._log('✗ HANG EXHAUSTED: both lines hung, count=' + self._aiHangCount + ' — suggest Ctrl+R');
+                    try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('网络通道疑似损坏' + _hangNote + '，已自动尝试全部线路。楼层已保存，建议 Ctrl+R 刷新窗口后点击「继续任务」', { type: 'warning', duration: 9000 }); } catch (_) { }
+                }
+                self._lastGatewayMessage = '连接超时（已自动尝试全部线路，对话完整保留，可点击「继续任务」重试）';
+                self._exitReason = 'deadline';
                 return null;
             }
             var _ttfbMs = performance.now() - _fetchStart;

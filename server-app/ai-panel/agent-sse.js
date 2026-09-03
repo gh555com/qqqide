@@ -79,12 +79,17 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     //     改用 reader.cancel()（本地 reader 操作，不依赖网络层），abort 作辅助
     var _streamWatchdog = null;
     var STREAM_WATCHDOG_MS = (typeof ContentGateway !== 'undefined' ? ContentGateway.STREAM_WATCHDOG_MS : 180000);  // ★ 唯一真理在 ContentGateway
+    var _killResolve = null;   // ★ race 逃生哨兵（2026-09-03 q248 f9: Chromium 108 死连接上 reader.cancel() 同样可能不生效——数据全到但 FIN 丢失 → read() 永不 settle；哨兵保证看门狗触发后必能跳出 await）
     function _resetStreamWatchdog() {
         if (_streamWatchdog) clearTimeout(_streamWatchdog);
+        _killResolve = null;  // 有数据到达 → 上一轮哨兵作废（连接活着）
         _streamWatchdog = setTimeout(function () {
             self._abortSource = 'stream_watchdog';
             self._log('⏰ stream watchdog ' + (STREAM_WATCHDOG_MS / 1000) + 's — no data, canceling dead reader');
             try { reader.cancel('stream_watchdog'); } catch (_) { }
+            // ★ race 逃生：resolve 当前哨兵 → 挂起的 await Promise.race 立即获胜跳出
+            //   （不依赖 cancel 生效——cancel 只作辅助，能 reject 则走原 AbortError 恢复链）
+            if (_killResolve) { var _kr = _killResolve; _killResolve = null; _kr({ _watchdogKill: true }); }
             try { if (self.abortController) self.abortController.abort(); } catch (_) { }  // 辅助：非 Chromium 108 场景
         }, STREAM_WATCHDOG_MS);
     }
@@ -93,7 +98,10 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     while (true) {
         var readResult;
         try {
-            readResult = await reader.read();
+            // ★ race 逃生：read() 与看门狗哨兵竞争——死连接（数据全到但流不结束）上
+            //   read() 永不 settle，哨兵在看门狗触发时获胜，不再无限 await
+            var _readRace = new Promise(function (resolve) { _killResolve = resolve; });
+            readResult = await Promise.race([reader.read(), _readRace]);
         } catch (readErr) {
             // AbortError = 主动中断（guide/用户停止），不是连接问题
             // 重新抛出原始 AbortError 让 _callGateway 的 catch 识别处理
@@ -105,6 +113,16 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             // 其他异常 = 连接断开（HTTP/2 RST_STREAM 等）
             self._log('✗ reader.read() threw: ' + (readErr.message || readErr));
             _sseError = { code: 0, message: 'Stream interrupted: ' + (readErr.message || 'connection lost') };
+            break;
+        }
+        if (readResult && readResult._watchdogKill) {
+            // ★ 看门狗哨兵获胜：流在最后一块数据后 180s 无进展（FIN 丢失/半开死连接）。
+            //   若 finish_reason 已收到 = 内容完整（模型已明确收尾），仅 HTTP 流没收尾 →
+            //   静默正常完结零数据丢失；无 finish_reason = 真中断 → 标记 _sseError 走截断/恢复链。
+            self._log('⏰ watchdog race won — dead reader bypassed (finish_reason=' + (_finishReason || 'none') + ', content=' + (stripper.raw || '').length + ' chars)');
+            if (!_finishReason) {
+                _sseError = { code: 0, message: 'Stream watchdog: no data for ' + (STREAM_WATCHDOG_MS / 1000) + 's (connection dead)' };
+            }
             break;
         }
         if (readResult.done) break;

@@ -972,6 +972,17 @@ function bootActivities(boot) {
     }
   }
 
+  // ★ 木鱼报喜 — 统一音频机器（主进程 AudioEngine），音量跟主路拉杆（yz: → webapp/assets/yz/；文件必须 ASCII 名——miniaudio C 层解不了中文路径 2026-09-03 实锤）
+  function _vibeMuyu() {
+    try {
+      var mv = 1.0;
+      try { if (window.qqqAudio) { mv = window.qqqAudio.getMainVolume(); } } catch (_) { }
+      if (window.qqqideBridge && window.qqqideBridge.audio && window.qqqideBridge.audio.play) {
+        window.qqqideBridge.audio.play('yz:muyu.mp3', { volume: mv }).catch(function () { });
+      }
+    } catch (_) { }
+  }
+
   // ── 事件绑定 ──────────────────────────────────────────────────────────────
   $cool.addEventListener('mouseenter', function (e) { showTip(e, t('act.cool.tip', '清爽从2026')); });
   $cool.addEventListener('mousemove', function (e) { showTip(e, t('act.cool.tip', '清爽从2026')); });
@@ -998,7 +1009,15 @@ function bootActivities(boot) {
     $vibe.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openVibePopup(); });
     fetchVibeBudget();
     setInterval(fetchVibeBudget, 30000);
-    setInterval(renderVibe, 1000);
+    // ★ 2026-09-03: 每次进入免费时段（白嫖时间滴起点）→ 木鱼报喜。
+    //   仅实时跨边沿进入才响——启动时已在免费段内不响（那不是「进入」）；与 renderVibe 合并同一 1s 滴答
+    var _vibeWasFree = isFreeWindow(vibeUtcNow());
+    setInterval(function () {
+      var _vibeNowFree = isFreeWindow(vibeUtcNow());
+      if (_vibeNowFree && !_vibeWasFree) _vibeMuyu();
+      _vibeWasFree = _vibeNowFree;
+      renderVibe();
+    }, 1000);
     renderVibe();
   }
 

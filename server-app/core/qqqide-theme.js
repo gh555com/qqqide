@@ -76,9 +76,6 @@
       // 按钮
       '--button-primary': p.blue,
       '--button-text': dark ? '#1e1e1e' : p.base3,
-      // 首启弹窗「同意并继续」淡雅绿系（2026-09-03 用户定案：绿系替代金橙主按钮色）
-      '--button-ok-bg': dark ? '#6b9448' : '#a4cd7d',
-      '--button-ok-text': dark ? '#eaf2e0' : '#1f2f15',
 
       // Sash 拖拽条
       '--sash-bg': dark ? '#333333' : '#d3c6aa',
