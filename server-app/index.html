@@ -5,7 +5,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' data:; script-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline'; img-src 'self' qqqide-asset: qqqide-webapp: data: blob: file:; font-src 'self' qqqide-asset: qqqide-webapp: data:; connect-src 'self' qqqide-asset: qqqide-webapp: http: https: wss:; worker-src 'self' qqqide-asset: qqqide-webapp: blob:; frame-src 'self' qqqide-asset: qqqide-webapp: http: https: data:">
-<title>qqqide</title>
+<title>qd (qqqide)</title>
 <!-- ★ console 全量捕获：head第一脚本 → window.top.__qqq_console_lines -->
 <script>
 (function(){
@@ -281,6 +281,10 @@ var _orig={};
 <script src="core/editor.js"></script>
 <!-- 服务端甲壳元信息（背包估算动态源，goods iframe 经 parent 读取） -->
 <script src="core/guard-meta.js"></script>
+<!-- 服务器下发超链接（客户端可见链接的远程真理源，离线回退内置兜底；控制台 gaea/cf/qqqide/服务器下发超链接.py） -->
+<script src="core/qqq-links.js"></script>
+<!-- 首次启动专家确认弹窗（每份程序数据只弹一次；依赖 qqq-links.js） -->
+<script src="core/first-run.js"></script>
 
 <script src="core/ai-viewport.js?v=2"></script>
 <!-- 协助密钥脱敏（订阅 ai-viewport 的 qqq:git-dirty 事件，懒惰脱敏） -->

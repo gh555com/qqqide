@@ -1025,7 +1025,7 @@ function _shellRenderMenubarLabels(schema) {
     span.className = 'qqq-menubar-label';
 
     // ★ 第一个菜单按钮：图标 + 文字
-    if (i === 0 && item.label === 'qqqide') {
+    if (i === 0 && item.label === 'qd (qqqide)') {
       var iconImg = document.createElement('img');
       iconImg.id = 'qqq-menu-icon';
       iconImg.src = 'assets/qqqide.png';

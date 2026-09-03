@@ -466,10 +466,11 @@ app.whenReady().then(async () => {
     // ★ 强制更新检查 — 版本过低时弹窗要求重新下载绿色包（2026-07-23）
     const forced = checkForcedUpdate();
     if (forced.required) {
-        const DOWNLOAD_URL = 'https://gh555.com/qqqide/';
+        // 下载直链 = CDN 分发（/qd 已交还网站营销 301，不再指向 webapp）
+        const DOWNLOAD_URL = 'https://gh555.com/dl/qqqide';
         const result = dialog.showMessageBoxSync({
             type: 'warning',
-            title: 'qqqide — 需要更新',
+            title: 'qd (qqqide) — 需要更新',
             message: '您的 qqqide 版本过低，必须重新下载安装。',
             detail: [
                 '当前版本: ' + forced.currentVersion,

@@ -118,24 +118,23 @@ function bootStatusbar(boot) {
 		}
 
 		// ═══ 点击弹出在线用户列表 ═══
+		// ★ 配色 2026-09-03 修复：样式全收敛 .qqq-onl-* CSS 类 + 主题语义变量（唯一入口 qqqide-theme.js）。
+		//   旧实现 inline 硬编码色仅面板首次构建时读一次 data-theme——面板构建后跨主题切换（浅→暗）恒残留浅底，
+		//   叠加暗主题继承的浅色文字 → 白底浅字根本看不清楚（实锤）。CSS 变量随 [data-theme] 即时切换，
+		//   面板复用/开合/换主题零残留，无需任何 JS 重刷。
 		function buildOnlineUsersPanel() {
-			var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-			var bg = isDark ? '#1e1e1e' : '#fdf6e3';
-			var border = isDark ? '#333' : '#d3c6aa';
-
 			_onlOverlay = document.createElement('div');
 			_onlOverlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9998;';
 			_onlOverlay.addEventListener('click', function (e) { if (e.target === _onlOverlay) closeOnlineUsers(); });
 
 			_onlPanel = document.createElement('div');
 			_onlPanel.className = 'qqq-onl-panel';
-			_onlPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';font-size:13px;';
 			_onlPanel.innerHTML =
-				'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid ' + border + ';position:sticky;top:0;background:' + bg + ';">' +
-				'<span style="font-weight:bold;">在线用户</span>' +
-				'<button id="qqq-onl-close" style="width:22px;height:22px;border:1px solid ' + border + ';border-radius:3px;background:transparent;color:inherit;font-size:13px;line-height:20px;text-align:center;">✕</button>' +
+				'<div class="qqq-onl-head">' +
+				'<span class="qqq-onl-title">在线用户</span>' +
+				'<button id="qqq-onl-close" class="qqq-onl-close">✕</button>' +
 				'</div>' +
-				'<div id="qqq-onl-body" style="padding:8px 12px;"></div>';
+				'<div id="qqq-onl-body" class="qqq-onl-body"></div>';
 			_onlOverlay.appendChild(_onlPanel);
 			document.body.appendChild(_onlOverlay);
 			document.getElementById('qqq-onl-close').addEventListener('click', closeOnlineUsers);
@@ -158,7 +157,7 @@ function bootStatusbar(boot) {
 			if (_onlFetching) return;
 			_onlFetching = true;
 			var $body = document.getElementById('qqq-onl-body');
-			if ($body) $body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载中...</div>';
+			if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载中...</div>';
 
 			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache' })
 				.then(function (r) { if (!r.ok) return null; return r.json(); })
@@ -167,63 +166,55 @@ function bootStatusbar(boot) {
 					if (!data || !data.ok || !$body) return;
 					var users = data.users || [];
 					if (users.length === 0) {
-						$body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">暂无用户</div>';
+						$body.innerHTML = '<div class="qqq-onl-msg">暂无用户</div>';
 						return;
 					}
 					// ★ 统计在线人数，同步更新左下角（比 online-total 缓存更实时）
-				var onlineCount = 0;
-				for (var j = 0; j < users.length; j++) { if (users[j].online) onlineCount++; }
-				if ($onl) $onl.textContent = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
-				var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-			var html = '<table style="width:100%;border-collapse:collapse;">';
-				html += '<thead><tr style="border-bottom:1px solid ' + (isDark ? '#333' : '#d3c6aa') + ';">';
-				html += '<th style="padding:4px 6px;text-align:left;">手机号</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">day</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">消耗</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">独立消耗</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">最近在线</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">连续(m)</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">独立</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">版本</th>';
-				html += '<th style="padding:4px 6px;text-align:right;">累计(h)</th>';	html += '</tr></thead><tbody>';
-						for (var i = 0; i < users.length; i++) {
-					var u = users[i];
-					var lastSeen = new Date(u.last_seen_at * 1000);
-					var yr = lastSeen.getFullYear();
-					var mon = ('0' + (lastSeen.getMonth() + 1)).slice(-2);
-					var day = ('0' + lastSeen.getDate()).slice(-2);
-					var timeStr = yr + '-' + mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
-					var contM = typeof u.continuous_m === 'number' ? Math.round(u.continuous_m) : 0;
-					var contStr = contM + 'm';
-					var totalH = typeof u.total_m === 'number' ? Math.round(u.total_m / 60) : '-';
-					var totalStr = typeof totalH === 'number' ? totalH + 'h' : '-';
-					var ver = u.client_ver || '-';
-					var daysReg = typeof u.days_since_register === 'number' ? u.days_since_register : '-';
-					var paidGe = typeof u.total_consumed_ge === 'number' ? u.total_consumed_ge : 0;
-					var freeGe = typeof u.free_consumed_ge === 'number' ? u.free_consumed_ge : 0;
-					var geStr = paidGe + '+' + freeGe;
-					var indPaidGe = typeof u.independent_consumed === 'number' ? u.independent_consumed : 0;
-					var indFreeGe = typeof u.independent_free === 'number' ? u.independent_free : 0;
-					var indGeStr = indPaidGe + '+' + indFreeGe;
-					html += '<tr style="border-bottom:1px solid ' + (isDark ? '#2a2a2a' : '#eee8d5') + ';">';
-					html += '<td style="padding:4px 6px;font-family:monospace;">' + u.phone + '</td>';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + daysReg + '</td>';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + geStr + '</td>';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + indGeStr + '</td>';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:12px;white-space:nowrap;">' + timeStr + '</td>';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + contStr + '</td>';
-					var indep = typeof u.independent === 'number' ? u.independent : '-';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + indep + '</td>';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:11px;">' + ver + '</td>';
-					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + totalStr + '</td>';
-					html += '</tr>';				}
-				html += '</tbody></table>';
+					var onlineCount = 0;
+					for (var j = 0; j < users.length; j++) { if (users[j].online) onlineCount++; }
+					if ($onl) $onl.textContent = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
+					var html = '<table class="qqq-onl-table"><thead><tr>' +
+						'<th>手机号</th><th class="r">day</th><th class="r">消耗</th><th class="r">独立消耗</th>' +
+						'<th class="r">最近在线</th><th class="r">连续(m)</th><th class="r">独立</th><th class="r">版本</th><th class="r">累计(h)</th>' +
+						'</tr></thead><tbody>';
+					for (var i = 0; i < users.length; i++) {
+						var u = users[i];
+						var lastSeen = new Date(u.last_seen_at * 1000);
+						var yr = lastSeen.getFullYear();
+						var mon = ('0' + (lastSeen.getMonth() + 1)).slice(-2);
+						var day = ('0' + lastSeen.getDate()).slice(-2);
+						var timeStr = yr + '-' + mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
+						var contM = typeof u.continuous_m === 'number' ? Math.round(u.continuous_m) : 0;
+						var contStr = contM + 'm';
+						var totalH = typeof u.total_m === 'number' ? Math.round(u.total_m / 60) : '-';
+						var totalStr = typeof totalH === 'number' ? totalH + 'h' : '-';
+						var ver = u.client_ver || '-';
+						var daysReg = typeof u.days_since_register === 'number' ? u.days_since_register : '-';
+						var paidGe = typeof u.total_consumed_ge === 'number' ? u.total_consumed_ge : 0;
+						var freeGe = typeof u.free_consumed_ge === 'number' ? u.free_consumed_ge : 0;
+						var geStr = paidGe + '+' + freeGe;
+						var indPaidGe = typeof u.independent_consumed === 'number' ? u.independent_consumed : 0;
+						var indFreeGe = typeof u.independent_free === 'number' ? u.independent_free : 0;
+						var indGeStr = indPaidGe + '+' + indFreeGe;
+						html += '<tr>' +
+							'<td class="mono">' + u.phone + '</td>' +
+							'<td class="r mono">' + daysReg + '</td>' +
+							'<td class="r mono">' + geStr + '</td>' +
+							'<td class="r mono">' + indGeStr + '</td>' +
+							'<td class="r mono sm">' + timeStr + '</td>' +
+							'<td class="r mono">' + contStr + '</td>' +
+							'<td class="r mono">' + (typeof u.independent === 'number' ? u.independent : '-') + '</td>' +
+							'<td class="r mono xs">' + ver + '</td>' +
+							'<td class="r mono">' + totalStr + '</td>' +
+							'</tr>';
+					}
+					html += '</tbody></table>';
 					$body.innerHTML = html;
 				})
 				.catch(function () {
 					_onlFetching = false;
 					var $body = document.getElementById('qqq-onl-body');
-					if ($body) $body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载失败，请重试</div>';
+					if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载失败，请重试</div>';
 				});
 		}
 

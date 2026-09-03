@@ -12,7 +12,7 @@
   const SCHEMA = {
     items: [
       {
-        label: 'qqqide',
+        label: 'qd (qqqide)',
         sub: [
           { label: '开新窗口', i18n: 'shell.menu.fileNewWindow', cmd: 'file.newWindow', hasRecent: true },
           { label: '导师', i18n: 'shell.menu.evangelist', cmd: 'evangelist.designate', hasEvangelistSub: true },

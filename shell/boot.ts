@@ -39,7 +39,8 @@ function initBootLog(logsDir: string) {
 // ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
-/** ★ 唯一真理源：IDE 部署根 URL。webapp 加载路径。 */
+/** ★ 唯一真理源：IDE 部署根 URL。webapp 加载路径。
+ * ★ 2026-09-03 终案：webapp 兜底通道 = gh555.com/qqqide/（/qd 只属于网站营销 301 → 落地页 gaea/d/qqqide，客户端不走 qd）；对外品牌词 = "qd (qqqide)"，代码/行文恒 qqqide（详铁律 13.1）。 */
 export const PRODUCTION_URL = 'https://gh555.com/qqqide/';
 
 // ----------------------------------------------------------------------------
@@ -247,12 +248,12 @@ export async function loadStaticFallback(
             } catch (e) {
                 bootLog('fallback: loadFile crashed — ' + (e && (e as Error).message || String(e)));
                 // 最后的最后的兜底：data URL
-                try { await mainWindow.loadURL('data:text/html,<h1>qqqide offline</h1><p>请重启应用</p>'); } catch (_) { }
+                try { await mainWindow.loadURL('data:text/html,<h1>qd (qqqide) offline</h1><p>请重启应用</p>'); } catch (_) { }
             }
             return 'fallback';
         }
     }
-    try { await mainWindow.loadURL('data:text/html,<h1>qqqide offline</h1><p>请重启应用</p>'); } catch (_) { }
+    try { await mainWindow.loadURL('data:text/html,<h1>qd (qqqide) offline</h1><p>请重启应用</p>'); } catch (_) { }
     return 'fallback';
 }
 
