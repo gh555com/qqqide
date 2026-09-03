@@ -98,9 +98,23 @@ export function registerMiscIpc(
     ipcMain.handle('qqqide:clipboard:readImage', async () => { var img = clipboard.readImage(); return img.isEmpty() ? null : img.toDataURL(); });
     ipcMain.handle('qqqide:clipboard:hasImage', async () => !clipboard.readImage().isEmpty());
 
-    // readFiles — CF_HDROP via PowerShell (仅 Windows，低频路径)
+    // readFiles — CF_HDROP: 原生直读优先 (sub-ms, 零 spawn) + PowerShell 兜底
+    // ★ 2026-09-03: PS 冷启动 1.5~3s 曾致 roam 粘贴「等 3 秒才出 ioast」假死感（用户实测）。
+    //   FileNameW = Explorer 复制文件的标准 CF_HDROP 格式（UTF-16LE 双 NUL 路径列表）。
     ipcMain.handle('qqqide:clipboard:readFiles', async () => {
         if (process.platform !== 'win32') return [];
+        try {
+            const rawBuf = clipboard.readBuffer('FileNameW');
+            if (rawBuf && rawBuf.length > 0) {
+                const parts = rawBuf.toString('utf16le').split('\0').map(s => s.trim()).filter(s => s.length > 0);
+                // 存在性过滤：防格式误读/异常格式返回垃圾路径
+                const real: string[] = [];
+                for (const p of parts) {
+                    try { if (fs.existsSync(p)) real.push(p); } catch { /* skip */ }
+                }
+                if (real.length > 0) return real;
+            }
+        } catch (e) { /* 原生不可用/无 CF_HDROP → PS 兜底 */ }
         try {
             // ★ 2026-08-24: PowerShell 5.1 管道输出默认 ANSI(GBK)——中文路径经 execFile
             //   UTF-8 解码变乱码 → stat ENOENT → copyFile 静默 false → roam "1 copied 假成功"。

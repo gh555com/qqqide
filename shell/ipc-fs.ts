@@ -184,7 +184,7 @@ function _tryLocalDeduplicate(filePath: string): string {
     return filePath;
 }
 
-// ★ 唯一路径（q3 getUniquePath，命名风格对齐 roam F1 已用格式 " (n)"）— 防覆盖
+// ★ 唯一路径（q3 getUniquePath 同款命名：name_1.ext —— 2026-09-03 从 " (1)" 对齐回 q3/用户预期）— 防覆盖
 function getUniquePath(baseDir: string, originalName: string): string {
     const ext = path.extname(originalName);
     let nameWithoutExt = path.basename(originalName, ext);
@@ -195,7 +195,7 @@ function getUniquePath(baseDir: string, originalName: string): string {
     let targetPath = path.join(baseDir, originalName);
     let counter = 1;
     while (fs.existsSync(targetPath)) {
-        targetPath = path.join(baseDir, nameWithoutExt + ' (' + counter + ')' + ext);
+        targetPath = path.join(baseDir, nameWithoutExt + '_' + counter + ext);
         counter++;
     }
     return targetPath;
@@ -663,13 +663,20 @@ export function registerFsIpc(): void {
             await fs.promises.mkdir(path.dirname(dest), { recursive: true });
             // ★ 事务：目标目录确定后惰性创建（targetDir = 粘贴目标）
             _txEnsure(streamId, path.dirname(dest));
-            // ★ dest 已存在 → 指纹判断：同内容跳过复制（去重命中复用），不同内容唯一化（防覆盖）
+            // ★ 同目录判定（2026-09-03 原地粘贴 100% 假成功修复）：
+            //   去重 skip/回收仅限「跨目录复制」——目标文件夹已有一份相同内容才算重复；
+            //   同目录/原地粘贴 = 用户显式「复制一份」，必须唯一化建新副本且事后绝不回收。
+            const sameDir = _cacheKeyForPath(path.resolve(path.dirname(src))) === _cacheKeyForPath(path.resolve(path.dirname(dest)));
+            // ★ dest 已存在 → 指纹判断：仅跨目录同内容跳过复制（去重命中复用），
+            //   不同内容或同目录 → 唯一化（防覆盖；q3 autoRename=true 语义）
             if (fs.existsSync(dest)) {
-                const sfp = computeFingerprint(src);
-                const dfp = computeFingerprint(dest);
-                if (sfp && dfp === sfp) {
-                    if (sfp) prefillFingerprint(dest, sfp);
-                    return dest;
+                if (!sameDir) {
+                    const sfp = computeFingerprint(src);
+                    const dfp = computeFingerprint(dest);
+                    if (sfp && dfp === sfp) {
+                        if (sfp) prefillFingerprint(dest, sfp);
+                        return dest;
+                    }
                 }
                 dest = getUniquePath(path.dirname(dest), path.basename(dest));
             }
@@ -717,9 +724,11 @@ export function registerFsIpc(): void {
                 try { await fs.promises.unlink(dest); } catch { /* ignore */ }
                 throw _cancelErr(streamId);
             }
-            // ★ 复制后同目录指纹去重：命中 → 新副本已删，返回既有文件路径（q3 语义）
-            //   landed 记最终路径（仅新文件；去重命中复用旧文件不记，绝不误删）
-            const finalPath = _tryLocalDeduplicate(dest);
+            // ★ 复制后同目录指纹去重：仅跨目录才执行（q3 autoRename=true 语义——同目录/原地
+            //   复制必保留新副本；旧实现无条件事后去重 → 副本与源文件同指纹被回收删掉 →
+            //   「1 copied 但文件没出现」100% 假成功，2026-09-03 实锤修复）
+            //   命中 → 新副本已删，返回既有文件路径；landed 记最终路径（绝不误删既有）
+            const finalPath = sameDir ? dest : _tryLocalDeduplicate(dest);
             _txMarkLanded(streamId, dest, finalPath);
             return finalPath;
         } catch (e: any) {
