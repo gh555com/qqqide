@@ -691,3 +691,89 @@ body {
 #qqqide-overlay-content::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* ── 在线用户弹窗（shell-statusbar.js 动态创建，2026-09-03 暗色配色修复）──
+   全部用主题语义变量（唯一入口 core/qqqide-theme.js）→ 随 [data-theme] 即时切换零残留；
+   旧 inline 硬编码色只在面板首次构建时读一次 data-theme → 面板复用跨主题切换残留浅底+浅字（白底看不清）实锤 */
+.qqq-onl-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 700px;
+  max-width: 94vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  z-index: 9999;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  background: var(--background-color);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.qqq-onl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  background: var(--background-color);
+}
+.qqq-onl-title {
+  font-weight: bold;
+}
+.qqq-onl-close {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+.qqq-onl-close:hover {
+  background: var(--hover-bg);
+}
+.qqq-onl-body {
+  padding: 8px 12px;
+}
+.qqq-onl-msg {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-dim);
+}
+.qqq-onl-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.qqq-onl-table thead tr {
+  border-bottom: 1px solid var(--border-color);
+}
+.qqq-onl-table th {
+  padding: 4px 6px;
+  text-align: left;
+}
+.qqq-onl-table th.r,
+.qqq-onl-table td.r {
+  text-align: right;
+}
+.qqq-onl-table tbody tr {
+  border-bottom: 1px solid var(--base2);
+}
+.qqq-onl-table td {
+  padding: 4px 6px;
+}
+.qqq-onl-table td.mono {
+  font-family: Consolas, monospace;
+}
+.qqq-onl-table td.sm {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.qqq-onl-table td.xs {
+  font-size: 11px;
+}

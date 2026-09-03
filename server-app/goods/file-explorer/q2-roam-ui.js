@@ -549,7 +549,7 @@ function _confirmAsync(message, buttons) {
 		var btns = buttons || ['Overwrite', 'Cancel'];
 		rpc('dialog.message', {
 			type: 'warning',
-			title: 'qqqide',
+			title: 'qd (qqqide)',
 			message: message,
 			buttons: btns,
 			defaultId: 0,

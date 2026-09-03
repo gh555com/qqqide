@@ -514,5 +514,11 @@
         "editorOpenHint": "提示：已在编辑器中打开的文件会被跳过，避免覆盖未保存的编辑",
         "autoRedacted": "自动抹除（配置类 T1 已替换为 ***REDACTED***）",
         "fullHit": "T1/T2 命中（全量体检 · 只读未处理）"
+    },
+    "firstRun": {
+        "expert": "我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件",
+        "roamHint": "借由 Roam 你可以快速操作文件，包括删除",
+        "agree": "同意并继续",
+        "exit": "退出"
     }
 }

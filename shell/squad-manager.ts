@@ -179,7 +179,7 @@ function _folderName(folder: string): string {
 }
 
 function _titleText(squad: string | null, name: string): string {
-    const n = _folderName(name) || 'qqqide';
+    const n = _folderName(name) || 'qd (qqqide)';
     return squad ? squad + '\u25A0' + n : n;
 }
 

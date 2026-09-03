@@ -1799,7 +1799,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         HFONT hOld = (HFONT)SelectObject(hdc, hTitle);
         SetTextColor(hdc, COL_TITLE);
         RECT tr = {0, 55, WW, 105};
-        DrawTextW(hdc, L"qqqide", -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(hdc, L"qd (qqqide)", -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         SelectObject(hdc, hOld);
         DeleteObject(hTitle);
 
@@ -1952,7 +1952,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
 
     // ★★★ 窗口最先创建并显示（2026-08-31 实锤: 旧代码先拉配置/检查首装才建窗，
     //   慢网络下点击半天无窗口——「点击必弹窗」硬保证，无论任何情况）
-    g_hwnd = CreateWindowExW(0, CLASS, L"qqqide",
+    g_hwnd = CreateWindowExW(0, CLASS, L"qd (qqqide)",
         WS_POPUP | WS_BORDER, 0, 0, WW, WH, NULL, NULL, hi, NULL);
     if (!g_hwnd) return 1;
     centerWindow(g_hwnd);

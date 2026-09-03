@@ -143,7 +143,7 @@ function showNativeFallbackDialog(url: string): void {
     diag('Showing native fallback dialog');
     dialog.showMessageBox({
         type: 'warning',
-        title: '无法自动打开浏览器 — qqqide',
+        title: '无法自动打开浏览器 — qd (qqqide)',
         message: '自动打开浏览器失败。请复制以下链接到浏览器地址栏：',
         detail: url,
         buttons: ['复制链接', '关闭'],
