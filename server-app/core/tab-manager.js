@@ -21,7 +21,10 @@
 (function () {
   'use strict';
 
-  const MIN_W = 123;
+  // ★ 2026-09-04：宽度底线唯一源 = window.__LAYOUT_CONST（qqqide-theme.js §1b 注入），此处兜底
+  const _LC = function () { return window.__LAYOUT_CONST || {}; };
+  const MIN_W = _LC().PANEL_MIN || 123;    // 文件分组底线
+  const MIN_GAEA = _LC().GAEA_MIN || 180;  // gaea 常驻分组底线（roam/git/search 内容密集，独立加宽）
   const MAX_GROUPS = 3;
 
   let hostEl = null;          // #qqq-x-upper
@@ -38,7 +41,8 @@
     const g = document.createElement('div');
     g.className = 'qqq-tab-group';
     g.style.flex = '1 1 0';
-    g.style.minWidth = MIN_W + 'px';
+    const minW = (type === 'gaea') ? MIN_GAEA : MIN_W;
+    g.style.minWidth = minW + 'px';
 
     const bar = document.createElement('div');
     bar.className = 'qqq-tab-bar';
@@ -437,6 +441,7 @@
     const grp = {
       idx: groups.length,
       type: type,
+      minW: (type === 'gaea') ? MIN_GAEA : MIN_W,
       el: dom.el,
       barEl: dom.barEl,
       contentEl: dom.contentEl,
@@ -454,6 +459,8 @@
     hostEl.appendChild(grp.el);
     groups.push(grp);
     reindexGroups();
+    // ★ 2026-09-04：组增减后统一按实测宽度水密舱重分配（消除 px/flex 混合态与空缝）
+    if (groups.length >= 2) { _saveGroupRatios(); _onGroupResize(); }
     rebindAllSashes();
     return grp;
   }
@@ -468,16 +475,19 @@
     groups.splice(idx, 1);
     reindexGroups();
 
-    // reset flex on remaining groups + clear stale ratios
-    _groupRatios = null;
-    groups.forEach(g => { g.el.style.flex = '1 1 0'; });
+    // ★ 2026-09-04：剩余组按实测宽度水密舱重分配（单组回弹 flex 填满；多组等比吃回释放空间，零空缝零跳变）
+    if (groups.length <= 1) {
+      _groupRatios = null;
+      groups.forEach(g => { g.el.style.flex = '1 1 0'; });
+    } else {
+      _saveGroupRatios();
+      _onGroupResize();
+    }
     rebindAllSashes();
   }
 
-  // Rebind ALL inter-group sashes so each one knows about every group on
-  // its left/right side, enabling cascading compression. Without this,
-  // dragging the left sash with 3 groups will saturate at the immediate
-  // neighbor's MIN width and lock up.
+  // Rebind ALL inter-group sashes（★ 2026-09-04 级联废除）：每条 sash 只绑定紧邻两分组——
+  // 拖拽重分配仅发生在 G(i-1)⎮G(i) 之间，远端分组（含 gaea G0）数学上不可能被波及。
   function rebindAllSashes() {
     for (let i = 1; i < groups.length; i++) {
       const grp = groups[i];
@@ -487,27 +497,20 @@
       const fresh = sash.cloneNode(false);
       sash.parentNode.replaceChild(fresh, sash);
       grp._sashEl = fresh;
-      // leftPanels: groups[0..i-1] in order, last entry is the immediate left neighbor
-      // rightPanels: groups[i..N-1] in order, first entry is the immediate right neighbor
-      const leftPanels = [];
-      for (let j = 0; j < i; j++) {
-        const g = groups[j];
-        leftPanels.push({
-          getW: () => g.el.offsetWidth,
-          setW: w => { g.el.style.flex = '0 0 ' + w + 'px'; _saveGroupRatios(); },
-          min: MIN_W,
-        });
-      }
-      const rightPanels = [];
-      for (let j = i; j < groups.length; j++) {
-        const g = groups[j];
-        rightPanels.push({
-          getW: () => g.el.offsetWidth,
-          setW: w => { g.el.style.flex = '0 0 ' + w + 'px'; _saveGroupRatios(); },
-          min: MIN_W,
-        });
-      }
-      window.qqqideSash.bindV(fresh, leftPanels, rightPanels);
+      const left = groups[i - 1];
+      const right = groups[i];
+      window.qqqideSash.bindV(fresh,
+        {
+          getW: () => left.el.offsetWidth,
+          setW: w => { left.el.style.flex = '0 0 ' + w + 'px'; _saveGroupRatios(); },
+          min: left.minW || MIN_W,
+        },
+        {
+          getW: () => right.el.offsetWidth,
+          setW: w => { right.el.style.flex = '0 0 ' + w + 'px'; _saveGroupRatios(); },
+          min: right.minW || MIN_W,
+        }
+      );
     }
   }
 
@@ -519,14 +522,15 @@
     _groupRatios = { ratios: groups.map(g => g.el.offsetWidth / totalW) };
   }
 
-  // On window resize, restore group proportions if they were manually adjusted
+  // On window resize / group count change: 水密舱重分配（2026-09-04 闭环）
+  // 保证（availW ≥ Σ底线 时）: Σ分配 = availW 且每组 ≥ 自身底线；Σ底线 > availW（物理极限）→ 各保底线，溢出由容器裁切。
   function _onGroupResize() {
     if (_resizeTimer) clearTimeout(_resizeTimer);
     _resizeTimer = setTimeout(() => {
       _resizeTimer = null;
       if (!hostEl || groups.length < 2) return;
       if (!_groupRatios || !_groupRatios.ratios || _groupRatios.ratios.length !== groups.length) {
-        // No custom ratios → reset to equal flex
+        // No custom ratios → reset to equal flex（各组 min-width 内联兜底）
         groups.forEach(g => { g.el.style.flex = '1 1 0'; });
         return;
       }
@@ -539,16 +543,26 @@
       }
       const availW = hostW - sashTotal;
       if (availW <= 0) return;
-      // Assign each group, give last group the remainder to avoid rounding gaps
+      const n = groups.length;
+      const mins = groups.map(g => g.minW || MIN_W);
+      const sumMin = mins.reduce((s, m) => s + m, 0);
+      // 后缀底线和：hi_idx = availW − usedW − suffixMin[idx+1]
+      const suffixMin = new Array(n + 1).fill(0);
+      for (let i = n - 1; i >= 0; i--) suffixMin[i] = suffixMin[i + 1] + mins[i];
+      if (availW < sumMin) {
+        // 物理极限：各保底线，溢出由容器裁切（正确退化，不再互相压缩）
+        groups.forEach((g, i) => { g.el.style.flex = '0 0 ' + mins[i] + 'px'; });
+        return;
+      }
       let usedW = 0;
-      const lastIdx = groups.length - 1;
-      for (let idx = 0; idx < lastIdx; idx++) {
-        const w = Math.max(MIN_W, Math.round(_groupRatios.ratios[idx] * availW));
+      for (let idx = 0; idx < n - 1; idx++) {
+        const hi = availW - usedW - suffixMin[idx + 1];
+        const target = Math.round(_groupRatios.ratios[idx] * availW);
+        const w = Math.min(Math.max(target, mins[idx]), Math.max(hi, mins[idx]));
         groups[idx].el.style.flex = '0 0 ' + w + 'px';
         usedW += w;
       }
-      const lastW = Math.max(MIN_W, availW - usedW);
-      groups[lastIdx].el.style.flex = '0 0 ' + lastW + 'px';
+      groups[n - 1].el.style.flex = '0 0 ' + (availW - usedW) + 'px';
     }, 50);
   }
 

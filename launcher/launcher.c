@@ -68,7 +68,7 @@ static void enableTls12(HINTERNET hRequest) {
 // ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
 //   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
 //   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
-#define LAUNCHER_VERSION "20260903.2"
+#define LAUNCHER_VERSION "20260904.1"
 
 // ── Ed25519 验证公钥（2026-08-27 签名验证安全防线）──
 //   唯一硬编码信任根: 服务器一切下载物（r / units.json）必须带此公钥可验证的签名。
@@ -96,8 +96,15 @@ enum { PHASE_INIT, PHASE_LAUNCHING, PHASE_WAITING, PHASE_DONE, PHASE_ERROR };
 // ═══════════════════════════════════════════════════════════════
 // ★ Bootstrap Config — 唯一硬编码 URL，其余一切由配置驱动
 // ═══════════════════════════════════════════════════════════════
-#define CONFIG_HOST  L"gh555.com"
-#define CONFIG_PATH  L"/dl/qqqide-up/launcher-config.json"
+#define CONFIG_HOST  "gh555.com"
+#define CONFIG_PATH  "/dl/qqqide-up/launcher-config.json"
+
+// ★ 镜像兜底（2026-09-04 远端救援体系）: Cloudflare 主源在部分客户网络 TLS 被掐/抖动
+//   （schannel 重协商卡死实锤）→ 直连阿里云 OSS 主存储兜底（国内毫秒级、零 CF 跳板）。
+//   镜像与主源逐字节同源（q.py 双地上传同一产物，F48 哈希一致实锤）。
+//   ★ 可被 launcher-config.json 覆盖（mirror_host / mirror_prefix 字段）；默认内嵌编译。
+#define MIRROR_HOST   "gh555-shanghai.oss-cn-shanghai.aliyuncs.com"
+#define MIRROR_PREFIX "/qqqide-up"
 
 // ── 配置结构体 ──
 typedef struct {
@@ -112,6 +119,9 @@ typedef struct {
     int  retry;
     char joker_exe[256];
     char first_run_r[128];
+    char mirror_host[128];     // 镜像兜底主机（OSS 直连，默认 MIRROR_HOST）
+    char mirror_prefix[128];   // 镜像键前缀（默认 /qqqide-up）
+    int  emergency_full_r;     // 远端救援指令: 1 = 下次启动强制全量自愈（服务器下发）
 } LauncherConfig;
 
 // ── 内置默认值（与服务端 launcher-config.json 保持一致） ──
@@ -126,7 +136,10 @@ static const LauncherConfig DEFAULT_CFG = {
     30, // timeout_sec
     3,  // retry
     "gh555.com/joker.exe",
-    "r"
+    "r",
+    MIRROR_HOST,      // mirror_host
+    MIRROR_PREFIX,    // mirror_prefix
+    0                 // emergency_full_r（服务器置 1 = 远端救援）
 };
 
 static LauncherConfig g_cfg;
@@ -509,6 +522,12 @@ static int parseConfig(const char *json, LauncherConfig *cfg) {
             skipWhitespace(&p); parseJsonString(&p, cfg->joker_exe, sizeof(cfg->joker_exe));
         } else if (strcmp(key, "first_run_r") == 0) {
             skipWhitespace(&p); parseJsonString(&p, cfg->first_run_r, sizeof(cfg->first_run_r));
+        } else if (strcmp(key, "mirror_host") == 0) {
+            skipWhitespace(&p); parseJsonString(&p, cfg->mirror_host, sizeof(cfg->mirror_host));
+        } else if (strcmp(key, "mirror_prefix") == 0) {
+            skipWhitespace(&p); parseJsonString(&p, cfg->mirror_prefix, sizeof(cfg->mirror_prefix));
+        } else if (strcmp(key, "emergency_full_r") == 0) {
+            parseJsonBool(&p, &cfg->emergency_full_r);
         } else {
             // 跳过未知 key → 向前兼容（未来加新字段不崩溃）
             skipWhitespace(&p);
@@ -573,62 +592,15 @@ static void saveCachedConfig(const WCHAR *exeDir, const char *json, int len) {
     MoveFileW(tmpPath, cfgPath);
 }
 
+// 远端小文本拉取（配置/版本号）: 主源 https → 镜像 https → 主源 http 明文，逐级兜底
+static int fetchTextRemote(const char *host, const char *path,
+                           char *buf, int bufSize, int useHttps);
+
 // 从服务器下载配置（返回 JSON 字符串长度，失败返回 0）
 static int fetchConfigFromServer(char *buf, int bufSize) {
-    HINTERNET hSession = WinHttpOpen(L"qqqide-launcher/1.0",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) return 0;
-
-    HINTERNET hConnect = WinHttpConnect(hSession, CONFIG_HOST,
-        INTERNET_DEFAULT_HTTPS_PORT, 0);
-    if (!hConnect) { WinHttpCloseHandle(hSession); return 0; }
-
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", CONFIG_PATH, NULL,
-        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-        WINHTTP_FLAG_SECURE);
-    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return 0; }
-    enableTls12(hRequest);
-
-    DWORD timeout = 15000;
-    WinHttpSetOption(hRequest, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
-    WinHttpSetOption(hRequest, WINHTTP_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
-    DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
-    WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect));
-
-    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-        WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
-        return 0;
-    }
-    if (!WinHttpReceiveResponse(hRequest, NULL)) {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
-        return 0;
-    }
-
-    DWORD statusCode = 0, statusSize = sizeof(statusCode);
-    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
-    if (statusCode != 200) {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
-        return 0;
-    }
-
-    int total = 0;
-    DWORD avail = 0, rd = 0;
-    while (WinHttpQueryDataAvailable(hRequest, &avail) && avail > 0) {
-        DWORD toRead = avail;
-        if (total + (int)toRead >= bufSize) toRead = bufSize - total - 1;
-        if (toRead == 0) break;
-        if (!WinHttpReadData(hRequest, buf + total, toRead, &rd)) break;
-        total += rd;
-        if (total >= bufSize - 1) break;
-    }
-    buf[total] = '\0';
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-    return total;
+    int len = fetchTextRemote(CONFIG_HOST, CONFIG_PATH, buf, bufSize, 1);
+    if (len <= 0) len = fetchTextRemote(CONFIG_HOST, CONFIG_PATH, buf, bufSize, 0);
+    return len;
 }
 
 // 本地缓存新鲜度（秒）: 新鲜 → 跳过网络拉取（启动零网络等待）
@@ -690,8 +662,100 @@ static void toWide(const char *src, WCHAR *dst, int dstMax) {
     MultiByteToWideChar(CP_UTF8, 0, src, -1, dst, dstMax);
 }
 
-// 下载文件到磁盘
-static int downloadFile(const char *host, const char *path,
+// 镜像路径重写: /dl/qqqide-up/xxx → 镜像前缀 + /xxx（镜像仓库键前缀 /qqqide-up）
+static void mirrorRewritePath(const char *path, const char *prefix,
+                              char *out, int outSize) {
+    const char *suffix = path;
+    if (strncmp(suffix, "/dl/qqqide-up", 13) == 0) suffix += 13;
+    else if (strncmp(suffix, "/qqqide-up", 10) == 0) suffix += 10;
+    snprintf(out, outSize, "%s%s", prefix, suffix);
+}
+
+// 单次 WinHTTP GET 文本（TLS1.2 / 明文，15s 超时，跟随重定向）
+static int httpGetTextOnce(const WCHAR *host, const WCHAR *path, int useHttps,
+                           char *buf, int bufSize) {
+    HINTERNET hSession = WinHttpOpen(L"qqqide-launcher/1.0",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) return 0;
+
+    HINTERNET hConnect = WinHttpConnect(hSession, host,
+        useHttps ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 0);
+    if (!hConnect) { WinHttpCloseHandle(hSession); return 0; }
+
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path, NULL,
+        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+        useHttps ? WINHTTP_FLAG_SECURE : 0);
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return 0; }
+    enableTls12(hRequest);
+
+    DWORD timeout = 15000;
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
+    DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect));
+
+    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+        WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
+        return 0;
+    }
+    if (!WinHttpReceiveResponse(hRequest, NULL)) {
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
+        return 0;
+    }
+
+    DWORD statusCode = 0, statusSize = sizeof(statusCode);
+    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
+    if (statusCode != 200) {
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
+        return 0;
+    }
+
+    int total = 0;
+    DWORD avail = 0, rd = 0;
+    while (WinHttpQueryDataAvailable(hRequest, &avail) && avail > 0) {
+        DWORD toRead = avail;
+        if (total + (int)toRead >= bufSize) toRead = bufSize - total - 1;
+        if (toRead == 0) break;
+        if (!WinHttpReadData(hRequest, buf + total, toRead, &rd)) break;
+        total += rd;
+        if (total >= bufSize - 1) break;
+    }
+    buf[total] = '\0';
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+    return total;
+}
+
+// ★ 远端小文本拉取带镜像兜底（2026-09-04）: 主源失败（CF TLS 抖动/掐断）→ OSS 直连重试。
+//   配置驱动 host/path（UTF-8），镜像选择: g_cfg 已加载用配置值，否则编译期默认。
+static int fetchTextRemote(const char *host, const char *path,
+                           char *buf, int bufSize, int useHttps) {
+    WCHAR wHost[256], wPath[512];
+    toWide(host, wHost, 256);
+    toWide(path, wPath, 512);
+    int len = httpGetTextOnce(wHost, wPath, useHttps, buf, bufSize);
+    if (len > 0) return len;
+    const char *mh = g_cfgLoaded ? g_cfg.mirror_host : DEFAULT_CFG.mirror_host;
+    const char *mp = g_cfgLoaded ? g_cfg.mirror_prefix : DEFAULT_CFG.mirror_prefix;
+    if (!mh[0] || !mp[0]) return 0;
+    if (strcmp(mh, host) == 0) return 0;
+    char mPath[512];
+    mirrorRewritePath(path, mp, mPath, sizeof(mPath));
+    char dbg[256];
+    snprintf(dbg, sizeof(dbg), "fetch %hs: primary FAIL, mirror fallback %hs", path, mPath);
+    swapLogPersist(g_exeDir, dbg);
+    WCHAR wMHost[256], wMPath[512];
+    toWide(mh, wMHost, 256);
+    toWide(mPath, wMPath, 512);
+    return httpGetTextOnce(wMHost, wMPath, useHttps, buf, bufSize);
+}
+
+// 下载文件到磁盘（单次尝试，不带镜像兜底）
+static int downloadFileOnce(const char *host, const char *path,
                          const WCHAR *dest, int useHttps) {
     WCHAR wHost[256], wPath[512];
     toWide(host, wHost, 256);
@@ -856,6 +920,25 @@ static int downloadFile(const char *host, const char *path,
         swapLogPersist(g_exeDir, dbg);
     }
     return totalDownloaded > 0 ? 0 : -1;
+}
+
+// ★ 镜像兜底包装（2026-09-04 远端救援体系）: 主源下载失败 → OSS 直连镜像自动重试。
+//   镜像与主源逐字节同源（q.py 双地上传同一产物）；内容校验（Ed25519/sha512/CRC）
+//   不变——镜像只换传输通道，安全模型零变化。
+static int downloadFile(const char *host, const char *path,
+                         const WCHAR *dest, int useHttps) {
+    int rc = downloadFileOnce(host, path, dest, useHttps);
+    if (rc == 0) return 0;
+    const char *mh = g_cfgLoaded ? g_cfg.mirror_host : DEFAULT_CFG.mirror_host;
+    const char *mp = g_cfgLoaded ? g_cfg.mirror_prefix : DEFAULT_CFG.mirror_prefix;
+    if (!mh[0] || !mp[0]) return rc;
+    if (strcmp(mh, host) == 0) return rc;   // 已在镜像源，不再递归
+    char mPath[512];
+    mirrorRewritePath(path, mp, mPath, sizeof(mPath));
+    char dbg[256];
+    snprintf(dbg, sizeof(dbg), "download %hs: primary FAIL, mirror fallback %hs", path, mPath);
+    swapLogPersist(g_exeDir, dbg);
+    return downloadFileOnce(mh, mPath, dest, useHttps);
 }
 
 // ── Ed25519 签名验证工具（2026-08-27 安全防线）──────────────────
@@ -1073,7 +1156,8 @@ static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir, int keepR) {
 //   亲自走旧式全量链路: 下载 r.next(+r.next.sig，断点续传) → Ed25519 验签 → 解压
 //   gh555.com-next → 写 .swap-ready → 下次启动走交换全守卫（二次验签+防降级+数据备份）。
 //   方向安全: 验签失败拒更新保留旧版；正常时零开销（一次 stat 判定）。
-static void emergencyFullUpdate(const WCHAR *exeDir) {
+// force=1: 服务器远端救援指令触发（绕过 .apply-fails 门槛，仍受版本/幂等/验签守卫）
+static void emergencyFullUpdate(const WCHAR *exeDir, int force) {
     char logBuf[4096] = {0};
     WCHAR failPath[MAX_PATH], swapReady[MAX_PATH], rNext[MAX_PATH], rSig[MAX_PATH];
     WCHAR ghNext[MAX_PATH], tmpDir[MAX_PATH], extracted[MAX_PATH], vPath[MAX_PATH];
@@ -1084,18 +1168,38 @@ static void emergencyFullUpdate(const WCHAR *exeDir) {
     int dlRc = -1;
     HANDLE hf;
 
-    // 1. 仅当壳层连续失败确认（≥3）才激活；已有挂起交换 → 无事可做
-    swprintf(failPath, MAX_PATH, L"%s\\.apply-fails", exeDir);
-    if (readFileText(failPath, fbuf, sizeof(fbuf)) <= 0 || atoi(fbuf) < 3) return;
+    // 1. 触发: force=1 → 服务器远端救援指令；force=0 → 壳层连续失败 ≥3。
+    //    两者共同: 已有挂起交换 → 无事可做
+    if (!force) {
+        swprintf(failPath, MAX_PATH, L"%s\\.apply-fails", exeDir);
+        if (readFileText(failPath, fbuf, sizeof(fbuf)) <= 0 || atoi(fbuf) < 3) return;
+    }
     swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
     if (fileExistsW(swapReady)) return;
+    // 下载源: loadConfig 已执行（指令路径）→ g_cfg（含服务器覆盖/mirror）；
+    //          未执行（.apply-fails 路径）→ 编译期默认（与正式更新同源）
+    const LauncherConfig *cfg = g_cfgLoaded ? &g_cfg : &DEFAULT_CFG;
+    // ★ 指令触发版本守卫（2026-09-04 防循环）: 指令在配置缓存常驻（服务器撤除前每次
+    //   刷新都带）——本地已 ≥ 服务器最新 → 无事可做（否则交换完成后每次开机重下重装）。
+    if (force) {
+        char latest[64] = {0};
+        if (fetchTextRemote(cfg->update_host, cfg->latest_path, latest, sizeof(latest), cfg->use_https) > 0) {
+            char live[64] = {0};
+            readLocalVersion(exeDir, live, sizeof(live));
+            if (live[0] && compareVersion(live, latest) >= 0) {
+                swapLogNow(exeDir, "emergency update: directive skipped (local %s >= server %s)", live, latest);
+                return;
+            }
+        }
+    }
 
     swprintf(rNext, MAX_PATH, L"%s\\r.next", exeDir);
     swprintf(rSig, MAX_PATH, L"%s\\r.next.sig", exeDir);
     swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
     swprintf(tmpDir, MAX_PATH, L"%s\\.r-extract-tmp", exeDir);
 
-    swapLogAppend(logBuf, sizeof(logBuf), "emergency update: activated (.apply-fails=%s, full r fallback)", fbuf);
+    swapLogAppend(logBuf, sizeof(logBuf), "emergency update: activated (%s, full r fallback)",
+                  force ? "server directive" : ".apply-fails>=3");
     setStatus("emergency update: downloading…", 0);
     if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
 
@@ -1104,9 +1208,9 @@ static void emergencyFullUpdate(const WCHAR *exeDir) {
     //    会被验签拒绝后删除 = 续传破坏，每次启动重下 179MB）。
     //    ★ 用 DEFAULT_CFG（2026-08-31）: 应急通道在 loadConfig 之前执行（避免 39 秒
     //   配置网络阻塞），g_cfg 此时为零——默认配置与正式更新同源（编译期常量）。
-    dlRc = downloadFile(DEFAULT_CFG.update_host, DEFAULT_CFG.r_path, rNext, DEFAULT_CFG.use_https);
-    if (dlRc != 0 && DEFAULT_CFG.use_https) {
-        dlRc = downloadFile(DEFAULT_CFG.update_host, DEFAULT_CFG.r_path, rNext, 0);
+    dlRc = downloadFile(cfg->update_host, cfg->r_path, rNext, cfg->use_https);
+    if (dlRc != 0 && cfg->use_https) {
+        dlRc = downloadFile(cfg->update_host, cfg->r_path, rNext, 0);
     }
     if (dlRc != 0 || !fileExistsW(rNext)) {
         swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: r.next download err");
@@ -1114,10 +1218,10 @@ static void emergencyFullUpdate(const WCHAR *exeDir) {
         return;
     }
     // 3. 下载签名（r_path + ".sig"，与壳层同款 URL 构造；同样幂等）
-    snprintf(sigPath, sizeof(sigPath), "%s.sig", DEFAULT_CFG.r_path);
-    dlRc = downloadFile(DEFAULT_CFG.update_host, sigPath, rSig, DEFAULT_CFG.use_https);
-    if (dlRc != 0 && DEFAULT_CFG.use_https) {
-        dlRc = downloadFile(DEFAULT_CFG.update_host, sigPath, rSig, 0);
+    snprintf(sigPath, sizeof(sigPath), "%s.sig", cfg->r_path);
+    dlRc = downloadFile(cfg->update_host, sigPath, rSig, cfg->use_https);
+    if (dlRc != 0 && cfg->use_https) {
+        dlRc = downloadFile(cfg->update_host, sigPath, rSig, 0);
     }
     if (dlRc != 0 || !fileExistsW(rSig)) {
         swapLogAppend(logBuf, sizeof(logBuf), "emergency update FAIL: r.sig download err (keep old version)");
@@ -2065,12 +2169,19 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     //   ★ 必须在 loadConfig 之前（沙箱实测 loadConfig 网络拉取可阻塞 39 秒——
     //   应急通道用户已连续失败 ≥3 次，绝不能让它再等配置网络）；g_cfg 有编译期
     //   默认值（update_host/r_path/use_https），与正式更新同源，零风险。
-    emergencyFullUpdate(myDir);
+    emergencyFullUpdate(myDir, 0);
 
     // ★ 加载配置（缓存 → 服务器 → 默认值）
     //   注意：服务器拉取在这里做（启动前），因为需要 host/path 等配置。
     //   但网络失败不阻塞——缓存或默认值兜底。
     loadConfig(myDir);
+
+    // ★ 远端救援指令（2026-09-04 绝对机制）: 服务器在 launcher-config.json 置
+    //   emergency_full_r=1 → 任意客户端下一次开机自动全量自愈（绕过 .apply-fails
+    //   门槛: 下载+验签+解压+staged → 下次开机交换）。适用: 壳层更新器静默损坏 /
+    //   缺陷版本自愈不能 / 需要强制全量重建的一切场景。版本守卫防循环（本地已最新
+    //   即跳过），指令由服务器撤除或版本自然熄灭，双保险。
+    if (g_cfg.emergency_full_r) emergencyFullUpdate(myDir, 1);
 
     // ★ Q 记录：写系统环境变量，兜底 Python 路径
     writeQRecord(myDir);

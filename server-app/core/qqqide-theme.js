@@ -42,6 +42,22 @@
   });
 
   // ==========================================================================
+  // §1b 布局常量单源（2026-09-04 定案）— 分栏宽度引擎唯一参数源
+  //   PANEL_MIN  123 — 分区通用底线（X 区/文件组/output 共用）
+  //   GAEA_MIN   180 — gaea 常驻分组底线（roam/git/search 内容密集，防被拖成细条）
+  //   A_ZONE_MAX 480 — A 区产品上限（拖拽/缩放/启动恢复/程序化写入一律钳制）
+  //   SASH_W       6 — 拖拽条宽
+  //   消费方: sash.js / tab-manager.js / shell.js；CSS 变量同源派生（见 §2 布局块）
+  // ==========================================================================
+  const LAYOUT_CONST = Object.freeze({
+    PANEL_MIN: 123,
+    GAEA_MIN: 180,
+    A_ZONE_MAX: 480,
+    SASH_W: 6,
+  });
+  window.__LAYOUT_CONST = LAYOUT_CONST;
+
+  // ==========================================================================
   // §2 语义变量推导 — 照抄 q2.html 的角色映射
   // ==========================================================================
   function buildSemanticVars(p, dark) {
@@ -97,14 +113,15 @@
       '--tooltip-bg': dark ? '#2a2520' : 'rgb(35,30,0)',
       '--tooltip-text': dark ? '#dcd8d0' : p.base2,
 
-      // 布局（JS 可变）
-      '--a-zone-w': '123px',
+      // 布局（JS 可变；数值唯一源 = __LAYOUT_CONST §1b，2026-09-04 定案）
+      '--a-zone-w': LAYOUT_CONST.PANEL_MIN + 'px',
       '--ai-zone-w': '389px',
       '--output-h': '200px',
       '--menu-row-h': '30px',
       '--status-row-h': '24px',
-      '--panel-min': '123px',
-      '--sash-w': '6px',
+      '--panel-min': LAYOUT_CONST.PANEL_MIN + 'px',
+      '--a-zone-max': LAYOUT_CONST.A_ZONE_MAX + 'px',
+      '--sash-w': LAYOUT_CONST.SASH_W + 'px',
       '--tab-bar-h': '24px',
     };
   }

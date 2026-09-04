@@ -40,7 +40,7 @@
   var $panel = null;
   // MEM 段
   var $svg = null, $poly = null, $area = null, $dot = null, $dotPulse = null;
-  var $val = null, $unit = null, $procs = null, $phUp = null, $avg = null, $stats = null, $grid = null, $labels = null;
+  var $val = null, $unit = null, $procs = null, $phUp = null, $phTitle = null, $avg = null, $stats = null, $grid = null, $labels = null;
   var $curVal = null, $bootPath = null, $title = null;
   // CPU 段
   var $cSvg = null, $cPoly = null, $cArea = null, $cDot = null, $cDotPulse = null;
@@ -49,6 +49,9 @@
   var $plist = null;
   var boots = []; // 重启标记（主进程 mem-curve.log {boot:ts}）→ 曲线浅白虚线垂线
   var hideTimer = null, shown = false;
+  var PH_TITLE_TEXT = 'qqqide 专用工作集（包含一切子进程）'; // q 行标题原文案
+  var PH_TITLE_MORPH_MS = 3000; // 3s 文字变换（2026-09-03 用户定案）：每次 hover/点击弹卡先显示原文案 3s，再切换为启动包完整目录路径
+  var titleTimer = null; // q 行标题 morph 定时器
   var pinned = false; // 点击状态区 a 区域固定面板（可交互滚动进程列表），再点取消
   var gridBuilt = false;
   var avgWasOver = false; // 均值超 1GB 边沿触发（恢复后再次超限才再弹）
@@ -175,6 +178,7 @@
     $unit = $panel.querySelector('.qqq-mem-hover-unit');
     $procs = $panel.querySelector('.qqq-mem-hover-ph-procs');
     $phUp = $panel.querySelector('.qqq-mem-hover-ph-up');
+    $phTitle = $panel.querySelector('.qqq-mem-hover-ph-title');
     $avg = $panel.querySelector('.qqq-mem-hover-avg');
     $stats = $panel.querySelector('.qqq-mem-hover-stats');
     $grid = $panel.querySelector('.qqq-mem-grid');
@@ -254,6 +258,21 @@
     $panel.style.top = y + 'px';
   }
 
+  // q 行标题 3s 文字变换（2026-09-03 用户定案）：每次 hover/点击弹卡，先显示
+  // 「qqqide 专用工作集（包含一切子进程）」原文 3s，再切换为启动包完整目录（label，
+  // 如 E:\s\w\qqqide-win-x64——主进程从 appPath 上探找 qqqide.exe 的包根）。
+  // 外观不变（同一元素改 textContent）；3s 后 label 尚缺（旧主进程）则保持原文。
+  function startTitleMorph() {
+    if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
+    if (!$phTitle) return;
+    $phTitle.textContent = PH_TITLE_TEXT; // 重置原文案（每次打开重新 3s 倒计时）
+    titleTimer = setTimeout(function () {
+      titleTimer = null;
+      if (!shown) return; // 已关闭不切
+      if (latest.label) $phTitle.textContent = latest.label; // 换启动完整目录
+    }, PH_TITLE_MORPH_MS);
+  }
+
   function show() {
     if (!shown) {
       ensurePanel();
@@ -263,6 +282,7 @@
       shown = true;
       renderCurve();
       renderRows(); // v19: 面板打开立即渲染进程列表——旧版 show() 缺 renderRows()，列表只在 5s 广播/history 完成时画 → 每次打开空白等 ~10s（用户实锤）；rows 早已在主进程（getMetrics 兜底拉过），此刻即画
+      startTitleMorph(); // 每次弹卡：原文案显示 3s → 切换启动完整目录
     } else {
       position();
     }
