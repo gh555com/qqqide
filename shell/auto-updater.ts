@@ -45,6 +45,8 @@ interface Cfg {
   units_enabled: boolean;
   use_https: boolean;
   timeout_sec: number;
+  mirror_host: string;    // ★ 2026-09-04 镜像兑底（OSS 直连）: 主源 CF 失败自动重试
+  mirror_prefix: string;
 }
 
 interface UpdaterCtx {
@@ -415,7 +417,7 @@ async function tryFullR(ctx: UpdaterCtx, cfg: Cfg, serverVer: string): Promise<b
 }
 
 // ── 断点续传下载（单请求，重定向递归内惰性建流——零多余 body 传输）────────────
-async function downloadResume(cfg: Cfg, urlPath: string, destPath: string): Promise<void> {
+async function downloadResumeOnce(cfg: Cfg, urlPath: string, destPath: string): Promise<void> {
   let existing = 0;
   try { existing = fs.statSync(destPath).size; } catch (_) { existing = 0; }
   const rangeFrom = existing > 0 ? existing : null;
@@ -497,7 +499,7 @@ function requestOnce(
   });
 }
 
-async function fetchText(cfg: Cfg, urlPath: string): Promise<string | null> {
+async function fetchTextOnce(cfg: Cfg, urlPath: string): Promise<string | null> {
   const buf: Buffer[] = [];
   try {
     const res = await requestOnce(cfg, urlPath, null, null, buf);
@@ -507,13 +509,51 @@ async function fetchText(cfg: Cfg, urlPath: string): Promise<string | null> {
   } catch (_) { return null; }
 }
 
-async function fetchRaw(cfg: Cfg, urlPath: string): Promise<Buffer | null> {
+async function fetchRawOnce(cfg: Cfg, urlPath: string): Promise<Buffer | null> {
   const buf: Buffer[] = [];
   try {
     const res = await requestOnce(cfg, urlPath, null, null, buf);
     if (res.status !== 200) return null;
     return Buffer.concat(buf);
   } catch (_) { return null; }
+}
+
+// ★ 镜像兑底（2026-09-04 远端救援体系）: 主源（CF）失败 → OSS 直连镜像重试。
+//   字段由 launcher-config.json 下发（launcher 同款默认，双端一致）；镜像文件与主源
+//   逐字节同源（q.py 双地上传同一产物）。内容校验（Ed25519/sha512）不变，安全模型零变化。
+function mirrorCfg(cfg: Cfg, urlPath: string): { cfg: Cfg; path: string } | null {
+  if (!cfg.mirror_host || !cfg.mirror_prefix) return null;
+  if (cfg.mirror_host === cfg.update_host) return null;
+  let suffix = urlPath;
+  if (suffix.startsWith('/dl/qqqide-up')) suffix = suffix.slice('/dl/qqqide-up'.length);
+  else if (suffix.startsWith('/qqqide-up')) suffix = suffix.slice('/qqqide-up'.length);
+  return { cfg: { ...cfg, update_host: cfg.mirror_host }, path: cfg.mirror_prefix + suffix };
+}
+
+async function fetchText(cfg: Cfg, urlPath: string): Promise<string | null> {
+  const v = await fetchTextOnce(cfg, urlPath);
+  if (v !== null) return v;
+  const m = mirrorCfg(cfg, urlPath);
+  return m ? fetchTextOnce(m.cfg, m.path) : null;
+}
+
+async function fetchRaw(cfg: Cfg, urlPath: string): Promise<Buffer | null> {
+  const v = await fetchRawOnce(cfg, urlPath);
+  if (v !== null) return v;
+  const m = mirrorCfg(cfg, urlPath);
+  return m ? fetchRawOnce(m.cfg, m.path) : null;
+}
+
+async function downloadResume(cfg: Cfg, urlPath: string, destPath: string): Promise<void> {
+  try {
+    await downloadResumeOnce(cfg, urlPath, destPath);
+    return;
+  } catch (e1) {
+    // 主源失败 → 镜像续传（半截文件同源同大小，Range 追加安全）
+    const m = mirrorCfg(cfg, urlPath);
+    if (!m) throw e1;
+    await downloadResumeOnce(m.cfg, m.path, destPath);
+  }
 }
 
 // ── 工具 ────────────────────────────────────────────────────────────────
@@ -571,6 +611,8 @@ function readConfig(ctx: UpdaterCtx): Cfg {
     units_enabled: true,
     use_https: true,
     timeout_sec: 30,
+    mirror_host: 'gh555-shanghai.oss-cn-shanghai.aliyuncs.com',
+    mirror_prefix: '/qqqide-up',
   };
   try {
     const raw = JSON.parse(fs.readFileSync(path.join(ctx.dataDir, 'launcher-config.json'), 'utf8'));
@@ -584,6 +626,8 @@ function readConfig(ctx: UpdaterCtx): Cfg {
     if (typeof raw.units_enabled === 'boolean') def.units_enabled = raw.units_enabled;
     if (typeof raw.use_https === 'boolean') def.use_https = raw.use_https;
     if (raw.timeout_sec) def.timeout_sec = raw.timeout_sec;
+    if (raw.mirror_host) def.mirror_host = raw.mirror_host;
+    if (raw.mirror_prefix) def.mirror_prefix = raw.mirror_prefix;
   } catch (_) { }
   return def;
 }

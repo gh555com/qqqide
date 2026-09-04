@@ -394,7 +394,8 @@ async function updateDriveDisplay() {
 			_doSRequest();
 			return;
 		}
-		// ★ 空白区快捷：a → 喂给焦点 AI 面板（有选中=选中项 / 无选中=当前文件夹）/ x → kmd 终端 / m → CMD / p → PowerShell
+		// ★ 空白区快捷（有选中=选中项 / 无选中或仅 '..' = 当前文件夹）:
+		//   a → 喂给焦点 AI 面板 · z → 复制路径 · w → 系统打开（文件夹=资源管理器）· x → kmd · m → CMD · p → PowerShell
 		if (k === 'a') {
 			e.preventDefault();
 			if (selectedItem) _feedCurrentToAi(); else _feedFolderToAi();
@@ -422,14 +423,25 @@ async function updateDriveDisplay() {
 			_playSfx('terminal');
 			return;
 		}
+		// ★ 无有效选中（含仅 '..'）时 z/w 作用于当前文件夹本身：z → 复制当前文件夹路径 / w → 系统资源管理器打开
+		if (k === 'z' || k === 'w') {
+			e.preventDefault();
+			if (selectedItem && selectedItem.name !== '..') {
+				if (k === 'z') performCopyPathAction();
+				else performOpenAction(selectedItem);
+				return;
+			}
+			if (!currentPath) return;
+			if (k === 'z') _copyPathText(currentPath);
+			else bridge.shell.openPath(currentPath).catch(function(){});
+			_playSfx('enter');
+			return;
+		}
 		if (!selectedItem) return;
 		var si = selectedItem;
 		if (k === 'q') {
 			e.preventDefault();
 			performCodeAction(si);
-		} else if (k === 'w') {
-			e.preventDefault();
-			performOpenAction(si);
 		} else if (k === 'd') {
 			e.preventDefault();
 			performDeleteAction(si);
@@ -437,9 +449,6 @@ async function updateDriveDisplay() {
 			e.preventDefault();
 			if (selectedItems.length > 1) return;
 			performEditAction(si);
-		} else if (k === 'z') {
-			e.preventDefault();
-			performCopyPathAction();
 		} else if (e.key === 'Delete' && e.shiftKey) {
 			// Shift+Delete: permanent delete (no recycle bin)
 			e.preventDefault();

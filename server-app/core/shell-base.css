@@ -468,7 +468,9 @@ body {
 .qqq-a-zone {
   flex: 0 0 var(--a-zone-w);
   width: var(--a-zone-w);
-  min-width: 0;
+  /* ★ 2026-09-04 闭环：JS 引擎之外的第二道物理保险（程序化写宽也越不过这两道门）；.qqq-collapsed 仍以 !important 归零 */
+  min-width: var(--panel-min);
+  max-width: var(--a-zone-max);
   overflow: hidden;
   height: 100%;
   background: var(--card-bg);

@@ -1420,6 +1420,12 @@ function performEditAction(item) {
 	startRename(item.path, item.name, item.type);
 	_playSfx('enter');
 }
+function _copyPathText(text) {
+	bridge.clipboard.writeText(text).catch(function() {
+		if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function(){});
+	});
+}
+
 function performCopyPathAction() {
 	var paths = [];
 	// ★ 优先使用 selectedItems（键盘 z 键时 ctxTarget 可能为 stale）
@@ -1431,11 +1437,7 @@ function performCopyPathAction() {
 		// 从右键菜单触发且无选中项时兜底
 		paths = [ctxTarget];
 	}
-	if (paths.length > 0) {
-		bridge.clipboard.writeText(paths.join('\n')).catch(function() {
-			if (navigator.clipboard) navigator.clipboard.writeText(paths.join('\n')).catch(function(){});
-		});
-	}
+	if (paths.length > 0) _copyPathText(paths.join('\n'));
 	_playSfx('enter');
 }
 
@@ -1530,6 +1532,8 @@ if (emptyCtxMenu) {
 			var act = el.dataset.action;
 			hideAllContextMenus();
 			if (act === 'feedFolderToAi') { _feedFolderToAi(); }
+			else if (act === 'copyFolderPath') { if (currentPath) { _copyPathText(currentPath); _playSfx('enter'); } }
+			else if (act === 'openFolder') { if (currentPath) { bridge.shell.openPath(currentPath).catch(function(){}); _playSfx('enter'); } }
 			else if (act === 'openKmd') { _openKmdAt(currentPath); }
 			else if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
 			else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); _playSfx('terminal'); }

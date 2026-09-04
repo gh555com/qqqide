@@ -507,7 +507,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   </div>
 </div>
 
-<script src="../core/char-undo.js"></script>
+<script src="../../core/char-undo.js"></script>
 <script>
 (function () {
   'use strict';
@@ -1487,7 +1487,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     cv.unread = 0;
     try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
 
-    if (isG) {
+    if (cv.kind === 'group') {
       loadGroupMessages(peerID);
     } else if (Array.isArray(_msgCache[peerID]) && _msgCache[peerID].length > 0) {
       renderMessages(peerID);   // 缓存秒开（弱网/离线也能读）

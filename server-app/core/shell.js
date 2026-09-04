@@ -8,8 +8,11 @@
 // ============================================================================
 
 var _shBridge = window.qqqideBridge;
-var _shMin = 123;
-var _shSashW = 6;
+// ★ 2026-09-04：宽度常量唯一源 = window.__LAYOUT_CONST（qqqide-theme.js §1b 注入），此处兜底
+var _shConst = window.__LAYOUT_CONST || {};
+var _shMin = _shConst.PANEL_MIN || 123;
+var _shSashW = _shConst.SASH_W || 6;
+var _shAzoneMax = _shConst.A_ZONE_MAX || 480; // A 区产品上限（2026-09-04 定案 480）
 // _shAiW = 389 定义在 shell-wings.js（先加载）
 
 // ★ 全局链接兜底（2026-08-21 底层 bug）：主窗口任何 target=_blank 链接 → 外部浏览器，绝不产生裸窗口。
@@ -69,7 +72,8 @@ async function loadState() {
       }
     } catch (_) { }
   }
-  _shLayoutState.aZoneW = Math.max(_shMin, _shLayoutState.aZoneW || 123);
+  // ★ 2026-09-04：启动恢复二次钳制——旧布局若存了超宽 A（老版本无上限时代）也不得越界
+  _shLayoutState.aZoneW = _shClampAzoneW(Math.max(_shMin, _shLayoutState.aZoneW || 123));
   _shLayoutState.outputH = Math.max(_shMin, _shLayoutState.outputH || 200);
 }
 
@@ -121,6 +125,30 @@ function bootRoamKeyFallback() {
 }
 
 // ---- CSS variable helpers ----
+// ★ A 区宽度钳制唯一入口（2026-09-04 闭环）：
+//   A ∈ [123, min(480, availAX − X底线123)] —— 结构性上限 = X 区保底永不被 A 吃光。
+//   一切 A 宽度变更路径（启动恢复/窗口缩放/拖拽 setW）都必须过此门。
+function _shAvailAX() {
+  try {
+    var wingW = (typeof _shellBulbState !== 'undefined' && _shellBulbState)
+      ? ((_shellBulbState.left ? _shAiW : 0) + (_shellBulbState.right ? _shAiW : 0)) : 0;
+    var aiEl = document.getElementById('qqq-ai-zone');
+    var aiW = aiEl && aiEl.offsetWidth ? aiEl.offsetWidth : _shAiW;
+    return window.innerWidth - wingW - aiW - _shSashW;
+  } catch (_) { return 0; }
+}
+
+function _shClampAzoneW(w) {
+  var avail = _shAvailAX();
+  var hi = _shAzoneMax;
+  if (avail > 0) hi = Math.min(hi, avail - _shMin);
+  var lo = _shMin;
+  if (hi < lo) hi = lo; // 物理极限（窗口过窄）：保 A 底线，X 溢出由容器裁切
+  if (w < lo) return lo;
+  if (w > hi) return hi;
+  return w;
+}
+
 function applyLayout() {
   var aEl = document.getElementById('qqq-a-zone');
   if (aEl && !aEl.classList.contains('qqq-collapsed')) {
@@ -162,13 +190,9 @@ function onWindowResize() {
 
     if (availAX > 0 && _shPrevAvailAX > 0) {
       var oldA = _shLayoutState.aZoneW;
-      if (oldA <= _shMin) {
-        // frozen at min, keep at min
-        _shLayoutState.aZoneW = _shMin;
-      } else {
-        var ratio = oldA / _shPrevAvailAX;
-        _shLayoutState.aZoneW = Math.max(_shMin, Math.round(ratio * availAX));
-      }
+      var ratio = oldA / _shPrevAvailAX;
+      // ★ 等比缩放后统一过钳制门（2026-09-04）：上限 480 ∩ 结构性上限（X 保底）
+      _shLayoutState.aZoneW = _shClampAzoneW(oldA <= _shMin ? _shMin : Math.max(_shMin, Math.round(ratio * availAX)));
     }
     _shPrevAvailAX = availAX;
   }
@@ -526,8 +550,9 @@ function bootSashes() {
     window.qqqideSash.bindV(aSash,
       [{
         getW: function () { return aEl.offsetWidth; },
-        setW: function (w) { _shLayoutState.aZoneW = w; aEl.style.flexBasis = w + 'px'; aEl.style.width = w + 'px'; document.documentElement.style.setProperty('--a-zone-w', w + 'px'); },
+        setW: function (w) { var cw = _shClampAzoneW(w); _shLayoutState.aZoneW = cw; aEl.style.flexBasis = cw + 'px'; aEl.style.width = cw + 'px'; document.documentElement.style.setProperty('--a-zone-w', cw + 'px'); },
         min: _shMin,
+        max: _shAzoneMax,
       }],
       [{
         getW: function () { return xEl.offsetWidth; },
