@@ -89,20 +89,38 @@ function _flushProjectAssets() {
   } catch (_) { }
 }
 
-// ★ 统一读取最近文件夹列表 (2026-08-16): 本启动目录 global.sq3 优先, 空 → OS ws.sq3 兑底
-//   (与 ai-viewport 同源同 key → 成员永远一致; OS = 跨启动目录永久记忆)
+// ★ 统一读取最近文件夹列表 (2026-08-16 首版; 2026-09-05 并集修复):
+//   local(global.sq3) ∪ OS(ws.sq3) 按 path 去重 + atime 降序——与 ai-viewport a 列表同源算法
+//   (旧实现 local 优先、空才读 OS: local 缺 OS 独有的其他实例历史时菜单永缺 → 观感"历史丢"实锤)
 function _loadMenuRecentFolders() {
   var bridge = window.qqqideBridge;
   if (!bridge || !bridge.state) return Promise.resolve([]);
   return bridge.state.get('qqqide', 'recent_folders').then(function (data) {
-    var list = (data && Array.isArray(data)) ? data : [];
-    if (list.length > 0) return list;
-    if (bridge.wsState && typeof bridge.wsState.get === 'function') {
-      return bridge.wsState.get('recentFolders').then(function (osList) {
-        return (osList && Array.isArray(osList)) ? osList : [];
-      }).catch(function () { return []; });
-    }
-    return [];
+    var localList = (data && Array.isArray(data)) ? data : [];
+    var wsP = (bridge.wsState && typeof bridge.wsState.get === 'function')
+      ? bridge.wsState.get('recentFolders').catch(function () { return []; })
+      : Promise.resolve([]);
+    return wsP.then(function (osRaw) {
+      var osList = (osRaw && Array.isArray(osRaw)) ? osRaw : [];
+      var map = {};
+      function put(f) {
+        if (!f || !f.path) return;
+        var p = (f.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+        var low = p.toLowerCase();
+        // ★ 垃圾路径拒绝（与 ai-viewport _isValidRecentPath 同规则）
+        if (!p || low.indexOf('/_qqq') !== -1 || low.indexOf('/_qqqvault') !== -1) return;
+        var ex = map[p];
+        if (!ex) { map[p] = { path: p, name: f.name || '', atime: f.atime || 0 }; }
+        else if ((f.atime || 0) >= ex.atime) { ex.atime = f.atime || 0; if (f.name) ex.name = f.name; }
+        else if (!ex.name && f.name) ex.name = f.name;
+      }
+      localList.forEach(put);
+      osList.forEach(put);
+      var merged = Object.keys(map).map(function (k) { return map[k]; });
+      merged.sort(function (a, b) { return (b.atime || 0) - (a.atime || 0); });
+      if (merged.length > 100) merged.length = 100;
+      return merged;
+    });
   }).catch(function () { return []; });
 }
 

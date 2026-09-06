@@ -27,6 +27,23 @@
   const MIN_GAEA = _LC().GAEA_MIN || 180;  // gaea 常驻分组底线（roam/git/search 内容密集，独立加宽）
   const MAX_GROUPS = 3;
 
+  // ── ★ 文本编码徽标（2026-09-05 编码闭环 UI）：per-path 证据主进程 file-encoding.ts 持有，
+  //    渲染层仅缓存 {enc,bom,pinned} 展示；徽标点击 / 右键「编码方案…」→ 重解码/另存弹层
+  const _ENC_UI = [
+    { enc: 'utf8', label: 'UTF-8' },
+    { enc: 'gbk', label: 'GBK' },
+    { enc: 'gb18030', label: 'GB18030' },
+    { enc: 'big5', label: 'Big5' },
+    { enc: 'shiftjis', label: 'Shift-JIS' },
+    { enc: 'windows1252', label: 'Windows-1252' },
+    { enc: 'utf16le', label: 'UTF-16 LE' },
+    { enc: 'utf16be', label: 'UTF-16 BE' },
+  ];
+  const _ENC_SAVEAS = ['utf8', 'gb18030', 'gbk', 'utf16le'];
+  const _pathEnc = {};      // filePath → {enc,bom,pinned}
+  let _encPopup = null;
+  let _encStyleInjected = false;
+
   let hostEl = null;          // #qqq-x-upper
   const groups = [];          // [{ idx, type, el, barEl, contentEl, tabs[], activeTabId }]
   let _nextTabId = 1;
@@ -90,6 +107,17 @@
     nameSpan.textContent = tab.title;
     nameSpan.style.fontStyle = tab.preview ? 'italic' : 'normal';
     btn.appendChild(nameSpan);
+
+    // ★ 编码徽标（2026-09-05）：点击 → 编码方案弹层（重新解码 / 另存转换）
+    const encChip = document.createElement('span');
+    encChip.className = 'qqq-enc-chip';
+    encChip.textContent = '';
+    encChip.hidden = true;
+    encChip.addEventListener('click', e => {
+      e.stopPropagation();
+      openEncPopup(encChip, grp, tab);
+    });
+    btn.appendChild(encChip);
 
     // close button (not on gaea-fixed tabs unless explicitly closable)
     if (tab.closable !== false) {
@@ -258,6 +286,7 @@
       if (!_stillAny) {
         delete _pinnedPaths[tab.filePath];
         delete _deletedPaths[tab.filePath];
+        delete _pathEnc[tab.filePath]; // 编码证据随最后同路径 tab 释放
       }
     }
 
@@ -400,6 +429,14 @@
       }
     }
 
+    // ★ 2026-09-05: 编码方案入口（utf8 自动态徽标隐藏，右键恒有逃生舱出口）
+    if (tab.filePath && !tab.custom) {
+      addRow(window._i('editor.tabs.encScheme', '编码方案…'), () => {
+        const btn2 = grp.barEl.querySelector('[data-tab-id="' + tab.id + '"]');
+        openEncPopup(btn2 || grp.barEl, grp, tab);
+      });
+    }
+
     // Row 2: close others
     if (grp.tabs.length > 1) {
       addRow(window._i('editor.tabs.closeOthers', '关闭其他'), () => { closeOthersInGroup(grp, tab.id); });
@@ -429,6 +466,194 @@
       return;
     }
     closeTabMenu();
+  }
+
+  // ============================================================================
+  // ★ 文本编码方案弹层（2026-09-05，详 do/消除乱码）：
+  //   A 区「按编码重新打开」= 固定 pin → 主进程重读解码（需文件干净，脏则提示先保存）
+  //   B 区「另存为」= 当前编辑器内容强制按所选编码写盘（转换文件编码，清固定）
+  // ============================================================================
+  function _encLabel(enc) {
+    for (let i = 0; i < _ENC_UI.length; i++) if (_ENC_UI[i].enc === enc) return _ENC_UI[i].label;
+    return String(enc == null ? '?' : enc);
+  }
+
+  function _encInjectStyle() {
+    if (_encStyleInjected) return;
+    _encStyleInjected = true;
+    const s = document.createElement('style');
+    s.textContent =
+      '.qqq-enc-chip{display:inline-block;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;margin:0 2px 0 6px;padding:0 5px;border:1px solid var(--border-color,#93a1a1);border-radius:3px;font-size:9px;line-height:13px;color:var(--text-secondary,#657b83);user-select:none;flex-shrink:0;background:var(--background-color,#fdf6e3)}' +
+      '.qqq-enc-chip.qqq-enc-pinned{color:#b58900;border-color:#b58900;font-weight:700}' +
+      '[data-theme="dark"] .qqq-enc-chip.qqq-enc-pinned{color:#d9a020;border-color:#d9a020}' +
+      '.qqq-enc-pop{position:fixed;z-index:99999;min-width:200px;max-height:78vh;overflow-y:auto;background:var(--card-bg,#fffdf5);border:1px solid var(--border-color,#93a1a1);border-radius:3px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:4px 0;user-select:none}' +
+      '.qqq-enc-pop .enc-cap{display:flex;align-items:center;padding:5px 14px 3px;font-size:10.5px;color:var(--text-secondary,#657b83);letter-spacing:.5px}' +
+      '.qqq-enc-pop .enc-row{display:flex;align-items:center;gap:8px;padding:4px 14px;font-size:12px;color:var(--text-primary,#073642);white-space:nowrap}' +
+      '.qqq-enc-pop .enc-row.enc-cur{color:#b58900}' +
+      '.qqq-enc-pop .enc-row.enc-dis{opacity:.45}' +
+      '[data-theme="dark"] .qqq-enc-pop .enc-row{color:#eee8d5}' +
+      '.qqq-enc-pop .enc-row .enc-tick{font-size:11px;margin-left:auto}' +
+      '.qqq-enc-pop .enc-sep{height:1px;margin:3px 6px;background:var(--border-color,#93a1a1);opacity:.5}';
+    document.head.appendChild(s);
+  }
+
+  // 按路径刷新所有同文件 tab 的徽标（主进程证据 → chip 展示；utf8 自动态零噪音隐藏）
+  function _renderEncChipsFor(filePath) {
+    if (!filePath) return;
+    const info = _pathEnc[filePath];
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      for (const t of grp.tabs) {
+        if (t.filePath !== filePath) continue;
+        const btn = grp.barEl.querySelector('[data-tab-id="' + t.id + '"]');
+        if (!btn) continue;
+        const chip = btn.querySelector('.qqq-enc-chip');
+        if (!chip) continue;
+        if (!info || (info.enc === 'utf8' && !info.pinned && !info.bom)) { chip.hidden = true; chip.textContent = ''; continue; }
+        const label = (info.bom && info.enc === 'utf8') ? 'UTF-8 BOM' : _encLabel(info.enc);
+        chip.textContent = info.pinned ? label + ' *' : label;
+        chip.title = info.pinned
+          ? '编码已固定为 ' + label + '（逃生舱）— 点击修改 / 恢复自动'
+          : '编码：' + label + '（自动检测）— 点击可手动指定';
+        chip.classList.toggle('qqq-enc-pinned', !!info.pinned);
+        chip.hidden = false;
+      }
+    }
+  }
+
+  // 渲染层证据入口：文件 read 成功后调用（数据来自主进程 qqqide:fs:encoding）
+  function setFileEnc(filePath, info) {
+    if (!filePath) return;
+    if (info && info.enc) _pathEnc[filePath] = { enc: info.enc, bom: !!info.bom, pinned: info.pinned || null };
+    else delete _pathEnc[filePath];
+    const ks = Object.keys(_pathEnc);
+    if (ks.length > 600) { for (let i = 0; i < ks.length - 300; i++) delete _pathEnc[ks[i]]; }
+    _renderEncChipsFor(filePath);
+  }
+
+  // 主动向主进程拉一次最新证据（文件外部重载后调用）
+  async function refreshEncForPath(filePath) {
+    if (!filePath || !window.qqqideBridge || !window.qqqideBridge.fs || !window.qqqideBridge.fs.encoding) return;
+    try {
+      const inf = await window.qqqideBridge.fs.encoding(filePath);
+      setFileEnc(filePath, inf);
+    } catch (_) { }
+  }
+
+  // A：重新按编码打开（pin → 主进程重读解码）
+  async function applyReopenEnc(filePath, encOrNull) {
+    const b = window.qqqideBridge;
+    if (!b || !b.fs) return;
+    try {
+      await b.fs.setFileEncoding(filePath, encOrNull); // null = 恢复自动检测（清固定）
+      const content = await b.fs.read(filePath);
+      if (content == null) { if (window.qqqideQoast) window.qqqideQoast.show('读取失败：文件不存在或不可读', { duration: 4000, type: 'warn' }); return; }
+      if (window.qqqEditor && window.qqqEditor.refreshLiveContent) window.qqqEditor.refreshLiveContent(filePath, content);
+      if (window.qqqideQoast) window.qqqideQoast.show('已按 ' + (encOrNull ? _encLabel(encOrNull) : '自动检测') + ' 重新解码', { duration: 3500 });
+      refreshEncForPath(filePath);
+    } catch (err) {
+      if (window.qqqideQoast) window.qqqideQoast.show('切换解码失败：' + ((err && err.message) || err), { duration: 6000, type: 'warn' });
+    }
+  }
+
+  // B：另存为（当前编辑器内容按所选编码写盘 = 转换；主进程清固定）
+  async function applySaveAsEnc(filePath, enc) {
+    const b = window.qqqideBridge;
+    if (!b || !b.fs) return;
+    let ed = null;
+    if (window.qqqEditor && window.qqqEditor.getEditorForFile) ed = window.qqqEditor.getEditorForFile(filePath);
+    if (!ed || !ed.getValue) { if (window.qqqideQoast) window.qqqideQoast.show('未找到该文件的编辑器内容', { duration: 4000, type: 'warn' }); return; }
+    try {
+      await b.fs.write(filePath, ed.getValue(), enc);
+      if (window.qqqEditor && window.qqqEditor.noteSaved) window.qqqEditor.noteSaved(filePath);
+      _setTabDeleted(filePath, false);
+      if (window.qqqideQoast) window.qqqideQoast.show('已另存为 ' + _encLabel(enc), { duration: 3500 });
+      refreshEncForPath(filePath);
+    } catch (err) {
+      if (window.qqqideQoast) window.qqqideQoast.show('另存失败：' + ((err && err.message) || err), { duration: 9000, type: 'warn' });
+    }
+  }
+
+  function closeEncPopup() {
+    if (_encPopup) { try { _encPopup.remove(); } catch (_) { } _encPopup = null; }
+  }
+
+  function openEncPopup(anchorEl, grp, tab) {
+    closeTabMenu();
+    closeEncPopup();
+    if (!tab || !tab.filePath) return;
+    _encInjectStyle();
+    const fp = tab.filePath;
+    const info = _pathEnc[fp] || null;
+    const dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(fp));
+    const pop = document.createElement('div');
+    pop.className = 'qqq-enc-pop';
+    document.body.appendChild(pop);
+
+    function cap(txt) { const c = document.createElement('div'); c.className = 'enc-cap'; c.textContent = txt; pop.appendChild(c); }
+    function sep() { const x = document.createElement('div'); x.className = 'enc-sep'; pop.appendChild(x); }
+    function row(txt, onClick, isCur, dis) {
+      const r = document.createElement('div');
+      r.className = 'enc-row' + (isCur ? ' enc-cur' : '') + (dis ? ' enc-dis' : '');
+      const t = document.createElement('span');
+      t.textContent = txt;
+      t.style.flex = '1';
+      r.appendChild(t);
+      if (isCur && !dis) { const m = document.createElement('span'); m.className = 'enc-tick'; m.textContent = '✓'; r.appendChild(m); }
+      r.addEventListener('mouseenter', () => { if (!dis) r.style.background = 'var(--background-color,#fdf6e3)'; });
+      r.addEventListener('mouseleave', () => { r.style.background = ''; });
+      r.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (dis) {
+          if (window.qqqideQoast) window.qqqideQoast.show('文件有未保存修改 — 请先 Ctrl+S 保存，再切换解码（会重读磁盘）', { duration: 5000, type: 'warn' });
+          return;
+        }
+        closeEncPopup();
+        if (onClick) onClick();
+      });
+      pop.appendChild(r);
+      return r;
+    }
+
+    const _i18n = (k, fb) => (window._i ? window._i(k, fb) : fb);
+    const curEnc = info ? info.enc : 'utf8';
+    const curPin = info ? info.pinned : null;
+
+    cap(_i18n('editor.tabs.encReopen', '按编码重新打开（重读磁盘）'));
+    const autoLabel = curPin
+      ? _i18n('editor.tabs.encAutoReset', '自动检测（清除固定）')
+      : _i18n('editor.tabs.encAutoCur', '自动检测') + ' · ' + _encLabel(curEnc);
+    row(autoLabel, () => { applyReopenEnc(fp, null); }, !curPin, dirty);
+    for (let i = 0; i < _ENC_UI.length; i++) {
+      const item = _ENC_UI[i];
+      row(item.label, () => { applyReopenEnc(fp, item.enc); }, curPin === item.enc, dirty);
+    }
+    sep();
+    cap(_i18n('editor.tabs.encSaveAs', '将内容另存为（转换编码）'));
+    for (let j = 0; j < _ENC_SAVEAS.length; j++) {
+      const enc2 = _ENC_SAVEAS[j];
+      row(_encLabel(enc2), () => { applySaveAsEnc(fp, enc2); }, false, false);
+    }
+
+    // 定位：徽标/菜单锚点下弹，越界翻转（视口内恒可见）
+    const rect = anchorEl.getBoundingClientRect ? anchorEl.getBoundingClientRect() : { left: 8, top: 8, width: 0, height: 0 };
+    const w = pop.offsetWidth || 210, h = pop.offsetHeight || 240;
+    let left = Math.min(Math.max(rect.left, 6), window.innerWidth - w - 6);
+    let top = rect.top + (rect.height || 14) + 4;
+    if (top + h > window.innerHeight - 6) top = Math.max(6, rect.top - h - 4);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    _encPopup = pop;
+    setTimeout(() => { document.addEventListener('mousedown', _onDocMouseDownForEnc, { once: true }); }, 0);
+  }
+
+  function _onDocMouseDownForEnc(e) {
+    if (!_encPopup) return;
+    if (_encPopup.contains(e.target)) {
+      setTimeout(() => { document.addEventListener('mousedown', _onDocMouseDownForEnc, { once: true }); }, 0);
+      return;
+    }
+    closeEncPopup();
   }
 
   // ---- Add/remove groups ----
@@ -1362,6 +1587,9 @@
     renameGaeaTab,
     setTabDirty,
     setTabDeleted: _setTabDeleted,
+    // ★ 2026-09-05 编码徽标 API（shell-rpc / editor 外部重载后调用）
+    setFileEnc,
+    refreshEncForPath,
     persistOpenTabs,
     flushOpenTabs: function () { if (_persistTimer) { clearTimeout(_persistTimer); _doPersistOpenTabs(); } },
   };

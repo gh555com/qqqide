@@ -1419,6 +1419,8 @@
         // 编辑器干净 → 静默重载磁盘最新版
         var diskContent = await bridge.fs.read(filePath);
         if (diskContent == null) return;
+        // ★ 2026-09-05: 外部重载后同步刷新编码徽标（外部改写可能变了编码）
+        if (window.qqqTabs && window.qqqTabs.refreshEncForPath) window.qqqTabs.refreshEncForPath(filePath);
         var m2 = ed.getModel();
         if (!m2 || m2.isDisposed()) return;
         ed._isRefreshing = true;
@@ -1507,6 +1509,19 @@
     isDirty() { return dirty; },
     // ★ 路径级脏查询（tab-manager 预览复用/状态同步用，唯一真理 = _paneDirtyMap）
     isPathDirty: function (filePath) { return !!_paneDirtyMap[filePath]; },
+    // ★ 2026-09-05 另存转换后簿记（编码菜单 B 区）：清脏 + 刷新 mtime 快照 + 主编辑器标题
+    noteSaved: async function (filePath) {
+      if (!filePath) return;
+      try {
+        var _sn2 = await bridge.fs.stat(filePath);
+        if (_sn2) _openedMtime[filePath] = { mtimeMs: _sn2.mtimeMs, size: _sn2.size };
+      } catch (_) { }
+      if (_paneDirtyMap[filePath]) {
+        _paneDirtyMap[filePath] = false;
+        document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
+      }
+      if (currentFile === filePath) { dirty = false; updateTitle(); }
+    },
     currentFile() { return currentFile; },
     insertAtCursor(text) { if (editor && editor.insertAtCursor) { editor.insertAtCursor(text); } },
     getMonaco() { return _monacoRef; },

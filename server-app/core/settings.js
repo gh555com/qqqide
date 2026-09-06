@@ -75,6 +75,17 @@
       stops: ['off', 'medium', 'full']
     },
     {
+      key: 'ai.floorCap',
+      label: '显示楼层',
+      desc: '',
+      type: 'slider-stepped',
+      tab: 'general',
+      defaultValue: _D['ai.floorCap'] !== undefined ? String(_D['ai.floorCap']) : '16',
+      showLabel: true,
+      stopsLabels: ['16', '32'],
+      stops: ['16', '32']
+    },
+    {
       key: 'audio.volume',
       label: '音量',
       desc: 'IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。出厂默认 25%。',
@@ -219,6 +230,67 @@
     $bulbs.parentNode.insertBefore(_$btn, $bulbs);
   }
 
+  // ── ★ 音效开关子卡片（1 by 1 展开体，2026-09-04）──
+  //   场景清单唯一真理 = window.qqqAudio.sfxScenes()（audio-volume.js 导出），此处只做展示
+  function _sfxCardHtml(bg, text, textDim, border, accent) {
+    var q = window.qqqAudio;
+    var scenes = (q && q.sfxScenes) ? q.sfxScenes() : [];
+    var h = '<div style="margin-top:10px; padding:10px 12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg + ';">';
+    h += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">';
+    h += '<span style="font-size:12px; font-weight:bold; color:' + text + ';">音效开关</span>';
+    h += '<span style="font-size:10px; color:' + textDim + ';">默认全部启用 · 即时生效</span>';
+    h += '</div>';
+    for (var i = 0; i < scenes.length; i++) {
+      var sc = scenes[i];
+      var on = (q && q.sfxOn) ? q.sfxOn(sc.key) : true;
+      h += '<label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none;" title="' + (sc.desc || '') + '">';
+      h += '<input type="checkbox" class="qqq-sfx-check" data-sfx-key="' + sc.key + '"' + (on ? ' checked' : '') + ' style="margin:0; accent-color:' + accent + '; flex-shrink:0;">';
+      h += '<span style="font-size:12px; color:' + text + '; white-space:nowrap;">' + sc.label + '</span>';
+      h += '<span style="font-size:10px; color:' + textDim + '; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + sc.file + ' · ' + (sc.desc || '') + '</span>';
+      h += '</label>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  // ── ★ 显示楼层 32 = 激活（VIP）功能选值守卫（2026-09-05）──
+  //   已激活 → 直接写 32；未激活 → 拉杆旁红字「该功能需先激活」+ 外部浏览器打开激活页
+  //   （与左上角 qd (qqqide) 菜单「激活」按钮同路径：qqqLogin.checkPurchased + #price）
+  function _trySelectFloorCap32() {
+    var _openActivation = function () {
+      _floorCapHintOn = true;
+      _renderPanel();
+      clearTimeout(_floorCapHintTimer);
+      _floorCapHintTimer = setTimeout(function () {
+        if (!_floorCapHintOn) return;
+        _floorCapHintOn = false;
+        if (_$panel && _$panel.style.display !== 'none') _renderPanel();
+      }, 5000);
+      var _url = 'https://www.gh555.com/gaea/d/qqqide?lang=zh#price';
+      var _bridge = window.qqqideBridge;
+      try {
+        if (_bridge && _bridge.shell && _bridge.shell.openExternal) {
+          _bridge.shell.openExternal(_url);
+          return;
+        }
+      } catch (_) { }
+      try { window.open(_url, '_blank'); } catch (_) { }
+    };
+    var _login = window.qqqLogin;
+    try {
+      if (!_login || !_login.isLoggedIn || !_login.isLoggedIn()) { _openActivation(); return; }
+      _login.checkPurchased().then(function (_purchased) {
+        if (_purchased) {
+          _floorCapHintOn = false;
+          set('ai.floorCap', '32');
+          _renderPanel();
+        } else {
+          _openActivation();
+        }
+      }).catch(function () { _openActivation(); });
+    } catch (_e) { _openActivation(); }
+  }
+
   // ── 创建设置面板 DOM ──
   function _ensurePanel() {
     if (_$overlay) return;
@@ -242,6 +314,9 @@
   }
 
   var _activeTab = 'general'; // 'general' | 'advanced'
+  var _sfxOpen = false;       // ★ 音效开关子卡片展开态（音量卡片的 1 by 1）
+  var _floorCapHintOn = false;    // ★ 显示楼层 32（激活功能）未激活红字提示态（2026-09-05）
+  var _floorCapHintTimer = null;
 
   function _renderPanel() {
     if (!_$panel) return;
@@ -298,8 +373,16 @@
         html += '<span style="font-size:13px;font-weight:bold;color:' + text + ';">' + def.label + '</span>';
         html += '<button class="qqq-compress-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;background:transparent;color:var(--text-primary,#eee);line-height:1;">?</button>';
         html += '</div>';
-      } else {
+      } else if (def.key !== 'audio.volume') {
+        // 音量卡片的标题行由下方 flex 分支渲染（右侧挂 1 by 1 按钮）
         html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + def.label + '</div>';
+      }
+      // ★ 音量卡片：标题行右侧挂「1 by 1」按钮（音效开关子卡片开合）
+      if (def.key === 'audio.volume') {
+        html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">';
+        html += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + def.label + '</span>';
+        html += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap;" title="逐个音效开关">1 by 1</button>';
+        html += '</div>';
       }
       // ★ 无 desc 项不渲染描述行（防 undefined）
       if (def.desc) html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
@@ -307,7 +390,8 @@
       if (def.type === 'slider-stepped') {
         var stops = def.stops || ['0', '25', '50', '75', '100'];
         var curIdx = stops.indexOf(String(currentVal));
-        if (curIdx < 0) curIdx = stops.length - 1;
+        // ★ 显示楼层：异常存量值回落 16（免费档），防未激活用户 UI 默认闪 32
+        if (curIdx < 0) curIdx = (def.key === 'ai.floorCap') ? 0 : stops.length - 1;
         var pct = Math.round((curIdx / (stops.length - 1)) * 100);
         // ★ 紧凑一行：左边标签 + 右边拉杆（无刻度数字）
         // ★ 2026-08-23: showLabel 变体（压缩档位三档）——左侧显示 stopsLabels 中文，非百分比
@@ -317,7 +401,10 @@
         html += '<div style="display:flex; align-items:center; gap:12px;">';
         html += '<span style="font-size:12px; color:' + textDim + '; white-space:nowrap; min-width:32px;">' + _sliderLabel + '</span>';
         // ★ 压缩档位 3 点拉杆宽度 = 音量 5 点拉杆的一半（点间距百分百一致：calc(50%-22px) = (X-44)/2，X=行宽）
-        var _sliderFlex = (def.key === 'ai.compressLevel') ? 'flex:0 0 calc(50% - 22px);' : 'flex:1;';
+        // ★ 显示楼层：短拉杆占行宽 2/5（同压缩档位紧凑语义，左右端=16/32）
+        var _sliderFlex = 'flex:1;';
+        if (def.key === 'ai.compressLevel') _sliderFlex = 'flex:0 0 calc(50% - 22px);';
+        else if (def.key === 'ai.floorCap') _sliderFlex = 'flex:0 0 40%;';
         html += '<div class="qqq-vol-slider" style="position:relative;' + _sliderFlex + 'height:24px;display:flex;align-items:center;user-select:none;" data-setting-key="' + def.key + '" data-stops="' + stops.join(',') + '">';
         html += '<div style="position:absolute;left:0;right:0;height:4px;border-radius:2px;background:' + border + ';"></div>';
         html += '<div style="position:absolute;left:0;height:4px;border-radius:2px;background:' + accent + ';width:' + pct + '%;"></div>';
@@ -326,7 +413,16 @@
           var isActive = si <= curIdx;
           html += '<div style="position:absolute;left:' + sp + '%;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;border:2px solid ' + (isActive ? accent : border) + ';background:' + (isActive ? accent : bg) + ';z-index:1;"></div>';
         }
-        html += '</div></div>';
+        html += '</div>';
+        // ★ 显示楼层：未激活用户点 32 → 拉杆右侧红字提示（2026-09-05）
+        if (def.key === 'ai.floorCap' && _floorCapHintOn) {
+          html += '<span style="font-size:11px; color:' + red + '; white-space:nowrap;">该功能需先激活</span>';
+        }
+        html += '</div>';
+        // ★ 音效开关子卡片（音量 1 by 1 展开态，紧随拉杆下方）
+        if (def.key === 'audio.volume' && _sfxOpen) {
+          html += _sfxCardHtml(bg, text, textDim, border, accent);
+        }
       } else if (def.type === 'bool') {
         // 开关切换
         var boolOn = (currentVal === true || currentVal === 'true');
@@ -431,11 +527,12 @@
       });
     }
 
-    // 绑定 bool checkbox 变更
+    // 绑定 bool checkbox 变更（data-setting-key 守卫：音效卡片的 qqq-sfx-check 无此属性，防空 key 写入）
     var checkboxes = _$panel.querySelectorAll('input[type="checkbox"]');
     for (var c = 0; c < checkboxes.length; c++) {
       checkboxes[c].addEventListener('change', function () {
         var key = this.getAttribute('data-setting-key');
+        if (!key) return;
         set(key, this.checked);
         _renderPanel();
       });
@@ -466,10 +563,30 @@
           var idx = Math.round(pct * (stops.length - 1));
           if (idx < 0) idx = 0;
           if (idx >= stops.length) idx = stops.length - 1;
-          set(key, stops[idx]);
+          var targetVal = stops[idx];
+          // ★ 显示楼层：点拉杆先清未激活红字提示
+          if (key === 'ai.floorCap') {
+            _floorCapHintOn = false;
+            clearTimeout(_floorCapHintTimer);
+            if (targetVal === '32') { _trySelectFloorCap32(); return; }  // 32=激活功能，守卫接管
+          }
+          set(key, targetVal);
           _renderPanel();
         });
       })(sliderTracks[st]);
+    }
+
+    // ★ 绑定 1 by 1 音效开关（按钮开合 + 勾选框即时生效，不整面板重渲染防拉杆跳动）
+    var $sfx1x1 = document.getElementById('qqq-sfx-1x1');
+    if ($sfx1x1) {
+      $sfx1x1.addEventListener('click', function () { _sfxOpen = !_sfxOpen; _renderPanel(); });
+    }
+    var sfxChecks = _$panel.querySelectorAll('.qqq-sfx-check');
+    for (var sc2 = 0; sc2 < sfxChecks.length; sc2++) {
+      sfxChecks[sc2].addEventListener('change', function () {
+        var k = this.getAttribute('data-sfx-key');
+        if (window.qqqAudio && window.qqqAudio.sfxSet) window.qqqAudio.sfxSet(k, this.checked);
+      });
     }
 
     // 绑定自动压缩帮助问号（跳转上下文背包文档，无 hover 提示）

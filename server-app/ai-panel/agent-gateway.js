@@ -33,7 +33,9 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
 
     self.abortController = new AbortController();
 
-    // ★ 自适应超时：唯一真理在 ContentGateway（content-gateway.js）
+    // ★ 自适应超时：唯一真理在 ContentGateway（content-gateway.js，现为 1000s 慢速兜底——深思考
+    //   TTFB 12min+ 实测；hang 兜底真值 = HARD_FETCH_DEADLINE_MS 220s）。此处 98/180s 仅是
+    //   ContentGateway 缺载时的兜底默认，勿据此推断运行时行为。
     var _deadlinePrimary = (typeof ContentGateway !== 'undefined' ? ContentGateway.FETCH_DEADLINE_PRIMARY_MS : 98000);
     var _deadlineFallback = (typeof ContentGateway !== 'undefined' ? ContentGateway.FETCH_DEADLINE_FALLBACK_MS : 180000);
     var _deadlineMs = (GATEWAY_URL === GATEWAY_URL_FALLBACK) ? _deadlineFallback : _deadlinePrimary;
@@ -195,6 +197,14 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     resolve({ _hardDeadline: true, _msg: 'HARD_DEADLINE' });
                 }, _hardDeadlineMs);
             });
+            // ★ 2026-09-04 请求起点落盘（q257/q260 20min 静默事故）：旧实现只有失败路径（SSE error/HARD）落盘，
+            //   请求何时发出、重试了几轮零痕迹 → 静默时无法区分卡在 网关前/fetch/SSE 哪一段。
+            //   此点 fetch 已启动 + hard deadline 已武装，此后每 220s 必有 HARD 行 → 时间线可完整还原。
+            try {
+                if (typeof self._writeFileLog === 'function') {
+                    self._writeFileLog('→ GW req floor=' + (self._ctx ? self._ctx.totalFloors : '?') + ' house=' + (self._houseIndex || '?') + ' retry=' + retry + ' line=' + (GATEWAY_URL === GATEWAY_URL_FALLBACK ? 'L2' : 'L1') + ' hd=' + Math.round(_hardDeadlineMs / 1000) + 's');
+                }
+            } catch (_) { }
             resp = await Promise.race([_chatFetchPromise, _hardDeadlinePromise]);
             if (resp && resp._hardDeadline) {
                 // ★ HTTP/2 死连接：abort 已尝试（_fetchDeadline 触发过）但 Chromium 108 不响应
@@ -242,6 +252,12 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             var _ttfbMs = performance.now() - _fetchStart;
             _ttfbAccum += _ttfbMs;
             if (!resp.ok) {
+                // ★ 2026-09-04 非 200 响应落盘：与 req start 行配对，静默事故可还原完整重试链
+                try {
+                    if (typeof self._writeFileLog === 'function') {
+                        self._writeFileLog('✗ GW http ' + resp.status + ' floor=' + (self._ctx ? self._ctx.totalFloors : '?') + ' house=' + (self._houseIndex || '?') + ' retry=' + retry + ' ttfb=' + Math.round(_ttfbMs) + 'ms');
+                    }
+                } catch (_) { }
                 var text = await resp.text();
                 // ★ 从 Go 服务器 JSON 响应体提取人类可读消息（计费/配额等）— 优先，所有错误处理共享
                 var _serverMsg = '';

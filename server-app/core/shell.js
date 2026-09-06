@@ -697,6 +697,19 @@ async function main() {
   // Sashes
   bootSashes();
 
+  // ★ A 区宽度程序化 API（Solar House pin 300 等 goods 使用; 一切变更过 _shClampAzoneW 闭环 + 立即持久化）
+  window.qqqAZone = {
+    getW: function () { var el = document.getElementById('qqq-a-zone'); return el ? el.offsetWidth : 0; },
+    setW: function (w) {
+      var cw = _shClampAzoneW(w);
+      _shLayoutState.aZoneW = cw;
+      var el = document.getElementById('qqq-a-zone');
+      if (el) { el.style.flexBasis = cw + 'px'; el.style.width = cw + 'px'; }
+      document.documentElement.style.setProperty('--a-zone-w', cw + 'px');
+      persistState();
+    },
+  };
+
   // Menu
   await bootMenu();
 

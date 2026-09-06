@@ -7,6 +7,7 @@
 //   ① 一张 quest = 一张 Card（完整 DOM 子树），创建后永不 innerHTML 清空
 //   ② 切换 quest = 纯 CSS display 显隐，零 DOM 销毁
 //   ③ 每张 Card 最多持有 FLOOR_CAP_CAPPED + FLOOR_CAP_BUILDING 层楼 DOM
+//      ★ 2026-09-05: FLOOR_CAP_CAPPED 动态化 — 设置 ai.floorCap（16/32，32=激活功能）
 //   ④ 超限 → 最老楼层 DOM remove() 彻底删除（conversation JSON 保留于内存）
 //   ⑤ Card Pool 上限 CARD_POOL_MAX，LRU 驱逐
 //   ⑥ A1 块始终在电子钟上方（固定创建顺序）
@@ -16,9 +17,22 @@ var CardPool = (function () {
   'use strict';
 
   // ═══ 配置常量（唯一真理源） ═══
-  var FLOOR_CAP_CAPPED = 16;     // 最多显示已封顶楼层数
+  var FLOOR_CAP_FALLBACK = 16;  // 显示楼层上限默认（回退值，设置未就绪/异常时）
   var FLOOR_CAP_BUILDING = 1;   // 最多显示在建楼层数（0 或 1）
   var CARD_POOL_MAX = 10;       // Card Pool 上限
+
+  // ★ 显示楼层上限动态读取（2026-09-05）：设置 → ai.floorCap（16/32，32=激活用户功能）
+  //   一切上限读取点收敛此处（构建视口窗口 / 裁剪 / 公开常量），设置变更由
+  //   panel-quest.js _reapplyFloorCap 即时重建 DOM，此处只管「当下值」
+  function _floorCap() {
+    try {
+      if (parent && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
+        var _s = String(parent.window.qqqSettings.get('ai.floorCap', '16'));
+        if (_s === '32') return 32;
+      }
+    } catch (_e) { }
+    return FLOOR_CAP_FALLBACK;
+  }
 
   // ═══ 构造函数 ═══
   function CardPool(containerEl, options) {
@@ -28,8 +42,8 @@ var CardPool = (function () {
     this._activeId = null;          // 当前活跃 questId
     this._options = options || {};
 
-    // 公开常量
-    this.FLOOR_CAP_CAPPED = FLOOR_CAP_CAPPED;
+    // 公开常量（FLOOR_CAP_CAPPED 为实时读取的 getter，随设置 ai.floorCap 变化）
+    Object.defineProperty(this, 'FLOOR_CAP_CAPPED', { get: function () { return _floorCap(); } });
     this.FLOOR_CAP_BUILDING = FLOOR_CAP_BUILDING;
     this.CARD_POOL_MAX = CARD_POOL_MAX;
   }
@@ -267,8 +281,8 @@ var CardPool = (function () {
       // 提取 quest 级 timings（用于停止态时钟渲染）
       var questTimings = (questMeta && questMeta.floorTimings) || [];
 
-      // 构建视口 DOM：最近 FLOOR_CAP_CAPPED 层
-      var startIdx = Math.max(0, card.totalFloors - FLOOR_CAP_CAPPED);
+      // 构建视口 DOM：最近 _floorCap() 层（设置 ai.floorCap 16/32）
+      var startIdx = Math.max(0, card.totalFloors - _floorCap());
       for (var i = startIdx; i < card.totalFloors; i++) {
         try {
           this._buildFloorDOM(card, card.floors[i], false, questTimings);
@@ -1041,7 +1055,8 @@ var CardPool = (function () {
     }
     cappedFloors.sort(function (a, b) { return a - b; });
 
-    while (cappedFloors.length > FLOOR_CAP_CAPPED) {
+    var _capNow = _floorCap();  // ★ 动态上限（2026-09-05，设置 ai.floorCap 16/32）
+    while (cappedFloors.length > _capNow) {
       var oldest = cappedFloors.shift();
       var dom = card.floorDOM[oldest];
       if (dom) {
@@ -1259,7 +1274,7 @@ var CardPool = (function () {
   // ═══ 公开常量读取 ═══
   CardPool.prototype.getCapConstants = function () {
     return {
-      capped: FLOOR_CAP_CAPPED,
+      capped: _floorCap(),
       building: FLOOR_CAP_BUILDING,
       poolMax: CARD_POOL_MAX
     };

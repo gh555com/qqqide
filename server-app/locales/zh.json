@@ -143,7 +143,13 @@
             "copyPath": "复制路径",
             "copyRelativePath": "复制相对路径",
             "splitRight": "向右拆分",
-            "splitDown": "向下拆分"
+            "splitDown": "向下拆分",
+            "encScheme": "编码方案…",
+            "encReopen": "按编码重新打开（重读磁盘）",
+            "encSaveAs": "将内容另存为（转换编码）",
+            "encAuto": "自动检测",
+            "encAutoReset": "自动检测（清除固定）",
+            "encAutoCur": "自动检测"
         },
         "contextMenu": {
             "cut": "剪切",

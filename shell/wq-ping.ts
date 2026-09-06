@@ -43,6 +43,8 @@ let _cumulativeSeconds = 0;          // 上次持久化的累计秒数
 let _sessionStartedAt = Date.now();  // 本次进程启动时间
 let _stopped = false;
 let _retryDelayMs = RETRY_MIN_MS;
+let _lastFailNotifyAt = 0;      // ★ 升级失败即时补发节流（30min）
+let _updHealthCache: Record<string, unknown> | null | undefined; // undefined=未探测
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _userDataPath = '';              // ★ portable.userData，启动时注入
 
@@ -175,6 +177,39 @@ function readDoerID(): string {
     return '';
 }
 
+// ── 升级健康遥测（2026-09-04，piggyback 零新端点）─────────────────────────
+// 读 {packRoot}/gh555.com/versions.json + Data/updater-status.json + 包根 .apply-fails
+// 全部 try/catch 容错：任一缺失/损坏 → 字段省略，绝不影响主 ping。
+// dev 模式无绿色包结构 → 返回 null（零字段零噪音）。
+function collectUpdHealth(): Record<string, unknown> | null {
+  try {
+    const base = _userDataPath || path.join(path.dirname(process.execPath), 'Data');
+    const liveDir = path.join(path.dirname(base), 'gh555.com');
+    const packRoot = path.dirname(liveDir);
+    if (!fs.existsSync(path.join(liveDir, 'versions.json')) ||
+        !fs.existsSync(path.join(packRoot, 'qqqide.exe'))) return null;
+    const h: Record<string, unknown> = {};
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(liveDir, 'versions.json'), 'utf8'));
+      h.upd_live_ver = (typeof v.id === 'string' && v.id) ? v.id.slice(0, 48) : '';
+      h.upd_launcher = (typeof v.launcher === 'string') ? v.launcher.slice(0, 48) : '';
+    } catch (_) { }
+    try {
+      const n = parseInt(fs.readFileSync(path.join(packRoot, '.apply-fails'), 'utf8').trim(), 10);
+      h.upd_fails = (n > 0 && n <= 99) ? n : 0;
+    } catch (_) { h.upd_fails = 0; }
+    try {
+      const s = JSON.parse(fs.readFileSync(path.join(base, 'updater-status.json'), 'utf8'));
+      const r = s && s.result;
+      h.upd_status = (r === 'ok' || r === 'waiting' || r === 'failed') ? r : '';
+      h.upd_stage = '';
+      h.upd_code = (typeof s.line === 'string' && s.line) ? s.line.slice(0, 200) : '';
+      h.upd_at = Math.floor((Number(s.ts) || 0) / 1000);
+    } catch (_) { }
+    return h;
+  } catch (_) { return null; }
+}
+
 // ── 收集设备信息 ────────────────────────────────────────────────────────────
 function collectPingBody(): string {
     const nowSec = Math.floor(Date.now() / 1000);
@@ -198,6 +233,9 @@ function collectPingBody(): string {
         cpu_cores:         os.cpus().length,
         mem_mb:            Math.round(os.totalmem() / (1024 * 1024)),
     };
+
+    const uh = collectUpdHealth();
+    if (uh) Object.assign(body, uh);
 
     return JSON.stringify(body);
 }
@@ -307,6 +345,18 @@ export function startWqPing(userDataPath?: string): void {
     pingLog('STARTED dev=' + _deviceId.slice(0,8) + ' ph=' + (readDoerID() || 'none'));
     const jitter = PING_JITTER_MIN_MS + Math.random() * (PING_JITTER_MAX_MS - PING_JITTER_MIN_MS);
     _timer = setTimeout(pingCycle, jitter);
+}
+
+/** 升级失败即时补发（auto-updater 调用）: 30min 节流后立即 ping 一次。 */
+export function notifyUpdateFailed(): void {
+  pingLog('notifyUpdateFailed stop=' + _stopped);
+  if (_stopped || !_deviceId) return;
+  const nowMs = Date.now();
+  if (nowMs - _lastFailNotifyAt < 30 * 60 * 1000) return; // 节流: 30min 一次
+  _lastFailNotifyAt = nowMs;
+  _retryDelayMs = RETRY_MIN_MS;
+  if (_timer) clearTimeout(_timer);
+  _timer = setTimeout(pingCycle, 2_000); // 2s 后发，等状态文件落盘
 }
 
 /** 登录成功后调用：重置退避 + 立即发 ping（带上 doer_id）。 */

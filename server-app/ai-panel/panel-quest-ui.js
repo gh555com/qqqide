@@ -1684,7 +1684,9 @@ $queueBtn.onclick = function () {
     _debounceSaveQueue();
     // ★ 空闲时立即触发：若当前无发送/无流式/未暂停，直接排水
     //   （2026-08-20：入队后草稿已被本按钮收编清空 → 若此前因草稿自动暂停，立即恢复排水；人工暂停不动）
-    if (!_sending && !streaming) {
+    // ★ 2026-09-06: fatal 态不立即排水——agent 卡在网络中断红框，立即排水必被 fatal 闸门拦截
+    //   （旧实现 shift 出队后被吞 → 消息消失实锤）；消息待命队列，点红框「继续任务」恢复完成后自动续发
+    if (!_sending && !streaming && (!_activeAgent || _activeAgent._stopState !== 'fatal')) {
         if (_queuePaused && !_queuePausedManual) _queuePaused = false;
         if (!_queuePaused) _triggerQueueSend();
     }

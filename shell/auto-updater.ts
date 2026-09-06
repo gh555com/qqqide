@@ -26,6 +26,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { spawn } from 'child_process';
+import { notifyUpdateFailed } from './wq-ping'; // ★ 2026-09-04 升级健康遥测: 失败即时补发 ping
 
 // ★ Ed25519 公钥（与 launcher/launcher.c SIGN_PUBKEY 逐字节一致）
 //   pack.js 构建时强制校验两侧一致（防双源漂移，改任一侧构建失败）。
@@ -56,6 +57,7 @@ interface UpdaterCtx {
 }
 
 let _started = false;
+let _lastUpdateLine = '';   // ★ 遥测: 最近一条更新事件文本（recordStatus 落盘用）
 
 // ── 入口（main.ts 调用）───────────────────────────────────────────────
 export function startAutoUpdater(liveDir: string): void {
@@ -77,12 +79,28 @@ export function startAutoUpdater(liveDir: string): void {
 async function run(ctx: UpdaterCtx): Promise<void> {
   try {
     const rc = await tryUpdateOnce(ctx);
+    recordStatus(ctx, rc);
     if (rc === 'done' || rc === 'waiting-swap') return;
     setTimeout(() => { void run(ctx); }, RETRY_MS);
   } catch (e: any) {
     log(ctx, 'update: shell updater error: ' + ((e && e.message) || String(e)));
+    recordStatus(ctx, 'failed');
     setTimeout(() => { void run(ctx); }, RETRY_MS);
   }
+}
+
+// ── 更新健康遥测状态（2026-09-04）────────────────────────────────────
+// 每次更新尝试结束落盘 Data/updater-status.json（保险库，随交换备份）:
+//   {ts, result: ok|waiting|failed, line: 最近一条事件文本}
+// wq-ping 每次 ping 读取上报（upd_status/upd_code/upd_at/upd_fails），
+// 失败时即时触发一次 ping（30min 节流）——发布方 24h 内可见全网升级分布与断链。
+function recordStatus(ctx: UpdaterCtx, rc: 'done' | 'waiting-swap' | 'failed'): void {
+  const result = rc === 'done' ? 'ok' : rc === 'waiting-swap' ? 'waiting' : 'failed';
+  try {
+    const st = { ts: Date.now(), result, line: _lastUpdateLine };
+    fs.writeFileSync(path.join(ctx.dataDir, 'updater-status.json'), JSON.stringify(st), 'utf8');
+  } catch (_) { }
+  if (result === 'failed') notifyUpdateFailed(); // 失败即时补发（节流在 wq-ping 内）
 }
 
 // ── 主流程 ─────────────────────────────────────────────────────────────
@@ -715,6 +733,7 @@ function log(ctx: UpdaterCtx, fmt: string, ...args: any[]): void {
       }
     } catch (_) { }
     fs.appendFileSync(p, line);
+    _lastUpdateLine = msg.length > 200 ? msg.slice(0, 200) : msg;
   } catch (_) { }
 }
 

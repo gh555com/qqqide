@@ -1191,6 +1191,7 @@
 }
 
 /* q 行（进程列表头）：标题 + 进程数 + 已启动 同排（v13: 进程数/已启动 从顶部/简介行移入 q 行，用户定案；v14: 字号/外观恢复 12px 原貌） */
+.qqq-mem-hover-ph-win,
 .qqq-mem-hover-ph-procs,
 .qqq-mem-hover-ph-up {
   font-family: Consolas, monospace;
@@ -1307,7 +1308,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 .qqq-mem-hover-chart .qqq-xl-txt {
   fill: var(--green);
   font-family: Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: bold;
   paint-order: stroke;
   stroke: var(--card-bg);
@@ -1317,7 +1318,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 .qqq-cpu-hover-chart .qqq-xl-txt {
   fill: var(--cpu);
   font-family: Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: bold;
   paint-order: stroke;
   stroke: var(--card-bg);
@@ -1438,6 +1439,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 .qqq-mem-hover-ph-row {
   display: flex;
   align-items: baseline;
+  gap: 18px; /* v14: 三项间距拉大（2026-09-05 用户定案「3窗口 | 30(峰值40)进程 | 已启动」中间间隔稍微拉大）——配合各 span margin-left 4px 实际视觉 ~22px 均距；行1 标题单子元素零影响 */
   overflow: hidden;
   white-space: nowrap;
 }

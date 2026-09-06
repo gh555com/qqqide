@@ -32,7 +32,7 @@
   var cpuPts = [];       // CPU 曲线点 [{t,cu}]（与 mem 同 ts；独立 reset 后从零累积）
   var memRunT = [];      // memPts 的累计运行时长坐标（断档不推进）
   var cpuRunT = [];      // cpuPts 的累计运行时长坐标
-  var latest = { mb: 0, procs: 0, bootAt: 0, label: '', cores: null, totalSec: 0, ncpu: 0 };
+  var latest = { mb: 0, procs: 0, win: 0, bootAt: 0, label: '', cores: null, totalSec: 0, ncpu: 0 };
   var rows = [];         // 最近快照进程树 [{pid,ppid,ws,n,cs}]（树序）
   var lastMemT = -1;     // 最近已收 mem 曲线点 ts（单调去重）
   var lastCpuT = -1;     // 最近已收 cpu 曲线点 ts（独立 reset 后独立单调）
@@ -40,7 +40,7 @@
   var $panel = null;
   // MEM 段
   var $svg = null, $poly = null, $area = null, $dot = null, $dotPulse = null;
-  var $val = null, $unit = null, $procs = null, $phUp = null, $phTitle = null, $avg = null, $stats = null, $grid = null, $labels = null;
+  var $val = null, $unit = null, $procs = null, $phWin = null, $phUp = null, $phTitle = null, $avg = null, $stats = null, $grid = null, $labels = null;
   var $curVal = null, $bootPath = null, $title = null;
   // CPU 段
   var $cSvg = null, $cPoly = null, $cArea = null, $cDot = null, $cDotPulse = null;
@@ -164,7 +164,7 @@
       // ── 共用进程列表 ──
       '<div class="qqq-mem-hover-plist-head">' +
       '<div class="qqq-mem-hover-ph-row"><span class="qqq-mem-hover-ph-title">qqqide 专用工作集（包含一切子进程）</span></div>' +
-      '<div class="qqq-mem-hover-ph-row"><span class="qqq-mem-hover-ph-procs">--</span><span class="qqq-mem-hover-ph-up">--</span></div>' +
+      '<div class="qqq-mem-hover-ph-row"><span class="qqq-mem-hover-ph-win">--窗口</span><span class="qqq-mem-hover-ph-procs">--</span><span class="qqq-mem-hover-ph-up">--</span></div>' +
       '</div>' +
       '<div class="qqq-mem-hover-plist"></div>';
     document.body.appendChild($panel);
@@ -177,6 +177,7 @@
     $val = $panel.querySelector('.qqq-mem-hover-val');
     $unit = $panel.querySelector('.qqq-mem-hover-unit');
     $procs = $panel.querySelector('.qqq-mem-hover-ph-procs');
+    $phWin = $panel.querySelector('.qqq-mem-hover-ph-win');
     $phUp = $panel.querySelector('.qqq-mem-hover-ph-up');
     $phTitle = $panel.querySelector('.qqq-mem-hover-ph-title');
     $avg = $panel.querySelector('.qqq-mem-hover-avg');
@@ -282,6 +283,7 @@
       shown = true;
       renderCurve();
       renderRows(); // v19: 面板打开立即渲染进程列表——旧版 show() 缺 renderRows()，列表只在 5s 广播/history 完成时画 → 每次打开空白等 ~10s（用户实锤）；rows 早已在主进程（getMetrics 兜底拉过），此刻即画
+      updateProcsText(); renderUpText(); renderWinText(); // v20: q 行三项同步立即渲染（内存里 latest 早已就绪，无需等下一个 5s 广播）
       startTitleMorph(); // 每次弹卡：原文案显示 3s → 切换启动完整目录
     } else {
       position();
@@ -345,56 +347,33 @@
     return span < 1000 ? 1000 : span;
   }
 
-  // ── 内存 y 坐标域：抗尖峰（>4×中位数不参与）+ 百分位 p5/p95 + 8% 顶余量 ──
+
+  // ── v27 内存 y 坐标域（2026-09-05 f71 用户定案「刻度就该反映当前图形中滴最高点」）──
+  // 顶刻度 = 当前可见窗口内最高点 ×1.08（8% 余量防贴标签）；高点被更高数据覆盖（吞噬）或
+  // 随窗口滚动移出屏幕 → 顶自然跟着变——无 p95/无 4× 免疫/无新常态跟随/无时间货架，
+  // 域 = 可见点纯函数，图与刻度恒一致零魔法数字（v26 15min 货架过期后图上高点仍在、
+  // 刻度却降——图刻自相矛盾正是用户实锤，整套状态机已废弃删除）。底刻度 = 窗口最低点对称。
   function memYDomain(use) {
-    var i, p, vals = [];
-    for (i = 0; i < use.length; i++) vals.push(use[i].v);
-    vals.sort(function (a, b) { return a - b; });
-    var med = vals[Math.floor(vals.length / 2)];
-    var capHi = med * 4, capLo = med / 4;
-    var norm = [];
+    var i, min = Infinity, max = -Infinity;
     for (i = 0; i < use.length; i++) {
-      p = use[i].v;
-      if (p >= capLo && p <= capHi) norm.push(p);
+      if (use[i].v < min) min = use[i].v;
+      if (use[i].v > max) max = use[i].v;
     }
-    if (!norm.length) norm = [med];
-    norm.sort(function (a, b) { return a - b; });
-    var min = norm[Math.max(0, Math.floor(norm.length * 0.05))];
-    var max = norm[Math.min(norm.length - 1, Math.floor(norm.length * 0.95))];
+    if (!isFinite(min)) { min = 0; max = 1; }
     if (max === min) max = min + 1;
     var head = (max - min) * 0.08;
     max += head; min -= head;
     return { min: min, max: max };
   }
 
-  // ── CPU y 坐标域：min=0 固定 + p95 动态上界（顶封 ncpu）+ 8% 顶余量 ──
-  // 核数是绝对量：0 是真实下限，不做内存那套 4× 抗尖峰
-  // v22 新常态跟随（2026-08-31 f57 用户实锤「上面还是 0.5 上边界」）：p95 天然忽略最高
-  // 5% 的点——7h 空闲后突然持续 1.2 核要攒够 5% 才抬高坐标，期间曲线贴顶成平线。
-  // 最近 5 点均值 × 1.5 参与上界：持续 ≥5 分钟的升高立即反映（1.25×1.5≈1.9 → 坐标 ~2.0），
-  // 单点瞬时尖峰被均值摊平不拉高（p95 想防的就是这个）。
+  // ── v27 CPU y 坐标域（同语义：顶刻度 = 当前图形内最高点；min=0 固定 + 顶封 ncpu）──
+  // 核数是绝对量：0 是真实下限。可见最高点被覆盖/滚出窗口 → 顶自然跟着变（无 p95/货架；
+  // 也不做 4× 免疫——空闲中位数 ~0.02 时免疫会误伤一切常态负载，100% 单核合法满值由顶封
+  // ncpu 兜底）。保底 0.5 防除零/空图贴地。
   function cpuYDomain(use) {
-    var i, vals = [], max = 0.5;
-    if (use.length >= 5) {
-      for (i = 0; i < use.length; i++) vals.push(use[i].cu);
-      vals.sort(function (a, b) { return a - b; });
-      max = vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.95))];
-      var n = use.length;
-      var tail = Math.min(5, n);
-      var s = 0;
-      for (i = n - tail; i < n; i++) s += use[i].cu;
-      var tailAvg = s / tail;
-      if (tailAvg * 1.5 > max) max = tailAvg * 1.5;
-    } else {
-      for (i = 0; i < use.length; i++) { if (use[i].cu > max) max = use[i].cu; }
-    }
+    var i, max = 0.5;
+    for (i = 0; i < use.length; i++) { if (use[i].cu > max) max = use[i].cu; }
     max = Math.min(max * 1.08, latest.ncpu || 64); // 8% 顶余量 + 顶封 ncpu
-    // v20 当前值跟随（2026-09-02 用户实锤「实际 0.7 核但顶刻度只到 0.5」）：曲线点是 60s 分钟平均——
-    // 刚起的负载最新点还没跟上（滞后 ≤60s）+ 短脉冲被尾部 5 点均值摊平 → y 域无视当前，顶刻度
-    // 卡在历史 p95 之下。大数字 = 15s 平滑瞬时（smoothCores）：当前 ×1.15 纳入上界 → 顶刻度恒 ≥
-    // 当前值；单 5s 脉冲只短暂抬升，随 15s 滑动窗回落（不用再攒 5 分钟「新常态」才抬坐标）。
-    var curNow = smoothCores();
-    if (curNow !== null && curNow * 1.15 > max && curNow * 1.15 < (latest.ncpu || 64)) max = curNow * 1.15;
     if (max < 0.5) max = 0.5;
     return { min: 0, max: max };
   }
@@ -568,20 +547,6 @@
     }
   }
 
-  // v20: CPU y 域当前值跟随——每次 5s 广播用当前平滑值复算上界，域变化才重绘 CPU 图
-  // （stats/均值/tip 不碰，防 5s 重建掐 hover；域未变零开销）
-  var lastCpuYMax = -1;
-  function refreshCpuScale() {
-    if (!shown || cpuPts.length < 2) return;
-    buildRunT(cpuPts, cpuRunT);
-    var dom = cpuYDomain(cpuPts);
-    if (Math.abs(dom.max - lastCpuYMax) < 1e-3) return;
-    lastCpuYMax = dom.max;
-    drawChart(cpuPts, cpuRunT, dom, {
-      poly: $cPoly, area: $cArea, dot: $cDot, dotPulse: $cDotPulse, curVal: $cCurVal, ylbl: $cGrid._ylbl,
-      valOf: function (p) { return p.cu; }, fmt: fmtCores
-    }, spanOf(cpuPts, cpuRunT));
-  }
 
   // ── CPU 段独立渲染（v18: mem reset 后 CPU 图/统计/均值完全不受影响——旧 n<2 分支连带清 CPU 显示，用户实锤「内存一重置 CPU 也被重置」）──
   function renderCpuCurve() {
@@ -592,7 +557,7 @@
         poly: $cPoly, area: $cArea, dot: $cDot, dotPulse: $cDotPulse, curVal: $cCurVal, ylbl: $cGrid._ylbl,
         valOf: function (p) { return p.cu; }, fmt: fmtCores
       }, spanOf(cpuPts, cpuRunT));
-      lastCpuYMax = cdom.max;
+
       var cpi = 0, cvi = 0, i;
       for (i = 1; i < cpuPts.length; i++) {
         if (cpuPts[i].cu > cpuPts[cpi].cu) cpi = i;
@@ -618,7 +583,7 @@
       $cStats.textContent = '采样中…';
       $cAvg.textContent = '--';
       if ($cLabels._left) { $cLabels._left.textContent = '--'; $cLabels._mid.textContent = '--'; }
-      lastCpuYMax = -1;
+
     }
   }
 
@@ -636,6 +601,7 @@
       if ($labels._left) { $labels._left.textContent = '--'; $labels._mid.textContent = '--'; }
       if ($avg) $avg.classList.remove('hot'); // 曲线清空时红态同步复位
       avgWasOver = false; // 边沿复位：重新累积后再超限可再弹
+
       drawBoots();      // 垂线按流各自换算（mem 空则只画 cpu 垂线）
       renderCpuCurve(); // CPU 段独立渲染，mem reset 毫发无损
       return;
@@ -643,6 +609,7 @@
     // MEM 图（独立弹性窗口）
     var memSpan = spanOf(memPts, memRunT);
     var dom = memYDomain(memPts);
+
     drawChart(memPts, memRunT, dom, {
       poly: $poly, area: $area, dot: $dot, dotPulse: $dotPulse, curVal: $curVal, ylbl: $grid._ylbl,
       valOf: function (p) { return p.v; }, fmt: fmtVal
@@ -780,12 +747,17 @@
       latest.mb = m.mb;
       if ($val) $val.textContent = m.mb;
       $memVal.textContent = m.mb + ' MB';
-      checkCurThreshold(); // 每次 5s 广播检查当前值暴涨（均值阈值是曲线点粒度 60s）
+      checkCurThreshold(); // 推 3 点平滑窗 → 1.5GB 暴涨告警
+
     }
     if (typeof m.bootAt === 'number' && m.bootAt > 0) latest.bootAt = m.bootAt;
     if (typeof m.procs === 'number') {
       latest.procs = m.procs;
       updateProcsText();
+    }
+    if (typeof m.win === 'number' && m.win > 0) {
+      latest.win = m.win;
+      renderWinText();
     }
     if (typeof m.ncpu === 'number' && m.ncpu > 0) latest.ncpu = m.ncpu;
     if (m.cpu && typeof m.cpu.cores === 'number') {
@@ -793,7 +765,7 @@
       coresSmooth.push(m.cpu.cores);
       if (coresSmooth.length > 3) coresSmooth.shift();
       $cpuVal.textContent = 'CPU ' + fmtCores(smoothCores());
-      refreshCpuScale(); // v20: y 域跟随当前平滑值——顶刻度不再卡在历史 p95 之下（用户实锤 0.7 核只显示 0.5）
+
     }
     if (m.cpu && typeof m.cpu.totalSec === 'number') {
       latest.totalSec = m.cpu.totalSec;
@@ -855,6 +827,7 @@
       if (cpuPts.length) lastCpuT = cpuPts[cpuPts.length - 1].t;
       if (!latest.mb && h.mb) { latest.mb = h.mb; if ($val) $val.textContent = h.mb; }
       if (!latest.procs && h.procs) latest.procs = h.procs;
+      if (!latest.win && h.win > 0) { latest.win = h.win; renderWinText(); }
       if (typeof h.ncpu === 'number' && h.ncpu > 0) latest.ncpu = h.ncpu;
       if (h.cpu && typeof h.cpu.cores === 'number' && !coresSmooth.length) {
         latest.cores = h.cpu.cores;
@@ -880,10 +853,12 @@
       cpuPts = [];
       lastCpuT = -1;
       coresSmooth = []; // 瞬时核数平滑窗同步清（cpu 显示从零重来）
+
     } else if (scope === 'mem') {
       memPts = [];
       boots = []; // 垂线挂 mem 流生命周期
       lastMemT = -1;
+
     } else { // 'all' / 旧版无参
       memPts = [];
       cpuPts = [];
@@ -891,6 +866,7 @@
       lastMemT = -1;
       lastCpuT = -1;
       coresSmooth = [];
+
     }
     updateProcsText();
     renderCurve();
@@ -966,11 +942,21 @@
   }
 
   // 已启动时长（q 行右侧；5s 广播同步刷新）
-  // v19 格式定案：■已启动 10min——方块与「已启动」零空格，已启动与时长之间一个空格（用户定案）
+  // v19 格式定案：■已启动 10min——方块与「已启动」零空格，已启动与时长之间一个空格（用户定案）；
+  // v14: 前导全角空格删除——三项间距已由 row flex gap 18px 承担（2026-09-05 用户定案）
   function renderUpText() {
     if (!$phUp) return;
+    renderWinText();
     $phUp.textContent = latest.bootAt > 0 ?
-      '\u3000\u25A0已启动 ' + uptimeTxt(Math.max(0, Math.round((Date.now() - latest.bootAt) / 60000))) : '';
+      '\u25A0已启动 ' + uptimeTxt(Math.max(0, Math.round((Date.now() - latest.bootAt) / 60000))) : '';
+  }
+
+  // 窗口数（q 行第二行最左；2026-09-05 用户定案「3窗口 30(峰值40)进程 已启动11min」三项同排）
+  // 口径 = py-broker EnumWindows 顶层可见窗口且属主进程 pid = 前端能看到滴一切窗口
+  //（IDE 各窗 + DevTools 独立窗；dock 内嵌 DevTools 非独立窗不计）——5s 广播真值
+  function renderWinText() {
+    if (!$phWin) return;
+    $phWin.textContent = (latest.win > 0) ? (latest.win + '窗口') : '--窗口';
   }
 
   // 3 点移动平均（瞬时核数平滑；无基线返回 null）
@@ -980,6 +966,7 @@
     for (var i = 0; i < coresSmooth.length; i++) s += coresSmooth[i];
     return s / coresSmooth.length;
   }
+
 
   // v20: 标签元素缓存已移入 buildFrame（惰性面板构建后元素才存在——旧缓存块在模块底部
   // 加载即执行时 $labels 恒 null → 缓存从未填充 → 动态刻度从未生效，-24h/-12h 永远静态

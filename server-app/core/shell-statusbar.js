@@ -102,16 +102,43 @@ function bootStatusbar(boot) {
 		var _onlOverlay = null;
 		var _onlPanel = null;
 		var _onlFetching = false;
+		var _onlUsersCache = null; // 最近一次 users 快照（三连 q 切列重渲染用，零重复请求）
+		var _onlDaily30 = null;    // 最近一次 avg_daily_30 快照（近30天每日均值，弹窗微型曲线数据，零重复请求）
+		var _onlSparkSvg = null;   // 微型曲线 <svg>（懒创建一次复用，仅弹窗可见时渲染）
+		var _onlShowBal = false;   // ★ 隐藏功能：弹窗开启时连按 3 下 q → day 右侧显示「余额」列（服务端 balance_ge 四舍五入取整）
+		var _onlQCount = 0;        // 连按计数（超时/弹窗关闭清零）
+		var _onlQAt = 0;
 
-		function fetchOnline() {
+		function fetchOnline(force) {
 			var now = Date.now();
-			if (now - _onlLastFetch < 240000) return;
+			if (!force && now - _onlLastFetch < 240000) return;
 			_onlLastFetch = now;
 			fetch('https://direct-cn.gh555.com/api/qqqide/online-total', { cache: 'no-cache' })
 				.then(function (r) { if (!r.ok) return null; return r.json(); })
 				.then(function (data) {
-					if (data && data.ok && typeof data.total === 'number') {
+					if (!data || !data.ok) return;
+					if (typeof data.total === 'number') {
 						$onl.textContent = data.total > 0 ? data.total.toLocaleString() : '0';
+					}
+					// ★ 弹窗首行：当前人数（与左下角同值）+ ※最近24小时平均
+					var $now = document.getElementById('qqq-onl-now');
+					if ($now && $onl) $now.textContent = $onl.textContent || '0';
+					var $avg = document.getElementById('qqq-onl-avg24');
+					if ($avg) {
+						var pts = data.sample_points || 0;
+						if (pts > 0 && typeof data.avg_24h === 'number') {
+							// 值来自服务端 number（avg_24h 经 Math.round 纯数字），innerHTML 无注入面
+							$avg.innerHTML = '※最近24小时平均：<b>' + (Math.round(data.avg_24h * 10) / 10).toLocaleString() + '</b>';
+							$avg.title = pts >= 288 ? '' : '数据采样中（' + pts + '/288 点，满 24 小时后精确）';
+						} else {
+							$avg.textContent = '※最近24小时平均：--';
+							$avg.title = '数据采集中';
+						}
+					}
+					// ★ 近30天日均曲线数据（服务端 avg_daily_30，尾点 == 当前24h平均同值，弹窗开着才绘制）
+					if (Array.isArray(data.avg_daily_30) && data.avg_daily_30.length) {
+						_onlDaily30 = data.avg_daily_30;
+						_renderSpark();
 					}
 				})
 				.catch(function () { /* 静默 */ });
@@ -131,7 +158,9 @@ function bootStatusbar(boot) {
 			_onlPanel.className = 'qqq-onl-panel';
 			_onlPanel.innerHTML =
 				'<div class="qqq-onl-head">' +
-				'<span class="qqq-onl-title">在线用户</span>' +
+				'<span class="qqq-onl-title">在线人数 <b id="qqq-onl-now">0</b></span>' +
+				'<span class="qqq-onl-avg" id="qqq-onl-avg24">※最近24小时平均：--</span>' +
+				'<span class="qqq-onl-spark" id="qqq-onl-spark"></span>' +
 				'<button id="qqq-onl-close" class="qqq-onl-close">✕</button>' +
 				'</div>' +
 				'<div id="qqq-onl-body" class="qqq-onl-body"></div>';
@@ -145,13 +174,132 @@ function bootStatusbar(boot) {
 			if (_onlOverlay) _onlOverlay.style.display = 'none';
 		}
 
+		// ★ 微型 30 天日均曲线（2026-09-06）——首行均值左移后，右侧细长区画近30天每日均值变迁；
+		//   尾点 = 今天行 = 当前 24h 滚动平均 → 与首行数字恒同值（服务端同一 refresh 周期写入同一值）。
+		//   零定时器零动画：数据刷新（fetchOnline then）/ 弹窗打开 / 窗口缩放 三路重绘；SVG 懒创建复用。
+		function _renderSpark() {
+			if (!_onlUsersOpen || !_onlOverlay || _onlOverlay.style.display === 'none') return;
+			var $spark = document.getElementById('qqq-onl-spark');
+			if (!$spark || !_onlDaily30 || _onlDaily30.length < 2) return; // <2 点 = 数据积累中（首点 5min 内出现）
+			var n = _onlDaily30.length;
+			var ns = 'http://www.w3.org/2000/svg';
+			if (!_onlSparkSvg) {
+				_onlSparkSvg = document.createElementNS(ns, 'svg');
+				$spark.appendChild(_onlSparkSvg);
+			}
+			var w = $spark.clientWidth || 240;
+			var h = $spark.clientHeight || 30;
+			var pad = 2;
+			var iw = w - pad * 2, ih = h - pad * 2;
+			var min = _onlDaily30[0].v, max = _onlDaily30[0].v;
+			for (var i = 1; i < n; i++) {
+				var vi = _onlDaily30[i].v;
+				if (vi < min) min = vi;
+				if (vi > max) max = vi;
+			}
+			if (max - min < 1e-6) { max += 0.5; min -= 0.5; } // 全平数据守卫（防除零）
+			var span = max - min;
+			var pts = [];
+			for (var j = 0; j < n; j++) {
+				var x = Math.round((pad + j * iw / (n - 1)) * 10) / 10;
+				var y = Math.round((pad + ih - ((_onlDaily30[j].v - min) / span) * ih) * 10) / 10;
+				pts.push(x + ',' + y);
+			}
+			var lastY = Math.round((pad + ih - ((_onlDaily30[n - 1].v - min) / span) * ih) * 10) / 10;
+			_onlSparkSvg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+			// 面积底 + 折线 + 尾点（全主题语义变量 → 随 [data-theme] 即时切换零残留）
+			_onlSparkSvg.innerHTML =
+				'<polygon points="' + pad + ',' + (pad + ih) + ' ' + pts.join(' ') + ' ' + (pad + iw) + ',' + (pad + ih) + '" fill="var(--text-dim)" fill-opacity="0.12"/>' +
+				'<polyline points="' + pts.join(' ') + '" fill="none" stroke="var(--text-primary)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>' +
+				'<circle cx="' + (pad + iw) + '" cy="' + lastY + '" r="1.8" fill="var(--text-primary)"/>';
+			$spark.title = '近30天日均在线曲线（' + _onlDaily30[0].d + ' → ' + _onlDaily30[n - 1].d + '，尾点 = 当前24h平均）';
+		}
+
 		function openOnlineUsers() {
 			if (!_onlOverlay) buildOnlineUsersPanel();
 			if (_onlUsersOpen) { closeOnlineUsers(); return; }
 			_onlUsersOpen = true;
 			_onlOverlay.style.display = '';
+			_renderSpark(); // 先画缓存曲线（开箱即见），随后 fetchOnline 刷新重绘
+			fetchOnline(true); // 弹窗打开即拉最新（绕过 240s 轮询限频，面板首行人数+24h平均立即刷新）
 			fetchOnlineUsers();
 		}
+
+		function renderOnlineUsers(users) {
+			_onlUsersCache = users;
+			var $body = document.getElementById('qqq-onl-body');
+			if (!$body) return;
+			// ★ 统计在线人数，同步更新左下角（比 online-total 缓存更实时）
+			var onlineCount = 0;
+			for (var j = 0; j < users.length; j++) { if (users[j].online) onlineCount++; }
+			if ($onl) $onl.textContent = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
+			// 弹窗首行当前人数与左下角恒同值（同源更新，防两数字打架）
+			var $now = document.getElementById('qqq-onl-now');
+			if ($now && $onl) $now.textContent = $onl.textContent || '0';
+			var balTh = _onlShowBal ? '<th class="r">余额</th>' : '';
+			var html = '<table class="qqq-onl-table"><thead><tr>' +
+				'<th>手机号</th><th class="r">day</th>' + balTh + '<th class="r">消耗</th><th class="r">独立消耗</th>' +
+				'<th class="r">最近在线</th><th class="r">连续(m)</th><th class="r">独立</th><th class="r">版本</th><th class="r">累计(h)</th>' +
+				'</tr></thead><tbody>';
+			for (var i = 0; i < users.length; i++) {
+				var u = users[i];
+				var lastSeen = new Date(u.last_seen_at * 1000);
+				var yr = lastSeen.getFullYear();
+				var mon = ('0' + (lastSeen.getMonth() + 1)).slice(-2);
+				var day = ('0' + lastSeen.getDate()).slice(-2);
+				var timeStr = yr + '-' + mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
+				var contM = typeof u.continuous_m === 'number' ? Math.round(u.continuous_m) : 0;
+				var contStr = contM + 'm';
+				var totalH = typeof u.total_m === 'number' ? Math.round(u.total_m / 60) : '-';
+				var totalStr = typeof totalH === 'number' ? totalH + 'h' : '-';
+				var ver = u.client_ver || '-';
+				var daysReg = typeof u.days_since_register === 'number' ? u.days_since_register : '-';
+				var paidGe = typeof u.total_consumed_ge === 'number' ? u.total_consumed_ge : 0;
+				var freeGe = typeof u.free_consumed_ge === 'number' ? u.free_consumed_ge : 0;
+				var geStr = paidGe + '+' + freeGe;
+				var indPaidGe = typeof u.independent_consumed === 'number' ? u.independent_consumed : 0;
+				var indFreeGe = typeof u.independent_free === 'number' ? u.independent_free : 0;
+				var indGeStr = indPaidGe + '+' + indFreeGe;
+				var balCell = _onlShowBal ? '<td class="r mono">' + (typeof u.balance_ge === 'number' ? u.balance_ge : '-') + '</td>' : '';
+				html += '<tr>' +
+					'<td class="mono">' + u.phone + '</td>' +
+					'<td class="r mono">' + daysReg + '</td>' +
+					balCell +
+					'<td class="r mono">' + geStr + '</td>' +
+					'<td class="r mono">' + indGeStr + '</td>' +
+					'<td class="r mono sm">' + timeStr + '</td>' +
+					'<td class="r mono">' + contStr + '</td>' +
+					'<td class="r mono">' + (typeof u.independent === 'number' ? u.independent : '-') + '</td>' +
+					'<td class="r mono xs">' + ver + '</td>' +
+					'<td class="r mono">' + totalStr + '</td>' +
+					'</tr>';
+			}
+			html += '</tbody></table>';
+			$body.innerHTML = html;
+		}
+
+		// ★ 隐藏功能（2026-09-06）：弹窗开启时连按 3 下 q（单次间隔 ≤1.2s）→ day 右侧显示「余额」列，再按三下隐藏
+		//   弹窗关闭/焦点在下层输入区/长按 repeat 均忽略；列切换用最近快照重渲染，零重复请求
+		// 窗口缩放 → 面板宽度变化（max-width 94vw）→ 曲线按新宽度重绘（_renderSpark 内已判弹窗可见性，零额外成本）
+		window.addEventListener('resize', _renderSpark);
+
+		document.addEventListener('keydown', function (e) {
+			if (!_onlUsersOpen || !_onlOverlay || _onlOverlay.style.display === 'none') { _onlQCount = 0; return; }
+			if (e.repeat) return;
+			var k = e.key;
+			if (k !== 'q' && k !== 'Q') return;
+			var ae = document.activeElement;
+			if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) { _onlQCount = 0; return; }
+			var now = Date.now();
+			if (now - _onlQAt > 1200) _onlQCount = 0;
+			_onlQAt = now;
+			_onlQCount++;
+			if (_onlQCount >= 3) {
+				_onlQCount = 0;
+				_onlShowBal = !_onlShowBal;
+				if (_onlUsersCache && _onlUsersCache.length) renderOnlineUsers(_onlUsersCache);
+			}
+		});
 
 		function fetchOnlineUsers() {
 			if (_onlFetching) return;
@@ -169,47 +317,7 @@ function bootStatusbar(boot) {
 						$body.innerHTML = '<div class="qqq-onl-msg">暂无用户</div>';
 						return;
 					}
-					// ★ 统计在线人数，同步更新左下角（比 online-total 缓存更实时）
-					var onlineCount = 0;
-					for (var j = 0; j < users.length; j++) { if (users[j].online) onlineCount++; }
-					if ($onl) $onl.textContent = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
-					var html = '<table class="qqq-onl-table"><thead><tr>' +
-						'<th>手机号</th><th class="r">day</th><th class="r">消耗</th><th class="r">独立消耗</th>' +
-						'<th class="r">最近在线</th><th class="r">连续(m)</th><th class="r">独立</th><th class="r">版本</th><th class="r">累计(h)</th>' +
-						'</tr></thead><tbody>';
-					for (var i = 0; i < users.length; i++) {
-						var u = users[i];
-						var lastSeen = new Date(u.last_seen_at * 1000);
-						var yr = lastSeen.getFullYear();
-						var mon = ('0' + (lastSeen.getMonth() + 1)).slice(-2);
-						var day = ('0' + lastSeen.getDate()).slice(-2);
-						var timeStr = yr + '-' + mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
-						var contM = typeof u.continuous_m === 'number' ? Math.round(u.continuous_m) : 0;
-						var contStr = contM + 'm';
-						var totalH = typeof u.total_m === 'number' ? Math.round(u.total_m / 60) : '-';
-						var totalStr = typeof totalH === 'number' ? totalH + 'h' : '-';
-						var ver = u.client_ver || '-';
-						var daysReg = typeof u.days_since_register === 'number' ? u.days_since_register : '-';
-						var paidGe = typeof u.total_consumed_ge === 'number' ? u.total_consumed_ge : 0;
-						var freeGe = typeof u.free_consumed_ge === 'number' ? u.free_consumed_ge : 0;
-						var geStr = paidGe + '+' + freeGe;
-						var indPaidGe = typeof u.independent_consumed === 'number' ? u.independent_consumed : 0;
-						var indFreeGe = typeof u.independent_free === 'number' ? u.independent_free : 0;
-						var indGeStr = indPaidGe + '+' + indFreeGe;
-						html += '<tr>' +
-							'<td class="mono">' + u.phone + '</td>' +
-							'<td class="r mono">' + daysReg + '</td>' +
-							'<td class="r mono">' + geStr + '</td>' +
-							'<td class="r mono">' + indGeStr + '</td>' +
-							'<td class="r mono sm">' + timeStr + '</td>' +
-							'<td class="r mono">' + contStr + '</td>' +
-							'<td class="r mono">' + (typeof u.independent === 'number' ? u.independent : '-') + '</td>' +
-							'<td class="r mono xs">' + ver + '</td>' +
-							'<td class="r mono">' + totalStr + '</td>' +
-							'</tr>';
-					}
-					html += '</tbody></table>';
-					$body.innerHTML = html;
+					renderOnlineUsers(users);
 				})
 				.catch(function () {
 					_onlFetching = false;

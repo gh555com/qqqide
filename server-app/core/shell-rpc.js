@@ -83,6 +83,10 @@ function hookFileExplorerToTabs() {
             }
             // Read and display file
             bridge.fs.read(filePath).then(function (content) {
+              // ★ 2026-09-05: 读取完成后刷新编码徽标（主进程证据 → tab 按钮 chip）
+              if (window.qqqTabs && window.qqqTabs.refreshEncForPath && bridge.fs && bridge.fs.encoding) {
+                window.qqqTabs.refreshEncForPath(filePath);
+              }
               // ★ rAF 让浏览器先渲一帧（占位符可见），再切 Monaco（避免 UI 冻住）
               requestAnimationFrame(function () {
                 pane.textContent = '';
@@ -128,6 +132,10 @@ function hookFileExplorerToTabs() {
           return;
         }
         bridge.fs.read(filePath).then(function (content) {
+          // ★ 2026-09-05: 读取完成后刷新编码徽标（主进程证据 → tab 按钮 chip）
+          if (window.qqqTabs && window.qqqTabs.refreshEncForPath && bridge.fs && bridge.fs.encoding) {
+            window.qqqTabs.refreshEncForPath(filePath);
+          }
           var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
           window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function (ed) {
             if (_search && ed) {

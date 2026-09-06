@@ -114,8 +114,30 @@ def _win_mem_snapshot(root_pid: int):
         ppid, ws, nm, ut, kt = info
         total += ws
         rows.append({'pid': p, 'ppid': ppid, 'ws': ws >> 10, 'n': nm, 'ut': ut, 'kt': kt})  # ws 单位 KB
-    _log(f"mem-snapshot: root={root_pid} nodes={len(seen)} totalMB={round(total / 1048576)}")
-    return {'totalMB': round(total / 1048576), 'nodes': len(seen), 'ncpu': os.cpu_count() or 0, 'rows': rows}
+    # 窗口数（2026-09-05 q209 f66）: EnumWindows 顶层可见窗口且属主进程 pid——
+    # Chromium 全部顶层窗口（IDE 各窗 + DevTools 独立窗）都由 browser 进程创建，
+    # pid 过滤天然精确；dock 内嵌 DevTools 非顶层窗不计、隐藏窗 IsWindowVisible 滤掉
+    # ——正是「用户能看到的一切窗口」口径（含开发者工具窗口）。~1ms 量级零负担。
+    nwin = 0
+    try:
+        user32 = ctypes.windll.user32
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+        holder = [0]
+
+        def _cb_win(hwnd, _lp):
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(pid))
+            if pid.value == root_pid and user32.IsWindowVisible(ctypes.c_void_p(hwnd)):
+                holder[0] += 1
+            return 1
+
+        user32.EnumWindows(WNDENUMPROC(_cb_win), 0)
+        nwin = holder[0]
+    except Exception:
+        nwin = 0
+    _log(f"mem-snapshot: root={root_pid} nodes={len(seen)} totalMB={round(total / 1048576)} nwin={nwin}")
+    return {'totalMB': round(total / 1048576), 'nodes': len(seen), 'ncpu': os.cpu_count() or 0,
+            'rows': rows, 'nwin': nwin}
 
 
 def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:

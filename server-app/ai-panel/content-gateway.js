@@ -23,6 +23,10 @@
     var BINARY_SAMPLE_LEN = 4000;
 
     // ═══ 网络超时参数（唯一真理源：改一处全局生效） ═══
+    // ★ 2026-09-04 澄清（勿改回 98s/180s 短值）：fetch deadline 现为 1000s 慢速兜底——服务端排队 +
+    //   深思考档单 house 实测可达 12min+（q258 house1 全程 12 分钟实锤），短 deadline 会把正常
+    //   深思考当 hang 掐断 → 重试风暴。真正的 hang 兜底 = HARD_FETCH_DEADLINE_MS 220s（每轮 retry
+    //   先触发）+ 停滞看门狗 20min 零进展。agent-gateway.js 内 98/180s 仅是 ContentGateway 缺载兜底默认。
     var FETCH_DEADLINE_PRIMARY_MS = 1000000;
     var FETCH_DEADLINE_FALLBACK_MS = 1000000;
     var STREAM_WATCHDOG_MS = 60000;

@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import * as vm from 'vm';
 import { _sn, _qe, aiNormalizeWhitespace, aiNormalizeCRLF } from './ipc-state';
 import { boundaryNewlineGuard, checkStructureText } from './edit-guard';
+import { decodeFile, decodeFileSync, encodeFile, encodeTextSync } from './file-encoding';
 
 // ── 空白匹配 span 测量 ──────────────────────────────────────────────────────
 // 在归一化匹配成功后，用原始 find 文本的归一化版本，在原始内容中从 start 向后
@@ -40,7 +41,7 @@ function measureMatchSpan(orig: string, start: number, findText: string,
 
 // ── 重新搜索（Pass 2 失配兜底，2026-08-07）──────────────────────────────────
 // 前序编辑改变内容后，用同一匹配阶梯对当前内容重新定位 find。
-function _refindCurrent(content: string, ed: { find: string }): { start: number; span: number; matchLevel: number } | null {
+function _refindCurrent(content: string, ed: { find: string }, skipRawBytes?: boolean): { start: number; span: number; matchLevel: number } | null {
     // L1 exact
     let idx = content.indexOf(ed.find);
     if (idx !== -1) return { start: idx, span: ed.find.length, matchLevel: 1 };
@@ -95,7 +96,8 @@ function _refindCurrent(content: string, ed: { find: string }): { start: number;
             }
         }
     }
-    // L5 raw bytes
+    // L5 raw bytes（skipRawBytes = 非 utf8 文件：字节偏移≠字符偏移，禁字节匹配）
+    if (skipRawBytes) return null;
     const findBuf = Buffer.from(ed.find, 'utf8');
     const contentBuf = Buffer.from(content, 'utf8');
     const bufIdx = contentBuf.indexOf(findBuf);
@@ -111,17 +113,20 @@ function _refindCurrent(content: string, ed: { find: string }): { start: number;
 // ★ 使用 vm.Script 同进程解析（零 spawn，秒级完成，无 Electron 二进制兼容问题）。
 //   vm.Script 与 node --check 用同一 V8 解析器，等效。
 //   ES module 文件（.mjs/.cjs）跳过 vm.Script，改为 try/catch new Function 降级检查。
-function checkSyntaxSync(filePath: string, originalContent: string | null, matchCtx?: string): string | null {
+function checkSyntaxSync(filePath: string, originalContent: string | null, matchCtx?: string, encHint?: { enc: string; bom: boolean } | null): string | null {
     const ext = path.extname(filePath).toLowerCase();
+    // ★ 编码机器：还原/校验一律按原文件编码编解码（utf8 直读会把 GBK 源码当乱码校验）
+    const _enc = (encHint && encHint.enc) ? (encHint.enc as any) : 'utf8';
+    const _bom = !!(encHint && encHint.bom);
 
     if (ext === '.js') {
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
+            const content = decodeFileSync(filePath);
             new vm.Script(content, { filename: filePath });
         } catch (syntaxErr: any) {
             const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 250);
             if (originalContent !== null) {
-                try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
+                try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
             } else {
                 try { fs.unlinkSync(filePath); } catch (_) {}
             }
@@ -130,12 +135,12 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
         }
     } else if (ext === '.mjs' || ext === '.cjs') {
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
+            const content = decodeFileSync(filePath);
             new Function(content);
         } catch (syntaxErr: any) {
             const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 250);
             if (originalContent !== null) {
-                try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
+                try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
             } else {
                 try { fs.unlinkSync(filePath); } catch (_) {}
             }
@@ -143,12 +148,12 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
         }
     } else if (ext === '.json') {
         try {
-            const jsonContent = fs.readFileSync(filePath, 'utf8');
+            const jsonContent = decodeFileSync(filePath);
             JSON.parse(jsonContent);
         } catch (jsonErr: any) {
             const msg = (jsonErr.message || String(jsonErr)).replace(/\n/g, ' ').substring(0, 250);
             if (originalContent !== null) {
-                try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
+                try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
             } else {
                 try { fs.unlinkSync(filePath); } catch (_) {}
             }
@@ -158,11 +163,11 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
         // ★ 结构门（2026-08-07）: CSS 花括号平衡 / HTML button 平衡+嵌套 + 重复 id
         // 补 JS/JSON 语法门覆盖不到的粘连事故（F35 CSS 规则粘连 / F73 HTML 按钮嵌套）
         try {
-            const structContent = fs.readFileSync(filePath, 'utf8');
+            const structContent = decodeFileSync(filePath);
             const structErr = checkStructureText(ext, structContent);
             if (structErr) {
                 if (originalContent !== null) {
-                    try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
+                    try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
                 } else {
                     try { fs.unlinkSync(filePath); } catch (_) {}
                 }
@@ -191,7 +196,12 @@ export function registerEditIpc(): void {
                     } catch (_) { /* stat failed, proceed */ }
                 }
 
-                const originalContent = await fs.promises.readFile(args.path, 'utf8');
+                // ★ 编码机器解码（2026-09-05）：AI 编辑与编辑器同一解码空间——
+                //   GBK 遗留文件先解码成文本再匹配/替换，写回时按原编码重编码
+                const dec0 = await decodeFile(args.path);
+                const originalContent = dec0.text;
+                const origEnc = dec0.info;
+                const rawSafe = dec0.info.enc === 'utf8'; // 非 utf8：字节偏移不可信 → 禁 L5
                 let content = originalContent;
                 const matchPlan: Array<{ edit: any; match: { start: number; end: number; matchLevel: number }; index: number }> = [];
                 const results: string[] = [];
@@ -317,8 +327,8 @@ export function registerEditIpc(): void {
                         }
                     }
 
-                    // L5: raw byte match (Buffer.indexOf)
-                    if (matchStart === -1) {
+                    // L5: raw byte match (Buffer.indexOf) — 仅 utf8 文件（非 utf8 字节偏移≠字符偏移）
+                    if (rawSafe && matchStart === -1) {
                         const findBuf = Buffer.from(ed.find, 'utf8');
                         const contentBuf = Buffer.from(content, 'utf8');
                         const bufIdx = contentBuf.indexOf(findBuf);
@@ -385,7 +395,7 @@ export function registerEditIpc(): void {
                         const normFind = aiNormalizeWhitespace(aiNormalizeCRLF(ed.find));
                         if (seg !== ed.find && normSeg !== normFind) {
                             // 3) 失配 → 对当前内容重新搜索，不再用过期偏移
-                            const ref = _refindCurrent(content, ed);
+                            const ref = _refindCurrent(content, ed, !rawSafe);
                             if (ref === null) {
                                 return `Error: edit #${plan.index + 1} match failed after earlier edits shifted the file — text not found in current content. Re-read the file and retry.`;
                             }
@@ -424,10 +434,11 @@ export function registerEditIpc(): void {
                 }
 
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
-                await fs.promises.writeFile(args.path, content);
+                // ★ 编码机器写回：按解码证据原编码回写（含固定 pin / 外部已变重测语义）
+                await encodeFile(args.path, content);
                 // ★ 自动语法门（§59）: JS/JSON 语法不过→还原+报错
                 const syntaxCtx = multiWarn || (results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1 || r.indexOf('L5') !== -1) ? 'whitespace-tolerant matching used — higher mismatch risk' : '');
-                const syntaxErr = checkSyntaxSync(args.path, originalContent, syntaxCtx || undefined);
+                const syntaxErr = checkSyntaxSync(args.path, originalContent, syntaxCtx || undefined, origEnc);
                 if (syntaxErr) return syntaxErr;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1 || r.indexOf('L5') !== -1)
@@ -447,7 +458,7 @@ export function registerEditIpc(): void {
             try {
                 try { await fs.promises.access(args.path); return `Error: file already exists: ${args.path}. Use edit_file to modify existing files.`; } catch { /* doesn\x27t exist, proceed */ }
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
-                await fs.promises.writeFile(args.path, args.content);
+                await encodeFile(args.path, args.content, 'utf8'); // 新建文件恒 UTF-8（force 同时清残留 pin）
                 // ★ 自动语法门
                 const syntaxErr2 = checkSyntaxSync(args.path, null, undefined);
                 if (syntaxErr2) return syntaxErr2;
@@ -486,13 +497,19 @@ export function registerEditIpc(): void {
                         }
                     } catch (_) { }
                 }
-                // 捕获原始内容（用于语法检查失败时还原）
+                // ★ 捕获原始内容（语法检查失败还原用）——编码机器解码（不存在 = 新文件）
                 let origContent: string | null = null;
-                try { origContent = await fs.promises.readFile(args.path, 'utf8'); } catch (_) {}
+                let origEncW: { enc: string; bom: boolean } | null = null;
+                try {
+                    const decW = await decodeFile(args.path);
+                    origContent = decW.text;
+                    origEncW = decW.info;
+                } catch (_) {}
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
-                await fs.promises.writeFile(args.path, args.content);
+                // ★ 编码机器写回：存在 → 原编码保持；新建 → UTF-8
+                await encodeFile(args.path, args.content);
                 // ★ 自动语法门
-                const syntaxErr3 = checkSyntaxSync(args.path, origContent, undefined);
+                const syntaxErr3 = checkSyntaxSync(args.path, origContent, undefined, origEncW);
                 if (syntaxErr3) return syntaxErr3;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 return `File written: ${args.path} (${args.content.length} chars)`;

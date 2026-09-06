@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { _sn } from './ipc-state';
 import { _tlBlobPath, _gunzipSync } from './timeline-store';
+import { decodeFile, encodeFile, registerFileEncodingIpc } from './file-encoding';
 
 const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
 
@@ -91,6 +92,12 @@ const FINGERPRINT_TAIL = 128;
 function _cacheKeyForPath(p: string): string {
     return process.platform === 'win32' ? p.toLowerCase() : p;
 }
+
+// ============================================================================
+// ★ 文本编码机器（2026-09-05 GBK 乱码根治 · 最终闭环）：
+//   唯一真理源 = shell/file-encoding.ts（读解码/写编码/固定/另存/新鲜度全在本模块），
+//   本文件内不再有任何内联编码逻辑——一切文本读写给 file-encoding.ts（详 do/消除乱码）。
+// ============================================================================
 
 function computeFingerprint(filePath: string): string | null {
     try {
@@ -506,10 +513,16 @@ async function _txRecover(): Promise<void> {
 }
 
 export function registerFsIpc(): void {
+    // ★ 编码机器 IPC（encoding 查询 / setFileEncoding 固定），详 do/消除乱码
+    registerFileEncodingIpc();
+
     ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
 
     ipcMain.handle('qqqide:fs:read', async (_e, p: string) => {
-        try { return await fs.promises.readFile(p, 'utf8'); } catch (e: any) {
+        try {
+            // ★ 编码机器统一解码（file-encoding.ts，详 do/消除乱码）
+            return (await decodeFile(p)).text;
+        } catch (e: any) {
             if (e.code === 'ENOENT') return null;
             throw e;
         }
@@ -531,10 +544,15 @@ export function registerFsIpc(): void {
         return true;
     });
 
-    ipcMain.handle('qqqide:fs:write', async (_e, p: string, content: any) => {
+    ipcMain.handle('qqqide:fs:write', async (_e, p: string, content: any, enc?: string | null) => {
         try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
-        const buf = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8');
-        await _atomicWrite(p, buf);
+        if (Buffer.isBuffer(content)) {
+            await _atomicWrite(p, content);
+        } else {
+            // ★ 编码机器统一编码（原编码回写/另存转换，file-encoding.ts）
+            //   第三参 enc：undefined=自动（固定优先/fresh 复用/外部已变重测）；字符串=另存为该编码（清固定）
+            await encodeFile(p, String(content), (enc as any) || undefined);
+        }
         return true;
     });
 
@@ -864,7 +882,8 @@ export function registerFsIpc(): void {
             if (st.size > READ_FILE_MAX) {
                 return 'Error: file ' + path.basename(args.path) + ' is ' + (st.size / 1024 / 1024).toFixed(1) + 'MB. Use start_line/end_line to paginate.';
             }
-            let content = await fs.promises.readFile(args.path, 'utf8');
+            // ★ 编码机器统一解码（file-encoding.ts）——AI 读遗留中文文件不再乱码，与编辑器同一证据
+            let content = (await decodeFile(args.path)).text;
             // Record snapshot for qwr machine (external modification detection)
             try { _sn[args.path] = { mtimeMs: st.mtimeMs, size: st.size }; } catch { /* best-effort */ }
             // ★ 2026-08-18: U+FFFD 诊断提示（内容损伤 vs 工具解码错，AI 可区分）

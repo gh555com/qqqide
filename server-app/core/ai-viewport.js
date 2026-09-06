@@ -480,18 +480,27 @@
   }
 
   function _saveRecents() {
+    // ★ 2026-09-05 拉平修复（客户历史观感丢失实锤）: 合并结果回填内存态，local 与 OS
+    //   双写 merged —— 旧实现只 merge OS 侧，local 恒为本实例视图；菜单/a 列表读 local
+    //   时缺 OS 独有的其他实例历史（dev 09-05 加的 gaea 绿色包菜单不可见实锤）。
+    //   现任何 bump 后 local ≡ OS ≡ 内存态，升级 Data 备份恢复也不丢（local 即全量）。
     try {
-      var s = _qgsNs();
-      if (s) s.set(RECENT_KEY, _recentFolders).catch(function () { });
-      // ★ OS 级双写 (2026-08-16): 与 ws.sq3 同步 — 任意启动目录添加过的目录永久留存
-      // ★ 2026-08-30 并集合并：读 OS 现有列表合并后写回，防整表覆盖抹掉其他实例历史
       var ws = _wsBridge();
+      var writeLocal = function (list) {
+        if (!list || list.length === 0) return;
+        var s = _qgsNs();
+        if (s) s.set(RECENT_KEY, list).catch(function () { });
+      };
       if (ws && _recentsLoaded) {
         _mergeRecentsWithOs(_recentFolders, ws).then(function (merged) {
           if (merged && merged.length > 0) {
+            _recentFolders = merged;
             ws.set(WS_RECENT_KEY, merged).catch(function () { });
+            writeLocal(merged);
           }
         });
+      } else {
+        writeLocal(_recentFolders);
       }
     } catch (_) { }
   }
@@ -599,11 +608,13 @@
       if (_ap) auxs.push(_ap);
     }
     ws.set(WS_FORM_PREFIX + mainFolder, auxs).catch(function () { });
-    // ★ recentFolders OS 兜底（recent = "打开过"记录，任何窗口都同步；等 load 完成防空数组覆盖磁盘）
+    // ★ recentFolders OS 兜底（2026-09-05 修复）: 改走 _saveRecents 并集合并——
+    //   旧实现整表 set 覆盖 OS，本窗口内存态缺的（其他实例新增历史）被抹掉（q3 蒸发实锤），
+    //   与 2026-08-30 bump 路径修复同根同源，此第二条写入路径当时漏改。
     var ready = _recentsReady || Promise.resolve();
     ready.then(function () {
       if (!_recentsLoaded || _recentFolders.length === 0) return;
-      ws.set(WS_RECENT_KEY, _recentFolders.slice(0, MAX_RECENT)).catch(function () { });
+      _saveRecents();
     });
   }
 

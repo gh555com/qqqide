@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+
+<!-- Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. -->
+<!-- Solar House — 服务器真理竖版躲避游戏（A 区 goods） 玩法规格: gaea/docs/Solar House 设计.md -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar House</title>
+<style>
+:root {
+    --base03: #002d20; --base02: #07362e; --base01: #777777; --base00: #7a7874;
+    --base0: #7a7874; --base1: #a8a6a2; --base2: #eee8d5; --base3: #fdf6e3;
+    --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #c83070;
+    --violet: #7e6c8e; --blue: #e8a030; --cyan: #2a9a78; --green: #859900;
+    --primary-color: var(--yellow); --background-color: var(--base3);
+    --card-bg: var(--base2); --text-primary: var(--base00); --border-color: #d3c6aa;
+}
+[data-theme="dark"] {
+    --base03: #fdf6e3; --base02: #eee8d5; --base01: #97978a; --base00: #c8c4b8;
+    --base0: #a8a49c; --base1: #6a6660; --base2: #2a2a2a; --base3: #1e1e1e;
+    --yellow: #d4a017; --orange: #e07020; --red: #ff6666; --magenta: #b85872;
+    --violet: #a08060; --blue: #d4a017; --cyan: #5ab890; --green: #8fbc5a;
+    --primary-color: var(--yellow); --background-color: #1e1e1e;
+    --card-bg: #2a2a2a; --text-primary: #dcd8d0; --border-color: #333333;
+}
+html { forced-color-adjust: none !important; }
+* { box-sizing: border-box; }
+body {
+    margin: 0; padding: 0; font-family: Tahoma, sans-serif; font-size: 12px;
+    background: var(--background-color); color: var(--text-primary);
+    overflow: hidden; user-select: none; -webkit-user-select: none;
+    width: 100vw; height: 100vh;
+}
+.sh-page { display: none; position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none; }
+.sh-page::-webkit-scrollbar { display: none; }
+.sh-page.on { display: block; }
+
+/* ── home ── */
+.sh-home { padding: 10px 10px 20px; text-align: center; }
+.sh-title { font-size: 26px; font-weight: 700; letter-spacing: 2px; margin: 10px 0 2px; color: var(--base03); }
+[data-theme="dark"] .sh-title { color: var(--base02); }
+.sh-sub { font-size: 11px; color: var(--base1); margin-bottom: 10px; line-height: 1.7; }
+.sh-prize { font-size: 10px; color: var(--base0); background: var(--card-bg); border-radius: 4px; padding: 5px 6px; margin: 0 auto 10px; display: inline-block; line-height: 1.6; border: 1px solid var(--border-color); }
+.sh-btn {
+    display: block; width: 100%; height: 44px; margin: 8px 0;
+    font-size: 17px; font-weight: 700; letter-spacing: 3px;
+    background: #fff; color: #000; border: 2px solid #000; border-radius: 6px;
+    cursor: pointer; transition: all .15s;
+}
+.sh-btn:hover { background: #000; color: #fff; }
+.sh-btn:disabled { opacity: .45; cursor: default; background: #fff; color: #999; border-color: #999; }
+.sh-btn.sh-btn-ghost { background: transparent; border-color: var(--border-color); color: var(--base1); font-size: 13px; height: 32px; letter-spacing: 1px; font-weight: 400; }
+.sh-btn.sh-btn-ghost:hover { border-color: var(--red); color: var(--red); background: transparent; }
+.sh-msg { min-height: 16px; font-size: 11px; color: var(--red); margin: 2px 0 6px; white-space: pre-wrap; }
+
+/* ── board ── */
+.sh-board { margin-top: 6px; border-top: 1px solid var(--border-color); padding-top: 6px; }
+.sh-board h3 { margin: 4px 0 6px; font-size: 12px; text-align: left; color: var(--base03); }
+[data-theme="dark"] .sh-board h3 { color: var(--base02); }
+.sh-brow { display: flex; align-items: center; font-size: 11px; padding: 3px 4px; border-radius: 3px; line-height: 1.4; }
+.sh-brow:nth-child(odd) { background: var(--card-bg); }
+.sh-brow.me { outline: 1px solid var(--primary-color); }
+.sh-brow .rk { width: 22px; text-align: right; margin-right: 8px; flex: 0 0 auto; }
+.sh-brow .rk.top { font-weight: 700; color: var(--primary-color); }
+.sh-brow .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.sh-brow .sc { font-weight: 700; color: var(--base03); }
+[data-theme="dark"] .sh-brow .sc { color: var(--base02); }
+.sh-brow .pr { width: 30px; text-align: right; color: var(--orange); font-size: 10px; flex: 0 0 auto; }
+.sh-brow.me .nm { color: var(--primary-color); font-weight: 700; }
+.sh-mynone { font-size: 10px; color: var(--base1); text-align: left; margin-top: 3px; }
+
+/* ── game ── */
+#sh-game { background: #fff; }
+#sh-wrap { position: absolute; left: 50%; top: 0; transform-origin: left top; }
+#sh-canvas { display: block; background: #fff; }
+#sh-keyhint {
+    position: absolute; left: 0; right: 0; bottom: 2px; text-align: center;
+    font-size: 10px; color: #666; pointer-events: none; letter-spacing: 1px;
+}
+#sh-quit {
+    display: none; position: absolute; top: 4px; right: 4px; z-index: 4;
+    background: #fff; color: #666; border: 1px solid #999; border-radius: 3px;
+    font-size: 10px; padding: 2px 7px; cursor: pointer; letter-spacing: 1px;
+}
+#sh-game.on #sh-quit { display: block; }
+#sh-quit:hover { border-color: var(--red); color: var(--red); }
+
+/* ── revive overlay ── */
+#sh-revive {
+    display: none; position: absolute; inset: 0; background: rgba(253,246,227,.92);
+    z-index: 5; text-align: center; padding: 26px 14px;
+}
+[data-theme="dark"] #sh-revive { background: rgba(30,30,30,.92); }
+#sh-revive.on { display: block; }
+.sh-rv-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.sh-rv-desc { font-size: 11px; color: var(--base1); margin-bottom: 10px; line-height: 1.7; }
+.sh-rv-cd { font-size: 22px; font-weight: 700; color: var(--red); margin: 6px 0 12px; }
+.sh-rv-score { font-size: 12px; margin-bottom: 4px; color: var(--base03); }
+[data-theme="dark"] .sh-rv-score { color: var(--base02); }
+
+/* ── over ── */
+.sh-over { text-align: center; padding: 26px 16px; }
+.sh-over-title { font-size: 22px; font-weight: 700; letter-spacing: 4px; margin: 6px 0 16px; }
+.sh-stat { font-size: 13px; line-height: 2; color: var(--base03); }
+[data-theme="dark"] .sh-stat { color: var(--base02); }
+.sh-stat b { font-size: 20px; margin: 0 2px; }
+
+/* ── toast ── */
+#sh-toast {
+    display: none; position: absolute; left: 8px; right: 8px; bottom: 10px; z-index: 9;
+    background: #fff; color: #000; border: 2px solid #000; border-radius: 4px;
+    padding: 8px 10px; font-size: 12px; line-height: 1.5; text-align: center;
+    box-shadow: 2px 2px 0 rgba(0,0,0,.15);
+}
+#sh-toast.on { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ── home: 标题 + 规则 + 日榜 + 开局 ── -->
+<div id="sh-home" class="sh-page sh-home on">
+  <div class="sh-title">Solar House</div>
+  <div class="sh-sub">投 1 ge 开局 · 死亡可再投 1 ge 满血续命一次<br>Q / W 左右移动 · 1 2 3 释放技能</div>
+  <div class="sh-prize">日榜（UTC）前 10 发奖：<br>第1名 10 ge · 第2名 7 · 第3名 5 · 第4~10名 各 2</div>
+  <button id="sh-start" class="sh-btn">开 局 （ 1 ge ）</button>
+  <div id="sh-msg" class="sh-msg"></div>
+  <div id="sh-board" class="sh-board">
+    <h3 id="sh-board-title">今日榜</h3>
+    <div id="sh-board-rows"></div>
+    <div id="sh-board-me"></div>
+  </div>
+</div>
+
+<!-- ── game: canvas（300×(D+56) 逻辑, 等比缩放适配任意窗口高） ── -->
+<div id="sh-game" class="sh-page">
+  <div id="sh-wrap"><canvas id="sh-canvas" width="300" height="656"></canvas></div>
+  <div id="sh-keyhint">Q/W 移动 · 1 激光 · 2 回血 · 3 吸收</div>
+  <button id="sh-quit" title="放弃本局">弃局</button>
+  <div id="sh-revive">
+    <div class="sh-rv-score" id="sh-rv-score"></div>
+    <div class="sh-rv-title">被击落了</div>
+    <div class="sh-rv-desc">投 1 ge 满血原地复活（仅一次）<br>或放弃本局 · 当前分数保留上榜</div>
+    <div class="sh-rv-cd" id="sh-rv-cd">30s</div>
+    <button id="sh-revive-yes" class="sh-btn">续 命 （ 1 ge ）</button>
+    <button id="sh-revive-no" class="sh-btn sh-btn-ghost">放 弃 本 局</button>
+    <div id="sh-rv-msg" class="sh-msg"></div>
+  </div>
+</div>
+
+<!-- ── over: 结算 ── -->
+<div id="sh-over" class="sh-page">
+  <div class="sh-over-title">本 局 结 束</div>
+  <div class="sh-stat">得分 <b id="sh-o-score">0</b></div>
+  <div class="sh-stat">存活 <b id="sh-o-alive">0s</b></div>
+  <div class="sh-stat" id="sh-o-rankline" style="display:none">今日名次 <b id="sh-o-rank">-</b></div>
+  <button id="sh-again" class="sh-btn" style="margin-top:20px">再 来 一 局 （ 1 ge ）</button>
+  <button id="sh-backhome" class="sh-btn sh-btn-ghost">返回榜单</button>
+  <div class="sh-sub" id="sh-o-note" style="margin-top:14px"></div>
+</div>
+
+<div id="sh-toast"></div>
+
+<script src="solar-app.js"></script>
+</body>
+</html>

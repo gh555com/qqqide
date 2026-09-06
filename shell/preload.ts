@@ -51,10 +51,11 @@ const QQQ = {
     },
 
     // ---- file system (proxied to engine subprocess) ----
-    fs: {
-        read: (p: string) => ipcRenderer.invoke('qqqide:fs:read', p),
-        readBase64: (p: string) => ipcRenderer.invoke('qqqide:fs:readBase64', p),
-        write: (p: string, content: string | Buffer) => ipcRenderer.invoke('qqqide:fs:write', p, content),
+    fs: {        read: (p: string) => ipcRenderer.invoke('qqqide:fs:read', p),
+        readBase64: (p: string) => ipcRenderer.invoke('qqqide:fs:readBase64', p),
+        write: (p: string, content: string | Buffer, enc?: string | null) => ipcRenderer.invoke('qqqide:fs:write', p, content, enc), // enc=另存为该编码
+        encoding: (p: string) => ipcRenderer.invoke('qqqide:fs:encoding', p), // {enc,bom,pinned} | null
+        setFileEncoding: (p: string, enc: string | null) => ipcRenderer.invoke('qqqide:fs:setFileEncoding', p, enc),
         writeBase64: (p: string, base64: string) => ipcRenderer.invoke('qqqide:fs:writeBase64', p, base64),
         append: (p: string, content: string) => ipcRenderer.invoke('qqqide:fs:append', p, content),
         list: async (p: string) => {

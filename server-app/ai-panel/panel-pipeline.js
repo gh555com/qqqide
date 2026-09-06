@@ -210,13 +210,48 @@ async function _executeSend(intent) {
 
     // ── 闸门 ──
     var _isCompress = (sendType === 'compress') || intent.compressFloor;
-    if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery && !_isCompress) return;
-    if (_activeAgent && _activeAgent._stopState === 'stopping') return;
+    // ★ 2026-09-06 修复（网络中断红框后队列消息消失）：队列消息在 _triggerQueueSend 已 shift
+    //   出队——出队必达或必还：任何闸门拦截都必须把消息归还队首，绝不静默消失（不进编辑框/
+    //   不建楼层/无红框 = 用户无任何恢复途径）。归还后消息回到队列条可见可编辑；用户点红框
+    //   「继续任务」恢复完成后 finally 排水自动续发（网络恢复即自动发完，不点则待命）。
+    var _requeueFromQueue = function () {
+        try {
+            if (typeof _queue === 'undefined' || !_queue) return;
+            _queue.unshift({
+                id: 'bk_' + Date.now() + '_rq',
+                text: content || '',
+                images: (images && images.length > 0)
+                    ? images.map(function (_im) { return { id: _im.id, base64: _im.base64, dataUrl: _im.dataUrl }; })
+                    : [],
+                selectedTier: (typeof tierIndex === 'number') ? tierIndex : selectedTier,
+                ts: Date.now()
+            });
+            if (typeof renderQueueStrip === 'function') renderQueueStrip();
+            if (typeof updateQueueBtn === 'function') updateQueueBtn();
+        } catch (_eRq) { }
+        _queueBusy = false;  // ★ 复位排水锁（防永久卡死）
+    };
+    if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery && !_isCompress) {
+        if (intent.fromQueue) _requeueFromQueue();
+        return;
+    }
+    if (_activeAgent && _activeAgent._stopState === 'stopping') {
+        if (intent.fromQueue) _requeueFromQueue();
+        return;
+    }
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !isRecovery) {
         // ★ 2026-08-11: fatal 拦截必须显式提示（q184 事故：红框未渲染时用户不知有恢复入口，
         //   Enter 静默吞 → "发任何消息都没反应"）。红框正常时此提示仅作指引
+        if (intent.fromQueue) {
+            _requeueFromQueue();
+            try {
+                if (window.parent && window.parent.qqqideQoast) {
+                    window.parent.qqqideQoast.show('网络中断：任务已中断，排队消息已保留在队列中——点击红框「继续任务」恢复后自动续发', { type: 'warning', duration: 6000 });
+                }
+            } catch (_e2) { }
+            return;
+        }
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('该任务已中断，请点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_e2) { }
-        if (intent.fromQueue) _queueBusy = false;  // ★ 队列直通被 fatal 拦截 → 复位排水锁（防永久卡死）
         return;
     }
     if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') return;
@@ -792,6 +827,23 @@ async function _executeSend(intent) {
             agent._sendTerminated = true;
             agent._floorFatal = true;
             agent._streaming = false;
+            // ★ 2026-09-04 停滞终止落盘（q257/q260 被杀零痕迹事故）：旧 _capAbort 只写内存 error + qoast，
+            //   agent-*.log 无一行 —— 20 分钟静默的卡点全靠事后考古。此处把终止瞬间现场落盘，下次秒定位。
+            try {
+                if (agent && typeof agent._writeFileLog === 'function') {
+                    var _capDiag = '✗ SEND-STALL KILL floor=' + (agent._currentFloorNum || '?')
+                        + ' house=' + (agent._houseIndex || '?')
+                        + ' streaming=' + !!agent._streaming
+                        + ' abortSource=' + (agent._abortSource || 'none')
+                        + ' toolExec=' + !!agent._toolExecActive
+                        + ' toolRenew=' + !!agent._toolCapRenewed
+                        + ' chainBusy=' + !!agent._chainBusy
+                        + ' gwErr=' + (agent._lastGatewayError || 0)
+                        + (agent._lastGatewayMessage ? ' msg=' + agent._lastGatewayMessage : '')
+                        + ' idleSec=' + Math.round(((performance.now() - (agent._lastProgressPerf || performance.now())) / 1000));
+                    agent._writeFileLog(_capDiag);
+                }
+            } catch (_) { }
             try { if (agent._stopCtrl) agent._stopCtrl.abort(); } catch (_) { }
             try { agent.setStopState('fatal'); } catch (_) { }
             // ★ 踹锁：_stopCtrl.abort() 对 HTTP/2 死连接无效（Chromium 108），agent.send() 永不返回
@@ -1288,7 +1340,9 @@ async function _executeSend(intent) {
         // ★ 链执行器 .then 已复位 _chainBusy，排水 sendMessage → _enqueueSend 追加链尾串行执行
         // ★ 排水（2026-08-20 修订）：自动暂停已整体废除（队列直通发送不触碰编辑框，
         //   草稿保护无存在必要）——仅人工暂停（_queuePausedManual）阻止排水。
-        if (_queue && _queue.length > 0 && _activeAgent === agent && !_queuePaused) {
+        // ★ 2026-09-06: fatal 态不排水（网络中断实锤：fatal 后立即排水 → 下一条 shift 出队 →
+        //   fatal 闸门拦截 → 消息永久丢失）。待命队列，等用户点红框恢复成功后此条件自然放行续发。
+        if (_queue && _queue.length > 0 && _activeAgent === agent && !_queuePaused && agent._stopState !== 'fatal') {
             _triggerQueueSend();
         }
         if (_activeAgent === agent) {

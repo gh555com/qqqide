@@ -40,7 +40,7 @@ const CURVE_FILE_MAX = 512 * 1024;
 let _userData = '';
 let _label = ''; // v13: 启动包标识 = 含 qqqide.exe 的包根目录完整路径（绿色包 E:\s\w\qqqide-win-x64 / dev 项目根），qoast 文案用
 let _timer: ReturnType<typeof setInterval> | null = null;
-let _last = { ts: 0, mb: 0, procs: 0, rows: [] as { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[] }; // 最新广播快照（成功值 / 失败保留旧值）
+let _last = { ts: 0, mb: 0, procs: 0, win: 0, rows: [] as { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[] }; // 最新广播快照（成功值 / 失败保留旧值）
 let _snapBusy = false;          // 防 10s 超时窗口内重复发命令
 
 // ── v6 CPU 状态（核数口径） ──
@@ -258,7 +258,9 @@ async function _snapshot(): Promise<void> {
       }
       const cores = coresCnt > 0 ? Math.min(coresSum, _ncpu || coresSum) : null; // 树级瞬时核数（顶封 ncpu 防尖峰）
       if (cores !== null) { _cpuAccSum += cores; _cpuAccCnt++; }
-      _last = { ts: now, mb: r.totalMB, procs: r.nodes || 0, rows };
+      // v14: 窗口数 = py-broker EnumWindows 顶层可见窗口计数（IDE 窗 + DevTools 独立窗，用户可见口径）；
+      // 非正数/缺失（枚举失败）→ 保留上次值
+      _last = { ts: now, mb: r.totalMB, procs: r.nodes || 0, win: (typeof r.nwin === 'number' && r.nwin > 0) ? r.nwin : _last.win, rows };
       if (r.nodes) _peakNodesThisMin = Math.max(_peakNodesThisMin, r.nodes); // 分钟进程数峰值（记点粒度）
       _recordCurvePoint(r.totalMB, _peakNodesThisMin, _cpuAccCnt ? _cpuAccSum / _cpuAccCnt : undefined);
       // 基线重建（必须先差分后重建；sec 累计跨基线保留）
@@ -295,8 +297,8 @@ function _cpuMsg(): { cores: number | null; totalSec: number; avgCores: number }
 
 async function _tick(): Promise<void> {
   await _snapshot();
-  const msg: { ts: number; mb: number; procs: number; bootAt: number; cpu?: { cores: number | null; totalSec: number; avgCores: number }; ncpu?: number; rows?: { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[]; pt?: { t: number; v: number; n?: number; cu?: number }; label?: string } = {
-    ts: _last.ts || Date.now(), mb: _last.mb, procs: _last.procs, bootAt: _bootAt, rows: _last.rows, label: _label,
+  const msg: { ts: number; mb: number; procs: number; win?: number; bootAt: number; cpu?: { cores: number | null; totalSec: number; avgCores: number }; ncpu?: number; rows?: { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[]; pt?: { t: number; v: number; n?: number; cu?: number }; label?: string } = {
+    ts: _last.ts || Date.now(), mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, label: _label,
   };
   // v6: CPU 广播——核数口径（瞬时核数 / 累计秒 / 平均核数），ncpu 供渲染层 y 轴顶封
   msg.cpu = _cpuMsg();
@@ -329,7 +331,7 @@ export function memMeterInit(userData: string): void {
   if (_timer) return;
   _userData = userData;
   try { _label = _resolveLabel(); } catch { _label = 'qqqide'; }
-  ipcMain.handle('qqqide:mem:get-metrics', () => ({ mb: _last.mb, procs: _last.procs, bootAt: _bootAt, rows: _last.rows, label: _label, cpu: _cpuMsg(), ncpu: _ncpu }));
+  ipcMain.handle('qqqide:mem:get-metrics', () => ({ mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, label: _label, cpu: _cpuMsg(), ncpu: _ncpu }));
   ipcMain.handle('qqqide:mem:history', () => {
     // v7: 双流返回（memPts 内存曲线 / cpuPts CPU 曲线，渲染层按 ts 独立合并去重）
     const memPts: { t: number; v: number; n?: number }[] = [];
@@ -350,7 +352,7 @@ export function memMeterInit(userData: string): void {
         cpuPts.push({ t: _cpuT[j], cu: _cpuCU[j] });
       }
     }
-    return { memPts, cpuPts, len: _memLen, mb: _last.mb, procs: _last.procs, bootAt: _bootAt, rows: _last.rows, boots: _bootMarks.slice(), label: _label, cpu: _cpuMsg(), ncpu: _ncpu };
+    return { memPts, cpuPts, len: _memLen, mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, boots: _bootMarks.slice(), label: _label, cpu: _cpuMsg(), ncpu: _ncpu };
   });
   // v7: reset——scope 定案（'mem'/'cpu'/'all'），各自清各自文件+环形缓冲，互不影响；
   // mem reset 连带清垂线（垂线属 mem 流生命周期）；cpu reset 连带清 CPU 基线/累计

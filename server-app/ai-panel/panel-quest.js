@@ -189,6 +189,92 @@ async function _cleanStaleAllJsonTmp(root) {
     } catch (_) { /* best-effort */ }
 }
 
+// ═══ 显示楼层上限（设置 ai.floorCap：16/32，32=激活功能）动态跟随（2026-09-05）═══
+// 订阅父窗口 qqqSettings 变更（qqqSettings 可能晚于面板加载 → 重试兜底）；
+// 每面板仅绑定一次工作空间 → 每个 CardPool 恰好订阅一次，无重复订阅问题。
+function _watchFloorCapSetting() {
+    var tries = 0;
+    function trySub() {
+        var pw = null;
+        try { pw = parent && parent.window; } catch (_e) { pw = null; }
+        if (pw && pw.qqqSettings && pw.qqqSettings.onChange) {
+            try {
+                pw.qqqSettings.onChange('ai.floorCap', function () {
+                    if (typeof _reapplyFloorCap === 'function') _reapplyFloorCap();
+                });
+                return;
+            } catch (_e) { }
+        }
+        if (++tries < 80) setTimeout(trySub, 500);
+    }
+    trySub();
+}
+
+function _readFloorCapSetting() {
+    try {
+        var pw = parent && parent.window;
+        if (pw && pw.qqqSettings && pw.qqqSettings.get) {
+            var _s = String(pw.qqqSettings.get('ai.floorCap', '16'));
+            if (_s === '32') return 32;
+        }
+    } catch (_e) { }
+    return 16;
+}
+
+// ★ 上限变更即时重排：
+//   16→32（加量）→ 曾因旧上限被裁掉旧楼层的 quest 从磁盘全量重载重建（保留滚动位置）；
+//   32→16（减量）→ 仅裁 DOM；
+//   建楼中 quest 绝不重建（流式渲染锚点依赖 DOM，agent 不断流，下次自然重载生效）。
+function _reapplyFloorCap() {
+    if (!cardPool || !questStore) return;
+    var cap = _readFloorCapSetting();
+    var ids = Object.keys(cardPool._cards || {});
+    for (var i = 0; i < ids.length; i++) {
+        var qid = ids[i];
+        var card = cardPool._cards[qid];
+        if (!card || !card.dom || !card._contentWrap) continue;
+        // 建楼中 quest：不断流不重建，仅按新上限裁剪（旧楼层随后续建楼自然按新上限保留）
+        if (card.buildingFloor !== null) {
+            try { cardPool._trimCapped(card); } catch (_e) { }
+            continue;
+        }
+        var domCount = 0;
+        for (var fn in card.floorDOM) { if (card.floorDOM.hasOwnProperty(fn)) domCount++; }
+        if (cap < domCount) {
+            // 32→16：直接裁剪最老楼层 DOM
+            try { cardPool._trimCapped(card); } catch (_e) { }
+            continue;
+        }
+        // 16→32：DOM 数 < 数据层数 = 曾被裁过 → 从磁盘重载全量重建
+        if (cap > domCount && card.totalFloors > domCount) {
+            var _cont = card.dom && card.dom.parentNode;
+            var _st = _cont ? _cont.scrollTop : 0;
+            (function (c, cont, scrollTop, questId) {
+                c._contentWrap.innerHTML = '';
+                c.floorDOM = {};
+                c.totalFloors = 0;
+                c.floors = [];
+                c._floorMetaMap = {};
+                cardPool._loadCardData(c).then(function () {
+                    try {
+                        if (cont) {
+                            cont.scrollTop = scrollTop;
+                            requestAnimationFrame(function () { if (cont) cont.scrollTop = scrollTop; });
+                        }
+                        // 活跃 quest：重连 _activeAiDiv（与 floor-completed 跨面板重载同款）
+                        if (typeof questActiveId !== 'undefined' && questId === questActiveId && _activeAgent) {
+                            var _nums = Object.keys(c.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
+                            if (_nums.length > 0 && c.floorDOM[_nums[0]] && c.floorDOM[_nums[0]].aiEl) {
+                                _activeAgent._activeAiDiv = c.floorDOM[_nums[0]].aiEl;
+                            }
+                        }
+                    } catch (_e2) { }
+                }).catch(function () { });
+            })(card, _cont, _st, qid);
+        }
+    }
+}
+
 // 初始化工作空间
 async function _initWorkspace(root) {
     // [silent] workspace init
@@ -316,6 +402,8 @@ async function _initWorkspace(root) {
     if (typeof CardPool !== 'undefined') {
         cardPool = new CardPool($messages);
         window.cardPool = cardPool;
+        // ★ 显示楼层上限（设置 ai.floorCap：16/32）变更 → 本面板即时重排楼层 DOM（2026-09-05）
+        _watchFloorCapSetting();
     } else {
         console.error('[card-pool] CardPool undefined — card-pool.js failed to load!');
     }

@@ -30,6 +30,16 @@ function resolveWebappDir(appRoot: string): string | null {
     return null;
 }
 
+// ★ 音效开关闸门（2026-09-04）：渲染层经 audio:invoke('setSfxDisabled',{patterns}) 推送文件子串黑名单
+//   命中即静默跳过（play 返回 {ok:true} 防调用方 .then/.catch 链异常）——所有播放点（含 iframe
+//   Roam/kmd/QA、主进程编队召回 playSfxFile）统一被拦，播放点零侵入。主进程初始空 = 全响，
+//   渲染层 audio-volume.js 加载后自动推送当前用户设置（默认全开 → 空集）。
+let _sfxDisabledPatterns: string[] = [];
+function _sfxSkipped(file: string): boolean {
+    if (!file || _sfxDisabledPatterns.length === 0) { return false; }
+    return _sfxDisabledPatterns.some(p => p && file.includes(p));
+}
+
 function resolveSfxPath(appRoot: string, file: string): string {
     if (!file) { return ''; }
     if (file.startsWith('yz:')) {
@@ -49,7 +59,9 @@ function resolveSfxPath(appRoot: string, file: string): string {
 export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
     ipcMain.handle('qqqide:audio:play', async (_e, file: string, opts?: any) => {
         try {
-            const abs = resolveSfxPath(appRoot, String(file || ''));
+            const f = String(file || '');
+            if (_sfxSkipped(f)) { return { ok: true, skipped: true }; }
+            const abs = resolveSfxPath(appRoot, f);
             if (!abs) { return { ok: false, error: 'empty_path' }; }
             const vol = opts && typeof opts.volume === 'number' ? opts.volume : 1.0;
             return await engine.invoke('play_sfx', { path: abs, volume: vol }, 5000);
@@ -70,6 +82,12 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
     });
 
     ipcMain.handle('qqqide:audio:invoke', async (_e, action: string, params?: any) => {
+        // ★ 音效开关同步（渲染层 audio-volume.js 唯一推送方，覆盖式幂等）
+        if (String(action || '') === 'setSfxDisabled') {
+            const pats = params && Array.isArray(params.patterns) ? params.patterns : [];
+            _sfxDisabledPatterns = pats.map((p: any) => String(p)).filter(Boolean);
+            return { ok: true };
+        }
         try {
             return await engine.invoke(String(action || ''), params || {}, 10000);
         } catch (err: any) {
@@ -107,7 +125,9 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
 /** 主进程直呼音效（编队召唤成功反馈等）— 与 qqqide:audio:play 同一路径解析 */
 export function playSfxFile(engine: AudioEngine, appRoot: string, file: string, volume = 1.0): void {
     try {
-        const abs = resolveSfxPath(appRoot, String(file || ''));
+        const f = String(file || '');
+        if (_sfxSkipped(f)) { return; }
+        const abs = resolveSfxPath(appRoot, f);
         if (!abs) { return; }
         engine.invoke('play_sfx', { path: abs, volume }, 5000).catch(() => { /* ignore */ });
     } catch { /* ignore */ }

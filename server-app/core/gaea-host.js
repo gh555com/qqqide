@@ -168,10 +168,78 @@
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // ★ A 区 pin 宽度（goods 声明 pinW 时: 切入即 pin 该宽度, 切走还原用户偏好）
+  //   偏好存 only.sq3 key `pin.savedW.{id}`; A 宽一切变更经 shell qqqAZone（_shClampAzoneW 闭环）
+  //   场景自洽: 崩溃于 pin 会话 → savedW 保留, 重启 restore 活跃 goods 后切走即还原;
+  //   崩溃于切入前（aZoneActive 未及持久化）→ 任意后续 show() 惰性 heal 还原
+  // ═══════════════════════════════════════════════════════════════
+  var _pinGen = 0; // 令牌: 快速切走又切回时, 旧 leave 的异步还原不得覆盖新 pin
+  function _pinOf(id) {
+    const d = goods.get(id);
+    return (d && typeof d.pinW === 'number' && d.pinW > 0) ? d.pinW : 0;
+  }
+  function _pinKey(id) { return 'pin.savedW.' + id; }
+  function _pinDB() {
+    const root = window._workspaceRoot || _folderFromUrl();
+    if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
+    try { return window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' }); } catch (_) { return null; }
+  }
+  function _pinSavePref(id) {
+    const db = _pinDB(); if (!db) return;
+    db.get(_pinKey(id)).then(function (v) {
+      if (v === null || v === undefined) {
+        let w = 0;
+        try { if (window.qqqAZone) w = window.qqqAZone.getW(); } catch (_) {}
+        if (w > 0) db.set(_pinKey(id), w).catch(function () {});
+      }
+    }).catch(function () {});
+  }
+  function _pinRestorePref(id, gen) {
+    const db = _pinDB(); if (!db) return;
+    db.get(_pinKey(id)).then(function (v) {
+      if (gen !== _pinGen) return; // 期间又 pin/leave 过 → 让位新操作
+      db.set(_pinKey(id), null).catch(function () {}); // 取即删（null=删）
+      if (typeof v === 'number' && v > 0 && window.qqqAZone) {
+        try { window.qqqAZone.setW(v); } catch (_) {}
+      }
+    }).catch(function () {});
+  }
+  function _pinEnter(id) {
+    if (!_pinOf(id) || !window.qqqAZone) return;
+    _pinSavePref(id); // 仅首次记录当前偏好
+    try { window.qqqAZone.setW(_pinOf(id)); } catch (_) {}
+    _pinGen++; // 失效一切在途 leave 还原
+  }
+  function _pinLeave(id) {
+    if (!_pinOf(id)) return;
+    var g = ++_pinGen;
+    _pinRestorePref(id, g);
+  }
+  // 惰性 heal: 活跃 goods 无 pinW 但库内残留 pin.savedW.*（崩溃遗留）→ 还原并清理
+  function _pinHealLeftover() {
+    if (!window.qqqAZone) return;
+    const db = _pinDB(); if (!db) return;
+    var g = _pinGen;
+    goods.forEach(function (def, id) {
+      if (!_pinOf(id)) return;
+      if (id === _activeId) return; // 活跃 pin 会话中: 由 _pinEnter/_pinLeave 管, 不干预
+      db.get(_pinKey(id)).then(function (v) {
+        var still = (g === _pinGen); // 期间发生 pin/leave → 只清残留不还原（让位新操作）
+        if (still && typeof v === 'number' && v > 0) {
+          try { window.qqqAZone.setW(v); } catch (_) {}
+        }
+        db.set(_pinKey(id), null).catch(function () {});
+      }).catch(function () {});
+    });
+  }
+
   // ---- Show ----
   function show(id) {
     if (!goods.has(id)) return;
     if (!_built) { if (!_pendingShow.includes(id)) _pendingShow.push(id); return; }
+    const prevId = _activeId;
+    if (prevId !== id && prevId && _pinOf(prevId)) _pinLeave(prevId); // ★ 切走 pin goods → 还原用户偏好
 
     // Hide current
     if (_activeId && instances.has(_activeId)) {
@@ -270,6 +338,8 @@
     if (inst.el) inst.el.style.display = '';
 
     _activeId = id;
+    if (prevId !== id && _pinOf(id)) _pinEnter(id); // ★ 切入 pin goods → 记偏好 + pin
+    _pinHealLeftover();
     renderTabBar();
     _renderBrandMenu();
     _persistActive();
@@ -600,7 +670,7 @@
     if (!brand) return;
 
     var panelGoods = listPanelGoods();
-    var readyIds = ['kope-a'];
+    var readyIds = ['kope-a', 'solar-house'];
     panelGoods = panelGoods.filter(function (g) { return readyIds.indexOf(g.id) !== -1; });
     if (panelGoods.length === 0) return;
 
@@ -707,6 +777,7 @@
 
   // ---- Remove (full teardown) ----
   function remove(id) {
+    if (_pinOf(id)) _pinLeave(id);
     if (instances.has(id)) {
       const inst = instances.get(id);
 
