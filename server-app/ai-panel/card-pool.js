@@ -7,7 +7,7 @@
 //   ① 一张 quest = 一张 Card（完整 DOM 子树），创建后永不 innerHTML 清空
 //   ② 切换 quest = 纯 CSS display 显隐，零 DOM 销毁
 //   ③ 每张 Card 最多持有 FLOOR_CAP_CAPPED + FLOOR_CAP_BUILDING 层楼 DOM
-//      ★ 2026-09-05: FLOOR_CAP_CAPPED 动态化 — 设置 ai.floorCap（16/32，32=激活功能）
+//      ★ 2026-09-05: FLOOR_CAP_CAPPED 动态化 — 设置 ai.floorCap（16/32/64，32/64=激活功能；64 档 2026-09-06）
 //   ④ 超限 → 最老楼层 DOM remove() 彻底删除（conversation JSON 保留于内存）
 //   ⑤ Card Pool 上限 CARD_POOL_MAX，LRU 驱逐
 //   ⑥ A1 块始终在电子钟上方（固定创建顺序）
@@ -21,7 +21,7 @@ var CardPool = (function () {
   var FLOOR_CAP_BUILDING = 1;   // 最多显示在建楼层数（0 或 1）
   var CARD_POOL_MAX = 10;       // Card Pool 上限
 
-  // ★ 显示楼层上限动态读取（2026-09-05）：设置 → ai.floorCap（16/32，32=激活用户功能）
+  // ★ 显示楼层上限动态读取（2026-09-05；64 档 2026-09-06）：设置 → ai.floorCap（16/32/64，32/64=激活用户功能）
   //   一切上限读取点收敛此处（构建视口窗口 / 裁剪 / 公开常量），设置变更由
   //   panel-quest.js _reapplyFloorCap 即时重建 DOM，此处只管「当下值」
   function _floorCap() {
@@ -29,6 +29,7 @@ var CardPool = (function () {
       if (parent && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
         var _s = String(parent.window.qqqSettings.get('ai.floorCap', '16'));
         if (_s === '32') return 32;
+        if (_s === '64') return 64;
       }
     } catch (_e) { }
     return FLOOR_CAP_FALLBACK;
@@ -281,7 +282,7 @@ var CardPool = (function () {
       // 提取 quest 级 timings（用于停止态时钟渲染）
       var questTimings = (questMeta && questMeta.floorTimings) || [];
 
-      // 构建视口 DOM：最近 _floorCap() 层（设置 ai.floorCap 16/32）
+      // 构建视口 DOM：最近 _floorCap() 层（设置 ai.floorCap 16/32/64）
       var startIdx = Math.max(0, card.totalFloors - _floorCap());
       for (var i = startIdx; i < card.totalFloors; i++) {
         try {
@@ -825,7 +826,9 @@ var CardPool = (function () {
           }
         }
         if (timing && aiEl._clockMin && aiEl._clockCanvas) {
-          var totalS = Math.floor((timing.durationMs || 0) / 1000);
+          // ★ 防御（2026-09-06）：历史 record 曾含 NaN（JSON→null）/跨轴负 durationMs → 归一非负，防灰饼+负分钟
+          var _durMs = (typeof timing.durationMs === 'number' && isFinite(timing.durationMs)) ? Math.max(0, timing.durationMs) : 0;
+          var totalS = Math.floor(_durMs / 1000);
           var min = Math.floor(totalS / 60);
           var sec = totalS % 60;
           aiEl._clockMin.textContent = min + 'm';
@@ -836,7 +839,7 @@ var CardPool = (function () {
               networkMs: timing.networkMs || 0,
               aiMs: timing.aiMs || 0,
               otherMs: timing.otherMs || 0,
-              totalMs: timing.durationMs || 0
+              totalMs: _durMs
             });
           }
           aiEl._clockCanvas.style.visibility = 'visible';
@@ -1055,7 +1058,7 @@ var CardPool = (function () {
     }
     cappedFloors.sort(function (a, b) { return a - b; });
 
-    var _capNow = _floorCap();  // ★ 动态上限（2026-09-05，设置 ai.floorCap 16/32）
+    var _capNow = _floorCap();  // ★ 动态上限（2026-09-05；64 档 2026-09-06，设置 ai.floorCap 16/32/64）
     while (cappedFloors.length > _capNow) {
       var oldest = cappedFloors.shift();
       var dom = card.floorDOM[oldest];

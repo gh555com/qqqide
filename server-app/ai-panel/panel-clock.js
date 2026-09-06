@@ -112,7 +112,9 @@ function drawPie(canvas, timing) {
     var n = timing.networkMs || 0;
     var d = timing.aiMs || 0;
     var t = timing.otherMs || 0;
-    var total = timing.totalMs || (n + d + t);
+    var total = timing.totalMs;
+    // ★ 防御（2026-09-06）：NaN/负/0 totalMs → 回落真实分段和（跨轴/损坏 record 曾致灰饼假象）
+    if (!(total > 0)) total = (n + d + t);
     if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 3, 0, Math.PI * 2); ctx.fill(); canvas._segments = null; return; }
     t = Math.max(0, total - n - d);
     var parts = [
@@ -305,14 +307,18 @@ function startFloorTimer(aiDiv, ag, resume) {
     ag._activeAiDiv = aiDiv;
     ag._floorEndSfxDone = false;  // ★ 新楼层开始 → 复位尘埃落定音效标记（每层一响）
     if (!resume || !ag._floorStartPerf) {
-        ag._floorStartPerf = performance.now();
+        // ★ wall-clock 基准（2026-09-06 跨轴事故修复）：performance.now() 是 per-document 时间轴——
+        //   Ctrl+R 热重载归零 / 跨面板 A2 tick 用各自轴相减 → elapsed 巨大负数（-480m 型）
+        //   → 负号横杠 + 数字乱跳 + 48px 大字超宽 → 横向滚动条 + 整个 UI 左右横跳。
+        //   Date.now() 全文档同轴，reload/跨 iframe 天然一致。
+        ag._floorStartPerf = Date.now();
     }
     ag._floorCurrentTiming = null;
     _initClockBlock(aiDiv);
     var clockMin = aiDiv._clockMin;
     var clockSec = aiDiv._clockSec;
     var canvas = aiDiv._clockCanvas;
-    var elapsed = performance.now() - ag._floorStartPerf;
+    var elapsed = Math.max(0, Date.now() - ag._floorStartPerf);
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
@@ -341,7 +347,7 @@ function startFloorTimer(aiDiv, ag, resume) {
             _ag._floorTimerId = null;
             return;
         }
-        var elapsed = performance.now() - _ag._floorStartPerf;
+        var elapsed = Math.max(0, Date.now() - _ag._floorStartPerf);  // ★ wall-clock（2026-09-06）
         var totalS = Math.floor(elapsed / 1000);
         var min = Math.floor(totalS / 60);
         var sec = totalS % 60;
@@ -411,7 +417,8 @@ function _playFloorEndSfx(ag) {
 function stopFloorTimer(timing, ag) {
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
     ag._floorCurrentTiming = timing;
-    var elapsed = performance.now() - ag._floorStartPerf;
+    // ★ wall-clock 基准（2026-09-06）：与 startFloorTimer 同轴；从未 start（perf=0）→ 0，防 epoch/NaN 写盘
+    var elapsed = (ag._floorStartPerf > 0) ? Math.max(0, Date.now() - ag._floorStartPerf) : 0;
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
@@ -635,7 +642,9 @@ function _tickCometClocks() {
     var pool = window.parent && window.parent.__qqq_agentPool;
     var reg = window.parent && window.parent.__qqq_buildingRegistry;  // 兜底用
     var localBQ = window.__qqq_localBuildingQuests || {};   // ★ IPC 同步的本地集合，优先
-    var now = performance.now();
+    // ★ wall-clock（2026-09-06）：A2 跨面板循环要减「建楼面板」的 _floorStartPerf——
+    //   performance.now() 各 iframe/热重载轴不同，相减即负几百 m（横杠+UI 横跳实锤）
+    var now = Date.now();
     var hasVisible = false;
     for (var i = 0; i < clocks.length; i++) {
         var clk = clocks[i];
@@ -674,7 +683,9 @@ function _tickCometClocks() {
         var aj = pool[qj];
         var aid = aj._activeAiDiv;
         if (!aid || !aid._clockBlock || !aid._clockBlock.isConnected) continue;
-        var fela = now - aj._floorStartPerf;
+        // ★ 守卫（2026-09-06）：agent 未 startFloorTimer（perf=0/未设）→ 跳过，防 epoch/NaN 值写屏（灰饼源）
+        if (!(aj._floorStartPerf > 0)) continue;
+        var fela = Math.max(0, now - aj._floorStartPerf);
         var fts = Math.floor(fela / 1000);
         if (aid._clockMin) aid._clockMin.textContent = Math.floor(fts / 60) + 'm';
         if (aid._clockSec) aid._clockSec.textContent = ':' + (fts % 60 < 10 ? '0' : '') + (fts % 60) + 's';

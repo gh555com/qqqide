@@ -86,6 +86,23 @@ body {
 #sh-game.on #sh-quit { display: block; }
 #sh-quit:hover { border-color: var(--red); color: var(--red); }
 
+/* ── wait overlay（同步中/回算确认中, 用户可见仅两种非游玩态之一）── */
+#sh-wait {
+    display: none; position: absolute; inset: 0; background: rgba(253,246,227,.94);
+    z-index: 6; text-align: center; padding: 30vh 20px 0;
+}
+[data-theme="dark"] #sh-wait { background: rgba(30,30,30,.94); }
+#sh-wait.on { display: block; }
+#sh-wait-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+#sh-wait-sub { font-size: 11px; color: var(--base1); line-height: 1.8; }
+#sh-wait .sh-spin {
+    width: 26px; height: 26px; margin: 0 auto 14px; border: 3px solid var(--base1);
+    border-top-color: var(--base03); border-radius: 50%;
+    animation: sh-rot 0.9s linear infinite;
+}
+[data-theme="dark"] #sh-wait .sh-spin { border-top-color: var(--base02); }
+@keyframes sh-rot { to { transform: rotate(360deg); } }
+
 /* ── revive overlay ── */
 #sh-revive {
     display: none; position: absolute; inset: 0; background: rgba(253,246,227,.92);
@@ -137,6 +154,11 @@ body {
   <div id="sh-wrap"><canvas id="sh-canvas" width="300" height="656"></canvas></div>
   <div id="sh-keyhint">Q/W 移动 · 1 激光 · 2 回血 · 3 吸收</div>
   <button id="sh-quit" title="放弃本局">弃局</button>
+  <div id="sh-wait">
+    <div class="sh-spin"></div>
+    <div id="sh-wait-title" class="sh-wait-title"></div>
+    <div id="sh-wait-sub" class="sh-wait-sub"></div>
+  </div>
   <div id="sh-revive">
     <div class="sh-rv-score" id="sh-rv-score"></div>
     <div class="sh-rv-title">被击落了</div>

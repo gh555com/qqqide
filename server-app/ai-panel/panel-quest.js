@@ -189,7 +189,7 @@ async function _cleanStaleAllJsonTmp(root) {
     } catch (_) { /* best-effort */ }
 }
 
-// ═══ 显示楼层上限（设置 ai.floorCap：16/32，32=激活功能）动态跟随（2026-09-05）═══
+// ═══ 显示楼层上限（设置 ai.floorCap：16/32/64，32/64=激活功能）动态跟随（2026-09-05；64 档 2026-09-06）═══
 // 订阅父窗口 qqqSettings 变更（qqqSettings 可能晚于面板加载 → 重试兜底）；
 // 每面板仅绑定一次工作空间 → 每个 CardPool 恰好订阅一次，无重复订阅问题。
 function _watchFloorCapSetting() {
@@ -216,14 +216,15 @@ function _readFloorCapSetting() {
         if (pw && pw.qqqSettings && pw.qqqSettings.get) {
             var _s = String(pw.qqqSettings.get('ai.floorCap', '16'));
             if (_s === '32') return 32;
+            if (_s === '64') return 64;
         }
     } catch (_e) { }
     return 16;
 }
 
-// ★ 上限变更即时重排：
-//   16→32（加量）→ 曾因旧上限被裁掉旧楼层的 quest 从磁盘全量重载重建（保留滚动位置）；
-//   32→16（减量）→ 仅裁 DOM；
+// ★ 上限变更即时重排（16/32/64 任意双向通吃，2026-09-06 起支持 64）：
+//   加量（如 32→64）→ 曾因旧上限被裁掉旧楼层的 quest 从磁盘全量重载重建（保留滚动位置）；
+//   减量（如 64→32）→ 仅裁 DOM；
 //   建楼中 quest 绝不重建（流式渲染锚点依赖 DOM，agent 不断流，下次自然重载生效）。
 function _reapplyFloorCap() {
     if (!cardPool || !questStore) return;
@@ -241,11 +242,11 @@ function _reapplyFloorCap() {
         var domCount = 0;
         for (var fn in card.floorDOM) { if (card.floorDOM.hasOwnProperty(fn)) domCount++; }
         if (cap < domCount) {
-            // 32→16：直接裁剪最老楼层 DOM
+            // 减量：直接裁剪最老楼层 DOM
             try { cardPool._trimCapped(card); } catch (_e) { }
             continue;
         }
-        // 16→32：DOM 数 < 数据层数 = 曾被裁过 → 从磁盘重载全量重建
+        // 加量：DOM 数 < 数据层数 = 曾被裁过 → 从磁盘重载全量重建
         if (cap > domCount && card.totalFloors > domCount) {
             var _cont = card.dom && card.dom.parentNode;
             var _st = _cont ? _cont.scrollTop : 0;
@@ -402,7 +403,7 @@ async function _initWorkspace(root) {
     if (typeof CardPool !== 'undefined') {
         cardPool = new CardPool($messages);
         window.cardPool = cardPool;
-        // ★ 显示楼层上限（设置 ai.floorCap：16/32）变更 → 本面板即时重排楼层 DOM（2026-09-05）
+        // ★ 显示楼层上限（设置 ai.floorCap：16/32/64）变更 → 本面板即时重排楼层 DOM（2026-09-05；64 档 2026-09-06）
         _watchFloorCapSetting();
     } else {
         console.error('[card-pool] CardPool undefined — card-pool.js failed to load!');

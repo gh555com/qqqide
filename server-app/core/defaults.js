@@ -6,7 +6,7 @@
 window.qqqideDefaults = {
     'ai.defaultTier': 3,
     'ai.compressLevel': 'medium',   // 上下文背包自动压缩三档（off/medium/full，唯一档位设置，2026-08-23 定案）
-    'ai.floorCap': '16',            // AI 面板单 quest 最多显示已封顶楼层数（16/32，32=激活用户功能，2026-09-05）
+    'ai.floorCap': '16',            // AI 面板单 quest 最多显示已封顶楼层数（16/32/64，32/64=激活用户功能；64 档 2026-09-06）
     'editor.undoMode': 'char',
     'timeline.trackRunCommand': false,
     'desktop.shortcut': true,

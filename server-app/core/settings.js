@@ -82,8 +82,8 @@
       tab: 'general',
       defaultValue: _D['ai.floorCap'] !== undefined ? String(_D['ai.floorCap']) : '16',
       showLabel: true,
-      stopsLabels: ['16', '32'],
-      stops: ['16', '32']
+      stopsLabels: ['16', '32', '64'],
+      stops: ['16', '32', '64']
     },
     {
       key: 'audio.volume',
@@ -253,10 +253,10 @@
     return h;
   }
 
-  // ── ★ 显示楼层 32 = 激活（VIP）功能选值守卫（2026-09-05）──
-  //   已激活 → 直接写 32；未激活 → 拉杆旁红字「该功能需先激活」+ 外部浏览器打开激活页
+  // ── ★ 显示楼层 32/64 = 激活（VIP）功能选值守卫（2026-09-05；64 档 2026-09-06）──
+  //   已激活 → 直接写所选档；未激活 → 拉杆旁红字「该功能需先激活」+ 外部浏览器打开激活页
   //   （与左上角 qd (qqqide) 菜单「激活」按钮同路径：qqqLogin.checkPurchased + #price）
-  function _trySelectFloorCap32() {
+  function _trySelectFloorCapVal(_val) {
     var _openActivation = function () {
       _floorCapHintOn = true;
       _renderPanel();
@@ -282,7 +282,7 @@
       _login.checkPurchased().then(function (_purchased) {
         if (_purchased) {
           _floorCapHintOn = false;
-          set('ai.floorCap', '32');
+          set('ai.floorCap', _val);
           _renderPanel();
         } else {
           _openActivation();
@@ -315,7 +315,7 @@
 
   var _activeTab = 'general'; // 'general' | 'advanced'
   var _sfxOpen = false;       // ★ 音效开关子卡片展开态（音量卡片的 1 by 1）
-  var _floorCapHintOn = false;    // ★ 显示楼层 32（激活功能）未激活红字提示态（2026-09-05）
+  var _floorCapHintOn = false;    // ★ 显示楼层 32/64（激活功能）未激活红字提示态（2026-09-05；64 档 2026-09-06）
   var _floorCapHintTimer = null;
 
   function _renderPanel() {
@@ -401,7 +401,7 @@
         html += '<div style="display:flex; align-items:center; gap:12px;">';
         html += '<span style="font-size:12px; color:' + textDim + '; white-space:nowrap; min-width:32px;">' + _sliderLabel + '</span>';
         // ★ 压缩档位 3 点拉杆宽度 = 音量 5 点拉杆的一半（点间距百分百一致：calc(50%-22px) = (X-44)/2，X=行宽）
-        // ★ 显示楼层：短拉杆占行宽 2/5（同压缩档位紧凑语义，左右端=16/32）
+        // ★ 显示楼层：短拉杆占行宽 2/5（同压缩档位紧凑语义，16/32/64 三点均布，左 16 右 64）
         var _sliderFlex = 'flex:1;';
         if (def.key === 'ai.compressLevel') _sliderFlex = 'flex:0 0 calc(50% - 22px);';
         else if (def.key === 'ai.floorCap') _sliderFlex = 'flex:0 0 40%;';
@@ -414,7 +414,7 @@
           html += '<div style="position:absolute;left:' + sp + '%;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;border:2px solid ' + (isActive ? accent : border) + ';background:' + (isActive ? accent : bg) + ';z-index:1;"></div>';
         }
         html += '</div>';
-        // ★ 显示楼层：未激活用户点 32 → 拉杆右侧红字提示（2026-09-05）
+        // ★ 显示楼层：未激活用户点 32/64 → 拉杆右侧红字提示（2026-09-05；64 档 2026-09-06）
         if (def.key === 'ai.floorCap' && _floorCapHintOn) {
           html += '<span style="font-size:11px; color:' + red + '; white-space:nowrap;">该功能需先激活</span>';
         }
@@ -568,7 +568,7 @@
           if (key === 'ai.floorCap') {
             _floorCapHintOn = false;
             clearTimeout(_floorCapHintTimer);
-            if (targetVal === '32') { _trySelectFloorCap32(); return; }  // 32=激活功能，守卫接管
+            if (targetVal === '32' || targetVal === '64') { _trySelectFloorCapVal(targetVal); return; }  // 32/64=激活功能，守卫接管
           }
           set(key, targetVal);
           _renderPanel();

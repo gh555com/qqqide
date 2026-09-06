@@ -1,44 +1,47 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// goods/solar-house/solar-app.js — Solar House 客户端（纯渲染 + 遥控杆）
+// goods/solar-house/solar-app.js — Solar House 客户端（回算架构 v3, 2026-09-06）
 //
-// 客户端边界（设计 §14，铁律）: 只做 键事件上报 / 快照渲染 / ≤1 帧插值 /
-//   q 视觉预测 / UI 展示。零随机生成、零碰撞判定、零伤害/分数计算、
-//   零轨迹规则、零数值表（仅下方 RENDER_ONLY 渲染视觉常量）、零技能裁决。
-// 服务器是唯一真理: 玩法/协议规格源 gaea/docs/Solar House 设计.md §10。
+// 传输模型（设计 §10.3）: 服务器幽灵预生成 10s 场景包（物品逐 tick 轨迹, 1/8px 定点）
+//   → 客户端本地镜像 100% 平滑游玩, 零坐标校正（v2 快照纠正机制的彻底删除）。
+// 客户端 = 手柄 + 本地镜像: 输入按 1s 一批（10 tick 方向采样 + 技能戳）上传;
+//   服务器批驱动权威回算, 回执 = ack/die/revived/over（文本）。死亡→「回算确认」
+//   复活窗按服务器裁决; 终局数字一律以回执为准（镜像仅供本地手感）。
+// 本地镜像 = 服务器 sim 同公式纯算术复刻（q 运动/吸附/走廊碰撞/面积伤害/技能/冲击波）,
+//   仅用于即时反馈; 一切结算以服务器为准。物品世界来自场景包（客户端零生成零物理）。
 //
-// 二进制帧（10Hz, 大端）:
-//   snap  [0]=2 [1]=0 [2-3]seq [4-5]qx [6]hp [7-8]score [9-14]cd1..3(ms)
-//         [15]flags(bit0晕 bit1无敌) [16]alive [17-18]revive_ms [19]count
-//         [20..] ×count(9B): kind u8 + id u16 + x u16 + y u16 + size u8 + ang u8
-//   event [0]=2 [1]=1 [2]code: 0hit(dmg,hp) 1heal(amt,hp) 2score(n u16)
-//         3skill(skill,cleared) 4revive 8die;  5=game_over(+score u16 alive u32 revive u8)
-// ★ v2: 实体帧带稳定 id（v1 曾 7B/实体 8B 读 → 错位鬼影; 双帧插值改 id 锚定）
-// 上行: {type:'msg', ch:'solar:{run_id}', text:'{"k":"l|r|1|2|3|abort","d":0|1}'}
+// 二进制包（ver=3, type=2, 大端）:
+//   [0-1] 3,2 [2-5] base 绝对 tick u32 [6-7] meta 数 u16
+//   meta ×5B: id u16 | kind u8 | d u16(1/8px)
+//   之后每 tick(100): count u8 + count×7B: metaIdx u16 | x u16 | y u16 | ang u8 + 尾 1B pulseDmg
+// 上行: {"t":"batch","b":起始tick,"s":[10×−1/0/1],"sk":[{"k":1..3,"b":tick}]} | {"t":"abort"}
 // ============================================================================
 (function () {
   'use strict';
 
-  // ⭐ 渲染视觉常量（仅画布展示用，绝不参与任何判定）
-  var WORLD_W = 300, UI_H = 56, Q_R = 12, Q_SPEED = 200, Q_Y_BASE = 44;
-  var LASER_W = 120, ABSORB_H = 600, CD_TOTAL = [30000, 10000, 30000];
+  // ⭐ 镜像常量（与服务器 internal/solar 同值同公式; 注释标记 — 仅本地手感, 服务器为真理）
+  var W = 300, Q_R = 12, Q_SPEED = 200, QY_PAD = 44, HP_FULL = 100;
+  var LASER_W = 60, LASER_CD = 30, HEAL_AMT = 20, HEAL_CD = 10;
+  var ABSORB_R = 600, ABSORB_CD = 30, ABSORB_STUN = 0.5;
+  var TRI_STUN = 0.5, HIT_INV = 0.4, REVIVE_INV = 1.0;
+  var HEART_HEAL = 25;
+  var ATT_K = 55, ATT_R0 = 120, ATT_RK = 2.6;
+  var GEO_SQ = 0.7071067811865476, GEO_TRI = 0.5773502691896258;
+  var TICK_MS = 100, UI_H = 56, TICKS_PER_BATCH = 10;
+  var REVIVE_TICKS = 300;
 
-  // 加分菱形（正菱形）外观 = 菜单行1 的梦gaea kope/window 运行态状态灯 100% 同款
-  // （gp-dot-kaleido 马卡龙万花筒: 六色各 60° 硬切扇区 + 黑细描边; 相位 spawn 随机
-  //   定格零旋转动画 —— 用户定案 2026-09-06; 纯视觉, 不参与任何判定）
+  // 渲染视觉常量（仅画布展示, 不参与判定）
   var KALEIDO = ['#ff8ba0', '#ffc46b', '#ffe98a', '#8fe8b8', '#8cc9ff', '#d3a6ff'];
-  var kaleidoPhase = {}; // 按实体稳定 id 记相位（id 锚定 → 帧间不闪; 新局 resetGameState 清空）
   var API_BASE = 'https://cnk.gh555.com/api/solar';
   var WS_BASE = 'wss://cnk.gh555.com/ws';
-  var REVIVE_MS = 30000;
 
   // ── DOM ──
   function $(id) { return document.getElementById(id); }
   var elHome = $('sh-home'), elGame = $('sh-game'), elOver = $('sh-over');
   var elWrap = $('sh-wrap'), elCanvas = $('sh-canvas');
   var ctx = elCanvas.getContext('2d');
-  var elRevive = $('sh-revive'), elToast = $('sh-toast');
+  var elRevive = $('sh-revive'), elWait = $('sh-wait'), elToast = $('sh-toast');
   var elMsg = $('sh-msg'), elRvMsg = $('sh-rv-msg');
   var toastTimer = null;
 
@@ -46,7 +49,7 @@
     elToast.textContent = text;
     elToast.classList.add('on');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { elToast.classList.remove('on'); }, 3200);
+    toastTimer = setTimeout(function () { elToast.classList.remove('on'); }, 3400);
   }
   function setMsg(el, text) { el.textContent = text || ''; }
 
@@ -55,7 +58,7 @@
     p.classList.add('on');
   }
 
-  // ── auth（登录态取自主窗口 qqqLogin, 同源 iframe 直接访问）──
+  // ── auth / REST / 榜（同 v2） ──
   function token() {
     try {
       var w = window.parent;
@@ -64,8 +67,6 @@
     } catch (_) { }
     return '';
   }
-
-  // ── REST ──
   function api(path, opts) {
     opts = opts || {};
     var headers = { 'Authorization': 'Bearer ' + token() };
@@ -79,8 +80,6 @@
     });
   }
   function isLogged() { return !!token(); }
-
-  // ── 手机号脱敏展示 ──
   function maskName(id) {
     if (!id) return '';
     var s = String(id).replace(/^\+/, '');
@@ -94,17 +93,14 @@
     return m > 0 ? (m + ' 分 ' + s + ' 秒') : (s + ' 秒');
   }
 
-  // ── 榜 ──
   var boardTimer = null;
-  function boardDay() { return new Date().toISOString().slice(0, 10); } // UTC 日
-
-  function loadBoard(intoRows, intoMe, day) {
-    return api('/board?day=' + (day || boardDay())).then(function (r) {
+  function boardDay() { return new Date().toISOString().slice(0, 10); }
+  function loadBoard() {
+    return api('/board?day=' + boardDay()).then(function (r) {
       if (!r.body || r.body.ok !== true) return null;
       return r.body;
     }).catch(function () { return null; });
   }
-
   function renderBoard() {
     var rowsEl = $('sh-board-rows'), meEl = $('sh-board-me');
     loadBoard().then(function (b) {
@@ -152,73 +148,72 @@
       }
     });
   }
-  function startBoardPoll() {
-    stopBoardPoll();
-    renderBoard();
-    boardTimer = setInterval(renderBoard, 30000);
-  }
+  function startBoardPoll() { stopBoardPoll(); renderBoard(); boardTimer = setInterval(renderBoard, 30000); }
   function stopBoardPoll() { if (boardTimer) { clearInterval(boardTimer); boardTimer = null; } }
 
   // ═══════════════════════════════════════════════════════════════
-  // 局状态（S = 客户端渲染态；一切真值来自服务器帧）
+  // 局状态（v3: 本地镜像; 服务器回执为准）
   // ═══════════════════════════════════════════════════════════════
   var S = {
     runId: null, day: null, ckey: null,
-    D: 600,           // 世界高（开局上报, 锁定局内）
-    startedAt: 0,     // performance.now() 开局时刻（aliveMs 兜底估算用）
-    qxLocal: 150,     // 视觉 qx（本地按键积分, snap 校准）
-    qxTruth: 150, hp: 100, score: 0, cd: [0, 0, 0],
-    stun: false, invuln: false, alive: true, reviveMs: 0,
-    curItems: [], prevItems: [],
-    curById: null, prevById: null, // id → item 稳定映射（v2 插值锚点）
-    snapAt: 0, snapDelta: 100,     // 上帧到达时刻/间隔（插值 alpha 墙钟基）
-    dead: false, over: false,
+    D: 600,
+    phase: 'home',   // home|sync|play|deadWait|revive|waitOver|over
+    p0: 0,           // 锚点: tick = floor((now-p0)/100); 隐藏/恢复时冻结世界（服务器同冻结）
+    procTick: 0,     // 下一待处理绝对 tick
+    wins: [],        // [{base, meta:[{id,kind,d}], frames:[[{id,kind,d,x,y,ang}...]×100], pulse: Uint8Array}]
+    // 镜像态
+    qx: W / 2, hp: HP_FULL, score: 0, cd: [0, 0, 0],
+    stun: 0, invuln: 0, dead: false,
+    dieLocalK: -1, deadConf: false, reviveMs: 0, reviveUsed: false,
     holdL: false, holdR: false,
-    fx: [],           // {t, dur, kind, x?, n?}
+    removedAt: {},  // itemId → tick（镜像移除: 收集/激光/吸收）
+    pendSkill: 0,   // bit0..2 待发技能（tick 边界消费）
+    recDirs: [], recSk: [], unacked: [],
+    // 渲染态
+    stT1: null, stT: null, // 连续两 tick 的世界状态 {qx, items:[]}（插值基准）
+    fx: [], kaleido: {},
     ws: null, wsRetry: 0, wsRetryTimer: null,
-    lastFrameAt: 0,   // 服务器帧超时兜底判定
-    reviveWaitEnd: 0, // 本地复活窗超时兜底（performance.now ms）
+    lastAckK: -1, lastMsgAt: 0,
   };
 
-  function resetGameState() {
-    S.qxLocal = S.qxTruth = 150; S.hp = 100; S.score = 0;
-    S.cd = [0, 0, 0]; S.stun = false; S.invuln = false;
-    S.alive = true; S.dead = false; S.over = false;
-    S.reviveMs = 0; S.holdL = false; S.holdR = false;
-    S.curItems = []; S.prevItems = [];
-    S.curById = null; S.prevById = null;
-    S.snapAt = 0; S.snapDelta = 100;
-    S.fx = [];
-    S.wsRetry = 0;
-    kaleidoPhase = {}; // 新局万花筒相位全部重掷
+  function resetGame() {
+    S.qx = W / 2; S.hp = HP_FULL; S.score = 0; S.cd = [0, 0, 0];
+    S.stun = 0; S.invuln = 0; S.dead = false;
+    S.dieLocalK = -1; S.deadConf = false; S.reviveMs = 0; S.reviveUsed = false;
+    S.holdL = false; S.holdR = false;
+    S.removedAt = {}; S.pendSkill = 0;
+    S.recDirs = []; S.recSk = []; S.unacked = [];
+    S.stT1 = null; S.stT = null; S.fx = []; S.kaleido = {};
+    S.wins = []; S.p0 = 0; S.procTick = 0;
+    S.wsRetry = 0; S.lastAckK = -1;
+    elRevive.classList.remove('on');
+    elWait.classList.remove('on');
   }
 
-  // ── 画布适配（D 锁定, 窗口变化只等比缩放）──
+  function qy() { return S.D - QY_PAD; }
+
+  // ── 画布适配 ──
   function fitScale() {
     var rect = elGame.getBoundingClientRect();
     if (!rect.height) return;
-    var s = Math.min(1, rect.height / (S.D + UI_H), rect.width / WORLD_W);
+    var s = Math.min(1, rect.height / (S.D + UI_H), rect.width / W);
     var ph = (S.D + UI_H) * s;
-    // 超高窗口（D 已封顶 4096）→ 画布贴底, 顶部留白（高窗优势 4096 封顶语义）
     elWrap.style.top = Math.max(0, Math.round(rect.height - ph)) + 'px';
-    elWrap.style.width = Math.round(WORLD_W * s) + 'px';
-    elWrap.style.marginLeft = Math.round(-WORLD_W * s / 2) + 'px';
-    elCanvas.style.width = Math.round(WORLD_W * s) + 'px';
+    elWrap.style.width = Math.round(W * s) + 'px';
+    elWrap.style.marginLeft = Math.round(-W * s / 2) + 'px';
+    elCanvas.style.width = Math.round(W * s) + 'px';
   }
 
   function enterGameView() {
-    resetGameState();
+    resetGame();
     showPage(elGame);
-    // 先显示再量（hidden 页面 rect 为 0）
     requestAnimationFrame(function () {
       var rect = elGame.getBoundingClientRect();
       var avail = Math.max(0, rect.height - UI_H);
-      var D = Math.min(4096, Math.max(600, Math.round(avail)));
-      S.D = D;
-      // dpr 高清缓冲（高分屏 1px 细线锐利, 防缩放模糊重影感）
+      S.D = Math.min(4096, Math.max(600, Math.round(avail)));
       var dpr = window.devicePixelRatio || 1;
-      elCanvas.width = Math.max(2, Math.round(WORLD_W * dpr));
-      elCanvas.height = Math.max(2, Math.round((D + UI_H) * dpr));
+      elCanvas.width = Math.max(2, Math.round(W * dpr));
+      elCanvas.height = Math.max(2, Math.round((S.D + UI_H) * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       fitScale();
       beginRun();
@@ -226,7 +221,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 开局/终局/复活（REST 钱操作）
+  // 开局 / 终局 / 复活（REST 钱操作）
   // ═══════════════════════════════════════════════════════════════
   function uuid() {
     try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (_) { }
@@ -251,8 +246,7 @@
       var b = r.body || {};
       if (b.ok === true) {
         S.runId = b.run_id; S.day = b.day;
-        S.startedAt = performance.now();
-        startGameLoop();
+        setPhase('sync'); // 等首批场景包（含 10s+ 余量才开玩）
         wsConnect(true);
       } else if (b.code === 'game_active') {
         setMsg(elMsg, '已有进行中的一局（可能开在其它窗口）——请到那局继续或等它结束');
@@ -275,22 +269,25 @@
   }
 
   function sendRevive() {
-    if (!S.runId) return;
+    if (!S.runId || S.phase !== 'revive') return;
     setMsg(elRvMsg, '');
     var btn = $('sh-revive-yes');
     btn.disabled = true;
     api('/revive', { method: 'POST', body: { run_id: S.runId } }).then(function (r) {
-      btn.disabled = false;
       var b = r.body || {};
       if (b.ok === true) {
-        setMsg(elRvMsg, '续命成功 —— 满血复活');
+        setMsg(elRvMsg, '续命请求已确认 —— 等待服务器回算……');
       } else if (b.code === 'insufficient_ge') {
+        btn.disabled = false;
         setMsg(elRvMsg, '余额不足 —— 续命需 1 ge');
       } else if (b.code === 'revive_window_closed') {
+        btn.disabled = false;
         setMsg(elRvMsg, '复活窗已过 —— 本局结束');
       } else if (r.status === 401) {
+        btn.disabled = false;
         setMsg(elRvMsg, '登录过期 —— 请在主窗口重新登录后重试');
       } else {
+        btn.disabled = false;
         setMsg(elRvMsg, '续命失败（' + (b.code || r.status) + '）');
       }
     }).catch(function () {
@@ -299,27 +296,26 @@
     });
   }
 
-  function quitRun() { // 主动弃局
+  function quitRun() {
     if (!S.runId) return;
     api('/abort', { method: 'POST', body: { run_id: S.runId } }).then(function () {
-      // 服务器下一 tick 终局 → game_over 帧到达后转结算页
       toast('已请求弃局……');
+      if (S.phase !== 'over') setPhase('waitOver');
     }).catch(function () {
       toast('弃局请求失败 —— 请重试');
     });
   }
 
   function showOver(score, aliveMs, revived) {
-    S.over = true;
-    stopLoop();
-    closeWs();
+    S.phase = 'over';
+    stopLoop(); closeWs();
     elRevive.classList.remove('on');
+    elWait.classList.remove('on');
     $('sh-o-score').textContent = score;
     $('sh-o-alive').textContent = fmtAlive(aliveMs);
     $('sh-o-rankline').style.display = 'none';
     $('sh-o-note').textContent = '';
     showPage(elOver);
-    // 今日名次 + 榜刷新
     loadBoard().then(function (b) {
       if (!b) return;
       var me = b.me;
@@ -338,18 +334,19 @@
     });
   }
 
-  // 兜底终局：服务器已停发帧（复活窗超时后无 code5 —— 网络断尾等）
-  function showOverFallback() {
-    var aliveMs = Math.max(0, Math.round(performance.now() - S.startedAt));
-    showOver(S.score, aliveMs, false);
-    toast('连接中断 —— 以服务器结算为准');
+  // 兜底终局（未知局/超时; 以服务器结算为准, 展示本地镜像近似值）
+  function showOverFallback(reason) {
+    var aliveMs = S.procTick > 0 ? Math.round((S.procTick - (S.dieLocalK > 0 ? 0 : 0)) * TICK_MS) : 0;
+    if (S.dieLocalK >= 0) aliveMs = Math.round(S.dieLocalK * TICK_MS);
+    showOver(Math.round(S.score), aliveMs, S.reviveUsed);
+    toast(reason || '连接中断 —— 以服务器结算为准');
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // WS（遥控杆 + 帧接收; 断线指数退避重连, 60s 服务器放弃窗口内必回）
+  // 场景包 / 回执（WS）
   // ═══════════════════════════════════════════════════════════════
   function wsConnect(first) {
-    if (S.over || !S.runId) return;
+    if (S.phase === 'over' || !S.runId) return;
     closeWs();
     if (!isLogged()) { wsRetryLater(3000); return; }
     var ws;
@@ -361,24 +358,21 @@
     ws.onopen = function () {
       S.wsRetry = 0;
       ws.send(JSON.stringify({ type: 'sub', ch: 'solar:' + S.runId }));
-      // 试探: 若局已被服务器放弃（断线过久）→ 回执 err unknown_run → 转结算
-      sendInput('r', 0);
-      // 重连补发按住状态（断线期间服务器的按键态丢失）
-      if (S.holdL) sendInput('l', 1);
-      if (S.holdR) sendInput('r', 1);
+      // 重连: 补发全部未确认批（幂等, 服务器去重; 技能戳已在批内）
+      S.unacked.forEach(function (bk) { sendBatchRaw(bk); });
       if (!first) toast('已重连');
     };
     ws.onmessage = function (e) { handleWsMsg(e.data); };
     ws.onclose = function () {
       if (S.ws !== ws) return;
       S.ws = null;
-      if (S.over) return;
+      if (S.phase === 'over') return;
       wsRetryLater(Math.min(1000 * Math.pow(2, S.wsRetry++), 8000));
     };
-    ws.onerror = function () { /* onclose 接管 */ };
+    ws.onerror = function () { };
   }
   function wsRetryLater(ms) {
-    if (S.wsRetryTimer || S.over) return;
+    if (S.wsRetryTimer || S.phase === 'over') return;
     S.wsRetryTimer = setTimeout(function () {
       S.wsRetryTimer = null;
       wsConnect(false);
@@ -393,244 +387,532 @@
     }
   }
 
+  function sendBatchRaw(bk) {
+    if (!S.ws || S.ws.readyState !== 1) return;
+    try {
+      S.ws.send(JSON.stringify({
+        type: 'msg', ch: 'solar:' + S.runId,
+        text: JSON.stringify({ t: 'batch', b: bk.b, s: bk.s, sk: bk.sk || [] })
+      }));
+    } catch (_) { }
+  }
+
   function handleWsMsg(data) {
-    if (S.over) return;
+    if (S.phase === 'over') return;
     if (typeof data === 'string') {
-      // 服务器文本回执（err 等）
       try {
         var m = JSON.parse(data);
         if (m.type === 'err') {
           if (m.code === 'unknown_run') {
-            toast('本局已被服务器结束（离线过久）');
+            toast('本局已被服务器结束（离线过久或已结算）');
             showOverFallback();
           } else if (m.code === 'login_required') {
             toast('连接登录态失效 —— 重连中……');
             wsConnect(false);
           }
+          return;
+        }
+        if (m.type === 'msg' && m.ch === 'solar:' + S.runId && m.data && typeof m.data === 'object' && m.data.ev) {
+          handleVerdict(m.data);
         }
       } catch (_) { }
       return;
     }
-    try { parseBinaryFrame(new DataView(data)); }
-    catch (e) { /* 帧解析失败丢弃（版本不匹配等） */ }
+    try { parsePkt(new DataView(data)); }
+    catch (_) { }
   }
 
-  function parseBinaryFrame(dv) {
-    if (dv.byteLength < 3) return;
-    var ver = dv.getUint8(0), type = dv.getUint8(1);
-    if (ver !== 2) {
-      if (ver === 1) toast('服务器协议过旧 —— 请等待部署完成');
+  function handleVerdict(v) {
+    S.lastMsgAt = Date.now();
+    var ev = v.ev;
+    if (ev === 'ack') {
+      S.lastAckK = v.b;
+      // 清已确认批
+      S.unacked = S.unacked.filter(function (bk) { return bk.b + TICKS_PER_BATCH > v.b; });
+      // 权威状态轻同步（只动数字, 永不纠正 q 坐标 —— 无弹回）
+      S.hp = v.alive === 1 ? Math.min(HP_FULL, Math.max(0, v.hp)) : Math.min(S.hp, 0);
+      if (v.alive === 0 && !S.dead && v.db > 0) {
+        // 服务器先于镜像判死（镜像偏差边缘）→ 进入回算死态
+        onServerDeath(v.db, v.score, v.revive_ms);
+      } else if (v.alive === 1 && S.dead && S.phase === 'deadWait') {
+        // 服务器未判死而镜像判死（偏差边缘）→ 复活修正
+        S.dead = false; S.deadConf = false;
+        S.hp = v.hp; S.invuln = 0.6;
+        setPhase('play');
+        toast('网络修正 —— 继续');
+      }
+    } else if (ev === 'die') {
+      onServerDeath(v.b, v.score, v.revive_ms);
+    } else if (ev === 'revived') {
+      S.dead = false; S.deadConf = false; S.reviveUsed = true;
+      S.hp = HP_FULL; S.invuln = REVIVE_INV; S.pendSkill = 0;
+      setPhase('play');
+      S.fx.push({ t: performance.now(), dur: 900, kind: 'revive' });
+      toast('续命成功 —— 满血复活');
+    } else if (ev === 'over') {
+      showOver(v.score, v.alive_ms, !!v.revive_used);
+    }
+  }
+
+  // 服务器死亡裁决 → 回算确认 UI
+  function onServerDeath(b, score, reviveMs) {
+    S.dead = true; S.deadConf = true;
+    S.dieLocalK = Math.max(S.dieLocalK, b);
+    S.hp = 0;
+    if (score !== undefined && score !== null) S.score = score;
+    S.reviveMs = reviveMs;
+    if (S.reviveUsed) { // 已续命过 → 直接终局（服务器稍后回 over）
+      setPhase('waitOver');
       return;
     }
-    S.lastFrameAt = performance.now();
-    if (type === 0) parseSnap(dv);
-    else if (type === 1) parseEvent(dv);
-  }
-
-  function parseSnap(dv) {
-    var off = 2;
-    var seq = dv.getUint16(off); off += 2;
-    var qx = dv.getUint16(off); off += 2;
-    var hp = dv.getUint8(off); off += 1;
-    var score = dv.getUint16(off); off += 2;
-    var cd1 = dv.getUint16(off); off += 2;
-    var cd2 = dv.getUint16(off); off += 2;
-    var cd3 = dv.getUint16(off); off += 2;
-    var flags = dv.getUint8(off); off += 1;
-    var alive = dv.getUint8(off) === 1; off += 1;
-    var reviveMs = dv.getUint16(off); off += 2;
-    var count = dv.getUint8(off); off += 1;
-    var items = [], byId = {};
-    for (var i = 0; i < count; i++) {
-      if (off + 9 > dv.byteLength) break;
-      var it = {
-        id: dv.getUint16(off + 1),
-        kind: dv.getUint8(off),
-        x: dv.getUint16(off + 3),
-        y: dv.getUint16(off + 5),
-        d: dv.getUint8(off + 7),
-        ang: dv.getUint8(off + 8),
-      };
-      items.push(it);
-      byId[it.id] = it;
-      off += 9;
-    }
-    // 换帧: 旧 cur → prev 参考; 记到达时刻（插值 alpha = 距此刻墙钟比例）
-    var now2 = performance.now();
-    S.prevItems = S.curItems;
-    S.prevById = S.curById;
-    S.curItems = items;
-    S.curById = byId;
-    S.snapDelta = Math.min(250, Math.max(50, now2 - (S.snapAt || now2 - 100)));
-    S.snapAt = now2;
-    S.qxTruth = qx;
-    if (Math.abs(qx - S.qxLocal) > 12) S.qxLocal = qx; // 偏差超阈值才校准
-    S.hp = hp; S.score = score;
-    S.cd = [cd1, cd2, cd3];
-    S.stun = (flags & 1) !== 0;
-    S.invuln = (flags & 2) !== 0;
-    if (alive) {
-      S.alive = true;
-      if (S.dead) { // 续命成功回到场上
-        S.dead = false;
-        elRevive.classList.remove('on');
-        setMsg(elRvMsg, '');
-        S.fx.push({ t: performance.now(), dur: 900, kind: 'revive' });
-      }
-    } else {
-      S.alive = false;
-      S.reviveMs = reviveMs;
-      if (!S.dead) {
-        S.dead = true;
-        // 显示复活窗
-        $('sh-rv-score').textContent = '当前得分 ' + S.score;
-        $('sh-revive-yes').disabled = false;
-        setMsg(elRvMsg, '');
-        elRevive.classList.add('on');
-        S.reviveWaitEnd = performance.now() + REVIVE_MS + 4000;
-      }
-    }
-  }
-
-  function parseEvent(dv) {
-    var off = 2;
-    var code = dv.getUint8(off); off += 1;
-    var now = performance.now();
-    if (code === 0) { // hit: dmg + hp_remain
-      var dmg = dv.getUint8(off);
-      var hpRemain = dv.getUint8(off + 1);
-      S.hp = hpRemain;
-      S.fx.push({ t: now, dur: 420, kind: 'hit', n: dmg });
-    } else if (code === 1) { // heal: amt + hp
-      var amt = dv.getUint8(off);
-      var hpNew = dv.getUint8(off + 1);
-      S.hp = hpNew;
-      S.fx.push({ t: now, dur: 700, kind: 'heal', n: amt });
-    } else if (code === 2) { // score: +n
-      var n = dv.getUint16(off);
-      S.fx.push({ t: now, dur: 800, kind: 'score', n: n });
-    } else if (code === 3) { // skill_ok: skill(1-3) + cleared
-      var sk = dv.getUint8(off);
-      var cleared = dv.getUint8(off + 1);
-      if (sk === 1) S.fx.push({ t: now, dur: 480, kind: 'laser', x: S.qxTruth, n: cleared });
-      else if (sk === 2) S.fx.push({ t: now, dur: 700, kind: 'heal', n: 0 });
-      else if (sk === 3) S.fx.push({ t: now, dur: 500, kind: 'absorb', n: cleared });
-    } else if (code === 4) { // revive_ok
-      S.fx.push({ t: now, dur: 900, kind: 'revive' });
-    } else if (code === 5) { // game_over: score u16 + alive_ms u32 + revive u8
-      if (dv.byteLength >= 10) {
-        var gs = dv.getUint16(off);
-        var galive = dv.getUint32(off + 2);
-        var grev = dv.getUint8(off + 6);
-        showOver(gs, galive, grev === 1);
-      }
-    } else if (code === 8) { // die
-      S.fx.push({ t: now, dur: 600, kind: 'die' });
-    }
-  }
-
-  // ── 上行遥控杆 ──
-  function sendInput(k, d) {
-    if (!S.ws || S.ws.readyState !== 1 || !S.runId) return;
-    try {
-      S.ws.send(JSON.stringify({
-        type: 'msg', ch: 'solar:' + S.runId,
-        text: JSON.stringify({ k: k, d: d })
-      }));
-    } catch (_) { }
+    setPhase('revive');
+    $('sh-rv-score').textContent = '当前得分 ' + S.score;
+    $('sh-revive-yes').disabled = false;
+    setMsg(elRvMsg, '');
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 渲染循环（25fps: rAF + 40ms accumulator; 纯展示零逻辑）
+  // 场景包解析 / 窗口管理
   // ═══════════════════════════════════════════════════════════════
-  var rafId = 0, lastTs = 0, acc = 0, loopOn = false;
+  function parsePkt(dv) {
+    if (dv.byteLength < 10) return;
+    var ver = dv.getUint8(0), type = dv.getUint8(1);
+    if (ver !== 3) {
+      if (ver < 3) toast('服务器协议过旧 —— 请等待部署完成');
+      return;
+    }
+    if (type !== 2) return;
+    var off = 2;
+    var base = dv.getUint32(off); off += 4;
+    if (base < S.procTick - 200) return; // 过期包丢弃
+    var nMeta = dv.getUint16(off); off += 2;
+    var meta = [];
+    for (var i = 0; i < nMeta; i++) {
+      var id = dv.getUint16(off);
+      var kind = dv.getUint8(off + 2);
+      var d = dv.getUint16(off + 3) / 8;
+      meta.push({ id: id, kind: kind, d: d });
+      off += 5;
+    }
+    var frames = [];
+    var pulse = new Uint8Array(TICKS_PER_BATCH * 10); // 100
+    for (var t = 0; t < 100; t++) {
+      var cnt = dv.getUint8(off); off += 1;
+      var rows = [];
+      for (var j = 0; j < cnt && off + 7 <= dv.byteLength; j++) {
+        var mi = dv.getUint16(off);
+        var x = dv.getUint16(off + 2) / 8;
+        var y = dv.getUint16(off + 4) / 8;
+        var ang = dv.getUint8(off + 6);
+        off += 7;
+        if (mi < meta.length) {
+          rows.push({ id: meta[mi].id, kind: meta[mi].kind, d: meta[mi].d, x: x, y: y, ang: ang });
+        }
+      }
+      frames.push(rows);
+      if (off < dv.byteLength) {
+        pulse[t] = dv.getUint8(off);
+        off += 1;
+      }
+    }
+    // 去重插入（同 base 重发丢弃）
+    for (var w = 0; w < S.wins.length; w++) {
+      if (S.wins[w].base === base) return;
+    }
+    S.wins.push({ base: base, meta: meta, frames: frames, pulse: pulse });
+    S.wins.sort(function (a, b2) { return a.base - b2.base; });
+    dropOldWins();
+    maybeStartPlay();
+  }
+
+  function dropOldWins() {
+    while (S.wins.length > 6) S.wins.shift();
+    while (S.wins.length > 0 && S.wins[0].base + 100 <= S.procTick - 10) S.wins.shift();
+  }
+
+  function winFor(t) {
+    for (var i = S.wins.length - 1; i >= 0; i--) {
+      var wn = S.wins[i];
+      if (t >= wn.base && t < wn.base + 100) return wn;
+    }
+    return null;
+  }
+
+  // 开场: 拥有覆盖 0 的窗口 + 至少一个后续窗口（≥10s 余量）才开玩
+  function maybeStartPlay() {
+    if (S.phase !== 'sync' || !S.runId) return;
+    var w0 = winFor(0);
+    var next = winFor(100);
+    if (!w0 || !next) return;
+    S.procTick = 0;
+    S.p0 = performance.now();
+    setPhase('play');
+  }
+
+  function setPhase(p) {
+    S.phase = p;
+    elRevive.classList.remove('on');
+    elWait.classList.remove('on');
+    if (p === 'sync') {
+      $('sh-wait-title').textContent = '同步中……';
+      $('sh-wait-sub').textContent = '正在接收场景包（10 秒级网络也能本地顺畅游玩）';
+      elWait.classList.add('on');
+    } else if (p === 'deadWait') {
+      $('sh-wait-title').textContent = '回算确认中……';
+      $('sh-wait-sub').textContent = '已击落 —— 服务器正在复算本局';
+      elWait.classList.add('on');
+    } else if (p === 'waitOver') {
+      $('sh-wait-title').textContent = '回算中……';
+      $('sh-wait-sub').textContent = '服务器正在结算本局';
+      elWait.classList.add('on');
+    } else if (p === 'revive') {
+      elRevive.classList.add('on');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 本地镜像（10Hz tick; 与服务器 sim 同公式; 纯本地手感, 服务器回算为准）
+  // ═══════════════════════════════════════════════════════════════
+  function geoR(kind, d) {
+    if (kind === 0) return d * GEO_SQ;
+    if (kind === 2) return d * GEO_TRI;
+    return d * 0.5;
+  }
+
+  function diskOverlap(dd, r1, r2) {
+    if (dd >= r1 + r2 || dd <= 0) {
+      if (dd <= 0) return Math.PI * Math.min(r1, r2) * Math.min(r1, r2);
+      return 0;
+    }
+    if (dd <= Math.abs(r1 - r2)) {
+      var am = Math.min(r1, r2);
+      return Math.PI * am * am;
+    }
+    var arg1 = (dd * dd + r1 * r1 - r2 * r2) / (2 * dd * r1);
+    var arg2 = (dd * dd + r2 * r2 - r1 * r1) / (2 * dd * r2);
+    if (arg1 < -1) arg1 = -1;
+    if (arg1 > 1) arg1 = 1;
+    if (arg2 < -1) arg2 = -1;
+    if (arg2 > 1) arg2 = 1;
+    var term = (-dd + r1 + r2) * (dd + r1 - r2) * (dd - r1 + r2) * (dd + r1 + r2);
+    if (term < 0) term = 0;
+    return r1 * r1 * Math.acos(arg1) + r2 * r2 * Math.acos(arg2) - 0.5 * Math.sqrt(term);
+  }
+
+  function visibleRow(id, k) { return !(S.removedAt[id] !== undefined && S.removedAt[id] <= k); }
+
+  // 处理一个绝对 tick; 返回 false = 数据不足（暂停）
+  function processTick(k) {
+    var wn = winFor(k);
+    if (!wn) return false;
+    var idx = k - wn.base;
+    if (idx < 0 || idx >= 100) return false;
+    var curRows = wn.frames[idx];
+    var pwn = winFor(k - 1);
+    var prevRows = pwn ? pwn.frames[(k - 1) - pwn.base] : null;
+
+    // ── timers（镜像服务器 stepTimers）──
+    S.cd[0] = Math.max(0, S.cd[0] - 0.1);
+    S.cd[1] = Math.max(0, S.cd[1] - 0.1);
+    S.cd[2] = Math.max(0, S.cd[2] - 0.1);
+    S.stun = Math.max(0, S.stun - 0.1);
+    S.invuln = Math.max(0, S.invuln - 0.1);
+
+    // ── 输入采样（本 tick 方向; 死态强制 0）──
+    var dir = 0;
+    if (!S.dead && S.stun <= 0 && (S.phase === 'play')) {
+      if (S.holdL) dir -= 1;
+      if (S.holdR) dir += 1;
+    }
+    S.recDirs.push(dir);
+
+    // ── q 运动（镜像服务器 stepPlayer: 恒速 + 圆吸附; QxP 前置）──
+    var qPrev = S.qx;
+    if (!S.dead && S.stun <= 0 && dir !== 0) {
+      S.qx += dir * Q_SPEED * 0.1;
+    }
+    if (!S.dead && S.stun <= 0 && prevRows) {
+      var drift = 0;
+      for (var i = 0; i < prevRows.length; i++) {
+        var it0 = prevRows[i];
+        if (it0.kind !== 1 || !visibleRow(it0.id, k - 1)) continue;
+        var R = ATT_R0 + ATT_RK * it0.d;
+        var dx = it0.x - S.qx;
+        var dy = it0.y - qy();
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > R) continue;
+        var f = 1 - dist / R;
+        var sz = it0.d / 24;
+        if (sz > 3) sz = 3;
+        var sgn = dx < 0 ? -1 : 1;
+        drift += ATT_K * sz * f * sgn;
+      }
+      S.qx += drift * 0.1;
+    }
+    if (S.qx < Q_R) S.qx = Q_R;
+    if (S.qx > W - Q_R) S.qx = W - Q_R;
+
+    // ── 冲击波（服务器 applyPulses 位于技能前: 激光不可防; 无视无敌; 跳过死/幽灵）──
+    var pd = wn.pulse[idx];
+    if (pd > 0 && !S.dead) {
+      S.hp -= pd;
+      S.fx.push({ t: performance.now(), dur: 420, kind: 'hit', n: pd, pulse: true });
+      if (S.hp <= 0) {
+        S.hp = 0; S.dead = true;
+        S.dieLocalK = k;
+        S.fx.push({ t: performance.now(), dur: 600, kind: 'die' });
+        setPhase('deadWait');
+      }
+    }
+
+    // ── 技能（镜像服务器 fireSkills: tick 边界; curRows = 移动后位置）──
+    var sk = S.pendSkill;
+    S.pendSkill = 0;
+    if (!S.dead) {
+      if ((sk & 1) !== 0 && S.cd[0] <= 0) {
+        S.cd[0] = LASER_CD;
+        var cleared = 0;
+        for (var li = 0; li < curRows.length; li++) {
+          var lit = curRows[li];
+          if (lit.kind <= 2 && Math.abs(lit.x - S.qx) <= LASER_W) {
+            if (S.removedAt[lit.id] === undefined || S.removedAt[lit.id] > k) { cleared++; }
+            S.removedAt[lit.id] = k;
+          }
+        }
+        S.fx.push({ t: performance.now(), dur: 480, kind: 'laser', x: S.qx, n: cleared });
+      }
+      if ((sk & 2) !== 0 && S.cd[1] <= 0) {
+        S.cd[1] = HEAL_CD;
+        S.hp = Math.min(HP_FULL, S.hp + HEAL_AMT);
+        S.fx.push({ t: performance.now(), dur: 700, kind: 'heal', n: HEAL_AMT });
+      }
+      if ((sk & 4) !== 0 && S.cd[2] <= 0) {
+        S.cd[2] = ABSORB_CD;
+        if (S.stun < ABSORB_STUN) S.stun = ABSORB_STUN;
+        var qyy = qy();
+        var got = 0;
+        for (var ai = 0; ai < curRows.length; ai++) {
+          var ait = curRows[ai];
+          if (ait.kind === 3 && ait.y <= qyy && ait.y >= qyy - ABSORB_R) {
+            if (S.removedAt[ait.id] === undefined || S.removedAt[ait.id] > k) { got++; }
+            S.removedAt[ait.id] = k;
+          }
+        }
+        if (got > 0) {
+          S.score += got;
+          S.fx.push({ t: performance.now(), dur: 800, kind: 'score', n: got });
+        }
+        S.fx.push({ t: performance.now(), dur: 500, kind: 'absorb', n: got });
+      }
+    }
+
+    // ── 走廊碰撞 + 拾取（镜像服务器 collide; 跳过 removedAt ≤ k）──
+    if (!S.dead && curRows) {
+      var qyy2 = qy();
+      for (var ci = 0; ci < curRows.length; ci++) {
+        var it = curRows[ci];
+        if (S.removedAt[it.id] !== undefined && S.removedAt[it.id] <= k) continue;
+        var Rc = geoR(it.kind, it.d);
+        // 上一 tick 位置（新物品: prev = 自身）
+        var px = it.x, py = it.y;
+        if (prevRows) {
+          for (var pj = 0; pj < prevRows.length; pj++) {
+            if (prevRows[pj].id === it.id) { px = prevRows[pj].x; py = prevRows[pj].y; break; }
+          }
+        }
+        var yLo = Math.min(py, it.y), yHi = Math.max(py, it.y);
+        if (yHi < qyy2 - Q_R - Rc || yLo > qyy2 + Q_R + Rc) continue;
+        // 相对走廊最近点（服务器同式）
+        var ax = px - qPrev, ay = py - qyy2;
+        var bx = it.x - S.qx, by = it.y - qyy2;
+        var ddx = bx - ax, ddy = by - ay;
+        var d2 = ddx * ddx + ddy * ddy;
+        var tt = 0;
+        if (d2 > 0) {
+          tt = -(ax * ddx + ay * ddy) / d2;
+          if (tt < 0) tt = 0;
+          if (tt > 1) tt = 1;
+        }
+        var ex = ax + ddx * tt, ey = ay + ddy * tt;
+        var dd = Math.sqrt(ex * ex + ey * ey);
+        var reach = Q_R + Rc;
+        if (dd > reach) continue;
+        if (it.kind === 3) { // 菱形 +1
+          S.score += 1;
+          S.removedAt[it.id] = k;
+          S.fx.push({ t: performance.now(), dur: 800, kind: 'score', n: 1 });
+          continue;
+        }
+        if (it.kind === 4) { // 心 +25
+          S.hp = Math.min(HP_FULL, S.hp + HEART_HEAL);
+          S.removedAt[it.id] = k;
+          S.fx.push({ t: performance.now(), dur: 700, kind: 'heal', n: HEART_HEAL });
+          continue;
+        }
+        if (S.invuln > 0) continue; // 无敌穿行
+        var ov = diskOverlap(dd, Q_R, Rc);
+        var aQ = Math.PI * Q_R * Q_R;
+        var aI = Math.PI * Rc * Rc;
+        var minA = Math.min(aQ, aI);
+        var qQ = ov / minA;
+        if (qQ < 0.3) qQ = 0.3;
+        if (qQ > 1) qQ = 1;
+        var ss = it.d / 24;
+        if (ss > 5) ss = 5;
+        var baseT = it.kind === 0 ? 36 : 26;
+        var dmg = baseT * ss * qQ;
+        S.hp -= dmg;
+        if (it.kind === 2) S.stun = TRI_STUN;
+        S.invuln = HIT_INV;
+        S.fx.push({ t: performance.now(), dur: 420, kind: 'hit', n: Math.round(dmg) });
+        if (S.hp <= 0) {
+          S.hp = 0; S.dead = true;
+          S.dieLocalK = k;
+          S.fx.push({ t: performance.now(), dur: 600, kind: 'die' });
+          setPhase('deadWait');
+          break;
+        }
+      }
+    }
+
+    // ── 渲染态推进 ──
+    if (S.stT) S.stT1 = S.stT;
+    var items = [];
+    for (var ri = 0; ri < curRows.length; ri++) {
+      var row = curRows[ri];
+      if (row.y < 0 || !visibleRow(row.id, k)) continue;
+      items.push({ id: row.id, kind: row.kind, d: row.d, x: row.x, y: row.y, ang: row.ang });
+    }
+    S.stT = { qx: S.qx, items: items, tick: k };
+
+    // ── 技能记录 + 批发送 ──
+    var batchedSk = [];
+    while (S.recSk.length > 0 && S.recSk[0].b <= k) {
+      var ev2 = S.recSk.shift();
+      if (ev2.b >= k - 9) batchedSk.push(ev2);
+    }
+    if ((k + 1) % TICKS_PER_BATCH === 0) {
+      var b0 = k - TICKS_PER_BATCH + 1;
+      var dirs = S.recDirs.slice(-TICKS_PER_BATCH);
+      if (dirs.length === TICKS_PER_BATCH) {
+        var bk = { b: b0, s: dirs, sk: batchedSk };
+        S.unacked.push(bk);
+        sendBatchRaw(bk);
+      }
+    }
+    return true;
+  }
+
+  // 技能按键 → 记入下一 tick 边界施放（镜像 + 服务器同 tick）
+  function castSkill(k) {
+    if (S.phase !== 'play' || S.dead) return;
+    var bit = 1 << (k - 1);
+    if ((S.cd[k - 1] > 0)) return; // 冷却中
+    S.pendSkill |= bit;
+    S.recSk.push({ k: k, b: S.procTick });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 主循环（rAF; 墙钟锚点驱动 tick; 隐藏=世界冻结, 服务器同冻结）
+  // ═══════════════════════════════════════════════════════════════
+  var rafId = 0, lastTs = 0, loopOn = false, tickAcc = 0;
 
   function startGameLoop() {
     stopLoop();
-    lastTs = 0; acc = 0; loopOn = true;
+    lastTs = 0; loopOn = true;
     rafId = requestAnimationFrame(frameTick);
   }
   function stopLoop() {
     loopOn = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
   }
+
   function frameTick(ts) {
     if (!loopOn) return;
     rafId = requestAnimationFrame(frameTick);
     if (!lastTs) lastTs = ts;
     var dt = ts - lastTs;
     lastTs = ts;
-    if (dt > 300) dt = 300;   // 切走回来/卡顿: 不跳秒
-    acc += dt;
-    var steps = 0;
-    while (acc >= 40 && steps < 6) { stepLocal(0.04); acc -= 40; steps++; }
-    if (steps === 6) acc = 0;
-    draw();
-    tickWatchdogs(dt);
-  }
-
-  // 视觉层预测推进（服务器裁决不受影响; 晕中不响应输入）
-  function stepLocal(dtS) {
-    var dir = 0;
-    if (!S.stun) {
-      if (S.holdL) dir -= 1;
-      if (S.holdR) dir += 1;
-    }
-    if (dir !== 0) {
-      S.qxLocal += dir * Q_SPEED * dtS;
-      if (S.qxLocal < Q_R) S.qxLocal = Q_R;
-      if (S.qxLocal > WORLD_W - Q_R) S.qxLocal = WORLD_W - Q_R;
-    }
-  }
-
-  // 服务器帧断尾兜底: 复活窗结束后若长时间无帧（网络断尾）→ 本地结算
-  function tickWatchdogs(dt) {
-    var now = performance.now();
-    if (S.dead && !S.over && now > S.reviveWaitEnd) {
-      if (now - S.lastFrameAt > 3200 && S.lastFrameAt > 0) {
-        showOverFallback();
+    if (dt > 300) dt = 300;
+    tickAcc += dt;
+    if (S.p0 > 0 && (S.phase === 'play' || S.phase === 'deadWait' || S.phase === 'revive' || S.phase === 'waitOver')) {
+      var targetK = Math.floor((performance.now() - S.p0) / TICK_MS);
+      var guard = 0;
+      while (S.procTick <= targetK && guard < 12) {
+        if (!processTick(S.procTick)) break;
+        S.procTick++;
+        guard++;
+      }
+      // 数据断供 → 同步态（世界暂停; 服务器也随批暂停, 无偏差）
+      if (S.procTick <= targetK && guard >= 12 && winFor(S.procTick) === null) {
+        if (S.phase === 'play') setPhase('sync');
+      } else if (S.phase === 'sync' && winFor(S.procTick)) {
+        S.p0 = performance.now() - S.procTick * TICK_MS;
+        setPhase(S.dead ? 'deadWait' : 'play');
       }
     }
+    draw(performance.now());
+    tickWatchdogs();
   }
 
-  // ── 绘制（alpha 在内部按墙钟算 — 见实体插值注释）──
-  function draw() {
-    var D = S.D, W = WORLD_W;
+  // 复活窗倒计时兜底 / 无回执超时
+  function tickWatchdogs() {
+    var now = Date.now();
+    if (S.phase === 'revive' && S.deadConf) {
+      var leftMs = S.reviveMs - Math.max(0, S.procTick - S.dieLocalK) * TICK_MS;
+      if (leftMs <= 0) { setPhase('waitOver'); }
+    }
+    if (S.phase === 'waitOver' && S.dead && !S.deadConf && now - S.lastMsgAt > 15000) {
+      showOverFallback('回算超时 —— 以服务器结算为准');
+    }
+    if (S.phase === 'revive' && now - S.lastMsgAt > 20000 && S.wsRetry > 3) {
+      showOverFallback('连接中断 —— 以服务器结算为准');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 渲染（25fps+; 状态插值: stT1 → stT, alpha 墙钟）
+  // ═══════════════════════════════════════════════════════════════
+  function draw(now) {
+    var D = S.D;
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, W, D + UI_H);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, W - 1, D + UI_H - 1);
 
-    var now = performance.now();
     S.fx = S.fx.filter(function (f) { return now - f.t < f.dur; });
-
-    // 技能特效（画在世界区, 在实体之下）
     drawFxBack(now);
+    drawPulseWarns(now);
 
-    // 实体插值（v2 按稳定 id 锚定 prev 帧; 新实体直画）
-    // ★ alpha 恒为距上帧的墙钟比例 — 曾用 40ms 步进归零的 acc, 实体每 40ms 跳回旧位置再
-    //   插回来 = 高频往复, 视觉即用户反馈的「弹幕重影」（2026-09-06 实测反馈根因）
-    var al = 1;
-    if (S.snapAt) al = Math.min(1, Math.max(0, (now - S.snapAt) / S.snapDelta));
-    var prev = S.prevById;
-    var c = S.curItems;
-    for (var i = 0; i < c.length; i++) {
-      var it = c[i];
-      var ox = it.x, oy = it.y;
-      var pr = prev ? prev[it.id] : null;
-      if (pr && pr.kind === it.kind && Math.abs(it.x - pr.x) < 500 && Math.abs(it.y - pr.y) < 700) {
-        ox = pr.x + (it.x - pr.x) * al;
-        oy = pr.y + (it.y - pr.y) * al;
+    // 世界插值（stT1 → stT）
+    var a = 1;
+    var stA = S.stT1, stB = S.stT;
+    if (!stA) { stA = stB; a = 0; }
+    else if (stB) a = Math.min(1, Math.max(0, (now - (S.p0 + stB.tick * TICK_MS)) / TICK_MS + 1));
+    if (stA && stB) {
+      var byId = {};
+      for (var i = 0; i < stA.items.length; i++) byId[stA.items[i].id] = stA.items[i];
+      for (var j = 0; j < stB.items.length; j++) {
+        var it = stB.items[j];
+        var pr = byId[it.id];
+        var x = it.x, y = it.y;
+        if (pr && Math.abs(it.x - pr.x) < 600 && Math.abs(it.y - pr.y) < 800) {
+          x = pr.x + (it.x - pr.x) * a;
+          y = pr.y + (it.y - pr.y) * a;
+        }
+        drawItem(it, x, y);
       }
-      drawItem(it, ox, oy);
+      // q（本地镜像位置; 死态不画）
+      if (!S.dead && stB.qx !== undefined) {
+        var qxR = stB.qx;
+        if (stA.qx !== undefined) qxR = stA.qx + (stB.qx - stA.qx) * a;
+        drawQ(now, qxR);
+      }
     }
 
     drawFxFront(now);
-    drawQ(now);
     drawUI(now);
-
-    // 顶部得分（最顶层, 不被实体遮挡）
     ctx.fillStyle = '#000';
     ctx.font = '700 15px Tahoma, sans-serif';
     ctx.textAlign = 'center';
@@ -638,22 +920,44 @@
     ctx.fillText('' + S.score, W / 2, 6);
   }
 
+  // 冲击波预警: 最近 10 tick 内到达的波 → 顶部横扫线（纯视觉, 伤害由镜像在 At tick 结算）
+  function drawPulseWarns(now) {
+    if (!S.stT || S.phase === 'over') return;
+    var curK = S.stT.tick;
+    for (var wi = 0; wi < S.wins.length; wi++) {
+      var wn = S.wins[wi];
+      for (var t = 0; t < 100; t++) {
+        var dmg = wn.pulse[t];
+        if (!dmg) continue;
+        var at = wn.base + t;
+        var ahead = at - curK;
+        if (ahead < 0 || ahead > 10) continue;
+        var frac = 1 - ahead / 10;
+        var yy = Math.min(S.D - QY_PAD - Q_R, Math.max(0, frac * (S.D - QY_PAD - Q_R)));
+        ctx.globalAlpha = 0.35 * (0.3 + 0.7 * frac);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(2, yy);
+        ctx.lineTo(W - 2, yy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
   function drawItem(it, x, y) {
     var d = Math.max(2, it.d);
     ctx.fillStyle = '#fff';
     ctx.strokeStyle = '#000';
-    if (it.kind === 3 || it.kind === 4) {
-      ctx.lineWidth = 1.2;   // 好物细线
-    } else {
-      ctx.lineWidth = 2;     // 坏物粗线
-    }
-    if (it.kind === 0) { // 方
+    ctx.lineWidth = (it.kind === 3 || it.kind === 4) ? 1.2 : 2;
+    if (it.kind === 0) {
       ctx.strokeRect(x - d / 2, y - d / 2, d, d);
-    } else if (it.kind === 1) { // 圆
+    } else if (it.kind === 1) {
       ctx.beginPath();
       ctx.arc(x, y, d / 2, 0, Math.PI * 2);
       ctx.stroke();
-    } else if (it.kind === 2) { // 三角（尖端朝运动方向, ang: 0-255 → 0-2π, 0=正下）
+    } else if (it.kind === 2) {
       var th = (it.ang / 256) * Math.PI * 2;
       var h = d * Math.sqrt(3) / 2;
       var ux = Math.sin(th), uy = Math.cos(th);
@@ -666,14 +970,13 @@
       ctx.lineTo(bx - ex * d / 2, by - ey * d / 2);
       ctx.closePath();
       ctx.stroke();
-    } else if (it.kind === 3) { // 正菱形（好物 +1 分）——马卡龙万花筒填充
-      var ph = kaleidoPhase[it.id];
-      if (ph === undefined) ph = kaleidoPhase[it.id] = Math.random() * 360; // 随机定格, 不旋转
-      // canvas conic 起点 = 3 点钟方向; CSS 原版 from 0deg = 12 点 → 对齐减 90°
+    } else if (it.kind === 3) {
+      var ph = S.kaleido[it.id];
+      if (ph === undefined) ph = S.kaleido[it.id] = Math.random() * 360;
       var gr = ctx.createConicGradient((ph - 90) * Math.PI / 180, x, y);
       for (var ki = 0; ki < KALEIDO.length; ki++) {
         gr.addColorStop(ki / KALEIDO.length, KALEIDO[ki]);
-        gr.addColorStop((ki + 1) / KALEIDO.length, KALEIDO[ki]); // 同位置双 stop = 硬切扇区
+        gr.addColorStop((ki + 1) / KALEIDO.length, KALEIDO[ki]);
       }
       ctx.fillStyle = gr;
       var r = d * 0.72;
@@ -686,8 +989,8 @@
       ctx.fill();
       ctx.strokeStyle = '#000';
       ctx.stroke();
-      ctx.fillStyle = '#fff'; // 复位, 防污染后续绘制
-    } else if (it.kind === 4) { // 心（好物 +25 HP）
+      ctx.fillStyle = '#fff';
+    } else if (it.kind === 4) {
       var s = d / 20;
       ctx.beginPath();
       ctx.moveTo(x, y + 6 * s);
@@ -698,97 +1001,98 @@
     }
   }
 
-  function drawQ(now) {
-    // 无敌闪烁
-    if (S.invuln && Math.floor(now / 90) % 2 === 0 && S.alive) return;
+  function drawQ(now, qxR) {
+    if (S.invuln > 0 && Math.floor(now / 90) % 2 === 0) return;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.arc(S.qxLocal, S.D - Q_Y_BASE, Q_R, 0, Math.PI * 2);
+    ctx.arc(qxR, qy(), Q_R, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(S.qxLocal - 3.5, S.D - Q_Y_BASE - 3.5, 2.6, 0, Math.PI * 2);
+    ctx.arc(qxR - 3.5, qy() - 3.5, 2.6, 0, Math.PI * 2);
     ctx.fill();
   }
 
   function drawFxBack(now) {
     S.fx.forEach(function (f) {
-      var k = 1 - (now - f.t) / f.dur;
-      if (f.kind === 'laser' && k > 0) {
-        var x = f.x || S.qxTruth;
-        ctx.globalAlpha = 0.55 * k;
+      var kk = 1 - (now - f.t) / f.dur;
+      if (f.kind === 'laser' && kk > 0) {
+        ctx.globalAlpha = 0.55 * kk;
         ctx.fillStyle = '#000';
-        ctx.fillRect(Math.max(0, x - LASER_W / 2), 24, LASER_W, S.D - 24 - Q_Y_BASE - Q_R);
+        ctx.fillRect(Math.max(0, (f.x || S.qx) - 60), 24, 120, S.D - 24 - QY_PAD - Q_R);
         ctx.globalAlpha = 1;
-      } else if (f.kind === 'absorb' && k > 0) {
-        ctx.globalAlpha = 0.22 * k;
+      } else if (f.kind === 'absorb' && kk > 0) {
+        ctx.globalAlpha = 0.22 * kk;
         ctx.fillStyle = '#000';
-        var top = Math.max(24, S.D - Q_Y_BASE - Q_R - ABSORB_H);
-        ctx.fillRect(0, top, WORLD_W, S.D - Q_Y_BASE - Q_R - top);
+        var top = Math.max(24, S.D - QY_PAD - Q_R - ABSORB_R);
+        ctx.fillRect(0, top, W, S.D - QY_PAD - Q_R - top);
         ctx.globalAlpha = 1;
       }
     });
   }
 
   function drawFxFront(now) {
-    var qx = S.qxLocal, qy = S.D - Q_Y_BASE;
+    var qxR = S.stT ? S.stT.qx : S.qx, qyy = qy();
     S.fx.forEach(function (f) {
-      var k = 1 - (now - f.t) / f.dur;
-      if (k <= 0) return;
+      var kk = 1 - (now - f.t) / f.dur;
+      if (kk <= 0) return;
       if (f.kind === 'hit') {
-        ctx.globalAlpha = 0.5 * k;
+        ctx.globalAlpha = 0.5 * kk;
         ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = f.pulse ? 3 : 2;
         ctx.beginPath();
-        ctx.arc(qx, qy, Q_R + (1 - k) * 26, 0, Math.PI * 2);
+        ctx.arc(qxR, qyy, Q_R + (1 - kk) * (f.pulse ? 44 : 26), 0, Math.PI * 2);
         ctx.stroke();
+        if (f.pulse) {
+          ctx.beginPath();
+          ctx.moveTo(2, qyy);
+          ctx.lineTo(W - 2, qyy);
+          ctx.stroke();
+        }
         ctx.globalAlpha = 1;
       } else if (f.kind === 'heal') {
-        ctx.globalAlpha = Math.min(1, k * 2);
+        ctx.globalAlpha = Math.min(1, kk * 2);
         ctx.fillStyle = '#000';
         ctx.font = '700 15px Tahoma, sans-serif';
         ctx.textAlign = 'center';
-        var txt = f.n > 0 ? ('+' + f.n) : '回血';
-        ctx.fillText(txt, qx, qy - Q_R - 22 + (1 - k) * 14);
+        ctx.fillText('+' + f.n, qxR, qyy - Q_R - 22 + (1 - kk) * 14);
         ctx.globalAlpha = 1;
       } else if (f.kind === 'score') {
-        ctx.globalAlpha = Math.min(1, k * 2);
+        ctx.globalAlpha = Math.min(1, kk * 2);
         ctx.fillStyle = '#000';
         ctx.font = '700 14px Tahoma, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('+' + f.n, Math.max(30, Math.min(WORLD_W - 30, qx)), qy + 26 + (1 - k) * 10);
+        ctx.fillText('+' + f.n, Math.max(30, Math.min(W - 30, qxR)), qyy + 26 + (1 - kk) * 10);
         ctx.globalAlpha = 1;
       } else if (f.kind === 'die') {
-        ctx.globalAlpha = 0.6 * k;
+        ctx.globalAlpha = 0.6 * kk;
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(qx, qy, Q_R + (1 - k) * 18, 0, Math.PI * 2);
+        ctx.arc(qxR, qyy, Q_R + (1 - kk) * 18, 0, Math.PI * 2);
         ctx.stroke();
         ctx.globalAlpha = 1;
       } else if (f.kind === 'revive') {
-        ctx.globalAlpha = 0.5 * k;
+        ctx.globalAlpha = 0.5 * kk;
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(qx, qy, Q_R + (1 - k) * 34, 0, Math.PI * 2);
+        ctx.arc(qxR, qyy, Q_R + (1 - kk) * 34, 0, Math.PI * 2);
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
     });
   }
 
-  // ── UI 行（56px: 左 HP 数字 + 右 3 技能槽, 一眼可读充能与 OK）──
   function drawUI(now) {
     var y0 = S.D + 6, x0 = 8;
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(2, S.D + 0.5);
-    ctx.lineTo(WORLD_W - 2, S.D + 0.5);
+    ctx.lineTo(W - 2, S.D + 0.5);
     ctx.stroke();
 
-    // HP（受击 420ms 红闪）
     var hitFx = null;
     for (var i = 0; i < S.fx.length; i++) { if (S.fx[i].kind === 'hit') { hitFx = S.fx[i]; break; } }
     var hpRed = hitFx && (now - hitFx.t < 300);
@@ -797,22 +1101,21 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText('HP', x0, y0 + 2);
-    ctx.fillText('' + S.hp, x0 + 4, y0 + 23);
+    ctx.fillText('' + Math.max(0, Math.round(S.hp)), x0 + 4, y0 + 23);
     ctx.font = '10px Tahoma, sans-serif';
     ctx.fillStyle = '#888';
+    ctx.textAlign = 'left';
     ctx.fillText('Q/W 移', x0, y0 + 45);
 
-    // 技能槽（1/2/3）
-    var slotX = [78, 152, 226];
-    var slotW = 64, slotH = 44;
+    var slotX = [78, 152, 226], slotW = 64, slotH = 44;
     var labels = ['1', '2', '3'];
+    var cdT = [LASER_CD, HEAL_CD, ABSORB_CD];
     for (var s = 0; s < 3; s++) {
       var x = slotX[s], cd = S.cd[s];
       var ok = cd <= 0;
       ctx.strokeStyle = '#000';
       ctx.lineWidth = ok ? 2.5 : 1;
       ctx.strokeRect(x + 0.5, y0 - 1, slotW, slotH + 2);
-      // 键号
       ctx.fillStyle = '#888';
       ctx.font = '9px Tahoma, sans-serif';
       ctx.textAlign = 'right';
@@ -823,9 +1126,7 @@
         ctx.textAlign = 'center';
         ctx.fillText('OK', x + slotW / 2, y0 + 13);
       } else {
-        // 充能: 自下而上黑色填充剩余比例 + 剩余秒
-        var remain = Math.max(0, cd);
-        var frac = Math.min(1, remain / CD_TOTAL[s]);
+        var frac = Math.min(1, cd / cdT[s]);
         var bh = Math.max(2, Math.round((slotH - 4) * frac));
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = '#000';
@@ -834,84 +1135,79 @@
         ctx.fillStyle = '#fff';
         ctx.font = '700 14px Tahoma, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(Math.ceil(remain / 1000) + 's', x + slotW / 2, y0 + 12);
+        ctx.fillText(Math.ceil(cd) + 's', x + slotW / 2, y0 + 12);
       }
     }
-    // 复活窗倒计时（覆盖层文本由 watchdogs 驱动刷新）
-    if (S.dead) {
-      var left = Math.max(0, Math.ceil((S.reviveWaitEnd - 4000 - now) / 1000));
-      $('sh-rv-cd').textContent = left + 's';
+    // 复活窗倒计时（权威裁决后）
+    if (S.phase === 'revive' && S.deadConf) {
+      var leftMs = S.reviveMs - Math.max(0, S.procTick - S.dieLocalK) * TICK_MS;
+      $('sh-rv-cd').textContent = Math.max(0, Math.ceil(leftMs / 1000)) + 's';
     }
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 键盘（仅游戏面板持有焦点时捕获 — iframe 天然焦点隔离）
+  // 键盘（仅游戏面板持焦点; iframe 天然隔离）
   // ═══════════════════════════════════════════════════════════════
   var keyMap = { q: 'l', w: 'r' };
   function onKeyDown(e) {
-    if (!loopOn || S.over || S.dead) return; // 游戏中才响应移动
+    if (S.phase !== 'play' || S.dead) return;
     if (e.repeat) return;
     var k = (e.key || '').toLowerCase();
     if (k === 'q' || k === 'w') {
       e.preventDefault();
       var dir = keyMap[k];
       S[dir === 'l' ? 'holdL' : 'holdR'] = true;
-      sendInput(dir, 1);
     } else if (k === '1' || k === '2' || k === '3') {
       e.preventDefault();
-      sendInput(k, 1);
+      castSkill(parseInt(k, 10));
     }
   }
   function onKeyUp(e) {
-    if (!loopOn || S.over) return;
+    if (S.phase === 'over') return;
     var k = (e.key || '').toLowerCase();
     if (k === 'q' || k === 'w') {
       e.preventDefault();
       var dir = keyMap[k];
       S[dir === 'l' ? 'holdL' : 'holdR'] = false;
-      sendInput(dir, 0);
     }
   }
   function onBlur() {
-    // iframe 失焦: 松开一切按键（防幽灵按住）
-    if (S.holdL) { S.holdL = false; sendInput('l', 0); }
-    if (S.holdR) { S.holdR = false; sendInput('r', 0); }
+    S.holdL = false; S.holdR = false;
   }
   function onVis() {
-    if (document.hidden) { onBlur(); } else { lastTs = 0; }
+    if (document.hidden) {
+      onBlur();
+    } else if (S.p0 > 0 && S.procTick >= 0 && (S.phase === 'play' || S.phase === 'deadWait' || S.phase === 'revive' || S.phase === 'waitOver')) {
+      // 返回: 冻结期间世界暂停（服务器同冻结于批驱动）→ 锚点重对齐, 零追赶零偏差
+      S.p0 = performance.now() - S.procTick * TICK_MS;
+    }
+    lastTs = 0;
   }
 
   // ═══════════════════════════════════════════════════════════════
   // boot
   // ═══════════════════════════════════════════════════════════════
   function goHome() {
-    stopLoop();
-    closeWs();
+    stopLoop(); closeWs();
     showPage(elHome);
     startBoardPoll();
-    renderBoard();
   }
   function bind() {
     $('sh-start').addEventListener('click', function () {
       setMsg(elMsg, '');
       if (!isLogged()) { setMsg(elMsg, '未登录 —— 请先在主窗口登录'); return; }
+      stopBoardPoll();
       enterGameView();
     });
     $('sh-revive-yes').addEventListener('click', sendRevive);
-    $('sh-revive-no').addEventListener('click', function () {
-      quitRun(); // REST abort（WS 断线时也可靠）
-    });
+    $('sh-revive-no').addEventListener('click', function () { quitRun(); });
     $('sh-quit').addEventListener('click', function () {
       if (window.confirm) {
-        try {
-          if (!window.confirm('确定放弃本局？当前分数仍会记录')) return;
-        } catch (_) { }
+        try { if (!window.confirm('确定放弃本局？当前分数仍会记录')) return; } catch (_) { }
       }
       quitRun();
     });
-    $('sh-again').addEventListener('click', function () {
-      goHome(); // 回榜单（本局分数已上榜, 刷新名次）; 再点开局按钮重开
-    });
+    $('sh-again').addEventListener('click', function () { goHome(); });
     $('sh-backhome').addEventListener('click', goHome);
     document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('keyup', onKeyUp, true);
@@ -920,9 +1216,7 @@
     window.addEventListener('resize', function () {
       if (loopOn) { lastTs = 0; fitScale(); }
     });
-    // 点任意处聚焦回画布窗口（点击 iframe 自动聚焦, 此处仅保险）
     document.addEventListener('mousedown', function () { try { window.focus(); } catch (_) { } }, true);
-    // 主窗口主题联动（gaea-host syncTheme postMessage）
     window.addEventListener('message', function (e) {
       if (e && e.data && e.data.type === 'qqqide-theme-change') {
         document.documentElement.setAttribute('data-theme', e.data.dark ? 'dark' : 'light');
@@ -933,7 +1227,7 @@
   function boot() {
     bind();
     goHome();
-    // 未登录提示轮询（登录后自动可开局）
+    startGameLoop(); // 常驻 rAF（home 页 draw 亦可用; 空场景零开销）
     setInterval(function () {
       if (!isLogged()) {
         setMsg(elMsg, '未登录 —— 请先在主窗口登录后再来');
@@ -941,7 +1235,6 @@
         setMsg(elMsg, '');
       }
     }, 4000);
-    // 主题联动
     try {
       var th = window.parent && window.parent.document && window.parent.document.documentElement
         ? window.parent.document.documentElement.getAttribute('data-theme') : null;

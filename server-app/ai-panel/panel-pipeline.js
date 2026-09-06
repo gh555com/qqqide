@@ -1225,15 +1225,18 @@ async function _executeSend(intent) {
                         var _bgAiDiv2 = agent && agent._activeAiDiv;
                         if (_bgAiDiv2 && _bgAiDiv2._clockBlock) {
                             _bgAiDiv2._clockBlock.className = 'msg-ai-clock';
-                            var _elapsed3 = performance.now() - agent._floorStartPerf;
-                            var _durS3 = Math.floor(_elapsed3 / 1000);
-                            if (_bgAiDiv2._clockMin) _bgAiDiv2._clockMin.textContent = Math.floor(_durS3 / 60) + 'm';
-                            if (_bgAiDiv2._clockSec) _bgAiDiv2._clockSec.textContent = ':' + (_durS3 % 60 < 10 ? '0' : '') + (_durS3 % 60) + 's';
+                            // ★ wall-clock（2026-09-06）：与 startFloorTimer 同轴；未 start 跳过防 epoch 值写屏
+                            if (agent._floorStartPerf > 0) {
+                                var _elapsed3 = Math.max(0, Date.now() - agent._floorStartPerf);
+                                var _durS3 = Math.floor(_elapsed3 / 1000);
+                                if (_bgAiDiv2._clockMin) _bgAiDiv2._clockMin.textContent = Math.floor(_durS3 / 60) + 'm';
+                                if (_bgAiDiv2._clockSec) _bgAiDiv2._clockSec.textContent = ':' + (_durS3 % 60 < 10 ? '0' : '') + (_durS3 % 60) + 's';
+                            }
                         }
                         agent._floorTimings = agent._floorTimings || [];
                         agent._floorTimings.push({
                             floorIndex: agent._ctx ? agent._ctx.totalFloors : 0,
-                            durationMs: Math.round(performance.now() - agent._floorStartPerf),
+                            durationMs: Math.round(Math.max(0, Date.now() - (agent._floorStartPerf || Date.now()))),  // ★ wall-clock（2026-09-06）
                             error: msg,
                             finishedAt: new Date().toISOString()
                         });
@@ -1315,14 +1318,17 @@ async function _executeSend(intent) {
         }
         if (agent) {
             if (agent._activeAiDiv) {
-                var _elapsed = performance.now() - agent._floorStartPerf;
-                var _totalS = Math.floor(_elapsed / 1000);
-                var _min = Math.floor(_totalS / 60);
-                var _sec = _totalS % 60;
                 if (agent._activeAiDiv._clockBlock) agent._activeAiDiv._clockBlock.className = 'msg-ai-clock';
-                if (agent._activeAiDiv._clockMin) {
-                    agent._activeAiDiv._clockMin.textContent = _min + 'm';
-                    agent._activeAiDiv._clockSec.textContent = ':' + (_sec < 10 ? '0' : '') + _sec + 's';
+                // ★ wall-clock（2026-09-06）：同 startFloorTimer 轴；未 start（perf=0）只复位样式不写数值
+                if (agent._floorStartPerf > 0) {
+                    var _elapsed = Math.max(0, Date.now() - agent._floorStartPerf);
+                    var _totalS = Math.floor(_elapsed / 1000);
+                    var _min = Math.floor(_totalS / 60);
+                    var _sec = _totalS % 60;
+                    if (agent._activeAiDiv._clockMin) {
+                        agent._activeAiDiv._clockMin.textContent = _min + 'm';
+                        agent._activeAiDiv._clockSec.textContent = ':' + (_sec < 10 ? '0' : '') + _sec + 's';
+                    }
                 }
                 agent._activeAiDiv._renderScheduled = false;
                 agent._activeAiDiv = null;
