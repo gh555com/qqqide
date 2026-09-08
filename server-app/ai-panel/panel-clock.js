@@ -657,12 +657,15 @@ function _tickCometClocks() {
         }
         var ag = pool[qid];
         // 计时：优先 agent._floorStartPerf，缺失则 fallback registry.startedAt
-        var startMs = (ag && ag._floorStartPerf > 0) ? ag._floorStartPerf : (reg[qid].startedAt || 0);
+        // ★ 判空守卫（2026-09-08 日志 TypeError 实锤）：isBuilding 可来自 localBQ（本地 IPC 集合），
+        //   此时 reg[qid] 可能不存在（注册表未注册/已清理）→ reg[qid].startedAt 直接崩循环。
+        var regStart = (reg && reg[qid] && reg[qid].startedAt) || 0;
+        var startMs = (ag && ag._floorStartPerf > 0) ? ag._floorStartPerf : regStart;
         if (startMs <= 0) {
             clk.style.display = 'none';
             continue;
         }
-        var elapsed = (startMs === reg[qid].startedAt) ? (Date.now() - startMs) : (now - startMs);
+        var elapsed = (regStart > 0 && startMs === regStart) ? (Date.now() - startMs) : (now - startMs);
         clk.textContent = Math.floor(elapsed / 1000);
         clk.style.display = '';
         hasVisible = true;

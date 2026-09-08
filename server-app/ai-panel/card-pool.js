@@ -602,8 +602,13 @@ var CardPool = (function () {
     if (fData.aiStartTime && fData.tierLabel && !fData.floorFatal) {
       var tierEl = document.createElement('div');
       tierEl.className = 'msg-tier-indicator';
-      var _bpEst = fData.aiBackpackEst || 0;
-      tierEl.textContent = fData.tierLabel + ' · ' + fData.aiStartTime + ' · ' + '\u2726' + (_bpEst || '?') + 'K';
+      tierEl.dataset.fn = String(fNum);   // ★ aq 归属（_refreshAqLine 校验防跨层误刷）
+      // ★ 2026-09-07 aq 楼层闭环：重建渲染同款格式（fData 持久化字段，旧数据回落 aiBackpackEst 单值）
+      var _bpS = (fData.aiBackpackStartK > 0) ? fData.aiBackpackStartK : (fData.aiBackpackEst || 0);
+      var _bpM = (fData.aiBackpackMaxK > 0) ? fData.aiBackpackMaxK : 0;
+      var _tierTxt = fData.tierLabel + ' · ' + fData.aiStartTime + ' · ' + '\u2726' + (_bpS || '?') + 'K';
+      if (_bpM > _bpS) _tierTxt += ' ' + _bpM + 'K';
+      tierEl.textContent = _tierTxt;
       frag.appendChild(tierEl);
     }
 
@@ -682,6 +687,10 @@ var CardPool = (function () {
     }
     // ★ 统一填充所有 .img-info（覆盖新渲染 + 旧格式迁移 + load 委托 + Observer）
     _setupImgSupport(aiEl._contentWrap);
+    // ★ 本地路径链接机：楼层正文/历史 ai_html 中滴本地路径 → 可点击（幂等，已有锚点跳过）
+    try { if (typeof window.linkifyLocalPaths === 'function') window.linkifyLocalPaths(aiEl._contentWrap); } catch (_eLp) { }
+    // ★ 存在性探针（权威渲染点）：确认存在才显链，不存在立即还原纯文本；会话缓存零重复 stat
+    try { if (typeof window.probeLocalPathLinks === 'function') window.probeLocalPathLinks(aiEl._contentWrap); } catch (_ePr) { }
     // ★ 事件委托（点击）：继续任务链接 + 表格/代码块预览
     //   表格/代码块从 DOM 自描述内容读取，零全局状态，跨面板切换不失效
     aiEl._contentWrap.addEventListener('click', function (e) {

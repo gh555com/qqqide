@@ -741,6 +741,9 @@ async function _restoreAgentFromStore(questId, ag) {
                         if (_rhData.aiStartTime) ag._aiStartTime = _rhData.aiStartTime;
                         if (_rhData.tierLabel) ag._aiTierLabel = _rhData.tierLabel;
                         if (_rhData.aiBackpackEst) ag._aiBackpackEst = _rhData.aiBackpackEst;
+                        // ★ 2026-09-07 aq 楼层闭环：还原权威开局 + 已达成峰值（中断前峰值不丢，恢复续建继续涨）
+                        if (_rhData.aiBackpackStartK) ag._aiBackpackStartK = _rhData.aiBackpackStartK;
+                        if (_rhData.aiBackpackMaxK) ag._aiBackpackMaxK = _rhData.aiBackpackMaxK;
                         // ★ 恢复 _lastAutoSaveLen 防止空 houses 安全网误杀新楼层首存
                         ag._lastAutoSaveLen = (ag.conversation ? ag.conversation.length : 0);
                     }

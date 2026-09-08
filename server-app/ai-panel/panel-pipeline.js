@@ -683,6 +683,9 @@ async function _executeSend(intent) {
     // ★ 字符→token 估算系数 — 唯一真理源 ContentGateway.CHAR_PER_TOKEN（content-gateway.js）
     var _CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
     if (sendType !== 'recovery') {
+        // ★ 2026-09-07 aq 楼层闭环：每新楼清零峰值/权威开局字段（防上楼残留串号；恢复楼保留磁盘还原值）
+        agent._aiBackpackStartK = 0;
+        agent._aiBackpackMaxK = 0;
         var _bpChars = 0;
         // 1. 服务端甲壳（动态：core/guard-meta.js 唯一入口，服务端 /api/v3/ai/guard-meta）
         _bpChars += (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21354;
@@ -721,7 +724,8 @@ async function _executeSend(intent) {
                 if (!_prev || !_prev.classList.contains('msg-tier-indicator')) {
                     var tierEl = document.createElement('div');
                     tierEl.className = 'msg-tier-indicator';
-                    tierEl.textContent = agent._aiTierLabel + ' · ' + agent._aiStartTime + ' · ' + '\u2726' + (agent._aiBackpackEst || '?') + 'K';
+                    tierEl.dataset.fn = String(floorNum);   // ★ aq 归属（_refreshAqLine 校验防跨层误刷）
+                    tierEl.textContent = (typeof __qqqAqLineText === 'function') ? __qqqAqLineText(agent) : (agent._aiTierLabel + ' · ' + agent._aiStartTime);
                     aiDiv.parentNode.insertBefore(tierEl, aiDiv);
                 }
             }
@@ -807,6 +811,34 @@ async function _executeSend(intent) {
     };
 
     // ── agent.send ──
+    // ★ 2026-09-07 aq 楼层闭环：峰值采样 + aq 行定稿（局部函数，_capAbort / onCost / onToolResult / finally 共用）
+    //   口径 = __qqqCtxSampleK（localTotal，与 ctx 按钮/背包图解/压缩动画同尺）；maxK 楼层内只增不减，
+    //   auto-repair 弹组回退天然免疫（回退不降峰值）。
+    var _samplePeakK = function () {
+        try {
+            if (!agent) return;
+            if (!(agent._aiBackpackMaxK > 0)) {
+                agent._aiBackpackMaxK = (agent._aiBackpackStartK > 0) ? agent._aiBackpackStartK : (agent._aiBackpackEst || 0);
+            }
+            var _k = (typeof __qqqCtxSampleK === 'function') ? __qqqCtxSampleK(agent) : 0;
+            if (_k > agent._aiBackpackMaxK) agent._aiBackpackMaxK = _k;
+        } catch (_) { }
+    };
+    // ★ aq 行定格/权威化刷新：找 aiDiv 紧前 msg-tier-indicator，重写文本（__qqqAqLineText 统一格式）
+    var _refreshAqLine = function () {
+        try {
+            if (!agent || typeof __qqqAqLineText !== 'function') return;
+            var _d = null;
+            if (agent._activeAiDiv && agent._activeAiDiv.isConnected) _d = agent._activeAiDiv;
+            else if (aiDiv && aiDiv.isConnected) _d = aiDiv;
+            if (!_d || !_d.parentNode) return;
+            var _p = _d.previousElementSibling;
+            if (_p && _p.classList && _p.classList.contains('msg-tier-indicator')) {
+                var _t = __qqqAqLineText(agent);
+                if (_t && _p.textContent !== _t) _p.textContent = _t;
+            }
+        } catch (_) { }
+    };
     // ★ 发送停滞看门狗（2026-08-11，q184 20 分钟强拉断事故修案）：不是总时长上限——
     //   长任务（60 houses / 深度思考 / 压缩）总时长远超 20 分钟是常态，正在干活绝不能拉断。
     //   仅在「20 分钟零进展」时终止（网关重试风暴 / IPC 挂死 / SSE 静默），防三面板永久禁发；
@@ -890,6 +922,10 @@ async function _executeSend(intent) {
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_) { }
             _chimeSettled('bad');  // ★ 停滞终止 = 异常中断 → bad；_sendTerminated 标记防止 finally 再补一响
+            // ★ 2026-09-07 aq 楼层闭环：_capAbort 是 send 永不返回的路径（HTTP/2 死连接踹锁），
+            //   finally 可能永不执行 → 此处就地采样定稿（采样在 error 消息 push 之后，峰值含错误行）
+            _samplePeakK();
+            _refreshAqLine();
         } catch (_) { }
     };
     var _touchCap = function () {
@@ -909,8 +945,11 @@ async function _executeSend(intent) {
             token: token,
             tier: _actualTier,
             noTools: intent.noTools || false,
+            // ★ 2026-09-07 aq 楼层闭环：权威开局已采样 → 刷新 aq 行（修正简化估算 ±差，同帧微任务）
+            onFloorStart: function () { _refreshAqLine(); },
             onCost: function () {
                 _touchCap();
+                _samplePeakK();   // ★ aq 峰值采样：先采样再落盘（payload 含最新 maxK）
                 // ★ 断电保护（2026-08-27）：house 完结（conversation 已 push 完整消息）→ 立即落盘。
                 //   旧 5s 定时器按「消息条数」去重——流式/工具执行期间条数不变全部空转，
                 //   house 完结后断电窗口可达 5s（深思考 house 内完成的工具结果/回复全丢）。
@@ -926,6 +965,7 @@ async function _executeSend(intent) {
                 if (_toolSaveT) clearTimeout(_toolSaveT);
                 _toolSaveT = setTimeout(function () {
                     _toolSaveT = null;
+                    _samplePeakK();   // ★ aq 峰值采样：工具组原子推入完成后（防抖内），先采样再落盘
                     if (typeof _saveAgentFloor === 'function') _saveAgentFloor(agent, qid);
                 }, 500);
             },
@@ -943,7 +983,8 @@ async function _executeSend(intent) {
                                 if (!_prev2 || !_prev2.classList.contains('msg-tier-indicator')) {
                                     var tierEl2 = document.createElement('div');
                                     tierEl2.className = 'msg-tier-indicator';
-                                    tierEl2.textContent = agent._aiTierLabel + ' · ' + agent._aiStartTime + ' · ' + '\u2726' + (agent._aiBackpackEst || '?') + 'K';
+                                    tierEl2.dataset.fn = String(floorNum);   // ★ aq 归属（_refreshAqLine 校验防跨层误刷）
+                                    tierEl2.textContent = (typeof __qqqAqLineText === 'function') ? __qqqAqLineText(agent) : (agent._aiTierLabel + ' · ' + agent._aiStartTime);
                                     aiDiv.parentNode.insertBefore(tierEl2, aiDiv);
                                 }
                             }
@@ -1060,7 +1101,8 @@ async function _executeSend(intent) {
                                 if (!_prev2 || !_prev2.classList.contains('msg-tier-indicator')) {
                                     var tierEl2 = document.createElement('div');
                                     tierEl2.className = 'msg-tier-indicator';
-                                    tierEl2.textContent = agent._aiTierLabel + ' · ' + agent._aiStartTime + ' · ' + '\u2726' + (agent._aiBackpackEst || '?') + 'K';
+                                    tierEl2.dataset.fn = String(floorNum);   // ★ aq 归属（_refreshAqLine 校验防跨层误刷）
+                                    tierEl2.textContent = (typeof __qqqAqLineText === 'function') ? __qqqAqLineText(agent) : (agent._aiTierLabel + ' · ' + agent._aiStartTime);
                                     aiDiv.parentNode.insertBefore(tierEl2, aiDiv);
                                 }
                             }
@@ -1117,6 +1159,10 @@ async function _executeSend(intent) {
                     if (typeof _restoreGuideBlocksToContentWrap === 'function') {
                         _restoreGuideBlocksToContentWrap(_targetDiv2._contentWrap, agent.conversation, floorNum);
                     }
+                    // ★ 本地路径链接机：最终回复正文滴本地路径 → 可点击 Roam 定位（幂等）
+                    try { if (typeof window.linkifyLocalPaths === 'function') window.linkifyLocalPaths(_targetDiv2._contentWrap); } catch (_eLp2) { }
+                    // ★ 存在性探针（AI 最终回复权威渲染点）：确认存在才显链，不存在立即还原纯文本
+                    try { if (typeof window.probeLocalPathLinks === 'function') window.probeLocalPathLinks(_targetDiv2._contentWrap); } catch (_ePr2) { }
                     _targetDiv2._dirty = false;
                     _targetDiv2._renderScheduled = false;
                     // ★ C 重构：innerHTML 已覆盖，清 agent 流状态防 _a4BuildCompleteFloorPayload DOM flush 重复追加
@@ -1276,6 +1322,10 @@ async function _executeSend(intent) {
         //   异常/用户停止/静默终止 → bad endfloor；_sendTerminated（停滞看门狗已响 bad）跳过防双响
         try { _chimeTrace('finally cleanly=' + !!(agent && agent._floorCompletedCleanly) + ' term=' + !!(agent && agent._sendTerminated)); } catch (_) { }
         if (!(agent && agent._sendTerminated)) _chimeSettled(agent && agent._floorCompletedCleanly ? 'ok' : 'bad');
+        // ★ 2026-09-07 aq 楼层闭环定稿：任意终结路径汇聚点——压缩前最后一次采样（峰值）+ aq 行定格
+        //   必须位于 _saveAgentQuestData 之前（payload 含 maxK）且早于 _activeAiDiv 清空（尾部）
+        _samplePeakK();
+        _refreshAqLine();
         if (_sendCapTimer) { clearTimeout(_sendCapTimer); _sendCapTimer = null; }
         if (agent && qid && agent._floorCompletedCleanly) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }

@@ -40,7 +40,12 @@ const CURVE_FILE_MAX = 512 * 1024;
 let _userData = '';
 let _label = ''; // v13: 启动包标识 = 含 qqqide.exe 的包根目录完整路径（绿色包 E:\s\w\qqqide-win-x64 / dev 项目根），qoast 文案用
 let _timer: ReturnType<typeof setInterval> | null = null;
-let _last = { ts: 0, mb: 0, procs: 0, win: 0, rows: [] as { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[] }; // 最新广播快照（成功值 / 失败保留旧值）
+let _last: any = { ts: 0, mb: 0, procs: 0, win: 0, rows: [] as { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[], ext: [] as any[], extMB: 0 }; // 最新广播快照（成功值 / 失败保留旧值）
+// v28 圈外进程雷达（2026-09-08 q209 f72 C 方案：树真相与账口径分离——own=包内 exe 进程树，
+// external=被收养的圈外程序（chrome/dev electron/系统工具链）。主数字只算 own，外圈照列不误）
+let _extSeen = new Map<string, number>(); // path → 首次连续在场时刻（分钟级滤瞬态编译闪烁）
+let _extRadarSent = false;                 // 每 boot 只广播一次雷达 qoast
+let _pendingRadar: { extMB: number; groups: { p: string; n: number; ws: number }[] } | null = null;
 let _snapBusy = false;          // 防 10s 超时窗口内重复发命令
 
 // ── v6 CPU 状态（核数口径） ──
@@ -243,8 +248,11 @@ async function _snapshot(): Promise<void> {
   if (_snapBusy) return;
   _snapBusy = true;
   try {
-    const r = await requestMemSnapshot(process.pid);
-    if (r && r.ok && typeof r.totalMB === 'number' && r.totalMB > 0) {
+    const r = await requestMemSnapshot(process.pid, _label);
+    let ownMB = 0; // v28: 主数字 = own（包内 exe 进程树）专用工作集；旧 broker 无 ownMB → totalMB 兜底
+    if (r && typeof r.ownMB === 'number' && r.ownMB > 0) ownMB = r.ownMB;
+    else if (r && typeof r.totalMB === 'number' && r.totalMB > 0) ownMB = r.totalMB;
+    if (r && r.ok && ownMB > 0) {
       const now = Date.now();
       const wall = _cpuPrev ? now - _cpuPrev.ts : 0;
       if (typeof r.ncpu === 'number' && r.ncpu > 0) _ncpu = r.ncpu;
@@ -260,9 +268,21 @@ async function _snapshot(): Promise<void> {
       if (cores !== null) { _cpuAccSum += cores; _cpuAccCnt++; }
       // v14: 窗口数 = py-broker EnumWindows 顶层可见窗口计数（IDE 窗 + DevTools 独立窗，用户可见口径）；
       // 非正数/缺失（枚举失败）→ 保留上次值
-      _last = { ts: now, mb: r.totalMB, procs: r.nodes || 0, win: (typeof r.nwin === 'number' && r.nwin > 0) ? r.nwin : _last.win, rows };
+      const extArr: any[] = Array.isArray(r.ext) ? r.ext : [];
+      _last = { ts: now, mb: ownMB, procs: r.nodes || 0, win: (typeof r.nwin === 'number' && r.nwin > 0) ? r.nwin : _last.win, rows, ext: extArr, extMB: (typeof r.extMB === 'number') ? r.extMB : 0 };
+      // v28 雷达：任意外圈 exe 组连续在场 ≥120s 且外圈总量 ≥64MB（滤编译瞬间 cmd/node 闪烁）→ 每 boot 广播一次
+      if (!_extRadarSent && _last.extMB >= 64 && extArr.length) {
+        const n2 = Date.now();
+        for (const g of extArr) { if (typeof g.p === 'string' && g.p && !_extSeen.has(g.p)) _extSeen.set(g.p, n2); }
+        for (const k of Array.from(_extSeen.keys())) { if (!extArr.some((g: any) => g.p === k)) _extSeen.delete(k); }
+        const old = extArr.some((g: any) => { const f = _extSeen.get(g.p); return !!f && n2 - f >= 120000; });
+        if (old) {
+          _extRadarSent = true;
+          _pendingRadar = { extMB: _last.extMB, groups: extArr.slice(0, 3).map((g: any) => ({ p: g.p, n: g.n || 1, ws: g.ws || 0 })) };
+        }
+      }
       if (r.nodes) _peakNodesThisMin = Math.max(_peakNodesThisMin, r.nodes); // 分钟进程数峰值（记点粒度）
-      _recordCurvePoint(r.totalMB, _peakNodesThisMin, _cpuAccCnt ? _cpuAccSum / _cpuAccCnt : undefined);
+      _recordCurvePoint(ownMB, _peakNodesThisMin, _cpuAccCnt ? _cpuAccSum / _cpuAccCnt : undefined);
       // 基线重建（必须先差分后重建；sec 累计跨基线保留）
       const byPid = new Map<number, { ut: number; kt: number; sec: number }>();
       for (const row of (r.rows || []) as { pid: number; ut: number; kt: number }[]) {
@@ -299,6 +319,7 @@ async function _tick(): Promise<void> {
   await _snapshot();
   const msg: { ts: number; mb: number; procs: number; win?: number; bootAt: number; cpu?: { cores: number | null; totalSec: number; avgCores: number }; ncpu?: number; rows?: { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[]; pt?: { t: number; v: number; n?: number; cu?: number }; label?: string } = {
     ts: _last.ts || Date.now(), mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, label: _label,
+    ext: _last.ext || [], extMB: _last.extMB || 0,
   };
   // v6: CPU 广播——核数口径（瞬时核数 / 累计秒 / 平均核数），ncpu 供渲染层 y 轴顶封
   msg.cpu = _cpuMsg();
@@ -306,6 +327,10 @@ async function _tick(): Promise<void> {
   if (_pendingPt) {
     msg.pt = _pendingPt; // 仅新曲线点产生时才带（60s 一次），渲染层按 ts 单调去重
     _pendingPt = null;
+  }
+  if (_pendingRadar) {
+    msg.radar = _pendingRadar; // v28: 每 boot 一次的外圈雷达 qoast 载荷（带完即清）
+    _pendingRadar = null;
   }
   for (const w of BrowserWindow.getAllWindows()) {
     try { if (!w.isDestroyed()) w.webContents.send('qqqide:mem:metrics', msg); } catch { /* ignore */ }
@@ -331,7 +356,7 @@ export function memMeterInit(userData: string): void {
   if (_timer) return;
   _userData = userData;
   try { _label = _resolveLabel(); } catch { _label = 'qqqide'; }
-  ipcMain.handle('qqqide:mem:get-metrics', () => ({ mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, label: _label, cpu: _cpuMsg(), ncpu: _ncpu }));
+  ipcMain.handle('qqqide:mem:get-metrics', () => ({ mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, label: _label, cpu: _cpuMsg(), ncpu: _ncpu, ext: _last.ext || [], extMB: _last.extMB || 0 }));
   ipcMain.handle('qqqide:mem:history', () => {
     // v7: 双流返回（memPts 内存曲线 / cpuPts CPU 曲线，渲染层按 ts 独立合并去重）
     const memPts: { t: number; v: number; n?: number }[] = [];
@@ -352,7 +377,7 @@ export function memMeterInit(userData: string): void {
         cpuPts.push({ t: _cpuT[j], cu: _cpuCU[j] });
       }
     }
-    return { memPts, cpuPts, len: _memLen, mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, boots: _bootMarks.slice(), label: _label, cpu: _cpuMsg(), ncpu: _ncpu };
+    return { memPts, cpuPts, len: _memLen, mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, boots: _bootMarks.slice(), label: _label, cpu: _cpuMsg(), ncpu: _ncpu, ext: _last.ext || [], extMB: _last.extMB || 0 };
   });
   // v7: reset——scope 定案（'mem'/'cpu'/'all'），各自清各自文件+环形缓冲，互不影响；
   // mem reset 连带清垂线（垂线属 mem 流生命周期）；cpu reset 连带清 CPU 基线/累计

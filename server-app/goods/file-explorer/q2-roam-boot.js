@@ -407,7 +407,7 @@
 		var cmd = e.data.cmd;
 		// Best-effort: dispatch as window event so feature handlers below can react.
 		// path 透传（roam.revealFile 定位用）
-		document.dispatchEvent(new CustomEvent('qqq-roam-cmd', { detail: { cmd: cmd, path: e.data.path } }));
+		document.dispatchEvent(new CustomEvent('qqq-roam-cmd', { detail: { cmd: cmd, path: e.data.path, reqId: e.data.reqId || '' } }));
 	});
 
 	// ★ zoom 单位换算（2026-08-09）：html { zoom:0.85 } 下 innerWidth/clientX 报物理 px，而 fixed 定位/maxWidth/offsetWidth 用 CSS px（F113 实测 Electron22: zoom 生效但 clientX=物理注入值、innerWidth 不变）→ 物理/CSS 必须统一，否则右边界保护失效 + maxWidth 退避错 17.6%

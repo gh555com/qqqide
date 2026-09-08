@@ -184,9 +184,10 @@ function _sendCommand(action: string, params: Record<string, any> = {}): Promise
     });
 }
 
-/** 启动包集合内存快照 — mem-meter 每 5s 调用（NtQuery 进程树 ~7.5ms，零子进程零 WMI） */
-export async function requestMemSnapshot(rootPid: number): Promise<any> {
-    return _sendCommand('mem-snapshot', { rootPid });
+/** 启动包集合内存快照 — mem-meter 每 5s 调用（NtQuery 进程树 ~7.5ms，零子进程零 WMI）
+ * pkgRoot = 启动包根目录（含 qqqide.exe）：py-broker 按 exe 路径前缀分类 own/external */
+export async function requestMemSnapshot(rootPid: number, pkgRoot: string = ''): Promise<any> {
+    return _sendCommand('mem-snapshot', { rootPid, pkgRoot });
 }
 
 /** 改名 DevTools 窗口 — node-broker 优先（koffi），失败回退 Python broker。返回是否成功（供调用方停止重试） */

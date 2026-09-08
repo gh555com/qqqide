@@ -369,6 +369,7 @@ var AgentLoop = (function () {
         var onToolCall = opts.onToolCall || function () { };
         var onToolResult = opts.onToolResult || function () { };
         var onDone = opts.onDone || function () { };
+        var onFloorStart = opts.onFloorStart || function () { };   // ★ aq 楼层闭环：权威开局采样后回传 pipeline 刷新 aq 行
         // ★ 天罗地网: 楼层完结上报 (包装 onDone, 覆盖全部 6 个完结路径)
         var _cnOnDone = onDone;
         onDone = function (content, timing) {
@@ -519,6 +520,22 @@ var AgentLoop = (function () {
         if (self._compressFloor) { userMsg._compressFloor = true; }
         self.conversation.push(userMsg);
 
+        // ★ 2026-09-07 aq 楼层闭环：权威开局采样——userMsg 推入后 conversation 已含全部注入
+        //   （guard 甲壳 / Z rules / biscuit / fx / vision / 图片路径提示），与 ctx 按钮/背包图解同尺 localTotal。
+        //   恢复楼（磁盘还原值即原楼层开局）与压缩楼（intent.backpackEstK = 点击压缩瞬间重量）不采样，零覆盖。
+        //   权威值经 opts.onFloorStart 回传 pipeline，刷新 aq 行（修正发送前简化估算的 ±差）。
+        if (!self._isRecovery && !self._compressFloor && typeof __qqqCtxSampleK === 'function') {
+            try {
+                var _aqStartK = __qqqCtxSampleK(self);
+                if (_aqStartK > 0) self._aiBackpackStartK = _aqStartK;
+            } catch (_e) { }
+        }
+        if (!(self._aiBackpackStartK > 0)) self._aiBackpackStartK = self._aiBackpackEst || 0;
+        if (!(self._aiBackpackMaxK > 0)) self._aiBackpackMaxK = self._aiBackpackStartK;
+        if (typeof opts.onFloorStart === 'function') {
+            try { opts.onFloorStart(self._aiBackpackStartK); } catch (_e) { }
+        }
+
         self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
 
         // 智能等级：手动选择优先，未选则默认 Pro+Max
@@ -547,6 +564,7 @@ var AgentLoop = (function () {
         self._lastGatewayMessage = '';  // ★ 每层楼重置：防错误信息跨 floor 污染
         self._exitReason = '';         // ★ 每层楼重置：防 _buildDiagnosis 误报上楼层原因
         self._floorFatal = false;      // ★ 每层楼重置
+        self._noNlRepairDone = false;  // ★ 每层楼重置：NO-NL 自动重排屋（2026-09-08 q242 f158 根治）每层最多一次
         // ★ _inRecoverySend: 保留外部已设值（_attemptRecoverySend 预置），正常楼层为 false
         self._inRecoverySend = self._inRecoverySend || false;
         // ★ 终极 Stop 闭环：每层楼创建真理源
@@ -838,6 +856,53 @@ var AgentLoop = (function () {
                     // ★ P10/P11 根治：优先用 API 完整返回（权威），流式累积为备
                     var _finalContent = response.content || self._streamingContent;
                     self._streamingContent = null;
+
+                    // ★ 2026-09-08 q242 f158/f160 根治：上游在超大单行饼干会话中偶发把回复的换行
+                    //   全变成空格（nl=0 长文 + 无双空格 = \n+→' ' 确定性变换特征；f37/f148/f158/f160
+                    //   全在 q242 最终回复屋，工具结果换行正常）。markdown 标题/表格结构在存储层即毁，
+                    //   渲染守卫无法凭空恢复 → 完结前自动追加一次静默「重排屋」：
+                    //   只发「修复指令+坏原文」mini 上下文（★ 2026-09-08 f160 二修：不再带全量 142K
+                    //   会话——贵 100 倍 + 单行大饼干上下文会再次诱导上游压行致修复必败），走快档
+                    //   （重排是简单任务，快档零压行史），成功即替换坏文本，失败保留原文正常完结
+                    //   （修复屋任何异常都不影响楼层终局）。
+                    if (!self._noNlRepairDone && !self._compressFloor && response._finishReason !== 'length'
+                        && typeof _finalContent === 'string' && _finalContent.length >= 500 && !self._sendTerminated) {
+                        var _nlChk2 = (_finalContent.match(/\n/g) || []).length;
+                        var _blocky = /(^|\s)#{1,6}\s/.test(_finalContent) || _finalContent.indexOf('```') >= 0 || (_finalContent.match(/\|/g) || []).length >= 8;
+                        // nl<3（全压扁）或平均行 >200 字符（部分压行，nl 2-5 型漏网）都触发
+                        var _nlStretch = _finalContent.length / Math.max(1, _nlChk2);
+                        if ((_nlChk2 < 3 || _nlStretch > 200) && _blocky) {
+                            try {
+                                self._noNlRepairDone = true;
+                                self._log('🛠 NO-NL repair: floor=' + self._ctx.totalFloors + ' house=' + self._houseIndex + ' len=' + _finalContent.length + ' nl=' + _nlChk2);
+                                if (typeof self._writeFileLog === 'function') self._writeFileLog('🛠 NO-NL repair floor=' + self._ctx.totalFloors + ' len=' + _finalContent.length + ' nl=' + _nlChk2 + ' → 追加静默重排屋');
+                                var _rStart = Date.now();
+                                // ★ 修复请求 mini 化：只发「指令+坏原文」（~1.5K tokens）——不带全量会话、
+                                //   不 push/pop conversation（零副作用）；档位 = 快档字面量（maxTokens 缺省
+                                //   回落 ContentGateway.MAX_RESPONSE_TOKENS，零全局依赖）。
+                                var _repairConv = [{ role: 'system', content: '你是 Markdown 排版修复助手：只按指令重新分行，不改动任何文字、不增删任何信息。' }, { role: 'user', content: '[内部修复请求] 下面这段文本的换行符在传输中全部丢失，导致 Markdown 的标题/表格/列表/段落结构损坏。请按 Markdown 重新排版输出：每个 # 或 ## 标题独占一行；每个表格行（含表头行、:--- 分隔行、数据行）各自独占一行并用真实换行分隔；每个列表项独占一行；段落之间用空行分隔。文字一字不改、信息零删减，禁止任何解释与前后缀，直接输出修正后的完整内容。\n\n原文：\n' + _finalContent }];
+                                var _repairResp = await self._callGateway(_repairConv, { token: function () { }, onReasoning: function () { }, onError: onError, tier: { model: 'fast', thinking: { type: 'disabled' }, effort: null, label: '1-Fast' }, noTools: true });
+                                var _rBill = self._lastBilling; self._lastBilling = null;
+                                if (_repairResp && _repairResp.type === 'message' && _repairResp.content && !_repairResp._truncatedByError && !_repairResp._abortedForGuide) {
+                                    var _rNl = (_repairResp.content.match(/\n/g) || []).length;
+                                    if (_rNl >= 3 && _repairResp.content.length >= _finalContent.length * 0.6) {
+                                        _finalContent = _repairResp.content;
+                                        self._houses.push({ index: 'R' + (self._houseIndex || 0), type: 'repair_nl', tools: [], ts: new Date().toISOString(), ms: Date.now() - _rStart, reasoning: _repairResp.reasoning_content || '', answer: _repairResp.content, wgeCost: _rBill ? _rBill.wgeCost : 0, model: _rBill ? _rBill.model : '', cacheHitRate: _rBill ? _rBill.cacheHitRate : -1, usage: _rBill ? _rBill.usage : null, billingSeq: _rBill ? _rBill.seq : 0, billingRequestId: _rBill ? _rBill.requestId : '', tier: self._lastTier ? self._lastTier.label : '' });
+                                        if (typeof self._writeFileLog === 'function') self._writeFileLog('✅ NO-NL repair OK floor=' + self._ctx.totalFloors + ' len=' + _finalContent.length + ' nl=' + _rNl);
+                                        self._log('✅ NO-NL repair OK: nl=' + _rNl + ' len=' + _finalContent.length);
+                                    } else {
+                                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ NO-NL repair FAIL floor=' + self._ctx.totalFloors + ' still nl=' + _rNl + ' len=' + _repairResp.content.length + ' — 保留原文完结');
+                                        self._log('⚠ NO-NL repair FAIL: still nl=' + _rNl + ' — 保留原文');
+                                    }
+                                } else {
+                                    if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ NO-NL repair no-response floor=' + self._ctx.totalFloors + ' — 保留原文完结');
+                                }
+                            } catch (_rErr) {
+                                if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ NO-NL repair exception: ' + (_rErr && _rErr.message ? _rErr.message : String(_rErr)) + ' — 保留原文完结');
+                            }
+                        }
+                    }
+
                     var assistantMsg = { role: 'assistant', content: _finalContent, _floor: self._ctx.totalFloors, reasoning_content: response.reasoning_content || undefined };
                     var _lastConv = self.conversation[self.conversation.length - 1];
                     if (_lastConv && _lastConv._truncated && _lastConv._floor === self._ctx.totalFloors) {

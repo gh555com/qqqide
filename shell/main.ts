@@ -58,6 +58,7 @@ import { registerAiStateIpc } from './ipc-ai-state';
 import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
 import { registerSearchStateIpc } from './ipc-search-state';
 import { registerKmdIpc } from './ipc-kmd';
+import { registerQmdIpc } from './ipc-qmd';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -292,6 +293,7 @@ function registerAllIpc(): void {
     registerSearchStateIpc();
     registerKopeIpc();
     registerKmdIpc(portable.root);
+    registerQmdIpc(portable.root);
     registerGaeaProcessIpc();
     registerMediaIpc(mediaService);
     registerAuthBrainIpc(getAuthBrain());

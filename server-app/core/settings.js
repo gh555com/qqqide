@@ -254,10 +254,11 @@
   }
 
   // ── ★ 显示楼层 32/64 = 激活（VIP）功能选值守卫（2026-09-05；64 档 2026-09-06）──
-  //   已激活 → 直接写所选档；未激活 → 拉杆旁红字「该功能需先激活」+ 外部浏览器打开激活页
-  //   （与左上角 qd (qqqide) 菜单「激活」按钮同路径：qqqLogin.checkPurchased + #price）
+  //   2026-09-07 起守卫收敛进唯一真理机器 qqqEntitlement.guard（权限门 + 激活页 URL
+  //   唯一源）；此处只保留 16 免费档直写 + 拒绝红字展示（onDeny）。值域校验与权限门分离。
   function _trySelectFloorCapVal(_val) {
-    var _openActivation = function () {
+    var ent = window.qqqEntitlement;
+    var _deniedHint = function () {
       _floorCapHintOn = true;
       _renderPanel();
       clearTimeout(_floorCapHintTimer);
@@ -266,29 +267,21 @@
         _floorCapHintOn = false;
         if (_$panel && _$panel.style.display !== 'none') _renderPanel();
       }, 5000);
-      var _url = 'https://www.gh555.com/gaea/d/qqqide?lang=zh#price';
-      var _bridge = window.qqqideBridge;
-      try {
-        if (_bridge && _bridge.shell && _bridge.shell.openExternal) {
-          _bridge.shell.openExternal(_url);
-          return;
-        }
-      } catch (_) { }
-      try { window.open(_url, '_blank'); } catch (_) { }
     };
-    var _login = window.qqqLogin;
-    try {
-      if (!_login || !_login.isLoggedIn || !_login.isLoggedIn()) { _openActivation(); return; }
-      _login.checkPurchased().then(function (_purchased) {
-        if (_purchased) {
-          _floorCapHintOn = false;
-          set('ai.floorCap', _val);
-          _renderPanel();
-        } else {
-          _openActivation();
-        }
-      }).catch(function () { _openActivation(); });
-    } catch (_e) { _openActivation(); }
+    // 16 = 免费档：直写零门卫
+    if (!ent || _val <= 16) {
+      _floorCapHintOn = false;
+      set('ai.floorCap', _val);
+      _renderPanel();
+      return;
+    }
+    ent.guard('floor-cap-' + _val, { onDeny: _deniedHint }).then(function (ok) {
+      if (ok) {
+        _floorCapHintOn = false;
+        set('ai.floorCap', _val);
+        _renderPanel();
+      }
+    });
   }
 
   // ── 创建设置面板 DOM ──
@@ -399,19 +392,25 @@
           ? (def.stopsLabels ? def.stopsLabels[curIdx] : stops[curIdx])
           : (stops[curIdx] + '%');
         html += '<div style="display:flex; align-items:center; gap:12px;">';
-        html += '<span style="font-size:12px; color:' + textDim + '; white-space:nowrap; min-width:32px;">' + _sliderLabel + '</span>';
+        html += '<span style="font-size:12px; color:' + (def.key === 'ai.floorCap' ? green : textDim) + '; white-space:nowrap; min-width:32px;">' + _sliderLabel + '</span>';
         // ★ 压缩档位 3 点拉杆宽度 = 音量 5 点拉杆的一半（点间距百分百一致：calc(50%-22px) = (X-44)/2，X=行宽）
-        // ★ 显示楼层：短拉杆占行宽 2/5（同压缩档位紧凑语义，16/32/64 三点均布，左 16 右 64）
+        // ★ 显示楼层：拉杆几何与「自动压缩 上下文背包」完全同宽 calc(50%-22px)（2026-09-06 定版：三档点距=音量五档同一音长，每格长度三杆一致）
         var _sliderFlex = 'flex:1;';
-        if (def.key === 'ai.compressLevel') _sliderFlex = 'flex:0 0 calc(50% - 22px);';
-        else if (def.key === 'ai.floorCap') _sliderFlex = 'flex:0 0 40%;';
+        if (def.key === 'ai.compressLevel' || def.key === 'ai.floorCap') _sliderFlex = 'flex:0 0 calc(50% - 22px);';
+        // ★ 显示楼层 专属暖绿色（2026-09-06 用户定案：VIP 功能标识色，与音量/压缩金橙色区分；左侧数值标签+圆点+已选填充一体）
+        var _sliderColor = accent;
+        var _dotIdle = border;
+        if (def.key === 'ai.floorCap') {
+          _sliderColor = green;
+          _dotIdle = isDark ? 'rgba(143,188,90,0.5)' : 'rgba(133,153,0,0.5)';
+        }
         html += '<div class="qqq-vol-slider" style="position:relative;' + _sliderFlex + 'height:24px;display:flex;align-items:center;user-select:none;" data-setting-key="' + def.key + '" data-stops="' + stops.join(',') + '">';
         html += '<div style="position:absolute;left:0;right:0;height:4px;border-radius:2px;background:' + border + ';"></div>';
-        html += '<div style="position:absolute;left:0;height:4px;border-radius:2px;background:' + accent + ';width:' + pct + '%;"></div>';
+        html += '<div style="position:absolute;left:0;height:4px;border-radius:2px;background:' + _sliderColor + ';width:' + pct + '%;"></div>';
         for (var si = 0; si < stops.length; si++) {
           var sp = Math.round((si / (stops.length - 1)) * 100);
           var isActive = si <= curIdx;
-          html += '<div style="position:absolute;left:' + sp + '%;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;border:2px solid ' + (isActive ? accent : border) + ';background:' + (isActive ? accent : bg) + ';z-index:1;"></div>';
+          html += '<div style="position:absolute;left:' + sp + '%;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;border:2px solid ' + (isActive ? _sliderColor : _dotIdle) + ';background:' + (isActive ? _sliderColor : bg) + ';z-index:1;"></div>';
         }
         html += '</div>';
         // ★ 显示楼层：未激活用户点 32/64 → 拉杆右侧红字提示（2026-09-05；64 档 2026-09-06）

@@ -942,6 +942,9 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         aiStartTime: ag._aiStartTime || '',
         tierLabel: ag._aiTierLabel || '',
         aiBackpackEst: ag._aiBackpackEst || 0,
+        // ★ 2026-09-07 aq 楼层闭环：权威开局 K + 楼层峰值 K（重启/切 quest 重建后 aq 行仍显 ✦121K 211K）
+        aiBackpackStartK: (ag._aiBackpackStartK > 0) ? ag._aiBackpackStartK : (ag._aiBackpackEst || 0),
+        aiBackpackMaxK: ag._aiBackpackMaxK || 0,
         images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {
             return { id: img.id, fileName: img.fileName || '', dataUrl: img.dataUrl || '' };
         }) : [],

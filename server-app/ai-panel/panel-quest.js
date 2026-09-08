@@ -1112,6 +1112,26 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
 
         floorPayload._serverFloorId = ag._floorId || '';
 
+        // ★ 健全性检测（2026-09-07 q242 f148 实锤辅助）：AI 长回复存盘近零换行 = 上游文本在
+        //   存储层已坏（markdown 表格/标题结构永久丢失，渲染端守卫只能保显示不放大）。
+        //   每楼层只记一次 → agent-*.log，复现即实锤上游；渲染端标题/列表/引用守卫已兜底。
+        try {
+            var _convChk = floorPayload.conversation || [];
+            for (var _ci = _convChk.length - 1; _ci >= 0; _ci--) {
+                var _mChk = _convChk[_ci];
+                if (_mChk && _mChk.role === 'assistant' && typeof _mChk.content === 'string' && _mChk.content.length >= 800) {
+                    var _nlChk = (_mChk.content.match(/\n/g) || []).length;
+                    if (_nlChk < 4 && ag._noNlLoggedFloor !== floorNum) {
+                        ag._noNlLoggedFloor = floorNum;
+                        if (typeof ag._writeFileLog === 'function') {
+                            ag._writeFileLog('⚠ NO-NL AI CONTENT floor=' + floorNum + ' len=' + _mChk.content.length + ' nl=' + _nlChk + ' (上游丢换行嫌疑：标题/表格将退化为字面文本)');
+                        }
+                    }
+                    break;
+                }
+            }
+        } catch (_nlChkErr) { }
+
         // ★ passby 快照：冻结本楼层完工时的累计值（用于重启后显示历史 passby）
         var _passbyHouses = (ag._passbyBaseHouses || 0) + (ag._houses ? ag._houses.length : 0);
         var _passbyWge = (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0);

@@ -634,6 +634,35 @@ const QQQ = {
         },
     },
 
+    // ---- qmd (goods 真终端, ConPTY 全交互 — xterm.js 网格 + raw 字节透传) ----
+    qmd: {
+        spawn: (id: string, shellType: string, cwd: string, cols?: number, rows?: number) => ipcRenderer.invoke('qqqide:qmd:spawn', { id, shellType, cwd, cols, rows }),
+        write: (id: string, text: string) => ipcRenderer.invoke('qqqide:qmd:write', id, text),
+        resize: (id: string, cols: number, rows: number) => ipcRenderer.invoke('qqqide:qmd:resize', id, cols, rows),
+        kill: (id: string, opts?: any) => ipcRenderer.invoke('qqqide:qmd:kill', id, opts),
+        list: () => ipcRenderer.invoke('qqqide:qmd:list'),
+        onReady: (cb: (msg: { id: string; pid: string }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[qmd.onReady]', err); } };
+            ipcRenderer.on('qqqide:qmd:ready', handler);
+            return () => ipcRenderer.removeListener('qqqide:qmd:ready', handler);
+        },
+        onOutput: (cb: (msg: { id: string; data: string }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[qmd.onOutput]', err); } };
+            ipcRenderer.on('qqqide:qmd:output', handler);
+            return () => ipcRenderer.removeListener('qqqide:qmd:output', handler);
+        },
+        onExit: (cb: (msg: { id: string; code: number; error?: string }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[qmd.onExit]', err); } };
+            ipcRenderer.on('qqqide:qmd:exit', handler);
+            return () => ipcRenderer.removeListener('qqqide:qmd:exit', handler);
+        },
+        onRestarted: (cb: (msg: { id: string }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[qmd.onRestarted]', err); } };
+            ipcRenderer.on('qqqide:qmd:restarted', handler);
+            return () => ipcRenderer.removeListener('qqqide:qmd:restarted', handler);
+        },
+    },
+
     // ---- main-process memory watchdog (crash-net 广播 qqqide:mem:warning, 2026-08-20) ----
     // ---- 启动包内存真理机器 (mem-meter 广播 qqqide:mem:metrics, 2026-08-29) ----
     mem: {

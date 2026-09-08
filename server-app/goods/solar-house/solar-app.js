@@ -15,18 +15,20 @@
 //   [0-1] 3,2 [2-5] base 绝对 tick u32 [6-7] meta 数 u16
 //   meta ×5B: id u16 | kind u8 | d u16(1/8px)
 //   之后每 tick(100): count u8 + count×7B: metaIdx u16 | x u16 | y u16 | ang u8 + 尾 1B pulseDmg
-// 上行: {"t":"batch","b":起始tick,"s":[10×−1/0/1],"sk":[{"k":1..3,"b":tick}]} | {"t":"abort"}
+// 上行: {"t":"batch","b":起始tick,"s":[10×−1/0/1],"sk":[{k,b}],"p":1,"h":HP×1000,"sc":分数} | {"t":"abort"}
+//   p/h/sc = 批末 tick 镜像状态上报 → 服务器事后监督（2026-09-07 用户定案: 服务器零位置校正,
+//   只做数据监督: 分数不等或 HP 偏差 >1 即分叉中断本局 over status=5, 成绩作废）
 // ============================================================================
 (function () {
   'use strict';
 
   // ⭐ 镜像常量（与服务器 internal/solar 同值同公式; 注释标记 — 仅本地手感, 服务器为真理）
-  var W = 300, Q_R = 12, Q_SPEED = 200, QY_PAD = 44, HP_FULL = 100;
+  var W = 300, Q_R = 12, Q_SPEED = 140, QY_PAD = 44, HP_FULL = 100; // Q_SPEED: 2026-09-06 用户手感 200→140（镜像同服务器 param.go QSpeed）
   var LASER_W = 60, LASER_CD = 30, HEAL_AMT = 20, HEAL_CD = 10;
   var ABSORB_R = 600, ABSORB_CD = 30, ABSORB_STUN = 0.5;
   var TRI_STUN = 0.5, HIT_INV = 0.4, REVIVE_INV = 1.0;
   var HEART_HEAL = 25;
-  var ATT_K = 55, ATT_R0 = 120, ATT_RK = 2.6;
+  var ATT_K = 27.5, ATT_R0 = 120, ATT_RK = 2.6; // 2026-09-07 用户定案: 吸引力减半（镜像同服务器 param.go AttK）
   var GEO_SQ = 0.7071067811865476, GEO_TRI = 0.5773502691896258;
   var TICK_MS = 100, UI_H = 56, TICKS_PER_BATCH = 10;
   var REVIVE_TICKS = 300;
@@ -177,6 +179,7 @@
   };
 
   function resetGame() {
+    S.runId = null; S.day = null; S.ckey = null; // 防旧局残留（ws ch / abort 兜底误用）
     S.qx = W / 2; S.hp = HP_FULL; S.score = 0; S.cd = [0, 0, 0];
     S.stun = 0; S.invuln = 0; S.dead = false;
     S.dieLocalK = -1; S.deadConf = false; S.reviveMs = 0; S.reviveUsed = false;
@@ -206,6 +209,7 @@
 
   function enterGameView() {
     resetGame();
+    startGameLoop(); // ★ 2026-09-06 第二局空白修复: showOver stopLoop 后必须在此重启（boot 只启一次）
     showPage(elGame);
     requestAnimationFrame(function () {
       var rect = elGame.getBoundingClientRect();
@@ -306,7 +310,7 @@
     });
   }
 
-  function showOver(score, aliveMs, revived) {
+  function showOver(score, aliveMs, revived, status) {
     S.phase = 'over';
     stopLoop(); closeWs();
     elRevive.classList.remove('on');
@@ -314,6 +318,14 @@
     $('sh-o-score').textContent = score;
     $('sh-o-alive').textContent = fmtAlive(aliveMs);
     $('sh-o-rankline').style.display = 'none';
+    if (status === 5) {
+      // 分叉中断: 服务器零校正直接终局（客户端与服务器状态不一致, 成绩不作记录）
+      $('sh-o-title').textContent = '本 局 中 断';
+      $('sh-o-note').textContent = '本地与服务器数据不一致 —— 本局成绩未记录（分叉监督）';
+      showPage(elOver);
+      return;
+    }
+    $('sh-o-title').textContent = '本 局 结 束';
     $('sh-o-note').textContent = '';
     showPage(elOver);
     loadBoard().then(function (b) {
@@ -450,7 +462,7 @@
       S.fx.push({ t: performance.now(), dur: 900, kind: 'revive' });
       toast('续命成功 —— 满血复活');
     } else if (ev === 'over') {
-      showOver(v.score, v.alive_ms, !!v.revive_used);
+      showOver(v.score, v.alive_ms, !!v.revive_used, v.status);
     }
   }
 
@@ -647,12 +659,15 @@
         var sgn = dx < 0 ? -1 : 1;
         drift += ATT_K * sz * f * sgn;
       }
+      var driftCap = 0.6 * Q_SPEED; // 与服务器 AttDriftCap 同式: 吸附只迟滞移动, 永不反向压过输入
+      if (drift > driftCap) drift = driftCap;
+      if (drift < -driftCap) drift = -driftCap;
       S.qx += drift * 0.1;
     }
     if (S.qx < Q_R) S.qx = Q_R;
     if (S.qx > W - Q_R) S.qx = W - Q_R;
 
-    // ── 冲击波（服务器 applyPulses 位于技能前: 激光不可防; 无视无敌; 跳过死/幽灵）──
+      // ── 冲击波（服务器 applyPulses 位于技能前: 激光不可防; 无视无敌; 跳过死/幽灵）──
     var pd = wn.pulse[idx];
     if (pd > 0 && !S.dead) {
       S.hp -= pd;
@@ -759,7 +774,7 @@
         if (qQ > 1) qQ = 1;
         var ss = it.d / 24;
         if (ss > 5) ss = 5;
-        var baseT = it.kind === 0 ? 36 : 26;
+        var baseT = it.kind === 0 ? 14 : 10; // 镜像同服务器 typeDamage（2026-09-07 用户定案 攻击力减半）
         var dmg = baseT * ss * qQ;
         S.hp -= dmg;
         if (it.kind === 2) S.stun = TRI_STUN;
@@ -795,7 +810,8 @@
       var b0 = k - TICKS_PER_BATCH + 1;
       var dirs = S.recDirs.slice(-TICKS_PER_BATCH);
       if (dirs.length === TICKS_PER_BATCH) {
-        var bk = { b: b0, s: dirs, sk: batchedSk };
+        var bk = { b: b0, s: dirs, sk: batchedSk, p: 1,
+          h: Math.max(0, Math.round(S.hp * 1000)), sc: S.score }; // 批末 tick 镜像状态（监督用）
         S.unacked.push(bk);
         sendBatchRaw(bk);
       }
@@ -954,6 +970,17 @@
     if (it.kind === 0) {
       ctx.strokeRect(x - d / 2, y - d / 2, d, d);
     } else if (it.kind === 1) {
+      // 吸附范围虚线圈（2026-09-07 用户定案: 第二层虚线圆 = 吸引力范围, R = 服务器 AttR0+AttRk×d 同式）
+      var attR = ATT_R0 + ATT_RK * d;
+      ctx.strokeStyle = '#999';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(x, y, attR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(x, y, d / 2, 0, Math.PI * 2);
       ctx.stroke();

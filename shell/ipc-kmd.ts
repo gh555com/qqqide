@@ -53,13 +53,13 @@ function _push(wc: WebContents, channel: string, payload: any): void {
 // ── engines 根目录解析（2026-08-13 打包模式修复）：与 component-checker._enginesRoot 同款双路径 ──
 //    开发模式 root=项目根 → engines 直接在 root/engines
 //    打包模式 root=gh555.com → engines 在 root/resources/app/engines
-function _enginesRoot(appRoot: string): string {
+export function _enginesRoot(appRoot: string): string {
     const resApp = path.join(appRoot, 'resources', 'app');
     return fs.existsSync(path.join(resApp, 'engines')) ? resApp : appRoot;
 }
 
 // ── Shell 解析（自给自足：git 组件内 bash 优先，系统 Git 兑底） ──
-function _resolveShell(shellType: string, appRoot: string): { cmd: string; args: string[]; env: NodeJS.ProcessEnv } | null {
+export function _resolveShell(shellType: string, appRoot: string): { cmd: string; args: string[]; env: NodeJS.ProcessEnv } | null {
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (shellType === 'gitbash') {
         // ① 自带组件：git = Git for Windows Portable（2026-08-11 B 方案）→ bin/bash.exe
@@ -105,7 +105,7 @@ function _resolveShell(shellType: string, appRoot: string): { cmd: string; args:
 }
 
 // bash probe：MinGit 精简版可能缺 MSYS2 运行时（0xC0000135 DLL not found）→ 启动前验证
-function _probeBash(bashPath: string): Promise<boolean> {
+export function _probeBash(bashPath: string): Promise<boolean> {
     return new Promise((resolve) => {
         let p: ChildProcess;
         try {

@@ -532,8 +532,7 @@
 .qqq-status-area.qqq-dense-3 #qqq-status-total,
 .qqq-status-area.qqq-dense-3 #qqq-status-mem,
 .qqq-status-area.qqq-dense-3 .qqq-mem-icon { display: none; } /* 2026-08-30: a 区域容器隐藏整体（含 CPU 文字），cpu 图标已移除 */
-.qqq-status-area.qqq-dense-4 #qqq-status-online,
-.qqq-status-area.qqq-dense-4 .qqq-gw-dots { display: none; }
+.qqq-status-area.qqq-dense-4 #qqq-status-online { display: none; }
 
 /* ── 活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding） ── */
 .qqq-act-widget {
@@ -1719,5 +1718,107 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 .qqq-cpu-hover-stats span.qqq-tip-show .qqq-mem-hover-tip {
   opacity: 1;
   transform: translateX(-50%) translateY(0) scale(1);
+}
+
+/* ═══ 客户端通知（qqq-notice.js，2026-09-07）═══
+   圆点 = 版本号旁通知入口（灰 info / 黄 warn / 红 critical；空心 = 已读但常驻待解除）
+   面板/模态容器定位与透明度为 JS inline（first-run.js 同款风格） */
+.qqq-status-area #qqq-notice-dot {
+  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  margin: 0 2px 0 8px; vertical-align: middle;
+  flex-shrink: 0; box-sizing: border-box;
+  border: 1px solid transparent;
+}
+.qqq-notice-dot.lv-info     { background: var(--text-dim); }
+.qqq-notice-dot.lv-warn     { background: var(--orange); }
+.qqq-notice-dot.lv-critical { background: var(--red); }
+.qqq-notice-dot.ring.lv-info     { background: transparent; border-color: var(--text-dim); }
+.qqq-notice-dot.ring.lv-warn     { background: transparent; border-color: var(--orange); }
+.qqq-notice-dot.ring.lv-critical { background: transparent; border-color: var(--red); }
+.qqq-status-area.qqq-dense-3 #qqq-notice-dot { display: none; } /* 与版本号同进退（20 宽） */
+
+.qqq-notice-panel {
+  width: 460px; max-width: 94vw; max-height: 76vh; box-sizing: border-box;
+  background: var(--background-color); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  box-shadow: 0 12px 48px rgba(0,0,0,.5);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.qqq-notice-modal {
+  width: 520px; max-width: 94vw; max-height: 80vh; box-sizing: border-box;
+  background: var(--background-color); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  box-shadow: 0 12px 48px rgba(0,0,0,.5);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.qqq-notice-head {
+  display: flex; align-items: center;
+  padding: 12px 18px; border-bottom: 1px solid var(--border-color);
+}
+.qqq-notice-title { font-size: 15px; font-weight: 600; }
+.qqq-notice-body { overflow-y: auto; flex: 1; padding: 4px 0; }
+.qqq-notice-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 18px;
+}
+.qqq-notice-row + .qqq-notice-row { border-top: 1px solid var(--border-color); }
+.qqq-notice-row.acked { opacity: .55; }
+.qqq-notice-lv {
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-top: 5px; flex-shrink: 0;
+}
+.qqq-notice-lv.lv-info     { background: var(--text-dim); }
+.qqq-notice-lv.lv-warn     { background: var(--orange); }
+.qqq-notice-lv.lv-critical { background: var(--red); }
+.qqq-notice-main { flex: 1; min-width: 0; }
+.qqq-notice-rtitle {
+  font-size: 13.5px; font-weight: 600; line-height: 1.5;
+  word-break: break-word;
+}
+.qqq-notice-meta {
+  font-size: 11px; font-weight: 400; opacity: .6;
+  margin-left: 8px; white-space: nowrap;
+}
+.qqq-notice-rtext {
+  font-size: 12.5px; margin-top: 3px; line-height: 1.6;
+  color: var(--text-secondary); white-space: pre-wrap; word-break: break-word;
+}
+.qqq-notice-acts {
+  display: flex; flex-direction: row; gap: 6px;
+  margin-left: 10px; flex-shrink: 0; padding-top: 2px;
+}
+.qqq-notice-btn {
+  display: inline-block; padding: 4px 14px; white-space: nowrap;
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  background: transparent; color: var(--text-secondary);
+  font-size: 12.5px; text-decoration: none;
+}
+.qqq-notice-btn:hover { color: var(--text-primary); }
+.qqq-notice-empty {
+  padding: 44px 0; text-align: center;
+  color: var(--text-dim); font-size: 13px;
+}
+.qqq-notice-modal-hint {
+  padding: 8px 18px 12px;
+  font-size: 11.5px; color: var(--text-dim);
+  border-top: 1px solid var(--border-color);
+}
+
+/* MEM 卡圈外进程（v28 2026-09-08 q209 f72 C 方案：树真相与账口径分离——own=包内 exe 进程树，
+   外圈进程照列不误（雷达可见）仅不计入本包统计） */
+.qqq-mem-ext {
+  color: var(--text-secondary); font-size: 11px; margin-left: 2px;
+}
+.qqq-mem-hover-extsep {
+  margin-top: 6px; padding: 5px 2px 2px; font-size: 11px;
+  color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px dashed var(--border-color);
+}
+.qqq-mem-hover-prow.ext .qqq-mem-hover-pname {
+  color: var(--text-secondary);
+}
+.qqq-mem-hover-prow.ext:hover {
+  background: transparent;
 }
 

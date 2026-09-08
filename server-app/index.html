@@ -148,12 +148,7 @@ var _orig={};
       <div class="qqq-status-row">
         <span class="qqq-status-item" id="qqq-status-version">v0.0.3</span>
         <span class="qqq-status-item" id="qqq-status-online"></span>
-        <span class="qqq-gw-dots" id="qqq-gw-dots">
-          <span class="qqq-gw-dot" id="qqq-gw-dot-0" data-panel="0" title="左面板 · 等待连接">●</span>
-          <span class="qqq-gw-dot" id="qqq-gw-dot-1" data-panel="1" title="中面板 · 等待连接">●</span>
-          <span class="qqq-gw-dot" id="qqq-gw-dot-2" data-panel="2" title="右面板 · 等待连接">●</span>
-        </span>
-        <!-- ★ 赞助商（三盏绿灯之右）→ 轮换播放器：大20s/中10s/小5s 瞬间替换文字，点击打开当前品牌（数据源 /api/sponsor/current） -->
+        <!-- ★ 赞助商 → 轮换播放器：大20s/中10s/小5s 瞬间替换文字，点击打开当前品牌（数据源 /api/sponsor/current） -->
         <span class="qqq-status-sponsor" id="qqq-status-sponsor">
           <a class="qqq-sponsor-label" id="qqq-sponsor-label" href="https://www.gh555.com/gaea/d/qqqide#sponsors" data-i18n="act.sponsorLabelWord">赞助商</a><span data-i18n="act.sponsorLabelColon">：</span>
           <a class="qqq-sponsor-link" id="qqq-sponsor-link" href="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">知佳</a>
@@ -207,6 +202,8 @@ var _orig={};
 <script src="core/settings.js"></script>
 <script src="core/audio-volume.js"></script>
 <script src="core/login.js"></script>
+<!-- ★ 正版验证唯一真理机器（2026-09-07）：一切激活/VIP 功能门收敛于此，须在 login.js 后加载 -->
+<script src="core/entitlement.js"></script>
 <script src="core/squad-btn.js"></script>
 <script src="core/mem-warning.js"></script>
 <script src="core/menu-schema.js"></script>
@@ -285,6 +282,8 @@ var _orig={};
 <script src="core/qqq-links.js"></script>
 <!-- 首次启动专家确认弹窗（每份程序数据只弹一次；依赖 qqq-links.js） -->
 <script src="core/first-run.js"></script>
+<!-- 客户端通知（2026-09-07 版本号旁圆点；服务端 /static/qqqide/notices.json 下发，控制台 gaea/cf/qqqide/客户端通知.py） -->
+<script src="core/qqq-notice.js"></script>
 
 <script src="core/ai-viewport.js?v=2"></script>
 <!-- 协助密钥脱敏（订阅 ai-viewport 的 qqq:git-dirty 事件，懒惰脱敏） -->
@@ -297,6 +296,7 @@ var _orig={};
 <script src="goods/search/search.js"></script>
 <script src="goods/git/git.js"></script>
 <script src="goods/kmd/kmd.js"></script>
+<script src="goods/qmd/qmd.js"></script>
 <script src="goods/dsecret/dsecret.js"></script>
 <script src="goods/conv/conv.js"></script>
 <script src="goods/kope-a/kope-a.js"></script>
@@ -316,7 +316,7 @@ var _orig={};
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=342')
+    navigator.serviceWorker.register('./service-worker.js?v=343')
       .then(function (reg) {
         // ★ 新 SW 已就绪（waiting）→ 立即激活（service-worker 收 skipWaiting 后 activate + claim）
     //   2026-08-23 删除 controllerchange 自动 reload：该事件在 SW 首次接管页面时同样触发
@@ -443,20 +443,6 @@ var _orig={};
       if (dot && !dot.classList.contains('on')) {
         dot.click();
       }
-    }
-    // ★ 网关线路状态指示：iframe 上报 → 更新状态栏色点
-    if (e.data && e.data.type === 'qqq-gw-status' && typeof e.data.panel === 'number') {
-      var gwDot = document.getElementById('qqq-gw-dot-' + e.data.panel);
-      if (!gwDot) return;
-      var names = ['左', '中', '右'];
-      var name = names[e.data.panel] || '';
-      var host = (e.data.url || '').replace('https://','').replace('http://','').split('/')[0];
-      var mode = e.data.fallback ? '备用直连' : 'Worker 主线路';
-      gwDot.className = 'qqq-gw-dot ' + (e.data.fallback ? 'fallback' : 'primary') + ' pulse';
-      gwDot.title = name + '面板 · ' + mode + (host ? ' (' + host + ')' : '');
-      setTimeout(function () {
-        if (gwDot.classList.contains('pulse')) gwDot.classList.remove('pulse');
-      }, 400);
     }
   });
 })();

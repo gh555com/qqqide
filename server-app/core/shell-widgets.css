@@ -166,54 +166,6 @@
   border-color: var(--yellow) !important;
 }
 
-/* ── 网关线路状态指示点（状态栏�?L/C/R 三点�?── */
-.qqq-gw-dots {
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-  margin: 0 10px;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.qqq-gw-dot {
-  color: #555;
-  opacity: 0.5;
-  transition: color .3s, opacity .3s, transform .2s;
-  cursor: default;
-  user-select: none;
-}
-
-.qqq-gw-dot.primary {
-  color: #859900;
-  opacity: 1;
-  text-shadow: 0 0 4px #85990066;
-}
-
-.qqq-gw-dot.fallback {
-  color: #e07020;
-  opacity: 1;
-  text-shadow: 0 0 4px #e0702066;
-}
-
-.qqq-gw-dot.pulse {
-  animation: qqqGwPulse .3s ease-out;
-}
-
-@keyframes qqqGwPulse {
-  0% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(2.5);
-  }
-
-  100% {
-    transform: scale(1);
-  }
-}
-
 /* ── 品牌下拉 — hover 菜单行2 "qqq" ── */
 .qqq-brand-dropdown {
   position: fixed;
@@ -253,6 +205,13 @@
   border-radius: 6px;
   padding: 8px 12px;
   margin: -1px 0;
+}
+/* active（当前 A 区成员 / null 折叠态）粗体标识 */
+.qqq-brand-dd-item.active {
+  font-weight: bold;
+}
+.qqq-brand-dd-item.qqq-brand-dd-null {
+  border-top: 1px solid var(--border-color, #d6d6d6);
 }
 
 /* ── Goods 设置弹窗 ── */

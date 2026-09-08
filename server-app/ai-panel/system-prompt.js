@@ -26,14 +26,6 @@ function _gwSwitch(toFallback) {
             { type: toFallback ? 'warning' : 'success' }
         );
     } catch (_) { }
-    try {
-        window.parent && window.parent.postMessage({
-            type: 'qqq-gw-status',
-            panel: (typeof _panelId !== 'undefined') ? _panelId : -1,
-            fallback: toFallback,
-            url: GATEWAY_URL
-        }, '*');
-    } catch (_) { }
 }
 
 function _gwTryPrimary() {
@@ -48,18 +40,6 @@ function _gwPrimaryFailed() {
         GATEWAY_URL = GATEWAY_URL_FALLBACK;
         _gwFallbackAt = Date.now();
     }
-}
-
-function _gwBroadcastDeadFallback() {
-    try {
-        window.parent && window.parent.postMessage({
-            type: 'qqq-gw-status',
-            panel: (typeof _panelId !== 'undefined') ? _panelId : -1,
-            fallback: true,
-            fallbackDead: true,
-            url: GATEWAY_URL_FALLBACK
-        }, '*');
-    } catch (_) { }
 }
 
 // ★ 工具计费累加（wge 累计）

@@ -716,56 +716,79 @@ body {
 .qqq-onl-head {
   display: flex;
   align-items: center;
-  justify-content: flex-start; /* 2026-09-06：均值左移贴标题，右侧空间让给微型曲线 */
-  column-gap: 12px;
-  padding: 8px 16px;
+  /* 2026-09-07 两行版式定案：左区在线人数/最近平均上下堆叠（15+15px）与 30px 曲线等高，
+     上下 padding 7px → 顶行精确 45px（7+30+7+1px border） */
+  padding: 7px 16px;
   border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
   background: var(--background-color);
 }
-/* 微型 30 天日均曲线（2026-09-06：近30天每日均值变迁，尾点 = 当前24h平均） */
-.qqq-onl-spark {
-  flex: 1 1 auto;
+/* 左区两行文本（在线人数 上 / ※最近24小时平均 下，合计 30px = 与曲线等高） */
+.qqq-onl-lines {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 0 0 auto;
   height: 30px;
-  min-width: 90px;
-  margin: 0 10px 0 2px;
+  margin-right: 40px; /* 曲线左缘距平均豆腐块 ~40px（2026-09-07 用户定案） */
+}
+/* 微型 30 天日均曲线（2026-09-06：近30天每日均值变迁，尾点 = 当前24h平均；
+   2026-09-07：左右变宽——max 185px 上限删除，吃满 40px 左间隙到刻度列全部剩余，
+   曲线右缘距弹窗右边界 ≈ 60px（10px 间隙 + 刻度列宽 + 12px + 16px padding）） */
+.qqq-onl-spark {
+  flex: 1 1 140px;
+  min-width: 70px;
+  height: 30px;
+  margin-right: 10px;
 }
 .qqq-onl-spark svg {
   display: block;
   width: 100%;
   height: 100%;
 }
+/* 峰/谷刻度列（2026-09-07：图表右侧竖排两数字 = 曲线数据极大/极小值，一位小数，与 30px 曲线等高） */
+.qqq-onl-scale {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 30px;
+  padding: 2px 0;
+  margin-right: 12px; /* 刻度列右缘距弹窗右边界 28px；曲线右缘 ≈ 60px 由列宽+间隙合计 */
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-dim);
+  white-space: nowrap;
+  user-select: none;
+}
+.qqq-onl-scale i {
+  font-style: normal;
+}
+.qqq-onl-scale i.pk {
+  color: var(--text-primary);
+  font-weight: bold;
+}
 .qqq-onl-title {
   font-weight: bold;
+  line-height: 15px;
+  white-space: nowrap;
 }
 .qqq-onl-title b {
   font-weight: bold;
 }
-/* ※最近24小时平均（2026-09-04 首行双值：当前人数 + 滚动均值） */
+/* ※最近24小时平均（2026-09-04 首行双值：当前人数 + 滚动均值；2026-09-07 起独立第二行） */
 .qqq-onl-avg {
   color: var(--text-dim);
   font-size: 12px;
+  line-height: 15px;
+  white-space: nowrap;
 }
 .qqq-onl-avg b {
   color: var(--text-primary);
   font-weight: bold;
   font-size: 13px;
-}
-.qqq-onl-close {
-  margin-left: auto; /* 曲线弹性区吃满剩余空间后，关闭按钮恒钉右缘 */
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 20px;
-  text-align: center;
-}
-.qqq-onl-close:hover {
-  background: var(--hover-bg);
 }
 .qqq-onl-body {
   padding: 8px 12px;

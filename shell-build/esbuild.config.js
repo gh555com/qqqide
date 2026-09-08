@@ -66,6 +66,14 @@ async function build() {
     console.log('[esbuild] copied py-broker.py ->', OUT);
   }
 
+  // Copy qmd-pty.py (ConPTY bridge for goods qmd, not bundled)
+  var qmdPtySrc = path.join(SRC, 'qmd-pty.py');
+  var qmdPtyDst = path.join(OUT, 'qmd-pty.py');
+  if (fs.existsSync(qmdPtySrc)) {
+    fs.copyFileSync(qmdPtySrc, qmdPtyDst);
+    console.log('[esbuild] copied qmd-pty.py ->', OUT);
+  }
+
   if (isWatch) {
     const ctx = await esbuild.context({ ...baseOpts, entryPoints: entries });
     await ctx.watch();

@@ -74,10 +74,6 @@ body {
 #sh-game { background: #fff; }
 #sh-wrap { position: absolute; left: 50%; top: 0; transform-origin: left top; }
 #sh-canvas { display: block; background: #fff; }
-#sh-keyhint {
-    position: absolute; left: 0; right: 0; bottom: 2px; text-align: center;
-    font-size: 10px; color: #666; pointer-events: none; letter-spacing: 1px;
-}
 #sh-quit {
     display: none; position: absolute; top: 4px; right: 4px; z-index: 4;
     background: #fff; color: #666; border: 1px solid #999; border-radius: 3px;
@@ -125,7 +121,7 @@ body {
 
 /* ── toast ── */
 #sh-toast {
-    display: none; position: absolute; left: 8px; right: 8px; bottom: 10px; z-index: 9;
+    display: none; position: absolute; left: 8px; right: 8px; bottom: auto; top: 60%; z-index: 9;
     background: #fff; color: #000; border: 2px solid #000; border-radius: 4px;
     padding: 8px 10px; font-size: 12px; line-height: 1.5; text-align: center;
     box-shadow: 2px 2px 0 rgba(0,0,0,.15);
@@ -152,7 +148,6 @@ body {
 <!-- ── game: canvas（300×(D+56) 逻辑, 等比缩放适配任意窗口高） ── -->
 <div id="sh-game" class="sh-page">
   <div id="sh-wrap"><canvas id="sh-canvas" width="300" height="656"></canvas></div>
-  <div id="sh-keyhint">Q/W 移动 · 1 激光 · 2 回血 · 3 吸收</div>
   <button id="sh-quit" title="放弃本局">弃局</button>
   <div id="sh-wait">
     <div class="sh-spin"></div>
@@ -172,7 +167,7 @@ body {
 
 <!-- ── over: 结算 ── -->
 <div id="sh-over" class="sh-page">
-  <div class="sh-over-title">本 局 结 束</div>
+  <div class="sh-over-title" id="sh-o-title">本 局 结 束</div>
   <div class="sh-stat">得分 <b id="sh-o-score">0</b></div>
   <div class="sh-stat">存活 <b id="sh-o-alive">0s</b></div>
   <div class="sh-stat" id="sh-o-rankline" style="display:none">今日名次 <b id="sh-o-rank">-</b></div>

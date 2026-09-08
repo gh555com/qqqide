@@ -202,6 +202,8 @@ export function registerExitHandlers(
         try {
             const { killAllKmdSessions } = require('./ipc-kmd');
             killAllKmdSessions();
+            const { killAllQmdSessions } = require('./ipc-qmd');
+            killAllQmdSessions();
         } catch { /* ignore */ }
 
 

@@ -134,7 +134,13 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
             // SSE 注释行（心跳）— 忽略但证明连接活着
-            if (line.charAt(0) === ':') continue;
+            if (line.charAt(0) === ':') {
+                // ★ 2026-09-06 qwait：服务器心跳携带上游真实等待秒数（B+ 取证 + 权威展示）
+                //   SSE 注释行规范强制忽略 → 旧客户端零兼容风险；旧服务器发 ": heartbeat" 匹配失败零影响
+                var _qm = /^: qwait (\d+)$/.exec(line);
+                if (_qm) self._upstreamWaitSec = parseInt(_qm[1], 10) || 0;
+                continue;
+            }
             if (!line || line.slice(0, 6) !== 'data: ') continue;
             var data = line.slice(6);
             if (data === '[DONE]') continue; // don't break — billing/usage event may follow
@@ -166,6 +172,15 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             }
             var delta = choice0 && choice0.delta;
             if (!delta) continue;
+
+            // ★ 2026-09-06 首字信号：reasoning/content/tool_calls 任一到达 = 上游已开始产出 → 熄灭等待卡
+            if (delta.reasoning_content || delta.content || delta.tool_calls) {
+                if (!self._gwGotContent) {
+                    self._gwGotContent = true;
+                    self._gwWaitStart = 0;
+                    if (typeof _gwRemoveCard === 'function') _gwRemoveCard(self);
+                }
+            }
 
             if (delta.reasoning_content) {
                 reasoningContent += delta.reasoning_content;

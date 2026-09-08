@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<!-- Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. -->
+<!-- goods/qmd/qmd-ui.html — qmd 终端 UI（ConPTY 全交互，xterm.js VT 网格渲染） -->
+<!-- 与 kmd（行模式日志渲染）哲学对立：本页是真终端——
+     程序自己画屏（VT 流原样喂 xterm）、键盘字节 raw 透传（shell readline 接管）。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>qmd</title>
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<style>
+:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--icon:#535b61}
+[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--icon:#e8e5dc}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative}
+/* 工具栏：左侧 3 shell 按钮 + 弹性空隙 + 右侧正方形菜单（kmd 同款布局哲学） */
+#bar{display:flex;gap:4px;padding:3px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;align-items:center;flex-wrap:nowrap}
+.shell-btn{font-size:11px;padding:2px 9px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);font-family:inherit;flex-shrink:0}
+.shell-btn:hover{background:var(--border)}
+.shell-btn.active{background:var(--accent);border-color:var(--accent);color:#fdf6e3;font-weight:700}
+[data-theme="dark"] .shell-btn.active{color:#1e1e1e}
+#bar-spacer{flex:1;min-width:0}
+#bar-right{display:flex;gap:4px;flex-shrink:0}
+#st{font-size:10px;color:var(--dim);align-self:center;white-space:nowrap}
+/* 命名输入框（2026-09-08 移植自 kmd F77）：输入即同步标签标题，多开窗口基础 */
+#name-input{width:110px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:inherit;font-size:11px;padding:2px 6px;outline:none;flex-shrink:0}
+#name-input:focus{border-color:var(--accent)}
+#name-input::placeholder{color:var(--dim)}
+#kill-wrap{position:relative;display:flex;flex-shrink:0}
+/* 正方形 = 手绘单色 SVG（无 emoji，铁律：纯色枪灰/近白） */
+#kill-btn{display:flex;align-items:center;justify-content:center;width:24px;height:22px;padding:0;border:1px solid var(--border);border-radius:3px;background:transparent;cursor:pointer}
+#kill-btn:hover{background:var(--border)}
+#kill-btn svg{width:11px;height:11px;display:block;color:var(--icon)}
+#kill-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:500;min-width:132px;padding:4px;background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.35);display:none}
+#kill-menu.open{display:block}
+#kill-menu button{display:block;width:100%;padding:4px 9px;border:0;border-radius:3px;background:transparent;color:var(--text);font:inherit;font-size:11px;text-align:left;white-space:nowrap}
+#kill-menu button:hover{background:var(--border)}
+#kill-menu .m-hint{font-size:10px;color:var(--dim);padding:2px 9px 4px;white-space:normal;line-height:1.3}
+/* xterm 容器 */
+#wrap{flex:1;position:relative;overflow:hidden;padding:2px 0}
+#term{position:absolute;inset:0;padding:4px 8px}
+.xterm{height:100%}
+</style>
+</head>
+<body>
+<div id="bar">
+  <button class="shell-btn active" data-shell="cmd">cmd</button>
+  <button class="shell-btn" data-shell="powershell">PowerShell</button>
+  <button class="shell-btn" data-shell="gitbash">Git Bash</button>
+  <div id="bar-spacer"></div>
+  <div id="bar-right">
+    <input id="name-input" maxlength="40" spellcheck="false" autocomplete="off" placeholder="命名此终端" title="命名此终端（实时同步标签标题）">
+    <span id="st"></span>
+    <div id="kill-wrap">
+      <button id="kill-btn" title="会话操作" aria-label="会话操作">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+      <div id="kill-menu">
+        <button data-act="restart">Restart</button>
+        <button data-act="terminate">Terminate</button>
+        <div class="m-hint">Terminate 强杀整个进程树并原地重启；Restart 正常重启会话</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="wrap"><div id="term"></div></div>
+
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/xterm-addon-fit.js"></script>
+<script>
+(function () {
+    'use strict';
+    var bridge = null;
+    try { bridge = window.parent.qqqideBridge || window.qqqideBridge || null; } catch (_) { }
+    var sessionId = '';
+    var shellType = 'cmd';
+    var cwd = '';
+    var running = false;
+    var term = null;
+    var fit = null;
+    var statusEl = document.getElementById('st');
+    var nameInput = document.getElementById('name-input');
+    var barBtns = Array.prototype.slice.call(document.querySelectorAll('.shell-btn'));
+
+    /* ── 主题（父窗口同步，kmd 同款） ── */
+    function syncTheme() {
+        try {
+            var pt = parent.document.documentElement.getAttribute('data-theme');
+            if (pt === 'light' || pt === 'dark') document.documentElement.setAttribute('data-theme', pt);
+        } catch (_) { }
+        applyTermTheme();
+    }
+    function termTheme() {
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        if (dark) {
+            return {
+                background: '#1e1e1e', foreground: '#dcd8d0', cursor: '#93a1a1', cursorAccent: '#1e1e1e',
+                selectionBackground: '#274642',
+                black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900',
+                blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#93a1a1',
+                brightBlack: '#586e75', brightRed: '#cb4b16', brightGreen: '#8fbc5a',
+                brightYellow: '#c9a227', brightBlue: '#6cb2e8', brightMagenta: '#d080e0',
+                brightCyan: '#5fc8b4', brightWhite: '#fdf6e3',
+            };
+        }
+        return {
+            background: '#fdf6e3', foreground: '#586e75', cursor: '#073642', cursorAccent: '#fdf6e3',
+            selectionBackground: '#d6d6d6',
+            black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900',
+            blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5',
+            brightBlack: '#002b36', brightRed: '#cb4b16', brightGreen: '#586e75',
+            brightYellow: '#657b83', brightBlue: '#839496', brightMagenta: '#6c71c4',
+            brightCyan: '#93a1a1', brightWhite: '#fdf6e3',
+        };
+    }
+    function applyTermTheme() {
+        if (term) {
+            try { term.options.theme = termTheme(); } catch (_) { }
+        }
+    }
+
+    /* ── xterm 生命周期 ── */
+    function createTerm() {
+        if (term) return;
+        term = new Terminal({
+            fontFamily: 'ui-monospace, Consolas, "Courier New", monospace',
+            fontSize: 13,
+            lineHeight: 1.2,
+            cursorBlink: true,
+            scrollback: 8000,
+            allowProposedApi: true,
+            theme: termTheme(),
+            rightClickSelectsWord: true,
+        });
+        fit = new FitAddon.FitAddon();
+        term.loadAddon(fit);
+        term.open(document.getElementById('term'));
+        // 键盘字节 raw 透传（真终端语义：readline/TUI 全由 shell 侧接管）
+        term.onData(function (d) {
+            if (!running || !sessionId) return;
+            if (bridge && bridge.qmd) bridge.qmd.write(sessionId, d).catch(function () { });
+        });
+        // 终端几何变化（fit/窗口缩放）→ ConPTY resize
+        var rt = null;
+        term.onResize(function (dim) {
+            if (!sessionId) return;
+            if (bridge && bridge.qmd) bridge.qmd.resize(sessionId, dim.cols, dim.rows).catch(function () { });
+        });
+        // 容器尺寸变化 → fit → onResize 自动触发
+        var ro = null;
+        try {
+            if (typeof ResizeObserver !== 'undefined') {
+                ro = new ResizeObserver(function () {
+                    if (rt) return;
+                    rt = setTimeout(function () {
+                        rt = null;
+                        try { fit.fit(); } catch (_) { }
+                    }, 60);
+                });
+                ro.observe(document.getElementById('wrap'));
+            }
+        } catch (_) { }
+        window.addEventListener('resize', function () {
+            try { fit.fit(); } catch (_) { }
+        });
+        // 初始 fit
+        setTimeout(function () { try { fit.fit(); } catch (_) { } }, 30);
+    }
+    function setStatus(t) {
+        if (statusEl) statusEl.textContent = t || '';
+    }
+    function setShellUI(t) {
+        shellType = t;
+        for (var i = 0; i < barBtns.length; i++) {
+            barBtns[i].className = 'shell-btn' + (barBtns[i].dataset.shell === t ? ' active' : '');
+        }
+    }
+    function spawnSession(t) {
+        if (!sessionId || !bridge || !bridge.qmd) return;
+        if (t) setShellUI(t);
+        setStatus('starting…');
+        bridge.qmd.spawn(sessionId, shellType, cwd).then(function (r) {
+            if (r && r.ok) {
+                setStatus('');
+            } else {
+                setStatus('[启动失败] ' + ((r && r.error) || 'unknown'));
+                if (term) term.write('\r\n\x1b[31m[qmd] 会话启动失败: ' + ((r && r.error) || 'unknown') + '\x1b[0m\r\n');
+            }
+        }).catch(function (err) {
+            setStatus('[启动异常]');
+        });
+    }
+    // 切换 shell：杀当前（不重启）→ 同 cwd 开新会话
+    function switchShell(t) {
+        if (!sessionId || !bridge || !bridge.qmd) return;
+        running = false;
+        bridge.qmd.kill(sessionId, { restart: false }).then(function () {
+            spawnSession(t);
+        }).catch(function () { spawnSession(t); });
+    }
+
+    /* ── 主消息入口 ── */
+    window.addEventListener('message', function (e) {
+        var d = e.data;
+        if (!d) return;
+        if (d.type === 'qmd:init') {
+            sessionId = d.sessionId;
+            cwd = d.cwd || '';
+            if (nameInput) nameInput.value = d.title || ''; // 命名输入框初始值 = 当前标签标题（用户可立即改名）
+            createTerm();
+            setShellUI(d.shellType || 'cmd');
+            spawnSession();
+            try { if (d.active !== false && term) term.focus(); } catch (_) { }
+        } else if (d.type === 'qmd:session-ready') {
+            running = true;
+            setStatus('● ' + shellType + ' · pid ' + d.pid);
+            setTimeout(function () { setStatus(''); }, 4000);
+            try { if (term) term.focus(); } catch (_) { }
+        } else if (d.type === 'qmd:out') {
+            if (term) { try { term.write(String(d.data || '')); } catch (_) { } }
+        } else if (d.type === 'qmd:exit') {
+            running = false;
+            var why = d.error ? (' · ' + d.error) : (' code=' + d.code);
+            setStatus('已退出' + why);
+            if (term) term.write('\r\n\x1b[2m── 会话已退出' + why + ' ──\x1b[0m\r\n');
+        } else if (d.type === 'qmd:restarted') {
+            running = true;
+            setStatus('● 已重启');
+            setTimeout(function () { setStatus(''); }, 3000);
+        } else if (d.type === 'qmd:focus') {
+            try { if (term) { if (d.on) term.focus(); else term.blur(); } } catch (_) { }
+        }
+    });
+
+    /* ── 主题变更监听 ── */
+    window.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'qqqide-theme-change') {
+            try {
+                document.documentElement.setAttribute('data-theme', e.data.dark ? 'dark' : 'light');
+            } catch (_) { }
+            applyTermTheme();
+        }
+    });
+
+    /* ── 顶栏交互 ── */
+    for (var i = 0; i < barBtns.length; i++) {
+        (function (btn) {
+            btn.addEventListener('click', function () {
+                var t = btn.dataset.shell;
+                if (t === shellType) return; // 同 shell 不动作
+                switchShell(t);
+            });
+        })(barBtns[i]);
+    }
+    // ── 命名输入框：输入即同步标签标题（kmd F77 同款移植，多开基础）──
+    // 边界保护：① maxlength=40（浏览器级 UTF-16 硬限）② code point 截断（emoji/中文按字符计）③ tab-manager 侧兜底
+    if (nameInput) {
+        nameInput.addEventListener('input', function () {
+            var t = nameInput.value;
+            var cps = Array.from(t);
+            if (cps.length > 40) {
+                t = cps.slice(0, 40).join('');
+                nameInput.value = t;
+            }
+            parent.postMessage({ type: 'qmd:title', title: t }, '*'); // qmd.js → setCustomTabTitle
+        });
+        nameInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); try { if (term) term.focus(); } catch (_) { } } // 命名完回车直接回终端
+        });
+    }
+
+    // 正方形菜单：hover 即展开，离开 0.5s 收起（kmd F79 同款）
+    var killWrap = document.getElementById('kill-wrap');
+    var killMenu = document.getElementById('kill-menu');
+    var killTimer = null;
+    killWrap.addEventListener('mouseenter', function () {
+        if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+        killMenu.classList.add('open');
+    });
+    killWrap.addEventListener('mouseleave', function () {
+        if (killTimer) clearTimeout(killTimer);
+        killTimer = setTimeout(function () { killMenu.classList.remove('open'); }, 500);
+    });
+    killMenu.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-act]') : null;
+        if (!btn) return;
+        killMenu.classList.remove('open');
+        var act = btn.dataset.act;
+        if (!sessionId || !bridge || !bridge.qmd) return;
+        if (act === 'terminate') {
+            // 强杀进程树 + 原地重启（kmd Terminate 同语义）
+            running = false;
+            bridge.qmd.kill(sessionId, { restart: true }).then(function () {
+                setStatus('terminating…');
+            }).catch(function () { });
+        } else if (act === 'restart') {
+            running = false;
+            bridge.qmd.kill(sessionId, { restart: true }).then(function () { }).catch(function () { });
+        }
+    });
+    // Escape 关闭菜单
+    window.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') killMenu.classList.remove('open');
+    });
+    // 点击外部关闭
+    document.addEventListener('mousedown', function (ev) {
+        if (!killWrap.contains(ev.target)) killMenu.classList.remove('open');
+    });
+
+    syncTheme();
+    // 通知父窗口本 iframe 就绪 → 收 qmd:init
+    try { parent.postMessage({ type: 'qmd:ready' }, '*'); } catch (_) { }
+})();
+</script>
+</body>
+</html>

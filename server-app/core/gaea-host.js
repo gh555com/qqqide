@@ -117,7 +117,7 @@
     var _ktipOld = document.querySelector('.qqq-roam-tip[data-owner="kmd-btn"]');
     if (_ktipOld) _ktipOld.remove();
     _tabBarEl.innerHTML = '';
-    var toolbarIds = ['search', 'git', 'kmd', 'dsecret']; // dsecret 2026-08-21 密钥脱敏专职控制台
+    var toolbarIds = ['search', 'git', 'kmd', 'qmd', 'dsecret']; // qmd 2026-09-08 ConPTY 真终端（Win10 1809+）
     for (var ti = 0; ti < toolbarIds.length; ti++) {
       var id = toolbarIds[ti];
       if (!goods.has(id)) continue;
@@ -185,13 +185,17 @@
     if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
     try { return window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' }); } catch (_) { return null; }
   }
-  function _pinSavePref(id) {
+  // ★ w 必须由调用方在 setW(pinW) 之前同步捕获——异步回调内读 getW() 已被 pin 污染
+  //   （实锤: 进入 solar 的异步 db.get resolve 时 A 区已同步变 300 → savedW=300 坏数据 → 切走还原 300, 用户偏好丢失）
+  function _pinSavePref(id, w) {
+    if (!(w > 0)) return;
     const db = _pinDB(); if (!db) return;
+    const pinW = _pinOf(id);
     db.get(_pinKey(id)).then(function (v) {
-      if (v === null || v === undefined) {
-        let w = 0;
-        try { if (window.qqqAZone) w = window.qqqAZone.getW(); } catch (_) {}
-        if (w > 0) db.set(_pinKey(id), w).catch(function () {});
+      // 仅首次记录; 坏数据（误存 pin 宽: 旧版污染或崩溃窗口遗留）→ 以进入前真实宽度覆盖（自愈）
+      if (v === null || v === undefined ||
+        (typeof v === 'number' && pinW > 0 && Math.round(v) === Math.round(pinW))) {
+        db.set(_pinKey(id), Math.round(w)).catch(function () {});
       }
     }).catch(function () {});
   }
@@ -200,21 +204,49 @@
     db.get(_pinKey(id)).then(function (v) {
       if (gen !== _pinGen) return; // 期间又 pin/leave 过 → 让位新操作
       db.set(_pinKey(id), null).catch(function () {}); // 取即删（null=删）
-      if (typeof v === 'number' && v > 0 && window.qqqAZone) {
+      // v === pinW = 坏数据（曾把 pin 宽误存为偏好）→ 只清不还原: 当前宽即 pin 附近, 还原零意义且会拉回用户已拖出的宽度
+      if (typeof v === 'number' && v > 0 && v !== _pinOf(id) && window.qqqAZone) {
         try { window.qqqAZone.setW(v); } catch (_) {}
       }
     }).catch(function () {});
   }
+  var _pinSessId = null; // 当前 pin 会话（非空 = A 宽被 goods 锁定: sash 禁拖 + resize 自动回 pin）
+  function _pinActive() { return _pinSessId !== null; }
   function _pinEnter(id) {
     if (!_pinOf(id) || !window.qqqAZone) return;
-    _pinSavePref(id); // 仅首次记录当前偏好
+    var w = 0;
+    try { w = window.qqqAZone.getW(); } catch (_) {} // ★ pin 前同步捕获（顺序关键: 此后 setW 立即污染 getW）
+    _pinSavePref(id, w); // 仅首次 / 坏数据覆盖
     try { window.qqqAZone.setW(_pinOf(id)); } catch (_) {}
     _pinGen++; // 失效一切在途 leave 还原
+    _pinSessId = id;
+    _pinSyncSash();
+    window.addEventListener('resize', _pinOnResize);
   }
   function _pinLeave(id) {
     if (!_pinOf(id)) return;
     var g = ++_pinGen;
+    _pinSessId = null;
+    _pinSyncSash();
+    window.removeEventListener('resize', _pinOnResize);
     _pinRestorePref(id, g);
+  }
+  // ★ pin 会话期间 A 宽锁定: 窗口缩放后自动回 pin（物理不足被 clamp 让位结构）
+  var _pinResizeT = null;
+  function _pinOnResize() {
+    if (!_pinSessId) return;
+    if (_pinResizeT) clearTimeout(_pinResizeT);
+    _pinResizeT = setTimeout(function () {
+      _pinResizeT = null;
+      if (_pinSessId && window.qqqAZone) {
+        try { window.qqqAZone.setW(_pinOf(_pinSessId)); } catch (_) {}
+      }
+    }, 150);
+  }
+  // 唯一 sash 显隐判定: pin 会话 或 null 折叠 → 藏 A|X sash（A 宽不可拖）
+  function _pinSyncSash() {
+    var sash = _nullSashEl();
+    if (sash) sash.style.display = (_pinActive() || _azoneNull) ? 'none' : '';
   }
   // 惰性 heal: 活跃 goods 无 pinW 但库内残留 pin.savedW.*（崩溃遗留）→ 还原并清理
   function _pinHealLeftover() {
@@ -226,7 +258,8 @@
       if (id === _activeId) return; // 活跃 pin 会话中: 由 _pinEnter/_pinLeave 管, 不干预
       db.get(_pinKey(id)).then(function (v) {
         var still = (g === _pinGen); // 期间发生 pin/leave → 只清残留不还原（让位新操作）
-        if (still && typeof v === 'number' && v > 0) {
+        if (still && typeof v === 'number' && v > 0 && v !== _pinOf(id)) {
+          // v===pinW = 坏数据（误存 pin 宽）→ 只清不还原
           try { window.qqqAZone.setW(v); } catch (_) {}
         }
         db.set(_pinKey(id), null).catch(function () {});
@@ -234,9 +267,44 @@
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // ★ A 区 null（qqq 下拉第三成员）: 整区折叠消失 → X/AI 获得空间。
+  //   折叠 = 纯视图层（shell-base.css .qqq-collapsed !important 归零宽度）：
+  //   不动 _shLayoutState、不打断 goods pin 会话 → 退出/切走天然回到折叠前宽度（零快照结构保证）；
+  //   折叠中切走 pin goods（solar）仍走 _pinLeave 还原用户偏好。
+  //   状态持久化 only.sq3 `editor.aZoneNull`（崩溃零残留: 纯视图态, 重启 restore 后按标记重建）。
+  // ═══════════════════════════════════════════════════════════════
+  var _azoneNull = false;
+
+  function _nullAEl() { return document.getElementById('qqq-a-zone'); }
+  function _nullSashEl() { return document.querySelector('[data-sash="a-right"]'); }
+
+  function _nullPersist() {
+    try {
+      var db = _pinDB();
+      if (db) db.set('editor.aZoneNull', _azoneNull ? 1 : null).catch(function () {});
+    } catch (_) {}
+  }
+
+  function _nullSet(collapsed) {
+    if (!!_azoneNull === !!collapsed) return;
+    _azoneNull = !!collapsed;
+    var el = _nullAEl();
+    if (el) el.classList.toggle('qqq-collapsed', collapsed);
+    _pinSyncSash(); // 唯一 sash 判定: null 折叠 或 pin 会话 → 藏 A|X sash（防拖半折叠/拖破 pin）
+    // 退出: 重钳制 + 持久化（折叠期间窗口缩放可能使旧宽越出 [min,max] 结构界, setW 走 _shClampAzoneW 收口）
+    if (!collapsed && window.qqqAZone) {
+      try { window.qqqAZone.setW(window.qqqAZone.getW()); } catch (_) {}
+    }
+    _nullPersist();
+  }
+
+  function _nullToggle() { _nullSet(!_azoneNull); }
+
   // ---- Show ----
   function show(id) {
     if (!goods.has(id)) return;
+    if (_azoneNull) _nullSet(false); // null 折叠态切任何 goods → 先还原 A 区
     if (!_built) { if (!_pendingShow.includes(id)) _pendingShow.push(id); return; }
     const prevId = _activeId;
     if (prevId !== id && prevId && _pinOf(prevId)) _pinLeave(prevId); // ★ 切走 pin goods → 还原用户偏好
@@ -419,14 +487,20 @@
       if (!root || !window.qgs || typeof window.qgs.project !== 'function') return;
       var db = window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
       if (!db) return;
-      db.get('editor.aZoneActive').then(function (savedId) {
+      db.get('editor.aZoneNull').then(function (nz) {
+        return db.get('editor.aZoneActive').then(function (savedId) {
+          return { nz: !!nz, savedId: savedId };
+        });
+      }).then(function (r) {
+        var shown = false;
         // 仅恢复拥有 panel 的 goods（纯 process 类 goods 不进入 A 区）
-        if (savedId && typeof savedId === 'string' && goods.has(savedId) && _hasPanel(savedId)) {
-          show(savedId);
+        if (r.savedId && typeof r.savedId === 'string' && goods.has(r.savedId) && _hasPanel(r.savedId)) {
+          show(r.savedId); shown = true;
         } else if (_defaultPanelId && goods.has(_defaultPanelId) && _hasPanel(_defaultPanelId)) {
-          // 回退到默认面板
-          show(_defaultPanelId);
+          show(_defaultPanelId); shown = true; // 回退到默认面板
         }
+        // null 折叠标记 → goods show 完成后补折叠（纯视图层, 不打断其 pin 会话）
+        if (shown && r.nz) setTimeout(function () { _nullSet(true); }, 0);
       }).catch(function () { });
     } catch (_) { }
   }
@@ -683,7 +757,7 @@
       row.className = 'qqq-brand-dd-item';
       row.textContent = g.title;
       row.dataset.gaeaId = g.id;
-      if (g.id === _activeId) row.classList.add('active');
+      if (!_azoneNull && g.id === _activeId) row.classList.add('active');
       row.addEventListener('click', function (e) {
         e.stopPropagation();
         show(this.dataset.gaeaId);
@@ -691,6 +765,19 @@
       });
       dd.appendChild(row);
     }
+
+    // ★ null —— A 区整区折叠（纯视图层, 宽度零改动 → 还原即回到折叠前偏好; 点击切换折叠/还原）
+    var nrow = document.createElement('div');
+    nrow.className = 'qqq-brand-dd-item qqq-brand-dd-null';
+    nrow.textContent = 'null';
+    nrow.title = '收起 A 区 / 点击还原';
+    if (_azoneNull) nrow.classList.add('active');
+    nrow.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _nullToggle();
+      _hideBrandDropdown();
+    });
+    dd.appendChild(nrow);
 
     dd.addEventListener('mouseenter', function () { clearTimeout(_brandMenuHideTimer); });
     dd.addEventListener('mouseleave', function () { _brandMenuHideTimer = setTimeout(_hideBrandDropdown, 200); });

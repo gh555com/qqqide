@@ -6,6 +6,69 @@
 // 依赖：AgentLoop（由 agent-loop.js 定义），GATEWAY_URL（由 system-prompt.js 定义）
 // ============================================================================
 
+// ═══ 上游等待可视化（2026-09-06 B 方案）═══
+// 背景：上游高峰期 TTFB 可达 15min，服务器每 25s 心跳保活 → 客户端三道防线全被合法绕过
+//   → 楼层"假死"：钟在走、无报错、无输出（多客户机实锤）。本模块纯展示零副作用：
+//   - 请求发出 → 1s 检查链；90s 无任何首字输出 → 任务坞亮卡（⏳ 上游无响应 mm:ss）
+//   - 首字输出（agent-sse 置 _gwGotContent）/ 流结束 / 任何出口（_gwEndWait）→ 摘卡自停
+//   - 服务器 B+（qwait 心跳）部署后 _upstreamWaitSec = 上游权威等待秒数（取大显示）
+//   不声称"排队"（证据不足）——"无响应"在任何真实原因下都成立，零误报。
+var GW_WAIT_SHOW_SEC = 90;
+
+function _gwCardId(ag) {
+    return 'gw-wait-' + (ag._questId || 'q') + '-' + (ag._currentFloorNum || 'f');
+}
+
+function _gwDur(s) {
+    s = Math.max(0, Math.floor(s || 0));
+    var m = Math.floor(s / 60);
+    return m + 'm' + (s % 60 < 10 ? '0' : '') + (s % 60) + 's';
+}
+
+function _gwRemoveCard(ag) {
+    if (!ag || !ag._gwCardShown) return;
+    try {
+        if (window.parent && window.parent.qqqideIoast) window.parent.qqqideIoast.remove(_gwCardId(ag));
+    } catch (_) { }
+    ag._gwCardShown = false;
+}
+
+function _gwEndWait(ag) {
+    if (!ag) return;
+    ag._gwWaitStart = 0;
+    ag._gwGotContent = false;
+    _gwRemoveCard(ag);
+}
+
+function _gwWaitTick(ag) {
+    if (!ag || !ag._gwWaitStart || ag._gwGotContent || ag._stopState !== 'sending') {
+        if (ag) _gwRemoveCard(ag);
+        if (ag && ag._gwUiTimer) { clearInterval(ag._gwUiTimer); ag._gwUiTimer = null; }
+        return;
+    }
+    var localS = Math.floor((Date.now() - ag._gwWaitStart) / 1000);
+    var waitS = Math.max(localS, ag._upstreamWaitSec || 0);
+    if (waitS < GW_WAIT_SHOW_SEC) {
+        if (ag._gwCardShown) _gwRemoveCard(ag);
+        return;
+    }
+    try {
+        var io = window.parent && window.parent.qqqideIoast;
+        if (!io || !io.task) return;
+        io.task(_gwCardId(ag), {
+            title: '⏳ 上游无响应 ' + _gwDur(waitS),
+            subtitle: '第 ' + (ag._currentFloorNum || '?') + ' 层 · ' + (ag._upstreamWaitSec > 0 ? '服务器确认等待中' : '等待首字输出')
+        });
+        ag._gwCardShown = true;
+    } catch (_) { }
+}
+
+function _gwStartWaitLoop(ag) {
+    if (ag._gwUiTimer) clearInterval(ag._gwUiTimer);
+    ag._gwUiTimer = setInterval(function () { _gwWaitTick(ag); }, 1000);
+    _gwWaitTick(ag);
+}
+
 // ---- 网关调用 ----
 AgentLoop.prototype._callGateway = async function (messages, opts) {
 
@@ -153,6 +216,11 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         // ★ Stop 守卫：_stopCtrl 已 abort → 立即退出（替代散落 _floorKilled）
         if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
         _resetFetchDeadline();  // ★ 每次 retry 重置 deadline
+        // ★ 2026-09-06 等待可视化：每轮请求起点（wall-clock）+ 重启 1s 检查链（幂等）
+        self._gwWaitStart = Date.now();
+        self._gwGotContent = false;
+        self._upstreamWaitSec = 0;
+        _gwStartWaitLoop(self);
         // ★ 每轮 retry 创建 _retryCtrl，级联到 _stopCtrl
         //   用户 Stop → _stopCtrl.abort() → 级联 → _retryCtrl.abort() → fetch 立即断
         self.abortController = new AbortController();
@@ -247,6 +315,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 }
                 self._lastGatewayMessage = '连接超时（已自动尝试全部线路，对话完整保留，可点击「继续任务」重试）';
                 self._exitReason = 'deadline';
+                _gwEndWait(self);
                 return null;
             }
             var _ttfbMs = performance.now() - _fetchStart;
@@ -308,6 +377,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     // 两把 key 都欠费
                     self._exitReason = 'http_' + resp.status;
                     self._lastGatewayMessage = _serverMsg || 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）';
+                    _gwEndWait(self);
                     return null;
                 }
 
@@ -325,6 +395,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                             window.parent.qqqideQoast.show('\u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\uFF1A\u8BF7\u70B9\u51FB\u53F3\u4E0A\u89D2\u767B\u5F55\u6309\u94AE\u5B8C\u6210\u9A8C\u8BC1', { type: 'warn', duration: 0 });
                         }
                     } catch (_) {}
+                    _gwEndWait(self);
                     return null;
                 }
                 var friendly = resp.status === 401 ? '认证失败，请检查 Token'
@@ -363,11 +434,10 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     // 无可切换线路 或 已达切换上限 → 交给上层 auto-repair 处理
                     self._exitReason = 'http_' + resp.status;
                     self._lastGatewayMessage = friendly + '，所有线路均未可达';
-                    // ★ 通知兄弟面板：当前线路已死
-                    if (typeof _gwBroadcastDeadFallback === 'function' && GATEWAY_URL === GATEWAY_URL_FALLBACK) {
-                        _gwBroadcastDeadFallback();
-                    }
+
+
                     // ★ 不在此处 onError / _sendTerminated — 让 agent loop 的 auto-repair 先尝试修复
+                    _gwEndWait(self);
                     return null;
                 }
                 // ★ 其他 HTTP 错误（401/402/429等）— 终端错误，统一延迟报错
@@ -378,6 +448,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 self._sendTerminated = true;  // ★ 标记终止
                 self._lastGatewayMessage = friendly + ' Conversation saved.';
                 // ★ 不在此处调 onError — 静默返回 null，交给 agent-loop 统一调（防双重报错）
+                _gwEndWait(self);
                 return null;
             }
 
@@ -400,6 +471,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             self._log('✓ gateway ' + resp.status + ' streaming...');
             clearTimeout(_fetchDeadline);  // ★ SSE 流开始，取消 fetch deadline
             var _result = await self._parseSSE(resp.body, onToken, onReasoning);
+            _gwEndWait(self);  // ★ 流结束（成败皆清）：摘卡，等待态归零
             if (_result) {
                 _result._ttfbMs = _ttfbAccum;
                 _result._streamMs = _result._streamMs || 0;
@@ -420,6 +492,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             clearTimeout(_fetchDeadline);
             return _result;
         } catch (err) {
+            _gwEndWait(self);  // ★ 任何异常出口先清等待态（1s tick 内摘卡自停）
             if (err.name === 'AbortError') {
                 clearTimeout(_fetchDeadline);
                 self._log('■ aborted');
@@ -606,10 +679,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     self._lastGatewayMessage = _errDet;
                 }
             }
-            // ★ 通知兄弟面板：当前线路已死
-            if (typeof _gwBroadcastDeadFallback === 'function' && GATEWAY_URL === GATEWAY_URL_FALLBACK) {
-                _gwBroadcastDeadFallback();
-            }
+
+
             // ★ 不在此处 onError / _sendTerminated — 让 agent loop 统一处理
             return null;
         }

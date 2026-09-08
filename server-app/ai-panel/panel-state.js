@@ -234,39 +234,7 @@ const $queueStrip = document.getElementById('queue-strip');
     });
 })();
 
-// ★ 初始网关状态上报 → 父窗口状态栏色点（此时所有脚本已加载完毕）
-(function () {
-    try {
-        if (!window.parent) return;
-        window.parent.postMessage({
-            type: 'qqq-gw-status',
-            panel: _panelId,
-            fallback: (typeof _gwUsingFallback !== 'undefined') ? _gwUsingFallback : false,
-            url: (typeof GATEWAY_URL !== 'undefined') ? GATEWAY_URL : ''
-        }, '*');
-    } catch (_) { }
-})();
-
-// ★ 跨面板网关状态协同：兄弟面板切回主线路成功 → 本面板也立即尝试切回
-window.addEventListener('message', function (e) {
-    if (!e.data || e.data.type !== 'qqq-gw-status') return;
-    if (e.data.panel === _panelId) return;  // 忽略自身
-    // 兄弟面板正在使用主线路 且 本面板在备用线路 → 尝试切回
-    if (!e.data.fallback && typeof _gwUsingFallback !== 'undefined' && _gwUsingFallback) {
-        if (typeof _gwTryPrimary === 'function') {
-            if (typeof _gwFallbackAt !== 'undefined') {
-                _gwFallbackAt = 0;  // 强制 _gwTryPrimary 认为已过 5 分钟
-            }
-        }
-    }
-    // ★ 兄弟面板报告备用线路未可达 → 本面板也标记备用为可疑，优先坚守主线路
-    if (e.data.fallbackDead && typeof _gwUsingFallback !== 'undefined' && !_gwUsingFallback) {
-        // 延长 _gwFallbackAt 防本面板误切到已死的备用
-        if (typeof _gwFallbackAt !== 'undefined') {
-            _gwFallbackAt = Date.now() + 10 * 60 * 1000;  // 10 分钟内不主动切备用
-        }
-    }
-});
+// （2026-09-07：状态栏三盏网关灯已整体删除——灯只反映线路选择非真实连通，跨面板协同链路从未闭环（父窗口不转发），信息已被 qoast 切线提示覆盖）
 
 // ★ 记账埋点：调试开关（控制台键入 _toggleBillingDebug() 切换）
 //   开启后每层楼完结时打印完整账单明细（wgeCost + model + token 量 + cache 命中率）

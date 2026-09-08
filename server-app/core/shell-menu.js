@@ -351,7 +351,6 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       actRow.addEventListener('click', function (e) {
         e.stopPropagation();
         _shellCloseMenubarPopup();
-        var bridge = window.qqqideBridge;
         var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
         if (isLoggedIn) {
           // ★ 已登录: 先服务端同步检测购买状态（窗口生命周期只查一次），再决定跳转目标
@@ -360,20 +359,15 @@ function _shellOpenMenubarPopup(anchorEl, item) {
             if (purchased) {
               // ★ 更新标签为"已激活"（可能之前显示"激活"）
               actLab.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
-              if (bridge && bridge.shell && bridge.shell.openExternal) {
-                bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#profile');
-              }
+              // ★ 激活/个人中心 URL 唯一入口 = 唯一真理机器 qqqEntitlement（2026-09-07）
+              if (window.qqqEntitlement) window.qqqEntitlement.openProfile();
             } else {
-              if (bridge && bridge.shell && bridge.shell.openExternal) {
-                bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#price');
-              }
+              if (window.qqqEntitlement) window.qqqEntitlement.openActivation();
             }
           });
         } else {
-          // 未登录: 直接跳转 price
-          if (bridge && bridge.shell && bridge.shell.openExternal) {
-            bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#price');
-          }
+          // 未登录: 直接跳激活页（走机器唯一 URL 源）
+          if (window.qqqEntitlement) window.qqqEntitlement.openActivation();
         }
       });
       pop.appendChild(actRow);

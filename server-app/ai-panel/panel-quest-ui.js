@@ -430,6 +430,35 @@ var _ctxBreakdownData = null;
 var _ctxBreakdownTimer = null;
 var _ctxBreakdownVisible = false;
 
+// ★ 2026-09-07 aq 楼层背包闭环（agent-loop/pipeline/card-pool 共享）:
+//   __qqqCtxSampleK — 指定 agent 强算权威背包（localTotal tokens÷1000，与 ctx 按钮/压缩动画/背包图解同尺）。
+//   临时切换 _activeAgent + 清 _estCache 强制绕过缓存（压缩动画 q181 f77 同款模式），finally 保证还原。
+function __qqqCtxSampleK(_ag) {
+    var _sa = _activeAgent;
+    var _rt = 0;
+    try {
+        if (!_ag) return 0;
+        _activeAgent = _ag;
+        _estCache = null;
+        if (typeof _estimateTokensFull === 'function') _estimateTokensFull();
+        if (_ctxBreakdownData) _rt = _ctxBreakdownData.localTotal || 0;
+    } catch (_e) { _rt = 0; }
+    finally { _activeAgent = _sa; }
+    return Math.round(_rt / 1000);
+}
+// __qqqAqLineText — aq 行文本统一生成器：开局权威值 startK（回落简化估算 est），
+//   峰值 maxK 仅当大于开局才追加（0-house 失败/无增长楼层保持单值）。
+function __qqqAqLineText(_ag) {
+    try {
+        if (!_ag) return '';
+        var _sK = (_ag._aiBackpackStartK > 0) ? _ag._aiBackpackStartK : (_ag._aiBackpackEst || 0);
+        var _mK = (_ag._aiBackpackMaxK > 0) ? _ag._aiBackpackMaxK : 0;
+        var _t = (_ag._aiTierLabel || '') + ' · ' + (_ag._aiStartTime || '') + ' · ' + '\u2726' + (_sK || '?') + 'K';
+        if (_mK > _sK) _t += ' ' + _mK + 'K';
+        return _t;
+    } catch (_e) { return ''; }
+}
+
 // ★ _estimateTokensFull — 穷举每一个会进入 API body 的字节，逐字符计量，chars÷2.5 得 token 估值（系数唯一真理源 ContentGateway.CHAR_PER_TOKEN）。
 // ★ API prompt_tokens 是服务端返回的精确 token 数（权威），本地 sum 用于审计 / 发现漏 Grid。
 // ★ 分类原则：按 API 看到的消息数组顺序 + 顶层 body 字段完整覆盖，零漏项。

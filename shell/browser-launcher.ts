@@ -94,17 +94,20 @@ function openUrlWindows(url: string, sender?: Electron.WebContents): void {
         .catch((err: any) => {
             l1Rejected = true;
             diag(`L1: REJECTED — ${err?.message || err}`);
-            // ═══ L2: explorer.exe（仅 L1 明确失败时触发） ═══
-            diag('L2: explorer.exe (fallback after L1 rejection)');
+            // ═══ L2: cmd 短命 relay（仅 L1 明确失败时触发） ═══
+            // ★ 2026-09-08 q209 f72：旧 explorer spawn 的父 = 常驻主进程 → Windows PPID 永不改，
+            //   默认浏览器被拉为 joker 直系后代后永久入统计圈（F71 实测 2.9GB 收养）。
+            //   cmd /c start 毫秒级退出 → 浏览器 PPID=已死 cmd → 天然孤儿，永不进圈。
+            diag('L2: cmd relay start (fallback after L1 rejection)');
             try {
-                const child = spawn('explorer.exe', [url], {
+                const child = spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', url], {
                     detached: true,
                     stdio: 'ignore',
                     windowsHide: true
                 });
                 child.unref();
                 child.on('error', (e) => diag(`L2 spawn error: ${e.message}`));
-                diag('L2: spawn OK');
+                diag('L2: cmd relay spawned');
             } catch (e: any) {
                 diag(`L2: exception — ${e.message}`);
             }

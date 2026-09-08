@@ -1625,7 +1625,7 @@ if (emptyCtxMenu) {
 // ═══ 外部命令：Roam 定位文件（AI 面板图片 hover Roam 按钮触发）═══
 // 主窗口 → postMessage qqq-roam-cmd {cmd:'roam.revealFile', path} → 本函数
 // 行为: 跳到文件所在目录 + 选中该文件 + 滚动到可视区
-function roamRevealFile(fullPath) {
+function roamRevealFile(fullPath, reqId) {
 	try {
 		var norm = String(fullPath).replace(/\\/g, '/');
 		if (!norm) return;
@@ -1644,19 +1644,45 @@ function roamRevealFile(fullPath) {
 			}
 			return false;
 		}
-		// 已在目标目录：直接尝试选中；否则先导航
-		if (currentPath && String(currentPath).replace(/\\/g, '/') === dir) {
-			if (doSelect()) return;
+		var alreadyHere = !!(currentPath && String(currentPath).replace(/\\/g, '/') === dir);
+		if (alreadyHere) {
+			// 已在目标目录：选中成功 → 回执停发；文件暂未出现（列表加载中）→ 不回执等重发——
+			//   重发仍走本分支只重试选中不导航，零拉回
+			if (doSelect()) { _roamCmdAck(reqId); return; }
 		} else {
 			navigateTo(dir);
+			_roamCmdAck(reqId);   // 导航已发起即回执（选中由下方轮询兜底，成功再补一次回执）
 		}
-		// 目录渲染异步（loadFileList），轮询等待选中，最多 2s
+		// 目录渲染异步（loadFileList），轮询等待选中，最多 2s；选中成功补回执更早停发
 		var tries = 0;
 		var timer = setInterval(function () {
 			tries++;
-			if (doSelect()) { clearInterval(timer); }
+			if (doSelect()) { clearInterval(timer); _roamCmdAck(reqId); }
 			else if (tries >= 20) { clearInterval(timer); }
 		}, 100);
+	} catch (_) { }
+}
+
+// ═══ 外部命令：Roam 直达目录（AI 回复本地路径链接跳转 2026-09-06）═══
+// 主窗口 stat 已确认存在才发来；万一已被删（TOCTOU）→ loadFileList 红字报错，不崩溃
+// ★ 2026-09-08 ack 回路：命令消费（已在目标 或 导航已发起）即回执父窗口停发——
+//   旧实现无确认，主窗口把同一条命令重发满 7.5s，期间用户手动导航每次都被拉回 = 硬控
+function _roamCmdAck(reqId) {
+	try {
+		if (window.parent && window.parent.postMessage) {
+			window.parent.postMessage({ type: 'qqq-roam-cmd-ack', reqId: reqId || '' }, '*');
+		}
+	} catch (_) { }
+}
+function roamNavTo(fullPath, reqId) {
+	try {
+		var norm = String(fullPath).replace(/\\/g, '/').replace(/\/+$/, '');
+		if (!norm) return;
+		var cur = currentPath ? String(currentPath).replace(/\\/g, '/').replace(/\/+$/, '') : '';
+		// 已在目标：命令已达成 → 回执即止，绝不 reloadCurrentDir（旧实现每 300ms 硬刷一次当前目录）
+		if (cur === norm) { _roamCmdAck(reqId); return; }
+		navigateTo(norm);
+		_roamCmdAck(reqId);   // 导航已发起即回执；后续重发由 ack 停掉，无需到达确认
 	} catch (_) { }
 }
 
@@ -1664,6 +1690,8 @@ function roamRevealFile(fullPath) {
 document.addEventListener('qqq-roam-cmd', function(e) {
 	var d = e.detail || {};
 	if (d.cmd === 'roam.revealFile' && d.path) {
-		roamRevealFile(d.path);
+		roamRevealFile(d.path, d.reqId || '');
+	} else if (d.cmd === 'roam.navTo' && d.path) {
+		roamNavTo(d.path, d.reqId || '');
 	}
 });

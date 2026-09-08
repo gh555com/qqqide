@@ -43,7 +43,10 @@ function bootAiOverlay() {
   var _ovLinkStyle = document.createElement('style');
   _ovLinkStyle.textContent =
     '#qqq-ai-overlay-content a{color:inherit;text-decoration:underline;}' +
-    '#qqq-ai-overlay-content a:hover{color:inherit;text-decoration:underline;}';
+    '#qqq-ai-overlay-content a:hover{color:inherit;text-decoration:underline;}' +
+    '#qqq-ai-overlay-content a.qqq-path-link{color:inherit;text-decoration:none;cursor:auto}' +
+    '#qqq-ai-overlay-content .qqq-path-link.qqq-path-ok{text-decoration:underline dotted;text-underline-offset:2px;cursor:pointer}' +
+    '#qqq-ai-overlay-content .qqq-path-link.qqq-path-ok:hover{text-decoration:underline;background:rgba(181,137,0,0.18)}';
   document.head.appendChild(_ovLinkStyle);
 
   // ── 选中色 + 高亮匹配色 ──
@@ -60,6 +63,19 @@ function bootAiOverlay() {
   contentEl.style.cssText =
     'position:absolute; top:0; left:0; right:0; bottom:64px; display:flex; align-items:center; ' +
     'justify-content:center; padding:32px; overflow:hidden;';
+
+  // ★ 悬浮预览内路径链接 → Roam 定位（2026-09-06：代码块/表格 View 展开场景，_roamRevealText 同闭包）
+  // ★ 2026-09-07 门控：仅已确认存在（面板探针打过 .qqq-path-ok）直接跳；未确认拷贝 → 主窗口直连裁决一次
+  contentEl.addEventListener('click', function (e) {
+    var _pl = e.target && e.target.closest ? e.target.closest('.qqq-path-link') : null;
+    if (!_pl) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var _p = _pl.getAttribute('data-p') || _pl.textContent || '';
+    var _c = _pl.getAttribute('data-c') || '';
+    if (_pl.classList.contains('qqq-path-ok')) { _roamRevealText(_p, _c); return; }
+    _ovProbeThen(_p, _c, _pl, function () { _roamRevealText(_p, _c); });
+  });
 
   // Bottom toolbar
   var toolbar = document.createElement('div');
@@ -488,6 +504,16 @@ function bootAiOverlay() {
 
   // Listen for messages from AI iframe
   window.addEventListener('message', function (e) {
+    // ★ roam iframe 命令回执（2026-09-08）：命令已消费即停发。旧实现零确认——首次导航成功后
+    //   仍每 300ms 重发满 25 次（7.5s），期间用户任何手动导航都被下一条重发拉回目标目录 = 硬控。
+    //   独立 type 分支必须先于 qqqide-overlay 过滤（ack 消息走 roam 自身 type）
+    if (e.data && e.data.type === 'qqq-roam-cmd-ack') {
+      if (_roamCmdTimer && e.data.reqId && String(e.data.reqId) === String(_roamCmdToken)) {
+        clearInterval(_roamCmdTimer);
+        _roamCmdTimer = null;
+      }
+      return;
+    }
     if (!e.data || e.data.type !== 'qqqide-overlay') return;
     if (e.data.action === 'close') { close(); return; }
 
@@ -704,42 +730,253 @@ function bootAiOverlay() {
 
     // ★ AI 面板图片 hover「Roam」按钮：激活 roam tab + 聚焦 + 跳到目录选中文件
     if (e.data.action === 'reveal-in-roam') {
-      _revealInRoam(e.data.src);
+      if (typeof e.data.src === 'string' && /^file:\/\//i.test(e.data.src)) _roamRevealText(e.data.src, '');
+      else _roamQoast('该图片无本地文件，无法在 Roam 定位');
+      return;
+    }
+    // ★ 本地路径存在性探针（2026-09-07）：AI 面板权威渲染后批量确认，存在才允许显示为链接
+    if (e.data.action === 'lpl-probe') {
+      _lplHandleProbe(e);
+      return;
+    }
+    // ★ AI 回复本地路径链接：Roam 定位目录/文件（2026-09-06）
+    if (e.data.action === 'roam-reveal-path') {
+      _roamRevealText(e.data.text || '', e.data.ctx || '');
+      return;
     }
   });
 
-  // 主窗口侧：Roam 定位文件（iframe 未就绪时重试，覆盖首次懒加载窗口）
-  function _revealInRoam(src) {
-    var path = null;
-    if (typeof src === 'string' && /^file:\/\//i.test(src)) {
-      path = src.replace(/^file:\/\/\//i, '');
-      try { path = decodeURIComponent(path); } catch (_) { }
-    }
-    if (!path) {
-      if (window.qqqideQoast) window.qqqideQoast.show('该图片无本地文件，无法在 Roam 定位', { type: 'info', duration: 2500 });
-      return;
-    }
-    // ① 前置显示：激活 roam tab（X 区 gaea 分组，rage 注册）
+  // ═══ Roam 定位引擎（2026-09-06 泛化）：任意本地路径 → 激活 roam + 跳转/选中 ═══
+  // 支持：盘符绝对 / 相对路径（依 AI 视口阵营逐根解析，主文件夹优先）/ 树图裸文件名（ctx 拼接）
+  // 边界兜底：不存在/已删除 → 爬升最近存在祖先 + toast，绝不静默死链；
+  //           roam tab/iframe 未就绪 → 自建 tab + 轮询重发（7.5s 上限）。
+  function _roamQoast(msg) {
     try {
-      var gaeaGrp = window.qqqTabs && window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
-      if (gaeaGrp) {
-        var roamTab = gaeaGrp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
-        if (roamTab && window.qqqTabs.activateTab) window.qqqTabs.activateTab(gaeaGrp, roamTab.id);
+      if (window.qqqideQoast && window.qqqideQoast.show) window.qqqideQoast.show(msg, { type: 'info', duration: 3500 });
+    } catch (_) { }
+  }
+  function _roamFs() { try { return window.qqqideBridge && window.qqqideBridge.fs; } catch (_) { return null; } }
+  function _roamStat(p) {
+    var fs = _roamFs();
+    if (!fs || !fs.stat) return Promise.resolve(null);
+    return fs.stat(p).catch(function () { return null; });
+  }
+  function _roamRoots() {
+    var out = [];
+    try {
+      var vp = window.qqqideViewport;
+      var ps = vp && vp.getProjects ? vp.getProjects() : null;
+      if (ps) {
+        for (var i = 0; i < ps.length; i++) {
+          if (ps[i] && ps[i].path) out.push(String(ps[i].path).replace(/\\/g, '/').replace(/\/+$/, ''));
+        }
       }
     } catch (_) { }
-    // ② 获得焦点 + ③ 跳转选中：重试直到 roam iframe 就绪
+    return out;
+  }
+  function _roamJoin(base, rel) {
+    var b = String(base || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    var r = String(rel || '').replace(/\\/g, '/');
+    while (r.indexOf('./') === 0) r = r.slice(2);
+    return b + '/' + r;
+  }
+  function _roamParent(p) {
+    var s = String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    var i = s.lastIndexOf('/');
+    if (i <= 0) return /^[A-Za-z]:$/.test(s) ? s + '/' : null;
+    return s.slice(0, i);
+  }
+  function _roamShort(p) {
+    var s = String(p || '');
+    return s.length > 52 ? '…' + s.slice(s.length - 51) : s;
+  }
+  // 逐级上爬：返回第一个仍存在滴祖先（含自身）
+  async function _roamClimb(p) {
+    var cur = String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!cur) return null;
+    var fs = _roamFs();
+    if (!fs) return null;
+    for (var guard = 0; guard < 80 && cur; guard++) {
+      // 盘根歧义兜底：fs.stat('E:') 语义=E盘cwd，必须带尾斜杠才等价盘根
+      if (/^[A-Za-z]:$/.test(cur)) cur = cur + '/';
+      var st = await fs.stat(cur).catch(function () { return null; });
+      if (st) return { path: cur, isDir: !!st.isDir };
+      var nx = _roamParent(cur);
+      if (!nx || nx === cur) return null;
+      cur = nx;
+    }
+    return null;
+  }
+  // 激活 roam tab（缺则硬建）+ 轮询向 iframe 发命令
+  function _roamEnsureTab() {
+    try {
+      var gaeaGrp = window.qqqTabs && window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+      if (!gaeaGrp) return false;
+      var roamTab = gaeaGrp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
+      if (!roamTab && window.qqqTabs.addGaeaTab) {
+        try {
+          window.qqqTabs.addGaeaTab('roam', 'Roam', function (pane) {
+            pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
+            var iframe = document.createElement('iframe');
+            iframe.src = '/qqqide/goods/file-explorer/q2-roam.html';
+            iframe.style.cssText = 'width:100%; height:100%; border:none;';
+            iframe.setAttribute('frameborder', '0');
+            pane.appendChild(iframe);
+          }, { closable: false });
+          roamTab = gaeaGrp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
+        } catch (_) { }
+      }
+      if (roamTab && window.qqqTabs.activateTab) {
+        try { window.qqqTabs.activateTab(gaeaGrp, roamTab.id); } catch (_) { }
+      }
+      return !!roamTab;
+    } catch (_) { return false; }
+  }
+  // Roam 命令单飞发送器（2026-09-08 ack 回路）：命令带 reqId，iframe 消费后回执 → 立即停发。
+  // 单飞 = 新命令先清旧发送器（快速连点两个链接时旧命令不得继续把用户拉来拉去）；
+  // 25 次/7.5s 仅作 iframe 未就绪（懒加载/重建）兜底，正常路径 ~300ms 内 ack 即停，零硬控。
+  var _roamCmdTimer = null, _roamCmdToken = 0;
+  function _roamSendCmd(cmd, path) {
+    if (!path) return;
+    if (_roamCmdTimer) { clearInterval(_roamCmdTimer); _roamCmdTimer = null; }
+    _roamEnsureTab();
+    var token = ++_roamCmdToken;
     var sent = 0;
+    var wasNull = true;
     var timer = setInterval(function () {
       var it = document.querySelector('iframe[src*="q2-roam"]');
       if (it && it.contentWindow) {
         try {
-          it.contentWindow.focus();
-          it.contentWindow.postMessage({ type: 'qqq-roam-cmd', cmd: 'roam.revealFile', path: path }, '*');
+          // iframe 首次出现才抢焦点——旧实现每 300ms focus 一次，7.5s 内反复抢焦点同样在硬控用户
+          if (wasNull) { try { it.contentWindow.focus(); } catch (_) { } wasNull = false; }
+          it.contentWindow.postMessage({ type: 'qqq-roam-cmd', cmd: cmd, path: path, reqId: token }, '*');
         } catch (_) { }
       }
       sent++;
-      if (sent >= 10) clearInterval(timer);
+      if (sent >= 25 || _roamCmdToken !== token) {   // 达上限 / 被新命令顶替 → 自清
+        clearInterval(timer);
+        if (_roamCmdTimer === timer) _roamCmdTimer = null;
+      }
     }, 300);
+    _roamCmdTimer = timer;
+  }
+  function _roamRevealHit(path, st) {
+    if (st && st.isDir) _roamSendCmd('roam.navTo', path);
+    else _roamSendCmd('roam.revealFile', path);
+  }
+  // ═══ 命中裁决（2026-09-07 共享）：点击定位与存在性探针同一裁决，零双写漂移 ═══
+  // 返回 { hit:{path,isDir} | null, first:爬升基准, err:fs 不可用 }；只做①直接候选 ②ctx 裸名拼接，不爬升。
+  async function _roamResolveHits(text, ctx) {
+    var fs = _roamFs();
+    if (!fs || !fs.stat) return { hit: null, first: null, err: true };
+    var t = String(text || '').trim();
+    var wasFileUrl = /^file:\/\/\//i.test(t);
+    if (wasFileUrl) {
+      t = t.replace(/^file:\/\/\//i, '');
+      try { t = decodeURIComponent(t); } catch (_) { }
+    }
+    t = t.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!t) return { hit: null, first: null, err: false };
+    var isAbs = /^[A-Za-z]:\//.test(t);
+    var roots = _roamRoots();
+    var hasSep = t.indexOf('/') !== -1;
+    // ① 直接候选：绝对原样；相对逐根拼接（主文件夹优先）
+    var direct = [];
+    if (isAbs) {
+      direct.push(t.length === 2 ? t + '/' : t);
+    } else if (hasSep) {
+      if (!roots.length) direct.push(t);
+      for (var ri = 0; ri < roots.length; ri++) direct.push(_roamJoin(roots[ri], t));
+    }
+    var fallback = direct[0] || (isAbs ? t : (roots.length ? _roamJoin(roots[0], t) : t));
+    for (var di = 0; di < direct.length; di++) {
+      var stD = await fs.stat(direct[di]).catch(function () { return null; });
+      if (stD) return { hit: { path: direct[di], isDir: !!stD.isDir }, first: fallback, err: false };
+    }
+    // ② 裸文件名 + ctx：先解析 ctx 锚点（绝对或逐根），文件取父目录，再拼名
+    if (!hasSep && !isAbs && ctx) {
+      var c = String(ctx).replace(/\\/g, '/').replace(/\/+$/, '');
+      var cAbs = /^[A-Za-z]:\//.test(c);
+      var cbases = cAbs ? [c] : [];
+      if (!cAbs) for (var ci = 0; ci < roots.length; ci++) cbases.push(_roamJoin(roots[ci], c));
+      for (var cbi = 0; cbi < cbases.length; cbi++) {
+        var stC = await fs.stat(cbases[cbi]).catch(function () { return null; });
+        if (!stC) continue;
+        var dirC = stC.isDir ? cbases[cbi] : _roamParent(cbases[cbi]);
+        if (!dirC) continue;
+        var leaf = _roamJoin(dirC, t);
+        var stL = await fs.stat(leaf).catch(function () { return null; });
+        if (stL) return { hit: { path: leaf, isDir: !!stL.isDir }, first: fallback, err: false };
+      }
+    }
+    return { hit: null, first: fallback, err: false };
+  }
+  // 唯一入口：text=候选路径原文，ctx=树图上文目录（可选）——命中直达；未命中爬升最近祖先，杜绝死链
+  async function _roamRevealText(text, ctx) {
+    var r = await _roamResolveHits(text, ctx);
+    if (r.err) { _roamQoast('Roam 定位暂不可用，请稍后再试'); return; }
+    var orig = String(text || '').trim();
+    if (!r.first) { _roamQoast('该路径无本地文件，无法在 Roam 定位'); return; }
+    if (r.hit) { _roamRevealHit(r.hit.path, { isDir: r.hit.isDir }); return; }
+    var near = await _roamClimb(r.first);
+    if (near) {
+      _roamQoast('路径已不存在（可能被移动/删除）：' + _roamShort(orig) + ' → 已定位到最近目录 ' + _roamShort(near.path));
+      _roamSendCmd('roam.navTo', near.path);
+    } else {
+      _roamQoast('未在磁盘上找到：' + _roamShort(orig));
+    }
+  }
+  // ═══ 存在性探针裁决（2026-09-07）：面板批量确认 + 悬浮预览拷贝兜底共用 ═══
+  var _lplOvCache = new Map();   // 主窗口侧会话缓存（key=p+ctx → true/false，FIFO 上限 3000）
+  function _lplOvSet(key, ok) {
+    _lplOvCache.set(key, ok);
+    if (_lplOvCache.size > 3000) {
+      var it = _lplOvCache.keys().next();
+      if (!it.done) _lplOvCache.delete(it.value);
+    }
+  }
+  async function _lplOvCheck(p, c) {
+    var key = String(c || '') + '\u0001' + String(p || '');
+    var st = _lplOvCache.get(key);
+    if (st !== undefined) return !!st;
+    var ok = false;
+    try { var r = await _roamResolveHits(p, c); ok = !!(r && r.hit); } catch (_) { ok = false; }
+    _lplOvSet(key, ok);
+    return ok;
+  }
+  // AI 面板 lpl-probe：逐条裁决（顺序 await 防 stat 风暴），结果回传发起方 iframe
+  async function _lplHandleProbe(e) {
+    var items = (e.data && Array.isArray(e.data.items)) ? e.data.items.slice(0, 900) : [];
+    var results = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i] || {};
+      var p = String(it.p || '');
+      var c = String(it.c || '');
+      var ok = false;
+      try { ok = await _lplOvCheck(p, c); } catch (_) { ok = false; }
+      results.push({ p: p, c: c, ok: ok });
+    }
+    try {
+      if (e.source && e.source.postMessage) {
+        e.source.postMessage({ type: 'qqq-lpl-probe-result', reqId: e.data.reqId || '', results: results }, '*');
+      }
+    } catch (_) { }
+  }
+  // 悬浮预览内未确认拷贝链接：主窗口直连裁决——存在则激活并跳转，不存在解除为纯文本
+  async function _ovProbeThen(p, c, el, onOk) {
+    var ok = false;
+    try { ok = await _lplOvCheck(p, c); } catch (_) { ok = false; }
+    if (!el.isConnected) return;
+    if (ok) {
+      el.classList.add('qqq-path-ok');
+      if (!el.title) el.title = '在 Roam 中打开';
+      if (onOk) onOk();
+    } else {
+      try {
+        var tn = el.ownerDocument.createTextNode(el.textContent || '');
+        if (el.parentNode) el.parentNode.replaceChild(tn, el);
+      } catch (_) { }
+    }
   }
 
   // Theme sync

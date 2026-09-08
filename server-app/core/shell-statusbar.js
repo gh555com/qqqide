@@ -127,8 +127,8 @@ function bootStatusbar(boot) {
 					if ($avg) {
 						var pts = data.sample_points || 0;
 						if (pts > 0 && typeof data.avg_24h === 'number') {
-							// 值来自服务端 number（avg_24h 经 Math.round 纯数字），innerHTML 无注入面
-							$avg.innerHTML = '※最近24小时平均：<b>' + (Math.round(data.avg_24h * 10) / 10).toLocaleString() + '</b>';
+							// 值来自服务端 number（avg_24h 经 Math.round 纯数字），innerHTML 无注入面；_fmt1 强制一位小数（整数也显 .0）
+							$avg.innerHTML = '※最近24小时平均：<b>' + _fmt1(data.avg_24h) + '</b>';
 							$avg.title = pts >= 288 ? '' : '数据采样中（' + pts + '/288 点，满 24 小时后精确）';
 						} else {
 							$avg.textContent = '※最近24小时平均：--';
@@ -158,15 +158,16 @@ function bootStatusbar(boot) {
 			_onlPanel.className = 'qqq-onl-panel';
 			_onlPanel.innerHTML =
 				'<div class="qqq-onl-head">' +
+				'<div class="qqq-onl-lines">' +
 				'<span class="qqq-onl-title">在线人数 <b id="qqq-onl-now">0</b></span>' +
 				'<span class="qqq-onl-avg" id="qqq-onl-avg24">※最近24小时平均：--</span>' +
+				'</div>' +
 				'<span class="qqq-onl-spark" id="qqq-onl-spark"></span>' +
-				'<button id="qqq-onl-close" class="qqq-onl-close">✕</button>' +
+				'<span class="qqq-onl-scale" id="qqq-onl-scale"></span>' +
 				'</div>' +
 				'<div id="qqq-onl-body" class="qqq-onl-body"></div>';
 			_onlOverlay.appendChild(_onlPanel);
 			document.body.appendChild(_onlOverlay);
-			document.getElementById('qqq-onl-close').addEventListener('click', closeOnlineUsers);
 		}
 
 		function closeOnlineUsers() {
@@ -177,10 +178,19 @@ function bootStatusbar(boot) {
 		// ★ 微型 30 天日均曲线（2026-09-06）——首行均值左移后，右侧细长区画近30天每日均值变迁；
 		//   尾点 = 今天行 = 当前 24h 滚动平均 → 与首行数字恒同值（服务端同一 refresh 周期写入同一值）。
 		//   零定时器零动画：数据刷新（fetchOnline then）/ 弹窗打开 / 窗口缩放 三路重绘；SVG 懒创建复用。
+		// ★ 一位小数格式化（峰/谷刻度 + 24h 平均同口径；整数也显 .0，2026-09-07 一切数字一位小数定案）
+		function _fmt1(x) {
+			return (Math.round(x * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+		}
+
 		function _renderSpark() {
 			if (!_onlUsersOpen || !_onlOverlay || _onlOverlay.style.display === 'none') return;
 			var $spark = document.getElementById('qqq-onl-spark');
-			if (!$spark || !_onlDaily30 || _onlDaily30.length < 2) return; // <2 点 = 数据积累中（首点 5min 内出现）
+			var $scale = document.getElementById('qqq-onl-scale');
+			if (!$spark || !_onlDaily30 || _onlDaily30.length < 2) { // <2 点 = 数据积累中（首点 5min 内出现）
+				if ($scale) $scale.innerHTML = '';
+				return;
+			}
 			var n = _onlDaily30.length;
 			var ns = 'http://www.w3.org/2000/svg';
 			if (!_onlSparkSvg) {
@@ -197,6 +207,7 @@ function bootStatusbar(boot) {
 				if (vi < min) min = vi;
 				if (vi > max) max = vi;
 			}
+			var rawMax = max, rawMin = min; // 刻度显示真实极值（曲线满幅映射时极值恰好贴上下边）
 			if (max - min < 1e-6) { max += 0.5; min -= 0.5; } // 全平数据守卫（防除零）
 			var span = max - min;
 			var pts = [];
@@ -212,6 +223,13 @@ function bootStatusbar(boot) {
 				'<polygon points="' + pad + ',' + (pad + ih) + ' ' + pts.join(' ') + ' ' + (pad + iw) + ',' + (pad + ih) + '" fill="var(--text-dim)" fill-opacity="0.12"/>' +
 				'<polyline points="' + pts.join(' ') + '" fill="none" stroke="var(--text-primary)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>' +
 				'<circle cx="' + (pad + iw) + '" cy="' + lastY + '" r="1.8" fill="var(--text-primary)"/>';
+			// ★ 峰/谷刻度（2026-09-07）：图表右侧竖排两数字 = 数据极大/极小值，一位小数
+			if ($scale) {
+				$scale.innerHTML =
+					'<i class="pk">' + _fmt1(rawMax) + '</i>' +
+					'<i>' + _fmt1(rawMin) + '</i>';
+				$scale.title = '顶峰 ' + _fmt1(rawMax) + ' · 谷底 ' + _fmt1(rawMin) + '（近30天日均在线）';
+			}
 			$spark.title = '近30天日均在线曲线（' + _onlDaily30[0].d + ' → ' + _onlDaily30[n - 1].d + '，尾点 = 当前24h平均）';
 		}
 
@@ -287,6 +305,8 @@ function bootStatusbar(boot) {
 			if (!_onlUsersOpen || !_onlOverlay || _onlOverlay.style.display === 'none') { _onlQCount = 0; return; }
 			if (e.repeat) return;
 			var k = e.key;
+			// ★ ✕ 关闭按钮已删（2026-09-07 用户定案：点外面即关闭），Esc 兜底同效
+			if (k === 'Escape') { _onlQCount = 0; closeOnlineUsers(); return; }
 			if (k !== 'q' && k !== 'Q') return;
 			var ae = document.activeElement;
 			if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) { _onlQCount = 0; return; }
