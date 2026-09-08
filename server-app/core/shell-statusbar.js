@@ -1,15 +1,15 @@
-// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
-
-// ============================================================================
-// shell-statusbar.js — 状态栏时钟 + 免费时段指示器（从 shell.js 拆分）
-// 依赖: window.qqqideBridge, window._i, window._sseTimeAnchor (AI 面板推送)
-// ============================================================================
-
-function bootStatusbar(boot) {
-  var bridge = window.qqqideBridge;
-  var $ver = document.getElementById('qqq-status-version');
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
+// ============================================================================
+// shell-statusbar.js — 状态栏时钟 + 免费时段指示器（从 shell.js 拆分）
+// 依赖: window.qqqideBridge, window._i, window._sseTimeAnchor (AI 面板推送)
+// ============================================================================
+
+function bootStatusbar(boot) {
+  var bridge = window.qqqideBridge;
+  var $ver = document.getElementById('qqq-status-version');
   var $onl = document.getElementById('qqq-status-online');
-  var $clk = document.getElementById('qqq-status-clock');
+  var $clk = document.getElementById('qqq-status-clock');
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
 	if ($onl) $onl.textContent = '0';
 
@@ -90,25 +90,25 @@ function bootStatusbar(boot) {
 				location.reload();
 			}
 		});
-	}
-
+	}
+
 	// ═══ 全球在线人数 — fetch 极轻轮询（30字节/5分钟，跨窗口稳定）═══
 	// ★ 隐藏链接：hover 零外观零 tooltip，点击仍打开在线用户面板
 	(function () {
-		if (!$onl) return;
-
-		var _onlLastFetch = 0;
-		var _onlUsersOpen = false;
-		var _onlOverlay = null;
-		var _onlPanel = null;
+		if (!$onl) return;
+
+		var _onlLastFetch = 0;
+		var _onlUsersOpen = false;
+		var _onlOverlay = null;
+		var _onlPanel = null;
 		var _onlFetching = false;
 		var _onlUsersCache = null; // 最近一次 users 快照（三连 q 切列重渲染用，零重复请求）
 		var _onlDaily30 = null;    // 最近一次 avg_daily_30 快照（近30天每日均值，弹窗微型曲线数据，零重复请求）
 		var _onlSparkSvg = null;   // 微型曲线 <svg>（懒创建一次复用，仅弹窗可见时渲染）
 		var _onlShowBal = false;   // ★ 隐藏功能：弹窗开启时连按 3 下 q → day 右侧显示「余额」列（服务端 balance_ge 四舍五入取整）
 		var _onlQCount = 0;        // 连按计数（超时/弹窗关闭清零）
-		var _onlQAt = 0;
-
+		var _onlQAt = 0;
+
 		function fetchOnline(force) {
 			var now = Date.now();
 			if (!force && now - _onlLastFetch < 240000) return;
@@ -142,8 +142,8 @@ function bootStatusbar(boot) {
 					}
 				})
 				.catch(function () { /* 静默 */ });
-		}
-
+		}
+
 		// ═══ 点击弹出在线用户列表 ═══
 		// ★ 配色 2026-09-03 修复：样式全收敛 .qqq-onl-* CSS 类 + 主题语义变量（唯一入口 qqqide-theme.js）。
 		//   旧实现 inline 硬编码色仅面板首次构建时读一次 data-theme——面板构建后跨主题切换（浅→暗）恒残留浅底，
@@ -168,8 +168,8 @@ function bootStatusbar(boot) {
 				'<div id="qqq-onl-body" class="qqq-onl-body"></div>';
 			_onlOverlay.appendChild(_onlPanel);
 			document.body.appendChild(_onlOverlay);
-		}
-
+		}
+
 		function closeOnlineUsers() {
 			_onlUsersOpen = false;
 			if (_onlOverlay) _onlOverlay.style.display = 'none';
@@ -231,8 +231,8 @@ function bootStatusbar(boot) {
 				$scale.title = '顶峰 ' + _fmt1(rawMax) + ' · 谷底 ' + _fmt1(rawMin) + '（近30天日均在线）';
 			}
 			$spark.title = '近30天日均在线曲线（' + _onlDaily30[0].d + ' → ' + _onlDaily30[n - 1].d + '，尾点 = 当前24h平均）';
-		}
-
+		}
+
 		function openOnlineUsers() {
 			if (!_onlOverlay) buildOnlineUsersPanel();
 			if (_onlUsersOpen) { closeOnlineUsers(); return; }
@@ -241,8 +241,8 @@ function bootStatusbar(boot) {
 			_renderSpark(); // 先画缓存曲线（开箱即见），随后 fetchOnline 刷新重绘
 			fetchOnline(true); // 弹窗打开即拉最新（绕过 240s 轮询限频，面板首行人数+24h平均立即刷新）
 			fetchOnlineUsers();
-		}
-
+		}
+
 		function renderOnlineUsers(users) {
 			_onlUsersCache = users;
 			var $body = document.getElementById('qqq-onl-body');
@@ -297,7 +297,7 @@ function bootStatusbar(boot) {
 		}
 
 		// ★ 隐藏功能（2026-09-06）：弹窗开启时连按 3 下 q（单次间隔 ≤1.2s）→ day 右侧显示「余额」列，再按三下隐藏
-		//   弹窗关闭/焦点在下层输入区/长按 repeat 均忽略；列切换用最近快照重渲染，零重复请求
+		//   弹窗关闭/焦点在下层键入区/长按 repeat 均忽略；列切换用最近快照重渲染，零重复请求
 		// 窗口缩放 → 面板宽度变化（max-width 94vw）→ 曲线按新宽度重绘（_renderSpark 内已判弹窗可见性，零额外成本）
 		window.addEventListener('resize', _renderSpark);
 
@@ -322,30 +322,30 @@ function bootStatusbar(boot) {
 		});
 
 		function fetchOnlineUsers() {
-			if (_onlFetching) return;
-			_onlFetching = true;
-			var $body = document.getElementById('qqq-onl-body');
-			if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载中...</div>';
-
-			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache' })
-				.then(function (r) { if (!r.ok) return null; return r.json(); })
-				.then(function (data) {
-					_onlFetching = false;
-					if (!data || !data.ok || !$body) return;
+			if (_onlFetching) return;
+			_onlFetching = true;
+			var $body = document.getElementById('qqq-onl-body');
+			if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载中...</div>';
+
+			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache' })
+				.then(function (r) { if (!r.ok) return null; return r.json(); })
+				.then(function (data) {
+					_onlFetching = false;
+					if (!data || !data.ok || !$body) return;
 					var users = data.users || [];
 					if (users.length === 0) {
 						$body.innerHTML = '<div class="qqq-onl-msg">暂无用户</div>';
 						return;
 					}
-					renderOnlineUsers(users);
-				})
-				.catch(function () {
-					_onlFetching = false;
-					var $body = document.getElementById('qqq-onl-body');
-					if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载失败，请重试</div>';
-				});
-		}
-
+					renderOnlineUsers(users);
+				})
+				.catch(function () {
+					_onlFetching = false;
+					var $body = document.getElementById('qqq-onl-body');
+					if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载失败，请重试</div>';
+				});
+		}
+
 		$onl.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openOnlineUsers(); });
 
 		// ═══ 启动包监控 a 区域渲染 — 唯一渲染者 = core/shell-mem-hover.js（icon+内存+CPU 文字全量接管，2026-08-30）═══
@@ -396,87 +396,87 @@ function bootStatusbar(boot) {
 					window.open(url, '_blank');
 				}
 			});
-		}
-
+		}
+
 		fetchOnline();
 		fetchMyTotal();
 		setInterval(fetchOnline, 300000);
-		setInterval(fetchMyTotal, 300000);
-	})();
-
-  // ═══ 单调时钟锚点（变速齿轮免疫，三保险） ═══
-  // 优先级：SSE(gh555.com) > Cloudflare trace > timeapi.io
-  var _timeAnchor = null; // { perfNow, utcMs, source: 'sse'|'cf'|'timeapi' }
-  var _lastSseAnchor = null; // 最新 SSE 锚点（最高优先级）
-
-  // 从 SSE 获取时间（AI 面板通过 parent._sseTimeAnchor 推送）
-  function pollSseAnchor() {
-    if (window._sseTimeAnchor && window._sseTimeAnchor !== _lastSseAnchor) {
-      _lastSseAnchor = window._sseTimeAnchor;
-      _timeAnchor = {
-        perfNow: window._sseTimeAnchor.perfNow,
-        utcMs: window._sseTimeAnchor.utcMs,
-        source: 'sse'
-      };
-    }
-  }
-
-  // 从公共时间服务器获取 UTC 时间（不请求我们服务器）
-  function calibrateFromPublicTime() {
-    // 首先检查是否有新的 SSE 锚点（最高优先级）
-    pollSseAnchor();
-
-    // 如果已有 SSE 锚点且不超过 10 分钟，跳过公共校准
-    if (_timeAnchor && _timeAnchor.source === 'sse') {
-      var age = performance.now() - _timeAnchor.perfNow;
-      if (age < 600000) return; // SSE 锚点 < 10 分钟，够新鲜
-    }
-
-    // 主：Cloudflare trace（全球 CDN，含中国）→ 解析 ts=Unix秒
-    fetch('https://www.cloudflare.com/cdn-cgi/trace', { cache: 'no-cache' })
-      .then(function (r) { return r.text(); })
-      .then(function (text) {
-        var m = text.match(/^ts=([\d.]+)/m);
-        if (m) {
-          _timeAnchor = {
-            perfNow: performance.now(),
-            utcMs: parseFloat(m[1]) * 1000,
-            source: 'cf'
-          };
-          return;
-        }
-        throw new Error('no ts');
-      })
-      .catch(function () {
-        // 备：timeapi.io（JSON，CORS 友好）
-        return fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC', { cache: 'no-cache' })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.dateTime) {
-              var dt = data.dateTime;
-              if (!/[Zz+\-]\d{2}:\d{2}$/.test(dt) && !/[Zz]$/.test(dt)) dt += 'Z';
-              _timeAnchor = {
-                perfNow: performance.now(),
-                utcMs: new Date(dt).getTime(),
-                source: 'timeapi'
-              };
-            }
-          });
-      })
-      .catch(function () { /* 两次都失败，沿用旧锚点 */ });
-  }
-
-  // 从单调锚点推算当前 UTC 毫秒
-  function getCalibratedUtcMs() {
-    if (_timeAnchor && _timeAnchor.perfNow && _timeAnchor.utcMs) {
-      return _timeAnchor.utcMs + (performance.now() - _timeAnchor.perfNow);
-    }
-    return Date.now(); // 降级：未校准前用本地时间
-  }
-
-  if ($clk) {
-    // 首次校准
-    calibrateFromPublicTime();
+		setInterval(fetchMyTotal, 300000);
+	})();
+
+  // ═══ 单调时钟锚点（变速齿轮免疫，三保险） ═══
+  // 优先级：SSE(gh555.com) > Cloudflare trace > timeapi.io
+  var _timeAnchor = null; // { perfNow, utcMs, source: 'sse'|'cf'|'timeapi' }
+  var _lastSseAnchor = null; // 最新 SSE 锚点（最高优先级）
+
+  // 从 SSE 获取时间（AI 面板通过 parent._sseTimeAnchor 推送）
+  function pollSseAnchor() {
+    if (window._sseTimeAnchor && window._sseTimeAnchor !== _lastSseAnchor) {
+      _lastSseAnchor = window._sseTimeAnchor;
+      _timeAnchor = {
+        perfNow: window._sseTimeAnchor.perfNow,
+        utcMs: window._sseTimeAnchor.utcMs,
+        source: 'sse'
+      };
+    }
+  }
+
+  // 从公共时间服务器获取 UTC 时间（不请求我们服务器）
+  function calibrateFromPublicTime() {
+    // 首先检查是否有新的 SSE 锚点（最高优先级）
+    pollSseAnchor();
+
+    // 如果已有 SSE 锚点且不超过 10 分钟，跳过公共校准
+    if (_timeAnchor && _timeAnchor.source === 'sse') {
+      var age = performance.now() - _timeAnchor.perfNow;
+      if (age < 600000) return; // SSE 锚点 < 10 分钟，够新鲜
+    }
+
+    // 主：Cloudflare trace（全球 CDN，含中国）→ 解析 ts=Unix秒
+    fetch('https://www.cloudflare.com/cdn-cgi/trace', { cache: 'no-cache' })
+      .then(function (r) { return r.text(); })
+      .then(function (text) {
+        var m = text.match(/^ts=([\d.]+)/m);
+        if (m) {
+          _timeAnchor = {
+            perfNow: performance.now(),
+            utcMs: parseFloat(m[1]) * 1000,
+            source: 'cf'
+          };
+          return;
+        }
+        throw new Error('no ts');
+      })
+      .catch(function () {
+        // 备：timeapi.io（JSON，CORS 友好）
+        return fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC', { cache: 'no-cache' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.dateTime) {
+              var dt = data.dateTime;
+              if (!/[Zz+\-]\d{2}:\d{2}$/.test(dt) && !/[Zz]$/.test(dt)) dt += 'Z';
+              _timeAnchor = {
+                perfNow: performance.now(),
+                utcMs: new Date(dt).getTime(),
+                source: 'timeapi'
+              };
+            }
+          });
+      })
+      .catch(function () { /* 两次都失败，沿用旧锚点 */ });
+  }
+
+  // 从单调锚点推算当前 UTC 毫秒
+  function getCalibratedUtcMs() {
+    if (_timeAnchor && _timeAnchor.perfNow && _timeAnchor.utcMs) {
+      return _timeAnchor.utcMs + (performance.now() - _timeAnchor.perfNow);
+    }
+    return Date.now(); // 降级：未校准前用本地时间
+  }
+
+  if ($clk) {
+    // 首次校准
+    calibrateFromPublicTime();
     // 每 1 分钟重新校准
     setInterval(calibrateFromPublicTime, 60000);
 
@@ -488,7 +488,7 @@ function bootStatusbar(boot) {
         String(d.getHours()).padStart(2, '0') + ':' +
         String(d.getMinutes()).padStart(2, '0') + ':' +
         String(d.getSeconds()).padStart(2, '0');
-    };
+    };
     tick();
     setInterval(tick, 1000);
   }
@@ -505,4 +505,4 @@ function bootStatusbar(boot) {
   }
   window.addEventListener('resize', updateStatusDensity);
   updateStatusDensity();
-}
+}

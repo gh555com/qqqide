@@ -36,7 +36,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 #bar .bar-action .bar-icon{display:block;width:14px;height:14px;flex:0 0 14px;color:var(--icon)}
 #bar .bar-action.icon-only{width:26px;height:22px;padding:2px 5px;justify-content:center;gap:0}
 #bar .bar-action.icon-only .bar-icon{width:15px;height:15px;flex-basis:15px}
-/* 命名输入框（2026-08-18）：标签标题实时同步，多 kmd 窗口的基础；
+/* 命名键入框（2026-08-18）：标签标题实时同步，多 kmd 窗口的基础；
    边界保护双层——maxlength(UTF-16) + JS 按 code point 截断(emoji/中文按字符) */
 #name-input{width:110px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:inherit;font-size:11px;padding:2px 6px;outline:none;flex-shrink:0}
 #name-input:focus{border-color:var(--accent)}
@@ -70,7 +70,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
    ★ 2026-08-13: input → textarea（默认 3 行高 / 最大 8 行高 / 自动换行，长命令多行显示）
    行高 1.45 与输出区一致：min-height=3行, max-height=8行（calc 固定，JS autoResize 读取 clamp） */
 #line-wrap{display:flex;align-items:flex-start;border-top:1px solid var(--border);background-color:var(--card);padding:4px 8px;gap:6px;flex-shrink:0}
-/* ★ 2026-08-25 可输入态：kmd tab 可见 && 窗口聚焦 → 背景变亮 + 四边滚动虚线（repeating-linear-gradient 四条边 + background-position 动画，10px=虚线周期无缝循环；2026-08-25 换回 accent 绿，粗细保持 2px） */
+/* ★ 2026-08-25 可键入态：kmd tab 可见 && 窗口聚焦 → 背景变亮 + 四边滚动虚线（repeating-linear-gradient 四条边 + background-position 动画，10px=虚线周期无缝循环；2026-08-25 换回 accent 绿，粗细保持 2px） */
 #line-wrap.active{background-color:var(--card-focus);background-image:repeating-linear-gradient(90deg,var(--accent) 0 4px,transparent 4px 10px),repeating-linear-gradient(90deg,var(--accent) 0 4px,transparent 4px 10px),repeating-linear-gradient(0deg,var(--accent) 0 4px,transparent 4px 10px),repeating-linear-gradient(0deg,var(--accent) 0 4px,transparent 4px 10px);background-size:100% 2px,100% 2px,2px 100%,2px 100%;background-repeat:no-repeat;background-position:0 0,0 100%,0 0,100% 0;animation:kmd-dash .6s linear infinite}
 @keyframes kmd-dash{from{background-position:0 0,0 100%,0 0,100% 0}to{background-position:10px 0,-10px 100%,0 10px,100% -10px}}
 #prompt{color:var(--accent);font-weight:700;white-space:nowrap;user-select:none;font-size:13px;line-height:1.45;margin-top:3px}
@@ -166,10 +166,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var escPending = false; // cleanAnsi：未闭合 OSC 序列跨 chunk 状态
     var gbCwd = '';     // gitbash 当前目录（从 OSC 标题 \x1b]0;MINGW64:/path\x07 提取——2026-08-15 提示符块丢弃后路径抬头回归）
     var gbOscBuf = '', gbOscPending = false; // OSC 标题跨 chunk 切碎状态（与 escPending 同款，但工作在 cleanAnsi 之前）
-    // ★ 2026-08-25 可输入态（焦点态/here 指示牌，零轮询事件驱动）：
+    // ★ 2026-08-25 可键入态（焦点态/here 指示牌，零轮询事件驱动）：
     //   kmdActive = tab 可见性（tab-manager.activateTab 唯一中心 → kmd.js → kmd:active 消息；
     //   kmd:init 带 active 兜底快速切走窗口期）；winFocus = 窗口聚焦（iframe 原生 focus/blur，
-    //   父窗口失焦/最小化/切走同步触发）。双信号 AND = 可输入。
+    //   父窗口失焦/最小化/切走同步触发）。双信号 AND = 可键入。
     var kmdActive = true; // 初始 true：openFileCustomTab 先 activateTab 后 renderFn，创建即激活
     var winFocus = document.hasFocus();
     var hereMarker = document.getElementById('here-marker');
@@ -201,7 +201,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             cwd = d.cwd || '';
             shellType = d.shellType || 'cmd';
             gbCwd = winToMsys(cwd); // 会话初始目录 → gitbash 路径抬头（OSC 首到后自动校正）
-            nameInput.value = d.title || ''; // 命名输入框初始值 = 当前标签标题（用户可立即改名）
+            nameInput.value = d.title || ''; // 命名键入框初始值 = 当前标签标题（用户可立即改名）
             setShellUI(shellType);
             start();
             // ★ 2026-08-25 roam 单文件选中 + x：文件名预填键入行（不带路径，任何类型都填）——用户补命令/解释器即回车
@@ -210,7 +210,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 autoResize();
                 try { inputEl.focus(); inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length); } catch (_) { }
                 // ★ 2026-08-25 双保险：下一帧若 value 为空（被任何同步/微任务覆盖）则补回——
-                //   用户已输入内容则不动，成本一次 rAF，零冲突
+                //   用户已键入内容则不动，成本一次 rAF，零冲突
                 requestAnimationFrame(function () {
                     if (!inputEl.value) {
                         inputEl.value = String(d.fileName);
@@ -429,7 +429,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             if (!shouldSkipGitBashLine(stream, rest)) renderStreamLine(stream, rest);
         }
         scrollToBottom();
-        updateHereMarker(); // 流式追加后重锚（可输入态 + 滚到底才真正计算，其余零开销早退）
+        updateHereMarker(); // 流式追加后重锚（可键入态 + 滚到底才真正计算，其余零开销早退）
     }
 
     function renderStreamLine(stream, line) {
@@ -496,7 +496,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         hereRaf = requestAnimationFrame(function () { hereRaf = null; updateHereMarker(); });
     });
 
-    // ── 可输入态（2026-08-25）：kmd tab 可见 && 窗口聚焦 → 编辑框亮背景+滚动虚线 + here 指示牌 ──
+    // ── 可键入态（2026-08-25）：kmd tab 可见 && 窗口聚焦 → 编辑框亮背景+滚动虚线 + here 指示牌 ──
     function updateInputState() {
         var lw = document.getElementById('line-wrap');
         if (lw) lw.classList.toggle('active', kmdActive && winFocus);
@@ -535,7 +535,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         return null;
     }
 
-    // here 指示牌：仅 可输入态 + 滚动到底（autoScroll，最后一行必在可视区底部）时，锚定最后一行行尾
+    // here 指示牌：仅 可键入态 + 滚动到底（autoScroll，最后一行必在可视区底部）时，锚定最后一行行尾
     // （q 位置 = 提示符右侧）。浮层在 #out 外 → 不在 contenteditable 内：Ctrl+F 检索不到（TreeWalker
     // 范围是 #out）、选区/复制不可达（user-select:none + pointer-events:none）、文本 ::after 生成
     // （不进 DOM 双保险）——百分百不可选中不可复制。
@@ -597,7 +597,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
         if (k === 'Tab' || k === 'Enter') { e.preventDefault(); inputEl.focus(); return; }
         if (k.length === 1 && !e.altKey) {
-            // 可打印字符 → 注入键入行并聚焦（用户打字自动回到输入框，首字符不丢）
+            // 可打印字符 → 注入键入行并聚焦（用户打字自动回到键入框，首字符不丢）
             e.preventDefault();
             inputEl.focus();
             var v = inputEl.value;
@@ -758,7 +758,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         switchShell(b.dataset.shell);
     });
 
-    // ── 命名输入框：输入即同步标签标题（多 kmd 窗口基础） ──
+    // ── 命名键入框：键入即同步标签标题（多 kmd 窗口基础） ──
     // 边界保护双层：① maxlength=40（UTF-16 长度，浏览器级）② 此处按 code point 截断（emoji/中文按字符计数）
     var nameInput = document.getElementById('name-input');
     nameInput.addEventListener('input', function () {
@@ -858,7 +858,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     });
 
     // tooltip for square button removed 2026-08-17 (user request)
-    // btn-clear removed 2026-08-18: Clear 收进正方形菜单第一项，原位改为命名输入框
+    // btn-clear removed 2026-08-18: Clear 收进正方形菜单第一项，原位改为命名键入框
 
     // ── Ctrl+F 全文检索高亮（editor 那一套：全文匹配高亮 + 导航 + 选区自动填入） ──
     // 实现: CSS Custom Highlight API（Chromium 105+，Electron 22=108 原生）——不改 DOM，contenteditable 安全；
@@ -1023,7 +1023,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     }, true);
 
     // ★ 全局 Ctrl+V → 指令编辑区（2026-08-16）：只要 kmd 获焦点，无论焦点在输出区/工具栏/空白处，
-    //   命令直接粘贴进键入行。输入框与查找框保留原生粘贴语义（不劫持）。
+    //   命令直接粘贴进键入行。键入框与查找框保留原生粘贴语义（不劫持）。
     //   路径：document capture 拦截 → bridge.clipboard.readText()（主进程读剪贴板，零权限问题）→ insertToInput
     document.addEventListener('keydown', function (e) {
         if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'v') return;

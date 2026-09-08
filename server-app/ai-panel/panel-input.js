@@ -1,7 +1,7 @@
-// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
-
-'use strict';
-
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
+'use strict';
+
 // ── 排队按钮状态：有文字或图片即可排队（fatal 态禁用）──
 // ★ 2026-08-16 闭环重构：刷新收敛于两个统一出口（autoResizeInput = value 变更出口 / renderImageStrip = 图片增删出口），
 //   打字/粘贴文本/粘贴图片/删图/undo/redo/切 quest 恢复/发送清空/换行按钮全部自动覆盖，零漏网。
@@ -13,112 +13,112 @@ function updateQueueBtn() {
     var hasImages = (typeof pendingImages !== 'undefined') && pendingImages.length > 0;
     $queueBtn.disabled = !(hasText || hasImages);
     // ★ 2026-08-20 修订：自动暂停已整体废除（队列直通发送不触碰编辑框），此处无自愈逻辑
-}
-
-// ── 无主文件夹时直接弹文件夹选择 ──
-var _selectingProject = false;
-function _hasMainProject() {
-    try {
-        if (parent && parent.qqqideViewport && parent.qqqideViewport.getMainProject()) return true;
-    } catch (_) { }
-    return !!_workspaceRoot;
-}
-async function _triggerSelectMainProject() {
-    if (_selectingProject) return;
-    _selectingProject = true;
-    try {
-        if (parent === window) {
-            // [silent] rules standalone window
-            return;
-        }
-        var bridge = parent && parent.qqqideBridge;
-        if (!bridge) return;
-        var title = '请选择一个主文件夹';
-        try { if (parent.window && parent.window._i) title = parent.window._i('ai.onboarding.selectFolderTitle', title); } catch (_) { }
-        var result = await bridge.dialog.open({
-            properties: ['openDirectory'],
-            title: title
-        });
-        if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
-            if (parent.qqqideViewport && parent.qqqideViewport.addProject) {
-                parent.qqqideViewport.addProject(result.filePaths[0]);
-            }
-        }
-    } catch (_) {
-    } finally {
-        _selectingProject = false;
-    }
-}
-
-// ═══ 统一守卫管线：无主项目时直接弹文件夹选择 ═══
-// ① 所有鼠标点击 → 在 #input-area 内直接触发
-document.addEventListener('mousedown', function (e) {
-    if (_hasMainProject() || _selectingProject) return;
-    var el = e.target;
-    if (el.closest('#input-area')) {
-        _triggerSelectMainProject();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
-// ② Enter 键发送
-document.addEventListener('keydown', function (e) {
-    if (_hasMainProject() || _selectingProject) return;
-    if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
-        _triggerSelectMainProject();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
-// ③ 粘贴拦截
-$input.addEventListener('paste', function (e) {
-    if (!_hasMainProject() && !_selectingProject) {
-        _triggerSelectMainProject();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
-
-// ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──
-async function _copyAlphalDir(srcDir, dstDir) {
-    var entries = await window.parent.qqqideBridge.fs.list(srcDir);
-    for (var i = 0; i < entries.length; i++) {
-        var name = entries[i].name;
-        var isDir = entries[i].isDir;
-        var srcPath = srcDir + '/' + name;
-        var dstPath = dstDir + '/' + name;
-        try {
-            if (isDir) {
-                await window.parent.qqqideBridge.fs.mkdir(dstPath);
-                await _copyAlphalDir(srcPath, dstPath);
-                await window.parent.qqqideBridge.fs.remove(srcPath);
-            } else {
-                var content = await window.parent.qqqideBridge.fs.read(srcPath);
-                await window.parent.qqqideBridge.fs.write(dstPath, content);
-                await window.parent.qqqideBridge.fs.remove(srcPath);
-            }
-        } catch (e) {
-            console.warn('[quests] copy fail for ' + name, e);
-        }
-    }
-}
-
-// ── 智能等级选择（per-quest）──
-// ★ 全局默认等级由父窗口 settings 机器提供，兜底 6
-var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
-function updateTierButtons(tierIndex) {
-    document.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('sel'); });
-    if (tierIndex && tierIndex >= 1 && tierIndex <= 6) {
-        var btn = document.querySelector('.tier-btn[data-tier="' + tierIndex + '"]');
-        if (btn) btn.classList.add('sel');
-    }
-}
-
-function selectTier(tierIndex) {
-    // ★ A 按钮已改为信息弹窗，不再可选中；null→回退默认档
-    if (tierIndex == null || tierIndex === 0) {
-        tierIndex = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
-    }
+}
+
+// ── 无主文件夹时直接弹文件夹选择 ──
+var _selectingProject = false;
+function _hasMainProject() {
+    try {
+        if (parent && parent.qqqideViewport && parent.qqqideViewport.getMainProject()) return true;
+    } catch (_) { }
+    return !!_workspaceRoot;
+}
+async function _triggerSelectMainProject() {
+    if (_selectingProject) return;
+    _selectingProject = true;
+    try {
+        if (parent === window) {
+            // [silent] rules standalone window
+            return;
+        }
+        var bridge = parent && parent.qqqideBridge;
+        if (!bridge) return;
+        var title = '请选择一个主文件夹';
+        try { if (parent.window && parent.window._i) title = parent.window._i('ai.onboarding.selectFolderTitle', title); } catch (_) { }
+        var result = await bridge.dialog.open({
+            properties: ['openDirectory'],
+            title: title
+        });
+        if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+            if (parent.qqqideViewport && parent.qqqideViewport.addProject) {
+                parent.qqqideViewport.addProject(result.filePaths[0]);
+            }
+        }
+    } catch (_) {
+    } finally {
+        _selectingProject = false;
+    }
+}
+
+// ═══ 统一守卫管线：无主项目时直接弹文件夹选择 ═══
+// ① 所有鼠标点击 → 在 #input-area 内直接触发
+document.addEventListener('mousedown', function (e) {
+    if (_hasMainProject() || _selectingProject) return;
+    var el = e.target;
+    if (el.closest('#input-area')) {
+        _triggerSelectMainProject();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+// ② Enter 键发送
+document.addEventListener('keydown', function (e) {
+    if (_hasMainProject() || _selectingProject) return;
+    if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
+        _triggerSelectMainProject();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+// ③ 粘贴拦截
+$input.addEventListener('paste', function (e) {
+    if (!_hasMainProject() && !_selectingProject) {
+        _triggerSelectMainProject();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+
+// ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──
+async function _copyAlphalDir(srcDir, dstDir) {
+    var entries = await window.parent.qqqideBridge.fs.list(srcDir);
+    for (var i = 0; i < entries.length; i++) {
+        var name = entries[i].name;
+        var isDir = entries[i].isDir;
+        var srcPath = srcDir + '/' + name;
+        var dstPath = dstDir + '/' + name;
+        try {
+            if (isDir) {
+                await window.parent.qqqideBridge.fs.mkdir(dstPath);
+                await _copyAlphalDir(srcPath, dstPath);
+                await window.parent.qqqideBridge.fs.remove(srcPath);
+            } else {
+                var content = await window.parent.qqqideBridge.fs.read(srcPath);
+                await window.parent.qqqideBridge.fs.write(dstPath, content);
+                await window.parent.qqqideBridge.fs.remove(srcPath);
+            }
+        } catch (e) {
+            console.warn('[quests] copy fail for ' + name, e);
+        }
+    }
+}
+
+// ── 智能等级选择（per-quest）──
+// ★ 全局默认等级由父窗口 settings 机器提供，兜底 6
+var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
+function updateTierButtons(tierIndex) {
+    document.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('sel'); });
+    if (tierIndex && tierIndex >= 1 && tierIndex <= 6) {
+        var btn = document.querySelector('.tier-btn[data-tier="' + tierIndex + '"]');
+        if (btn) btn.classList.add('sel');
+    }
+}
+
+function selectTier(tierIndex) {
+    // ★ A 按钮已改为信息弹窗，不再可选中；null→回退默认档
+    if (tierIndex == null || tierIndex === 0) {
+        tierIndex = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
+    }
     selectedTier = tierIndex;
     updateTierButtons(tierIndex);
     if (questActiveId) {
@@ -133,51 +133,51 @@ function selectTier(tierIndex) {
             }
         } catch (_) { }
     }
-}
-
-// 初始化选中态
-(function initTierUI() {
-    selectTier((typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3);
-})();
-
-// ★ A 按钮：通知父窗口弹出等级说明
-//    弹出窗在 parent window（同设置按钮），不在 AI iframe 内
-document.getElementById('tier-a').onclick = function () {
-    try { if (parent && parent.window && parent.window.openTierPopup) parent.window.openTierPopup(); } catch (_) { }
-};
-// ★ 1-6 按钮绑定等级选择
-document.querySelectorAll('.tier-btn[data-tier]').forEach(function (btn) {
-    btn.onclick = function () { selectTier(parseInt(btn.dataset.tier)); };
-});
-// ═══ 登录守卫：无登录不许聊天 ═══
-function _isLoggedIn() {
-    try {
-        if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.isLoggedIn) {
-            return parent.window.qqqLogin.isLoggedIn();
-        }
-    } catch (_) { }
-    return false;
-}
-
-function getLoginToken() {
-    try {
-        if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.getAuthToken) {
-            return parent.window.qqqLogin.getAuthToken();
-        }
-    } catch (_) { }
-    return '';
-}
-
-// ── 编辑框自适应高度：双路径（空→rows=2原生高 / 非空→rows=1+scrollHeight），零抖动 ═══
-var _inputLineHeight = 0;
-var _inputMaxHeight = 333;
+}
+
+// 初始化选中态
+(function initTierUI() {
+    selectTier((typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3);
+})();
+
+// ★ A 按钮：通知父窗口弹出等级说明
+//    弹出窗在 parent window（同设置按钮），不在 AI iframe 内
+document.getElementById('tier-a').onclick = function () {
+    try { if (parent && parent.window && parent.window.openTierPopup) parent.window.openTierPopup(); } catch (_) { }
+};
+// ★ 1-6 按钮绑定等级选择
+document.querySelectorAll('.tier-btn[data-tier]').forEach(function (btn) {
+    btn.onclick = function () { selectTier(parseInt(btn.dataset.tier)); };
+});
+// ═══ 登录守卫：无登录不许聊天 ═══
+function _isLoggedIn() {
+    try {
+        if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.isLoggedIn) {
+            return parent.window.qqqLogin.isLoggedIn();
+        }
+    } catch (_) { }
+    return false;
+}
+
+function getLoginToken() {
+    try {
+        if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.getAuthToken) {
+            return parent.window.qqqLogin.getAuthToken();
+        }
+    } catch (_) { }
+    return '';
+}
+
+// ── 编辑框自适应高度：双路径（空→rows=2原生高 / 非空→rows=1+scrollHeight），零抖动 ═══
+var _inputLineHeight = 0;
+var _inputMaxHeight = 333;
 function autoResizeInput() {
-    // ★ 断电安全：任何输入变更统一排程高频草稿保存（text 通道 800ms 节流）
+    // ★ 断电安全：任何键入变更统一排程高频草稿保存（text 通道 800ms 节流）
     _scheduleDraftSave();
-    var el = $input;
-    if (!_inputLineHeight) {
-        _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
-    }
+    var el = $input;
+    if (!_inputLineHeight) {
+        _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+    }
     if (!el.value) {
         el.rows = 2;
         el.style.height = '';
@@ -185,18 +185,18 @@ function autoResizeInput() {
         _updateInputProgress();
         updateQueueBtn();
         return;
-    }
-    el.rows = 1;
-    el.style.height = 'auto';
-    var sh = el.scrollHeight;
-    var newH = sh + _inputLineHeight;
-    if (newH >= _inputMaxHeight) {
-        el.style.height = _inputMaxHeight + 'px';
-        el.style.overflowY = 'auto';
-    } else {
-        el.style.height = newH + 'px';
-        el.style.overflowY = 'hidden';
-    }
+    }
+    el.rows = 1;
+    el.style.height = 'auto';
+    var sh = el.scrollHeight;
+    var newH = sh + _inputLineHeight;
+    if (newH >= _inputMaxHeight) {
+        el.style.height = _inputMaxHeight + 'px';
+        el.style.overflowY = 'auto';
+    } else {
+        el.style.height = newH + 'px';
+        el.style.overflowY = 'hidden';
+    }
     _updateInputProgress();
     updateQueueBtn();
     // 安全网：原生 setter 直设，防绕过 paste 处理器的异常路径
@@ -206,46 +206,46 @@ function autoResizeInput() {
         _updateInputProgress();
         updateQueueBtn();
     }
-}
-$input.addEventListener('input', autoResizeInput);
-// 兜底：程序改 value 时触发 autoResizeInput（发完消息清空/切 quest 恢复）
-(function () {
-    var _desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-    if (_desc && _desc.set) {
-        Object.defineProperty($input, 'value', {
-            get: function () { return _desc.get.call(this); },
-            set: function (v) {
-                _desc.set.call(this, v);
-                autoResizeInput();
-            },
-            configurable: true
-        });
-    }
-})();
-// 窗口大小变化或主题切换可能导致行高变化，重新计算
-window.addEventListener('resize', function () { _inputLineHeight = 0; autoResizeInput(); });
-
-// ═══ 键入进度条 — 底部 2px 单线填色 #ff3d00 ═══
-function _updateInputProgress() {
-    var fill = document.getElementById('input-progress-fill');
-    if (!fill) return;
-    var len = $input.value.length;
-    var pct = Math.min(len / INPUT_CAP_CHARS * 100, 100);
-    fill.style.width = pct + '%';
-    // 触顶才弹 qoast（防抖 3s）
-    if (pct >= 100) _limitQoast('typed');
-}
-
-// ═══ 上限 qoast 防抖（3s 冷却）══
-var _lastLimitQoastTs = 0;
-var _LIMIT_QOAST_COOLDOWN = 3000;
-function _i18nQ(key, fallback) {
-    try {
-        if (parent && parent._i) return parent._i(key, fallback);
-    } catch (_) { }
-    return fallback;
-}
-
+}
+$input.addEventListener('input', autoResizeInput);
+// 兜底：程序改 value 时触发 autoResizeInput（发完消息清空/切 quest 恢复）
+(function () {
+    var _desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    if (_desc && _desc.set) {
+        Object.defineProperty($input, 'value', {
+            get: function () { return _desc.get.call(this); },
+            set: function (v) {
+                _desc.set.call(this, v);
+                autoResizeInput();
+            },
+            configurable: true
+        });
+    }
+})();
+// 窗口大小变化或主题切换可能导致行高变化，重新计算
+window.addEventListener('resize', function () { _inputLineHeight = 0; autoResizeInput(); });
+
+// ═══ 键入进度条 — 底部 2px 单线填色 #ff3d00 ═══
+function _updateInputProgress() {
+    var fill = document.getElementById('input-progress-fill');
+    if (!fill) return;
+    var len = $input.value.length;
+    var pct = Math.min(len / INPUT_CAP_CHARS * 100, 100);
+    fill.style.width = pct + '%';
+    // 触顶才弹 qoast（防抖 3s）
+    if (pct >= 100) _limitQoast('typed');
+}
+
+// ═══ 上限 qoast 防抖（3s 冷却）══
+var _lastLimitQoastTs = 0;
+var _LIMIT_QOAST_COOLDOWN = 3000;
+function _i18nQ(key, fallback) {
+    try {
+        if (parent && parent._i) return parent._i(key, fallback);
+    } catch (_) { }
+    return fallback;
+}
+
 function _limitQoast(reason, args) {
     var now = Date.now();
     // 图片类提示豁免 3s 防抖：可与字符上限提示连续出现（不同原因不互相吞）
@@ -279,18 +279,18 @@ function _limitQoast(reason, args) {
             parent.window.qqqideQoast.show(msg, { duration: 3500, type: 'warning' });
         }
     } catch (_) { }
-}
-
-// ═══ 硬上限键前拦截：已达上限且键入可打印字符→阻止（防字母先入再截）══
-$input.addEventListener('keydown', function (e) {
-    // 可打印字符：key.length===1 且非修饰键；Backspace/Delete/Enter/方向键等 length>1 放行
-    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
-    if ($input.value.length >= INPUT_CAP_CHARS) {
-        e.preventDefault();
-        _limitQoast('typed');
-    }
-}, true);
-
+}
+
+// ═══ 硬上限键前拦截：已达上限且键入可打印字符→阻止（防字母先入再截）══
+$input.addEventListener('keydown', function (e) {
+    // 可打印字符：key.length===1 且非修饰键；Backspace/Delete/Enter/方向键等 length>1 放行
+    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ($input.value.length >= INPUT_CAP_CHARS) {
+        e.preventDefault();
+        _limitQoast('typed');
+    }
+}, true);
+
 // Enter to send
 $input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -338,30 +338,30 @@ $input.addEventListener('keydown', function (e) {
         }
         sendMessage(_txtNow);
     }
-});
-// ══ 字符级 Undo/Redo（唯一真理逐字回退机器接管）══
-if (window.qqqCharUndo) {
-    window.qqqCharUndo.attach($input, { onChange: updateQueueBtn });
-}
-
-// ══ 换行按钮：在光标位置插入换行 ══
-var $newlineBtn = document.getElementById('newline-btn');
-if ($newlineBtn) {
-    $newlineBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (_switching) return;
-        var ta = $input;
-        var s = ta.selectionStart, end = ta.selectionEnd;
-        var v = ta.value;
-        ta.value = v.slice(0, s) + '\n' + v.slice(end);
-        // 光标移到换行符之后
-        ta.selectionStart = ta.selectionEnd = s + 1;
-        ta.focus();
-        // 触发布局更新（auto-resize）
-        ta.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-}
-
+});
+// ══ 字符级 Undo/Redo（唯一真理逐字回退机器接管）══
+if (window.qqqCharUndo) {
+    window.qqqCharUndo.attach($input, { onChange: updateQueueBtn });
+}
+
+// ══ 换行按钮：在光标位置插入换行 ══
+var $newlineBtn = document.getElementById('newline-btn');
+if ($newlineBtn) {
+    $newlineBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (_switching) return;
+        var ta = $input;
+        var s = ta.selectionStart, end = ta.selectionEnd;
+        var v = ta.value;
+        ta.value = v.slice(0, s) + '\n' + v.slice(end);
+        // 光标移到换行符之后
+        ta.selectionStart = ta.selectionEnd = s + 1;
+        ta.focus();
+        // 触发布局更新（auto-resize）
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+}
+
 // ══ 多图管理 ══
 var pendingImages = []; // [{id, base64, dataUrl}]
 var MAX_IMAGES = 20;
@@ -455,15 +455,15 @@ function addImage(dataUrl, base64) {
     pendingImages.push({ id: id, base64: base64, dataUrl: dataUrl });
     renderImageStrip();
     _scheduleDraftSave(true);  // ★ 图片变更 → 完整快照（低频，1.2s 合并）
-}
-
+}
+
 function removeImage(idx) {
     pendingImages.splice(idx, 1);
     pendingImages.forEach(function (img, i) { img.id = i + 1; });
     renderImageStrip();
     _scheduleDraftSave(true);  // ★ 图片变更 → 完整快照（低频，1.2s 合并）
-}
-
+}
+
 function renderImageStrip() {
     var strip = document.getElementById('image-strip');
     strip.innerHTML = '';
@@ -471,44 +471,44 @@ function renderImageStrip() {
         strip.style.display = 'none';
         updateQueueBtn();
         return;
-    }
-    strip.style.display = 'flex';
-    pendingImages.forEach(function (img, idx) {
-        var wrap = document.createElement('div');
-        wrap.className = 'img-thumb-wrap';
-        var imgEl = document.createElement('img');
-        imgEl.src = img.dataUrl;
-        wrap.appendChild(imgEl);
-        var num = document.createElement('span');
-        num.className = 'img-thumb-num';
-        num.textContent = '#' + img.id;
-        num.onclick = function (e) { e.stopPropagation(); openLightbox(img.dataUrl, img.base64); };
-        wrap.appendChild(num);
-        var del = document.createElement('button');
-        del.className = 'img-thumb-del';
-        del.textContent = '\u00d7';
-        del.onclick = function () { removeImage(idx); };
-        wrap.appendChild(del);
-        var embed = document.createElement('button');
-        embed.className = 'img-thumb-embed';
-        embed.textContent = (parent && parent._i) ? parent._i('ai.embedImage', '嵌入') : '嵌入';
-        embed.onclick = function () {
-            $input.focus();
-            document.execCommand('insertText', false, '[img:' + img.id + ']');
-        };
+    }
+    strip.style.display = 'flex';
+    pendingImages.forEach(function (img, idx) {
+        var wrap = document.createElement('div');
+        wrap.className = 'img-thumb-wrap';
+        var imgEl = document.createElement('img');
+        imgEl.src = img.dataUrl;
+        wrap.appendChild(imgEl);
+        var num = document.createElement('span');
+        num.className = 'img-thumb-num';
+        num.textContent = '#' + img.id;
+        num.onclick = function (e) { e.stopPropagation(); openLightbox(img.dataUrl, img.base64); };
+        wrap.appendChild(num);
+        var del = document.createElement('button');
+        del.className = 'img-thumb-del';
+        del.textContent = '\u00d7';
+        del.onclick = function () { removeImage(idx); };
+        wrap.appendChild(del);
+        var embed = document.createElement('button');
+        embed.className = 'img-thumb-embed';
+        embed.textContent = (parent && parent._i) ? parent._i('ai.embedImage', '嵌入') : '嵌入';
+        embed.onclick = function () {
+            $input.focus();
+            document.execCommand('insertText', false, '[img:' + img.id + ']');
+        };
         wrap.appendChild(embed);
         strip.appendChild(wrap);
     });
     updateQueueBtn();
-}
-
-// ═══ 编辑框硬上限（字符数 = str.length；唯一真理源 content-gateway.js EDITOR_CAP_CHARS）══
-var INPUT_CAP_CHARS = 16000;
-// 尝试从 ContentGateway 同步（如果有），但本地 16000 是硬兜底
-if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CHARS === 'number') {
-    INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
-}
-
+}
+
+// ═══ 编辑框硬上限（字符数 = str.length；唯一真理源 content-gateway.js EDITOR_CAP_CHARS）══
+var INPUT_CAP_CHARS = 16000;
+// 尝试从 ContentGateway 同步（如果有），但本地 16000 是硬兜底
+if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CHARS === 'number') {
+    INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
+}
+
 // 粘贴图片（多图全量收集 + 串行保序 + 三重硬帽）/ 纯文本粘贴
 $input.addEventListener('paste', function (e) {
     // ★ 铁律：任何粘贴一律先阻止原生行为，再由我们手动插入
@@ -570,42 +570,42 @@ $input.addEventListener('paste', function (e) {
 
         if (wasTruncated) _limitQoast('paste-truncated');
     });
-});
-
-// ═══ 右键菜单：Copy / Paste（无障碍，替代 Ctrl+C/Ctrl+V）══
-var _inputCtxMenu = null;
-function _closeInputCtxMenu() {
-    if (_inputCtxMenu) { _inputCtxMenu.remove(); _inputCtxMenu = null; }
-}
-$input.addEventListener('contextmenu', function (e) {
-    e.preventDefault();
-    _closeInputCtxMenu();
-
-    var menu = document.createElement('div');
-    menu.id = 'input-ctx-menu';
-    // 先贴在远处测高，再移位到光标上方
-    menu.style.cssText = 'position:fixed;z-index:99999;visibility:hidden;background:var(--card-bg,#eee8d5);border:1px solid var(--border-color,#d3c6aa);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);padding:0;min-width:120px;font-size:13px;';
-    menu.style.left = '-9999px'; menu.style.top = '-9999px';
-    document.body.appendChild(menu);
-    _inputCtxMenu = menu;
-
-    function _addRow(label, action) {
-        var row = document.createElement('div');
-        row.textContent = label;
-        // padding 上下 6px（原8px减20%）
-        row.style.cssText = 'padding:6px 16px;cursor:pointer;white-space:nowrap;color:var(--text-primary,#656360);';
-        row.addEventListener('mouseenter', function () { row.style.background = 'var(--base3,#fdf6e3)'; });
-        row.addEventListener('mouseleave', function () { row.style.background = ''; });
-        row.addEventListener('mousedown', function (ev) { ev.preventDefault(); ev.stopPropagation(); _closeInputCtxMenu(); action(); });
-        menu.appendChild(row);
-    }
-
-    _addRow('Ctrl+C', function () {
-        $input.focus();
-        if ($input.selectionStart === $input.selectionEnd) $input.select();
-        try { document.execCommand('copy'); } catch (_) { }
-    });
-
+});
+
+// ═══ 右键菜单：Copy / Paste（无障碍，替代 Ctrl+C/Ctrl+V）══
+var _inputCtxMenu = null;
+function _closeInputCtxMenu() {
+    if (_inputCtxMenu) { _inputCtxMenu.remove(); _inputCtxMenu = null; }
+}
+$input.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    _closeInputCtxMenu();
+
+    var menu = document.createElement('div');
+    menu.id = 'input-ctx-menu';
+    // 先贴在远处测高，再移位到光标上方
+    menu.style.cssText = 'position:fixed;z-index:99999;visibility:hidden;background:var(--card-bg,#eee8d5);border:1px solid var(--border-color,#d3c6aa);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);padding:0;min-width:120px;font-size:13px;';
+    menu.style.left = '-9999px'; menu.style.top = '-9999px';
+    document.body.appendChild(menu);
+    _inputCtxMenu = menu;
+
+    function _addRow(label, action) {
+        var row = document.createElement('div');
+        row.textContent = label;
+        // padding 上下 6px（原8px减20%）
+        row.style.cssText = 'padding:6px 16px;cursor:pointer;white-space:nowrap;color:var(--text-primary,#656360);';
+        row.addEventListener('mouseenter', function () { row.style.background = 'var(--base3,#fdf6e3)'; });
+        row.addEventListener('mouseleave', function () { row.style.background = ''; });
+        row.addEventListener('mousedown', function (ev) { ev.preventDefault(); ev.stopPropagation(); _closeInputCtxMenu(); action(); });
+        menu.appendChild(row);
+    }
+
+    _addRow('Ctrl+C', function () {
+        $input.focus();
+        if ($input.selectionStart === $input.selectionEnd) $input.select();
+        try { document.execCommand('copy'); } catch (_) { }
+    });
+
     _addRow('Ctrl+V', function () {
         $input.focus();
         // ★ 串行队列：与 Ctrl+V 共用同一队列，防并发乱序
@@ -655,28 +655,28 @@ $input.addEventListener('contextmenu', function (e) {
         autoResizeInput(); _updateInputProgress();
         if (txt.length > avail2) _limitQoast('paste-truncated');
         });
-    });
-
-    // 测宽高 → 避开屏幕边缘
-    var mr = menu.getBoundingClientRect();
-    var mw = mr.width || 120, mh = mr.height || 56;
-    var l = e.clientX, t = e.clientY - mh / 2;
-    // 太靠右 → 移到光标左边；太靠下 → 上移
-    if (l + mw > window.innerWidth - 4) l = e.clientX - mw;
-    if (t + mh > window.innerHeight - 4) t = window.innerHeight - mh - 4;
-    menu.style.visibility = 'visible';
-    menu.style.left = Math.max(4, l) + 'px';
-    menu.style.top = Math.max(4, t) + 'px';
-});
-
-// 点击外部或 Esc 关闭
-document.addEventListener('mousedown', function (e) {
-    if (_inputCtxMenu && !_inputCtxMenu.contains(e.target)) _closeInputCtxMenu();
-}, true);
-$input.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') _closeInputCtxMenu();
-});
-
+    });
+
+    // 测宽高 → 避开屏幕边缘
+    var mr = menu.getBoundingClientRect();
+    var mw = mr.width || 120, mh = mr.height || 56;
+    var l = e.clientX, t = e.clientY - mh / 2;
+    // 太靠右 → 移到光标左边；太靠下 → 上移
+    if (l + mw > window.innerWidth - 4) l = e.clientX - mw;
+    if (t + mh > window.innerHeight - 4) t = window.innerHeight - mh - 4;
+    menu.style.visibility = 'visible';
+    menu.style.left = Math.max(4, l) + 'px';
+    menu.style.top = Math.max(4, t) + 'px';
+});
+
+// 点击外部或 Esc 关闭
+document.addEventListener('mousedown', function (e) {
+    if (_inputCtxMenu && !_inputCtxMenu.contains(e.target)) _closeInputCtxMenu();
+}, true);
+$input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') _closeInputCtxMenu();
+});
+
 $sendBtn.onclick = function () {
     if (_switching) return;
     if (_activeAgent && _activeAgent._compressing) return;
@@ -768,4 +768,4 @@ async function _clearDraftTextNow(id) {
             }
         }
     } catch (_) { }
-}
+}

@@ -14,7 +14,7 @@
 //   parent → iframe: {type:'qmd:init', sessionId, cwd, shellType, cols, rows}
 //   iframe → parent: {type:'qmd:focus', on}（tab 可见性 → xterm 聚焦）
 //   事件转发（主进程 → iframe）: qmd:session-ready / qmd:out / qmd:exit / qmd:restarted
-//   ★ 输入输出不走 parent 中转：iframe 直连 parent.qqqideBridge.qmd
+//   ★ 键入输出不走 parent 中转：iframe 直连 parent.qqqideBridge.qmd
 //     （spawn/write/resize/kill 直调主进程，kmd-ui 同款模式）
 // ============================================================================
 (function () {
@@ -99,13 +99,13 @@
                         iframe.contentWindow.postMessage({
                             type: 'qmd:init', sessionId: sid, cwd: root,
                             shellType: 'cmd', cols: 120, rows: 30, active: !!tab.active,
-                            title: tab.title, // 命名输入框初始值（kmd F77 同款链路）
+                            title: tab.title, // 命名键入框初始值（kmd F77 同款链路）
                         }, '*');
                     } catch (_) { }
                 };
                 window.addEventListener('message', qmdInit);
 
-                // ★ 命名同步（2026-09-08 移植自 kmd F77）：qmd-ui 命名输入框 → 标签标题实时同步
+                // ★ 命名同步（2026-09-08 移植自 kmd F77）：qmd-ui 命名键入框 → 标签标题实时同步
                 //   （tab-manager.setCustomTabTitle 侧有边界守卫：空标题忽略 + textContent 更新防注入）
                 window.addEventListener('message', function (e) {
                     if (!e.data || e.source !== iframe.contentWindow) return;

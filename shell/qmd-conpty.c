@@ -2,7 +2,7 @@
 //
 // qmd-conpty.c — ConPTY bridge for goods qmd (Win10 1809+)
 // 行协议（全部 UTF-8 文本行，前缀 ASCII）:
-//   父 → 本 (stdin):  W <base64>           写字节到 ConPTY 输入
+//   父 → 本 (stdin):  W <base64>           写字节到 ConPTY 键入
 //                     R <cols> <rows>      resize
 //   本 → 父 (stdout): R <pid>              ready（spawn 成功）
 //                     D <base64>           ConPTY 输出字节
@@ -24,8 +24,8 @@
 //     5. CreateProcessW(shell, attribute=PSEUDOCONSOLE hPC, bInheritHandles=FALSE)
 //     6. ConptyReleasePseudoConsole(hPC)（dll 扩展 API，node-pty 创建进程后即调）
 //     7. CloseHandle(S_in/S_out)（server 端使命结束，conhost 副本仍持有）
-//   此后 IO 全走 client 端: 写输入 → C_in；读输出 ← C_out
-//   失败实锤: 匿名管道版输出通输入不通（缺握手）；命名管道无 client 版
+//   此后 IO 全走 client 端: 写键入 → C_in；读输出 ← C_out
+//   失败实锤: 匿名管道版输出通键入不通（缺握手）；命名管道无 client 版
 //   WriteFile 536 ERROR_PIPE_LISTENING（conhost 配对永不完成）。
 // 编译: gcc -O2 -s -o qmd-conpty.exe qmd-conpty.c   （与 conpty.dll 同目录部署）
 #define WIN32_LEAN_AND_MEAN

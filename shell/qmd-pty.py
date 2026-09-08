@@ -130,7 +130,7 @@ kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c
 
 
 # ── 句柄 ──────────────────────────────────────────────────────────────
-hInRead = None   # ConPTY 输入读端（无使用者，CreatePseudoConsole 内部持有副本）
+hInRead = None   # ConPTY 键入读端（无使用者，CreatePseudoConsole 内部持有副本）
 hInWrite = None  # 本进程写键盘字节
 hOutRead = None  # 本进程读屏幕输出
 hOutWrite = None # ConPTY 输出写端（conhost 写入）
@@ -264,7 +264,7 @@ def _spawn(cmd, args, cwd):
     """建 ConPTY 并启动目标 shell"""
     global hInRead, hInWrite, hOutRead, hOutWrite, hPC, hProc, hThread
 
-    # 1. 两个管道：ConPTY 输入管道（我们写）、输出管道（我们读）
+    # 1. 两个管道：ConPTY 键入管道（我们写）、输出管道（我们读）
     hInRead, hInWrite = _create_pipe()
     hOutRead, hOutWrite = _create_pipe()
 

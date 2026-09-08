@@ -5,7 +5,7 @@
 //
 // 传输模型（设计 §10.3）: 服务器幽灵预生成 10s 场景包（物品逐 tick 轨迹, 1/8px 定点）
 //   → 客户端本地镜像 100% 平滑游玩, 零坐标校正（v2 快照纠正机制的彻底删除）。
-// 客户端 = 手柄 + 本地镜像: 输入按 1s 一批（10 tick 方向采样 + 技能戳）上传;
+// 客户端 = 手柄 + 本地镜像: 键入按 1s 一批（10 tick 方向采样 + 技能戳）上传;
 //   服务器批驱动权威回算, 回执 = ack/die/revived/over（文本）。死亡→「回算确认」
 //   复活窗按服务器裁决; 终局数字一律以回执为准（镜像仅供本地手感）。
 // 本地镜像 = 服务器 sim 同公式纯算术复刻（q 运动/吸附/走廊碰撞/面积伤害/技能/冲击波）,
@@ -630,7 +630,7 @@
     S.stun = Math.max(0, S.stun - 0.1);
     S.invuln = Math.max(0, S.invuln - 0.1);
 
-    // ── 输入采样（本 tick 方向; 死态强制 0）──
+    // ── 键入采样（本 tick 方向; 死态强制 0）──
     var dir = 0;
     if (!S.dead && S.stun <= 0 && (S.phase === 'play')) {
       if (S.holdL) dir -= 1;
@@ -659,7 +659,7 @@
         var sgn = dx < 0 ? -1 : 1;
         drift += ATT_K * sz * f * sgn;
       }
-      var driftCap = 0.6 * Q_SPEED; // 与服务器 AttDriftCap 同式: 吸附只迟滞移动, 永不反向压过输入
+      var driftCap = 0.6 * Q_SPEED; // 与服务器 AttDriftCap 同式: 吸附只迟滞移动, 永不反向压过键入
       if (drift > driftCap) drift = driftCap;
       if (drift < -driftCap) drift = -driftCap;
       S.qx += drift * 0.1;

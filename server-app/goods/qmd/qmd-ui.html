@@ -23,7 +23,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 #bar-spacer{flex:1;min-width:0}
 #bar-right{display:flex;gap:4px;flex-shrink:0}
 #st{font-size:10px;color:var(--dim);align-self:center;white-space:nowrap}
-/* 命名输入框（2026-09-08 移植自 kmd F77）：输入即同步标签标题，多开窗口基础 */
+/* 命名键入框（2026-09-08 移植自 kmd F77）：键入即同步标签标题，多开窗口基础 */
 #name-input{width:110px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:inherit;font-size:11px;padding:2px 6px;outline:none;flex-shrink:0}
 #name-input:focus{border-color:var(--accent)}
 #name-input::placeholder{color:var(--dim)}
@@ -207,7 +207,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         if (d.type === 'qmd:init') {
             sessionId = d.sessionId;
             cwd = d.cwd || '';
-            if (nameInput) nameInput.value = d.title || ''; // 命名输入框初始值 = 当前标签标题（用户可立即改名）
+            if (nameInput) nameInput.value = d.title || ''; // 命名键入框初始值 = 当前标签标题（用户可立即改名）
             createTerm();
             setShellUI(d.shellType || 'cmd');
             spawnSession();
@@ -253,7 +253,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             });
         })(barBtns[i]);
     }
-    // ── 命名输入框：输入即同步标签标题（kmd F77 同款移植，多开基础）──
+    // ── 命名键入框：键入即同步标签标题（kmd F77 同款移植，多开基础）──
     // 边界保护：① maxlength=40（浏览器级 UTF-16 硬限）② code point 截断（emoji/中文按字符计）③ tab-manager 侧兜底
     if (nameInput) {
         nameInput.addEventListener('input', function () {

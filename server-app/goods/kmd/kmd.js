@@ -5,7 +5,7 @@
 // ★ 2026-08-12: kmd 例外——X 区 file 分组 custom tab（中间/右侧 editor 分组），
 //   不再进 gaea 分组。打开入口 = qqqGaea.open('kmd') → def.opener →
 //   qqqTabs.openFileCustomTab('kmd-N', ...)（★ 2026-08-18 多开：customId 自增 + allowMulti，
-//   每次点击开新 kmd tab；命名输入框 kmd:title 实时同步标签标题，详见 do/kmd）。
+//   每次点击开新 kmd tab；命名键入框 kmd:title 实时同步标签标题，详见 do/kmd）。
 //   左 gaea 分组「豆腐块遥控器」（ssh 历史/高频命令）为 v1.1 计划，未实现。
 // 职责双份：
 //   ① goods 注册（opener 路由，打开 file 分组 custom tab，单例）
@@ -85,7 +85,7 @@
 
         // ── 打开 kmd：X 区 file 分组 custom tab（中间/右侧 editor 分组，外观同普通文件标签） ──
         // ★ 2026-08-18 多开：customId 自增唯一 + allowMulti → 每次打开新建 kmd tab；
-        //   命名输入框 kmd:title → setCustomTabTitle 实时同步标签标题（多 kmd 窗口的基础）
+        //   命名键入框 kmd:title → setCustomTabTitle 实时同步标签标题（多 kmd 窗口的基础）
         // ★ 2026-08-18: side 参数——右键「在右/左组再开」重开入口（同组右键菜单 onReopen）
         function openKmdTab(side) {
             if (!window.qqqTabs || !window.qqqTabs.openFileCustomTab) return false;
@@ -146,7 +146,7 @@
                     }
                 });
 
-                // ★ 命名同步（2026-08-18）：kmd-ui 命名输入框 → 标签标题实时同步（tab-manager 侧有边界守卫）
+                // ★ 命名同步（2026-08-18）：kmd-ui 命名键入框 → 标签标题实时同步（tab-manager 侧有边界守卫）
                 window.addEventListener('message', function (e) {
                     if (!e.data || e.source !== iframe.contentWindow) return;
                     if (e.data.type !== 'kmd:title') return;

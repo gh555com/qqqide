@@ -4,14 +4,14 @@
 // ipc-qmd.ts — goods qmd 终端（ConPTY 全交互模式，Win10 1809+ 专属）
 //
 // 与 kmd（行模式）渲染哲学对立：qmd = 真终端。
-//   输出 = xterm.js VT 网格（程序自己画屏）· 输入 = raw 字节透传
+//   输出 = xterm.js VT 网格（程序自己画屏）· 键入 = raw 字节透传
 //   本地 TUI（vim/top/htop）/ REPL（python/node）/ 交互 CLI（ssh -t）全可用
 //
 // 链路：UI(xterm.js) ←IPC→ 主进程会话 ←行协议→ qmd-conpty.exe ←ConPTY→
 //       conhost --headless ←→ shell（cmd/powershell/gitbash）
 //
 // 行协议（shell/qmd-conpty.c，全部 UTF-8 文本行）:
-//   父 → 子 (bridge stdin):  W <base64>       写字节到 ConPTY 输入
+//   父 → 子 (bridge stdin):  W <base64>       写字节到 ConPTY 键入
 //                            R <cols> <rows>  resize
 //   子 → 父 (bridge stdout): R <pid>          ready（spawn 成功）
 //                            D <base64>       ConPTY 输出字节（VT 流）
@@ -20,7 +20,7 @@
 //
 // ★ 排雷史（2026-09-07/08，node-pty conpty.cc 逆向定案）:
 //   系统 CreatePseudoConsole 本机 attribute 无效 → 必须 conpty.dll（微软官方
-//   107KB，node-pty 同款）ConptyCreatePseudoConsole；匿名管道输入不通 →
+//   107KB，node-pty 同款）ConptyCreatePseudoConsole；匿名管道键入不通 →
 //   命名管道 + OVERLAPPED Connect 先行 + client CreateFile 配对；不设
 //   STARTF_USESTDHANDLES 时 cmd 继承父 stdout 明文直写绕开 ConPTY → std 置空。
 // ★ 输出编码: ConPTY 输出字节随 console 码页（中文系统 GBK）→ shell 启动即
@@ -238,7 +238,7 @@ export function registerQmdIpc(appRoot: string): void {
         return { ok: true, pid: s.proc.pid };
     });
 
-    // 写输入: text → base64 → W 行（UTF-8 字节透传）
+    // 写键入: text → base64 → W 行（UTF-8 字节透传）
     ipcMain.handle('qqqide:qmd:write', async (_e, id: string, text: string) => {
         const s = sessions.get(String(id || ''));
         if (!s || !s.alive || !s.proc.stdin) return { ok: false, error: 'dead' };

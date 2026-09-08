@@ -235,7 +235,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 }
 #bed-entry.loading #bed-stats::after { content:'…'; }
 
-/* ─── 附件条（输入区上方）─── */
+/* ─── 附件条（键入区上方）─── */
 #attach-bar {
   display:none;padding:0 4px 8px;gap:6px;flex-wrap:wrap;
 }
@@ -1356,7 +1356,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     _fileInput.click();
   });
 
-  // Ctrl+V 粘贴图片 → 附件（仅图片；文本粘贴照常进输入框）
+  // Ctrl+V 粘贴图片 → 附件（仅图片；文本粘贴照常进键入框）
   document.addEventListener('paste', function(e){
     if (_sending || !_activePeer) return;
     var items = (e.clipboardData || {}).items || [];
