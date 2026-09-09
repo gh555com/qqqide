@@ -881,7 +881,11 @@ var AgentLoop = (function () {
                                 //   不 push/pop conversation（零副作用）；档位 = 快档字面量（maxTokens 缺省
                                 //   回落 ContentGateway.MAX_RESPONSE_TOKENS，零全局依赖）。
                                 var _repairConv = [{ role: 'system', content: '你是 Markdown 排版修复助手：只按指令重新分行，不改动任何文字、不增删任何信息。' }, { role: 'user', content: '[内部修复请求] 下面这段文本的换行符在传输中全部丢失，导致 Markdown 的标题/表格/列表/段落结构损坏。请按 Markdown 重新排版输出：每个 # 或 ## 标题独占一行；每个表格行（含表头行、:--- 分隔行、数据行）各自独占一行并用真实换行分隔；每个列表项独占一行；段落之间用空行分隔。文字一字不改、信息零删减，禁止任何解释与前后缀，直接输出修正后的完整内容。\n\n原文：\n' + _finalContent }];
-                                var _repairResp = await self._callGateway(_repairConv, { token: function () { }, onReasoning: function () { }, onError: onError, tier: { model: 'fast', thinking: { type: 'disabled' }, effort: null, label: '1-Fast' }, noTools: true });
+                                // ★ 2026-09-09 gaea f46 三修：token 必须传真 JWT（作用域内 `token`，与主调用同源）——
+                                //   旧版传 `token: function () { }` 空函数是 truthy → chatFetch 不走 _getToken() 兜底 →
+                                //   Authorization: `Bearer function () { }` → Go Auth Parse 失败 → 401 INVALID_TOKEN
+                                //   （nginx 实锤 59B body 逐字节 = INVALID_TOKEN）→ 修复屋必败保留原文（f46 实锤）。
+                                var _repairResp = await self._callGateway(_repairConv, { token: token, onReasoning: function () { }, onError: onError, tier: { model: 'fast', thinking: { type: 'disabled' }, effort: null, label: '1-Fast' }, noTools: true });
                                 var _rBill = self._lastBilling; self._lastBilling = null;
                                 if (_repairResp && _repairResp.type === 'message' && _repairResp.content && !_repairResp._truncatedByError && !_repairResp._abortedForGuide) {
                                     var _rNl = (_repairResp.content.match(/\n/g) || []).length;

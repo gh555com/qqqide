@@ -695,7 +695,7 @@ function bootActivities(boot) {
       '<h2>' + t('act.eye.name', '美丽滴眼睛') + '</h2>' +
       '<p class="qqq-act-csub">' + t('act.eye.sub', 'qqqide 真实用户福利') + '</p>' +
       (_eyeDoc || (
-      '<p class="qqq-act-desc">' + t('act.eye.intro', '征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币），现金立入。') +
+      '<p class="qqq-act-desc">' + t('act.eye.intro', '征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币，但不涉及到实际功能（实机操作）滴视频价格可能减半），现金立入。') +
       ' <a class="qqq-act-eye-link" data-eye-link="records">' + t('act.eye.linkRecords', '查看成交记录') + '</a></p>' +
       '<p class="qqq-act-desc">' + t('act.eye.tail', '当视频播放量逐渐增大，自动接入') +
       '<a class="qqq-act-eye-link" data-eye-link="spark">' + t('act.eye.linkSpark', '星火计划') + '</a>' + t('act.eye.tailEnd', '。') + '</p>'

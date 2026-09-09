@@ -79,47 +79,41 @@ function openUrlWindows(url: string, sender?: Electron.WebContents): void {
         diag(`isEdge=${isEdge} isChromium=${isChromium}`);
     }
 
-    let l1Rejected = false;
+    let l1Failed = false;
 
-    // ═══ L1: Electron shell.openExternal (ShellExecuteW) ═══
-    // ★ 这是 Windows 上最可靠的 URL 打开方式。ShellExecuteW 不经过 spawn 浏览器、
-    //   不使用 --profile-directory flag，直接用 Windows Shell 的默认浏览器关联。
-    //   Win11 Edge Startup Boost 的旧 bug（spawn msedge --profile-directory=Default
-    //   → URL 静默丢弃）在此路径下不存在。
-    diag('L1: shell.openExternal');
-    electronShell.openExternal(url)
-        .then(() => {
-            diag('L1: resolved (ShellExecuteW returned success)');
-        })
-        .catch((err: any) => {
-            l1Rejected = true;
-            diag(`L1: REJECTED — ${err?.message || err}`);
-            // ═══ L2: cmd 短命 relay（仅 L1 明确失败时触发） ═══
-            // ★ 2026-09-08 q209 f72：旧 explorer spawn 的父 = 常驻主进程 → Windows PPID 永不改，
-            //   默认浏览器被拉为 joker 直系后代后永久入统计圈（F71 实测 2.9GB 收养）。
-            //   cmd /c start 毫秒级退出 → 浏览器 PPID=已死 cmd → 天然孤儿，永不进圈。
-            diag('L2: cmd relay start (fallback after L1 rejection)');
-            try {
-                const child = spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', url], {
-                    detached: true,
-                    stdio: 'ignore',
-                    windowsHide: true
-                });
-                child.unref();
-                child.on('error', (e) => diag(`L2 spawn error: ${e.message}`));
-                diag('L2: cmd relay spawned');
-            } catch (e: any) {
-                diag(`L2: exception — ${e.message}`);
-            }
+    // ═══ L1: cmd 短命 relay（v29 通道绝缘，2026-09-09 q209 f76 定案） ═══
+    // ★ 旧 L1 = Electron shell.openExternal（ShellExecuteW）——Windows 上 ShellExecuteW 由
+    //   调用进程直接 CreateProcess → 打开目标的 PPID = 主进程，永久收养进统计圈
+    //   （F75 实测 roam 打开 solar-local.html → chrome×38 ≈2GB 入圈）。
+    //   cmd /c start 毫秒级退出 → 目标 PPID = 已死 cmd → 血缘结构性不可达，永不进圈。
+    //   ★ /normal 覆盖：windowsHide:true 的 SW_HIDE 会被 start 继承 → 目标窗口隐藏
+    //   （2026-08-24 F148 实测定案）→ start /normal 显式要求目标正常窗口。
+    //   POSIX（open/xdg-open）天然短命 + reparent 同语义——跨平台零分类零登记。
+    diag('L1: cmd relay start (v29 channel isolation)');
+    try {
+        const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start', '""', '/normal', url], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
         });
+        child.unref();
+        child.on('error', (e: any) => {
+            l1Failed = true;
+            diag(`L1 relay spawn error: ${e.message}`);
+        });
+        diag('L1: cmd relay spawned');
+    } catch (e: any) {
+        l1Failed = true;
+        diag(`L1: exception — ${e.message}`);
+    }
 
     // ═══ 3 秒后兜底 ═══
     setTimeout(() => {
-        diag(`3s fallback — l1Rejected=${l1Rejected}`);
+        diag(`3s fallback — l1Failed=${l1Failed}`);
         // 轻量提醒：IPC → qoast（渲染层底部 qoast，用户可忽略）
         showFallbackViaIpc(url, sender);
         // 仅 L1 明确失败时弹原生对话框（"复制链接"按钮）
-        if (l1Rejected) {
+        if (l1Failed) {
             showNativeFallbackDialog(url);
         }
     }, 3000);

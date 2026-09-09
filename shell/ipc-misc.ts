@@ -192,7 +192,26 @@ ${escapedPaths}
     });
 
     // ---- shell (open file / URL) ----
+    // ★ v29 通道绝缘（2026-09-09 q209 f76）：electronShell.openPath（ShellExecuteW）把打开目标
+    //   拉成主进程直系后代永久入圈（F75 实测 roam w 键开 solar-local.html → chrome×38 收养）
+    //   → win32 改 cmd 短命 relay：目标 PPID = 已死 cmd 天然孤儿永不进圈；POSIX（open/xdg-open）
+    //   天然同语义。/normal 覆盖 windowsHide 的 SW_HIDE 继承（F148 实测定案）。
     ipcMain.handle('qqqide:shell:openPath', async (_e, p: string) => {
+        if (process.platform === 'win32' && typeof p === 'string' && p) {
+            try {
+                const child = cp.spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start', '""', '/normal', p], {
+                    detached: true,
+                    stdio: 'ignore',
+                    windowsHide: true
+                });
+                child.unref();
+                child.on('error', (e: any) => console.warn('[shell:openPath] relay error', e));
+                return '';
+            } catch (e) {
+                console.warn('[shell:openPath]', e);
+                return e instanceof Error ? e.message : String(e);
+            }
+        }
         try { return await electronShell.openPath(p); } catch (e) { console.warn('[shell:openPath]', e); return ''; }
     });
     ipcMain.handle('qqqide:shell:openExternal', async (_e, url: string) => {

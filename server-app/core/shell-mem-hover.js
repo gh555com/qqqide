@@ -20,14 +20,6 @@
   var $cpuVal = document.querySelector('.qqq-mem-block .qqq-cpu-val');
   var bridge = window.qqqideBridge;
   if (!$mem || !$memVal || !$cpuVal || !bridge || !bridge.mem) return;
-  var $extVal = null; // 状态区「·外 X」后缀（v28 2026-09-08：圈外进程内存——圈内启动遗留的圈外人，不计入本包数字）
-  try {
-    $extVal = document.createElement('span');
-    $extVal.className = 'qqq-mem-ext';
-    $extVal.style.display = 'none';
-    $mem.appendChild($extVal);
-  } catch (e) { $extVal = null; }
-
   var CURVE_CAP = 1440; // 60s 一点 = 24h 运行时长刚好满 cap
   var GAP_MS = 3 * 60000; // 断档阈值（>3min 空洞 = 程序未运行，不推进运行时长 x 轴）
   var W = 340, H = 134, PLOT_H = 124; // SVG 尺寸（两段共用；v8: y 轴空间 +16px/图，卡片高度同步 +32）
@@ -39,7 +31,7 @@
   var cpuPts = [];       // CPU 曲线点 [{t,cu}]（与 mem 同 ts；独立 reset 后从零累积）
   var memRunT = [];      // memPts 的累计运行时长坐标（断档不推进）
   var cpuRunT = [];      // cpuPts 的累计运行时长坐标
-  var latest = { mb: 0, procs: 0, win: 0, bootAt: 0, label: '', cores: null, totalSec: 0, ncpu: 0, ext: [], extMB: 0 }; // v28: ext = 圈外进程组 [{p,n,ws}] / extMB 外圈总量 MB
+  var latest = { mb: 0, procs: 0, win: 0, bootAt: 0, label: '', cores: null, totalSec: 0, ncpu: 0 };
   var rows = [];         // 最近快照进程树 [{pid,ppid,ws,n,cs}]（树序）
   var lastMemT = -1;     // 最近已收 mem 曲线点 ts（单调去重）
   var lastCpuT = -1;     // 最近已收 cpu 曲线点 ts（独立 reset 后独立单调）
@@ -56,7 +48,7 @@
   var $plist = null;
   var boots = []; // 重启标记（主进程 mem-curve.log {boot:ts}）→ 曲线浅白虚线垂线
   var hideTimer = null, shown = false;
-  var PH_TITLE_TEXT = 'qqqide 专用工作集（本包进程）'; // q 行标题原文案（v28: 口径已细分——本包 = exe 在启动包内的进程树，圈外进程独立成组列出）
+  var PH_TITLE_TEXT = 'qqqide 专用工作集（包含一切子进程）'; // q 行标题原文案（v29: 纯血缘受管圈——打开通道 relay 化后圈外无外人，回归 f42 定稿文案）
   var PH_TITLE_MORPH_MS = 3000; // 3s 文字变换（2026-09-03 用户定案）：每次 hover/点击弹卡先显示原文案 3s，再切换为启动包完整目录路径
   var titleTimer = null; // q 行标题 morph 定时器
   var pinned = false; // 点击状态区 a 区域固定面板（可交互滚动进程列表），再点取消
@@ -664,8 +656,7 @@
   // ── 进程列表渲染（树序：root 首行加粗，后代缩进；三列：名称/内存 MB/累计 CPU 时间） ──
   function renderRows() {
     if (!shown || !$plist) return;
-    var extList = latest.ext || [];
-    if (!rows.length && !extList.length) {
+    if (!rows.length) {
       $plist.innerHTML = '<div class="qqq-mem-hover-prow muted">采样中…</div>';
       return;
     }
@@ -688,22 +679,6 @@
         '<span class="qqq-mem-hover-pname" style="padding-left:' + (lvl[r.pid] * 12) + 'px">' + name + '</span>' +
         '<span class="qqq-mem-hover-pmb">' + mb + ' MB</span>' +
         '<span class="qqq-mem-hover-pcpu">' + fmtRowTime(r.cs) + '</span></div>';
-    }
-    // v28: 圈外进程组（树真相与账口径分离——外圈照列不误看得见，仅不计入上方统计）
-    if (extList.length) {
-      var extCnt = 0, g, gp, gn, gmb, i2;
-      for (i2 = 0; i2 < extList.length; i2++) extCnt += extList[i2].n || 1;
-      html += '<div class="qqq-mem-hover-extsep">── 圈外进程 ×' + extCnt + ' ≈' + fmtBigMB(latest.extMB || 0) + '（圈内启动遗留 · 不计入本包）──</div>';
-      for (i2 = 0; i2 < extList.length; i2++) {
-        g = extList[i2];
-        gp = (typeof g.p === 'string' && g.p) ? g.p : 'pid';
-        gn = gp.split(/[\\/]/).pop() || gp;
-        gmb = Math.max(1, Math.round((g.ws || 0) / 1024));
-        html += '<div class="qqq-mem-hover-prow ext" title="' + gp.replace(/"/g, '&quot;') + '">' +
-          '<span class="qqq-mem-hover-pname">' + gn + ' ×' + (g.n || 1) + '</span>' +
-          '<span class="qqq-mem-hover-pmb">' + (gmb >= 1024 ? fmtBigMB(gmb) : gmb + ' MB') + '</span>' +
-          '<span class="qqq-mem-hover-pcpu">--</span></div>';
-      }
     }
     $plist.innerHTML = html;
   }
@@ -804,23 +779,6 @@
       rows = m.rows;
       renderRows();
     }
-    // v28: 圈外进程（每 tick 广播；rows 为空时外圈也可能存在 → 独立更新后重渲染列表尾部）
-    if (Array.isArray(m.ext)) {
-      latest.ext = m.ext;
-      if (typeof m.extMB === 'number') latest.extMB = m.extMB;
-      renderExtStatus();
-      if ($plist && shown) renderRows();
-    }
-    // v28 雷达（主进程每 boot 一次：外圈进程连续在场 ≥2min 且总量 ≥64MB——编译瞬间不报）
-    if (m.radar && window.qqqideQoast) {
-      var gs = [], rr2, rg, rp;
-      for (rr2 = 0; rr2 < (m.radar.groups || []).length; rr2++) {
-        rg = m.radar.groups[rr2];
-        rp = (typeof rg.p === 'string' && rg.p) ? (rg.p.split(/[\\/]/).pop() || rg.p) : '进程';
-        gs.push(rp + ' ×' + (rg.n || 1));
-      }
-      window.qqqideQoast.show('统计圈内发现外部进程：' + (gs.join(' / ') || '未知') + '（圈内启动遗留，不计入本包统计；hover 内存块看明细）', { type: 'warning' });
-    }
     if (m.pt && typeof m.pt.t === 'number' && typeof m.pt.v === 'number' && m.pt.t > lastMemT) {
       lastMemT = m.pt.t;
       memPts.push({ t: m.pt.t, v: m.pt.v, n: m.pt.n });
@@ -886,13 +844,6 @@
       }
       if (h.label) latest.label = h.label;
       if (!rows.length && Array.isArray(h.rows) && h.rows.length) { rows = h.rows; renderRows(); }
-      // v28: 历史/兜底拉取同样带外圈组（首开面板即有圈外明细，不等首个 5s 广播）
-      if (Array.isArray(h.ext)) {
-        latest.ext = h.ext;
-        if (typeof h.extMB === 'number') latest.extMB = h.extMB;
-        renderExtStatus();
-        if (!rows.length) renderRows();
-      }
       updateProcsText();
       renderCurve();
       checkAvgThreshold(computeAvg()); // 历史加载后同样查阈值
@@ -1010,19 +961,6 @@
   function renderWinText() {
     if (!$phWin) return;
     $phWin.textContent = (latest.win > 0) ? (latest.win + '窗口') : '--窗口';
-  }
-
-  // 外圈进程状态区后缀（v28：·外 2.9G；≥64MB 才显示——编译瞬间 cmd/node 闪烁不打扰）
-  function renderExtStatus() {
-    if (!$extVal) return;
-    var em = latest.extMB || 0;
-    if (em >= 64) {
-      $extVal.style.display = '';
-      $extVal.textContent = ' ·外' + fmtBigMB(em);
-    } else {
-      $extVal.style.display = 'none';
-      $extVal.textContent = '';
-    }
   }
 
   // 3 点移动平均（瞬时核数平滑；无基线返回 null）

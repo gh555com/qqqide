@@ -737,6 +737,7 @@ body {
    2026-09-07：左右变宽——max 185px 上限删除，吃满 40px 左间隙到刻度列全部剩余，
    曲线右缘距弹窗右边界 ≈ 60px（10px 间隙 + 刻度列宽 + 12px + 16px padding）） */
 .qqq-onl-spark {
+  position: relative; /* 30d/180d 档位按钮定位锚（2026-09-08） */
   flex: 1 1 140px;
   min-width: 70px;
   height: 30px;
@@ -768,6 +769,38 @@ body {
 }
 .qqq-onl-scale i.pk {
   color: var(--text-primary);
+  font-weight: bold;
+}
+/* 30d/180d 档位微型按钮（2026-09-08：图表左上角，切换曲线回看窗口，全主题语义变量） */
+.qqq-onl-zoom {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  display: flex;
+  gap: 3px;
+  z-index: 2;
+  user-select: none;
+}
+.qqq-onl-zoom button {
+  height: 13px;
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 13px;
+  font-family: Consolas, monospace;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--background-color);
+  color: var(--text-dim);
+  transition: color 80ms ease, border-color 80ms ease;
+}
+.qqq-onl-zoom button:hover {
+  color: var(--text-primary);
+  border-color: var(--text-dim);
+}
+.qqq-onl-zoom button.on {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--background-color);
   font-weight: bold;
 }
 .qqq-onl-title {

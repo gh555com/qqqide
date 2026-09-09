@@ -372,7 +372,7 @@
       }
       // ★ 音量卡片：标题行右侧挂「1 by 1」按钮（音效开关子卡片开合）
       if (def.key === 'audio.volume') {
-        html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">';
+        html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">';
         html += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + def.label + '</span>';
         html += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap;" title="逐个音效开关">1 by 1</button>';
         html += '</div>';

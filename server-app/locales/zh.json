@@ -137,7 +137,7 @@
             "close": "关闭标签",
             "closeOthers": "关闭其他",
             "closeRight": "关闭右侧",
-            "closeAll": "关闭所有",
+            "closeAll": "全部关闭",
             "closeSaved": "关闭已保存",
             "revealInExplorer": "在文件浏览器中显示",
             "copyPath": "复制路径",
@@ -480,7 +480,7 @@
             "tip": "美丽滴眼睛 · qqqide 真实用户福利",
             "sub": "qqqide 真实用户福利",
             "loginDesc": "登录后查看已入金额",
-            "intro": "征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币），现金立入。",
+            "intro": "征集 qqqide 能感动你滴小点，不管质量，不管播放量，放到你滴 b站空间，一个视频 80人民币起（不低于80人民币，但不涉及到实际功能（实机操作）滴视频价格可能减半），现金立入。",
             "linkRecords": "查看成交记录",
             "tail": "当视频播放量逐渐增大，自动接入",
             "linkSpark": "星火计划",
@@ -525,7 +525,8 @@
         "expert": "我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件",
         "roamHint": "借由 Roam 你可以快速操作文件，包括删除",
         "agree": "同意并继续",
-        "exit": "退出"
+        "exit": "退出",
+        "saveFailed": "保存失败，请重试"
     },
     "notice": {
         "title": "通知",

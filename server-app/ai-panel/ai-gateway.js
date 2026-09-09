@@ -71,9 +71,43 @@
         return '';
     }
 
+    // 取本地客户端版本（X-App-Version 头用；与左下角/赞助商位同源 = versions.json id）
+    // 顺序：主窗口 qqqBootInfo → 主窗口状态栏 DOM → ''（未知；服务端回落台账判定）
+    function _appVersion() {
+        try {
+            if (parent && parent.window) {
+                var bi = parent.window.qqqBootInfo;
+                if (bi && bi.version && bi.version !== '?') return String(bi.version).replace(/^v/i, '');
+                var el = parent.document && parent.document.getElementById ? parent.document.getElementById('qqq-status-version') : null;
+                if (el) {
+                    var tx = (el.textContent || '').replace(/^v/i, '');
+                    if (tx && tx !== '0.0.3') return tx;
+                }
+            }
+        } catch (_) { }
+        try {
+            var el2 = document.getElementById && document.getElementById('qqq-status-version');
+            if (el2) {
+                var tx2 = (el2.textContent || '').replace(/^v/i, '');
+                if (tx2 && tx2 !== '0.0.3') return tx2;
+            }
+        } catch (_) { }
+        return '';
+    }
+
     // fetch 带超时超时
     function _fetchWithTimeout(url, opts, timeoutMs) {
         timeoutMs = timeoutMs || _DEFAULT_TIMEOUT;
+        // ★ 统一注入客户端版本头（2026-09-08 EOL 门控）：服务端据此区分新老版本，
+        //   版本缺失/低于 eol_min 的请求将被 403 EOL_VERSION 拒绝（免费时段同样拒绝）
+        try {
+            opts = opts || {};
+            opts.headers = opts.headers || {};
+            if (!opts.headers['X-App-Version']) {
+                var _av = _appVersion();
+                if (_av) opts.headers['X-App-Version'] = _av;
+            }
+        } catch (_) { }
         var controller = new AbortController();
         var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
         opts.signal = (function (orig) {

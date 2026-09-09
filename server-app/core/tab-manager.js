@@ -444,7 +444,7 @@
 
     // Row 3: close all
     if (grp.tabs.length > 0) {
-      addRow(window._i('editor.tabs.closeAll', '关闭所有'), () => { closeAllInGroup(grp); });
+      addRow(window._i('editor.tabs.closeAll', '全部关闭'), () => { closeAllInGroup(grp); });
     }
 
     document.body.appendChild(pop);

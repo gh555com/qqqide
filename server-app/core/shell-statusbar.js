@@ -12,10 +12,11 @@ function bootStatusbar(boot) {
   var $clk = document.getElementById('qqq-status-clock');
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
 	if ($onl) $onl.textContent = '0';
-
-	// ═══ 赞助商轮换（状态栏左下角）— 大20s/中10s/小5s，瞬间替换文字（无滚动动画，防视觉分散）═══
+		// ═══ 赞助商轮换（状态栏左下角）— 大20s/中10s/小5s，瞬间替换文字（无滚动动画，防视觉分散）═══
 	// 数据源: GET /api/sponsor/current（三档位当前小时胜出者；无人竞拍 → 默认成都知佳）
 	// 拉取限频 1 次/分钟（轮播完刷新与失败重试共用）；失败保持默认品牌；点击打开当前品牌超链接
+	// ★ 版本分流（2026-09-08）：请求带 ?app_ver=本地版本 → 服务端对 ≥eol_min 的客户端返回正常广告轮播；
+	//   无版本参数（旧客户端代码）一律被服务端视为 EOL → 恒显官方升级公告。
 	(function () {
 		var $link = document.getElementById('qqq-sponsor-link');
 		if (!$link) return;
@@ -36,7 +37,8 @@ function bootStatusbar(boot) {
 			var now = Date.now();
 			if (now - _lastFetchAt < 60000) return Promise.resolve(); // 限频 1 次/分钟
 			_lastFetchAt = now;
-			return fetch('https://direct-cn.gh555.com/api/sponsor/current', { cache: 'no-cache' })
+			var _verQ = (boot && boot.version && boot.version !== '?') ? ('?app_ver=' + encodeURIComponent(String(boot.version).replace(/^v/i, ''))) : '';
+			return fetch('https://direct-cn.gh555.com/api/sponsor/current' + _verQ, { cache: 'no-cache' })
 				.then(function (r) { if (!r.ok) return null; return r.json(); })
 				.then(function (d) {
 					if (d && d.ok && d.items && d.items.length) {
@@ -103,7 +105,8 @@ function bootStatusbar(boot) {
 		var _onlPanel = null;
 		var _onlFetching = false;
 		var _onlUsersCache = null; // 最近一次 users 快照（三连 q 切列重渲染用，零重复请求）
-		var _onlDaily30 = null;    // 最近一次 avg_daily_30 快照（近30天每日均值，弹窗微型曲线数据，零重复请求）
+		var _onlDailyHist = null;  // 最近一次每日均值快照（服务端 avg_daily ≤201 行；旧服务端回退 avg_daily_30；弹窗 30d/180d 曲线数据，零重复请求）
+		var _onlRange = '30';      // 曲线回看窗口档位：'30'=近30天(31点) / '180'=近180天(181点≈半年，2026-09-08 新增)
 		var _onlSparkSvg = null;   // 微型曲线 <svg>（懒创建一次复用，仅弹窗可见时渲染）
 		var _onlShowBal = false;   // ★ 隐藏功能：弹窗开启时连按 3 下 q → day 右侧显示「余额」列（服务端 balance_ge 四舍五入取整）
 		var _onlQCount = 0;        // 连按计数（超时/弹窗关闭清零）
@@ -135,9 +138,12 @@ function bootStatusbar(boot) {
 							$avg.title = '数据采集中';
 						}
 					}
-					// ★ 近30天日均曲线数据（服务端 avg_daily_30，尾点 == 当前24h平均同值，弹窗开着才绘制）
-					if (Array.isArray(data.avg_daily_30) && data.avg_daily_30.length) {
-						_onlDaily30 = data.avg_daily_30;
+					// ★ 每日均值曲线数据（服务端 avg_daily 全量 ≤201 行；旧服务端回退 avg_daily_30。
+					//   尾点 == 当前24h平均同值；弹窗开着才绘制，30d/180d 档位切片在 _renderSpark 内）
+					var _daily = Array.isArray(data.avg_daily) ? data.avg_daily
+						: (Array.isArray(data.avg_daily_30) ? data.avg_daily_30 : null);
+					if (_daily && _daily.length) {
+						_onlDailyHist = _daily;
 						_renderSpark();
 					}
 				})
@@ -162,12 +168,33 @@ function bootStatusbar(boot) {
 				'<span class="qqq-onl-title">在线人数 <b id="qqq-onl-now">0</b></span>' +
 				'<span class="qqq-onl-avg" id="qqq-onl-avg24">※最近24小时平均：--</span>' +
 				'</div>' +
-				'<span class="qqq-onl-spark" id="qqq-onl-spark"></span>' +
+				'<span class="qqq-onl-spark" id="qqq-onl-spark">' +
+				'<span class="qqq-onl-zoom" id="qqq-onl-zoom">' +
+				'<button type="button" data-r="30">30d</button>' +
+				'<button type="button" data-r="180">180d</button>' +
+				'</span>' +
+				'</span>' +
 				'<span class="qqq-onl-scale" id="qqq-onl-scale"></span>' +
 				'</div>' +
 				'<div id="qqq-onl-body" class="qqq-onl-body"></div>';
 			_onlOverlay.appendChild(_onlPanel);
 			document.body.appendChild(_onlOverlay);
+
+			// ★ 30d/180d 档位（2026-09-08）：图表左上角微型按钮点按切换回看窗口（重渲染零请求；弹窗内点击不关闭；档位会话内保持）
+			var $zoom = document.getElementById('qqq-onl-zoom');
+			if ($zoom) {
+				$zoom.addEventListener('click', function (e) {
+					var b = e.target && e.target.closest ? e.target.closest('button') : null;
+					if (!b) return;
+					var r = b.getAttribute('data-r');
+					if (r && r !== _onlRange) {
+						_onlRange = r;
+						_syncZoomBtns();
+						_renderSpark();
+					}
+				});
+			}
+			_syncZoomBtns();
 		}
 
 		function closeOnlineUsers() {
@@ -183,15 +210,29 @@ function bootStatusbar(boot) {
 			return (Math.round(x * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 		}
 
+		// ★ 档位按钮激活态同步（2026-09-08）：当前档位实心高亮，另一档描边暗显
+		function _syncZoomBtns() {
+			var $zoom = document.getElementById('qqq-onl-zoom');
+			if (!$zoom) return;
+			var btns = $zoom.querySelectorAll('button');
+			for (var i = 0; i < btns.length; i++) {
+				btns[i].className = btns[i].getAttribute('data-r') === _onlRange ? 'on' : '';
+			}
+		}
+
 		function _renderSpark() {
 			if (!_onlUsersOpen || !_onlOverlay || _onlOverlay.style.display === 'none') return;
 			var $spark = document.getElementById('qqq-onl-spark');
 			var $scale = document.getElementById('qqq-onl-scale');
-			if (!$spark || !_onlDaily30 || _onlDaily30.length < 2) { // <2 点 = 数据积累中（首点 5min 内出现）
+			if (!$spark || !_onlDailyHist || _onlDailyHist.length < 2) { // <2 点 = 数据积累中（首点 5min 内出现）
 				if ($scale) $scale.innerHTML = '';
 				return;
 			}
-			var n = _onlDaily30.length;
+			// ★ 档位回看窗口（2026-09-08）：30d=尾部31点（今天+30天）/ 180d=尾部181点（今天+180天 ≈ 半年）
+			var maxN = _onlRange === '180' ? 181 : 31;
+			var daily = _onlDailyHist.length > maxN ? _onlDailyHist.slice(_onlDailyHist.length - maxN) : _onlDailyHist;
+			var rangeName = _onlRange === '180' ? '近180天' : '近30天';
+			var n = daily.length;
 			var ns = 'http://www.w3.org/2000/svg';
 			if (!_onlSparkSvg) {
 				_onlSparkSvg = document.createElementNS(ns, 'svg');
@@ -201,9 +242,9 @@ function bootStatusbar(boot) {
 			var h = $spark.clientHeight || 30;
 			var pad = 2;
 			var iw = w - pad * 2, ih = h - pad * 2;
-			var min = _onlDaily30[0].v, max = _onlDaily30[0].v;
+			var min = daily[0].v, max = daily[0].v;
 			for (var i = 1; i < n; i++) {
-				var vi = _onlDaily30[i].v;
+				var vi = daily[i].v;
 				if (vi < min) min = vi;
 				if (vi > max) max = vi;
 			}
@@ -213,10 +254,10 @@ function bootStatusbar(boot) {
 			var pts = [];
 			for (var j = 0; j < n; j++) {
 				var x = Math.round((pad + j * iw / (n - 1)) * 10) / 10;
-				var y = Math.round((pad + ih - ((_onlDaily30[j].v - min) / span) * ih) * 10) / 10;
+				var y = Math.round((pad + ih - ((daily[j].v - min) / span) * ih) * 10) / 10;
 				pts.push(x + ',' + y);
 			}
-			var lastY = Math.round((pad + ih - ((_onlDaily30[n - 1].v - min) / span) * ih) * 10) / 10;
+			var lastY = Math.round((pad + ih - ((daily[n - 1].v - min) / span) * ih) * 10) / 10;
 			_onlSparkSvg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
 			// 面积底 + 折线 + 尾点（全主题语义变量 → 随 [data-theme] 即时切换零残留）
 			_onlSparkSvg.innerHTML =
@@ -228,9 +269,9 @@ function bootStatusbar(boot) {
 				$scale.innerHTML =
 					'<i class="pk">' + _fmt1(rawMax) + '</i>' +
 					'<i>' + _fmt1(rawMin) + '</i>';
-				$scale.title = '顶峰 ' + _fmt1(rawMax) + ' · 谷底 ' + _fmt1(rawMin) + '（近30天日均在线）';
+				$scale.title = '顶峰 ' + _fmt1(rawMax) + ' · 谷底 ' + _fmt1(rawMin) + '（' + rangeName + '日均在线）';
 			}
-			$spark.title = '近30天日均在线曲线（' + _onlDaily30[0].d + ' → ' + _onlDaily30[n - 1].d + '，尾点 = 当前24h平均）';
+			$spark.title = rangeName + '日均在线曲线（' + daily[0].d + ' → ' + daily[n - 1].d + '，尾点 = 当前24h平均；点 30d/180d 切换回看窗口）';
 		}
 
 		function openOnlineUsers() {

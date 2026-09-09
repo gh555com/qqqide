@@ -6,9 +6,12 @@
 // 语义: 绿色包/程序数据（Data/alphal/global.sq3）首次启动弹一次——
 //   声明行: 我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件
 //   链接行: 「借由 Roam 你可以快速操作文件，包括删除」→ QQQLinks 服务器下发链接（离线兜底）
-//   同意并继续 → qgs.simple('qqq.settings') 写 firstRun.expertAgreed（随保险库跨更新保留，永不再弹）
+//   同意并继续 → 双通道写标记（2026-09-08 双修：真实机器实锤「同意已落盘、重启后标记消失」→ sq3 文件级回滚）
+//     ① qgs.simple('qqq.settings').setNow 写 firstRun.expertAgreed —— setNow 立即落盘（旧 fire-and-forget set：退出竞态/强杀即丢）
+//     ② localStorage qqq.firstRun.expertAgreed.v1 —— sq3 的损坏恢复链（主→.prev→.bak）与整库回滚不碰它，双通道互相兜底
+//   判定三态: 任一通道有 → 不弹（仅 sq3 缺失时后台 setNow 回写自愈）；两通道都无 → 弹；库暂不可用 → 1s/3s/8s 退避重试，仍不可用放弃（弹了同意也存不进，纯噪音）
 //   退出      → bridge.app.quitAll()（不写标记，下次启动再弹）
-// 持久化入口: qgs.simple('qqq.settings', {cloud:false}) = 程序级 global.sq3（§8.1 六入口之一）
+// 持久化入口: qgs.simple('qqq.settings', {cloud:false}) = 程序级 global.sq3（§8.1 六入口之一）+ localStorage 兜底
 // 依赖: core/qqq-links.js（先加载）
 // ============================================================================
 
@@ -19,6 +22,7 @@
     if (!window.QQQLinks) return;           // 链接机器缺失 → 不弹（防御）
 
     var KEY = 'firstRun.expertAgreed';
+    var LS_KEY = 'qqq.firstRun.expertAgreed.v1';   // 兜底通道 ②（localStorage，独立于 sq3 恢复链）
     var _h = null;
     var _overlay = null;
 
@@ -29,25 +33,75 @@
         return _h;
     }
 
+    function _lsGet() {
+        try { return window.localStorage ? window.localStorage.getItem(LS_KEY) : null; } catch (e) { return null; }
+    }
+    function _lsSet() {
+        try { if (window.localStorage) { window.localStorage.setItem(LS_KEY, '1'); return true; } } catch (e) { /* ignore */ }
+        return false;
+    }
+
+    // 读同意态（三态）: 'agreed' = 任一通道有 / 'none' = 两通道都明确无 / 'unknown' = sq3 暂不可用且 LS 无
     // qgs get 可能同步可能异步（Promise），双形态兜底
     function _readAgreed(cb) {
         var h = _handle();
-        if (!h) { cb(false); return; }
+        var ls = _lsGet();
+        if (!h) { cb(ls === '1' ? 'agreed' : 'unknown'); return; }
         var done = false;
-        function fin(v) { if (!done) { done = true; cb(!!v); } }
+        function fin(st) {
+            if (done) return;
+            done = true;
+            if (ls === '1') {
+                // sq3 无/不可用但 LS 有（sq3 曾被回滚）→ 视为已同意 + 后台回写自愈，防双通道全丢
+                if (st !== 'agreed' && h) {
+                    try {
+                        var pp = h.setNow(KEY, '1');
+                        if (pp && typeof pp.then === 'function') { pp.catch(function () { }); }
+                    } catch (e2) { /* 回写失败：下次启动再自愈 */ }
+                }
+                cb('agreed');
+            } else {
+                cb(st);
+            }
+        }
         try {
             var p = h.get(KEY);
             if (p && typeof p.then === 'function') {
-                p.then(fin, function () { fin(false); });
+                p.then(function (v) { fin(!!v ? 'agreed' : 'none'); }, function () { fin('unknown'); });
             } else {
-                fin(p);
+                fin(!!p ? 'agreed' : 'none');
             }
-        } catch (e) { fin(false); }
+        } catch (e) { fin('unknown'); }
     }
 
-    function _markAgreed() {
+    // 同意 = 双通道写入，至少一通道成功才算保存成功（doneCb(ok)）
+    function _markAgreed(doneCb) {
         var h = _handle();
-        if (h) { try { h.set(KEY, '1'); } catch (e) { /* 内存标记失败不阻塞弹窗消失 */ } }
+        var finished = false;
+        function finish(ok) {
+            if (finished) return;
+            finished = true;
+            doneCb(ok);
+        }
+        // 保险：bridge 挂起时 2s 兜底（结果 = LS 通道真实结果，LS 也失败则如实提示重试）
+        setTimeout(function () { finish(lsOk); }, 2000);
+        var lsOk = _lsSet();
+        if (!h) { finish(lsOk); return; }
+        try {
+            var p = h.setNow(KEY, '1');
+            if (p && typeof p.then === 'function') {
+                p.then(function () { finish(true); }, function () { finish(lsOk); });
+            } else {
+                finish(true);
+            }
+        } catch (e) { finish(lsOk); }
+    }
+
+    // data-i18n 动态文案（失败提示/还原共用）
+    function _setTextI18n(el, key, fallback) {
+        el.setAttribute('data-i18n', key);
+        el.textContent = fallback;
+        try { if (window.i18n && window.i18n.updateDom) window.i18n.updateDom(el); } catch (e) { /* ignore */ }
     }
 
     function _quitApp() {
@@ -137,8 +191,18 @@
             'background:transparent;color:var(--text-secondary);font-size:13px;';
         btnAgree.addEventListener('click', function (e) {
             e.preventDefault();
-            _markAgreed();
-            _dismiss();
+            if (btnAgree.disabled) return;   // busy 防连点（保存失败重试期间）
+            btnAgree.disabled = true;
+            _markAgreed(function (ok) {
+                if (ok) {
+                    _dismiss();
+                    return;
+                }
+                // 双通道全失败（sq3 与 LS 均不可写）→ 不关闭弹窗，提示重试
+                btnAgree.disabled = false;
+                _setTextI18n(btnAgree, 'firstRun.saveFailed', '保存失败，请重试');
+                setTimeout(function () { _setTextI18n(btnAgree, 'firstRun.agree', '同意并继续'); }, 3000);
+            });
         });
 
         // 2026-09-03 用户定案：同意并继续在左（主操作先），退出在右
@@ -154,9 +218,21 @@
         window.addEventListener('qqq-lang-change', _onLangChange);
     }
 
+    var _bootRetries = 0;
+    var _bootBackoff = [1000, 3000, 8000];
+
     function _boot() {
-        _readAgreed(function (agreed) {
-            if (!agreed) _show();
+        _readAgreed(function (state) {
+            if (state === 'agreed') return;
+            if (state === 'none') { _show(); return; }
+            // unknown = 持久化层暂不可用（启动早期/库异常）：退避重试 ≤3 次；仍不可用 → 放弃弹窗
+            //   （库不可用时弹了也存不进同意，只会让用户反复看到；宁可漏弹不可误弹）
+            _bootRetries++;
+            if (_bootRetries <= _bootBackoff.length) {
+                setTimeout(_boot, _bootBackoff[_bootRetries - 1]);
+            } else {
+                try { console.warn('[first-run] state store unavailable, skip expert dialog'); } catch (e2) { /* ignore */ }
+            }
         });
     }
 

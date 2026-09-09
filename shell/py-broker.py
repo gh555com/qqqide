@@ -46,49 +46,18 @@ def _log(msg: str):
 #   @ 0x38/0x40 已实测验证, 前两字段位置必然正确, 2026-08-29 F36 实测 8/8
 #   命中任务管理器）。mem-meter 每 5s 调用一次, 差分算利用率。
 # =============================================================================
-#  ★ 所有权分类（2026-09-08 q209 f72 C 方案：树真相与账口径分离）
-#    own = exe 路径在启动包根内（含 qqqide.exe 的目录）的进程及其仆从子进程；
-#    external = exe 在包根外（chrome/dev electron/系统工具链——曾从包内拉起而父进程
-#    长命 → 永久入圈污染统计，F71 实测 2.9GB 收养）。分类只影响记账：树永不剪枝，
-#    外圈进程照列不误（雷达可见），仅不计入本包数字。
-#    Windows PPID 永不变，唯一自然出圈 = 父进程死亡（重启净化 / 短命 relay 通道）。
-_SERVANT = {'conhost.exe', 'cmd.exe'}  # 仆从进程（conhost/cmd）跟随父分类（kmd 会话属本包）
-_PATH_CACHE = {}                       # pid → exe 全路径（只查新 pid，稳定 pid 零重复开销）
+#  ★ v29 通道绝缘（2026-09-09 q209 f76 定案，替代 v28 分类层——废弃即删）：
+#    统计圈 = 纯血缘进程树（受管通道圈）。唯一污染源 = win32 打开通道（openExternal/openPath
+#    的 ShellExecuteW 由调用进程直接 CreateProcess → 目标 PPID = 主进程永久收养，F75 实测
+#    solar-local.html → chrome×38 ≈2GB 入圈）。根治：打开通道全 relay 化（cmd /c start 毫秒
+#    退出 → 目标 PPID = 已死 relay → 血缘结构性不可达）；POSIX open/xdg-open 天然同语义。
+#    跨平台同一逻辑：受管 = 入圈，打开 = 交给系统（毫秒中转不留后代），零分类零登记。
+#    v28 的 own/external exe 路径分类 + 外圈雷达 + pkgRoot 传参整体废弃（2026-09-09）。
 
-def _norm_pkg_root(pkg_root: str) -> str:
-    r = os.path.normcase(pkg_root or '')
-    if r and not r.endswith(os.sep):
-        r += os.sep
-    return r
-
-def _exe_path(pid: int) -> str:
-    """QueryFullProcessImageNameW 取 exe 全路径（缓存；失败返回 ''）。
-    仅对新 pid 开句柄（每 5s 树内新 pid 极少），成本≈0。"""
-    if pid in _PATH_CACHE:
-        return _PATH_CACHE[pid]
-    p = ''
-    try:
-        import ctypes
-        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
-        k32.OpenProcess.restype = ctypes.c_void_p
-        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION（同用户可开）
-        if h:
-            try:
-                buf = ctypes.create_unicode_buffer(2048)
-                sz = ctypes.c_ulong(2048)
-                if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(sz)):
-                    p = buf.value
-            finally:
-                k32.CloseHandle(h)
-    except Exception:
-        p = ''
-    _PATH_CACHE[pid] = p
-    return p
-
-def _win_mem_snapshot(root_pid: int, pkg_root: str = ''):
-    """NtQuery 全系统进程表 → root_pid + 全部后代（按 exe 路径分类 own/external）。
-    返回 {totalMB, ownMB, extMB, nodes(own 数), ncpu, rows(仅 own), ext:[{p,n,ws}],
-    nwin} 或 None。rows/ext 的 ws 单位 KB；ut/kt = 100ns ticks（mem-meter 差分）。"""
+def _win_mem_snapshot(root_pid: int):
+    """NtQuery 全系统进程表 → root_pid + 全部后代（纯血缘进程树，v29 通道绝缘）。
+    返回 {totalMB, nodes, ncpu, rows, nwin} 或 None。rows 的 ws 单位 KB；
+    ut/kt = 100ns ticks（mem-meter 差分）。"""
     import ctypes
     import struct as _struct
     ntdll = ctypes.WinDLL('ntdll', use_last_error=True)
@@ -135,17 +104,12 @@ def _win_mem_snapshot(root_pid: int, pkg_root: str = ''):
     children = {}
     for pid, (ppid, _ws, _nm, _ut, _kt) in procs.items():
         children.setdefault(ppid, []).append(pid)
-    root = _norm_pkg_root(pkg_root)
-    # 单遍 BFS：同时算归属（seen/rows/ext），分类规则：
-    #   仆从名（conhost/cmd）→ 跟随父分类；其余按 exe 路径前缀（包根内=own）判定；
-    #   exe 路径解析失败 → 跟随父分类（罕见系统进程，不误伤不误报）。
-    cls = {root_pid: 'o'}
+    # 单遍 BFS：主进程 + 全部后代（纯血缘——受管通道圈；打开通道已 relay 化 →
+    # 外部程序 PPID = 已死 relay 结构性不可达，v28 分类代码已删）
     queue = [root_pid]
     seen = set()
     rows = []
-    ext = {}   # 外圈聚合: path → [count, ws_KB]
-    own_total = 0
-    ext_total = 0
+    total = 0
     while queue:
         p = queue.pop(0)
         if p in seen:
@@ -154,48 +118,11 @@ def _win_mem_snapshot(root_pid: int, pkg_root: str = ''):
         info = procs.get(p)
         if info:
             ppid, ws, nm, ut, kt = info
-            if cls.get(p, 'o') == 'o':
-                own_total += ws
-                rows.append({'pid': p, 'ppid': ppid, 'ws': ws >> 10, 'n': nm, 'ut': ut, 'kt': kt})  # ws 单位 KB
-            else:
-                ext_total += ws
+            total += ws
+            rows.append({'pid': p, 'ppid': ppid, 'ws': ws >> 10, 'n': nm, 'ut': ut, 'kt': kt})  # ws 单位 KB
         for c in children.get(p, []):
-            if c in seen:
-                continue
-            cinfo = procs.get(c)
-            cname = (cinfo[2] if cinfo else '').lower()
-            if cname in _SERVANT:
-                cl = cls.get(p, 'o')  # 仆从跟随父分类
-            else:
-                ep = _exe_path(c)
-                if ep:
-                    cl = 'o' if os.path.normcase(ep).startswith(root) else 'x'
-                else:
-                    cl = cls.get(p, 'o')  # 解析失败跟随父分类
-            cls[c] = cl
-            if cl == 'x':
-                cinfo = procs.get(c)
-                ep = _exe_path(c)
-                key = ep or (cinfo[2] if cinfo else ('pid %d' % c))
-                g = ext.get(key)
-                if g:
-                    g[0] += 1
-                    g[1] += (cinfo[1] >> 10) if cinfo else 0  # ws 单位 KB
-                else:
-                    ext[key] = [1, (cinfo[1] >> 10) if cinfo else 0]
-            queue.append(c)
-    # 路径缓存裁剪（不在树内/已退出的 pid 缓存丢弃，防无限膨胀）
-    try:
-        if len(_PATH_CACHE) > 1024:
-            _PATH_CACHE.clear()
-        else:
-            for pid in list(_PATH_CACHE):
-                if pid not in seen:
-                    del _PATH_CACHE[pid]
-    except Exception:
-        _PATH_CACHE.clear()
-    ext_groups = [{'p': k, 'n': v[0], 'ws': v[1]} for k, v in ext.items()]
-    ext_groups.sort(key=lambda g: -g['ws'])
+            if c not in seen:
+                queue.append(c)
     # 窗口数（2026-09-05 q209 f66）: EnumWindows 顶层可见窗口且属主进程 pid——
     # Chromium 全部顶层窗口（IDE 各窗 + DevTools 独立窗）都由 browser 进程创建，
     # pid 过滤天然精确；dock 内嵌 DevTools 非顶层窗不计、隐藏窗 IsWindowVisible 滤掉
@@ -217,11 +144,10 @@ def _win_mem_snapshot(root_pid: int, pkg_root: str = ''):
         nwin = holder[0]
     except Exception:
         nwin = 0
-    own_mb = round(own_total / 1048576)
-    _log(f"mem-snapshot: root={root_pid} own={len(rows)}p {own_mb}MB ext={len(ext_groups)}g {round(ext_total / 1048576)}MB total={round((own_total + ext_total) / 1048576)}MB nwin={nwin}")
-    return {'totalMB': round((own_total + ext_total) / 1048576), 'ownMB': own_mb,
-            'extMB': round(ext_total / 1048576), 'nodes': len(rows), 'ncpu': os.cpu_count() or 0,
-            'rows': rows, 'ext': ext_groups, 'nwin': nwin}
+    total_mb = round(total / 1048576)
+    _log(f"mem-snapshot: root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
+    return {'totalMB': total_mb, 'nodes': len(rows), 'ncpu': os.cpu_count() or 0,
+            'rows': rows, 'nwin': nwin}
 
 
 def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:
@@ -669,7 +595,7 @@ def main():
             elif action == "mem-snapshot":
                 root_pid = int(cmd.get("rootPid") or 0)
                 if OS == "Windows" and root_pid > 0:
-                    r = _win_mem_snapshot(root_pid)
+                    r = _win_mem_snapshot(root_pid)  # v29: 纯血缘整树（v28 pkgRoot 分类参数已废弃）
                     if r is None:
                         result["ok"] = False
                         result["error"] = "NtQuery failed"

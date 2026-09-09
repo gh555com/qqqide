@@ -1805,20 +1805,4 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   border-top: 1px solid var(--border-color);
 }
 
-/* MEM 卡圈外进程（v28 2026-09-08 q209 f72 C 方案：树真相与账口径分离——own=包内 exe 进程树，
-   外圈进程照列不误（雷达可见）仅不计入本包统计） */
-.qqq-mem-ext {
-  color: var(--text-secondary); font-size: 11px; margin-left: 2px;
-}
-.qqq-mem-hover-extsep {
-  margin-top: 6px; padding: 5px 2px 2px; font-size: 11px;
-  color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  border-top: 1px dashed var(--border-color);
-}
-.qqq-mem-hover-prow.ext .qqq-mem-hover-pname {
-  color: var(--text-secondary);
-}
-.qqq-mem-hover-prow.ext:hover {
-  background: transparent;
-}
 
