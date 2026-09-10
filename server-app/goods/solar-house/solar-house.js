@@ -40,8 +40,8 @@
     window.qqqGaea.register({
       id: 'solar-house',
       title: 'Solar House',
-      version: '4.0.0',
-      protoVer: 4,
+      version: '4.0.0',   // 玩法/读卡器版本（服务器 ver.json 同步演进）
+      protoVer: 2,       // host 协议声明：gaea-host 闸门拒 >2，必须 = host 支持的协议等级（2），勿写玩法版本号
 
       // ---- A 区主面板: 远程游戏页（读取器; 页面自更版本, 见文件头注释）----
       panel: {
