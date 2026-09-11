@@ -256,7 +256,8 @@ var _agent = null;
         for (var pi = 0; pi < parts.length; pi++) {
             var kv = parts[pi].split('=');
             if (kv[0] === 'quest') { _questId = decodeURIComponent(kv[1] || ''); }
-            if (kv[0] === 'panel') { _panelId = parseInt(kv[1], 10) || 1; }
+            // ★ 2026-09-10 falsy-zero 修复：左翼 panel=0 曾被 parseInt(...)||1 误升级为 1（中面板）
+            if (kv[0] === 'panel') { var _pv0 = parseInt(kv[1], 10); if (_pv0 === 0 || _pv0 === 1 || _pv0 === 2) _panelId = _pv0; }
         }
     } catch(_) {}
 })();
@@ -286,7 +287,9 @@ function getAgent() {
         var qid = _questId || window.parent.__qqq_convQuestId || '';
         if (!pool || !qid) return null;
         if (!_questId) _questId = qid;
-        if (!_panelId) _panelId = window.parent.__qqq_convPanelId || 1;
+        // ★ 2026-09-10 falsy-zero：旧 !_panelId 在 0 时判真 → 兜底 || 1 再把左翼吞成中面板
+        var _pv1 = window.parent.__qqq_convPanelId;
+        if (_panelId !== 0 && _panelId !== 1 && _panelId !== 2) _panelId = (_pv1 === 0 || _pv1 === 1 || _pv1 === 2) ? _pv1 : 1;
         var ag = pool[qid];
         if (!ag) {
             for (var k in pool) {
@@ -568,7 +571,8 @@ try {
 window.addEventListener('message', function (e) {
     if (!e.data) return;
     if (e.data.type === 'qqq-conv-refresh') {
-        if (e.data.questId) { _questId = e.data.questId; if (e.data.panelId) _panelId = e.data.panelId; }
+        // ★ 2026-09-10 falsy-zero：panelId=0（左翼）是合法值，旧 truthy 判定跳过不更新
+        if (e.data.questId) { _questId = e.data.questId; if (e.data.panelId === 0 || e.data.panelId === 1 || e.data.panelId === 2) _panelId = e.data.panelId; }
         refresh();
     }
     // 压缩结果回调
@@ -602,6 +606,8 @@ window.addEventListener('message', function (e) {
                 }, 6000);
             }
         } else {
+            // ★ 2026-09-10 撕裂修复：失败必须同步收回压缩动画（floor-starting 已播动画时，失败若不同屏关闭会与失败 toast 矛盾）
+            try { closeAnim(); } catch (_) { }
             toast(_i('goods.conv.compressFailed', '压缩失败') + (e.data.error ? ': ' + e.data.error : ''));
         }
     }
@@ -724,6 +730,19 @@ function updateCompressBtns() {
     }
 }
 
+// ★ 2026-09-10 归属面板解析（撕裂修复）：压缩是破坏性操作（砍半饼干+写子弹+建楼），
+//   必须投递给 quest 当前真实持有面板（父窗口所有权注册表），而非本标签创建时记录的面板——
+//   quest 可能已在别的面板打开；误投非持有面板会在发送闸门被拦（动画/失败/qoast 同屏撕裂）
+function resolveOwnerPanel() {
+    try {
+        if (window.parent && window.parent.__qqq_getQuestOwner && _questId) {
+            var o = window.parent.__qqq_getQuestOwner(_questId);
+            if (o === 0 || o === 1 || o === 2) return o;
+        }
+    } catch (_) {}
+    return (_panelId === 0 || _panelId === 2) ? _panelId : 1;
+}
+
 // 执行压缩（委托 AI 面板）
 function doCompress(action) {
     var ag = _agent || getAgent();
@@ -736,8 +755,8 @@ function doCompress(action) {
     var statusEl = document.getElementById('cmp-status');
     if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⏳ 压缩中…'; }
 
-    // 发送 postMessage 到 AI 面板
-    var aiFrame = _findAiFrame();
+    // 发送 postMessage 到 AI 面板（★ 2026-09-10 归属路由：投递给 quest 当前持有面板）
+    var aiFrame = _findAiFrame(resolveOwnerPanel());
     if (aiFrame && aiFrame.contentWindow) {
         aiFrame.contentWindow.postMessage({
             type: 'qqq-compress-req',
@@ -766,12 +785,13 @@ function doCompress(action) {
 }
 
 // 查找 AI 面板 iframe（通过 zone div → 内嵌 iframe）
-function _findAiFrame() {
+function _findAiFrame(pidOverride) {
     try {
         var p = window.parent;
         var zoneIds = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
-        // 先按面板 ID 匹配 zone
-        var pid = _panelId || 1;
+        // 先按面板 ID 匹配 zone（★ 2026-09-10：调用方传入归属面板；旧 _panelId||1 曾把左翼 0 误变 1）
+        var pid = (pidOverride === 0 || pidOverride === 1 || pidOverride === 2) ? pidOverride
+            : ((_panelId === 0 || _panelId === 2) ? _panelId : 1);
         var zoneId = pid === 0 ? 'qqq-wing-left' : pid === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
         var zone = p.document.getElementById(zoneId);
         if (zone) { var f = zone.querySelector('iframe'); if (f && f.contentWindow) return f; }

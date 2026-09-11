@@ -766,10 +766,10 @@ async function _executeSend(intent) {
 
     // ★ 楼层尘埃落定音效 — 局部函数，_capAbort（停滞终止）与 finally 共用
     //   正常建完（agent._floorCompletedCleanly）→ ok endfloor；除此之外滴一切尘埃落定（异常/用户停止/停滞）→ bad endfloor
-    // ★ 诊断追踪（2026-09-03 临时）：_qqq/logs/chime-trace.jsonl + console——验证 finally 触发与 play 结果，确认后删除
+    // ★ 诊断追踪：_qqq/logs/chime-trace.jsonl 文件通道（console 输出 2026-09-10 移除降噪）
     var _chimeTrace = function (_tline) {
         try {
-            if (typeof console !== 'undefined') console.log('[chime] ' + _tline);
+            // ★ F92 降噪: console 输出移除（诊断保留 chime-trace.jsonl 文件通道, 下行）
             var _tp = '';
             try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) _tp = questStore.getProjectRoot(); } catch (_q) { }
             if (!_tp) {

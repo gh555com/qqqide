@@ -634,6 +634,12 @@ var CardPool = (function () {
         flowHtml = '';
       }
     }
+    // ★ 2026-09-11 repair_nl 楼层（q282 f5/f6）：自动重排屋替换过对话文本，ai_html 快照可能产自
+    //   修复前的旧 DOM（onDone 传参历史 bug）→ 快照不可信。conversation 是唯一真理源 → 凡含
+    //   repair_nl 屋的楼层，恢复时一律从 conversation 重建（幂等：快照好则重建等价，快照坏则自愈）。
+    if (flowHtml && Array.isArray(fData.houses) && fData.houses.some(function (h) { return h && h.type === 'repair_nl'; })) {
+      flowHtml = '';
+    }
     if (!flowHtml && typeof _buildConversationFlowHtml === 'function') {
       flowHtml = _buildConversationFlowHtml(conv, fData);
     }

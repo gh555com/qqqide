@@ -1805,4 +1805,16 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   border-top: 1px solid var(--border-color);
 }
 
+/* ═══ v30 闲置 CPU 燃烧修复（2026-09-10 q209 f80 实锤）═══
+   悬浮卡隐藏时（.qqq-mem-hover 无 .qqq-mem-hover-show，opacity:0 而非 display:none）这 4 个常驻
+   动画仍以 60fps 运行（box-shadow 呼吸点 + SVG 脉冲圈均不可 GPU 合成 → 每帧重绘）：窗口可见
+   且未被遮挡时闲置烧 0.3~1.1 核（对照实验：暂停这 4 个动画后主线程 37%→5.8%，8 倍塌陷）。
+   修复：卡片隐藏态停用动画；显示态（hover / pin）照常。零 JS 改动（复用既有 show class）。 */
+.qqq-mem-hover:not(.qqq-mem-hover-show) .qqq-mem-hover-dot,
+.qqq-mem-hover:not(.qqq-mem-hover-show) .qqq-mem-dot-pulse,
+.qqq-mem-hover:not(.qqq-mem-hover-show) .qqq-cpu-hover-dot,
+.qqq-mem-hover:not(.qqq-mem-hover-show) .qqq-cpu-dot-pulse {
+  animation: none;
+}
+
 

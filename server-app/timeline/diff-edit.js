@@ -23,8 +23,12 @@
     }
     if ($btnDiffOnly) $btnDiffOnly.addEventListener('click', _toggleDiffOnly);
 
-    function _toggleEdit() { _editing ? _exitEditMode() : _enterEditMode(); }
+    function _toggleEdit() {
+        if (!_fileExists) return; // 已删除文件：用 op →「恢复文件」找回后再编辑（防把空内容当磁盘最新保存）
+        _editing ? _exitEditMode() : _enterEditMode();
+    }
     async function _enterEditMode() {
+        if (!_fileExists) return;
         if (!_diffEditor) { await renderDiff(); }
         if (!_diffEditor) return;
         _editing = true;
@@ -158,7 +162,7 @@
             var newVer = await bridge.timeline.versions({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH });
             _versions = newVer || [];
             _lastContent = await bridge.timeline.readCurrent(FILE_PATH);
-            var st = await bridge.timeline.stat(FILE_PATH); if (st) _lastMtimeMs = st.mtimeMs;
+            await _refreshFileStat(FILE_PATH);
             // 只重建左侧下拉，保持右侧不变（编辑模式下右侧隐藏）
             var curLeft = $selLeft.value;
             var curRight = $selRight.value;
@@ -196,7 +200,7 @@
             var newVer = await bridge.timeline.versions({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH });
             _versions = newVer || [];
             _lastContent = await bridge.timeline.readCurrent(FILE_PATH);
-            var st = await bridge.timeline.stat(FILE_PATH); if (st) _lastMtimeMs = st.mtimeMs;
+            await _refreshFileStat(FILE_PATH);
             var curLeft = $selLeft.value; var curRight = $selRight.value; populateDropdowns();
             $selRight.value = curRight;
             var found = false;

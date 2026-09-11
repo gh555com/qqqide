@@ -12,6 +12,9 @@
 //     1s 一批事件上行, 服务器同种子重放 + 分数/HP 事后监督; 违规 = 本局中断不进榜）。
 //   - token 交接（跨源 iframe 读不到 parent）: 页面就绪 → parent.postMessage 请求 →
 //     本脚本（主窗口上下文）校验来源域名后回发 qqqLogin.getAuthToken()。
+//   - ★ F88 客户端版本门槛（2026-09-10）: 回包同时上报本客户端版本（ver）→ 页面比对
+//     服务器下限（ver.json.min_client）→ 低于下限一律拦截（不准许打开/游玩）。
+//     旧客户端（≤0.3.222）不走本页（本地旧页面 + v3 旧通道），由服务端 v3 闸门直接拒绝。
 // 玩法/协议规格唯一源: gaea/docs/Solar House 设计.md + internal/solar/v4param.go
 // ============================================================================
 (function () {
@@ -28,11 +31,44 @@
     } catch (_) { }
     return '';
   }
+  // ── 本客户端版本（版本门槛上报用; 与左下角/ai-gateway 同源 = versions.json id）──
+  function clientVer() {
+    try {
+      if (window.qqqBootInfo && window.qqqBootInfo.version) {
+        var v = String(window.qqqBootInfo.version).replace(/^v/i, '').trim();
+        if (v && v !== '?') return v;
+      }
+    } catch (_) { }
+    try {
+      var el = document.getElementById('qqq-status-version');
+      if (el) {
+        var t = (el.textContent || '').replace(/^v/i, '').trim();
+        if (t && t !== '?') return t;
+      }
+    } catch (_) { }
+    return '';
+  }
   window.addEventListener('message', function (e) {
     if (!e.data || e.data.type !== 'qqq-solar-auth-req') return;
     if (e.origin !== SOLAR_ORIGIN) return; // 只认服务器部署域
     try {
-      e.source.postMessage({ type: 'qqq-solar-auth', token: authToken() }, e.origin);
+      e.source.postMessage({ type: 'qqq-solar-auth', token: authToken(), ver: clientVer() }, e.origin);
+    } catch (_) { }
+  });
+
+  // ★ F102: 释放中继——游戏页在跨源 iframe 内收不到「左键移到父窗口松开」的 mouseup（跨文档无捕获）→
+  //   游戏页 LeftDown 卡死 → 手已松开却静默计数到阈值 = 网络版"自己进入"子弹时间（误入候选根因）。
+  //   父窗口捕获 mouseup → postMessage 中继给游戏页做释放兜底（游戏页仅在本页认为已按下时消费;
+  //   旧游戏页无此监听 = 零副作用）。
+  window.addEventListener('mouseup', function (e) {
+    if (e.button !== 0) return;
+    try {
+      var frs = document.querySelectorAll('iframe');
+      for (var i = 0; i < frs.length; i++) {
+        if ((frs[i].src || '').indexOf('/static/solar/') >= 0 && frs[i].contentWindow) {
+          frs[i].contentWindow.postMessage({ t: 'qqq-solar-release' }, '*');
+        }
+      }
     } catch (_) { }
   });
 

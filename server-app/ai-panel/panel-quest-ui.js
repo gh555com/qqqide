@@ -1071,6 +1071,16 @@ window.addEventListener('message', async function (e) {
     };
     // 查找 agent（优先 req.questId，兜底 questActiveId）
     var qid = req.questId || questActiveId;
+    // ★ 2026-09-10 所有权守卫（撕裂修复）：压缩是破坏性操作（砍半饼干 + 写子弹 + floor-starting 动画 + 建楼），
+    //   必须由 quest 当前持有面板执行；请求误投非持有面板时零副作用提前拒绝。
+    //   （旧行为：先砍半+播动画，再在 _executeSend 所有权闸门被拦 → qoast/动画/「压缩失败」同屏撕裂，q209 实锤）
+    try {
+        var _reqOwner = _parentGetQuestOwner(qid);
+        if (_reqOwner !== undefined && _reqOwner !== _panelId) {
+            _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: '该任务由其他面板持有，请在对应面板操作' });
+            return;
+        }
+    } catch (_) { }
     var pool = window.parent && window.parent.__qqq_agentPool;
     if (pool && qid) {
         ag = pool[qid];

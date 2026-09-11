@@ -13,21 +13,16 @@ export const _sn: Record<string, { mtimeMs: number; size: number }> = {};
 // Per-file serial queue (_qw Map<path, Promise链>)
 const _qw = new Map<string, Promise<any>>();
 
-// 全局命令屏障
-let _co = Promise.resolve();
-let _ac = Promise.resolve();
-
 /**
- * _qe — qwr 机器 per-file 排队写
- * 同文件排队，不同文件并行；命令等写完成才执行，写出等命令完成才写
+ * _qe — qwr 机器 per-file 排队写（同文件排队，不同文件并行）
+ * ★ 2026-09-10 根治：全局命令屏障（_co/_ac 双向门）已整体拆除。
+ * 旧机制在命令运行期间冻结全 IDE 一切写操作——一条卡死命令（远程 go test
+ * 15 分钟无输出）令所有面板的写同步冻死；写本身是原子 tmp+rename，命令
+ * 永远看不到半截文件，全局互斥零正确性收益。命令与写互不等待。
  */
 export function _qe(filePath: string, fn: () => Promise<string>): Promise<string> {
     const prev = _qw.get(filePath) || Promise.resolve();
-    const p = prev.then(async () => {
-        // 等命令完成
-        await _ac;
-        return fn();
-    });
+    const p = prev.then(() => fn());
     _qw.set(filePath, p);
     // 清理：promise settled 后移除（但保留链以保证顺序）
     p.finally(() => {
@@ -38,20 +33,7 @@ export function _qe(filePath: string, fn: () => Promise<string>): Promise<string
     return p;
 }
 
-// 命令屏障：登记一个命令执行，返回解除函数
-export function _qgc(): () => void {
-    let resolve: () => void;
-    const p = new Promise<void>(r => { resolve = r; });
-    const prev = _co;
-    _co = prev.then(() => p);
-    // 等待所有写完成
-    const waitWrites = Promise.all(Array.from(_qw.values()));
-    _ac = waitWrites.then(() => p);
-    return () => {
-        // 等上一个命令完成
-        prev.then(() => resolve());
-    };
-}
+
 
 // Python executable — 唯一真理源: engines/manifest.json via component-checker
 let __pythonExe = '';

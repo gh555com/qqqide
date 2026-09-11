@@ -21,7 +21,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ipcMain } from 'electron';
 import { getPythonDir } from './py-broker';
-import { _qgc } from './ipc-state';
 
 // Output safety-net cap: prevents huge stdout/stderr from inflating IPC payloads.
 // This is NOT the AI-facing limit — that lives in tools.js (OUTPUT_DEFAULT / OUTPUT_MAX).
@@ -770,12 +769,8 @@ export class QzSpawn {
  * Register qz spawn IPC handler — must be called during startup.
  */
 export function registerQzSpawnIpc(qzSpawn: QzSpawn): void {
+    // ★ 2026-09-10: 全局命令屏障（_qgc/release）已拆——命令与写互不等待
     ipcMain.handle('qqqide:qz:spawn', async (_e, brief: any) => {
-        const release = _qgc();
-        try {
-            return await qzSpawn.spawn(brief);
-        } finally {
-            release();
-        }
+        return await qzSpawn.spawn(brief);
     });
 }

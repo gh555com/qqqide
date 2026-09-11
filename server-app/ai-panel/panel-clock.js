@@ -381,7 +381,7 @@ function startFloorTimer(aiDiv, ag, resume) {
 //   去重：agent._floorEndSfxDone（startFloorTimer 新楼层清零）——panel-pipeline finally/_capAbort 同标记仅兜底，全局单响
 var _chimeTraceFile = function (_tline) {
     try {
-        if (typeof console !== 'undefined') console.log('[endfloor] ' + _tline);
+        // ★ F92 降噪: console 输出移除（诊断保留 chime-trace.jsonl 文件通道, 下行）
         var _tp = '';
         try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) _tp = questStore.getProjectRoot(); } catch (_) { }
         if (!_tp) { try { if (parent && parent.__qqq_projectRoot) _tp = parent.__qqq_projectRoot; } catch (_) { } }

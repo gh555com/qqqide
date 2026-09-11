@@ -123,7 +123,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             const { projectRoot } = args;
             if (!projectRoot) return [];
             const db = await _tlOpenDb(projectRoot);
-            const stmt = db.prepare('SELECT DISTINCT file_path, MAX(ts) as latest_ts FROM versions GROUP BY file_path ORDER BY file_path ASC');
+            // ★ 记忆库根系数据源（diff 窗口 ▼ 全库列表，2026-09-11）：文件 + 快照数 + 最近活动 + 磁盘存在性
+            const stmt = db.prepare('SELECT file_path, COUNT(*) as version_count, MAX(ts) as latest_ts FROM versions GROUP BY file_path');
             const files: any[] = [];
             while (stmt.step()) {
                 const row = stmt.getAsObject();
@@ -132,6 +133,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 files.push({
                     file_path: row.file_path,
                     latest_ts: row.latest_ts,
+                    version_count: row.version_count || 0,
                     exists,
                 });
             }
@@ -376,6 +378,16 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         mw.webContents.executeJavaScript(
             `(function(){ if(window.__qqq_aiFeedFile) window.__qqq_aiFeedFile(${JSON.stringify(filePath)},false,null); })()`
         ).catch((err: any) => console.warn('[timeline:feed-to-ai]', err && err.message));
+    });
+
+    // ═══ op 按钮：在 Roam 中召回并打开（复用 AI 面板本地链接同一机器 = 主窗口 shell-overlay _roamRevealText）═══
+    ipcMain.on('qqqide:timeline:reveal-in-roam', (_e, filePath: string) => {
+        if (!filePath) return;
+        const mw = _hostWindow(_e);
+        if (!mw) return;
+        mw.webContents.executeJavaScript(
+            `(function(){ if(window.__qqq_roamRevealPath) window.__qqq_roamRevealPath(${JSON.stringify(filePath)}); })()`
+        ).catch((err: any) => console.warn('[timeline:reveal-in-roam]', err && err.message));
     });
 
     // ═══ op 下拉：读取焦点面板方向（0左/1中/2右），diff 窗口据此显示 ←喂给 AI/喂给 AI/喂给 AI→ ═══

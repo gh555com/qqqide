@@ -425,6 +425,8 @@ const QQQ = {
         openInEditor: (filePath: string) => ipcRenderer.send('qqqide:timeline:open-in-editor', filePath),
         // op 按钮：喂给 AI
         feedToAi: (filePath: string) => ipcRenderer.send('qqqide:timeline:feed-to-ai', filePath),
+        // op 按钮：在 Roam 中召回并打开（复用 AI 面板本地链接同一 Roam 定位引擎）
+        revealInRoam: (filePath: string) => ipcRenderer.send('qqqide:timeline:reveal-in-roam', filePath),
         // op 下拉：读取焦点面板方向（0左/1中/2右），用于动态标签 ←喂给 AI/喂给 AI/喂给 AI→
         getAiTarget: () => ipcRenderer.invoke('qqqide:timeline:get-ai-target'),
         // 监听主进程推送的 diff 更新（复用已有窗口时触发）

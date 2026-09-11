@@ -891,7 +891,7 @@ var AgentLoop = (function () {
                                     var _rNl = (_repairResp.content.match(/\n/g) || []).length;
                                     if (_rNl >= 3 && _repairResp.content.length >= _finalContent.length * 0.6) {
                                         _finalContent = _repairResp.content;
-                                        self._houses.push({ index: 'R' + (self._houseIndex || 0), type: 'repair_nl', tools: [], ts: new Date().toISOString(), ms: Date.now() - _rStart, reasoning: _repairResp.reasoning_content || '', answer: _repairResp.content, wgeCost: _rBill ? _rBill.wgeCost : 0, model: _rBill ? _rBill.model : '', cacheHitRate: _rBill ? _rBill.cacheHitRate : -1, usage: _rBill ? _rBill.usage : null, billingSeq: _rBill ? _rBill.seq : 0, billingRequestId: _rBill ? _rBill.requestId : '', tier: self._lastTier ? self._lastTier.label : '' });
+                                        self._houses.push({ index: 'R' + (self._houseIndex || 0), type: 'repair_nl', tools: [], ts: new Date().toISOString(), ms: Date.now() - _rStart, reasoning: _repairResp.reasoning_content || '', answer: _repairResp.content, wgeCost: _rBill ? _rBill.wgeCost : 0, model: _rBill ? _rBill.model : '', cacheHitRate: _rBill ? _rBill.cacheHitRate : -1, usage: _rBill ? _rBill.usage : null, billingSeq: _rBill ? _rBill.seq : 0, billingRequestId: _rBill ? _rBill.requestId : '', tier: '1-Fast' });
                                         if (typeof self._writeFileLog === 'function') self._writeFileLog('✅ NO-NL repair OK floor=' + self._ctx.totalFloors + ' len=' + _finalContent.length + ' nl=' + _rNl);
                                         self._log('✅ NO-NL repair OK: nl=' + _rNl + ' len=' + _finalContent.length);
                                     } else {
@@ -929,8 +929,12 @@ var AgentLoop = (function () {
                     }
                     if (self._billingDebug) { _logBillingSummary(self); }
                     self._floorCompletedCleanly = true;  // ★ 看门狗：AI 正常回复
-                    await onDone(response.content, self._floorTiming);
-                    return response.content;
+                    // ★ 2026-09-11 q282 f5/f6 四修（修复屋落点闭环）：onDone 必须传 _finalContent（修复后
+                    //   文本）——旧传 response.content（修复前）→ 面板权威渲染 + ai_html 快照 + 显示视图
+                    //   全是坏文本，修复屋只写进 conversation（盘上对、显示坏，修复成功仍五连发实锤）。
+                    //   未触发修复时 _finalContent === response.content，零行为变化。
+                    await onDone(_finalContent, self._floorTiming);
+                    return _finalContent;
                 }
 
                 if (response.type === 'tool_calls') {

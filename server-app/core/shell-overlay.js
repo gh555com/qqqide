@@ -926,6 +926,13 @@ function bootAiOverlay() {
       _roamQoast('未在磁盘上找到：' + _roamShort(orig));
     }
   }
+  // ★ 全局入口（2026-09-11）：timeline diff 窗口 op 菜单「Roam」→ 主进程 executeJavaScript 调用。
+  //   与 AI 面板本地链接点击共用同一台机器（_roamRevealText），差异仅在消息入口：
+  //   面板走 postMessage(roam-reveal-path)，diff 窗口走 IPC → 此函数。
+  window.__qqq_roamRevealPath = function (text, ctx) {
+    try { _roamRevealText(text, ctx || ''); } catch (_) { }
+  };
+
   // ═══ 存在性探针裁决（2026-09-07）：面板批量确认 + 悬浮预览拷贝兜底共用 ═══
   var _lplOvCache = new Map();   // 主窗口侧会话缓存（key=p+ctx → true/false，FIFO 上限 3000）
   function _lplOvSet(key, ok) {

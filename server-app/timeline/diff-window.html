@@ -38,17 +38,42 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 .op-dropdown{position:absolute;top:100%;right:0;z-index:300;margin-top:2px;min-width:120px}
 .op-item{padding:5px 12px;font-size:12px;font-family:Tahoma,system-ui,-apple-system,sans-serif;cursor:pointer;white-space:nowrap;color:var(--text);background:var(--card);border:1px solid var(--border);border-bottom:none;display:flex;align-items:center}
 .op-item:first-child{border-radius:4px 4px 0 0}
-.op-item:last-child{border-radius:0 0 4px 4px;border-bottom:1px solid var(--border)}
+.op-item.is-last{border-radius:0 0 4px 4px;border-bottom:1px solid var(--border)}
 .op-item:hover{background:var(--hover-bg)}
 #drag-handle{width:56px;height:100%;display:flex;align-items:center;justify-content:center;opacity:.55;flex-shrink:0;padding-top:1px}
 #drag-handle:hover{opacity:1}
 .fuzzy-dropdown{position:absolute;top:100%;left:0;right:0;z-index:300;margin-top:2px}
 .fuzzy-dropdown-list{background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,0.5);max-height:260px;overflow-y:auto}
-.fuzzy-item{padding:5px 10px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:5px}
+.fuzzy-item{padding:5px 10px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:5px;content-visibility:auto;contain-intrinsic-size:auto 24px}
 .fuzzy-item:last-child{border-bottom:none}
 .fuzzy-item:hover{background:var(--hover-bg)}
 .fuzzy-item.active{background:var(--sel-bg)}
 .fuzzy-item .fi-icon{flex-shrink:0;font-size:11px}
+.fuzzy-item .fi-name{color:var(--text);font-weight:700;flex-shrink:0;max-width:55%;overflow:hidden;text-overflow:ellipsis}
+.fuzzy-item .fi-dir{color:var(--base01);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10px}
+.fuzzy-item .fi-meta{color:var(--base01);flex-shrink:0;font-size:10px;margin-left:auto;white-space:nowrap}
+.fuzzy-item.fi-gone .fi-name{color:var(--base01);font-weight:400}
+.fuzzy-gate{padding:5px 10px;font-size:11px;text-align:center;cursor:pointer;color:var(--base01);border-bottom:1px solid var(--border);font-family:Tahoma,system-ui,-apple-system,sans-serif;user-select:none}
+.fuzzy-gate:hover{background:var(--hover-bg);color:var(--accent)}
+.fuzzy-hint{padding:4px 10px;font-size:10px;color:var(--base01);text-align:center;border-top:1px solid var(--border);background:var(--card)}
+/* ⭐ 记忆库目录树弹层（▼，2026-09-11）——全库按目录结构浏览 */
+.vault-tree{position:absolute;top:100%;left:0;z-index:320;margin-top:2px;width:min(680px,92vw);max-height:440px;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,0.5);overflow:hidden}
+.vt-head{display:flex;align-items:center;padding:5px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--base01);flex-shrink:0}
+.vt-head .vt-title{font-weight:700;color:var(--text)}
+.vt-close{margin-left:auto;cursor:pointer;padding:0 4px;color:var(--base01);font-size:12px}
+.vt-close:hover{color:var(--red)}
+.vt-body{flex:1;overflow-y:auto;min-height:60px}
+.vt-row{display:flex;align-items:center;gap:5px;padding:3px 10px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;cursor:pointer;white-space:nowrap;overflow:hidden;color:var(--text);border-bottom:1px solid var(--border);content-visibility:auto;contain-intrinsic-size:auto 22px}
+.vt-row:hover{background:var(--hover-bg)}
+.vt-caret{width:11px;flex-shrink:0;color:var(--base01);font-size:9px;text-align:center}
+.vt-ico{flex-shrink:0;font-size:11px}
+.vt-name{overflow:hidden;text-overflow:ellipsis;flex-shrink:0;max-width:62%}
+.vt-dir .vt-name{font-weight:700}
+.vt-meta{color:var(--base01);flex-shrink:0;font-size:10px;margin-left:auto;white-space:nowrap}
+.vt-file.vt-gone .vt-name{color:var(--base01);font-weight:400}
+.vt-file.vt-cur{background:var(--sel-bg)}
+.vt-foot{padding:4px 10px;font-size:10px;color:var(--base01);text-align:center;border-top:1px solid var(--border);flex-shrink:0}
+.fuzzy-item .fi-hit,.vt-row .fi-hit{color:var(--accent);font-weight:700}
 
 /* ═══ CUSTOM DROPDOWN ═══ */
 .v-dropdown{position:relative;flex:1;max-width:420px;min-width:120px;cursor:pointer;user-select:none}
@@ -58,8 +83,11 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 .v-dropdown.open .v-dropdown-btn{border:1px dashed var(--base01);border-bottom:1px dashed var(--base01);border-radius:4px 4px 0 0}
 .v-dropdown-list{display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:1px dashed var(--base01);border-top:none;border-radius:0 0 4px 4px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
 .v-dropdown.open .v-dropdown-list{display:block}
-.v-dropdown-item{padding:4px 8px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;font-weight:400;cursor:pointer;white-space:nowrap;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;position:relative}
+.v-dropdown-item{padding:4px 8px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;font-weight:400;cursor:pointer;white-space:nowrap;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;position:relative;content-visibility:auto;contain-intrinsic-size:auto 18px}
 .v-dropdown-item:last-child{border-bottom:none}
+/* ⭐ 懒渲染闸门行（顶部；滚到顶自动补批，点击兜底） */
+.v-gate-item{padding:4px 8px;font-size:11px;text-align:center;cursor:pointer;color:var(--base01);background:var(--card);border-bottom:1px dashed var(--border);font-family:Tahoma,system-ui,-apple-system,sans-serif;user-select:none}
+.v-gate-item:hover{background:var(--hover-bg);color:var(--accent)}
 .v-dropdown-item:hover{background:var(--hover-bg)}
 .v-dropdown-item.selected{background:var(--sel-bg)}
 .v-dropdown-item .v-stat-green,.v-dropdown-btn .v-stat-green{color:var(--green);font-weight:700}
@@ -128,16 +156,24 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 <div id="title-row">
   <div id="input-wrap" style="flex:1;position:relative;display:flex;align-items:center;-webkit-app-region:no-drag">
     <div class="title-input" id="title-input" contenteditable="true" spellcheck="false" data-i18n-placeholder-attr="timeline.filePathPlaceholder" data-placeholder="文件路径…"></div>
-    <button class="win-btn hist-btn" id="btn-history" data-i18n-title="timeline.searchHistory" title="搜索历史">▼</button>
+    <button class="win-btn hist-btn" id="btn-history" data-i18n-title="timeline.browseVault" title="按目录浏览记忆库">▼</button>
     <div id="fuzzy-dropdown" class="fuzzy-dropdown" style="display:none">
       <div class="fuzzy-dropdown-list" id="fuzzy-list"></div>
     </div>
+    <div id="vault-tree" class="vault-tree" style="display:none">
+      <div class="vt-head"><span class="vt-title" data-i18n="timeline.vaultTreeHead">记忆库 · 按目录</span><span class="vt-close" id="vt-close" title="关闭">✕</span></div>
+      <div class="vt-body" id="vt-body"></div>
+      <div class="vt-foot" id="vt-foot"></div>
+    </div>
   </div>
+  <span id="file-gone-badge" data-i18n="timeline.deletedBadge" title="此文件在磁盘上已不存在——历史快照仍完整保存在记忆库" style="display:none;flex-shrink:0;font-size:11px;font-weight:700;color:var(--red);border:1px dashed var(--red);border-radius:3px;padding:1px 6px;-webkit-app-region:no-drag">🗑️ 已删除</span>
   <div style="position:relative;flex-shrink:0;display:flex;align-items:center;-webkit-app-region:no-drag">
     <button class="win-btn op-btn" id="btn-op" title="操作">op</button>
     <div class="op-dropdown" id="op-dropdown" style="display:none">
       <div class="op-item" data-action="open">open in qqqide</div>
       <div class="op-item" data-action="feed"><span id="op-feed-label">喂给 AI</span></div>
+      <div class="op-item is-last" data-action="roam" title="在 Roam 中打开">Roam</div>
+      <div class="op-item" data-action="restore" id="op-restore-item" style="display:none"><span id="op-restore-label">恢复文件</span></div>
     </div>
   </div>
   <div id="drag-handle" data-i18n-title="timeline.dragHandle" title="拖拽移动窗口">
