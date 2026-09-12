@@ -267,7 +267,7 @@
                 _vaultLoadedAt = Date.now();
                 _vaultLoading = false;
                 if (_fuzzyVisible) _buildFuzzyList(_titleGetText());
-                if (_vaultTreeOpen) _vtRefresh();
+                if (_vpPanelOpen) { _vpRoot = _vpBuildTree(_vaultFiles); _vpInitDir(); _vpRender(true); }
             }).catch(function () { _vaultLoading = false; });
         } catch (_) { _vaultLoading = false; }
     }
@@ -293,7 +293,7 @@
 
     // 构建下拉（懒渲染首批 + 闸门 + 底部提示行）
     function _buildFuzzyList(query) {
-        if (_vaultTreeOpen) _closeVaultTree();   // 搜索列表与目录树互斥
+        if (_vpPanelOpen) _vpClose();   // 搜索列表与全窗记忆库互斥
         _fuzzyIdx = -1;
         $fuzzyList.innerHTML = '';
         if (_vaultFiles === null) {
@@ -420,31 +420,47 @@
         $fuzzyDropdown.style.display = 'none';
     }
 
-    // ═══ ⭐ 记忆库目录树弹层（2026-09-11，▼ = 按目录浏览记忆库）═══════════
-    // 与键入框搜索分工：键入 = Everything 式全库匹配（扁平列表）；点 ▼ = 本弹层：
-    // 全库文件按目录结构浏览（目录聚合「N 文件 · M 快照」、单链目录合并 a/b/c、
-    // 🗑️ 已删除标记、当前文件自动展开定位）；点击文件 = 载入 diff 查看。
-    // 写回/找回与智能清理 = 后续步骤。
-    var $vaultTree = document.getElementById('vault-tree');
-    var $vtBody = document.getElementById('vt-body');
-    var $vtFoot = document.getElementById('vt-foot');
-    var _vaultTreeOpen = false;
-    var _vtRoot = null;
-    var _vtExpanded = {};        // key = 目录全路径小写 → true（会话内持久）
-    var _vtPendingScroll = false;
+    // ═══ ⭐ 记忆库全窗浏览器 v2（2026-09-11，▼ = 进入）═══════════
+    // 交互模型 = 钻取：一次只面对一层（文件夹在前、文件在后），面包屑永远告诉你在哪——
+    // 弃用并列展开的树（每层都要脑内维护展开态+缩进；且整表重建会触发外部点击检测误判
+    // → 点文件夹关面板的恶性 bug + Monaco 区吞事件反致真点外面不关，实锤）。
+    // 空间 = 全窗接管（检索姿态下左右对比区整体让给检索）；关闭 = ✕ 返回对比 / Esc /
+    // 选中文件自动返回——面板内点击任何区域都不会误关。
+    var $vaultPanel = document.getElementById('vault-panel');
+    var $vaultSearch = document.getElementById('vault-search');
+    var $vaultGoneChip = document.getElementById('vault-gone-chip');
+    var $vaultOnlyGone = document.getElementById('vault-only-gone');
+    var $vaultBack = document.getElementById('vault-back');
+    var $vaultUp = document.getElementById('vault-up');
+    var $vaultCrumb = document.getElementById('vault-crumb');
+    var $vaultCount = document.getElementById('vault-count');
+    var $vaultBody = document.getElementById('vault-body');
+    var $vaultFoot = document.getElementById('vault-foot');
+    var _vpPanelOpen = false;
+    var _vpRoot = null;         // 全库目录树（数据就绪时构建）
+    var _vpDir = '';            // 当前目录（''=根/盘符层；'E:'；'E:/s/wol'…，原始大小写）
+    var _vpQuery = '';
+    var _vpOnlyGone = false;
+    var _vpList = [];           // 当前视图行 [{kind:'dir'|'file',...}]
+    var _vpRendered = 0;
+    var _vpSel = -1;
+    var _VP_PAGE = 300;
 
-    function _vtKey(p) { return String(p || '').replace(/\\/g, '/').toLowerCase(); }
+    function _vpKey(p) { return String(p || '').replace(/\\/g, '/'); }
 
-    // 全库文件 → 目录树（构建一次；目录聚合 文件数/快照数）
-    function _vtBuildTree(files) {
-        var root = { name: '', path: '', dirs: {}, files: [], fcount: 0, scount: 0 };
+    // 全库文件 → 目录树（聚合 fcount 文件数 / scount 快照数 / gcount 已删除数 / gscount 已删快照）
+    function _vpBuildTree(files) {
+        var root = { name: '', path: '', dirs: {}, files: [], fcount: 0, scount: 0, gcount: 0, gscount: 0 };
         for (var i = 0; i < files.length; i++) {
             var row = files[i];
-            var p = String(row.path || '').replace(/\\/g, '/');
+            var p = _vpKey(row.path);
             var parts = p.split('/');
             var name = parts.pop() || p;
+            var gone = (row.exists === false);
+            var vc = row.vcount || 0;
             var node = root;
-            node.fcount++; node.scount += (row.vcount || 0);
+            node.fcount++; node.scount += vc;
+            if (gone) { node.gcount++; node.gscount += vc; }
             var acc = '';
             for (var d = 0; d < parts.length; d++) {
                 var seg = parts[d];
@@ -453,147 +469,311 @@
                 var key = seg.toLowerCase();
                 var child = node.dirs[key];
                 if (!child) {
-                    child = { name: seg, path: acc, dirs: {}, files: [], fcount: 0, scount: 0 };
+                    child = { name: seg, path: acc, dirs: {}, files: [], fcount: 0, scount: 0, gcount: 0, gscount: 0 };
                     node.dirs[key] = child;
                 }
                 node = child;
-                node.fcount++; node.scount += (row.vcount || 0);
+                node.fcount++; node.scount += vc;
+                if (gone) { node.gcount++; node.gscount += vc; }
             }
-            node.files.push({ name: name, path: row.path, exists: row.exists, vcount: row.vcount || 0, ts: row.ts || 0 });
+            node.files.push({ name: name, path: row.path, exists: row.exists, vcount: vc, ts: row.ts || 0 });
         }
         return root;
     }
 
-    function _vtSortedDirKeys(node) {
-        return Object.keys(node.dirs).sort(function (a, b) {
+    // 按目录路径取节点（大小写不敏感逐段下降；找不到返回 null）
+    function _vpNode(dir) {
+        if (!_vpRoot) return null;
+        if (!dir) return _vpRoot;
+        var segs = _vpKey(dir).split('/');
+        var node = _vpRoot;
+        for (var i = 0; i < segs.length; i++) {
+            if (!segs[i]) continue;
+            node = node.dirs[segs[i].toLowerCase()];
+            if (!node) return null;
+        }
+        return node;
+    }
+
+    function _vpParent(dir) {
+        if (!dir) return '';
+        var i = dir.lastIndexOf('/');
+        return i < 0 ? '' : dir.slice(0, i);
+    }
+
+    // 初始目录 = 当前文件所在文件夹（不在记忆库中则回落根）
+    function _vpInitDir() {
+        var d = FILE_PATH ? _vpKey(FILE_PATH) : '';
+        if (d) { var i = d.lastIndexOf('/'); d = i < 0 ? '' : d.slice(0, i); }
+        if (d && !_vpNode(d)) d = '';
+        _vpDir = d;
+    }
+
+    // 行 HTML：目录行（▸📁 名称 + 聚合计数）/ 文件行（📄🗑️ 名称 + 目录? + 快照·相对时间）
+    function _vpRowHtml(item) {
+        if (item.kind === 'dir') {
+            var meta = _vpOnlyGone
+                ? item.gcount + ' 已删除 · ' + item.gscount + ' 快照'
+                : item.fcount + ' 文件' + (item.scount > 0 ? ' · ' + item.scount + ' 快照' : '');
+            return '<div class="vault-row v-row-dir" data-dir="' + _escAttr(item.path) + '">' +
+                '<span class="v-caret">▸</span><span class="v-ico">📁</span>' +
+                '<span class="v-name">' + _escHtml(item.name) + '</span>' +
+                '<span class="v-meta">' + _escHtml(meta) + '</span></div>';
+        }
+        var p = item.path || '';
+        var name = item.name || (p.split(/[\\/]/).pop() || p);
+        var dir = p.slice(0, p.length - name.length);
+        var gone = (item.exists === false);
+        var meta2 = item.vcount > 0 ? item.vcount + ' 快照' : '';
+        var rel = _relTime(item.ts);
+        if (rel) meta2 += (meta2 ? ' · ' : '') + rel;
+        var cls = 'vault-row v-row-file' + (item.showDir ? ' v-row-search' : '') + (gone ? ' v-row-gone' : '');
+        if (FILE_PATH && _vpKey(p).toLowerCase() === _vpKey(FILE_PATH).toLowerCase()) cls += ' v-row-cur';
+        return '<div class="' + cls + '" data-path="' + _escAttr(p) + '">' +
+            '<span class="v-ico">' + (gone ? '🗑️' : '📄') + '</span>' +
+            '<span class="v-name">' + (item.hits ? _hlSeg(name, p.length - name.length, item.hits) : _escHtml(name)) + '</span>' +
+            (item.showDir ? '<span class="v-dir">' + _hlSeg(dir, 0, item.hits) + '</span>' : '') +
+            '<span class="v-meta">' + _escHtml(meta2) + '</span></div>';
+    }
+
+    // 浏览视图：当前目录的文件夹（名称序）+ 文件（最近活动序）
+    function _vpBrowseList() {
+        var node = _vpNode(_vpDir) || _vpRoot;
+        var out = [];
+        if (!node) return out;
+        var keys = Object.keys(node.dirs).sort(function (a, b) {
             var an = node.dirs[a].name.toLowerCase(), bn = node.dirs[b].name.toLowerCase();
             return an < bn ? -1 : (an > bn ? 1 : 0);
         });
-    }
-
-    // 渲染（仅展开树；单链目录合并 "a/b/c" 一行；文件按最近活动排序）
-    function _vtRenderNode(node, depth) {
-        var html = '';
-        var keys = _vtSortedDirKeys(node);
         for (var i = 0; i < keys.length; i++) {
             var cur = node.dirs[keys[i]];
-            var label = cur.name, path = cur.path;
-            while (cur.files.length === 0) {
-                var ck = Object.keys(cur.dirs);
-                if (ck.length !== 1) break;
-                cur = cur.dirs[ck[0]];
-                label += '/' + cur.name;
-                path = cur.path;
-            }
-            var open = !!_vtExpanded[_vtKey(path)];
-            html += '<div class="vt-row vt-dir" data-dir="' + _escAttr(_vtKey(path)) + '" style="padding-left:' + (8 + depth * 14) + 'px">' +
-                '<span class="vt-caret">' + (open ? '▾' : '▸') + '</span><span class="vt-ico">📁</span>' +
-                '<span class="vt-name">' + _escHtml(label) + '</span>' +
-                '<span class="vt-meta">' + cur.fcount + ' 文件' + (cur.scount > 0 ? ' · ' + cur.scount + ' 快照' : '') + '</span></div>';
-            if (open) html += _vtRenderNode(cur, depth + 1);
+            if (_vpOnlyGone && cur.gcount <= 0) continue;
+            out.push({ kind: 'dir', name: cur.name, path: cur.path, fcount: cur.fcount, scount: cur.scount, gcount: cur.gcount, gscount: cur.gscount });
         }
         var fs = node.files.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
         for (var f = 0; f < fs.length; f++) {
             var fr = fs[f];
-            var gone = (fr.exists === false);
-            var meta = fr.vcount > 0 ? fr.vcount + ' 快照' : '';
-            var rel = _relTime(fr.ts);
-            if (rel) meta += (meta ? ' · ' : '') + rel;
-            var curCls = (_vtKey(fr.path) === _vtKey(FILE_PATH)) ? ' vt-cur' : '';
-            html += '<div class="vt-row vt-file' + (gone ? ' vt-gone' : '') + curCls + '" data-fp="' + _escAttr(fr.path) + '" style="padding-left:' + (8 + depth * 14) + 'px">' +
-                '<span class="vt-caret"></span><span class="vt-ico">' + (gone ? '🗑️' : '📄') + '</span>' +
-                '<span class="vt-name">' + _escHtml(fr.name) + '</span>' +
-                '<span class="vt-meta">' + _escHtml(meta) + '</span></div>';
+            if (_vpOnlyGone && fr.exists !== false) continue;
+            out.push({ kind: 'file', name: fr.name, path: fr.path, exists: fr.exists, vcount: fr.vcount, ts: fr.ts, showDir: false, hits: null });
         }
-        return html;
+        return out;
     }
 
-    // 当前文件祖先链全展开（打开即定位）
-    function _vtRevealCurrent() {
-        var k = _vtKey(FILE_PATH);
-        if (!k) return;
-        var parts = k.split('/');
+    // 搜索视图：全库 Everything 式（子序列 + 名称优先评分，命中高亮，扁平带目录）
+    function _vpSearchList() {
+        var q = _vpQuery.trim();
+        var all = _vaultFiles || [];
+        var scored = [];
+        for (var i = 0; i < all.length; i++) {
+            if (_vpOnlyGone && all[i].exists !== false) continue;
+            var m = _fuzzyScore(q, all[i].path);
+            if (m) scored.push({ row: all[i], idx: m.idx, score: m.score });
+        }
+        scored.sort(function (a, b) { return (b.score - a.score) || ((b.row.ts || 0) - (a.row.ts || 0)); });
+        var out = [];
+        for (var s = 0; s < scored.length; s++) {
+            var r = scored[s].row;
+            var p = _vpKey(r.path);
+            out.push({ kind: 'file', name: p.split('/').pop() || p, path: r.path, exists: r.exists, vcount: r.vcount || 0, ts: r.ts || 0, showDir: true, hits: scored[s].idx });
+        }
+        return out;
+    }
+
+    // 渲染（浏览/搜索共用；懒渲染首批 + 底部闸门）
+    function _vpRender(reset) {
+        if (!$vaultPanel) return;
+        _vpList = _vpQuery.trim() ? _vpSearchList() : _vpBrowseList();
+        _vpRendered = Math.min(_vpList.length, _VP_PAGE);
+        _vpSel = -1;
+        var html = '';
+        for (var i = 0; i < _vpRendered; i++) html += _vpRowHtml(_vpList[i]);
+        if (!_vpList.length) {
+            html = '<div class="vault-empty">' + (_vpQuery.trim()
+                ? _i('timeline.vaultNoMatch', '无匹配 · 试试更短的关键词')
+                : ((_vaultFiles && _vaultFiles.length) ? _i('timeline.vaultEmptyDir', '此文件夹没有记忆记录') : _i('timeline.vaultEmpty', '记忆库暂无记录'))) + '</div>';
+        } else if (_vpRendered < _vpList.length) {
+            html += _vpGateHtml(_vpList.length - _vpRendered);
+        }
+        $vaultBody.innerHTML = html;
+        $vaultBody.scrollTop = 0;
+        _vpSyncHead();
+    }
+
+    function _vpGateHtml(remain) {
+        return '<div class="vault-gate">' + _i('timeline.vaultMore', '⬇ 加载更多（还剩 {n} 条）').replace('{n}', remain) + '</div>';
+    }
+
+    // 补批（闸门点击 / 滚到底自动）
+    function _vpMore() {
+        var total = _vpList.length;
+        if (_vpRendered >= total) return;
+        var to = Math.min(total, _vpRendered + _VP_PAGE);
+        var html = '';
+        for (var i = _vpRendered; i < to; i++) html += _vpRowHtml(_vpList[i]);
+        var gate = $vaultBody.querySelector('.vault-gate');
+        if (gate) gate.insertAdjacentHTML('beforebegin', html);
+        else $vaultBody.insertAdjacentHTML('beforeend', html);
+        _vpRendered = to;
+        var remain = total - _vpRendered;
+        if (remain > 0) { if (gate) gate.textContent = _i('timeline.vaultMore', '⬇ 加载更多（还剩 {n} 条）').replace('{n}', remain); }
+        else if (gate && gate.parentNode) gate.parentNode.removeChild(gate);
+    }
+
+    // 头部同步：面包屑 + 上一级可用态 + 计数 + 底部提示
+    function _vpSyncHead() {
+        var segs = _vpDir ? _vpDir.split('/') : [];
+        var html = '<span class="vault-seg' + (segs.length ? '' : ' cur') + '" data-jump="">' + _escHtml(_i('timeline.vaultRoot', '🏠 全部')) + '</span>';
         var acc = '';
-        for (var i = 0; i < parts.length - 1; i++) {
-            acc = acc ? acc + '/' + parts[i] : parts[i];
-            _vtExpanded[acc] = true;
+        for (var i = 0; i < segs.length; i++) {
+            acc = acc ? acc + '/' + segs[i] : segs[i];
+            html += '<span class="vault-sep">›</span><span class="vault-seg' + (i === segs.length - 1 ? ' cur' : '') + '" data-jump="' + _escAttr(acc) + '">' + _escHtml(segs[i]) + '</span>';
         }
-    }
-
-    function _vtRerender() {
-        if (!$vtBody || !_vtRoot) return;
-        $vtBody.innerHTML = _vtRenderNode(_vtRoot, 0);
-        if (_vtPendingScroll) {
-            _vtPendingScroll = false;
-            var cur = $vtBody.querySelector('.vt-file.vt-cur');
-            if (cur) cur.scrollIntoView({ block: 'nearest' });
-        }
-    }
-
-    function _vtRefresh() {
-        if (!$vaultTree || !_vaultFiles) return;
-        if (_vaultFiles.length === 0) {
-            _vtRoot = null;
-            $vtBody.innerHTML = '<div class="fuzzy-hint">' + _i('timeline.vaultEmpty', '记忆库暂无记录') + '</div>';
-            if ($vtFoot) $vtFoot.textContent = '';
-            return;
-        }
-        _vtRoot = _vtBuildTree(_vaultFiles);
-        _vtRevealCurrent();
-        _vtPendingScroll = true;
-        _vtRerender();
-        if ($vtFoot) $vtFoot.textContent = _i('timeline.vaultHint', '记忆库共 {n} 个文件 · 🗑️=已删除（点开可找回）').replace('{n}', _vaultFiles.length);
-    }
-
-    function _openVaultTree() {
-        if (!$vaultTree) return;
-        if (_fuzzyVisible) _closeFuzzy();
-        _vaultTreeOpen = true;
-        $vaultTree.style.display = '';
-        _vtRoot = null;
-        if (_vaultFiles === null) {
-            $vtBody.innerHTML = '<div class="fuzzy-hint">' + _i('timeline.vaultLoading', '记忆库加载中…') + '</div>';
-            _ensureVault();
-            return;
-        }
-        _vtRefresh();
-    }
-
-    function _closeVaultTree() {
-        if (!_vaultTreeOpen) return;
-        _vaultTreeOpen = false;
-        $vaultTree.style.display = 'none';
-    }
-
-    if ($vaultTree && $vtBody) {
-        var $vtClose = document.getElementById('vt-close');
-        if ($vtClose) $vtClose.addEventListener('click', function () { _closeVaultTree(); });
-        // 目录展开/收起 + 文件载入（事件委托，重建不丢）
-        $vtBody.addEventListener('click', function (e) {
-            var dirRow = e.target.closest ? e.target.closest('.vt-dir') : null;
-            if (dirRow) {
-                var k = dirRow.getAttribute('data-dir');
-                if (k) {
-                    if (_vtExpanded[k]) delete _vtExpanded[k]; else _vtExpanded[k] = true;
-                    _vtRerender();
+        $vaultCrumb.innerHTML = html;
+        if ($vaultUp) $vaultUp.disabled = !_vpDir;
+        if (_vpQuery.trim()) {
+            $vaultCount.textContent = _i('timeline.vaultMatch', '匹配 {m} / 共 {n} 个文件').replace('{m}', _vpList.length).replace('{n}', (_vaultFiles || []).length);
+        } else {
+            var node = _vpNode(_vpDir) || _vpRoot;
+            var dN = 0, fN = 0;
+            if (node) {
+                if (_vpOnlyGone) {
+                    var ks = Object.keys(node.dirs);
+                    for (var k = 0; k < ks.length; k++) { if (node.dirs[ks[k]].gcount > 0) dN++; }
+                    for (var ff = 0; ff < node.files.length; ff++) { if (node.files[ff].exists === false) fN++; }
+                } else {
+                    dN = Object.keys(node.dirs).length;
+                    fN = node.files.length;
                 }
+            }
+            $vaultCount.textContent = _i('timeline.vaultCountBrowse', '{d} 个文件夹 · {f} 个文件').replace('{d}', dN).replace('{f}', fN);
+        }
+        if ($vaultFoot) {
+            $vaultFoot.textContent = _i('timeline.vaultHint', '记忆库共 {n} 个文件 · 🗑️=已删除（点开可找回）').replace('{n}', (_vaultFiles || []).length);
+        }
+    }
+
+    function _vpShow() {
+        if (!$vaultPanel || _vpPanelOpen) return;
+        _vpPanelOpen = true;
+        _closeFuzzy();
+        _hideOpDropdown();
+        document.body.classList.add('vault-open');
+        if ($btnHistory) $btnHistory.classList.add('on');
+        if ($vaultSearch) $vaultSearch.placeholder = _i('timeline.vaultSearchPh', '搜索记忆库：文件名或路径片段…');
+        $vaultSearch.value = ''; _vpQuery = '';
+        _vpOnlyGone = false; if ($vaultOnlyGone) $vaultOnlyGone.checked = false;
+        if ($vaultGoneChip) $vaultGoneChip.classList.remove('on');
+        $vaultPanel.style.display = 'flex';
+        if (_vaultFiles === null) {
+            _vpRoot = null;
+            $vaultBody.innerHTML = '<div class="vault-empty">' + _i('timeline.vaultLoading', '记忆库加载中…') + '</div>';
+            if ($vaultFoot) $vaultFoot.textContent = '';
+            if ($vaultCrumb) $vaultCrumb.innerHTML = '';
+            _ensureVault();
+        } else {
+            _vpRoot = _vpBuildTree(_vaultFiles);
+            _vpInitDir();
+            _vpRender(true);
+        }
+        if ($vaultSearch) $vaultSearch.focus();
+    }
+
+    function _vpClose() {
+        if (!_vpPanelOpen) return;
+        _vpPanelOpen = false;
+        $vaultPanel.style.display = 'none';
+        document.body.classList.remove('vault-open');
+        if ($btnHistory) $btnHistory.classList.remove('on');
+    }
+
+    function _vpGoDir(dir) {
+        _vpDir = dir || '';
+        _vpQuery = '';
+        if ($vaultSearch) $vaultSearch.value = '';
+        _vpRender(true);
+        $vaultBody.scrollTop = 0;
+    }
+
+    // 选中文件：退出浏览器 → 载入 diff（已删除文件进入纯历史模式）
+    function _vpPick(p) {
+        if (!p) return;
+        _vpClose();
+        _selectHistory(p);
+    }
+
+    function _vpMoveSel(d) {
+        var rows = $vaultBody.querySelectorAll('.vault-row');
+        if (!rows.length) return;
+        if (_vpSel + d >= rows.length - 1 && _vpRendered < _vpList.length) { _vpMore(); rows = $vaultBody.querySelectorAll('.vault-row'); }
+        var idx = _vpSel + d;
+        if (idx < 0) idx = 0;
+        if (idx > rows.length - 1) idx = rows.length - 1;
+        _vpSel = idx;
+        for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('sel', i === idx);
+        if (rows[idx]) rows[idx].scrollIntoView({ block: 'nearest' });
+    }
+
+    function _vpActivateSel() {
+        var rows = $vaultBody.querySelectorAll('.vault-row');
+        var el = _vpSel >= 0 ? rows[_vpSel] : null;
+        if (!el) return;
+        if (el.classList.contains('v-row-dir')) _vpGoDir(el.getAttribute('data-dir'));
+        else { var fp = el.getAttribute('data-path'); if (fp) _vpPick(fp); }
+    }
+
+    if ($vaultPanel) {
+        // 行点击（委托）：目录 = 钻入（绝不关闭面板）；文件 = 载入并退出
+        $vaultBody.addEventListener('click', function (e) {
+            var gate = e.target.closest ? e.target.closest('.vault-gate') : null;
+            if (gate) { _vpMore(); return; }
+            var row = e.target.closest ? e.target.closest('.vault-row') : null;
+            if (!row) return;
+            if (row.classList.contains('v-row-dir')) { _vpGoDir(row.getAttribute('data-dir')); return; }
+            var fp = row.getAttribute('data-path');
+            if (fp) _vpPick(fp);
+        });
+        // 滚到底自动补批
+        $vaultBody.addEventListener('scroll', function () {
+            if ($vaultBody.scrollTop + $vaultBody.clientHeight >= $vaultBody.scrollHeight - 60) _vpMore();
+        });
+        // 搜索框：键入过滤 / 上下选择 / Enter 打开 / Esc 清空或退出
+        $vaultSearch.addEventListener('input', function () {
+            _vpQuery = $vaultSearch.value;
+            _vpRender(true);
+        });
+        $vaultSearch.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); _vpMoveSel(e.key === 'ArrowDown' ? 1 : -1); return; }
+            if (e.key === 'Enter') { e.preventDefault(); _vpActivateSel(); return; }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if ($vaultSearch.value) { $vaultSearch.value = ''; _vpQuery = ''; _vpRender(true); }
+                else _vpClose();
                 return;
             }
-            var fRow = e.target.closest ? e.target.closest('.vt-file') : null;
-            if (fRow) {
-                var fp = fRow.getAttribute('data-fp');
-                if (fp) { _closeVaultTree(); _selectHistory(fp); }
+        });
+        // 「只看已删除」筛选
+        $vaultOnlyGone.addEventListener('change', function () {
+            _vpOnlyGone = !!$vaultOnlyGone.checked;
+            if ($vaultGoneChip) $vaultGoneChip.classList.toggle('on', _vpOnlyGone);
+            _vpRender(true);
+        });
+        if ($vaultBack) $vaultBack.addEventListener('click', function () { _vpClose(); });
+        if ($vaultUp) $vaultUp.addEventListener('click', function () { if (_vpDir) _vpGoDir(_vpParent(_vpDir)); });
+        $vaultCrumb.addEventListener('click', function (e) {
+            var s = e.target.closest ? e.target.closest('.vault-seg') : null;
+            if (s) _vpGoDir(s.getAttribute('data-jump') || '');
+        });
+        // 面板内任意打印字符 → 直达搜索框（点过文件夹后焦点不在输入框也能直接搜）
+        $vaultPanel.addEventListener('keydown', function (e) {
+            if (!_vpPanelOpen) return;
+            if (e.target === $vaultSearch || e.target === $vaultOnlyGone) return;
+            if (e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                $vaultSearch.focus();
+                $vaultSearch.value += e.key;
+                _vpQuery = $vaultSearch.value;
+                _vpRender(true);
+                e.preventDefault();
             }
-        });
-        // 点击外部关闭
-        document.addEventListener('click', function (e) {
-            if (!_vaultTreeOpen) return;
-            if ($vaultTree.contains(e.target) || ($btnHistory && $btnHistory.contains(e.target))) return;
-            _closeVaultTree();
-        });
-        // Esc 关闭（焦点不在键入框时兜底）
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && _vaultTreeOpen) _closeVaultTree();
         });
     }
 
@@ -609,15 +789,15 @@
         loadVersions(filePath);
     }
 
-    // ▼：按目录浏览记忆库（目录树弹层）；键入框 = Everything 式全库搜索（扁平列表）
+    // ▼：全窗记忆库浏览器（钻取式）；键入框 = Everything 式全库搜索（扁平列表）
     if ($btnHistory) {
         $btnHistory.addEventListener('mousedown', function (e) {
             e.preventDefault(); // 防抢焦点（防键入框 focus 连锁唤起搜索列表）
         });
         $btnHistory.addEventListener('click', function (e) {
             e.stopPropagation();
-            if (_vaultTreeOpen) _closeVaultTree();
-            else _openVaultTree();
+            if (_vpPanelOpen) _vpClose();
+            else _vpShow();
         });
     }
 
@@ -685,7 +865,7 @@
             }
             if (e.key === 'Escape') {
                 _closeFuzzy();
-                _closeVaultTree();
+                _vpClose();
                 return;
             }
         });

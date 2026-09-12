@@ -56,24 +56,50 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 .fuzzy-gate{padding:5px 10px;font-size:11px;text-align:center;cursor:pointer;color:var(--base01);border-bottom:1px solid var(--border);font-family:Tahoma,system-ui,-apple-system,sans-serif;user-select:none}
 .fuzzy-gate:hover{background:var(--hover-bg);color:var(--accent)}
 .fuzzy-hint{padding:4px 10px;font-size:10px;color:var(--base01);text-align:center;border-top:1px solid var(--border);background:var(--card)}
-/* ⭐ 记忆库目录树弹层（▼，2026-09-11）——全库按目录结构浏览 */
-.vault-tree{position:absolute;top:100%;left:0;z-index:320;margin-top:2px;width:min(680px,92vw);max-height:440px;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,0.5);overflow:hidden}
-.vt-head{display:flex;align-items:center;padding:5px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--base01);flex-shrink:0}
-.vt-head .vt-title{font-weight:700;color:var(--text)}
-.vt-close{margin-left:auto;cursor:pointer;padding:0 4px;color:var(--base01);font-size:12px}
-.vt-close:hover{color:var(--red)}
-.vt-body{flex:1;overflow-y:auto;min-height:60px}
-.vt-row{display:flex;align-items:center;gap:5px;padding:3px 10px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;cursor:pointer;white-space:nowrap;overflow:hidden;color:var(--text);border-bottom:1px solid var(--border);content-visibility:auto;contain-intrinsic-size:auto 22px}
-.vt-row:hover{background:var(--hover-bg)}
-.vt-caret{width:11px;flex-shrink:0;color:var(--base01);font-size:9px;text-align:center}
-.vt-ico{flex-shrink:0;font-size:11px}
-.vt-name{overflow:hidden;text-overflow:ellipsis;flex-shrink:0;max-width:62%}
-.vt-dir .vt-name{font-weight:700}
-.vt-meta{color:var(--base01);flex-shrink:0;font-size:10px;margin-left:auto;white-space:nowrap}
-.vt-file.vt-gone .vt-name{color:var(--base01);font-weight:400}
-.vt-file.vt-cur{background:var(--sel-bg)}
-.vt-foot{padding:4px 10px;font-size:10px;color:var(--base01);text-align:center;border-top:1px solid var(--border);flex-shrink:0}
-.fuzzy-item .fi-hit,.vt-row .fi-hit{color:var(--accent);font-weight:700}
+/* ⭐ 记忆库全窗浏览器 v2（▼ 进入，2026-09-11）——钻取式：一次一层、面包屑导航、大字号行；全窗接管检索空间 */
+.hist-btn.on{color:var(--yellow);background:var(--bg)}
+.vault-panel{position:fixed;top:40px;left:0;right:0;bottom:0;z-index:1000;display:flex;flex-direction:column;background:var(--bg)}
+.vault-head{flex-shrink:0;background:var(--card);border-bottom:1px solid var(--border);padding:8px 12px}
+.vault-search-row{display:flex;align-items:center;gap:8px}
+.vault-search-ico{flex-shrink:0;font-size:14px}
+.vault-search{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:6px 10px;font-size:15px;outline:none;font-family:Tahoma,system-ui,-apple-system,sans-serif}
+.vault-search:focus{border-color:var(--yellow)}
+.vault-search::placeholder{color:var(--base01);font-style:italic}
+.vault-chip{display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:13px;color:var(--base01);border:1px solid var(--border);border-radius:4px;padding:6px 9px;cursor:pointer;user-select:none;white-space:nowrap}
+.vault-chip:hover{border-color:var(--yellow);color:var(--text)}
+.vault-chip.on{color:var(--red);border-color:var(--red)}
+.vault-chip input{margin:0;accent-color:var(--red);cursor:pointer}
+.vault-back{flex-shrink:0;height:31px;padding:0 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px;cursor:pointer;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}
+.vault-back:hover{border-color:var(--accent);color:var(--accent)}
+.vault-crumb-row{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:26px}
+.vault-up{flex-shrink:0;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:13px;cursor:pointer;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}
+.vault-up:hover:not(:disabled){border-color:var(--yellow);color:var(--yellow)}
+.vault-up:disabled{opacity:.35}
+.vault-crumb{flex:1;min-width:0;display:flex;align-items:center;white-space:nowrap;overflow:hidden;font-size:14px;font-family:Tahoma,ui-monospace,monospace}
+.vault-seg{flex-shrink:0;color:var(--base01);cursor:pointer;padding:2px 6px;border-radius:3px}
+.vault-seg:hover{color:var(--yellow);background:var(--hover-bg)}
+.vault-seg.cur{color:var(--text);font-weight:700}
+.vault-sep{flex-shrink:0;color:var(--base01);opacity:.55}
+.vault-count{flex-shrink:0;font-size:13px;color:var(--base01);white-space:nowrap}
+.vault-body{flex:1;overflow-y:auto;overflow-x:hidden;min-height:60px}
+.vault-row{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;font-size:14px;font-family:Tahoma,ui-monospace,monospace;cursor:pointer;white-space:nowrap;color:var(--text);border-bottom:1px solid var(--border);content-visibility:auto;contain-intrinsic-size:auto 34px}
+.vault-row:hover{background:var(--hover-bg)}
+.vault-row.sel{background:var(--sel-bg)}
+.vault-row .v-caret{flex-shrink:0;width:12px;color:var(--base01);font-size:10px;text-align:center}
+.vault-row .v-ico{flex-shrink:0;width:22px;text-align:center;font-size:14px}
+.vault-row .v-name{overflow:hidden;text-overflow:ellipsis;max-width:72%}
+.vault-row .v-dir{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--base01);font-size:12.5px}
+.vault-row .v-meta{flex-shrink:0;margin-left:auto;padding-left:12px;color:var(--base01);font-size:12.5px;white-space:nowrap}
+.vault-row.v-row-dir .v-name{font-weight:700}
+.vault-row.v-row-search .v-name{max-width:46%}
+.vault-row.v-row-gone .v-name{color:var(--base01);font-weight:400}
+.vault-row.v-row-cur{background:var(--sel-bg);box-shadow:inset 3px 0 0 var(--yellow)}
+.vault-gate{padding:9px;font-size:13px;text-align:center;cursor:pointer;color:var(--base01);border-bottom:1px solid var(--border);font-family:Tahoma,system-ui,-apple-system,sans-serif;user-select:none}
+.vault-gate:hover{background:var(--hover-bg);color:var(--accent)}
+.vault-empty{padding:28px 14px;text-align:center;color:var(--base01);font-size:14px}
+.vault-foot{flex-shrink:0;padding:7px 12px;font-size:13px;color:var(--base01);text-align:center;border-top:1px solid var(--border);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-close,body.vault-open #btn-edit-tip,body.vault-open #big-close-tip{display:none!important}
+.fuzzy-item .fi-hit,.vault-row .fi-hit{color:var(--accent);font-weight:700}
 
 /* ═══ CUSTOM DROPDOWN ═══ */
 .v-dropdown{position:relative;flex:1;max-width:420px;min-width:120px;cursor:pointer;user-select:none}
@@ -160,11 +186,7 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
     <div id="fuzzy-dropdown" class="fuzzy-dropdown" style="display:none">
       <div class="fuzzy-dropdown-list" id="fuzzy-list"></div>
     </div>
-    <div id="vault-tree" class="vault-tree" style="display:none">
-      <div class="vt-head"><span class="vt-title" data-i18n="timeline.vaultTreeHead">记忆库 · 按目录</span><span class="vt-close" id="vt-close" title="关闭">✕</span></div>
-      <div class="vt-body" id="vt-body"></div>
-      <div class="vt-foot" id="vt-foot"></div>
-    </div>
+
   </div>
   <span id="file-gone-badge" data-i18n="timeline.deletedBadge" title="此文件在磁盘上已不存在——历史快照仍完整保存在记忆库" style="display:none;flex-shrink:0;font-size:11px;font-weight:700;color:var(--red);border:1px dashed var(--red);border-radius:3px;padding:1px 6px;-webkit-app-region:no-drag">🗑️ 已删除</span>
   <div style="position:relative;flex-shrink:0;display:flex;align-items:center;-webkit-app-region:no-drag">
@@ -217,6 +239,24 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 <div id="diff-container"></div>
 
 <div id="empty-state"><span data-i18n="timeline.loading">加载中…</span></div>
+
+<div id="vault-panel" class="vault-panel" style="display:none">
+  <div class="vault-head">
+    <div class="vault-search-row">
+      <span class="vault-search-ico">🔍</span>
+      <input id="vault-search" class="vault-search" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="timeline.vaultSearchPh" placeholder="搜索记忆库：文件名或路径片段…">
+      <label class="vault-chip" id="vault-gone-chip" title="只显示磁盘上已删除的文件"><input type="checkbox" id="vault-only-gone"><span data-i18n="timeline.vaultOnlyGone">只看已删除</span></label>
+      <button id="vault-back" class="vault-back" data-i18n="timeline.vaultBack">✕ 返回对比</button>
+    </div>
+    <div class="vault-crumb-row">
+      <button id="vault-up" class="vault-up" data-i18n="timeline.vaultUp">⬆ 上一级</button>
+      <div id="vault-crumb" class="vault-crumb"></div>
+      <span id="vault-count" class="vault-count"></span>
+    </div>
+  </div>
+  <div id="vault-body" class="vault-body"></div>
+  <div id="vault-foot" class="vault-foot"></div>
+</div>
 
 <button id="btn-diff-only" data-i18n="timeline.diffOnly">仅差异</button>
 <button id="big-close">✕</button>
