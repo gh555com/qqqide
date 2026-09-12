@@ -92,3 +92,14 @@ global.txt
 # 临时脚本
 _push_*
 push_*.txt
+
+# 灰烬燃烧（2026-09-12）：永久排除（历史已重写清除，禁止重新入库）
+论文/
+launcher/
+.bash_history
+_server-app.tar.gz
+_shell-out.tar.gz
+_qqqide.tar.gz
+_version.json
+loading-status
+_LAST_BUILD_STAMP.txt
