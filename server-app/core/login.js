@@ -49,6 +49,7 @@
     return null;
   }
   var BALANCE_POLL_MS = 60000;
+  var LV_POLL_MS = 300000; // ★ 2026-09-12：LV 陪伴融合后经验条 5 分钟节拍刷新（挂机看得见涨）
   var NO_DRAG = '-webkit-app-region:no-drag;';
 
   var _bootInfo = null;
@@ -219,6 +220,16 @@
 
   function _stopBalancePoll() {
     if (_balanceTimer) { clearInterval(_balanceTimer); _balanceTimer = null; }
+  }
+
+  // ── LV 周期刷新（陪伴折算入 LV 后由服务器裁决增量，客户端定期拉取同步经验条）──
+  var _lvPollTimer = null;
+  function _startLvPoll() {
+    _stopLvPoll();
+    _lvPollTimer = setInterval(function () { _fetchLv(); }, LV_POLL_MS);
+  }
+  function _stopLvPoll() {
+    if (_lvPollTimer) { clearInterval(_lvPollTimer); _lvPollTimer = null; }
   }
 
   async function _fetchBalance(force) {
@@ -593,7 +604,8 @@
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
       var lvNum = parseFloat(e.level_str);
-      var lvDisplay = isNaN(lvNum) ? e.level_str : (lvNum * 10).toFixed(4);
+      // ★ 2026-09-12 刻度统一：服务端直出真实 LV（10 ge = 1 级），客户端 ×10 补丁废除
+      var lvDisplay = isNaN(lvNum) ? e.level_str : lvNum.toFixed(4);
       var fl = _leaderboardFlag(e.flag);
       s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', e.phone)
         .replace('{lv}', lvDisplay);
@@ -671,18 +683,19 @@
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     var titleClr = isDark ? '#dcd8d0' : '#656360';
 
-    // 上周最终等级 = last_season_level × 10，4 位小数
+    // 上周最终等级（服务端直出真实 LV，刻度统一后不再 ×10），4 位小数
     var lastLv = (d && typeof d.last_season_level === 'number' && d.last_season_level > 0)
-      ? 'lv' + (d.last_season_level * 10).toFixed(4) : '--';
-    // 本周基座升高 = last_season_level（结算等级 ÷ 10），四舍五入 1 位小数
+      ? 'lv' + d.last_season_level.toFixed(4) : '--';
+    // 本周基座升高 = 上周等级 ÷ 10（归一：金额与旧版恒等），四舍五入 1 位小数
     var baseRise = (d && typeof d.last_season_level === 'number' && d.last_season_level > 0)
-      ? d.last_season_level.toFixed(1) : '--';
-    // 预计下周基座升高 = 本周到目前为止总消费 ÷ 100，1 位小数
+      ? (d.last_season_level / 10).toFixed(1) : '--';
+    // 预计下周基座升高 = 本周（消费 + 陪伴折算）÷ 100，1 位小数
     var projected = '--';
     if (d && d.total_consumed_ge) {
-      var totalGe = parseFloat(d.total_consumed_ge);
-      if (!isNaN(totalGe) && totalGe > 0) {
-        projected = (totalGe / 100).toFixed(1);
+      var totalGe = parseFloat(d.total_consumed_ge) || 0;
+      var compGe = parseFloat(d.companion_ge) || 0;
+      if (totalGe + compGe > 0) {
+        projected = ((totalGe + compGe) / 100).toFixed(1);
       }
     }
 
@@ -720,13 +733,14 @@
       + 'UTC 时间一周作为一个赛季，<br>'
       + '例如：2026_28W1 代表 2026 年第 28 周，<br>'
       + '其对应总观历史滴第一个赛季即：W1。<br><br>'
-      + '<b>本周基座</b> 仅由上赛季最终消费决定：<br>'
-      + '基座 = 上赛季总消费 ÷ 100<br>'
+      + '<b>本周基座</b> 由上赛季最终等级决定：<br>'
+      + '基座 = 上赛季（消费 + 陪伴折算）÷ 100<br>'
       + '若上赛季消费 100 ge → 本周基座 = 1<br><br>'
       + '• 周一至周六：随机 + 基座 × 1<br>'
       + '• 周日：随机 + 基座 × 2（双倍）<br><br>'
-      + '<b>等级</b> = 总消费 ÷ 10<br>'
-      + '<b>预计下周基座</b> = 本周已消费 ÷ 100';
+      + '<b>等级</b> = （消费 + 陪伴折算）÷ 10<br>'
+      + '陪伴折算：每 24 小时 = 1 级<br>'
+      + '<b>预计下周基座</b> = 本周（消费 + 陪伴折算）÷ 100';
     _$ldrHelpTip.style.left = (rect.left + rect.width / 2 - 200) + 'px';
     _$ldrHelpTip.style.top = (rect.bottom + 4) + 'px';
     _$ldrHelpTip.style.display = '';
@@ -944,6 +958,7 @@
       // ★ 错峰调用：CF Free 套餐对瞬时并发请求敏感（≥3 并发触发 429），
       //   间隔 200ms 发送避免被当作请求爆发。
       _startBalancePoll();
+      _startLvPoll();       // ★ LV 周期刷新（挂机陪伴折算可见）
       setTimeout(function () { _fetchLv(); }, 200);
       // 触发状态栏免费预算刷新
       setTimeout(function () {
@@ -956,6 +971,7 @@
       } catch (e) { }
     } else {
       _stopBalancePoll();
+      _stopLvPoll();
       _balanceGe = null;
       _lvData = null;
       _updateGeLabel();

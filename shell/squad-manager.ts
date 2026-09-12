@@ -109,11 +109,15 @@ function _loadFresh(): SquadRegistry {
     return _cache;
 }
 
-/** 写前磁盘合并（2026-08-10 F15 缺口2）: 跨实例（dev+绿色包同跑）防互踩 —
- *  重读磁盘 → 槽位级合并，本实例条目与他实例条目均按 ts 新者胜，绝不整库覆盖
- *  （整库覆盖会让后写实例把先写实例的槽位蒸发 → 召回 miss + 下拉错乱）。
- *  与 sq3 库「写前合并只补缺不覆盖」同款模式（铁律 8.2）。 */
-function _save(): void {
+/** 写前磁盘合并（2026-08-10 F15 缺口2；2026-09-12 回收实时性三律）: 跨实例（dev+绿色包同跑）防互踩 —
+ *  重读磁盘 → 槽位级合并，绝不整库覆盖。三律（铁律「释放即真相」）:
+ *   ① 双方皆有 → ts 新者胜；胜者已陈旧（pid 亡/心跳超时）→ 直接落 null（陈旧即焚，鬼条目不再永续磁盘）
+ *   ② 仅我有（磁盘无）→ 磁盘说该槽无人占 = 唯一真理：本实例活窗条目重新断言（刷心跳）；
+ *      其余（他实例已释放残留 / 本实例已死窗口）→ 清除（旧实现此分支不处理 → 他实例释放的槽
+ *      被本实例陈旧内存态复活回写 ——「关闭窗口后 w 被占用」实锤根因）
+ *   ③ 仅磁盘有 → 他实例条目且未陈旧 → 恢复；本实例条目（已释放）→ 不再复活
+ *  写盘降级链: rename → copyFile → unlink+rename（防 AV/特殊共享句柄令原子替换失败而静默丢更新）。 */
+function _save(): boolean {
     const reg = _load();
     reg.updatedAt = Date.now();
     try {
@@ -123,15 +127,28 @@ function _save(): void {
                 const mine = reg.slots[k];
                 const theirs = j.slots[k];
                 if (mine && theirs) {
-                    reg.slots[k] = (theirs.ts ?? 0) > (mine.ts ?? 0) ? theirs : mine;
+                    const winner = (theirs.ts ?? 0) > (mine.ts ?? 0) ? theirs : mine;
+                    // ★ 2026-09-12 陈旧即焚: 合并胜者已死（pid 亡 / 心跳超 90s）→ 直接落 null。
+                    //   旧实现无论死活一律 LWW 保留 → 死条目在磁盘永续堆积（实测 49 小时鬼条目）
+                    reg.slots[k] = _isStale(winner) ? null : winner;
+                } else if (mine && !theirs) {
+                    // ★ 2026-09-12 释放即真相（回收实时性核心）: 磁盘已无该槽 = 已被持有者释放 →
+                    //   本实例活窗条目重新断言（刷心跳）；其余一律清除（杀他实例旧态复活）
+                    if (mine.pid === process.pid && !_isStale(mine)) {
+                        mine.ts = Date.now();
+                        reg.slots[k] = mine;
+                    } else {
+                        reg.slots[k] = null;
+                    }
                 } else if (!mine && theirs) {
-                    // 仅当磁盘条目属于其他实例时才恢复（防本实例故意清空的槽位被复活）
-                    // 2026-08-16 bug: 选 none 无效、改槽位后旧槽残留——_save 合并在 einstance
-                    // 把本实例刚清空的 null 槽用磁盘旧条目填回，导致清除永不生效。
-                    // ★ 2026-08-20: 再叠加 !_isStale——死条目（pid 亡/心跳超时）绝不恢复，
-                    //   否则 A 实例释放的槽会被 B 实例内存旧态复活 → 槽位永久卡死（实锤现场）。
+                    // 仅当磁盘条目属于其他实例且未陈旧时才恢复（防本实例故意清空的槽位被复活）
+                    // 2026-08-16 bug: 选 none 无效、改槽位后旧槽残留——_save 合并把本实例
+                    // 刚清空的 null 槽用磁盘旧条目填回，导致清除永不生效。
+                    // ★ 2026-08-20: 再叠加 !_isStale——死条目（pid 亡/心跳超时）绝不恢复。
                     if (theirs.pid !== process.pid && !_isStale(theirs)) {
                         reg.slots[k] = theirs;
+                    } else {
+                        reg.slots[k] = null;
                     }
                 }
             }
@@ -142,9 +159,22 @@ function _save(): void {
     const tmp = p + '.tmp-' + process.pid; // pid 后缀防跨实例双写互踩（固定名会互相覆盖 tmp）
     try {
         fs.writeFileSync(tmp, JSON.stringify(reg, null, 1), 'utf-8');
-        fs.renameSync(tmp, p);
     } catch {
         try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+        return false;
+    }
+    // 降级链（2026-09-12）: rename 原子替换 → 目标被特殊句柄占用则 copyFile 覆盖 → 最后 unlink+rename。
+    // 旧实现 rename 一失败即静默放弃（AV/瞬时锁定）→ 释放/认领丢失却无人知晓。
+    try { fs.renameSync(tmp, p); return true; } catch { /* fallthrough */ }
+    try { fs.copyFileSync(tmp, p); try { fs.unlinkSync(tmp); } catch { /* ignore */ } return true; } catch { /* fallthrough */ }
+    try {
+        fs.unlinkSync(p);
+        fs.renameSync(tmp, p);
+        return true;
+    } catch {
+        try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+        try { console.warn('[squad] registry save failed (all write strategies exhausted)'); } catch { /* ignore */ }
+        return false;
     }
 }
 
@@ -233,16 +263,30 @@ export function claimSquad(win: BrowserWindow): string | null {
     return null; // 3 次全被抢 → 放弃（watcher 自愈会再找机会）
 }
 
-/** 窗口关闭 → 槽位回到空闲 */
+/** 窗口关闭 → 槽位回到空闲（2026-09-12 写后验证+重试: 磁盘上仍属自己 → 重写——
+ *  防 AV/瞬时锁令释放丢失 → 他实例只见鬼条目「w 被占用」） */
 export function releaseSquad(winId: number): void {
     _manualNone.delete(winId);
-    const reg = _loadFresh(); // 释放前看磁盘真相（防释放路径凭旧缓存把他人条目误清）
-    let changed = false;
-    for (const k of SQUAD_ORDER) {
-        const e = reg.slots[k];
-        if (e && e.pid === process.pid && e.winId === winId) { reg.slots[k] = null; changed = true; }
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const reg = _loadFresh(); // 释放前看磁盘真相（防释放路径凭旧缓存把他人条目误清）
+        let changed = false;
+        for (const k of SQUAD_ORDER) {
+            const e = reg.slots[k];
+            if (e && e.pid === process.pid && e.winId === winId) { reg.slots[k] = null; changed = true; }
+        }
+        if (!changed) { return; }
+        if (_save()) {
+            const after = _readDisk();
+            if (after) {
+                let still = false;
+                for (const k of SQUAD_ORDER) {
+                    const e = after.slots[k];
+                    if (e && e.pid === process.pid && e.winId === winId) { still = true; break; }
+                }
+                if (!still) { return; }
+            }
+        }
     }
-    if (changed) { _save(); }
 }
 
 /** 文件夹/标题刷新（renderer setTitle 路径）→ 更新条目 + 应用 OS 标题 */
@@ -385,6 +429,12 @@ function _onRegistryChanged(): void {
     } else {
         _cache = disk;
     }
+    // ★ 2026-09-12 陈旧清剿: 采纳外部新态后如含死条目（他实例崩溃残留 / 释放竞态鬼影）→
+    //   立即经 _save 合并落 null（合并层「陈旧即焚」），磁盘与全部实例 ≤1 个事件周期内收敛
+    for (const k of SQUAD_ORDER) {
+        const e = _cache.slots[k];
+        if (e && _isStale(e)) { _save(); break; }
+    }
     // 自愈：本进程窗口槽位纠正 + 被顶掉者自动重认领
     for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) { continue; }
@@ -405,25 +455,38 @@ function _onRegistryChanged(): void {
     broadcastSquadState();
 }
 
-/** 心跳（2026-08-20 自动公证机构）: 本实例在册活窗口刷新条目 ts（存活证明）。
+/** 心跳（2026-08-20 自动公证机构；2026-09-12 补认领收敛）: 本实例在册活窗口刷新条目 ts（存活证明）。
  *  窗口关闭但释放事件丢失/被合并复活 → 该窗口条目 ts 停止更新 → 90s 后他实例
  *  凭 _isStale 自动回收，无需任何窗口事件参与（公证机构不依赖当事人申报）。
- *  25s 防抖阈值（< poll 30s）：每次 poll 至多刷一次，自写事件零循环。 */
+ *  25s 防抖阈值（< poll 30s）：每次 poll 至多刷一次，自写事件零循环。
+ *  ★ 2026-09-12: 无槽窗口（>8 窗口 / 槽位被回收 / 认领期全占）每 tick 自动补认领空闲槽
+ *  → 任何实例释放槽位后 ≤30s 本实例自动落位（不依赖 registry 变化事件送达）。 */
 function _heartbeat(): void {
-    const reg = _load();
     const now = Date.now();
     let dirty = false;
+    {
+        const reg = _load();
+        for (const win of BrowserWindow.getAllWindows()) {
+            if (win.isDestroyed()) { continue; }
+            const slot = getSquadOf(win.id);
+            if (!slot) { continue; }
+            const e = reg.slots[slot];
+            if (e && e.pid === process.pid && e.winId === win.id && now - e.ts > 25000) {
+                e.ts = now;
+                dirty = true;
+            }
+        }
+        if (dirty) { _save(); }
+    }
+    // ★ 2026-09-12: 无槽窗口自动补认领（主动 none 除外——用户意图优先）
+    let claimed = false;
     for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) { continue; }
-        const slot = getSquadOf(win.id);
-        if (!slot) { continue; }
-        const e = reg.slots[slot];
-        if (e && e.pid === process.pid && e.winId === win.id && now - e.ts > 25000) {
-            e.ts = now;
-            dirty = true;
-        }
+        if (getSquadOf(win.id)) { continue; }
+        if (_manualNone.has(win.id)) { continue; }
+        if (claimSquad(win)) { claimed = true; }
     }
-    if (dirty) { _save(); }
+    if (claimed) { broadcastSquadState(); }
 }
 
 /** 启动跨实例监听（registerSquadIpc 时调用一次；幂等） */
@@ -445,7 +508,11 @@ function _startWatcher(): void {
             // 有事件 = watcher 活着 → 取消挂起的重建退避
             if (_watchRetry) { clearTimeout(_watchRetry.timer); _watchRetry = null; }
             const name = filename ? String(filename) : '';
-            if (name === 'squads.json' || name.startsWith('squads.json.tmp-')) {
+            // ★ 2026-09-12: name 空（ReadDirectoryChangesW 缓冲溢出时 libuv 传 null——同目录
+            //   sql.js 库/临时文件高频写易触发）→ 无法判断文件名，一律按「可能有变」调度；
+            //   _onRegistryChanged 内含 disk vs cache 逐槽比对，误跑零副作用。旧实现直接丢弃
+            //   → 漏掉 squads.json 事件 → 回收/同步迟到最长 30s（「做不到实时」根因之一）。
+            if (!name || name === 'squads.json' || name.startsWith('squads.json.tmp-')) {
                 if (_watchTimer) { clearTimeout(_watchTimer); }
                 _watchTimer = setTimeout(() => { _watchTimer = null; _onRegistryChanged(); }, 200);
             }

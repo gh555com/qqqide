@@ -399,7 +399,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     return null;
                 }
                 var friendly = resp.status === 401 ? '认证失败，请检查 Token'
-                    : resp.status === 402 ? (_serverMsg || 'ge 余额不足，请充值')
+                    : resp.status === 402 ? (_serverMsg || 'ge 余额不足，请赞助')
                         : resp.status === 429 ? '请求过于频繁，请稍后再试'
                             : ContentGateway.HttpError.isGatewayDown(resp.status)
                                 ? (_serverMsg
