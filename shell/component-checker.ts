@@ -176,6 +176,52 @@ function _recordDlFail(portableRoot: string, name: string): void {
     _writeJson(_dlLogPath(portableRoot), log);
 }
 
+// ── git 凭据助手静音 — 预置 wincred（2026-09-12）──
+
+/**
+ * 幂等自愈: 包内 etc/gitconfig 的 credential.helper 由 helper-selector（Git for Windows 出厂默认
+ * → 任何 HTTPS 凭据需求弹英文 GUI 选择器打扰用户）改为 wincred（Windows 系统凭据管理器）。
+ * 仅在值精确等于 helper-selector 时替换（用户显式选择的其它助手不动），非目标状态零写入。
+ * 覆盖三路径: 新装 / 存量升级 / 灾备重装 —— 每次启动跑一次。
+ */
+function _healGitCredentialHelper(portableRoot: string): void {
+    const def = _getDef(portableRoot, 'git');
+    if (!def) return;
+    const dir = _componentDir(portableRoot, def);
+    if (!dir) return;
+    const cfgPath = path.join(dir, 'etc', 'gitconfig');
+    let content: string;
+    try {
+        if (!fs.existsSync(cfgPath)) return;
+        content = fs.readFileSync(cfgPath, 'utf8');
+    } catch { return; }
+
+    let changed = false;
+    const lines = content.split('\n').map(line => {
+        const m = /^([ \t]*helper[ \t]*=[ \t]*)helper-selector([ \t]*)(\r?)$/.exec(line);
+        if (!m) return line;
+        changed = true;
+        return m[1] + 'wincred' + m[3];
+    });
+    if (!changed) return;
+
+    const next = lines.join('\n');
+    const tmp = cfgPath + '.tmp';
+    let ok = false;
+    try {
+        fs.writeFileSync(tmp, next, 'utf8');
+        fs.renameSync(tmp, cfgPath);
+        ok = true;
+    } catch { try { fs.unlinkSync(tmp); } catch { } }
+    if (!ok) {
+        // rename 失败降级复制替换（绝不先删目标）
+        try { fs.writeFileSync(cfgPath, next, 'utf8'); ok = true; } catch (e: any) {
+            console.log('[components] git: credential helper heal failed — ' + (e.message || e));
+        }
+    }
+    if (ok) console.log('[components] git: credential helper preset → wincred');
+}
+
 // ── 主入口 ──
 
 let _checked = false;
@@ -197,6 +243,9 @@ export function checkRank0Components(portableRoot: string): void {
     _checkAll(portableRoot, manifest, versions, versPath).then(() => {
         // After rank0 check completes, verify integrity of bundled components
         return _verifyAllBundled(portableRoot, manifest, versions, versPath);
+    }).then(() => {
+        // git 凭据助手静音（幂等自愈: 新装/存量/灾备三路径一处收敛）
+        _healGitCredentialHelper(portableRoot);
     }).then(() => {
         // After bundled verification, kick off background download of rank1 bg_download components
         _checkRank1BgDownload(portableRoot, manifest, versions, versPath);

@@ -4,15 +4,20 @@
 // ipc-fs.ts — 文件系统 IPC handlers
 // ============================================================================
 
-import { ipcMain } from 'electron';
+import { ipcMain, app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { _sn } from './ipc-state';
 import { _tlBlobPath, _gunzipSync } from './timeline-store';
 import { decodeFile, encodeFile, registerFileEncodingIpc } from './file-encoding';
+import { CacheStore } from './cache-store';
 
 const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
+
+// ★ 图标缓存（老 q3 getIconCache/setIconCache 语义：磁盘 icon_{hash}.png + mtime 校验，失败不缓存）
+const _iconMemo = new Map<string, string>();
+const _iconInflight = new Map<string, Promise<any>>();
 
 // ★ agent 日志轮转：_qqq/new_log/agent-*.log 只保留 30 天（每日最多清一次）
 let _agentLogRotateDay = '';
@@ -512,7 +517,7 @@ async function _txRecover(): Promise<void> {
     } catch { /* ignore */ }
 }
 
-export function registerFsIpc(): void {
+export function registerFsIpc(cacheStore?: CacheStore): void {
     // ★ 编码机器 IPC（encoding 查询 / setFileEncoding 固定），详 do/消除乱码
     registerFileEncodingIpc();
 
@@ -599,11 +604,154 @@ export function registerFsIpc(): void {
         }
     });
 
+    // ★ 原生文件图标（老 q3 extract_icon 引擎对齐：SHGetFileInfo 32x32 → base64 PNG）
+    //   ★ 磁盘缓存（老 icon 缓存语义：icon_{hash}.png + mtime 校验；失败不缓存防"一次失败钉死"；
+    //   同一文件并发请求 in-flight 去重）
+    ipcMain.handle('qqqide:fs:fileIcon', async (_e, p: string) => {
+        try {
+            if (!p) { return { ok: false, error: 'no_path' }; }
+            let mtime = 0;
+            try { mtime = (await fs.promises.stat(p)).mtimeMs; } catch { /* keep 0 */ }
+            const memoKey = p.toLowerCase() + '|' + Math.floor(mtime);
+            const hit = _iconMemo.get(memoKey);
+            if (hit) { return { ok: true, dataUrl: hit, cached: true }; }
+            const existing = _iconInflight.get(memoKey);
+            if (existing) { return await existing; }
+            const job = (async () => {
+                let dst: string | null = null;
+                if (cacheStore) {
+                    try {
+                        const sig = crypto.createHash('sha256').update(memoKey).digest('hex').slice(0, 16);
+                        dst = cacheStore.bucketPath('icon' + sig, '.png');
+                        if (fs.existsSync(dst)) {
+                            const buf = await fs.promises.readFile(dst);
+                            const dataUrl = 'data:image/png;base64,' + buf.toString('base64');
+                            if (_iconMemo.size > 4000) { const ks = Array.from(_iconMemo.keys()).slice(0, 2000); for (const kk of ks) { _iconMemo.delete(kk); } }
+                            _iconMemo.set(memoKey, dataUrl);
+                            return { ok: true, dataUrl, cached: true };
+                        }
+                    } catch { dst = null; }
+                }
+                const img = await app.getFileIcon(p, { size: 'normal' });   // win: 32x32
+                if (!img || img.isEmpty()) { return { ok: false, error: 'no_icon' }; }
+                let out = img;
+                try {
+                    const sz = img.getSize();
+                    if (sz.width !== 32 || sz.height !== 32) {
+                        out = img.resize({ width: 32, height: 32, quality: 'best' });
+                    }
+                } catch { /* keep original */ }
+                const png = out.toPNG();
+                if (dst) { try { await fs.promises.writeFile(dst, png); } catch { /* ignore */ } }
+                const dataUrl = 'data:image/png;base64,' + png.toString('base64');
+                if (_iconMemo.size > 4000) { const ks = Array.from(_iconMemo.keys()).slice(0, 2000); for (const kk of ks) { _iconMemo.delete(kk); } }
+                _iconMemo.set(memoKey, dataUrl);
+                return { ok: true, dataUrl };
+            })();
+            _iconInflight.set(memoKey, job);
+            try { return await job; } finally { _iconInflight.delete(memoKey); }
+        } catch (e: any) {
+            return { ok: false, error: (e && e.message) || 'icon_failed' };
+        }
+    });
+
     ipcMain.handle('qqqide:fs:stat', async (_e, p: string) => {
         try {
             const s = await fs.promises.stat(p);
-            return { size: s.size, mtimeMs: s.mtimeMs, isDir: s.isDirectory(), isFile: s.isFile() };
+            // birthtimeMs 追加：codelens 信息行 tooltip「创建/修改」用（老 codelens 同口径；纯增字段）
+            return { size: s.size, mtimeMs: s.mtimeMs, birthtimeMs: s.birthtimeMs, isDir: s.isDirectory(), isFile: s.isFile() };
         } catch { return null; }
+    });
+
+    // ★ 文件夹体积汇总（codelens「🗀qqq」按钮：体积 + 悬停摘要）
+    //   老 q3 getFolderInfoJS 语义：递归 total_size + file_count_root + ext_stats（扩展名无点）
+    //   缓存 + 目录 mtime 校验（变了才重扫）+ in-flight 去重 + 15s 冷却 + 双上限保护
+    const _dirSummaryCache = new Map<string, { mtimeMs: number; ts: number; data: any }>();
+    const _dirSummaryInflight = new Map<string, Promise<any>>();
+    const DIR_SUMMARY_COOLDOWN_MS = 15000;
+    const DIR_SUMMARY_MAX_FILES = 50000;
+    const DIR_SUMMARY_MAX_MS = 8000;
+
+    async function _scanDirSummary(root: string) {
+        const started = Date.now();
+        let totalSize = 0;
+        let fileCount = 0;
+        let truncated = false;
+        const extStats: Record<string, number> = {};
+        const queue: string[] = [root];
+        while (queue.length > 0) {
+            if (fileCount >= DIR_SUMMARY_MAX_FILES || (Date.now() - started) > DIR_SUMMARY_MAX_MS) { truncated = true; break; }
+            const cur = queue.shift() as string;
+            let entries: fs.Dirent[];
+            try { entries = await fs.promises.readdir(cur, { withFileTypes: true }); } catch { continue; }
+            await Promise.all(entries.map(async (entry) => {
+                const full = path.join(cur, entry.name);
+                if (entry.isDirectory()) { queue.push(full); return; }
+                if (!entry.isFile()) return;
+                try {
+                    const st = await fs.promises.stat(full);
+                    totalSize += st.size;
+                    fileCount++;
+                    const ext = path.extname(entry.name).toLowerCase().replace('.', '');
+                    extStats[ext] = (extStats[ext] || 0) + 1;
+                } catch { /* skip */ }
+            }));
+        }
+        return { ok: true, total_size: totalSize, file_count_root: fileCount, ext_stats: extStats, truncated };
+    }
+
+    function _refreshDirSummary(dirPath: string): Promise<any> {
+        const inflight = _dirSummaryInflight.get(dirPath);
+        if (inflight) return inflight;
+        const job = (async () => {
+            let mtimeMs = 0;
+            try { mtimeMs = (await fs.promises.stat(dirPath)).mtimeMs; } catch { /* keep 0 */ }
+            const data = await _scanDirSummary(dirPath);
+            _dirSummaryCache.set(dirPath, { mtimeMs, ts: Date.now(), data });
+            if (_dirSummaryCache.size > 400) {
+                const ks = Array.from(_dirSummaryCache.keys()).slice(0, 200);
+                for (const k of ks) _dirSummaryCache.delete(k);
+            }
+            return data;
+        })();
+        _dirSummaryInflight.set(dirPath, job);
+        job.then(() => { _dirSummaryInflight.delete(dirPath); }, () => { _dirSummaryInflight.delete(dirPath); });
+        return job;
+    }
+
+    ipcMain.handle('qqqide:fs:dirSummary', async (_e, dirPath: string) => {
+        try {
+            if (!dirPath) return { ok: false, error: 'no_path' };
+            let mtimeMs = 0;
+            try { mtimeMs = (await fs.promises.stat(dirPath)).mtimeMs; } catch { return { ok: false, error: 'not_found' }; }
+            const hit = _dirSummaryCache.get(dirPath);
+            if (hit && hit.mtimeMs === mtimeMs && (Date.now() - hit.ts) < DIR_SUMMARY_COOLDOWN_MS) return hit.data;
+            if (hit) {
+                // 有旧值：立即给旧值 + 后台重扫（不阻塞 UI；重扫完写缓存供下次命中）
+                _refreshDirSummary(dirPath).catch(() => { /* */ });
+                return hit.data;
+            }
+            return await _refreshDirSummary(dirPath);
+        } catch (e: any) {
+            return { ok: false, error: (e && e.message) || 'scan_failed' };
+        }
+    });
+
+    // ★ 头部字节读取（文本探针 isPlainTextFile 用：只读前 N 字节 → base64）
+    //   老项目语义：200MB 文本文件也只读 8KB 头部判定，绝不整文件读入
+    ipcMain.handle('qqqide:fs:readHead', async (_e, p: string, maxBytes?: number) => {
+        try {
+            if (!p) { return { ok: false, error: 'no_path' }; }
+            const len = Math.max(1, Math.min(65536, Math.floor(Number(maxBytes)) || 8192));
+            const fh = await fs.promises.open(p, 'r');
+            try {
+                const buf = Buffer.alloc(len);
+                const r = await fh.read(buf, 0, len, 0);
+                return { ok: true, base64: buf.slice(0, r.bytesRead).toString('base64'), bytesRead: r.bytesRead };
+            } finally { await fh.close(); }
+        } catch (e: any) {
+            return { ok: false, error: (e && e.message) || 'read_head_failed' };
+        }
     });
 
     ipcMain.handle('qqqide:fs:mkdir', async (_e, p: string) => {

@@ -105,6 +105,70 @@ function ebEnv() {
   };
 }
 
+// ── mac bundle identity pass ─────────────────────────────────────────────
+// Rename the Electron main binary + 4 helper apps and patch their Info.plist
+// (executable/name/identifier/version). Mirrors electron-builder's rename
+// semantics — Electron resolves helpers by the main bundle name, so main +
+// helpers must be renamed consistently. Idempotent.
+function setPlistValue(text, key, value) {
+  const re = new RegExp('(<key>' + key + '</key>\\s*<string>)[^<]*(</string>)');
+  if (re.test(text)) { return text.replace(re, '$1' + value + '$2'); }
+  return text;
+}
+
+function fixMacBundle(unpacked) {
+  const appDir = path.join(unpacked, 'qqqide.app');
+  if (!fs.existsSync(appDir)) { return; }
+  const contents = path.join(appDir, 'Contents');
+  const newName = 'qqqide';
+  const display = 'qd (qqqide)';
+
+  // ── 1) main binary + plist ──
+  const binOld = path.join(contents, 'MacOS', 'Electron');
+  const binNew = path.join(contents, 'MacOS', newName);
+  if (fs.existsSync(binOld) && !fs.existsSync(binNew)) {
+    fs.renameSync(binOld, binNew);
+    console.log('[pack] mac: renamed MacOS/Electron -> MacOS/' + newName);
+  }
+  const mainPlist = path.join(contents, 'Info.plist');
+  if (fs.existsSync(mainPlist)) {
+    let t = fs.readFileSync(mainPlist, 'utf8');
+    t = setPlistValue(t, 'CFBundleExecutable', newName);
+    t = setPlistValue(t, 'CFBundleName', newName);
+    t = setPlistValue(t, 'CFBundleDisplayName', display);
+    t = setPlistValue(t, 'CFBundleIdentifier', 'com.gh555.qqqide');
+    t = setPlistValue(t, 'CFBundleShortVersionString', APP_VERSION);
+    t = setPlistValue(t, 'CFBundleVersion', APP_VERSION);
+    if (target.endsWith('arm64')) { t = setPlistValue(t, 'LSMinimumSystemVersion', '11.0'); }
+    fs.writeFileSync(mainPlist, t, 'utf8');
+    console.log('[pack] mac: patched main Info.plist (exe/name/id/version)');
+  }
+
+  // ── 2) helper apps (plain / (Renderer) / (GPU) / (Plugin)) ──
+  const fw = path.join(contents, 'Frameworks');
+  if (fs.existsSync(fw)) {
+    for (const d of fs.readdirSync(fw)) {
+      if (!/^Electron Helper.*\.app$/.test(d)) { continue; }
+      const suffix = d.replace(/^Electron Helper/, '').replace(/\.app$/, '');
+      const newBase = 'qqqide Helper' + suffix;
+      const dst = path.join(fw, newBase + '.app');
+      fs.renameSync(path.join(fw, d), dst);
+      const hBin = path.join(dst, 'Contents', 'MacOS', 'Electron Helper' + suffix);
+      if (fs.existsSync(hBin)) { fs.renameSync(hBin, path.join(dst, 'Contents', 'MacOS', newBase)); }
+      const hPl = path.join(dst, 'Contents', 'Info.plist');
+      if (fs.existsSync(hPl)) {
+        let t = fs.readFileSync(hPl, 'utf8');
+        t = setPlistValue(t, 'CFBundleName', newBase);
+        t = setPlistValue(t, 'CFBundleDisplayName', newBase);
+        const idSuffix = suffix === ' (GPU)' ? '.GPU' : suffix === ' (Plugin)' ? '.plugin' : suffix === ' (Renderer)' ? '.Renderer' : '';
+        t = setPlistValue(t, 'CFBundleIdentifier', 'com.gh555.qqqide.helper' + idSuffix);
+        fs.writeFileSync(hPl, t, 'utf8');
+      }
+      console.log('[pack] mac: helper ->', newBase + '.app');
+    }
+  }
+}
+
 // Manual pure-prebuilt path: skip electron-builder entirely and assemble from
 // the prebuilt electron zip + a fresh copy of our app sources. Used when
 // electron-builder refuses to cross-build (e.g. mac on win host).
@@ -128,6 +192,7 @@ async function manualAssemble() {
         fs.renameSync(path.join(unpacked, a), path.join(unpacked, 'qqqide.app'));
       }
     }
+    fixMacBundle(unpacked);
   } else if (target.startsWith('linux-')) {
     const src = path.join(unpacked, 'electron');
     const dst = path.join(unpacked, 'qqqide');
@@ -146,7 +211,19 @@ async function manualAssemble() {
   }
   cpFile('shell-out');
   cpFile('shell/boot-fallback.html');
-  cpFile('engines');
+  // ★ mac target: skip win python/git bulk here — swapEnginesForMac replaces
+  //   them with the mac trees anyway (saves ~450MB of pointless copying).
+  if (target.startsWith('mac-')) {
+    const engSrc = path.join(ROOT, 'engines');
+    const engDst = path.join(appDst, 'engines');
+    fs.mkdirSync(engDst, { recursive: true });
+    for (const item of fs.readdirSync(engSrc)) {
+      if (item === 'python' || item === 'git') { continue; }
+      fs.cpSync(path.join(engSrc, item), path.join(engDst, item), { recursive: true });
+    }
+  } else {
+    cpFile('engines');
+  }
   cpFile('node_modules/monaco-editor/min');
   cpFile('package.json');
   // ★ webapp: bundle server-app/ so first boot is instant + offline-capable
@@ -304,6 +381,14 @@ async function fetchElectronPrebuilt() {
 
 function unzipTo(zipPath, dest) {
   fs.mkdirSync(dest, { recursive: true });
+  // ★ mac bundles (2026-09-14): MUST extract symlink-aware — PowerShell
+  //   Expand-Archive materializes unix symlinks (Electron Framework
+  //   Versions/Current, top-level framework links...) as tiny text files →
+  //   the .app is dead on macOS. Python worker recreates real symlinks.
+  if (target.startsWith('mac-')) {
+    run('python', [path.join(ROOT, 'shell-build', '_unzip_mac.py'), zipPath, dest]);
+    return;
+  }
   // try powershell on win, unzip elsewhere
   if (process.platform === 'win32') {
     run('powershell', ['-NoProfile', '-Command',
@@ -872,6 +957,7 @@ function pruneEngines(unpacked) {
       if (!fs.existsSync(compDir)) continue;
       for (const rel of def.prune) {
         const p = path.join(compDir, rel);
+        if (!fs.existsSync(p)) { continue; }
         try {
           fs.rmSync(p, { recursive: true, force: true });
           console.log('[pack] pruned ' + name + '/' + rel);
@@ -965,6 +1051,110 @@ function pruneEngines(unpacked) {
   }
   if (stripped > 0) {
     console.log('[pack] pruned non-target engines (' + Math.round(stripped / 1024 / 1024) + 'MB)');
+  }
+}
+
+// 3.9b) ★ mac engine platform swap (2026-09-14): a mac package must ship mac
+//   binaries for python/git/ripgrep/ghrun — dev engines/ hold win (+ a stray
+//   linux) builds. python/git come from the cross-build cache
+//   (shell-build/build-mac-cross.py), ripgrep + ghrun/watchdog already live
+//   in-repo. Refuse to pack when any is missing (half-swapped package is
+//   worse than no package).
+function swapEnginesForMac(unpacked) {
+  if (!target.startsWith('mac-')) { return; }
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir) { throw new Error('[pack] mac: app resources dir not found'); }
+  const engDir = path.join(appDir, 'engines');
+  const platKey = target.endsWith('arm64') ? 'darwin-arm64' : 'darwin-x64';
+  const arch = target.endsWith('arm64') ? 'arm64' : 'x64';
+  const crossRoot = path.join(ROOT, 'dist-pack', 'cross');
+  const need = [];
+
+  // runtime state files must never ship (mirrors win injectLauncher prune)
+  for (const f of ['.versions.json', '.downloads.json']) {
+    const p = path.join(engDir, f);
+    if (fs.existsSync(p)) { fs.rmSync(p, { force: true }); console.log('[pack] mac: pruned runtime state engines/' + f); }
+  }
+
+  // ── python: win embed -> pb-s mac tree (cross cache) ──
+  {
+    const dst = path.join(engDir, 'python');
+    const src = path.join(crossRoot, 'python-' + platKey);
+    const zipAlt = path.join(ROOT, 'dist-pack', 'python-' + platKey + '.zip');
+    fs.rmSync(dst, { recursive: true, force: true });
+    if (fs.existsSync(src)) {
+      fs.cpSync(src, dst, { recursive: true, verbatimSymlinks: true });
+      console.log('[pack] mac: engines/python <- cross cache (' + platKey + ')');
+    } else if (fs.existsSync(zipAlt)) {
+      run('python', [path.join(ROOT, 'shell-build', '_unzip_mac.py'), zipAlt, dst]);
+      console.log('[pack] mac: engines/python <- ' + path.basename(zipAlt));
+    } else {
+      need.push('python — run: python shell-build/build-mac-cross.py python');
+    }
+  }
+
+  // ── git: win PortableGit -> mac build (cross cache) ──
+  {
+    const dst = path.join(engDir, 'git');
+    const src = path.join(crossRoot, 'git-' + platKey);
+    fs.rmSync(dst, { recursive: true, force: true });
+    if (fs.existsSync(src)) {
+      fs.cpSync(src, dst, { recursive: true, verbatimSymlinks: true });
+      console.log('[pack] mac: engines/git <- cross cache (' + platKey + ')');
+    } else {
+      need.push('git — run: python shell-build/build-mac-cross.py git');
+    }
+  }
+
+  // ── ripgrep: pick the mac binary, drop everything else ──
+  {
+    const dst = path.join(engDir, 'ripgrep');
+    const srcBin = path.join(dst, 'rg-mac-' + arch);
+    if (fs.existsSync(srcBin)) {
+      const keep = path.join(dst, 'rg');
+      if (fs.existsSync(keep)) { fs.rmSync(keep, { force: true }); }
+      fs.renameSync(srcBin, keep);
+      for (const f of fs.readdirSync(dst)) {
+        if (f !== 'rg' && !f.startsWith('.')) { fs.rmSync(path.join(dst, f), { recursive: true, force: true }); }
+      }
+      console.log('[pack] mac: engines/ripgrep -> rg (' + arch + ', mach-o)');
+    } else {
+      need.push('ripgrep — missing engines/ripgrep/rg-mac-' + arch);
+    }
+  }
+
+  // ── ghrun + watchdog: mach-o from engines/ci ──
+  {
+    for (const bin of ['ghrun', 'watchdog']) {
+      const src = path.join(ROOT, 'engines', 'ci', 'ghrun-mac-' + arch, bin);
+      const dst = path.join(engDir, bin);
+      if (fs.existsSync(src)) {
+        if (fs.existsSync(dst)) { fs.rmSync(dst, { force: true }); }
+        fs.cpSync(src, dst);
+        console.log('[pack] mac: engines/' + bin + ' <- ci (' + arch + ')');
+      } else {
+        need.push(bin + ' — missing ' + src);
+      }
+    }
+  }
+
+  // ── 残留清扫: host-python pyc（win 3.8 编译产物，毒化 mac 树）+ vc_runtime（win 专属组件，mac 恒为垃圾）──
+  {
+    let junk = 0;
+    for (const j of [path.join(engDir, '__pycache__'), path.join(appDir, 'shell-out', '__pycache__')]) {
+      if (fs.existsSync(j)) { fs.rmSync(j, { recursive: true, force: true }); junk++; }
+    }
+    const vcDir = path.join(engDir, 'vc_runtime');
+    if (fs.existsSync(vcDir)) {
+      fs.rmSync(vcDir, { recursive: true, force: true });
+      console.log('[pack] mac: pruned engines/vc_runtime (win-only component)');
+      junk++;
+    }
+    if (junk) { console.log('[pack] mac: junk cleanup (' + junk + ' items)'); }
+  }
+
+  if (need.length) {
+    throw new Error('[pack] FATAL: mac package is missing cross-platform engines:\n  - ' + need.join('\n  - '));
   }
 }
 
@@ -1185,6 +1375,18 @@ function packDir(unpacked, flatOnly) {
   if (fs.existsSync(out)) { fs.rmSync(out); }
 
   const sz7 = find7z();
+
+  // ★ .tar.gz targets (mac/linux): ALWAYS single-layer tar via the mode-aware
+  //   worker. Never the win two-layer path (r/7zCon.sfx = Windows launcher
+  //   format), and never the old inline zipfile template (it wrote a ZIP with
+  //   a .tar.gz name — unreadable by tar on macOS). Worker sniffing: Mach-O /
+  //   ELF / shebang → 0755; symlinks preserved as real tar symlink entries.
+  if (cfg.tarExt === '.tar.gz') {
+    console.log('[pack] compressing (tar.gz mode-aware)', path.basename(unpacked), '->', out);
+    run('python', [path.join(ROOT, 'shell-build', '_tar_worker.py'), unpacked, out]);
+    return;
+  }
+
   if (flatOnly || !sz7 || !isWin) {
     // single-layer (flat or fallback)
     console.log('[pack] compressing (single-layer deflate mx=9)', path.basename(unpacked), '->', out);
@@ -1358,6 +1560,9 @@ function packSfx(unpacked) {
   injectVcRuntime(unpacked);
   pruneElectron(unpacked);
   pruneNodeModules(unpacked);
+  // ★ swap 必须先于 pruneEngines：旧 ripgrep 清扫逻辑以「mac 二进制已叫 rg」
+  //   为前提，会把 rg-mac-arm64 当垃圾删掉；swap 负责把 mac 二进制正确落位。
+  swapEnginesForMac(unpacked);
   pruneEngines(unpacked);
   pruneServerApp(unpacked);
   pruneShellOut(unpacked);

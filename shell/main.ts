@@ -95,7 +95,18 @@ app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
 // ★ CDP devtools capture: 克隆 DevTools 另存为 100% 输出（Log.entryAdded）
-app.commandLine.appendSwitch('remote-debugging-port', '8315');
+//   dev 多实例并存（dev 窗口 + 绿色包）时 8315 被占 → 后启动实例调试口静默失效（bind 失败不报错）。
+//   dev（非打包）自动右移到首个空闲端口；打包版恒 8315 原样。
+let _cdpPort = '8315';
+if (!app.isPackaged) {
+    try {
+        const _ns = require('child_process').execSync('netstat -ano', { encoding: 'utf8', timeout: 3000, windowsHide: true });
+        for (let _p = 8315; _p <= 8324; _p++) {
+            if (!new RegExp(':' + _p + '(\\s|$)').test(_ns)) { _cdpPort = String(_p); break; }
+        }
+    } catch (_) { /* 探测失败 → 保持 8315 */ }
+}
+app.commandLine.appendSwitch('remote-debugging-port', _cdpPort);
 
 // ── 自定义协议 qqqide:// — 浏览器登录成功后 push token 回 IDE（2026-06-29） ──
 // dev 模式必须传 app path（否则 Electron 启动默认 app→把 URL 当模块路径→炸）
@@ -265,7 +276,7 @@ stateStore.on('changed', (msg: any) => {
 
 // ── 注册所有 IPC ──
 function registerAllIpc(): void {
-    registerFsIpc();
+    registerFsIpc(cacheStore);
     registerAiToolsIpc();
     registerSearchIpc();
     registerEditIpc();

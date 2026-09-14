@@ -18,10 +18,10 @@
   --text-bright:    #002b36;
   --border:         #d6ccb4;
   --border-light:   #e4dcc8;
-  --accent:         #268bd2;
-  --accent-soft:    #dce8f5;
-  --accent-glow:    rgba(38,139,210,0.12);
-  --bubble-self:    linear-gradient(155deg,#dae6f2 0%,#e2ecf6 100%);
+  --accent:         #b58900;
+  --accent-soft:    #f0e5c2;
+  --accent-glow:    rgba(181,137,0,0.12);
+  --bubble-self:    linear-gradient(155deg,#f4ecca 0%,#eee0b4 100%);
   --bubble-other:   #ffffff;
   --bubble-shadow:  0 1px 2px rgba(0,0,0,0.05);
   --red:            #dc322f;
@@ -29,33 +29,41 @@
   --orange:         #cb4b16;
   --scrollbar:      #d3cbb7;
   --scrollbar-hov:  #b7a98a;
-  --avatar-self:    #268bd2;
+  --avatar-self:    #b58900;
   --avatar-other:   #859900;
   --gold:           #b58900;   /* Solarized yellow — 传统暗金 */
   --gold-deep:      #8a6d1a;
 }
 [data-theme="dark"] {
-  --bg:             #001a20;
-  --bg-sidebar:     #00212a;
-  --bg-chat:        #001a20;
-  --bg-input:       #00171c;
-  --text:           #839496;
-  --text-dim:        #586e75;
+  --bg:             #1e1e1e;
+  --bg-sidebar:     #242424;
+  --bg-chat:        #1e1e1e;
+  --bg-input:       #2a2a2a;
+  --text:           #c8c4bc;
+  --text-dim:       #807c74;
   --text-bright:    #eee8d5;
-  --border:         #1a424a;
-  --border-light:   #153740;
-  --accent:         #268bd2;
-  --accent-soft:    #0a2a35;
-  --accent-glow:    rgba(38,139,210,0.18);
-  --bubble-self:    linear-gradient(155deg,#152f3a 0%,#1a3642 100%);
-  --bubble-other:   #073642;
-  --bubble-shadow:  0 1px 2px rgba(0,0,0,0.25);
-  --scrollbar:      #1a424a;
-  --scrollbar-hov:  #2a525a;
-  --gold:           #b58900;
+  --border:         #333333;
+  --border-light:   #2a2a2a;
+  --accent:         #c9a030;
+  --accent-soft:    #3a3018;
+  --accent-glow:    rgba(201,160,48,0.14);
+  --bubble-self:    linear-gradient(155deg,#3a3018 0%,#332a14 100%);
+  --bubble-other:   #2a2a2a;
+  --bubble-shadow:  0 1px 2px rgba(0,0,0,0.35);
+  --red:            #e04040;
+  --green:          #7a9a40;
+  --orange:         #d49830;
+  --scrollbar:      #3a3a3a;
+  --scrollbar-hov:  #4a4a4a;
+  --avatar-self:    #c9a030;
+  --avatar-other:   #7a9a40;
+  --gold:           #c9a030;
   --gold-deep:      #8a6d1a;
 }
 * { box-sizing:border-box;margin:0;padding:0; }
+::selection { background:#ffd301;color:#000; }
+[data-theme="dark"]::selection { background:#6a5a10;color:#f0e8d8; }
+:focus-visible { outline-color:var(--accent); }
 html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;font-size:13px;color:var(--text);background:var(--bg);overflow:hidden; }
 
 #app { display:flex;height:100%; }
@@ -213,39 +221,41 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   padding:0 4px;user-select:none;
 }
 
-/* ─── bed 入口卡片（sidebar 顶部，2026-09-01）─── */
+/* ─── bed 入口卡片（sidebar 顶部，2026-09-01；2×2 布局 2026-09-14）─── */
 #bed-entry {
-  margin:10px 10px 2px;padding:9px 11px;
+  margin:10px 10px 2px;padding:8px 12px;
   border:1px solid var(--border);border-radius:10px;
   background:var(--bg-input);cursor:pointer;
-  display:flex;align-items:center;gap:9px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
   transition:border-color 0.15s,box-shadow 0.15s;
 }
 #bed-entry:hover { border-color:var(--gold);box-shadow:0 0 0 3px rgba(181,137,0,0.12); }
+#bed-left { display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex-shrink:0; }
+#bed-title { font-size:12px;font-weight:700;color:var(--text-bright);line-height:1.1; }
 #bed-icon {
-  width:30px;height:30px;border-radius:8px;flex-shrink:0;
+  width:26px;height:26px;border-radius:7px;
   background:linear-gradient(155deg,var(--gold) 0%,var(--gold-deep) 100%);
-  color:#fff;font-size:15px;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center;
 }
-#bed-body { flex:1;min-width:0; }
-#bed-title { font-size:12px;font-weight:700;color:var(--text-bright); }
-#bed-stats {
-  font-size:10px;color:var(--text-dim);margin-top:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-#bed-entry.loading #bed-stats::after { content:'…'; }
+#bed-body { display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:0; }
+#bed-files { font-size:11px;font-weight:600;color:var(--text);white-space:nowrap; }
+#bed-size { font-size:10px;color:var(--text-dim);white-space:nowrap; }
 
-/* ─── 附件条（键入区上方）─── */
+/* ─── 附件条（键入区上方；批量粘贴 + 逐文件进度，2026-09-14 重写）─── */
 #attach-bar {
   display:none;padding:0 4px 8px;gap:6px;flex-wrap:wrap;
+  max-height:132px;overflow-y:auto;
 }
 #attach-bar.show { display:flex; }
 .attach-chip {
+  position:relative;overflow:hidden;
   display:flex;align-items:center;gap:6px;
   border:1px solid var(--border);border-radius:8px;
-  background:var(--bg-input);padding:4px 6px 4px 4px;
-  max-width:200px;font-size:11px;color:var(--text);
+  background:var(--bg-input);padding:4px 6px 6px 4px;
+  max-width:210px;font-size:11px;color:var(--text);
 }
+.attach-chip.failed { border-color:var(--red); }
+.attach-chip.done { border-color:var(--green); }
 .attach-chip img.thumb {
   width:34px;height:34px;border-radius:6px;object-fit:cover;
   background:var(--bg-chat);flex-shrink:0;
@@ -257,28 +267,34 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 }
 .attach-chip .chip-meta { min-width:0; }
 .attach-chip .chip-name {
-  max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:118px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   color:var(--text-bright);font-weight:600;
 }
 .attach-chip .chip-size { font-size:9px;color:var(--text-dim); }
+.attach-chip.failed .chip-size { color:var(--red); }
+.attach-chip .chip-bar {
+  position:absolute;left:0;right:0;bottom:0;height:3px;
+  background:var(--border-light);display:none;
+}
+.attach-chip.uploading .chip-bar { display:block; }
+.attach-chip .chip-bar-in {
+  height:100%;width:0;background:var(--accent);
+  transition:width 0.15s linear;
+}
 .attach-chip .chip-x {
   flex-shrink:0;border:none;background:transparent;color:var(--text-dim);
-  cursor:pointer;font-size:13px;line-height:1;padding:2px;border-radius:4px;
+  font-size:13px;line-height:1;padding:2px;border-radius:4px;
 }
 .attach-chip .chip-x:hover { color:var(--red);background:var(--accent-glow); }
-#attach-btn {
-  flex-shrink:0;width:40px;height:40px;border:1px solid var(--border);border-radius:50%;
-  background:var(--bg-input);color:var(--gold);font-size:16px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:all 0.15s;
-}
-#attach-btn:hover { border-color:var(--gold);background:var(--accent-glow); }
-#attach-btn:disabled { opacity:0.35;cursor:default; }
+
+/* ─── 昵称旁电话：中间 **** 微型化（≤2 空格宽，2026-09-14）─── */
+.peer-phone { font-size:10px;font-weight:400;color:var(--text-dim);margin-left:3px;white-space:nowrap; }
+.ph-mask { font-style:normal;font-size:7px;letter-spacing:-1px;opacity:0.9;vertical-align:1px;margin:0 -0.5px; }
 
 /* ─── 消息内附件渲染 ─── */
 .msg-attach {
   display:flex;flex-direction:column;gap:6px;margin-bottom:6px;
-  max-width:280px;
+  max-width:320px;
 }
 .msg-row.self .msg-attach { align-items:flex-end; }
 .msg-attach img {
@@ -290,14 +306,21 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   display:flex;align-items:center;gap:8px;
   padding:7px 10px;border:1px solid var(--border);border-radius:9px;
   background:var(--bg-input);text-decoration:none;color:var(--text);
-  max-width:280px;transition:border-color 0.12s;
+  max-width:320px;transition:border-color 0.12s;cursor:pointer;
 }
 .attach-file:hover { border-color:var(--accent); }
+/* ─── 附件四小链接（save / save as / open / Roam，2026-09-14）─── */
+.att-item { display:flex;flex-direction:column;gap:3px;min-width:0;align-items:flex-start; }
+.msg-row.self .att-item { align-items:flex-end; }
+.att-acts { display:flex;gap:9px;justify-content:flex-end;font-size:10px;line-height:1;white-space:nowrap; }
+.attach-file .att-acts { margin-left:auto;flex-shrink:0; }
+.att-acts a { color:var(--text-dim);cursor:pointer;text-decoration:none; }
+.att-acts a:hover { color:var(--accent);text-decoration:underline; }
 .attach-file .af-ic { font-size:17px;flex-shrink:0; }
 .attach-file .af-meta { min-width:0; }
 .attach-file .af-name {
   font-size:12px;font-weight:600;color:var(--text-bright);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;
 }
 .attach-file .af-size { font-size:10px;color:var(--text-dim); }
 .attach-dead {
@@ -306,6 +329,22 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   color:var(--text-dim);font-size:11px;background:var(--bg-input);
 }
 .attach-dead .ad-ic { font-size:14px; }
+
+/* 图片灯箱（2026-09-14：点击图片 = 本面板查看 + 保存，不再甩外部浏览器） */
+#img-lb {
+  position:fixed;inset:0;z-index:9999;display:none;
+  align-items:center;justify-content:center;flex-direction:column;
+  background:rgba(0,0,0,0.78);
+}
+#img-lb.show { display:flex; }
+#img-lb img { max-width:92%;max-height:86%;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);background:#111; }
+#img-lb-bar { margin-top:14px;display:flex;gap:16px;align-items:center; }
+#img-lb-bar span {
+  cursor:pointer;font-size:12px;color:#eee;padding:6px 14px;
+  border:1px solid rgba(255,255,255,.25);border-radius:16px;background:rgba(255,255,255,.08);
+  user-select:none;
+}
+#img-lb-bar span:hover { background:rgba(255,255,255,.2); }
 
 /* Input area */
 #input-area {
@@ -443,12 +482,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 <div id="app">
   <!-- ═══ SIDEBAR ═══ -->
   <div id="sidebar">
-    <!-- bed 入口：文件数 / 占用 / 累计消费 → 点击打开 bed（folder=inbox） -->
+    <!-- bed 入口 2×2（2026-09-14）：左 = bed + 箱子图标；右 = 文件数 / 占用（消费入 tooltip）→ 点击打开 bed（folder=inbox） -->
     <div id="bed-entry" title="打开 bed 我的文件">
-      <div id="bed-icon">📦</div>
-      <div id="bed-body">
+      <div id="bed-left">
         <div id="bed-title">bed</div>
-        <div id="bed-stats">加载中…</div>
+        <div id="bed-icon">📦</div>
+      </div>
+      <div id="bed-body">
+        <div id="bed-files">加载中…</div>
+        <div id="bed-size"></div>
       </div>
     </div>
     <div id="sidebar-search">
@@ -499,11 +541,19 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     <div id="input-area">
       <div id="attach-bar"></div>
       <div id="input-row">
-        <textarea id="msg-input" placeholder="键入消息… (Enter 发送，Shift+Enter 换行)" maxlength="2000" rows="1"></textarea>
-        <button id="attach-btn" title="添加附件（图片/任意文件，自动上传 bed）">📎</button>
+        <textarea id="msg-input" placeholder="键入消息… (Enter 发送，Shift+Enter 换行；文件直接 Ctrl+V 粘贴，或拖入窗口)" maxlength="2000" rows="1"></textarea>
         <button id="send-btn" title="发送 (Enter)">▶</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- 图片灯箱（点击图片 = 本面板查看；保存走下载机器） -->
+<div id="img-lb">
+  <img id="img-lb-img" alt="">
+  <div id="img-lb-bar">
+    <span id="img-lb-dl" title="保存图片（Shift+点击 = 另存为）">⬇ 保存</span>
+    <span id="img-lb-close" title="关闭 (Esc)">✕</span>
   </div>
 </div>
 
@@ -527,8 +577,13 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   var _bgPollTimer = null;
   var _loadingMore = false;      // 历史分页加载中（防重复点击）
   var _noMoreOld = {};           // peerID → 已翻到最早，不再显示「加载更早」
-  var _pendingFiles = [];        // 待发送附件 [{file, name, size, mime, url(缩略图objectURL)}]——先传后发（bed 1ge/10MB）
+  // 待发送附件 — per-peer 独立（切会话不串不残留，2026-09-14 重写）
+  // chip = {id, file, name, size, loaded, mime, url(缩略图objectURL), status: pending|uploading|done|failed, att(上传成功结果), err}
+  var _pendingByPeer = {};       // peerKey → [chip]（先传后发：发送时逐文件上传 bed 1ge/10MB）
   var _sending = false;          // 附件上传+发送中（防 Enter 重入）
+  var _sendCtl = null;           // 当前上传会话 {peer, canceled, failed, active, xhrs[], t0, phase, taskId}
+  var _chipSeq = 0;
+  var _doerPhoneMask = '';       // 自己手机号（JWT payload.phone 脱敏格式 158****8204，自投拦截用）
 
   var $convList   = document.getElementById('conv-list');
   var $chatHeader = document.getElementById('chat-header');
@@ -550,10 +605,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   var $modalBody  = document.getElementById('modal-body');
   var $modalOk    = document.getElementById('modal-ok');
   var $modalCancel= document.getElementById('modal-cancel');
-  var $attachBtn  = document.getElementById('attach-btn');
   var $attachBar  = document.getElementById('attach-bar');
   var $bedEntry   = document.getElementById('bed-entry');
-  var $bedStats   = document.getElementById('bed-stats');
+  var $bedFiles   = document.getElementById('bed-files');
+  var $bedSize    = document.getElementById('bed-size');
 
   // ═══ 逐字回退（唯一真理机器接管 Ctrl+Z/Y，AI 面板同款）═══
   if (window.qqqCharUndo && typeof window.qqqCharUndo.attach === 'function') {
@@ -661,20 +716,44 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     } catch(_) {}
   }
 
-  // ═══ THEME ═══
-  function syncTheme() {
+  // ═══ THEME（2026-09-14 重写：父窗口直读 + MutationObserver + qqqide-theme-change 广播 三路同步）═══
+  // 旧版只监听 'theme-change' 消息（无人发送）→ IDE 切暗色永不生效；现对齐 conv/search 同款机制
+  function applyTheme(dark) {
+    if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+  }
+  function readParentDark() {
     try {
-      var d = parent.document.documentElement;
-      var theme = d.getAttribute('data-theme');
-      if (theme) document.documentElement.setAttribute('data-theme', theme);
+      var el = parent.document.documentElement;
+      if (el.getAttribute('data-theme') === 'dark') return true;
+      if (el.classList && el.classList.contains('dark')) return true;
+      return false;   // 能读到父文档 → 权威判定：无 dark 标记即亮色
     } catch(_) {}
+    try {
+      if (parent.qqqideTheme && typeof parent.qqqideTheme.isDark === 'function') return !!parent.qqqideTheme.isDark();
+    } catch(_) {}
+    return null;      // 无法判定（跨源）→ 交由 request 回包/广播驱动
+  }
+  function syncTheme() {
+    var d = readParentDark();
+    if (d !== null) applyTheme(d);
   }
   syncTheme();
+  try {
+    new MutationObserver(syncTheme).observe(parent.document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+  } catch(_) {}
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'theme-change') {
-      document.documentElement.setAttribute('data-theme', e.data.theme);
+    var d = e.data || {};
+    if (d.type === 'qqqide-theme-change') {          // 标准广播（qqqide-theme.js / gaea-host.js）
+      if (typeof d.dark === 'boolean') applyTheme(d.dark);
+      else syncTheme();
+    } else if (d.type === 'theme-change') {          // 旧版兼容
+      if (d.theme !== undefined) applyTheme(d.theme === 'dark');
+      else if (typeof d.dark === 'boolean') applyTheme(d.dark);
     }
   });
+  // 冷启动竞态兜底：主动请求一次当前主题（qqqide-theme.js 回应 qqqide-theme-request）
+  try { parent.postMessage({ type: 'qqqide-theme-request' }, '*'); } catch(_) {}
 
   // ═══ FLAG — 照抄登录区国旗机制（本地 assets/flags/{cc}.png，一次拿到永久使用）═══
   // 国旗由服务器随国家码（country_iso2）下发，账号不变国旗永不变 → 零更新逻辑
@@ -716,6 +795,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       _token = tok;
       _doerID = did;
       _doerName = name || did;
+      _doerPhoneMask = (name && name.indexOf('****') >= 0) ? name : '';
       if (!_doerID) { setConnStatus(false, '登录信息异常'); return; }
       _cacheLoad();   // 本地缓存秒开（离线也能看历史，服务器随后增量修正）
       if (Object.keys(_convMap).length) {
@@ -783,6 +863,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     setConnStatus(false, '连接中…');
 
     ws.onopen = function() {
+      // ★ 节能握手窗口废弃（2026-09-14）：窗口隐藏时连接仍在 CONNECTING → 不立即 close（Chrome 打
+      //   "closed before the connection is established" 噪音）→ 置 _qqqDead 标记，握手完成瞬间在此自关，零噪音零副作用
+      if (ws._qqqDead) { try { ws.close(); } catch(_) {} return; }
       _wsReconnectDelay = 0;  // 连上即重置退避
       setConnStatus(true, '已连接');
       ws.send(JSON.stringify({type:'sub',ch:'inbox:'+_doerID}));
@@ -831,7 +914,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     _bgMode = true;
     stopBeat();
     if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
-    if (_ws) { try { _ws.onclose = null; _ws.close(); } catch(_) {} _ws = null; }
+    // ★ 安全关闭（2026-09-14）：CONNECTING 状态直接 close 会打 Chrome「closed before established」噪音
+    //   → 只置废弃标记（连上后由 onopen dead 分支自关）；仅 OPEN 状态才立即 close
+    if (_ws) {
+      var _w = _ws; _ws = null;
+      try { _w.onclose = null; } catch(_) {}
+      try { _w._qqqDead = true; } catch(_) {}
+      try { if (_w.readyState === WebSocket.OPEN) _w.close(); } catch(_) {}
+    }
     setConnStatus(false, '节能 · 后台仅未读数');
     startBgPoll();
   }
@@ -1130,6 +1220,60 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     }).finally(function(){ _loadingMore = false; });
   }
 
+  // ═══ 显示名机器（2026-09-14）：私聊 = 备注/名字 + 脱敏电话（158****8204，中间 **** 微型渲染）═══
+  function isPhoneLike(s) {
+    if (!s) return false;
+    if (String(s).indexOf('****') >= 0) return true;
+    return /^\+?\d[\d\s-]{6,}$/.test(String(s));
+  }
+  function maskLocal(s) {
+    s = String(s || '');
+    if (!s || s.indexOf('****') >= 0) return s;
+    var d = s.replace(/\D/g, '');
+    if (!d) return s;
+    if (d.length <= 4) return '****';
+    var pre = (d.length - 4) >> 1, suf = d.length - pre - 4;
+    return d.slice(0, pre) + '****' + d.slice(d.length - suf);
+  }
+  // 电话 HTML 唯一渲染出口（恒微型 ****）：列表名/头部尾/群成员/群发送者共用
+  function phoneHtml(phone) {
+    var s = maskLocal(String(phone || ''));
+    if (!s) return '';
+    return escHtml(s).replace('****', '<i class="ph-mask">****</i>');
+  }
+  // 群消息发送者名：平台名原样；电话类（含旧缓存全号）→ 微型 ****
+  function senderNameHtml(m) {
+    var nm = String(m.sender_name || '');
+    if (nm && !isPhoneLike(nm)) return escHtml(nm);
+    var ph = String(m.sender_phone || nm || '');
+    return ph ? phoneHtml(ph) : escHtml(String(m.sender_id || ''));
+  }
+  // 返回 { name(已转义), tail(电话 HTML，可能为空) }；cv.phone = 服务器脱敏值（resolveDoerContact 唯一出口）
+  function dispName(cv, peerID) {
+    var phone = maskLocal(cv.phone || '');   // 服务器已脱敏原样透传；旧缓存裸全号就地补脱敏
+    var primary = cv.nickname || cv.peerName || phone || peerID || '';
+    if (isPhoneLike(primary)) primary = phone || maskLocal(primary);   // 裸号/旧缓存全号 → 统一脱敏格式
+    // ★ 2026-09-14：纯电话名（无备注）同样走微型 ****（与尾部电话同款渲染）
+    var nameOut = isPhoneLike(primary) ? phoneHtml(primary) : escHtml(primary);
+    var tail = '';
+    if (phone && phone !== primary) tail = phoneHtml(phone);
+    return { name: nameOut, tail: tail };
+  }
+  // 标签标题用纯文本名（多开 inbox 时标签实时显示对方/群名）
+  function dispPlain(cv, peerID) {
+    var phone = maskLocal(cv.phone || '');
+    var primary = cv.nickname || cv.peerName || phone || peerID || '';
+    if (isPhoneLike(primary)) primary = phone || maskLocal(primary);
+    return String(primary || '');
+  }
+  function pushTabTitle() {
+    try {
+      var cv = _convMap[_activePeer] || {};
+      var nm = cv.kind === 'group' ? (cv.gname || '群') : (_activePeer ? dispPlain(cv, _activePeer) : '');
+      parent.postMessage({ type: 'dm:title', title: nm ? ('📬 ' + nm) : '📬 inbox' }, '*');
+    } catch (_) {}
+  }
+
   // ═══ RENDER ═══
   function renderConvList() {
     var peers = Object.keys(_convMap).sort(function(a,b){
@@ -1149,11 +1293,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       // 群 → 👥 图标；私聊 → 国家码国旗（照抄登录区）
       var icon = isG ? '<span style="font-size:16px">👥</span>' : flagImg(cv.country);
       var preview = isG && cv.lastSender ? cv.lastSender + '：' + trunc(cv.lastMsg,28) : trunc(cv.lastMsg,40);
+      var nm = isG ? {name:escHtml(name), tail:''} : dispName(cv, pid);   // ★ 备注/名字旁恒打印脱敏电话
 
       html += '<div class="conv-item'+cls+'" data-peer="'+escHtml(pid)+'">';
       // 私聊行尾 ✏️（备注昵称入口；群聊无此概念）
       var nickBtn = isG ? '' : '<button class="conv-nick-btn" data-peer="'+escHtml(pid)+'" title="备注昵称">✏️</button>';
-      html += '<div class="conv-body"><div class="conv-name">'+(icon?icon+' ':'')+escHtml(name)+nickBtn+'</div>';
+      html += '<div class="conv-body"><div class="conv-name">'+(icon?icon+' ':'')+nm.name+(nm.tail?' <span class="peer-phone">'+nm.tail+'</span>':'')+nickBtn+'</div>';
       html += '<div class="conv-preview">'+escHtml(preview)+'</div></div>';
       html += '<div class="conv-meta"><div class="conv-time">'+fmtBrief(cv.lastTime)+'</div>'+badge+'</div>';
       html += '</div>';
@@ -1216,7 +1361,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var isG = (_convMap[peerID]||{}).kind === 'group';
       var grouped = !isG && (m.sender_id === lastSender && (mTime - lastTime) < 180000);
       row.className = 'msg-row ' + (isSelf ? 'self' : 'other') + (grouped ? (isSelf?' self-grouped':' other-grouped') : '');
-      var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+escHtml(m.sender_name || m.sender_phone || m.sender_id)+'</div>' : '';
+      var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+senderNameHtml(m)+'</div>' : '';
       // 已读回执（仅私聊自己的消息）：read_at 由对方拉取会话时服务端标记
       var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?'已读':'未读')+'</span>' : '';
       row.innerHTML = senderHtml + '<div class="msg-bubble">'+attachHtml(m.attachments)+escHtml(m.content)+'</div>' +
@@ -1244,14 +1389,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
     var row = document.createElement('div');
     row.className = 'msg-row '+(isSelf?'self':'other')+(grouped?(isSelf?' self-grouped':' other-grouped'):'');
-    var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+escHtml(m.sender_name || m.sender_phone || m.sender_id)+'</div>' : '';
+    var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+senderNameHtml(m)+'</div>' : '';
     var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?'已读':'未读')+'</span>' : '';
     row.innerHTML = senderHtml + '<div class="msg-bubble">'+attachHtml(m.attachments)+escHtml(m.content)+'</div>' +
       (grouped?'':'<div class="msg-time">'+fmtTime(d)+'</div>'+readHtml);
     $msgList.appendChild(row);
   }
 
-  // ═══ BED 入口（2026-09-01：文件数/占用/累计消费 → 打开 bed）═══
+  // ═══ BED 入口（2026-09-01：文件数/占用/累计消费 → 打开 bed；2×2 布局 2026-09-14）═══
   function loadBedStats() {
     if (!_token) return;
     fetch('https://cnk.gh555.com/api/upload/stats', {
@@ -1259,7 +1404,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     }).then(function(r){return r.json();}).then(function(d){
       if (!d.ok) return;
       var fee = (d.total_fee_ge || '0');
-      $bedStats.textContent = d.total + ' 个文件 · ' + fmtBytes(d.total_size) + ' · 已消费 ' + fee + ' ge';
+      $bedFiles.textContent = d.total + ' 个文件';
+      $bedSize.textContent = '占用 ' + fmtBytes(d.total_size);
+      $bedEntry.title = '打开 bed 我的文件 · ' + d.total + ' 个文件 · ' + fmtBytes(d.total_size) + ' · 已消费 ' + fee + ' ge';
     }).catch(function(){});
   }
   $bedEntry.addEventListener('click', function(){
@@ -1280,140 +1427,431 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
     return (b/1073741824).toFixed(2) + ' GB';
   }
-  function isImg(name) { return /^\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(name); }
+  function isImg(name) { return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(name); }
   function isImgMime(mime) { return /^image\//.test(mime || ''); }
 
-  // 添加附件（文件选择 / Ctrl+V 粘贴图片共用）
-  function addPendingFiles(files) {
-    if (_sending) return;
+  // ═══ 附件管理（2026-09-14 重写：per-peer 独立 · Ctrl+V 粘贴一切 · 右键菜单 · 逐文件进度）═══
+  var ATTACH_MAX = 20;   // 单条消息附件上限（与服务端 maxMsgAttachments 对齐）
+
+  function pendingList(peer) {
+    peer = peer || _activePeer;
+    if (!peer) return [];
+    if (!_pendingByPeer[peer]) _pendingByPeer[peer] = [];
+    return _pendingByPeer[peer];
+  }
+  function clearPending(peer, revoke) {
+    var list = _pendingByPeer[peer];
+    if (!list) return;
+    if (revoke) {
+      list.forEach(function(c){ try { if (c.url) URL.revokeObjectURL(c.url); } catch(_){} });
+    }
+    delete _pendingByPeer[peer];
+  }
+
+  // 加入附件（Ctrl+V / 右键菜单粘贴共用）：全量收集 + 硬帽 + 同名同大小去重
+  function addFiles(peer, files) {
+    if (!peer) {
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show('先选择一条对话再粘贴文件', {type:'warn', duration:3500}); } catch(_) {}
+      return;
+    }
+    if (_sending) {
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show('正在发送上一条消息，稍后再添加文件', {type:'warn', duration:3500}); } catch(_) {}
+      return;
+    }
+    var list = pendingList(peer);
     var arr = Array.prototype.slice.call(files || []);
+    var added = 0;
     for (var i = 0; i < arr.length; i++) {
       var f = arr[i];
-      if (!f || !f.name) continue;
-      if (_pendingFiles.length >= 9) {
-        try { if (parent.qqqideQoast) parent.qqqideQoast.show('单条消息最多 9 个附件', {type:'warn', duration:4000}); } catch(_) {}
+      if (!f) continue;
+      if (list.length >= ATTACH_MAX) {
+        try { if (parent.qqqideQoast) parent.qqqideQoast.show('单条消息最多 ' + ATTACH_MAX + ' 个附件', {type:'warn', duration:4000}); } catch(_) {}
         break;
       }
-      // 去重（同名同大小）
+      // 无名字的文件（截图等）补默认名
+      if (!f.name) { try { f = new File([f], 'screenshot-' + Date.now() + '.png', {type: f.type || 'image/png'}); } catch(_) { continue; } }
       var dup = false;
-      for (var j = 0; j < _pendingFiles.length; j++) {
-        if (_pendingFiles[j].name === f.name && _pendingFiles[j].size === f.size) { dup = true; break; }
+      for (var j = 0; j < list.length; j++) {
+        if (list[j].name === f.name && list[j].size === f.size) { dup = true; break; }
       }
       if (dup) continue;
-      var p = { file: f, name: f.name, size: f.size, mime: f.type || '', url: '' };
-      if (isImgMime(p.mime) || isImg(p.name)) {
-        try { p.url = URL.createObjectURL(f); } catch(_) {}
+      var chip = { id: 'c' + (++_chipSeq), file: f, name: f.name, size: f.size, loaded: 0,
+                   mime: f.type || '', url: '', status: 'pending', att: null, err: null };
+      if (isImgMime(chip.mime) || isImg(chip.name)) {
+        try { chip.url = URL.createObjectURL(f); } catch(_) {}
       }
-      _pendingFiles.push(p);
+      list.push(chip);
+      added++;
+    }
+    if (added && _activePeer === peer) renderAttachBar();
+  }
+
+  // 移除附件：发送中（上传阶段）→ 取消整个上传批次；已上传未发送 → 同步从 bed 清理（不退费，与 bed 语义一致）
+  function removeChip(peer, chipId) {
+    if (_sendCtl && _sendCtl.active && _sendCtl.peer === peer && _sendCtl.phase === 'upload') { cancelSend(_sendCtl); return; }
+    var list = _pendingByPeer[peer];
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === chipId) {
+        var c = list[i];
+        if (c.att && c.att.r2_key) bedDelete(c.att.r2_key);
+        try { if (c.url) URL.revokeObjectURL(c.url); } catch(_) {}
+        list.splice(i, 1);
+        break;
+      }
     }
     renderAttachBar();
   }
-  function removePending(i) {
-    if (i < 0 || i >= _pendingFiles.length) return;
-    try { if (_pendingFiles[i].url) URL.revokeObjectURL(_pendingFiles[i].url); } catch(_) {}
-    _pendingFiles.splice(i, 1);
-    renderAttachBar();
+
+  function bedDelete(r2key) {
+    fetch('https://cnk.gh555.com/api/upload/' + r2key, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + _token }
+    }).catch(function(){});
   }
+
+  function chipSubText(c) {
+    if (c.status === 'uploading') return '上传中 ' + Math.round((c.loaded / (c.size || 1)) * 100) + '%';
+    if (c.status === 'done') return '已上传 · ' + fmtBytes(c.size);
+    if (c.status === 'failed') return '上传失败 · 点发送重试';
+    return fmtBytes(c.size);
+  }
+
   function renderAttachBar() {
-    if (!_pendingFiles.length) {
+    var list = _activePeer ? (_pendingByPeer[_activePeer] || []) : [];
+    if (!list.length) {
       $attachBar.classList.remove('show');
       $attachBar.innerHTML = '';
       return;
     }
     $attachBar.classList.add('show');
     var html = '';
-    for (var i = 0; i < _pendingFiles.length; i++) {
-      var p = _pendingFiles[i];
-      var thumb = p.url
-        ? '<img class="thumb" src="' + p.url + '" alt="">'
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      var thumb = c.url
+        ? '<img class="thumb" src="' + c.url + '" alt="">'
         : '<div class="file-ic">📄</div>';
-      html += '<div class="attach-chip" title="' + escHtml(p.name) + '">' + thumb +
-        '<div class="chip-meta"><div class="chip-name">' + escHtml(p.name) + '</div>' +
-        '<div class="chip-size">' + fmtBytes(p.size) + '</div></div>' +
-        '<button class="chip-x" data-i="' + i + '">✕</button></div>';
+      var pct = c.status === 'done' ? 100 : Math.round((c.loaded / (c.size || 1)) * 100);
+      var stCls = c.status === 'failed' ? ' failed' : (c.status === 'done' ? ' done' : (c.status === 'uploading' ? ' uploading' : ''));
+      html += '<div class="attach-chip' + stCls + '" title="' + escHtml(c.name) + '">' + thumb +
+        '<div class="chip-meta"><div class="chip-name">' + escHtml(c.name) + '</div>' +
+        '<div class="chip-size">' + escHtml(chipSubText(c)) + '</div></div>' +
+        '<button class="chip-x" data-id="' + c.id + '">✕</button>' +
+        (c.status === 'uploading' ? '<div class="chip-bar"><div class="chip-bar-in" style="width:' + pct + '%"></div></div>' : '') +
+        '</div>';
     }
     $attachBar.innerHTML = html;
     $attachBar.querySelectorAll('.chip-x').forEach(function(el){
-      el.addEventListener('click', function(){ removePending(parseInt(el.dataset.i, 10)); });
+      el.addEventListener('click', function(){ removeChip(_activePeer, el.dataset.id); });
     });
   }
 
-  // 附件选择入口（📎 按钮 → 隐藏 file input）
-  var _fileInput = null;
-  $attachBtn.addEventListener('click', function(){
-    if (_sending) return;
-    if (!_fileInput) {
-      _fileInput = document.createElement('input');
-      _fileInput.type = 'file';
-      _fileInput.multiple = true;
-      _fileInput.style.display = 'none';
-      document.body.appendChild(_fileInput);
-      _fileInput.addEventListener('change', function(){
-        addPendingFiles(_fileInput.files);
-        _fileInput.value = '';
+  // 从剪贴板事件收集文件（一切类型，含一批）
+  function pasteItemsToFiles(cd) {
+    var files = [];
+    if (!cd) return files;
+    try {
+      if (cd.files && cd.files.length) {
+        for (var i = 0; i < cd.files.length; i++) files.push(cd.files[i]);
+      } else if (cd.items) {
+        for (var j = 0; j < cd.items.length; j++) {
+          var it = cd.items[j];
+          if (it.kind === 'file') { var f = it.getAsFile(); if (f) files.push(f); }
+        }
+      }
+    } catch(_) {}
+    return files;
+  }
+
+  // ★ Ctrl+V：粘贴一切文件（图片/文档/压缩包/一批文件）；无文件则放行原生文本粘贴
+  document.addEventListener('paste', function(e){
+    if (!_activePeer) return;
+    var t = e.target;
+    if (t && t !== $msgInput && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    var files = pasteItemsToFiles(e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData));
+    if (!files.length) return;
+    e.preventDefault();
+    addFiles(_activePeer, files);
+  });
+
+  // 右键菜单（照抄 AI 面板：Ctrl+C / Ctrl+V）
+  var _inputCtxMenu = null;
+  function _closeInputCtxMenu() {
+    if (_inputCtxMenu) { _inputCtxMenu.remove(); _inputCtxMenu = null; }
+  }
+  $msgInput.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    _closeInputCtxMenu();
+    var menu = document.createElement('div');
+    menu.style.cssText = 'position:fixed;z-index:99999;visibility:hidden;background:var(--bg);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);padding:0;min-width:120px;font-size:13px;';
+    menu.style.left = '-9999px'; menu.style.top = '-9999px';
+    document.body.appendChild(menu);
+    _inputCtxMenu = menu;
+    function _addRow(label, action) {
+      var row = document.createElement('div');
+      row.textContent = label;
+      row.style.cssText = 'padding:6px 16px;white-space:nowrap;color:var(--text-bright);';
+      row.addEventListener('mouseenter', function () { row.style.background = 'var(--accent-glow)'; });
+      row.addEventListener('mouseleave', function () { row.style.background = ''; });
+      row.addEventListener('mousedown', function (ev) { ev.preventDefault(); ev.stopPropagation(); _closeInputCtxMenu(); action(); });
+      menu.appendChild(row);
+    }
+    _addRow('Ctrl+C', function () {
+      $msgInput.focus();
+      if ($msgInput.selectionStart === $msgInput.selectionEnd) $msgInput.select();
+      try { document.execCommand('copy'); } catch (_) { }
+    });
+    _addRow('Ctrl+V', function () {
+      $msgInput.focus();
+      pasteFromClipboardApi();
+    });
+    var mr = menu.getBoundingClientRect();
+    var mw = mr.width || 120, mh = mr.height || 56;
+    var l = e.clientX, tp = e.clientY - mh / 2;
+    if (l + mw > window.innerWidth - 4) l = e.clientX - mw;
+    if (tp + mh > window.innerHeight - 4) tp = window.innerHeight - mh - 4;
+    menu.style.visibility = 'visible';
+    menu.style.left = Math.max(4, l) + 'px';
+    menu.style.top = Math.max(4, tp) + 'px';
+  });
+  document.addEventListener('mousedown', function (e) {
+    if (_inputCtxMenu && !_inputCtxMenu.contains(e.target)) _closeInputCtxMenu();
+  }, true);
+  $msgInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') _closeInputCtxMenu();
+  });
+
+  // 菜单「Ctrl+V」：navigator.clipboard.read → 图片入条 + 文本插光标（系统复制的文件请在键入框直接 Ctrl+V）
+  function pasteFromClipboardApi() {
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show('请在键入框直接 Ctrl+V 粘贴', {type:'info', duration:3000}); } catch(_) {}
+      return;
+    }
+    navigator.clipboard.read().then(function(items){
+      var imageFiles = [], text = '';
+      var reads = [];
+      for (var i = 0; i < items.length; i++) {
+        (function(it, idx){
+          for (var t = 0; t < it.types.length; t++) {
+            var mt = it.types[t];
+            if (mt.indexOf('image/') === 0) {
+              reads.push(it.getType(mt).then(function(blob){
+                var ext = (mt.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
+                imageFiles.push(new File([blob], 'pasted-' + Date.now() + '-' + (idx + 1) + '.' + ext, {type: mt}));
+              }).catch(function(){}));
+            } else if (mt === 'text/plain') {
+              reads.push(it.getType('text/plain').then(function(b){ return b.text(); }).then(function(s){ if (!text) text = s || ''; }).catch(function(){}));
+            }
+          }
+        })(items[i], i);
+      }
+      Promise.all(reads).then(function(){
+        if (imageFiles.length) addFiles(_activePeer, imageFiles);
+        if (text) {
+          var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+          var cur = nd.get.call($msgInput);
+          var ss = $msgInput.selectionStart || 0, se = $msgInput.selectionEnd || 0;
+          nd.set.call($msgInput, cur.substring(0, ss) + text + cur.substring(se));
+          $msgInput.setSelectionRange(ss + text.length, ss + text.length);
+          autoResize();
+        }
+        if (!imageFiles.length && !text) {
+          try { if (parent.qqqideQoast) parent.qqqideQoast.show('剪贴板里没有可粘贴的内容（文件请直接在键入框 Ctrl+V）', {type:'info', duration:3500}); } catch(_) {}
+        }
+      });
+    }).catch(function(){
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show('请在键入框直接 Ctrl+V 粘贴', {type:'info', duration:3000}); } catch(_) {}
+    });
+  }
+
+  // ═══ 拖放接收（2026-09-14）：文件拖入 inbox = 等同 Ctrl+V 加入附件条 ═══
+  // 协议与 AI 面板 / Roam 统一：橙色虚线框覆盖整个 iframe 视口（= 接收范围）；
+  // 仅响应 dataTransfer.types 含 Files（内部文本拖拽零干扰）；深度计数防子元素闪烁。
+  (function () {
+    var ov = document.createElement('div');
+    ov.id = 'dm-drop-overlay';
+    ov.style.cssText =
+      'position:fixed;left:0;top:0;right:0;bottom:0;display:none;pointer-events:none;' +
+      'z-index:999999;border:3px dashed #e07020;border-radius:4px;' +
+      'box-shadow:inset 0 0 0 2px rgba(224,112,32,0.12), 0 0 0 2px rgba(224,112,32,0.18);';
+    document.body.appendChild(ov);
+    function ovShow() { ov.style.display = 'block'; }
+    function ovHide() { ov.style.display = 'none'; }
+    function isFileDrag(e) {
+      var dt = e.dataTransfer;
+      if (!dt || !dt.types) return false;
+      return Array.prototype.indexOf.call(dt.types, 'Files') !== -1;
+    }
+    var depth = 0;
+    document.addEventListener('dragenter', function (e) {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      depth++;
+      ovShow();
+    }, true);
+    document.addEventListener('dragover', function (e) {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();   // 允许 drop
+      ovShow();
+    }, true);
+    document.addEventListener('dragleave', function (e) {
+      if (!isFileDrag(e)) return;
+      depth--;
+      if (depth <= 0) { depth = 0; ovHide(); }
+    }, true);
+    // 失焦兜底（ALT+TAB 中途取消拖拽可能无 dragleave）
+    window.addEventListener('blur', function () { depth = 0; ovHide(); });
+
+    function dragQoast(msg, type, dur) {
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show(msg, { type: type || 'warn', duration: dur || 3500 }); } catch (_) {}
+    }
+
+    // drop：一切文件（图片/文档/压缩包/一次一批）→ addFiles（先传后发走既有上传引擎）
+    // 文件夹剔除：File 对象读不到目录内容 → 主进程 stat 精确判定（bridge 不可用则放行，由上传层裁决）
+    document.addEventListener('drop', function (e) {
+      depth = 0;
+      ovHide();
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var dt = e.dataTransfer;
+      if (!dt || !dt.files || dt.files.length === 0) return;
+      var peer = _activePeer;
+      if (!peer) { dragQoast('先选择一条对话再拖入文件'); return; }
+
+      var files = Array.prototype.slice.call(dt.files);
+      var b = null;
+      try { b = window.parent.qqqideBridge; } catch (_) {}
+      var statFn = (b && b.fs && typeof b.fs.stat === 'function') ? b.fs.stat : null;
+      if (!statFn) { addFiles(peer, files); return; }
+
+      Promise.all(files.map(function (f) {
+        if (!f || !f.path) return Promise.resolve(true);   // 无路径 → 放行
+        return statFn(f.path).then(function (st) {
+          return !(st && st.isDir);                        // 目录 → 剔除
+        }, function () { return true; });                  // stat 失败 → 放行
+      })).then(function (oks) {
+        var keep = [], dirs = 0;
+        for (var i = 0; i < files.length; i++) {
+          if (oks[i]) keep.push(files[i]); else dirs++;
+        }
+        if (dirs > 0) dragQoast(dirs + ' 个文件夹已跳过（暂不支持，请拖入文件夹内的文件）', 'info', 4200);
+        if (keep.length) addFiles(peer, keep);
+      });
+    }, true);
+  })();
+
+  // ═══ 上传引擎（逐文件进度 + ioast 任务卡 + 取消；已传成功文件重试不重复上传/计费）═══
+  function ioastRoot() { try { return parent.qqqideIoast; } catch(_) { return null; } }
+  function ioastCall(fn, id, opts) { var I = ioastRoot(); if (I && typeof I[fn] === 'function') { try { I[fn](id, opts); } catch(_) {} } }
+
+  function updateUploadTask(ctl) {
+    if (!ctl || !ctl.taskId) return;
+    var now = Date.now();
+    if (now - (ctl._lastUi || 0) < 120) return;
+    ctl._lastUi = now;
+    var list = _pendingByPeer[ctl.peer] || [];
+    var done = 0, total = 0, loadedB = 0, totalB = 0, curName = '';
+    list.forEach(function(c){
+      total++; totalB += c.size || 0;
+      loadedB += (c.status === 'done') ? (c.size || 0) : (c.loaded || 0);
+      if (c.status === 'done') done++;
+      if (c.status === 'uploading') curName = c.name;
+    });
+    var elapsed = (Date.now() - ctl.t0) / 1000;
+    var speed = (elapsed > 0.8 && loadedB > 0) ? (loadedB / 1048576) / elapsed : 0;
+    var prog = totalB > 0 ? Math.min(1, loadedB / totalB) : 0;
+    var sub = (curName ? ('正在上传：' + curName) : (ctl.phase === 'send' ? '正在发送消息…' : '准备中…'));
+    if (speed > 0.01 && ctl.phase === 'upload') sub += ' · ' + speed.toFixed(1) + ' MB/s';
+    ioastCall('task', ctl.taskId, {
+      title: '📤 发送到 inbox',
+      subtitle: sub,
+      progress: prog,
+      count: { done: done, total: total },
+      elapsed: elapsed,
+      cancelable: ctl.phase === 'upload',
+      onCancel: function () { cancelSend(ctl); }
+    });
+  }
+
+  function cancelSend(ctl) {
+    if (!ctl || ctl.canceled || !ctl.active) return;
+    ctl.canceled = true;
+    (ctl.xhrs || []).forEach(function(x){ try { x.abort(); } catch(_){} });
+  }
+
+  function uploadOne(c, ctl) {
+    c.status = 'uploading'; c.loaded = 0; c.err = null;
+    updateUploadTask(ctl);
+    if (_activePeer === ctl.peer) renderAttachBar();
+    var year = new Date().getFullYear();
+    return fetch('https://cnk.gh555.com/api/upload/init', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+      body:JSON.stringify({filename:c.name, size:c.size, content_type:c.mime || 'application/octet-stream', standalone:true, folder:'inbox/' + year})
+    }).then(function(r){ return r.json(); }).then(function(d0){
+      if (ctl.canceled) throw { canceled: true };
+      if (!d0.ok) {
+        var e0 = new Error(d0.error || d0.code || 'init failed');
+        if (d0.needed_ge) e0.feeTip = '余额不足，需求 ' + d0.needed_ge + ' ge（' + c.name + '）';
+        else if (d0.error === 'daily_upload_limit') e0.feeTip = '今天上传的文件数已达上限（100 个/天）';
+        throw e0;
+      }
+      return new Promise(function(resolve, reject){
+        var xhr = new XMLHttpRequest();
+        ctl.xhrs.push(xhr);
+        xhr.open('PUT', d0.upload_url, true);
+        xhr.setRequestHeader('Content-Type', c.mime || 'application/octet-stream');
+        xhr.upload.onprogress = function(ev){
+          if (ev.lengthComputable) { c.loaded = ev.loaded; if (ev.total) c.size = ev.total; }
+          if (_activePeer === ctl.peer) renderAttachBar();
+          updateUploadTask(ctl);
+        };
+        xhr.onload = function(){ if (xhr.status >= 200 && xhr.status < 300) resolve(d0); else reject(new Error('上传失败 HTTP ' + xhr.status)); };
+        xhr.onerror = function(){ reject(new Error('网络中断，文件未传完')); };
+        xhr.onabort = function(){ reject({ canceled: true }); };
+        xhr.ontimeout = function(){ reject(new Error('上传超时')); };
+        xhr.send(c.file);
+      });
+    }).then(function(d0){
+      return fetch('https://cnk.gh555.com/api/upload/complete', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+        body:JSON.stringify({r2_key:d0.r2_key})
+      }).then(function(r){ return r.json(); }).then(function(d1){
+        if (ctl.canceled) throw { canceled: true };
+        if (!d1.ok) throw new Error(d1.error || d1.code || 'complete failed');
+        c.att = { r2_key: d1.r2_key || d0.r2_key, filename: c.name, size: d1.size || c.size, mime: c.mime };
+        c.status = 'done'; c.loaded = c.size;
+        if (_activePeer === ctl.peer) renderAttachBar();
+        updateUploadTask(ctl);
+      });
+    });
+  }
+
+  // 并发 2 路上传；任一失败 → 中止整批（已传成功的保留，重发不重复上传/计费）
+  function uploadAll(chips, ctl) {
+    var idx = 0;
+    function next() {
+      if (ctl.canceled || ctl.failed) return Promise.resolve();
+      if (idx >= chips.length) return Promise.resolve();
+      var c = chips[idx++];
+      if (c.status === 'done') { updateUploadTask(ctl); return next(); }
+      return uploadOne(c, ctl).then(function(){ return next(); }, function(err){
+        if (err && err.canceled) throw err;
+        c.status = 'failed'; c.err = err;
+        ctl.failedErr = err;
+        ctl.failed = true;   // 一败全停：其余未完成文件不再继续
+        (ctl.xhrs || []).forEach(function(x){ try { x.abort(); } catch(_){} });
+        if (_activePeer === ctl.peer) renderAttachBar();
+        throw err;
       });
     }
-    _fileInput.click();
-  });
-
-  // Ctrl+V 粘贴图片 → 附件（仅图片；文本粘贴照常进键入框）
-  document.addEventListener('paste', function(e){
-    if (_sending || !_activePeer) return;
-    var items = (e.clipboardData || {}).items || [];
-    var files = [];
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].kind === 'file' && items[i].type && items[i].type.indexOf('image/') === 0) {
-        files.push(items[i].getAsFile());
-      }
-    }
-    if (files.length) {
-      e.preventDefault();
-      addPendingFiles(files);
-    }
-  });
-
-  // 串行上传待发附件 → bed（folder=inbox/{YYYY}，standalone=true 即传即扣费）
-  // 返回 [{r2_key, filename, size, mime}]；任一失败 reject（附件条保留，消息不发出）
-  function uploadPending() {
-    var year = new Date().getFullYear();
-    var folder = 'inbox/' + year;
-    var results = [];
-    var chain = Promise.resolve();
-    _pendingFiles.forEach(function(p){
-      chain = chain.then(function(){
-        return fetch('https://cnk.gh555.com/api/upload/init', {
-          method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
-          body:JSON.stringify({filename:p.name, size:p.size, content_type:p.mime || 'application/octet-stream', standalone:true, folder:folder})
-        }).then(function(r){return r.json();}).then(function(d0){
-          if (!d0.ok) {
-            var e0 = new Error(d0.error || d0.code || 'init failed');
-            e0.feeTip = d0.needed_ge ? ('余额不足，需求 ' + d0.needed_ge + ' ge（' + p.name + '）') : '';
-            throw e0;
-          }
-          return new Promise(function(resolve, reject){
-            var xhr = new XMLHttpRequest();
-            xhr.open('PUT', d0.upload_url, true);
-            xhr.setRequestHeader('Content-Type', p.mime || 'application/octet-stream');
-            xhr.onload = function(){ if (xhr.status >= 200 && xhr.status < 300) resolve(d0); else reject(new Error('upload failed: ' + xhr.status)); };
-            xhr.onerror = function(){ reject(new Error('network error')); };
-            xhr.timeout = 600000;
-            xhr.ontimeout = function(){ reject(new Error('timeout')); };
-            xhr.send(p.file);
-          });
-        }).then(function(d0){
-          return fetch('https://cnk.gh555.com/api/upload/complete', {
-            method:'POST',
-            headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
-            body:JSON.stringify({r2_key:d0.r2_key})
-          }).then(function(r){return r.json();}).then(function(d1){
-            if (!d1.ok) throw new Error(d1.error || d1.code || 'complete failed');
-            return {r2_key: d1.r2_key || d0.r2_key, filename: p.name, size: d1.size || p.size, mime: p.mime};
-          });
-        });
-      }).then(function(att){ results.push(att); });
-    });
-    return chain.then(function(){ return results; });
+    var n = Math.min(2, chips.length);
+    var workers = [];
+    for (var i = 0; i < n; i++) workers.push(next());
+    return Promise.all(workers);
   }
 
   // ═══ 备注昵称（2026-09-01：per-user 独立，双方互不可见；留空=清除）═══
@@ -1457,15 +1895,17 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       $chatHdrStat.textContent = (cv.memberCnt ? cv.memberCnt + ' 人' : '') + ' · 成员';
       $chatHdrStat.title = '查看群成员';
     } else {
-      // ★ 头部显示名+国旗（不显示数字头像圆，国旗+号码即身份）
-      var name = cv.nickname || cv.peerName || cv.phone || _activePeer;
+      // ★ 头部显示名+国旗（恒打印脱敏电话在旁；2026-09-14）
+      var nm = dispName(cv, _activePeer);
       $chatHdrStat.title = '';
       $chatHdrStat.style.display = 'none';   // 私聊不显示在线状态（1h ping 窗口有固有滞后，弃用）
-      $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + escHtml(name) +
+      $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + nm.name +
+        (nm.tail ? ' <span class="peer-phone">'+nm.tail+'</span>' : '') +
         ' <button class="hdr-nick-btn" title="' + (cv.nickname ? '修改备注' : '备注昵称') + '">✏️</button>';
       var b = document.getElementById('hdr-nick-btn');
       if (b) b.addEventListener('click', function(){ editNicknameModal(_activePeer); });
     }
+    pushTabTitle();   // 标签标题随会话同步（2026-09-14：多开 inbox = 同时与几个人聊天）
   }
 
   // ═══ ACTIONS ═══
@@ -1495,142 +1935,111 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     } else {
       loadMessages(peerID);
     }
+    renderAttachBar();   // ★ per-peer 附件条：切会话显示对应会话的待发文件（2026-09-14）
     renderConvList();
     setTimeout(function(){ $msgInput.focus(); },100);
   }
 
+  // ═══ 发送（私聊/群聊统一；先传后发 + 逐文件进度 + 取消，2026-09-14 重写）═══
   function sendMessage() {
     var text = $msgInput.value.trim();
-    if ((!text && !_pendingFiles.length) || !_activePeer || !_token || _sending) return;
+    var list = _activePeer ? (_pendingByPeer[_activePeer] || []) : [];
+    if ((!text && !list.length) || !_activePeer || !_token || _sending) return;
     var cv = _convMap[_activePeer] || {};
-    if (cv.kind === 'group') { sendGroupMessage(text, cv); return; }
+    doSend(text, cv, cv.kind === 'group');
+  }
 
+  function doSend(text, cv, isG) {
+    var peer = _activePeer;
+    var list = _pendingByPeer[peer] || [];
     _sending = true;
     $sendBtn.disabled = true;
-    $attachBtn.disabled = true;
     $msgInput.value = '';
     autoResize();
 
-    // 先传后发：附件全部上传成功才发消息（失败则消息不发出，附件条保留）
-    var sendBody = {to:_activePeer, content:text};
-    var uploadP = _pendingFiles.length ? uploadPending() : Promise.resolve([]);
-    uploadP.then(function(atts){
-      sendBody.attachments = atts;
-      _pendingFiles = [];
-      renderAttachBar();
-      return fetch('https://cnk.gh555.com/api/dm/send', {
+    var ctl = { peer: peer, canceled: false, failed: false, active: true, xhrs: [], t0: Date.now(),
+                phase: list.length ? 'upload' : 'send', taskId: 'inbox-send-' + peer };
+    _sendCtl = ctl;
+    if (list.length) { ioastCall('task', ctl.taskId, { title:'📤 发送到 inbox', subtitle:'准备中…', cancelable:true, onCancel:function(){ cancelSend(ctl); } }); }
+
+    var todo = list.filter(function(c){ return c.status !== 'done'; });
+    uploadAll(todo, ctl).then(function(){
+      if (ctl.canceled) throw { canceled: true };
+      if (ctl.failed) throw (ctl.failedErr || new Error('上传失败'));
+      ctl.phase = 'send';
+      updateUploadTask(ctl);
+      var atts = [];
+      ((_pendingByPeer[peer]) || []).forEach(function(c){ if (c.status === 'done' && c.att) atts.push(c.att); });
+      var url = isG ? 'https://cnk.gh555.com/api/group/send' : 'https://cnk.gh555.com/api/dm/send';
+      var body = isG ? {gid: cv.gid, content: text} : {to: peer, content: text};
+      body.attachments = atts;
+      return fetch(url, {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
-        body:JSON.stringify(sendBody)
-      });
-    }).then(function(r){return r.json();}).then(function(d){
-      if (d.ok && d.msg) {
-        // 更新 _activePeer 为服务器解析后的 doer ID（手机号→doerID）
-        var resolvedID = d.peer_resolved || d.msg.recipient_id;
-        if (resolvedID && resolvedID !== _activePeer) {
-          // 迁移 _convMap 和 _msgCache 到新 key
-          if (_convMap[_activePeer] && !_convMap[resolvedID]) {
-            _convMap[resolvedID] = _convMap[_activePeer];
-            delete _convMap[_activePeer];
-          }
-          if (_msgCache[_activePeer] && !_msgCache[resolvedID]) {
-            _msgCache[resolvedID] = _msgCache[_activePeer];
-            delete _msgCache[_activePeer];
-          }
-          _activePeer = resolvedID;
-        }
-        // 发送成功即建立联系人：回填手机号/国旗（服务器随响应下发，一次拿到永久使用）
-        var cvS = _convMap[_activePeer] || {};
+        body:JSON.stringify(body)
+      }).then(function(r){return r.json();});
+    }).then(function(d){
+      if (ctl.canceled) throw { canceled: true };
+      if (!(d && d.ok && d.msg)) {
+        var e = new Error((d && (d.tip || d.code)) || '发送失败');
+        e.resp = d;
+        throw e;
+      }
+      // ★ 成功：清空该 peer 附件（文件已被消息引用，绝不动 bed）+ 迁移解析后的 peer key
+      var resolvedID = !isG ? (d.peer_resolved || d.msg.recipient_id) : null;
+      clearPending(peer, true);
+      if (resolvedID && resolvedID !== peer) {
+        if (_convMap[peer] && !_convMap[resolvedID]) { _convMap[resolvedID] = _convMap[peer]; delete _convMap[peer]; }
+        if (_msgCache[peer] && !_msgCache[resolvedID]) { _msgCache[resolvedID] = _msgCache[peer]; delete _msgCache[peer]; }
+        if (_activePeer === peer) _activePeer = resolvedID;
+        peer = resolvedID;
+      }
+      // 发送成功即建立联系人：回填脱敏手机号/国旗（服务器随响应下发）
+      if (!isG) {
+        var cvS = _convMap[peer] || {};
         if (d.msg.recipient_phone && !cvS.phone) cvS.phone = d.msg.recipient_phone;
         if (d.msg.recipient_country && !cvS.country) cvS.country = d.msg.recipient_country;
         if (!cvS.peerName) cvS.peerName = cvS.phone || d.msg.recipient_id;
-        // 刷新 header 显示名（备注 > 名字 > 手机号 + ✏️ 入口）
-        refreshChatHeader();
-        if (!_msgCache[_activePeer]) _msgCache[_activePeer] = [];
-        // id 去重：WS 回显可能已先到达（服务器推送给发送方）
-        if (!cacheHas(_activePeer, d.msg.id)) {
-          _msgCache[_activePeer].push(d.msg);
-          appendBubble(d.msg);
-          scrollBottom();
-        }
-        // 发送成功 → 重置逐字回退历史（已发送文本不可再回退）
-        if (window.qqqCharUndo) window.qqqCharUndo.reset($msgInput);
-        _cacheSaveSoon();
-      } else {
-        $msgInput.value = text;
-        // Flash input border red on error
-        $msgInput.style.borderColor = '#dc322f';
-        setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
-        var tip = d.tip || d.code || '发送失败';
-        $msgInput.placeholder = tip;
-        setTimeout(function(){ $msgInput.placeholder = '键入消息… (Enter 发送，Shift+Enter 换行)'; }, 3000);
+        if (_activePeer === peer) refreshChatHeader();
+      }
+      if (!_msgCache[peer]) _msgCache[peer] = [];
+      if (!cacheHas(peer, d.msg.id)) {
+        _msgCache[peer].push(d.msg);
+        if (_activePeer === peer) { appendBubble(d.msg); scrollBottom(); }
+      }
+      if (window.qqqCharUndo) window.qqqCharUndo.reset($msgInput);
+      _cacheSaveSoon();
+      if (ctl.taskId && list.length) {
+        ioastCall('done', ctl.taskId, { summary: list.length + ' 个文件已发送' });
+      } else if (ctl.taskId) {
+        ioastCall('remove', ctl.taskId);
       }
     }).catch(function(err){
-      // 附件上传失败 → 原文恢复 + 附件条保留 + 明确提示
-      $msgInput.value = text;
-      if (err && err.feeTip) {
-        try { if (parent.qqqideQoast) parent.qqqideQoast.show(err.feeTip, {type:'error', duration:6000}); } catch(_) {}
+      if (err && err.canceled) {
+        // 取消发送：未完成文件回退 pending（已传成功的保留，重发免重传）
+        (_pendingByPeer[peer] || []).forEach(function(c){ if (c.status === 'uploading') { c.status = 'pending'; c.loaded = 0; } });
+        if (ctl.taskId) ioastCall('fail', ctl.taskId, { summary: '已取消' });
+      } else {
+        // 失败：中止途中残影清理（uploading → failed）；已传成功文件保留
+        (_pendingByPeer[peer] || []).forEach(function(c){ if (c.status === 'uploading') { c.status = 'failed'; } });
+        $msgInput.value = text;
+        $msgInput.style.borderColor = '#dc322f';
+        setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
+        var tip = (err && err.feeTip) ? err.feeTip : ((err && err.resp && (err.resp.tip || err.resp.code)) || (err && err.message) || '发送失败');
+        if (err && err.feeTip) {
+          try { if (parent.qqqideQoast) parent.qqqideQoast.show(err.feeTip, {type:'error', duration:6000}); } catch(_) {}
+        } else {
+          $msgInput.placeholder = tip;
+          setTimeout(function(){ $msgInput.placeholder = '键入消息… (Enter 发送，Shift+Enter 换行；📎 文件直接 Ctrl+V 粘贴)'; }, 4000);
+        }
+        if (ctl.taskId && list.length) ioastCall('fail', ctl.taskId, { summary: tip });
       }
-      $msgInput.style.borderColor = '#dc322f';
-      setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
     }).finally(function(){
+      ctl.active = false;
+      _sendCtl = null;
       _sending = false;
       $sendBtn.disabled = false;
-      $attachBtn.disabled = false;
-      $msgInput.focus();
-    });
-  }
-
-  // ═══ 群消息发送（POST /api/group/send，WS 回显同 id 去重；附件同私聊先传后发）═══
-  function sendGroupMessage(text, cv) {
-    _sending = true;
-    $sendBtn.disabled = true;
-    $attachBtn.disabled = true;
-    $msgInput.value = '';
-    autoResize();
-
-    var sendBody = {gid:cv.gid, content:text};
-    var uploadP = _pendingFiles.length ? uploadPending() : Promise.resolve([]);
-    uploadP.then(function(atts){
-      sendBody.attachments = atts;
-      _pendingFiles = [];
       renderAttachBar();
-      return fetch('https://cnk.gh555.com/api/group/send', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
-        body:JSON.stringify(sendBody)
-      });
-    }).then(function(r){return r.json();}).then(function(d){
-      if (d.ok && d.msg) {
-        var key = gkey(d.msg.gid);
-        if (!_msgCache[key]) _msgCache[key] = [];
-        // id 去重：WS 回显可能已先到达
-        if (!cacheHas(key, d.msg.id)) {
-          _msgCache[key].push(d.msg);
-          appendBubble(d.msg);
-          scrollBottom();
-        }
-        if (window.qqqCharUndo) window.qqqCharUndo.reset($msgInput);
-        _cacheSaveSoon();
-      } else {
-        $msgInput.value = text;
-        $msgInput.style.borderColor = '#dc322f';
-        setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
-        var tip = d.tip || d.code || '发送失败';
-        $msgInput.placeholder = tip;
-        setTimeout(function(){ $msgInput.placeholder = '键入消息… (Enter 发送，Shift+Enter 换行)'; }, 3000);
-      }
-    }).catch(function(err){
-      $msgInput.value = text;
-      if (err && err.feeTip) {
-        try { if (parent.qqqideQoast) parent.qqqideQoast.show(err.feeTip, {type:'error', duration:6000}); } catch(_) {}
-      }
-      $msgInput.style.borderColor = '#dc322f';
-      setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
-    }).finally(function(){
-      _sending = false;
-      $sendBtn.disabled = false;
-      $attachBtn.disabled = false;
       $msgInput.focus();
     });
   }
@@ -1654,7 +2063,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     renderConvList();
   });
 
-  // ★ 新建对话唯一入口：键入框 Enter 与「新建消息」按钮共用（F 修复：按钮原来只 focus 不新建）
+  // ★ 新建对话唯一入口：键入框 Enter 与「新建消息」按钮共用
+  // 2026-09-14：自投拦截（本地脱敏比对 + 服务端权威探测双保险）——自己的号码不进入会话，就地提示
   function startNewChat() {
     var raw = $newPeerIn.value.trim();
     if (!raw) { $newPeerIn.focus(); return; }
@@ -1663,15 +2073,48 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       flashPeerError('号码格式不对：完整手机号（带国家码），如 8615802858204');
       return;
     }
-    if (phone === _doerID) {
-      flashPeerError('不能给自己发消息');
+    if (isSelfPhone(phone)) {
+      flashPeerError('这是你自己的号码，不能给自己发消息');
       return;
     }
-    if (!_convMap[phone]) {
-      _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
-    }
-    openChat(phone);
-    $newPeerIn.value = '';
+    probeAndOpen(phone);
+  }
+  // 本地比对：JWT payload.phone 是脱敏格式（158****8204）→ 前后段匹配；_doerID 直比兜底
+  function isSelfPhone(phone) {
+    if (phone === _doerID) return true;
+    var m = _doerPhoneMask || '';
+    if (!m) return false;
+    if (m.indexOf('****') === -1) return m.replace(/\D/g,'') === phone;
+    var seg = m.split('****');
+    var pre = (seg[0]||'').replace(/\D/g,''), suf = (seg[1]||'').replace(/\D/g,'');
+    if (suf && phone.slice(-suf.length) !== suf) return false;
+    if (!pre) return true;
+    var pos = phone.indexOf(pre);
+    return pos >= 0 && pos + pre.length <= phone.length - suf.length;
+  }
+  // 服务端权威探测：dm/messages 解析手机号；自投 → self_msg；成功 → 拿解析后的 doerID 直接开聊
+  function probeAndOpen(phone) {
+    $newPeerIn.disabled = true;
+    fetch('https://cnk.gh555.com/api/dm/messages?peer='+encodeURIComponent(phone)+'&limit=1', {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if (d && d.code === 'self_msg') {
+        flashPeerError('这是你自己的号码，不能给自己发消息');
+        return;
+      }
+      if (d && d.messages && d.peer) {
+        if (!_convMap[d.peer]) _convMap[d.peer] = {unread:0,lastMsg:'',lastTime:'',peerName:''};
+        $newPeerIn.value = '';
+        openChat(d.peer);
+        return;
+      }
+      // 其余情况（收件人不存在等）：保持原行为 — 打开原键，由消息区就地提示
+      if (!_convMap[phone]) _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
+      openChat(phone);
+    }).catch(function(){
+      if (!_convMap[phone]) _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
+      openChat(phone);
+    }).finally(function(){ $newPeerIn.disabled = false; });
   }
   function flashPeerError(tip) {
     $newPeerIn.style.borderColor = '#dc322f';
@@ -1806,8 +2249,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       if (!d.members) { list.textContent = '加载失败：' + (d.tip || d.code || '未知错误'); return; }
       list.innerHTML = d.members.map(function(m){
         var flag = flagImg(m.country);
-        return '<div class="gm-item">' + flag + ' <span class="gm-name">' + escHtml(m.name || m.phone || m.doer_id) + '</span>' +
-          '<span class="gm-phone">' + escHtml(m.phone || '') + '</span>' +
+        var gmn = String(m.name || m.phone || m.doer_id || '');
+        return '<div class="gm-item">' + flag + ' <span class="gm-name">' + (isPhoneLike(gmn) ? phoneHtml(gmn) : escHtml(gmn)) + '</span>' +
+          '<span class="gm-phone">' + phoneHtml(m.phone || '') + '</span>' +
           (m.is_owner ? '<span class="gm-owner">群主</span>' : '') + '</div>';
       }).join('') || '<div style="color:var(--text-dim);font-size:12px;">暂无成员</div>';
     }).catch(function(){
@@ -1817,27 +2261,162 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   }
 
   // ═══ UTILS ═══
-  // 附件渲染：图片 inline（点击新窗放大）；文件卡片；bed 删除后 404 → 已删除占位（不做引用保护）
+  // 附件渲染（2026-09-14 v2）：图片 inline（点击 = 本面板灯箱）+ 文件卡片；每件恒带四小链接
+  // save / save as / open / Roam（save 记忆目录静默直存；open = 默认程序；Roam = 定位引擎）；
+  // bed 删除后 404 → 已删除占位（不做引用保护）
+  function _attActs(url, nm, sz) {
+    var u = escHtml(url), n = escHtml(nm || '附件'), s = String(sz || 0);
+    function lk(kind, label, tip) {
+      return '<a data-dlact="' + kind + '" data-dlurl="' + u + '" data-dlname="' + n + '" data-dlsize="' + s + '" title="' + tip + '">' + label + '</a>';
+    }
+    return '<span class="att-acts">' +
+      lk('save', 'save', '保存到上次目录（自动记忆，无对话框）') +
+      lk('saveas', 'save as', '另存为…（记住这次的目录）') +
+      lk('open', 'open', '下载后用默认程序打开') +
+      lk('roam', 'Roam', '在 Roam 定位该文件') +
+      '</span>';
+  }
   function attachHtml(atts) {
     if (!Array.isArray(atts) || !atts.length) return '';
     var html = '<div class="msg-attach">';
     atts.forEach(function(a){
       var url = a.cdn_url || '';
       if (!url) return;
-      if (/^image\//.test(a.mime || '') || /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(a.filename || '')) {
-        html += '<a href="' + url + '" target="_blank" rel="noopener" title="' + escHtml(a.filename || '') + '">' +
-          '<img src="' + url + '" alt="" loading="lazy" ' +
-          'onerror="this.outerHTML=\'<div class=\"attach-dead\"><span class=\"ad-ic\">⚠️</span>附件已删除</div>\'"></a>';
+      var nm = a.filename || '';
+      var sz = a.size || 0;
+      if (/^image\//.test(a.mime || '') || /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(nm)) {
+        html += '<div class="att-item">' +
+          '<a href="' + url + '" target="_blank" rel="noopener" data-lb="' + escHtml(url) + '" data-lbname="' + escHtml(nm) + '" data-lbsize="' + sz + '" title="' + escHtml(nm) + ' · 点击查看">' +
+          '<img src="' + url + '" alt="" loading="lazy"></a>' +
+          _attActs(url, nm, sz) + '</div>';
       } else {
-        html += '<a class="attach-file" href="' + url + '" target="_blank" rel="noopener">' +
+        html += '<div class="attach-file" data-dl="' + escHtml(url) + '" data-dlname="' + escHtml(nm || '附件') + '" data-dlsize="' + sz + '" title="点击保存（Shift+点击 = 另存为）">' +
           '<span class="af-ic">📄</span>' +
-          '<span class="af-meta"><span class="af-name">' + escHtml(a.filename || '附件') + '</span>' +
-          '<span class="af-size">' + fmtBytes(a.size || 0) + '</span></span></a>';
+          '<span class="af-meta"><span class="af-name">' + escHtml(nm || '附件') + '</span>' +
+          '<span class="af-size">' + fmtBytes(sz) + '</span></span>' +
+          _attActs(url, nm, sz) + '</div>';
       }
     });
     html += '</div>';
     return html;
   }
+
+  // ═══ 附件动作机（save / save as / open / Roam）+ 下载机器接入（2026-09-14 v2）═══
+  // 下载唯一入口 = 主窗口 window.qqqideDownload（core/download-machine.js，记忆目录静默直存）；
+  // open = bridge.shell.openPath（默认程序）；Roam = 主窗口 __qqq_roamRevealPath（shell-overlay 定位引擎）。
+  function attMachine() { try { var m = parent.qqqideDownload; return (m && typeof m.save === 'function') ? m : null; } catch (_) { return null; } }
+  function attBridge() { try { return parent.qqqideBridge || null; } catch (_) { return null; } }
+  function attStat(p) { try { var b = attBridge(); if (b && b.fs && b.fs.stat) return b.fs.stat(p); } catch (_) {} return Promise.resolve(null); }
+  function attJoin(dir, name) { if (!dir || !name) return ''; return String(dir).replace(/[\\/]+$/, '') + '\\' + name; }
+  function attQoast(msg, opts) { try { if (parent.qqqideQoast) parent.qqqideQoast.show(msg, opts || {}); } catch (_) {} }
+  function attRevealRoam(p) {
+    if (!p) return false;
+    try { if (typeof parent.__qqq_roamRevealPath === 'function') { parent.__qqq_roamRevealPath(p); return true; } } catch (_) {}
+    try { parent.postMessage({ action: 'roam-reveal-path', text: p, ctx: '' }, '*'); return true; } catch (_) {}
+    try { var b = attBridge(); if (b && b.shell && b.shell.showItemInFolder) { b.shell.showItemInFolder(p); return true; } } catch (_) {}
+    return false;
+  }
+  function attOpenLocal(p) { try { var b = attBridge(); if (b && b.shell && b.shell.openPath) { b.shell.openPath(p); return true; } } catch (_) {} return false; }
+  function attExternal(url) { try { var b = attBridge(); if (b && b.shell && b.shell.openExternal) { b.shell.openExternal(url); return; } } catch (_) {} try { window.open(url, '_blank'); } catch (_) {} }
+
+  // 四小链接 + 整卡点击的统一动作机
+  function attachAction(kind, url, name, size) {
+    if (!url) return;
+    var m = attMachine();
+    if (!m) { attExternal(url); return; }   // 无机器（旧缓存/独立页）→ 原生兜底
+    name = name || '附件';
+    if (kind === 'saveas') { m.save(url, name, { size: size || 0, ask: true }); return; }
+    var lastDir = '';
+    try { lastDir = (m.getLastDir && m.getLastDir()) || ''; } catch (_) {}
+    var probe = attJoin(lastDir, name);
+    if (kind === 'save') {
+      if (!probe) { m.save(url, name, { size: size || 0 }); return; }
+      // 记忆目录已有同名文件 → 不重复下载（防 name (1) 副本周），给 Roam 直达
+      attStat(probe).then(function (st) {
+        if (st && st.isFile) {
+          attQoast('已在：' + probe, { duration: 9000, action: { label: '📂 Roam 定位', onClick: function () { attRevealRoam(probe); } } });
+          return;
+        }
+        m.save(url, name, { size: size || 0 });
+      }, function () { m.save(url, name, { size: size || 0 }); });
+      return;
+    }
+    // open / Roam：先确保本地存在（记忆目录命中直接复用；否则静默下载/对话框）再动作
+    function act(p) { if (kind === 'open') { attOpenLocal(p); } else { attRevealRoam(p); } }
+    function fetchThenAct() {
+      m.save(url, name, { size: size || 0, onDone: function (res) { if (res && res.ok && res.path) act(res.path); } });
+    }
+    if (probe) {
+      attStat(probe).then(function (st) { if (st && st.isFile) { act(probe); return; } fetchThenAct(); }, fetchThenAct);
+    } else { fetchThenAct(); }
+  }
+  var _lbEl = document.getElementById('img-lb');
+  var _lbImg = document.getElementById('img-lb-img');
+  var _lbUrl = '', _lbName = '', _lbSize = 0;
+  function openImgLb(url, name, size) {
+    _lbUrl = url; _lbName = name || ''; _lbSize = size || 0;
+    if (_lbImg) _lbImg.src = url;
+    if (_lbEl) _lbEl.classList.add('show');
+  }
+  function closeImgLb() {
+    if (_lbEl) _lbEl.classList.remove('show');
+    if (_lbImg) _lbImg.src = '';
+  }
+  if (_lbEl) {
+    _lbEl.addEventListener('click', function (ev) { if (ev.target === _lbEl) closeImgLb(); });
+    var _lbDlBtn = document.getElementById('img-lb-dl');
+    if (_lbDlBtn) _lbDlBtn.addEventListener('click', function (ev) {
+      attachAction((ev && ev.shiftKey) ? 'saveas' : 'save', _lbUrl, _lbName, _lbSize);
+    });
+    var _lbCloseBtn = document.getElementById('img-lb-close');
+    if (_lbCloseBtn) _lbCloseBtn.addEventListener('click', closeImgLb);
+  }
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && _lbEl && _lbEl.classList.contains('show')) closeImgLb();
+  });
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    // ① 附件四小链接（save / save as / open / Roam）——最高优先，命中即截断
+    var act = t.closest('[data-dlact]');
+    if (act) {
+      ev.preventDefault(); ev.stopPropagation();
+      attachAction(act.getAttribute('data-dlact'), act.getAttribute('data-dlurl') || '', act.getAttribute('data-dlname') || '', parseInt(act.getAttribute('data-dlsize') || '0', 10) || 0);
+      return;
+    }
+    // ② 文件卡片整卡点击 = save（Shift = save as）
+    var f = t.closest('[data-dl]');
+    if (f) {
+      ev.preventDefault(); ev.stopPropagation();
+      attachAction(ev.shiftKey ? 'saveas' : 'save', f.getAttribute('data-dl') || '', f.getAttribute('data-dlname') || '', parseInt(f.getAttribute('data-dlsize') || '0', 10) || 0);
+      return;
+    }
+    // ③ 图片点击 = 灯箱
+    var im = t.closest('a[data-lb]');
+    if (im) {
+      ev.preventDefault();
+      openImgLb(im.getAttribute('data-lb'), im.getAttribute('data-lbname') || '', parseInt(im.getAttribute('data-lbsize') || '0', 10) || 0);
+    }
+  }, true);
+  // ★ 图片加载失败（bed 已删/网络）→「附件已删除」占位：capture 阶段捕获（资源 error 不冒泡），
+  //   连 <a> 一起换掉（防点击占位再甩外部浏览器）。2026-09-14 根治旧内联 onerror 的嵌套引号断裂——
+  //   旧写法 class=\"…\" 在 HTML 属性里提前闭合 →「⚠️附件已删除」被错误恢复成永久可见垃圾文字
+  //   （与图片加载成败无关、每图恒泄漏，Chromium 实证：图正常 + 垃圾字同行泄漏）。
+  document.addEventListener('error', function (ev) {
+    var t = ev.target;
+    if (!t || t.tagName !== 'IMG' || !t.closest) return;
+    var a = t.closest('a[data-lb]');
+    if (!a || !a.parentNode) return;
+    var dead = document.createElement('div');
+    dead.className = 'attach-dead';
+    dead.innerHTML = '<span class="ad-ic">⚠️</span>附件已删除';
+    var holder = a.parentNode;
+    if (holder.classList && holder.classList.contains('att-item') && holder.parentNode) {
+      holder.parentNode.replaceChild(dead, holder);   // 连四小链接行一起换掉（占位零残留）
+    } else {
+      holder.replaceChild(dead, a);
+    }
+  }, true);
 
   function cacheHas(peerID, id) {
     var arr = _msgCache[peerID];

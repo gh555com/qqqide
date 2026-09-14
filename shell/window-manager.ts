@@ -546,13 +546,14 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
             wsStateSetKey('windowBounds', { maximized: true }).catch(() => { });
         } catch { /* ignore */ }
     });
-    win.on('unmaximize', () => { try { saveBounds(); } catch { /* ignore */ } });
-
-    // Download progress
-    downloadService.setProgressSender((entry) => {
-        if (win && !win.isDestroyed()) {
-            try { win.webContents.send('qqqide:download:progress', entry); } catch { /* ignore */ }
-        }
+    win.on('unmaximize', () => { try { saveBounds(); } catch { /* ignore */ } });    // Download progress — ★ 全窗口广播（2026-09-14）：旧实现单窗发送且每建一窗覆盖 sender
+    //   → 多窗口下进度被最后创建的窗口独占（下载发起窗口反而收不到）；渲染层按 entry.id 自行过滤
+    downloadService.setProgressSender((entry) => {
+        for (const w of BrowserWindow.getAllWindows()) {
+            if (w && !w.isDestroyed()) {
+                try { w.webContents.send('qqqide:download:progress', entry); } catch { /* ignore */ }
+            }
+        }
     });
 
     // Lock window UI at 1.0 (no zoom — editor font size handles text scaling)

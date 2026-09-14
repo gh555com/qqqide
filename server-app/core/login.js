@@ -592,11 +592,19 @@
     return d.getUTCFullYear() + '-W' + String(weekNo).padStart(2, '0');
   }
 
+  // ★ 2026-09-14: 榜单电话脱敏星号“超小化”——中间 **** 缩至 ~2 字符宽, 给首尾数字腾空间（所有榜统一）
+  function _ldrPhone(p) {
+    p = (p == null) ? '' : String(p);
+    p = p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return p.replace(/\*+/g, '<span style="font-size:8px;letter-spacing:-0.5px;">$&</span>');
+  }
+
   var LDR_ROW_HTML = '<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;gap:6px;">' +
     '<span style="width:24px;color:var(--text-dim,#888);text-align:right;">#{rank}</span>' +
     '<span style="width:18px;">{flag}</span>' +
     '<span style="flex:1;">{phone}</span>' +
     '<span style="min-width:70px;color:#b58900;text-align:right;font-weight:bold;">Lv{lv}</span>' +
+    '{refund}' +
     '</div>';
 
   function _ldrBuildRows(list) {
@@ -607,8 +615,14 @@
       // ★ 2026-09-12 刻度统一：服务端直出真实 LV（10 ge = 1 级），客户端 ×10 补丁废除
       var lvDisplay = isNaN(lvNum) ? e.level_str : lvNum.toFixed(4);
       var fl = _leaderboardFlag(e.flag);
-      s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', e.phone)
-        .replace('{lv}', lvDisplay);
+      // ★ F110: 上赛季行结算后显示「已返 X ge」徽章
+      var refundBadge = '';
+      if (e.refund_ge !== undefined && e.refund_ge !== null && e.refund_ge !== '') {
+        refundBadge = '<span style="min-width:66px;text-align:right;font-size:11px;color:var(--text-dim,#888);white-space:nowrap;">已返 <b style="color:#b58900;">'
+          + _ldrFmtGe(e.refund_ge) + 'ge</b></span>';
+      }
+      s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', _ldrPhone(e.phone))
+        .replace('{lv}', lvDisplay).replace('{refund}', refundBadge);
     }
     return s;
   }
@@ -626,10 +640,87 @@
       var e = list[i];
       var fl = _leaderboardFlag(e.flag);
       var geAmt = (e.freebie_ge != null) ? Math.round(e.freebie_ge) : '';
-      s += LDR_FREEBIE_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', e.phone)
+      s += LDR_FREEBIE_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', _ldrPhone(e.phone))
         .replace('{ge}', geAmt);
     }
     return s;
+  }
+
+  // ★ F110: 本周（未决算）实时榜 —— 两行式行（第二行 = 返现实时预计；第 1~10 名才有）
+  function _ldrFmtGe(s) {
+    var n = parseFloat(s);
+    if (isNaN(n)) return s || '';
+    if (n <= 0) return '0';
+    return n >= 100 ? n.toFixed(0) : n.toFixed(2);
+  }
+
+  function _ldrBuildCurrentRows(list) {
+    if (!list) return '<div style="color:var(--text-dim,#888);padding:16px;text-align:center;font-size:12px;">数据准备中</div>';
+    if (!list.length) return '<div style="color:var(--text-dim,#888);padding:16px;text-align:center;font-size:12px;">本周暂无参与</div>';
+    var s = '';
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      var lvNum = parseFloat(e.level_str);
+      var lvDisplay = isNaN(lvNum) ? e.level_str : lvNum.toFixed(4);
+      var fl = _leaderboardFlag(e.flag);
+      var refundLine = '';
+      if (e.refund_ge !== undefined && e.refund_ge !== null && e.refund_ge !== '') {
+        refundLine = '<div style="display:flex;justify-content:flex-end;gap:6px;font-size:11px;padding-right:2px;margin-top:1px;">'
+          + '<span style="color:var(--text-dim,#888);">返 ' + (e.rate_bp ? e.rate_bp / 100 : 0) + '%</span>'
+          + '<span style="color:#b58900;font-weight:bold;">' + _ldrFmtGe(e.refund_ge) + 'ge</span></div>';
+      }
+      var rowStyle = 'padding:4px 1px;' + (e.me ? 'background:rgba(181,137,0,0.10);border-radius:3px;' : '');
+      s += '<div style="' + rowStyle + '">'
+        + '<div style="display:flex;align-items:center;font-size:12px;gap:6px;">'
+        + '<span style="width:24px;color:var(--text-dim,#888);text-align:right;">#' + e.rank + '</span>'
+        + '<span style="width:18px;">' + fl + '</span>'
+        + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (e.me ? 'font-weight:bold;' : '') + '">' + _ldrPhone(e.phone) + '</span>'
+        + '<span style="min-width:70px;color:#b58900;text-align:right;font-weight:bold;">Lv' + lvDisplay + '</span>'
+        + '</div>' + refundLine + '</div>';
+    }
+    return s;
+  }
+
+  function _ldrBuildCurrentMe(m) {
+    if (!m) return '我的：本周未参赛';
+    var lvNum = parseFloat(m.level_str);
+    var lvDisplay = isNaN(lvNum) ? m.level_str : lvNum.toFixed(4);
+    var base = '我的：第 ' + m.rank + ' 名 · Lv ' + lvDisplay;
+    if (m.rank <= 10 && m.refund_ge !== undefined && m.refund_ge !== null && m.refund_ge !== '') {
+      return base + ' · 预计返 <b style="color:#b58900;">' + _ldrFmtGe(m.refund_ge) + 'ge</b>';
+    }
+    if (m.rank <= 10) return base + ' · 结算日按名次返还';
+    return base + ' · 未入前 10（无返现）';
+  }
+
+  // ★ F114: 本周榜剩余时间倒计时 + 赛季进度条（与 solar 同款：距结算 XhYm（不写秒）· 赛季已过 N%）
+  var _ldrCdTimer = null;
+  function _ldrSeasonBounds() { // [start, end) = 本周一 00:00 → 下周一 00:00（UTC; 与服务器赛季界同源）
+    var d = new Date();
+    var day = (d.getUTCDay() + 6) % 7;
+    var mon = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - day * 86400000;
+    return { start: mon, end: mon + 7 * 86400000 };
+  }
+  function _ldrFmtCd(ms) {
+    var s2 = Math.max(0, Math.floor(ms / 1000));
+    var dd = Math.floor(s2 / 86400); s2 -= dd * 86400;
+    var hh = Math.floor(s2 / 3600); s2 -= hh * 3600;
+    var mm = Math.floor(s2 / 60);
+    if (dd > 0) return dd + 'd' + hh + 'h' + mm + 'm';
+    if (hh > 0) return hh + 'h' + mm + 'm';
+    return mm + 'm';
+  }
+  function _ldrTickCd() {
+    var cd = document.getElementById('qqq-ldr-current-cd');
+    var bar = document.getElementById('qqq-ldr-current-bar');
+    if (!cd || !bar) return;
+    var b = _ldrSeasonBounds(), now = Date.now();
+    var frac = Math.max(0, Math.min(1, (now - b.start) / (b.end - b.start)));
+    bar.style.width = (frac * 100).toFixed(2) + '%';
+    var left = b.end - now;
+    cd.textContent = left > 0
+      ? '距结算 ' + _ldrFmtCd(left) + '（UTC 周一）· 赛季已过 ' + Math.round(frac * 100) + '%'
+      : '结算处理中……';
   }
 
   var LDR_ERR_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载失败</div>';
@@ -637,6 +728,7 @@
 
   function _ldrClose() {
     if (_$ldrOverlay) _$ldrOverlay.style.display = 'none';
+    if (_ldrCdTimer) { clearInterval(_ldrCdTimer); _ldrCdTimer = null; }
   }
 
   // 后台静默拉取（不显示 loading，不覆盖已有内容）
@@ -647,6 +739,8 @@
     var $freebie = document.getElementById('qqq-ldr-freebie');
     var $left = document.getElementById('qqq-ldr-left');
     var $right = document.getElementById('qqq-ldr-right');
+    var $cur = document.getElementById('qqq-ldr-current');
+    var $curMe = document.getElementById('qqq-ldr-current-me');
     var seasonId = _getCurrentSeasonId();
 
     _apiFetch('/qqq/leaderboard', {
@@ -656,10 +750,13 @@
         _ldrCache = {
           freebie: { data: d.freebie, seasonId: seasonId, ts: Date.now() },
           all_time: { data: d.all_time, seasonId: seasonId, ts: Date.now() },
-          last_season: { data: d.last_season, seasonId: seasonId, ts: Date.now() }
+          last_season: { data: d.last_season, seasonId: seasonId, ts: Date.now() },
+          current: { data: d.current, me: d.current_me, seasonId: seasonId, ts: Date.now() }
         };
         // 非静默模式 OR 面板仍开着 → 渲染
         if (!silent || (_$ldrOverlay && _$ldrOverlay.style.display !== 'none')) {
+          if ($cur) $cur.innerHTML = _ldrBuildCurrentRows(d.current);
+          if ($curMe) $curMe.innerHTML = _ldrBuildCurrentMe(d.current_me);
           if ($freebie && d.freebie) $freebie.innerHTML = _ldrBuildFreebieRows(d.freebie);
           else if ($freebie) $freebie.innerHTML = LDR_LOAD_HTML;
           if ($left) $left.innerHTML = _ldrBuildRows(d.all_time);
@@ -759,22 +856,33 @@
     var $freebie = document.getElementById('qqq-ldr-freebie');
     var $left = document.getElementById('qqq-ldr-left');
     var $right = document.getElementById('qqq-ldr-right');
+    var $cur = document.getElementById('qqq-ldr-current');
+    var $curMe = document.getElementById('qqq-ldr-current-me');
     _$ldrOverlay.style.display = '';
+    // ★ F114: 本周榜倒计时/进度条节拍（弹窗开启期间 1s 一跳; 关闭即停）
+    if (_ldrCdTimer) { clearInterval(_ldrCdTimer); }
+    _ldrCdTimer = setInterval(function () { try { _ldrTickCd(); } catch (e) { } }, 1000);
+    _ldrTickCd();
 
     var seasonId = _getCurrentSeasonId();
     var hasCache = _ldrCache && _ldrCache.all_time && _ldrCache.all_time.seasonId === seasonId;
 
     if (hasCache) {
       // ★ 同赛季命中 → 即时渲染缓存，零闪烁
+      if ($cur) $cur.innerHTML = _ldrBuildCurrentRows(_ldrCache.current ? _ldrCache.current.data : null);
+      if ($curMe) $curMe.innerHTML = _ldrBuildCurrentMe(_ldrCache.current ? _ldrCache.current.me : null);
       if ($freebie && _ldrCache.freebie) $freebie.innerHTML = _ldrBuildFreebieRows(_ldrCache.freebie.data);
       if ($left) $left.innerHTML = _ldrBuildRows(_ldrCache.all_time.data);
       if ($right) $right.innerHTML = _ldrBuildRows(_ldrCache.last_season.data);
-      // 超过 30 分钟 → 后台静默刷新
-      if (Date.now() - _ldrCache.all_time.ts > 30 * 60 * 1000) {
+      // 三榜超过 30 分钟 / 本周竞技榜超过 60 秒 → 后台静默刷新
+      if (Date.now() - _ldrCache.all_time.ts > 30 * 60 * 1000
+        || (_ldrCache.current && Date.now() - _ldrCache.current.ts > 60 * 1000)) {
         _ldrFetch(true);
       }
     } else {
       // ★ 无缓存或跨赛季 → 显示加载中，拉取新数据
+      if ($cur) $cur.innerHTML = LDR_LOAD_HTML;
+      if ($curMe) $curMe.innerHTML = '';
       if ($freebie) $freebie.innerHTML = LDR_LOAD_HTML;
       if ($left) $left.innerHTML = LDR_LOAD_HTML;
       if ($right) $right.innerHTML = LDR_LOAD_HTML;
@@ -798,7 +906,7 @@
 
     _$ldrPanel = document.createElement('div');
     _$ldrPanel.className = 'qqq-ldr-panel';
-    _$ldrPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:850px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';';
+    _$ldrPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:1120px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';';
     _$ldrPanel.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid ' + border + ';">' +
       '<span id="qqq-ldr-header-text" style="font-size:13px;color:' + titleClr + ';"></span>' +
@@ -811,9 +919,17 @@
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
       '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">🏆 历史总排行</div>' +
       '<div id="qqq-ldr-left"></div></div>' +
-      '<div style="flex:1;padding:10px 12px;">' +
+      '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
       '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">📅 上赛季排行</div>' +
       '<div id="qqq-ldr-right"></div></div>' +
+      '<div style="flex:1.05;padding:10px 12px;">' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:2px;">⚔️ 本周排行</div>' +
+      '<div style="font-size:10.5px;color:' + titleClr + ';opacity:0.72;margin-bottom:8px;">未决算 · 前 10 名结算日返还消费（20%↓5%）</div>' +
+      '<div id="qqq-ldr-current"></div>' +
+      '<div id="qqq-ldr-current-me" style="margin-top:6px;padding-top:6px;border-top:1px dashed ' + border + ';font-size:11.5px;color:' + titleClr + ';line-height:1.6;"></div>' +
+      '<div id="qqq-ldr-current-cd" style="margin-top:7px;font-size:11px;color:' + titleClr + ';opacity:0.85;"></div>' +
+      '<div style="height:4px;background:' + (isDark ? '#3a3a3a' : '#e8e6df') + ';border-radius:2px;margin-top:4px;overflow:hidden;"><i id="qqq-ldr-current-bar" style="display:block;height:100%;width:0;background:#e8a100;transition:width 0.5s linear;"></i></div>' +
+      '</div>' +
       '</div>';
     _$ldrOverlay.appendChild(_$ldrPanel);
     document.body.appendChild(_$ldrOverlay);

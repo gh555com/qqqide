@@ -30,7 +30,6 @@
   var bridge = window.qqqideBridge;
   var klipzap = window.qqqideKlipzap;
   var wqStats = window.qqqWqStats;
-  var anchorMap = window.qqqAnchorMap;
 
   var _editor = null;
   var _monaco = null;
@@ -38,9 +37,15 @@
   var _pasteHandler = null;  // bound handler for cleanup
 
   // ═══ Token 生成 ═══
+  // ★ 引号式令牌：文件名含空白（空格）或锚点字符（📎/📁）时必须用 ASCII " 包裹——
+  //   旧式裸令牌在第一个空格处被锚点正则截断（📎:松尾早人 - xxx.mp3 → 只剩「松尾早人」）
+  //   → 路径解析必然落空 → 帧不显示/错帧。NTFS 禁止文件名含 " → 包裹零歧义。
+  //   与 AI 面板 chip 引号约定（铁律 §8.5）对齐；viewport-machine 正则双式兼容。
   function _makeAnchorToken(sha256, fileName) {
     var prefix = (sha256 || '').slice(0, 12);
-    return '\u{1F4CE}' + prefix + ':' + (fileName || 'file');
+    var name = String(fileName || 'file');
+    if (/[\s\u{1F4CE}\u{1F4C1}]/.test(name)) name = '"' + name + '"';
+    return '\u{1F4CE}' + prefix + ':' + name;
   }
 
   // ═══ 时间戳 + 随机名 ═══
@@ -151,6 +156,66 @@
     return btoa(bin);
   }
 
+  // ═══ 指纹去重（老 q3 h.js _tryLocalDeduplicate 移植：仅同目录、按内容指纹复用）═══
+  //   粘贴图片写盘前先扫目标 _qqqvault/：同尺寸候选 → sha256 逐字节比对；
+  //   命中 → 不写盘，锚点直接指向既有文件（同内容 = 同 token，vault 永不堆重复文件）。
+  //   主路 = 主进程 bridge.hash.file（mtime 缓存）；壳层未更新（桥缺失）时渲染层读字节兑底。
+  var _DEDUP_B64_CAP = 24 * 1024 * 1024;
+  var _dedupShaCache = {};
+  async function _fileSha256(filePath, size, mtimeMs) {
+    if (!(size > 0) || size > _DEDUP_B64_CAP) return null;
+    var key = filePath + '|' + size + '|' + (mtimeMs || 0);
+    if (_dedupShaCache[key] !== undefined) return _dedupShaCache[key];
+    var out = null;
+    try {
+      if (bridge && bridge.fs && bridge.fs.readBase64 && window.crypto && window.crypto.subtle) {
+        var b64 = await bridge.fs.readBase64(filePath);
+        if (b64) {
+          var bin = atob(b64);
+          var bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xFF;
+          var hb = await window.crypto.subtle.digest('SHA-256', bytes);
+          var arr = new Uint8Array(hb);
+          var hex = '';
+          for (var j = 0; j < arr.length; j++) hex += arr[j].toString(16).padStart(2, '0');
+          out = hex;
+        }
+      }
+    } catch (_) { out = null; }
+    _dedupShaCache[key] = out;
+    return out;
+  }
+
+  async function _findDuplicateInDir(dir, size, sha256) {
+    if (!sha256 || !size) return null;
+    if (!bridge || !bridge.fs || !bridge.fs.list) return null;
+    var sep = dir.indexOf('\\') >= 0 ? '\\' : '/';
+    try {
+      var entries = await bridge.fs.list(dir);
+      if (!Array.isArray(entries)) return null;
+      for (var i = 0; i < entries.length && i < 2000; i++) {
+        var ent = entries[i];
+        if (!ent || ent.isDir || !ent.name) continue;
+        if (ent.size !== size) continue;
+        var nm = String(ent.name);
+        if (/\.(part|ytdl|tmp|crdownload)$/i.test(nm)) continue;
+        var p = dir + sep + nm;
+        var candSha = null;
+        if (bridge.hash && bridge.hash.file) {
+          try {
+            var h = await bridge.hash.file(p, 'strong');
+            candSha = (h && h.sha256) ? String(h.sha256).toLowerCase() : null;
+          } catch (_) { candSha = null; }
+        }
+        if (!candSha) candSha = await _fileSha256(p, ent.size, ent.mtimeMs);
+        if (candSha && candSha === sha256) {
+          return { path: p, name: nm, size: ent.size };
+        }
+      }
+    } catch (e) { /* list 失败 → 不去重，正常写盘 */ }
+    return null;
+  }
+
   // ═══ 写盘 + hash ═══
   async function _saveImage(blob, ext, e) {
     var dir = _getPasteDir(e);
@@ -173,6 +238,16 @@
       }
     } catch (e) {
       console.warn('[paste-router] SHA-256 failed:', e && e.message);
+    }
+
+    // ★ 指纹去重：同目录同内容 → 复用既有文件（禁重复落盘）
+    var dup = await _findDuplicateInDir(dir, ab.byteLength, sha256);
+    if (dup) {
+      console.log('[paste-router] dedup hit: ' + dup.path);
+      if (bridge && bridge.assetRoots && bridge.assetRoots.add) {
+        bridge.assetRoots.add(dir).catch(function () { /* */ });
+      }
+      return { path: dup.path, sha256: sha256, fileName: dup.name, reused: true };
     }
 
     // Ensure target directory exists
@@ -249,13 +324,16 @@
         forceMoveMarkers: true,
       }]);
       targetEd.focus();
-      // Register path immediately so ContentWidget can resolve
-      if (metadata && metadata.path && anchorMap && anchorMap.setPath) {
-        anchorMap.setPath(insLine, insCol, metadata.path);
-      }
-      // Notify ContentWidget to sync
-      if (anchorMap && anchorMap._notifyListeners) {
-        setTimeout(function () { anchorMap._notifyListeners(); }, 80);
+      // ★ 2026-09-14 根治：视口机器（viewport-machine，唯一渲染真相）持 per-editor 锚点表，
+      //   粘贴必须把真实 path 显式注册进去——否则相框渲染时 path=null → 图无 src（破图），
+      //   直到切标签/重开文件触发全量重扫才恢复。注册后相框立即拿到 file:// 源。
+      var machine = window.qqqViewportMachine;
+      if (machine && machine.registerPastedAnchor) {
+        try {
+          var meta = metadata || {};
+          meta.rawLen = token.length;   // 原文隐藏长度（令牌真实字符数，含引号）
+          machine.registerPastedAnchor(targetEd, insLine, insCol, meta);
+        } catch (_) { /* */ }
       }
     } catch (e) {
       console.warn('[paste-router] insert token failed:', e);
@@ -572,6 +650,7 @@
     dispose: dispose,
     isActive: function () { return _attached; },
     handleDrop: handleDrop,
+    handlePaste: _onPaste,
     _makeAnchorToken: _makeAnchorToken,
   };
 

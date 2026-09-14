@@ -53,6 +53,19 @@ export function registerMiscIpc(
         }
     });
 
+    // ═══ hash:file — SHA256/xxh64 file fingerprinting（mtime+size 缓存）═══
+    //   2026-09-14: preload 早已暴露 bridge.hash.file（thumbnail-cache / 粘贴去重主路依赖），
+    //   但主进程从未注册 handler → 一切调用静默 reject（桥悬空）。此处补全唯一实现。
+    ipcMain.handle('qqqide:hash:file', async (_e, p: string, mode?: 'fast' | 'strong' | 'both') => {
+        try {
+            if (!p || typeof p !== 'string') { return null; }
+            return await hashService.hashFile(p, mode || 'fast');
+        } catch (e: any) {
+            console.warn('[hash:file] failed:', p, e && e.message);
+            return null;
+        }
+    });
+
     // ═══ cache (KV + bucketed file cache rooted at portable.cache) ═══
     ipcMain.handle('qqqide:cache:get', async (_e, key: string) => {
         return await cacheStore.get(key);
@@ -199,10 +212,13 @@ ${escapedPaths}
     ipcMain.handle('qqqide:shell:openPath', async (_e, p: string) => {
         if (process.platform === 'win32' && typeof p === 'string' && p) {
             try {
-                const child = cp.spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start', '""', '/normal', p], {
+                // ★ 转义铁律（2026-09-12）：路径必须双引号包裹 + windowsVerbatimArguments（防 & 等字符被 cmd 当分隔符截断）
+                const safePath = String(p).replace(/"/g, '');
+                const child = cp.spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `start "" /normal "${safePath}"`], {
                     detached: true,
                     stdio: 'ignore',
-                    windowsHide: true
+                    windowsHide: true,
+                    windowsVerbatimArguments: true
                 });
                 child.unref();
                 child.on('error', (e: any) => console.warn('[shell:openPath] relay error', e));
@@ -216,6 +232,14 @@ ${escapedPaths}
     });
     ipcMain.handle('qqqide:shell:openExternal', async (_e, url: string) => {
         openUrl(url, _e.sender);
+    });
+
+    // ★ 定位文件（下载完成后「打开文件夹」）：SHOpenFolderAndSelectItems 语义，explorer 单例激活零新进程
+    ipcMain.handle('qqqide:shell:showItemInFolder', async (_e, p: string) => {
+        try {
+            if (typeof p === 'string' && p) { electronShell.showItemInFolder(p); return true; }
+        } catch (e) { console.warn('[shell:showItemInFolder]', e); }
+        return false;
     });
 
     // ★ roam 空白区右键 → 在当前目录打开管理员终端 (CMD / PowerShell)
@@ -335,6 +359,71 @@ ${escapedPaths}
         const mainWindow = BrowserWindow.getAllWindows()[0] || null;
         if (!mainWindow) { return null; }
         return dialog.showMessageBox(mainWindow, opts || {});
+    });
+
+    // ---- download（用户可见下载：保存对话框/静默直存 + DownloadService 流式落盘/进度/取消）----
+    // ★ 2026-09-14：DownloadService 与 preload bridge.download 早已存在，但 IPC 层从未注册（桥悬空）——此处补全。
+    // ★ 2026-09-14 v2（目录记忆）：saveAs!==false → 弹保存对话框（defaultPath=dir，记住上次目录）；
+    //   saveAs:false + dir 存在 → 静默直存（重名自动「name (1).ext」绝不覆盖——覆盖仅限对话框路径=用户已确认）；
+    //   返回值带 dir/fileName（最终落盘）供渲染层记忆上次目录（download-machine.js qqq.download.lastDir）。
+    ipcMain.handle('qqqide:download:start', async (e, opts: any) => {
+        try {
+            const o = opts || {};
+            const url = String(o.url || '');
+            if (!/^https?:\/\//i.test(url)) { return { ok: false, error: 'invalid_url' }; }
+            let dir = typeof o.dir === 'string' && o.dir ? o.dir : '';
+            let fileName = String(o.fileName || o.filename || '').replace(/[\\/:*?"<>|\r\n\t]+/g, '_').trim();
+            const wantDialog = o.saveAs !== false;
+            const dirOk = (() => { try { return !!dir && fs.existsSync(dir) && fs.statSync(dir).isDirectory(); } catch { return false; } })();
+            if (wantDialog || !dirOk) {
+                const win = BrowserWindow.fromWebContents(e.sender) || BrowserWindow.getAllWindows()[0] || null;
+                let defDir = '';
+                if (dirOk) { defDir = dir; }
+                else { try { defDir = app.getPath('downloads'); } catch { /* ignore */ } }
+                const save = await dialog.showSaveDialog(win as any, {
+                    title: '保存文件',
+                    defaultPath: fileName ? path.join(defDir, fileName) : (defDir || undefined),
+                });
+                if (save.canceled || !save.filePath) { return { ok: false, canceled: true }; }
+                dir = path.dirname(save.filePath);
+                fileName = path.basename(save.filePath);
+                // 对话框已确认覆盖 → 先删旧文件（下载服务对已存在文件走续传语义，与「保存覆盖」相撞）
+                try {
+                    const fp = path.join(dir, fileName);
+                    if (fileName && fs.existsSync(fp)) { fs.unlinkSync(fp); }
+                } catch { /* ignore */ }
+            } else {
+                // 静默直存（记住的上次目录）：重名自动唯一化——绝不覆盖用户已有文件
+                if (!fileName) { fileName = 'download'; }
+                const dot = fileName.lastIndexOf('.');
+                const base = dot > 0 ? fileName.slice(0, dot) : fileName;
+                const ext = dot > 0 ? fileName.slice(dot) : '';
+                let i = 1;
+                let fp = path.join(dir, base + ext);
+                while (fs.existsSync(fp)) { fp = path.join(dir, base + ' (' + (i++) + ')' + ext); }
+                fileName = path.basename(fp);
+            }
+            const entry = downloadService.start({ url, dir, fileName: fileName || undefined, sha256: o.sha256, headers: o.headers });
+            return { ok: true, id: entry.id, filePath: entry.filePath, totalBytes: entry.totalBytes, dir, fileName };
+        } catch (err: any) {
+            return { ok: false, error: String((err && err.message) || err) };
+        }
+    });
+
+    ipcMain.handle('qqqide:download:cancel', async (_e, id: string) => {
+        try {
+            const ent = downloadService.list().find(x => x.id === id) || null;
+            const ok = downloadService.cancel(String(id || ''));
+            // 取消 = 清半截文件（用户保存语义：重下即全新；避免目标目录留残体）
+            if (ok && ent && ent.filePath) {
+                setTimeout(() => { try { if (fs.existsSync(ent.filePath)) { fs.unlinkSync(ent.filePath); } } catch { /* ignore */ } }, 300);
+            }
+            return ok;
+        } catch { return false; }
+    });
+
+    ipcMain.handle('qqqide:download:list', async () => {
+        try { return downloadService.list(); } catch { return []; }
     });
 
     // ---- asset-roots ----

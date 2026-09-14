@@ -36,4 +36,22 @@ export function registerMediaIpc(mediaService: MediaService): void {
     ipcMain.handle('qqqide:media:ffmpegPath', async () => {
         return mediaService.ffmpegPath();
     });
+
+    // ★ WYSIWYG 相框预览（老 q3 buildUnifiedWebPArgs 移植：extreme/accelerated/optmum）
+    ipcMain.handle('qqqide:media:preview', async (_e, opts: any) => {
+        try {
+            return await mediaService.preview(opts);
+        } catch (e: any) {
+            return { ok: false, error: e.message || 'preview_exception' };
+        }
+    });
+
+    // ★ 文本胶片（老 q3 generateTextPreview 移植：drawtext 514x290）
+    ipcMain.handle('qqqide:media:textPreview', async (_e, opts: any) => {
+        try {
+            return await mediaService.textPreview(opts);
+        } catch (e: any) {
+            return { ok: false, error: e.message || 'textpreview_exception' };
+        }
+    });
 }

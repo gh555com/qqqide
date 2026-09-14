@@ -3,7 +3,8 @@
 // ============================================================================
 // squad-btn.js — 窗口编队按钮（菜单行2，LV 进度条左侧）
 //   · 按钮显示当前窗口编队字符（1 2 q w a s z x 之一）；无编队（>8 窗口）显示暗化 ■
-//   · 对色（2026-09-12 用户定案）: 仅最外层按钮实心对色块——浅色主题黑底白字 / 深色主题白底黑字（下拉菜单不变）
+//   · 按钮样式: 原版透明底 + 主题色文字；仅最外层按钮文字加粗，下拉列表行不粗体（2026-09-12 用户定案，对色方案已还原）
+//   · ★ 按钮文字必须挂独立 label span——_render 写 _btn.textContent 会清空子节点，把挂在按钮内的下拉一起抹掉
 //   · 点击 → 下拉 8 槽位：已占用（红/灰禁用，title=所属窗口标题）/ 空闲（可点切换）/ 当前（金色）
 //   · 同步: main 进程广播 'qqqide:squad:changed' → 重新 get → 秒级刷新
 //   · 真理源: %LOCALAPPDATA%/qqqide/squads.json（主进程 squad-manager.ts）
@@ -13,6 +14,7 @@
 
   var ORDER = ['1', '2', 'q', 'w', 'a', 's', 'z', 'x'];
   var _btn = null;
+  var _label = null;
   var _dd = null;
   var _state = null;
   var _retries = 0;
@@ -32,15 +34,13 @@
 
     _btn = document.createElement('button');
     _btn.className = 'qqq-squad-btn';
-    _btn.style.cssText = _NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;cursor:pointer;padding:0 10px;height:24px;font-size:16px;margin-right:6px;position:relative;font-variant-numeric:tabular-nums;white-space:nowrap;';
+    _btn.style.cssText = _NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;cursor:pointer;padding:0 10px;height:24px;font-size:16px;font-weight:bold;margin-right:6px;position:relative;font-variant-numeric:tabular-nums;white-space:nowrap;';
+    // ★ 2026-09-12 下拉瞬灭实锤: 文字改挂 label span——旧实现 _render 直写 _btn.textContent 会清空按钮
+    //   全部子节点，而 _dd 挂在按钮内部 → 展开瞬间被 refresh 回调抹掉（点了闪一下就没），必须只更新 label。
+    _label = document.createElement('span');
+    _btn.appendChild(_label);
     _btn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); _toggle(); });
     $lv.parentNode.insertBefore(_btn, $lv);
-    _paint();
-
-    // 主题切换 → 对色即时重绘（下拉菜单与其余一切不受影响）
-    if (window.qqqideTheme && window.qqqideTheme.onChange) {
-      try { window.qqqideTheme.onChange(function () { _paint(); }); } catch (_) { }
-    }
 
     _refresh();
     try { _unsub = _bridge().onChanged(function () { _refresh(); }); } catch (_) { }
@@ -56,42 +56,23 @@
     }).catch(function () { /* ignore */ });
   }
 
-  // ── 对色（撞色）——仅最外层按钮: 浅色主题黑底白字 / 深色主题白底黑字；下拉菜单不受影响 ──
-  function _invert() {
-    var dark = false;
-    try {
-      dark = (window.qqqideTheme && window.qqqideTheme.isDark)
-        ? !!window.qqqideTheme.isDark()
-        : document.documentElement.getAttribute('data-theme') === 'dark';
-    } catch (_) { }
-    return dark
-      ? { bg: '#ffffff', fg: '#000000', dim: 'rgba(0,0,0,0.5)' }
-      : { bg: '#000000', fg: '#ffffff', dim: 'rgba(255,255,255,0.55)' };
-  }
-
-  function _paint() {
-    if (!_btn) return;
-    var c = _invert();
-    _btn.style.background = c.bg;
-    _btn.style.borderColor = c.bg;   // 边框同底色 → 实心块
-    _btn.style.color = (!_state || _state.squad) ? c.fg : c.dim;
-  }
-
   function _render() {
     var sq = _state && _state.squad;
     var none = !!(_state && _state.none);
-    if (!_btn) return;
+    if (!_btn || !_label) return;
     if (sq) {
-      _btn.textContent = sq;  // 编队字符
+      _label.textContent = sq;  // 编队字符（只写 label，绝不动按钮子节点）
+      _btn.style.color = 'var(--text-primary,#e8e8e8)';
       _btn.title = '编队 ' + sq + ' — 空格+' + sq + ' 召回（点击更换编队）';
     } else if (none) {
-      _btn.textContent = '\u2014';  // none 态: 长横（与下拉 none 行左列同符）
+      _label.textContent = '\u2014';  // none 态: 长横（与下拉 none 行左列同符）
+      _btn.style.color = 'var(--text-secondary,#777)';
       _btn.title = '编队 none（不可召回）— 点击选择分组';
     } else {
-      _btn.textContent = '\u25A0';  // >8 窗口: 无可用槽位
+      _label.textContent = '\u25A0';  // >8 窗口: 无可用槽位
+      _btn.style.color = 'var(--text-secondary,#777)';
       _btn.title = '无可用编队（窗口超过 8 个，不可召回）— 点击选择分组';
     }
-    _paint();
     if (_dd) _renderDd();
   }
 
@@ -126,7 +107,7 @@
         row.style.cssText = 'display:flex;align-items:center;gap:8px;height:28px;line-height:28px;padding:0 12px;font-size:12px;white-space:nowrap;';
         var tag = document.createElement('span');
         tag.textContent = slot;
-        tag.style.cssText = 'font-weight:bold;width:20px;text-align:center;flex-shrink:0;font-size:13px;color:' + (current ? '#b58900' : (entry ? '#dc322f' : '#859900')) + ';';
+        tag.style.cssText = 'width:20px;text-align:center;flex-shrink:0;font-size:13px;color:' + (current ? '#b58900' : (entry ? '#dc322f' : '#859900')) + ';';
         var label = document.createElement('span');
         label.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary,#e8e8e8);';
         // 中列: 带编队前缀（x■ + 标题/文件夹名/窗口#N 兜底）
@@ -168,7 +149,7 @@
       row.style.cssText = 'display:flex;align-items:center;gap:8px;height:28px;line-height:28px;padding:0 12px;font-size:12px;white-space:nowrap;';
       var tag = document.createElement('span');
       tag.textContent = '\u2014';
-      tag.style.cssText = 'font-weight:bold;width:20px;text-align:center;flex-shrink:0;font-size:13px;color:' + (current ? '#b58900' : 'var(--text-secondary,#777)') + ';';
+      tag.style.cssText = 'width:20px;text-align:center;flex-shrink:0;font-size:13px;color:' + (current ? '#b58900' : 'var(--text-secondary,#777)') + ';';
       var label = document.createElement('span');
       label.textContent = 'none（不指定分组）';
       label.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary,#e8e8e8);';
@@ -203,7 +184,8 @@
   }
 
   function _onDocDown(ev2) {
-    if (_dd && !_dd.contains(ev2.target) && ev2.target !== _btn) _close();
+    // _btn.contains 一并覆盖按钮自身 / label span / 下拉内部（旧 ev2.target !== _btn 在文字挂 span 后会误关）
+    if (_dd && _btn && !_btn.contains(ev2.target)) _close();
   }
   function _onWinBlur() { _close(); }
 

@@ -594,7 +594,13 @@
     if (_inboxHidden) return;
     _inboxHidden = true;
     if (_inboxReconnectTimer) { clearTimeout(_inboxReconnectTimer); _inboxReconnectTimer = null; }
-    if (_inboxWs) { try { _inboxWs.onclose = null; _inboxWs.close(); } catch (_) {} _inboxWs = null; }
+    // ★ 安全关闭（2026-09-14）：CONNECTING 直接 close 会打 Chrome 噪音 → 只置废弃标记（onopen 自关）；仅 OPEN 才立即 close
+    if (_inboxWs) {
+      var _w = _inboxWs; _inboxWs = null;
+      try { _w.onclose = null; } catch (_) {}
+      try { _w._qqqDead = true; } catch (_) {}
+      try { if (_w.readyState === WebSocket.OPEN) _w.close(); } catch (_) {}
+    }
     _inboxStartBgPoll();
   }
   function _inboxExitBg() {
@@ -678,6 +684,8 @@
       var ws = _inboxWs = new WebSocket(wsUrl);
 
       ws.onopen = function () {
+        // ★ 节能握手窗口废弃（2026-09-14）：CONNECTING 期间不 close（Chrome 噪音）→ 置标记，连上瞬间自关
+        if (ws._qqqDead) { try { ws.close(); } catch (_) {} return; }
         _inboxReconnectDelay = 0;
         ws.send(JSON.stringify({ type: 'sub', ch: 'inbox:' + _inboxDoerID }));
       };

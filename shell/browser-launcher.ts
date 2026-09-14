@@ -91,10 +91,15 @@ function openUrlWindows(url: string, sender?: Electron.WebContents): void {
     //   POSIX（open/xdg-open）天然短命 + reparent 同语义——跨平台零分类零登记。
     diag('L1: cmd relay start (v29 channel isolation)');
     try {
-        const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start', '""', '/normal', url], {
+        // ★ 转义铁律（2026-09-12）：URL 必须双引号包裹 + windowsVerbatimArguments——
+        //   Node 默认只对「空格/引号」加引号，裸传含 & 的 URL 会被 cmd 当命令分隔符截断
+        //   （如 ?lang=zh&recharge=open → 浏览器只收到 ?lang=zh，参数静默丢失）。
+        const safeUrl = String(url).replace(/"/g, '%22');
+        const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `start "" /normal "${safeUrl}"`], {
             detached: true,
             stdio: 'ignore',
-            windowsHide: true
+            windowsHide: true,
+            windowsVerbatimArguments: true
         });
         child.unref();
         child.on('error', (e: any) => {

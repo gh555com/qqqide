@@ -374,7 +374,7 @@
       if (def.key === 'audio.volume') {
         html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">';
         html += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + def.label + '</span>';
-        html += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap;" title="逐个音效开关">1 by 1</button>';
+        html += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap; margin-left:20px;" title="逐个音效开关">1 by 1</button>';
         html += '</div>';
       }
       // ★ 无 desc 项不渲染描述行（防 undefined）

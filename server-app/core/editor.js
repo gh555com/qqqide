@@ -660,6 +660,11 @@
       // 注册唯一真理配色机器的 Monaco 主题
       if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
 
+      // ★ codelens 按钮机器（老 q3 FileCodeLensProvider 移植；等级/样式由 qqq-prefs 驱动）
+      if (window.qqqCodelens && window.qqqCodelens.install) {
+        try { window.qqqCodelens.install(monaco); } catch (_) { }
+      }
+
       // configureMonacoTypescript(monaco); // LSP OFF
 
       const theme = (window.qqqideTheme && window.qqqideTheme.getMonacoTheme()) || 'vs';

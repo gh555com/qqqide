@@ -119,7 +119,13 @@ export class DownloadService {
 
   // ---- internal ----
 
+  private _lastEmitAt = 0;
   private _emit(entry: DownloadEntry): void {
+    // ★ 节流（2026-09-14）：进度事件经 IPC 广播到全部窗口——每 chunk 直发 = 每秒数百次 IPC 洪水；
+    //   done/error/cancelled 终态永远放行，中间进度 ≥120ms 一帧。
+    const now = Date.now();
+    if (!entry.done && now - this._lastEmitAt < 120) { return; }
+    this._lastEmitAt = now;
     if (this._sendProgress) {
       try { this._sendProgress(entry); } catch { /* ignore */ }
     }
