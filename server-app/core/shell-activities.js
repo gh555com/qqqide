@@ -6,9 +6,10 @@
 // ① 清爽从2026（qqq-act-cool）：总消费（实扣+白嫖）0→10 ge 进度条
 //    hover 瞬间弹出自定义文字框「清爽从2026」
 //    点击 → 拼多多式活动弹窗（两阶段：未满 / 已满）→ 加 QQ 群 524906522 领 10 元红包
-// ② 原料与基本权利（qqq-act-ge50）：一换一交换 · 终身一次（2026-09-12 升级）
-//    点击 → 交换弹窗：系统找出历史最大单笔赞助，同意或另选一笔 → 按该笔金额等额获得原料
-//    关闭/「再想想」不消耗机会；旧 ge50/phone50 记录不再作为资格依据（全员清零重来）
+// ② 原料与基本权利（qqq-act-ge50）：总消费 0→50 ge 进度条
+//    点击 → 任务清单弹窗（下载登录 ✓ / 消费达标 ✓ / 赞助行 / 底部「领取双倍 ge」）
+//    领取双倍（终身一次）：门槛 = 总消费（实扣+白嫖）≥ 50；选一笔历史赞助等额补一笔
+//    （支付时已按 1:1 到账一笔 = 合计总体双倍）；无赞助 → 弹赞助卡片 + qoast
 // ③ 2026, 我, vibe coding（qqq-act-vibe）：循环免费窗口豆腐块
 //    免费时段（UTC）：周日全天 + 每日 01:00-03:00 / 13:00-15:00
 //    进度条 = 随机免费余额剩余比例；数字 = 免费中显示余额 / 非免费显示距下次倒计时
@@ -17,8 +18,8 @@
 //    点击 → 弹窗（介绍文案一字不变 + 已入累计金额，数据源 eye_paid_yuan 运营手动录入）
 // ★ 已完成活动精简：清爽/原料满格后豆腐块只显示 活动名+✓（进度条/数字/图标隐藏，外边框不变）
 //
-// 数据源: GET  /api/qqqide/activity             （登录；swap 块含历史赞助账单）
-//         POST /api/qqqide/activity/swap        （一换一交换）
+// 数据源: GET  /api/qqqide/activity             （登录）
+//         POST /api/qqqide/activity/swap        （赞助双倍：额外补一笔等额，终身一次）
 // 消费定义与服务器 LV/排行榜同一真理源（实扣=doer_lv_seasons，白嫖=doer_free_budgets）
 // ============================================================================
 
@@ -47,7 +48,7 @@ function bootActivities(boot) {
 
   var _data = null;        // 服务端活动状态
   var _lastFetch = 0;
-  var _fetching = false;
+  var _fetchPromise = null; // 进行中的拉取（重复调用合并等它，防并发重复请求）
   var _tipEl = null;       // 自定义即时 hover 文字框
   var _overlay = null;     // 弹窗容器（复用单例）
 
@@ -56,7 +57,6 @@ function bootActivities(boot) {
   var $coolFill = document.getElementById('qqq-act-cool-fill');
   var $coolNum = document.getElementById('qqq-act-cool-num');
   var $ge50Fill = document.getElementById('qqq-act-ge50-fill');
-  var $ge50Num = document.getElementById('qqq-act-ge50-num');
   var $vibe = document.getElementById('qqq-act-vibe');
   var $vibeFill = document.getElementById('qqq-act-vibe-fill');
   var $vibeNum = document.getElementById('qqq-act-vibe-num');
@@ -145,32 +145,32 @@ function bootActivities(boot) {
   // ── 数据拉取 ──────────────────────────────────────────────────────────────
   function fetchStatus(force) {
     var now = Date.now();
-    if (!force && now - _lastFetch < POLL_MS) return;
-    if (_fetching) return;
+    if (!force && now - _lastFetch < POLL_MS) return null;
+    if (_fetchPromise) return _fetchPromise; // 进行中 → 合并等它（领取判定前 await 刷新零并发）
     _lastFetch = now;
     var token = authToken();
-    if (!token) { _data = null; render(); return; }
-    _fetching = true;
-    _apiFetch('/qqqide/activity', {
+    if (!token) { _data = null; render(); return null; }
+    _fetchPromise = _apiFetch('/qqqide/activity', {
       headers: { 'Authorization': 'Bearer ' + token },
       cache: 'no-cache'
     })
       .then(function (r) {
-        if (r.status === 401) { _data = null; render(); return null; }
-        return r.ok ? r.json() : null;
+        if (r && r.status === 401) { _data = null; render(); return null; }
+        return (r && r.ok) ? r.json() : null;
       })
       .then(function (data) {
         if (data && data.ok) { _data = data; render(); }
       })
       .catch(function () { /* 静默，保留上次数据 */ })
-      .finally(function () { _fetching = false; });
+      .finally(function () { _fetchPromise = null; });
+    return _fetchPromise;
   }
 
   // ── 渲染进度条 ────────────────────────────────────────────────────────────
   function render() {
     var cons = (_data && _data.consumption) || {};
     var cool = (_data && _data.cool2026) || {};
-    var sw = (_data && _data.swap) || {};
+    var g50 = (_data && _data.ge50) || {};
     var total = parseFloat(cons.total_ge) || 0;
 
     // 清爽从2026
@@ -182,13 +182,12 @@ function bootActivities(boot) {
     // ★ 已完成 → 精简豆腐块（只显示 活动名+✓）
     if ($cool) $cool.classList.toggle('qqq-act-compact', !!cool.reached);
 
-    // 原料与基本权利 → 一换一交换（终身一次）：未交换显示最大可换金额（¥N），已交换显示 ✓ 精简
-    var swapDone = !!sw.used;
-    var swapBills = sw.bills || [];
-    if ($ge50Fill) $ge50Fill.style.width = '0%';
-    if ($ge50Num) $ge50Num.textContent = swapDone ? '' : (swapBills.length ? ('¥' + fmt(swapBills[0].amount_cny)) : '—');
-    if ($ge50) $ge50.classList.toggle('qqq-act-done', swapDone);
-    if ($ge50) $ge50.classList.toggle('qqq-act-compact', swapDone);
+    // 原料与基本权利
+    var g50Target = parseFloat(g50.target_ge) || 50;
+    var g50Pct = Math.max(0, Math.min(100, total / g50Target * 100));
+    if ($ge50Fill) $ge50Fill.style.width = g50Pct + '%';
+    if ($ge50) $ge50.classList.toggle('qqq-act-done', !!g50.reached);
+    if ($ge50) $ge50.classList.toggle('qqq-act-compact', !!g50.reached);
 
     // 美丽滴眼睛：清爽达标（总消费≥10）才显示；位置 = 已完成豆腐块最右一个的右边
     //   仅清爽完成 → [清爽✓][眼睛][原料][vibe]；清爽+原料都完成 → [清爽✓][原料✓][眼睛][vibe]
@@ -196,7 +195,7 @@ function bootActivities(boot) {
       var eyeShow = !!cool.reached;
       $eye.style.display = eyeShow ? '' : 'none';
       if (eyeShow) {
-        if (swapDone) {
+        if (!!g50.reached) {
           if ($eye.nextElementSibling !== $vibe) $ge50.parentNode.insertBefore($eye, $vibe);
         } else {
           if ($eye.nextElementSibling !== $ge50) $ge50.parentNode.insertBefore($eye, $ge50);
@@ -315,20 +314,27 @@ function bootActivities(boot) {
       '#qqq-act-task-recharge:hover{background:rgba(181,137,0,.14);border-color:#b58900;}' +
       '.qqq-act-task .qqq-act-task-go{margin-left:auto;font-size:12px;font-weight:800;color:#b58900;white-space:nowrap;}' +
       '.qqq-act-task .qqq-act-task-now{font-size:11.5px;color:#9aa0b5;white-space:nowrap;}' +
-      '.qqq-act-or{text-align:center;font-size:12px;font-weight:700;color:#b58900;margin:4px 0 6px;}' +
-      '.qqq-act-claims{display:flex;gap:10px;margin-top:0;}' +
-      '.qqq-act-claim{flex:1;padding:11px 6px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;color:#fff;' +
-      'background:#b58900;box-shadow:0 4px 14px rgba(181,137,0,.3);forced-color-adjust:none;}' +
-      '.qqq-act-claim.qqq-act-claim-phone{background:linear-gradient(90deg,#268bd2,#2aa198);box-shadow:0 4px 14px rgba(38,139,210,.3);forced-color-adjust:none;}' +
+      '.qqq-act-claims{display:flex;gap:10px;margin-top:0;justify-content:center;}' +
+      // 「领双倍」按钮：内容宽度居中（再收窄）+ 暗金主题色 #b58900→#a07400（2026-09-13 用户定案：回退暗金，与行内「领双倍」按钮同色）
+      '.qqq-act-claim{flex:0 0 auto;max-width:80%;padding:11px 28px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;color:#fff;' +
+      'background:linear-gradient(90deg,#b58900,#a07400);box-shadow:0 4px 14px rgba(181,137,0,.3);forced-color-adjust:none;}' +
+      '.qqq-act-claim.qqq-act-claim-dim{filter:grayscale(.55);opacity:.7;box-shadow:none;}' +
       '.qqq-act-claim:disabled{filter:grayscale(1);opacity:.55;box-shadow:none;}' +
       '.qqq-act-claim:hover:not(:disabled){filter:brightness(1.1);}' +
-      // 一换一交换：账单列表（单选，最大单笔预选高亮）
-      '.qqq-act-bills{margin:10px 0 4px;max-height:200px;overflow-y:auto;}' +
-      '.qqq-act-bill{display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;color:#d8d8e4;cursor:pointer;forced-color-adjust:none;}' +
-      '.qqq-act-bill.qqq-act-bill-on{border-color:#b58900;background:rgba(181,137,0,.14);}' +
-      '.qqq-act-bill input{accent-color:#b58900;margin:0;}' +
+      // ★ 请求中 UX（2026-09-13）：主按钮点击后立即脉冲 + 改文案，防「点了没反应=bug」错觉
+      '.qqq-act-claim.qqq-act-claim-pend{filter:none;opacity:.92;animation:qqqActClaimPulse 1.1s ease-in-out infinite;}' +
+      '@keyframes qqqActClaimPulse{0%,100%{opacity:.7}50%{opacity:1}}' +
+      // 赞助双倍：账单列表（网站同款，逐笔「领双倍」点两次确认）
+      '.qqq-act-bills{margin:10px 0 4px;max-height:220px;overflow-y:auto;}' +
+      '.qqq-act-bill{display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;color:#d8d8e4;forced-color-adjust:none;}' +
+      '.qqq-act-bill.qqq-act-bill-on{border-color:#ff9999;background:rgba(255,153,153,.14);}' +
       '.qqq-act-bill .qqq-act-bill-amt{font-weight:800;color:#d79921;font-family:Consolas,monospace;}' +
-      '.qqq-act-bill .qqq-act-bill-dt{margin-left:auto;font-size:11.5px;color:#9aa0b5;}' +
+      '.qqq-act-bill .qqq-act-bill-dt{font-size:11.5px;color:#9aa0b5;}' +
+      '.qqq-act-bill .qqq-act-bill-get{margin-left:auto;font-weight:800;color:#b58900;font-family:Consolas,monospace;white-space:nowrap;}' +
+      '.qqq-act-bill .qqq-act-bill-go{flex:0 0 auto;padding:6px 14px;border:none;border-radius:8px;font-size:12.5px;font-weight:800;color:#fff;background:linear-gradient(90deg,#b58900,#a07400);forced-color-adjust:none;}' +
+      '.qqq-act-bill .qqq-act-bill-go:hover{filter:brightness(1.1);}' +
+      '.qqq-act-bill .qqq-act-bill-go:disabled{filter:grayscale(.6);opacity:.65;}' +
+      '.qqq-act-bill .qqq-act-bill-go.qqq-act-bill-arm{background:linear-gradient(90deg,#ff6b6b,#ff8787);}' +
       
       '.qqq-act-modal2{position:relative;width:420px;max-width:90vw;border-radius:14px;padding:26px 26px 22px;text-align:center;user-select:text;-webkit-user-select:text;' +
       'background:linear-gradient(165deg,#10131f,#0d0d1a);color:#e6e6e6;border:1.5px solid rgba(52,211,153,.4);' +
@@ -447,7 +453,8 @@ function bootActivities(boot) {
   }
 
   // ── 弹窗二：原料与基本权利（任务清单） ──────────────────────────────────
-  // ── 一换一交换（终身一次）：日期格式化 / 选中刷新 / 执行 ──────────────────
+  // 赞助双倍（终身一次）：总消费 ≥ 50 → 选一笔历史赞助，额外补一笔等额 ge
+  // （支付时已按 1:1 到账一笔 = 合计总体双倍；金额与资格由服务端裁决）
   function _fmtDay(iso) {
     try {
       var d = new Date(iso);
@@ -457,69 +464,161 @@ function bootActivities(boot) {
     } catch (e) { return ''; }
   }
 
-  function _swapRefreshGo() {
-    if (!_overlay) return;
-    var sel = _overlay.querySelector('input[name="qqq-swap-bill"]:checked');
-    var ge = sel ? (parseInt(sel.getAttribute('data-yuan'), 10) || 0) : 0;
-    var go = _overlay.querySelector('#qqq-act-swap-go');
-    if (go) go.textContent = tp('act.ge50.go', { ge: ge }, '同意交换，获得 ' + ge + ' ge');
-    Array.prototype.forEach.call(_overlay.querySelectorAll('.qqq-act-bill'), function (row) {
-      var rb = row.querySelector('input');
-      if (rb && rb.checked) row.classList.add('qqq-act-bill-on');
-      else row.classList.remove('qqq-act-bill-on');
-    });
+  // 逐笔「领双倍」：第一点武装该行，第二点确认（防误触烧掉唯一机会）
+  function _swapArm(btn) {
+    if (!_overlay || !btn || btn.disabled) return;
+    var row = btn.closest ? btn.closest('.qqq-act-bill') : null;
+    if (!row) return;
+    var ge = parseInt(row.getAttribute('data-ge'), 10) || 0;
+    if (!btn.classList.contains('qqq-act-bill-arm')) {
+      Array.prototype.forEach.call(_overlay.querySelectorAll('.qqq-act-bill'), function (r) {
+        r.classList.remove('qqq-act-bill-on');
+        var b = r.querySelector('.qqq-act-bill-go');
+        if (b) { b.classList.remove('qqq-act-bill-arm'); b.textContent = t('act.ge50.claim', '领双倍'); }
+      });
+      btn.classList.add('qqq-act-bill-arm');
+      btn.textContent = tp('act.ge50.claimConfirm', { ge: ge }, '确认 +' + ge + ' ge');
+      row.classList.add('qqq-act-bill-on');
+      var hint = _overlay.querySelector('#qqq-act-swap-hint');
+      if (hint) {
+        hint.textContent = tp('act.ge50.claimHint', { ge: ge }, '终身仅此一次：再点一次确认，额外 +' + ge + ' ge 立即到账');
+        hint.style.color = '#ff9999';
+        hint.style.fontWeight = '700';
+      }
+      return;
+    }
+    _swapClaim(row.getAttribute('data-tip'), btn, ge);
   }
 
-  function doSwap() {
-    var sw = (_data && _data.swap) || {};
-    if (sw.used) { closeOverlay(); qoast(t('act.ge50.already', '你已经交换过啦'), 'info'); return; }
-    if (!_overlay) return;
-    var sel = _overlay.querySelector('input[name="qqq-swap-bill"]:checked');
-    if (!sel) return;
-    var tipId = sel.value;
-    var ge = parseInt(sel.getAttribute('data-yuan'), 10) || 0;
+  function _swapClaim(tipId, btn, ge) {
     var token = authToken();
     if (!token) { openLogin(); return; }
-    var go = _overlay.querySelector('#qqq-act-swap-go');
-    if (go) { go.disabled = true; go.textContent = '...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('act.ge50.claiming', '领取中…'); }
     _apiFetch('/qqqide/activity/swap', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ tip_id: tipId })
     })
-      .then(function (r) { return r.json(); })
+      .then(function (r) { if (!r) return null; return r.json().catch(function () { return null; }); })
       .then(function (data) {
+        if (data && data.ok && data.already) {
+          closeOverlay();
+          qoast(t('act.ge50.already', '你已领取过双倍（终身仅一次）'), 'info', 5000);
+          fetchStatus(true);
+          return;
+        }
         if (data && data.ok) {
-          if (data.already) {
-            closeOverlay();
-            qoast(t('act.ge50.already', '你已经交换过啦'), 'info');
-            fetchStatus(true);
-            return;
-          }
           closeOverlay();
           openConfirm(
-            t('act.ge50.doneTitle', '交换完成'),
-            tp('act.ge50.doneDesc', { ge: data.ge || ge }, '+' + (data.ge || ge) + ' ge 已到账，感谢支持！'),
+            t('act.ge50.doneTitle', '领取完成'),
+            tp('act.ge50.doneDesc', { ge: data.ge || ge }, '额外 +' + (data.ge || ge) + ' ge 已到账，感谢支持！'),
             t('common.ok', '好')
           );
           fetchStatus(true);
           return;
         }
-        qoast(t('act.ge50.err', '交换失败，请稍后重试'), 'error');
-        if (go) { go.disabled = false; _swapRefreshGo(); }
+        qoast((data && (data.error || data.message)) || t('act.ge50.err', '领取失败，请稍后重试'), 'error', 5000);
+        if (btn) { btn.disabled = false; btn.textContent = tp('act.ge50.claimConfirm', { ge: ge }, '确认 +' + ge + ' ge'); }
       })
       .catch(function () {
-        qoast(t('act.ge50.err', '交换失败，请稍后重试'), 'error');
-        if (go) { go.disabled = false; _swapRefreshGo(); }
+        qoast(t('act.ge50.err', '领取失败，请稍后重试'), 'error', 5000);
+        if (btn) { btn.disabled = false; btn.textContent = tp('act.ge50.claimConfirm', { ge: ge }, '确认 +' + ge + ' ge'); }
       });
+  }
+
+  // 账单列表视图（网站同款）：选一笔 → 「领双倍」→ 再点一次「确认」→ 额外等额 ge 到账
+  function openSwapList(bills) {
+    var rows = bills.map(function (b) {
+      var amt = parseInt(b.amount_cny, 10) || 0;
+      var ge = amt; // 额外补一笔等额（赞助支付时已按 1:1 到账一笔 = 合计双倍）
+      return '<div class="qqq-act-bill" data-tip="' + b.id + '" data-ge="' + ge + '">' +
+        '<span class="qqq-act-bill-amt">¥' + amt + '</span>' +
+        '<span class="qqq-act-bill-dt">' + _fmtDay(b.created_at) + '</span>' +
+        '<span class="qqq-act-bill-get">+' + ge + ' ge</span>' +
+        '<button type="button" class="qqq-act-bill-go">' + t('act.ge50.claim', '领双倍') + '</button>' +
+        '</div>';
+    }).join('');
+    openOverlay(
+      '<div class="qqq-act-celebrate">🎁</div>' +
+      '<h2>' + t('act.ge50.name', '原料与基本权利') + '</h2>' +
+      '<p class="qqq-act-desc">' + t('act.ge50.pick', '选一笔历史赞助，点「领双倍」→ 再点一次「确认」即到账。终身仅此一次。') + '</p>' +
+      '<div class="qqq-act-bills">' + rows + '</div>' +
+      '<p class="qqq-act-desc" id="qqq-act-swap-hint" style="font-size:12px;color:#9aa0b5;margin:8px 0 4px;">&nbsp;</p>',
+      'qqq-act-ge50-modal'
+    );
+    _overlay.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('.qqq-act-bill-go') : null;
+      if (btn) _swapArm(btn);
+    });
+  }
+
+  // 底部「领取双倍 ge」→ 网站同款最快成交路径：
+  //   已领取 → qoast；未达门槛（总消费 ≥ 50）→ qoast 提示；无赞助 → 弹赞助卡片 + qoast；否则 → 账单列表
+  function openClaimFlow() {
+    if (!isLoggedIn()) { openLogin(); return; }
+    // ★ 请求中 UX（2026-09-13 用户实测：503 长等待期点击零反馈，易被误判为 bug）
+    //   点击 → 立即「正在获取赞助记录…」+ 禁用 + 脉冲；3 秒未返回转「网络较慢，仍在获取…」
+    //   结果落地（或失败）后复位；等待期用户关闭弹窗 → 丢弃本次结果，不再触发后续动作
+    var $btn = _overlay && _overlay.querySelector('#qqq-act-claim-swap');
+    var $ov = _overlay;
+    var _slowT = null;
+    var restoreClaimBtn = function () {
+      if (_slowT) { clearTimeout(_slowT); _slowT = null; }
+      if ($btn && $btn.isConnected) {
+        $btn.disabled = false;
+        $btn.classList.remove('qqq-act-claim-pend');
+        $btn.textContent = t('act.ge50.claimSwap', '领取双倍 ge');
+      }
+    };
+    if ($btn) {
+      $btn.disabled = true;
+      $btn.classList.add('qqq-act-claim-pend');
+      $btn.textContent = t('act.ge50.claimChecking', '正在获取赞助记录…');
+      _slowT = setTimeout(function () {
+        if ($btn && $btn.isConnected) $btn.textContent = t('act.ge50.claimSlow', '网络较慢，仍在获取…');
+      }, 3000);
+    }
+    var decide = function () {
+      restoreClaimBtn();
+      if (_overlay !== $ov) return; // 等待期弹窗已关闭 → 丢弃本次结果
+      if (!_data) { qoast(t('act.ge50.loading', '数据加载中，请稍等一下再点一次'), 'info'); return; }
+      var sw = _data.swap || {};
+      if (sw.used) { qoast(t('act.ge50.already', '你已领取过双倍（终身仅一次）'), 'info', 5000); return; }
+      var thr = parseFloat(sw.threshold_ge) || 50;
+      var consTotal = parseFloat((_data.consumption || {}).total_ge) || 0;
+      var thrOk = (sw.consumption_ok !== undefined && sw.consumption_ok !== null)
+        ? !!sw.consumption_ok
+        : (consTotal + 1e-9 >= thr);
+      if (!thrOk) {
+        qoast(tp('act.ge50.locked', { cur: fmt(consTotal), target: fmt(thr) },
+          '总消费满 ' + fmt(thr) + ' ge 后可领取双倍（当前 ' + fmt(consTotal) + ' ge）'), 'info', 5000);
+        return;
+      }
+      var bills = sw.bills || [];
+      if (!bills.length) {
+        // 无赞助 → 直接弹赞助卡片（浏览器打开 geflow 直开卡）+ qoast，与网站同款
+        // ★ recharge 放第一个参数：旧壳层 openExternal 走 cmd start 通道会截断 & 后半段（新壳层已修复转义）
+        var spUrl = 'https://gh555.com/viewer/geflow?recharge=open&lang=zh';
+        if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+          window.qqqideBridge.shell.openExternal(spUrl);
+        } else {
+          window.open(spUrl, '_blank');
+        }
+        qoast(t('act.ge50.noBills', '你当前还没有过任何赞助'), 'info', 5000);
+        return;
+      }
+      openSwapList(bills);
+    };
+    var p = fetchStatus(true);
+    if (p && p.then) { p.then(decide, decide); } else { decide(); }
   }
 
   function openGe50Popup() {
     if (!isLoggedIn()) {
       openOverlay(
         '<h2>🎁 ' + t('act.ge50.name', '原料与基本权利') + '</h2>' +
-        '<p class="qqq-act-sub">' + t('act.ge50.popSub', '一换一 · 终身仅一次') + '</p>' +
-        '<p class="qqq-act-desc">' + t('act.ge50.loginDesc', '登录后查看你的交换资格') + '</p>' +
+ 	'<p class="qqq-act-sub">' + t('act.ge50.popSub', '实扣 + 白嫖合计达到 50 ge 即可领取') + '</p>' +
+        '<p class="qqq-act-desc">' + t('act.ge50.loginDesc', '登录后查看任务进度，满 50 ge 即可领取') + '</p>' +
         '<button class="qqq-act-cta" id="qqq-act-login">' + t('act.ge50.loginBtn', '登录') + '</button>',
         'qqq-act-ge50-modal'
       );
@@ -527,77 +626,85 @@ function bootActivities(boot) {
       return;
     }
 
+    var cons = (_data && _data.consumption) || {};
+    var g = (_data && _data.ge50) || {};
+    var cfg = (_data && _data.config) || {};
     var sw = (_data && _data.swap) || {};
-    var used = !!sw.used;
-    var bills = sw.bills || [];
+    var total = parseFloat(cons.total_ge) || 0;
+    var target = parseFloat(g.target_ge) || 50;
+    var pct = Math.max(0, Math.min(100, total / target * 100));
+    // ★ 2026-09-12：服务器不再回传 config 块 → 缺失时回退 50（原 .env 门槛值）；现仅作赞助卡预选金额
+    var reqYuan = (cfg.recharge_required_yuan != null) ? (parseFloat(cfg.recharge_required_yuan) || 0) : 50;
+    // 第三行点亮 ✓ = 有过已支付赞助（swap.bills 非空）
+    var rechargeOk = !!(sw.bills && sw.bills.length);
+    // 底部「领取双倍 ge」：已领取 → 置灰；未达门槛（总消费 ≥ 50）→ 弱化样式（点击给提示）
+    var swUsed = !!sw.used;
+    var swUsedAmt = parseFloat(sw.used_amount) || 0;
+    var thr = parseFloat(sw.threshold_ge) || 50;
+    var thrOk = (sw.consumption_ok !== undefined && sw.consumption_ok !== null)
+      ? !!sw.consumption_ok
+      : (total + 1e-9 >= thr);
 
-    var head =
-      '<div class="qqq-act-celebrate">' + (used ? '🎉' : '🎁') + '</div>' +
+    var tasks =
+      '<li class="qqq-act-task qqq-act-task-done"><span class="qqq-act-check">✓</span>' +
+      t('act.ge50.task1', '下载并登录 qqqide') + '</li>' +
+
+      '<li class="qqq-act-task ' + (total >= target ? 'qqq-act-task-done' : 'qqq-act-task-locked') + '">' +
+      '<span class="qqq-act-check">' + (total >= target ? '✓' : '') + '</span>' +
+      t('act.ge50.task2', '总消费达到 50 ge（实扣 + 白嫖合计）') + ' · ' + fmt(total) + '/' + target +
+      '</li>';
+
+    // ★ 第三行：赞助入口——整行永久可点、不限次数（每次点击直达网站赞助卡片看二维码）
+    //    与第二行完全独立（消费未达 50 也能随时赞助）；已赞助过（≥1 笔）→ 点亮 ✓ 但保持可点（可继续赞助多笔，最终任选一笔领双倍）
+    if (reqYuan > 0) {
+      tasks +=
+        '<li id="qqq-act-task-recharge" class="qqq-act-task qqq-act-task-recharge ' + (rechargeOk ? 'qqq-act-task-done' : 'qqq-act-task-locked') + '" ' +
+        'title="' + t('act.ge50.task3GoTitle', '点击赞助，不限次数') + '">' +
+        '<span class="qqq-act-check">' + (rechargeOk ? '✓' : '') + '</span>' +
+        t('act.ge50.task3', '至少一笔赞助') +
+        '<span class="qqq-act-task-go">' + t('act.ge50.task3Go', '赞助 →') + '</span>' +
+        '</li>';
+    }
+
+    // 底部单按钮（二合一）：网站同款「领取双倍 ge」入口（点击后核门槛/无赞助弹赞助卡/否则开账单列表）
+    var doneLabel = swUsedAmt > 0
+      ? tp('act.ge50.claimSwapDone', { ge: fmt(swUsedAmt) }, '✓ 已领取双倍 +' + fmt(swUsedAmt) + ' ge')
+      : '✓ ' + t('act.ge50.claimed', '已领取');
+    var claims =
+      '<div class="qqq-act-claims">' +
+      (swUsed
+        ? '<button class="qqq-act-claim" id="qqq-act-claim-swap" disabled>' + doneLabel + '</button>'
+        : '<button class="qqq-act-claim' + (thrOk ? '' : ' qqq-act-claim-dim') + '" id="qqq-act-claim-swap">' +
+          t('act.ge50.claimSwap', '领取双倍 ge') + '</button>') +
+      '</div>';
+
+    var html =
+      '<div class="qqq-act-celebrate">🎁</div>' +
       '<h2>' + t('act.ge50.name', '原料与基本权利') + '</h2>' +
       '<p class="qqq-act-csub">' + t('act.ge50.subtitle', '你滴上下文资产现在归你，即便你不再用 qqqide，一切历史，仍在你手上') + '</p>' +
-      '<p class="qqq-act-sub">' + t('act.ge50.popSub', '一换一 · 终身仅一次') + '</p>';
+      '<p class="qqq-act-sub">' + t('act.ge50.popSub', '实扣 + 白嫖合计达到 50 ge 即可领取') + '</p>' +
+      '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-ge50-fill' + (total >= target ? ' qqq-act-full' : '') + '" style="width:' + pct + '%"></span></div>' +
+      '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge</div>' +
+      '<ul class="qqq-act-tasks">' + tasks + '</ul>' +
+      claims;
 
-    if (used) {
-      var usedAt = _fmtDay(sw.used_at);
-      var usedAmt = parseFloat(sw.used_amount) || 0;
-      openOverlay(
-        head +
-        '<p class="qqq-act-desc">' + tp('act.ge50.used', { date: usedAt, amount: fmt(usedAmt) },
-          '你已在 ' + usedAt + ' 完成交换：单笔赞助 ¥' + fmt(usedAmt) + ' → 等额原料 +' + fmt(usedAmt) + ' ge 已到账。') + '</p>',
-        'qqq-act-ge50-modal'
-      );
-      return;
+    openOverlay(html, 'qqq-act-ge50-modal');
+    var $swap = _overlay.querySelector('#qqq-act-claim-swap');
+    if ($swap && !$swap.disabled) $swap.addEventListener('click', openClaimFlow);
+    // ★ 第三行整行点击 → 网站赞助卡片直达（自动弹赞助卡 + 预选 ¥{reqYuan}，广告页豁免）
+    //    不限次数、不校验消费门槛（第二/三行完全独立）——任何状态点击都最快看到二维码
+    // ★ recharge 必须放第一个参数：旧壳层 openExternal 走 cmd start 通道会截断 & 后半段（新壳层已修复转义）
+    var $task3 = _overlay.querySelector('#qqq-act-task-recharge');
+    if ($task3) {
+      $task3.addEventListener('click', function () {
+        var url = 'https://gh555.com/viewer/geflow?recharge=' + reqYuan + '&lang=zh';
+        if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+          window.qqqideBridge.shell.openExternal(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      });
     }
-
-    if (!bills.length) {
-      openOverlay(
-        head +
-        '<p class="qqq-act-desc">' + t('act.ge50.noBills', '你还没有赞助记录。先赞助一笔（¥10 起），再回来交换。') + '</p>' +
-        '<button class="qqq-act-cta" id="qqq-act-go-sponsor">' + t('act.ge50.goSponsor', '去赞助') + '</button>',
-        'qqq-act-ge50-modal'
-      );
-      var $goSp = _overlay.querySelector('#qqq-act-go-sponsor');
-      if ($goSp) {
-        $goSp.addEventListener('click', function () {
-          var url = 'https://gh555.com/viewer/geflow?lang=zh&recharge=open';
-          if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
-            window.qqqideBridge.shell.openExternal(url);
-          } else {
-            window.open(url, '_blank');
-          }
-        });
-      }
-      return;
-    }
-
-    var maxB = bills[0];
-    var maxDate = _fmtDay(maxB.created_at);
-    var rows = bills.map(function (b, i) {
-      var checked = i === 0 ? ' checked' : '';
-      return '<label class="qqq-act-bill' + (i === 0 ? ' qqq-act-bill-on' : '') + '">' +
-        '<input type="radio" name="qqq-swap-bill" value="' + b.id + '" data-yuan="' + b.amount_cny + '"' + checked + '>' +
-        '<span class="qqq-act-bill-amt">¥' + b.amount_cny + '</span>' +
-        '<span class="qqq-act-bill-dt">' + _fmtDay(b.created_at) + '</span>' +
-        '</label>';
-    }).join('');
-
-    openOverlay(
-      head +
-      '<p class="qqq-act-desc">' + tp('act.ge50.maxFound', { amount: maxB.amount_cny, date: maxDate },
-        '系统已为你找到历史最大单笔赞助：<b>¥' + maxB.amount_cny + '</b>（' + maxDate + '）。同意即按该笔金额等额获得 <b>' + maxB.amount_cny + ' ge</b>。') + '</p>' +
-      '<div class="qqq-act-bills">' + rows + '</div>' +
-      '<p class="qqq-act-desc" style="font-size:12px;color:#9aa0b5;margin:10px 0 12px;">' + t('act.ge50.chooseOther', '也可以直接点选另一笔；终身仅此一次机会，关闭或「再想想」不会消耗机会。') + '</p>' +
-      '<button class="qqq-act-cta" id="qqq-act-swap-go">' + tp('act.ge50.go', { ge: maxB.amount_cny }, '同意交换，获得 ' + maxB.amount_cny + ' ge') + '</button>' +
-      '<button class="qqq-act-cta qqq-act-ghost" id="qqq-act-swap-later">' + t('act.ge50.later', '再想想') + '</button>',
-      'qqq-act-ge50-modal'
-    );
-    _overlay.addEventListener('change', function (e) {
-      if (e.target && e.target.name === 'qqq-swap-bill') _swapRefreshGo();
-    });
-    var $go = _overlay.querySelector('#qqq-act-swap-go');
-    if ($go) $go.addEventListener('click', doSwap);
-    var $later = _overlay.querySelector('#qqq-act-swap-later');
-    if ($later) $later.addEventListener('click', closeOverlay);
   }
 
   // ── 美丽滴眼睛文案：联网抓服务器最新（doc 系统 page qqqide-video），离线/失败兜底 zh.json ──
@@ -703,7 +810,8 @@ function bootActivities(boot) {
     Array.prototype.forEach.call($eyeLinks, function (el) {
       el.addEventListener('click', function () {
         var isRecords = el.getAttribute('data-eye-link') === 'records';
-        var url = 'https://www.gh555.com/gaea/d/qqqide?lang=zh' + (isRecords ? '#eye' : '&spark=1#video');
+        // ★ 参数顺序：spark=1 前置（旧壳层 openExternal 走 cmd start 通道会截断 & 后半段；新壳层已修复转义）
+        var url = 'https://www.gh555.com/gaea/d/qqqide' + (isRecords ? '?lang=zh#eye' : '?spark=1&lang=zh#video');
         if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
           window.qqqideBridge.shell.openExternal(url);
         } else {
@@ -984,12 +1092,8 @@ function bootActivities(boot) {
   $cool.addEventListener('mouseleave', hideTip);
   $cool.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openCoolPopup(); });
 
-  function swapTipText() {
-    var sw = (_data && _data.swap) || {};
-    return sw.used ? t('act.ge50.tipDone', '一换一 · 已交换') : t('act.ge50.tip', '终身一次 · 一换一：选一笔历史赞助，等额得原料');
-  }
-  $ge50.addEventListener('mouseenter', function (e) { showTip(e, swapTipText()); });
-  $ge50.addEventListener('mousemove', function (e) { showTip(e, swapTipText()); });
+  $ge50.addEventListener('mouseenter', function (e) { showTip(e, t('act.ge50.tip', '总消费满 50 ge · 选一笔赞助领双倍 ge')); });
+  $ge50.addEventListener('mousemove', function (e) { showTip(e, t('act.ge50.tip', '总消费满 50 ge · 选一笔赞助领双倍 ge')); });
   $ge50.addEventListener('mouseleave', hideTip);
   $ge50.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openGe50Popup(); });
 

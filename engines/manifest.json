@@ -81,6 +81,12 @@
             "url": "https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip",
             "kind": "zip"
           }
+        ],
+        "darwin-arm64": [
+          {
+            "url": "https://gh555.com/dl/qqqide-up/python-darwin-arm64.zip",
+            "kind": "zip"
+          }
         ]
       },
       "verify": {
@@ -247,6 +253,10 @@
         "mingw64/bin/gcmcore.dll",
         "mingw64/bin/Atlassian.Bitbucket.dll",
         "mingw64/bin/GitLab.dll",
+        "mingw64/bin/GitHub.dll",
+        "mingw64/bin/git-credential-manager.exe",
+        "mingw64/bin/git-credential-manager.exe.config",
+        "mingw64/bin/SkiaSharp.dll",
         "mingw64/bin/tcl86.dll",
         "mingw64/bin/tk86.dll",
         "mingw64/bin/tclsh.exe",

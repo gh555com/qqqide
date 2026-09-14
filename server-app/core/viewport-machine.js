@@ -4,9 +4,11 @@
 // viewport-machine.js — 中心视口管线（唯一真理机）
 //
 // ★ 消灭大脑分裂:
-//   旧: qqqViewZone / qqqAnchorMap / qqqPasteRouter 是全局单例
+//   历史上 qqqViewZone / qqqAnchorMap / qqqContentWidget 是三个全局单例
 //       → 多面板时最后一个 attach 的 editor 胜出，其余全部丢图
-//       → 6 条代码路径各自 call attach/dispose，竞态 → "not a child" 崩溃
+//       → 多条代码路径各自 call attach/dispose，竞态 → "not a child" 崩溃
+//   2026-09-14: 三个旧模块已整体删除（并行实现=大脑分裂温床），
+//   本机是相框渲染与锚点表的唯一真相（paste-router 通过 registerPastedAnchor 对接）。
 //
 //   新: 每个 editor 独立 EditorViewport 实例（Map keyed by editor）
 //       → 所有生命周期事件走 ONE 入口: ViewportMachine.transition()
@@ -41,9 +43,14 @@
     // ── ViewZone 元数据 ──
     this._zoneMeta = {};       // { "line:col" → { zoneId, frameDom, entry } }
 
-    // ── ContentWidget 元数据（图标框: 文件/目录/音频/文本）──
-    this._iconWidgets = {};    // { "line:col" → { widget, domNode, entry } }
-    this._widgetSeq = 0;
+    // ── 相框缓存（帧 DOM 异步构建；key="line:col"）──
+    this._frameCache = {};     // { "line:col" → { path, fileName, variant, frameDom } | null }
+    this._building = {};       // 在建防重入
+    this._hideDeco = null;     // 锚点原文隐藏（老 markerHideType 对齐）
+
+    // ── 同步串行（异步建帧不并发）──
+    this._syncRunning = false;
+    this._syncQueued = false;
 
     // ── Anchor Map（per-editor，独立扫描）──
     this._anchorMap = {};
@@ -56,8 +63,10 @@
     this._syncTimer = null;
 
     // ── 常量 ──
-    this.MEDIA_LARGE_HEIGHT = 330;
-    this.ANCHOR_REGEX = /\u{1F4CE}([a-fA-F0-9]{0,64}):([^\s\u{1F4CE}\u{1F4C1}]+)/gu;
+    //   帧高度不再硬编码：frameDom._zoneH 由 frame-renderer 按帧族/偏好/媒体尺寸算出
+    //   锚点格式 v2：引号式（文件名含空白/锚点字符时）| 裸名式（向后兼容）
+    //   语法: 📎{sha≤64}:{名} | 📎{sha≤64}:"{含空格 名}"
+    this.ANCHOR_REGEX = /\u{1F4CE}([a-fA-F0-9]{0,64}):(?:"([^"\r\n]+)"|([^\s\u{1F4CE}\u{1F4C1}]+))/gu;
   }
 
   // ═══ 主入口: ViewportMachine ═══
@@ -73,6 +82,25 @@
       if (this._initialized) return;
       this._frameRenderer = window.qqqFrameRenderer;
       this._initialized = true;
+
+      // ★ 偏好变更（性能模式/相框尺寸/放大/文本胶片/水印）→ 全量重建相框
+      //   偏好本体永不落盘（qqq-prefs 铁律），变更只发生在本会话
+      var self = this;
+      try {
+        if (window.qqqPrefs && window.qqqPrefs.onChange) {
+          window.qqqPrefs.onChange(function () { self._invalidateFrames(); });
+        }
+      } catch (e) { /* */ }
+    },
+
+    // 帧缓存失效 → 全量重建（偏好切换 / 水印状态切换）
+    _invalidateFrames: function () {
+      var self = this;
+      this._registry.forEach(function (vp) {
+        vp._frameCache = {};
+        vp._building = {};
+        self._scheduleSync(vp);
+      });
     },
 
     // ── 唯一真理过渡函数 ──
@@ -210,7 +238,8 @@
       // 此时 editor 已 dispose，不能再调 changeViewZones 等
       // 仅清理 JS 引用
       vp._zoneMeta = {};
-      vp._iconWidgets = {};
+      vp._frameCache = {};
+      vp._hideDeco = null;
       vp._anchorMap = {};
       vp._disposables = [];
       if (vp._syncTimer) clearTimeout(vp._syncTimer);
@@ -247,7 +276,7 @@
           if (vp.state !== 'closed') {
             vp.state = 'closed';
             vp._zoneMeta = {};
-            vp._iconWidgets = {};
+            vp._frameCache = {};
             vp._anchorMap = {};
           }
           // 清理 listener
@@ -299,6 +328,41 @@
       return line + ':' + col;
     },
 
+    // 旧式裸令牌空格截断补偿：token 后若紧跟空白 → 取本行剩余（至行尾/下一锚点）作为完整名候选
+    //   历史令牌（📎:松尾早人 - ...mp3）在空格处截断成「松尾早人」→ 解析必然落空；
+    //   本函数回收被截断的尾部，交由异步解析器 exists 校验后决定是否采信（不存在自动回落裸名）
+    _lineTail: function (text, offset) {
+      if (!text || offset >= text.length) return '';
+      if (!/\s/.test(text.charAt(offset))) return '';   // 必须紧跟空白（截断特征）
+      // ★ 必须带 u 标志：无 u 时 \u{XXXX} 在字符类里退化为字面字符（误排除 u/E/F/1/4/C 等）
+      var m = text.slice(offset).match(/^[^\n\r\u{1F4CE}\u{1F4C1}]*/u);
+      var tail = m ? m[0].replace(/\s+$/, '') : '';
+      return tail.trim() ? tail : '';
+    },
+
+    // 锚点路径候选根（.qqqvault 优先；同目录裸路径兑底）
+    _baseDirs: function (vp) {
+      var baseDirs = [];
+      var cf = vp.filePath;
+      if (!cf) {
+        try { cf = vp.editor && vp.editor._qqqFilePath; } catch (_) {}
+      }
+      if (cf) {
+        var sep = cf.indexOf('\\') >= 0 ? '\\' : '/';
+        var cfDir = cf.slice(0, cf.lastIndexOf(sep));
+        if (cfDir) {
+          baseDirs.push(cfDir + sep + '_qqqvault');
+          baseDirs.push(cfDir);
+        }
+      }
+      if (window._workspaceRoot) {
+        var ws = window._workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
+        baseDirs.push(ws + '/_qqqvault');
+        baseDirs.push(ws);
+      }
+      return baseDirs;
+    },
+
     _guessType: function (fileName) {
       if (/\.(png|jpg|jpeg|gif|bmp|webp|svg|ico|tiff|avif)$/i.test(fileName)) return 'image';
       if (/\.(mp4|mkv|avi|mov|webm|flv|wmv|m4v|ts|mpg)$/i.test(fileName)) return 'video';
@@ -315,24 +379,13 @@
       var text = model.getValue();
       var newMap = {};
 
-      // Build base dirs (same as old anchor-map.js)
-      var baseDirs = [];
-      var cf = vp.filePath;
-      if (!cf) {
-        try { cf = editor._qqqFilePath; } catch (_) {}
-      }
-      if (cf) {
-        var sep = cf.indexOf('\\') >= 0 ? '\\' : '/';
-        var cfDir = cf.slice(0, cf.lastIndexOf(sep));
-        if (cfDir) {
-          baseDirs.push(cfDir + sep + '_qqqvault');
-          baseDirs.push(cfDir);
-        }
-      }
-      if (window._workspaceRoot) {
-        var ws = window._workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        baseDirs.push(ws + '/_qqqvault');
-        baseDirs.push(ws);
+      // 已解析路径沿袭表（fileName → path）：重扫（聚焦/切标签）不丢已有路径，
+      //   否则路径归零 → 帧缓存被清 → 全部重建（可见闪烁）+ 重复 IPC
+      var prevPaths = {};
+      var pk = Object.keys(vp._anchorMap);
+      for (var pi = 0; pi < pk.length; pi++) {
+        var pe = vp._anchorMap[pk[pi]];
+        if (pe && pe.fileName && pe.path && !prevPaths[pe.fileName]) prevPaths[pe.fileName] = pe.path;
       }
 
       var regex = vp.ANCHOR_REGEX;
@@ -340,24 +393,27 @@
       var match;
       while ((match = regex.exec(text)) !== null) {
         var sha256 = match[1];
-        var fileName = match[2];
+        var fileName = match[2] || match[3];   // 引号式 | 裸名式
         var pos = model.getPositionAt(match.index);
         var key = this._posKey(pos.lineNumber, pos.column);
 
-        var resolvedPath = null;
-        for (var bi = 0; bi < baseDirs.length; bi++) {
-          var candidate = baseDirs[bi] + '/' + fileName;
-          if (!resolvedPath) resolvedPath = candidate;
-        }
-
-        newMap[key] = {
+        // path：优先沿袭已解析值；无沿袭 → null 交异步解析器（候选根逐个 exists 校验回填）。
+        //   旧实现在此直接取「首候选根」假路径（不校验存在性）→ 文件不在该根时永远裂/空帧，
+        //   且掩盖了需要走空格补偿的旧令牌。
+        var entry = {
           type: this._guessType(fileName),
-          path: resolvedPath,
+          path: prevPaths[fileName] || null,
           sha256: sha256.toLowerCase(),
           fileName: fileName,
           line: pos.lineNumber,
           col: pos.column,
+          _rawLen: match[0].length,   // 原文隐藏长度 = 令牌真实字符数（含引号）
         };
+        if (!match[2]) {
+          var tail = this._lineTail(text, match.index + match[0].length);
+          if (tail) entry._tail = tail;
+        }
+        newMap[key] = entry;
       }
 
       vp._anchorMap = newMap;
@@ -433,20 +489,28 @@
       var match;
       while ((match = regex.exec(text)) !== null) {
         var sha256 = match[1];
-        var fileName = match[2];
+        var fileName = match[2] || match[3];
         var offset = match.index;
         var linesBefore = text.substring(0, offset).split('\n');
         var line = startLine + linesBefore.length - 1;
-        var col = (linesBefore.length === 1 ? startCol : 0) + linesBefore[linesBefore.length - 1].length;
+        var lastLen = linesBefore[linesBefore.length - 1].length;
+        // 列号：单行片段 = startCol + 前缀长；跨行片段 = 行内前缀长 + 1（Monaco 列从 1 起，旧公式跨行少 1）
+        var col = linesBefore.length === 1 ? (startCol + lastLen) : (lastLen + 1);
         var key = this._posKey(line, col);
-        vp._anchorMap[key] = {
+        var entry = {
           type: this._guessType(fileName),
           path: null,
           sha256: sha256.toLowerCase(),
           fileName: fileName,
           line: line,
           col: col,
+          _rawLen: match[0].length,
         };
+        if (!match[2]) {
+          var tail = this._lineTail(text, offset + match[0].length);
+          if (tail) entry._tail = tail;
+        }
+        vp._anchorMap[key] = entry;
       }
     },
 
@@ -464,165 +528,278 @@
       var editor = vp.editor;
       if (!editor || vp.state === 'closed') return;
       if (typeof editor.changeViewZones !== 'function') return;
+      if (vp._syncRunning) { vp._syncQueued = true; return; }
 
-      var allEntries = Object.values(vp._anchorMap);
-      var mediaEntries = [];
-      var iconEntries = [];
+      var self = this;
+      vp._syncRunning = true;
+      this._buildAndApply(vp).catch(function () { /* */ }).then(function () {
+        vp._syncRunning = false;
+        if (vp._syncQueued) { vp._syncQueued = false; self._syncAll(vp); }
+      });
+    },
 
-      for (var i = 0; i < allEntries.length; i++) {
-        var e = allEntries[i];
-        if (e.type === 'image' || e.type === 'video') {
-          mediaEntries.push(e);
-        } else {
-          iconEntries.push(e);
+    // ★ 唯一落点：异步建帧（缓存命中零成本）→ 一次 changeViewZones 批量应用
+    //   全族统一 ViewZone（媒体/文本/图标同一机制，帧高 = frameDom._zoneH 精确值）
+    _buildAndApply: async function (vp) {
+      var editor = vp.editor;
+      if (!editor || vp.state === 'closed') return;
+      if (typeof editor.changeViewZones !== 'function') return;
+      var fr = this._frameRenderer || window.qqqFrameRenderer;
+      if (!fr || !fr.buildFrame) return;
+
+      var self = this;
+      var variant = (typeof fr.variantKey === 'function') ? fr.variantKey() : '';
+      var keys = Object.keys(vp._anchorMap);
+
+      // ★ mtime 校验（老 deco 缓存 mtime 语义：源文件被外部修改 → 帧强制重建；≥3s 节流防 stat 风暴）
+      var nowTs = Date.now();
+      if (nowTs - (vp._mtimeCheckAt || 0) > 3000) {
+        vp._mtimeCheckAt = nowTs;
+        var chk = [];
+        for (var mi = 0; mi < keys.length; mi++) {
+          var me = vp._anchorMap[keys[mi]];
+          var mc = me && me.path ? vp._frameCache[keys[mi]] : null;
+          if (mc && mc.frameDom) { chk.push({ k: keys[mi], ent: me, c: mc }); }
+        }
+        var b2 = window.qqqideBridge;
+        if (chk.length && b2 && b2.fs && b2.fs.stat) {
+          try {
+            await Promise.all(chk.map(function (it) {
+              return b2.fs.stat(it.ent.path).then(function (st) {
+                var mm = (st && (st.mtimeMs != null ? st.mtimeMs : st.mtime)) || 0;
+                if (it.c.mtimeMs === undefined) { it.c.mtimeMs = mm; return; }   // 首次观测只记录不重建
+                if (mm && it.c.mtimeMs !== mm) {
+                  it.c.mtimeMs = mm;
+                  delete vp._frameCache[it.k];                                  // 强制重建
+                  if (typeof fr.invalidateMemo === 'function') {
+                    try { fr.invalidateMemo(it.ent.path); } catch (e4) { /* */ }
+                  }
+                }
+              }).catch(function () { /* */ });
+            }));
+          } catch (e3) { /* */ }
         }
       }
 
-      this._syncMediaZones(vp, mediaEntries);
-      this._syncIconWidgets(vp, iconEntries);
-    },
+      // ① 建帧 / 复用（内容/文件名/偏好变体任一变化 → 重建）
+      var jobs = [];
+      for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        var e = vp._anchorMap[key];
+        if (!e || !e.path) { delete vp._frameCache[key]; continue; }
+        var cached = vp._frameCache[key];
+        if (cached && cached.path === e.path && cached.fileName === e.fileName &&
+            cached.variant === variant && cached.frameDom) {
+          continue;
+        }
+        if (vp._building[key]) continue;
+        vp._building[key] = true;
+        (function (ent, k) {
+          jobs.push(fr.buildFrame(ent).then(function (dom) {
+            delete vp._building[k];
+            vp._frameCache[k] = dom
+              ? { path: ent.path, fileName: ent.fileName, variant: variant, frameDom: dom }
+              : null;
+          }).catch(function () { delete vp._building[k]; }));
+        })(e, key);
+      }
+      if (jobs.length) { try { await Promise.all(jobs); } catch (e2) { /* */ } }
+      if (vp.state === 'closed' || vp.editor !== editor) return;
 
-    _syncMediaZones: function (vp, entries) {
-      var editor = vp.editor;
-      if (typeof editor.changeViewZones !== 'function') return;
-
-      var self = this;
+      // ② 一次批量落 zone（新增/重建/移除）
       editor.changeViewZones(function (accessor) {
-        var currentKeys = {};
-        for (var i = 0; i < entries.length; i++) {
-          currentKeys[self._posKey(entries[i].line, entries[i].col)] = true;
+        var valid = {};
+        for (var i2 = 0; i2 < keys.length; i2++) {
+          var e2 = vp._anchorMap[keys[i2]];
+          if (e2 && e2.path) valid[keys[i2]] = e2;
+        }
+        // 缓存里已失效的 key 清理
+        var ck = Object.keys(vp._frameCache);
+        for (var ci = 0; ci < ck.length; ci++) {
+          if (!valid[ck[ci]]) { delete vp._frameCache[ck[ci]]; }
         }
 
-        // 移除不属于当前 entries 的 zone
+        // 移除过期 zone（锚点位移 / 路径变化 / 帧高变化）
         var oldKeys = Object.keys(vp._zoneMeta);
         for (var j = 0; j < oldKeys.length; j++) {
-          if (!currentKeys[oldKeys[j]]) {
-            accessor.removeZone(vp._zoneMeta[oldKeys[j]].zoneId);
-            delete vp._zoneMeta[oldKeys[j]];
+          var k2 = oldKeys[j];
+          var meta = vp._zoneMeta[k2];
+          var ent2 = valid[k2];
+          var c2 = vp._frameCache[k2];
+          var stale = !ent2 || !c2 || !c2.frameDom ||
+            meta.entry.line !== ent2.line || meta.entry.col !== ent2.col ||
+            meta.entry.path !== ent2.path || meta.entry.fileName !== ent2.fileName ||
+            meta.height !== c2.frameDom._zoneH;
+          if (stale) {
+            try { accessor.removeZone(meta.zoneId); } catch (e3) { /* */ }
+            delete vp._zoneMeta[k2];
           }
         }
 
-        // 创建/更新 zone
-        for (var k = 0; k < entries.length; k++) {
-          var entry = entries[k];
-          var key = self._posKey(entry.line, entry.col);
-          var existing = vp._zoneMeta[key];
+        // 新增 zone
+        for (var mi = 0; mi < keys.length; mi++) {
+          var mk = keys[mi];
+          var ent3 = valid[mk];
+          if (!ent3 || vp._zoneMeta[mk]) continue;
+          var c3 = vp._frameCache[mk];
+          if (!c3 || !c3.frameDom) continue;
 
-          if (existing &&
-              existing.entry.line === entry.line &&
-              existing.entry.col === entry.col &&
-              existing.entry.path === entry.path &&
-              existing.entry.fileName === entry.fileName) {
-            continue;
-          }
-
-          if (existing) {
-            accessor.removeZone(existing.zoneId);
-            delete vp._zoneMeta[key];
-          }
-
-          var frameRenderer = self._frameRenderer;
-          if (!frameRenderer || !frameRenderer.buildFrame) continue;
-          var frameDom = frameRenderer.buildFrame(entry);
-          if (!frameDom) continue;
-
+          var frameDom = c3.frameDom;
           frameDom.classList.add('qqq-vz-media');
-
+          frameDom._requestResize = function () { self._scheduleSync(vp); };
           var zoneId = accessor.addZone({
-            afterLineNumber: entry.line,
-            heightInPx: vp.MEDIA_LARGE_HEIGHT,
+            afterLineNumber: ent3.line,
+            heightInPx: frameDom._zoneH,
             domNode: frameDom,
           });
-
-          vp._zoneMeta[key] = {
+          vp._zoneMeta[mk] = {
             zoneId: zoneId,
             frameDom: frameDom,
-            entry: { line: entry.line, col: entry.col, path: entry.path, fileName: entry.fileName },
+            entry: { line: ent3.line, col: ent3.col, path: ent3.path, fileName: ent3.fileName },
+            height: frameDom._zoneH,
           };
         }
       });
 
-      // 异步加载缩略图
-      var metaKeys = Object.keys(vp._zoneMeta);
-      var frameRenderer = self._frameRenderer;
-      for (var m = 0; m < metaKeys.length; m++) {
-        var meta = vp._zoneMeta[metaKeys[m]];
-        if (meta.frameDom && meta.entry.path && frameRenderer && frameRenderer.loadThumbnail) {
-          frameRenderer.loadThumbnail(meta.frameDom, { path: meta.entry.path, fileName: meta.entry.fileName });
-        }
-      }
-    },
-
-    _syncIconWidgets: function (vp, entries) {
-      var editor = vp.editor;
-      var monaco = vp.monaco;
-      if (!editor || !monaco) return;
-      if (typeof editor.layoutContentWidgets !== 'function') return;
-
-      var currentKeys = {};
-      var hasChanges = false;
-
-      for (var i = 0; i < entries.length; i++) {
-        var entry = entries[i];
-        var key = this._posKey(entry.line, entry.col);
-        currentKeys[key] = true;
-
-        if (!vp._iconWidgets[key]) {
-          this._createIconWidget(vp, entry, key);
-          hasChanges = true;
-        } else {
-          var existing = vp._iconWidgets[key];
-          if (existing.entry.line !== entry.line || existing.entry.col !== entry.col ||
-              existing.entry.path !== entry.path || existing.entry.fileName !== entry.fileName) {
-            this._removeIconWidget(vp, key);
-            this._createIconWidget(vp, entry, key);
-            hasChanges = true;
+      // ③ 锚点原文隐藏（老 markerHideType 语义：有帧才隐，无帧留文字可读）
+      try {
+        if (vp.monaco && vp.monaco.Range) {
+          if (!vp._hideDeco && typeof editor.createDecorationsCollection === 'function') {
+            vp._hideDeco = editor.createDecorationsCollection([]);
+          }
+          if (vp._hideDeco && typeof vp._hideDeco.set === 'function') {
+            var decos = [];
+            for (var di = 0; di < keys.length; di++) {
+              var dEnt = vp._anchorMap[keys[di]];
+              var dCache = vp._frameCache[keys[di]];
+              if (!dEnt || !dCache || !dCache.frameDom) continue;
+              // 隐藏长度 = 令牌真实字符数（_rawLen，含引号；旧式空格令牌解析命中时已在解析器内扩至整段）
+              // 旧条目无记录时按重建公式回落
+              var tlen = (dEnt._rawLen > 0) ? dEnt._rawLen
+                : (2 + (dEnt.sha256 ? String(dEnt.sha256).length : 0) + 1 + String(dEnt.fileName || '').length);
+              decos.push({
+                range: new vp.monaco.Range(dEnt.line, dEnt.col, dEnt.line, dEnt.col + tlen),
+                options: { inlineClassName: 'qqq-anchor-hidden' },
+              });
+            }
+            vp._hideDeco.set(decos);
           }
         }
-      }
+      } catch (e4) { /* */ }
 
-      var oldKeys = Object.keys(vp._iconWidgets);
-      for (var j = 0; j < oldKeys.length; j++) {
-        if (!currentKeys[oldKeys[j]]) {
-          this._removeIconWidget(vp, oldKeys[j]);
-          hasChanges = true;
+      // ④ 空-path 锚点自愈：粘/拖/新键入的 token 能解析出真实路径就补上（相框立即出图）
+      this._resolveNullPaths(vp);
+
+      // ⑤ codelens 按钮刷新（qqq-codelens：锚点路径解析完成 = 按钮行就绪；唯一通知源）
+      try {
+        if (window.qqqCodelens && window.qqqCodelens.scheduleRefresh) window.qqqCodelens.scheduleRefresh();
+      } catch (e5) { /* */ }
+    },
+
+    // ═══ 粘贴锚点精确注册（paste-router 调用；修「粘贴后破图直到重开文件」）═══
+    //   列号宽容匹配：跨行前缀场景旧版扫描列号可能差 1 → 同 fileName 邻近条目也算命中
+    registerPastedAnchor: function (editor, line, col, meta) {
+      if (!editor || !meta) return false;
+      var vp = this._registry.get(editor);
+      if (!vp) return false;
+
+      var key = this._posKey(line, col);
+      var entry = vp._anchorMap[key];
+      if ((!entry || (meta.fileName && entry.fileName !== meta.fileName)) && meta.fileName) {
+        var best = null, bestScore = 1e9;
+        var keys = Object.keys(vp._anchorMap);
+        for (var i = 0; i < keys.length; i++) {
+          var e2 = vp._anchorMap[keys[i]];
+          if (!e2 || e2.fileName !== meta.fileName || e2.path) continue;
+          if (Math.abs(e2.line - line) > 4 || Math.abs(e2.col - col) > 12) continue;
+          var score = Math.abs(e2.line - line) * 1000 + Math.abs(e2.col - col);
+          if (score < bestScore) { best = e2; bestScore = score; }
         }
+        if (best) entry = best;
       }
+      if (!entry) {
+        if (!meta.fileName) return false;
+        entry = {
+          type: this._guessType(meta.fileName),
+          path: null,
+          sha256: '',
+          fileName: meta.fileName,
+          line: line,
+          col: col,
+        };
+        vp._anchorMap[key] = entry;
+      }
+      if (meta.path) entry.path = meta.path;
+      if (meta.sha256) entry.sha256 = String(meta.sha256).toLowerCase();
+      if (meta.fileName) entry.fileName = meta.fileName;
+      if (meta.rawLen) entry._rawLen = meta.rawLen;
+      delete entry._tail;   // 注册的真名优先，补偿候选作废
 
-      if (hasChanges) {
-        editor.layoutContentWidgets();
-      }
+      this._scheduleSync(vp);
+      return true;
     },
 
-    _createIconWidget: function (vp, entry, key) {
-      var frameRenderer = this._frameRenderer;
-      if (!frameRenderer || !frameRenderer.buildFrame) return;
+    // ═══ 空-path 锚点异步自愈（候选根逐个 exists 校验，命中即回填 + 重绘）═══
+    _resolveNullPaths: function (vp) {
+      var bridge = window.qqqideBridge;
+      if (!bridge || !bridge.fs || !bridge.fs.exists) return;
+      if (vp._resolvingPaths) return;
 
-      var frameDom = frameRenderer.buildFrame(entry);
-      if (!frameDom) return;
+      var pending = [];
+      var keys = Object.keys(vp._anchorMap);
+      for (var i = 0; i < keys.length; i++) {
+        var ent = vp._anchorMap[keys[i]];
+        // _resolveTried: 一次性标记（解析不到的文件禁每轮重探；切标签/重开的全量扫描仍会重试）
+        if (ent && ent.path === null && ent.fileName && !ent._resolveTried) pending.push(ent);
+      }
+      if (!pending.length) return;
 
-      var widgetId = 'qqq-vp-cw-' + (++vp._widgetSeq);
-      var widget = {
-        getId: function () { return widgetId; },
-        getDomNode: function () { return frameDom; },
-        getPosition: function () {
-          return {
-            position: { lineNumber: entry.line, column: entry.col },
-            preference: [vp.monaco.editor.ContentWidgetPositionPreference.BELOW],
-          };
-        },
-      };
+      var dirs = this._baseDirs(vp);
+      if (!dirs.length) return;
 
-      vp.editor.addContentWidget(widget);
-      vp._iconWidgets[key] = { widget: widget, domNode: frameDom, entry: entry };
+      var self = this;
+      vp._resolvingPaths = true;
+      var any = false;
+      var jobs = pending.map(function (ent) {
+        ent._resolveTried = true;
+        var names = [];
+        if (ent._tail) names.push(ent.fileName + ent._tail);   // 完整名优先（旧式空格截断补偿）
+        names.push(ent.fileName);
+        return self._firstExistingNames(dirs, names, bridge).then(function (hit) {
+          if (hit && ent.path === null) {
+            ent.path = hit;
+            // ★ 完整名命中 → 回写真名与类型（截断名无扩展名 → 会误入文本探针；如 .avi 变图标框）
+            //   隐藏跨度同步扩至整段令牌（_rawLen += 尾部），后续帧族判定基于真实扩展名
+            if (ent._tail && names.length > 1 &&
+                String(hit).replace(/\\/g, '/').slice(-names[0].length) === names[0]) {
+              ent.fileName = names[0];
+              ent.type = self._guessType(names[0]);
+              ent._rawLen = (ent._rawLen > 0 ? ent._rawLen : 0) + ent._tail.length;
+            }
+            delete ent._tail;
+            any = true;
+          }
+        }).catch(function () { /* */ });
+      });
+      Promise.all(jobs).then(function () {
+        vp._resolvingPaths = false;
+        if (any) self._scheduleSync(vp);
+      }).catch(function () { vp._resolvingPaths = false; });
     },
 
-    _removeIconWidget: function (vp, key) {
-      var w = vp._iconWidgets[key];
-      if (w && vp.editor) {
-        try { vp.editor.removeContentWidget(w.widget); } catch (e) { /* ignore */ }
+    // 候选名 × 候选根 全组合 exists 校验（名序优先：完整名先于裸名）
+    _firstExistingNames: function (dirs, names, bridge) {
+      var ni = 0, di = 0;
+      function next() {
+        if (ni >= names.length) return Promise.resolve(null);
+        if (di >= dirs.length) { ni++; di = 0; return next(); }
+        var cand = dirs[di] + '/' + names[ni];
+        di++;
+        return bridge.fs.exists(cand).then(function (ok) {
+          return ok ? cand : next();
+        }).catch(function () { return next(); });
       }
-      delete vp._iconWidgets[key];
+      return next();
     },
 
     // ═══ 清理 — 仅在 closing 阶段调用（editor 尚存活）═══
@@ -648,12 +825,11 @@
       }
       vp._zoneMeta = {};
 
-      // 移除所有 ContentWidget
-      var iconKeys = Object.keys(vp._iconWidgets);
-      for (var j = 0; j < iconKeys.length; j++) {
-        this._removeIconWidget(vp, iconKeys[j]);
-      }
-      vp._iconWidgets = {};
+      // 锚点原文隐藏集合解散 + 帧缓存清理
+      try { if (vp._hideDeco && typeof vp._hideDeco.clear === 'function') { vp._hideDeco.clear(); } } catch (_) { /* */ }
+      vp._hideDeco = null;
+      vp._frameCache = {};
+      vp._building = {};
 
       // 移除 DOM 事件监听
       if (vp._pasteHandler) {
@@ -687,21 +863,13 @@
     // ═══ Paste 处理器 ═══
 
     _handlePaste: function (editor, vp, e) {
-      // 核心粘贴路由 — 委托给已有的 klipzap + paste-router 管线
-      // 但编辑器的锚点映射使用 vp._anchorMap 而非全局单例
-      if (window.qqqideKlipzap && window.qqqideKlipzap.probe) {
-        try {
-          var probe = window.qqqideKlipzap.probe(e);
-          if (probe.isPureText) return; // Monaco 原生处理
-          e.preventDefault();
-          // 交给 paste-router，但注入我们的 editor
-          if (window.qqqPasteRouter && window.qqqPasteRouter.handlePaste) {
-            window.qqqPasteRouter.handlePaste(e, editor);
-          }
-        } catch (ex) {
-          // 异常回退：让 Monaco 原生处理
+      // 兑底入口：paste-router 已在 document 级 capture 拦截并 stopPropagation（正常路径走不到这里）；
+      // 若 router 缺席/方法缺失，绝不 preventDefault（防事件被静默吞掉）。
+      try {
+        if (window.qqqPasteRouter && typeof window.qqqPasteRouter.handlePaste === 'function') {
+          window.qqqPasteRouter.handlePaste(e);
         }
-      }
+      } catch (_) { /* 交给 Monaco 原生处理 */ }
     },
 
     // ═══ 空格键 → 探测媒体信息 ═══
@@ -767,71 +935,6 @@
     },
   };
 
-  // ═══ 向后兼容桥: 旧代码仍可调用 qqqViewZone/qqqAnchorMap/qqqPasteRouter ═══
-  // 它们现在通过 ViewportMachine 代理，不再是独立单例
-
-  // 当前"活跃" editor（向后兼容：取最后一个 created 的 editor）
-  var _activeCompatEditor = null;
-
   window.qqqViewportMachine = _machine;
-
-  // 向后兼容 shim: window.qqqAnchorMap
-  window.qqqAnchorMap = {
-    attach: function (editor, monaco) {
-      _activeCompatEditor = editor;
-      _machine.transition('created', editor, (editor._qqqFilePath || ''));
-    },
-    dispose: function () {
-      if (_activeCompatEditor) {
-        _machine.transition('closing', _activeCompatEditor);
-      }
-    },
-    getAt: function (line, col) {
-      return _machine.getAnchorNear(_activeCompatEditor, line, col, 0);
-    },
-    getNear: function (line, col, tolerance) {
-      return _machine.getAnchorNear(_activeCompatEditor, line, col, tolerance);
-    },
-    getAll: function () {
-      return Object.values(_machine.getAnchors(_activeCompatEditor));
-    },
-    setWidgetId: function () { /* no-op in new architecture */ },
-    onChange: function (fn) {
-      // 简化：不做变更推送（ViewportMachine 内部自同步）
-    },
-  };
-
-  // 向后兼容 shim: window.qqqViewZone
-  window.qqqViewZone = {
-    attach: function (editor, monaco) {
-      _activeCompatEditor = editor;
-      _machine.transition('created', editor, (editor._qqqFilePath || ''));
-    },
-    dispose: function () {
-      if (_activeCompatEditor) {
-        _machine.transition('closing', _activeCompatEditor);
-      }
-    },
-    refresh: function () {
-      if (_activeCompatEditor) {
-        _machine.refresh(_activeCompatEditor);
-      }
-    },
-    _syncAll: function () {
-      if (_activeCompatEditor) {
-        _machine.refresh(_activeCompatEditor);
-      }
-    },
-  };
-
-  // 向后兼容 shim: window.qqqContentWidget (已合并到 qqqViewZone)
-  window.qqqContentWidget = {
-    attach: function () { /* no-op — ViewportMachine handles everything */ },
-    dispose: function () {},
-    refresh: function () {
-      if (_activeCompatEditor) _machine.refresh(_activeCompatEditor);
-    },
-    _syncWidgets: function () {},
-  };
 
 })();

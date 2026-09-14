@@ -13,46 +13,122 @@
 }
 
 /* ============================================================================
-   q1 ViewZone 相框 + ContentWidget 图标�?(qqq-viewzone.js)
+   WYSIWYG 相框（frame-renderer.js；老 q3 buildAfterStyle / createProgressSvg 口径）
+   几何: 外框 = preview + 12（6 内容余量 + 2*2 padding + 2*1 虚线边）；
+   底色/棋盘格/边框全部由 frame-renderer 内联（含亮暗两套），此处只管结构与进度条。
    ============================================================================ */
 .qqq-vz-media {
   display: inline-block;
   box-sizing: border-box;
 }
 
-/* 图标�?(ContentWidget inline icon) */
-.qqq-icon-frame {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 18px;
-  vertical-align: middle;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  font: 11px ui-monospace, Consolas, monospace;
-  line-height: 16px;
+.qqq-frame {
+  display: inline-block;
+}
+
+.qqq-frame-box {
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* 帧内容（媒体 webp / 文本胶片 / 图标）——居中由 transform 完成，尺寸由 JS fitIntoBox 落定 */
+.qqq-frame-img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: block;
+  max-width: none;
+  max-height: none;
+}
+
+/* 水印覆盖层（al.png 大框 / as.png 小框，右下角「的梦 gaea」；老背景层最顶位对齐） */
+.qqq-frame-wm {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  object-fit: contain;
   pointer-events: none;
-  max-width: 280px;
+  z-index: 3;
 }
 
-.qqq-icon-frame img {
-  width: 16px;
-  height: 16px;
-  object-fit: cover;
-  border-radius: 2px;
-  flex: 0 0 16px;
+/* Animated-media progress bar (optmum mode only; ported from q3 createProgressSvg)
+   Black track + cream sweep, one cycle per media duration, infinite loop.
+   宽度 = preview 宽（由 frame-renderer 内联），底边居中。 */
+.qqq-frame-pbar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 2px;
+  height: 4px;
+  background: #000;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+.qqq-frame-pbar.qqq-pbar-on {
+  display: block;
+}
+.qqq-frame-pbar-fill {
+  height: 100%;
+  width: 0;
+  background: #fdf6e3;
+  animation-name: qqq-frame-pbar-sweep;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes qqq-frame-pbar-sweep {
+  from { width: 0; }
+  to { width: 100%; }
 }
 
-.qqq-icon-frame .qqq-icon-name {
-  color: var(--text-secondary);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 0 1 auto;
+/* 锚点原文隐藏（有帧才挂；老 markerHideType 对齐——路径 token 不可见，相框即所见） */
+.qqq-anchor-hidden {
+  color: transparent !important;
+  opacity: 0 !important;
 }
+
+/* ═══ codelens 按钮（q3 FileCodeLensProvider 移植；字号/字体由 qqq-codelens 走 Monaco 选项层）═══ */
+/* takeOverCodelensStyle=true → 主题红（老「红色 13 号」语义）；关闭时不加此类 = Monaco 默认灰 */
+html.qqq-codelens-style .monaco-editor .codelens-decoration,
+html.qqq-codelens-style .monaco-editor .codelens-decoration > a,
+html.qqq-codelens-style .monaco-editor .codelens-decoration > span {
+  color: var(--red) !important;
+}
+html.qqq-codelens-style .monaco-editor .codelens-decoration > a:hover {
+  color: var(--orange) !important;
+}
+
+/* codelens 重命名弹窗（Electron 无 window.prompt → 最小输入框；老 validateInput 语义） */
+.qqq-cl-mask {
+  position: fixed; inset: 0; z-index: 99999;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 18vh;
+}
+.qqq-cl-box {
+  background: var(--card-bg); color: var(--text-primary);
+  border: 1px solid var(--border-color); border-radius: 6px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+  padding: 14px 16px; min-width: 440px; max-width: 70vw; font-size: 13px;
+}
+.qqq-cl-title { font-size: 13px; margin-bottom: 10px; color: var(--text-secondary); }
+.qqq-cl-input {
+  width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 13px;
+  background: var(--background-color); color: var(--text-primary);
+  border: 1px solid var(--border-color); border-radius: 4px; outline: none;
+}
+.qqq-cl-input:focus { border-color: var(--primary-color); }
+.qqq-cl-err { min-height: 16px; margin-top: 6px; font-size: 12px; color: var(--red); word-break: break-all; }
+.qqq-cl-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.qqq-cl-btn {
+  padding: 4px 14px; font-size: 12px; border-radius: 4px;
+  border: 1px solid var(--border-color); background: transparent; color: var(--text-primary);
+}
+.qqq-cl-btn:hover { background: var(--hover-bg); }
+.qqq-cl-btn--ok { border-color: var(--primary-color); color: var(--primary-color); }
 
 /* �?悬浮展开�?�代码块/表格渲染 �?�?AI 面板外观一�?*/
 .qqq-overlay-table-wrapper .msg-ai pre {

@@ -1,39 +1,81 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// frame-renderer.js — wysiwyg frame + icon-frame rendering engine
-// Ported from q3 q1.js core algorithms, using real DOM (Monaco ContentWidget).
-// Old q3 used CSS background-image layering due to VS Code decoration limits;
-// new architecture builds real DOM — easier to debug, interactive, supports loading states.
+// frame-renderer.js — WYSIWYG 相框渲染引擎（q3 q1.js 100% 移植）
 //
-// Frame types:
-//   Media frames: image, video, text-film, audio
-//   Icon frames:  file icon, directory icon
+// 帧族（老口径逐一对齐）:
+//   · 媒体帧  image / video — 512x288 大框 或 256x144 小框（frameSizeMode:
+//                            large / small / fix=按原图尺寸自动选）
+//   · 文本胶片             — ffmpeg drawtext 514x290 webp（textSlideColorScheme /
+//                            textSlideFontSize 生效），老 generateTextPreview 移植
+//   · 图标帧  file/dir/aud — 原生 32x32 图标（老 extract_icon 引擎 → Electron
+//                            app.getFileIcon 对齐），ffmpeg 解析不了的文件也走此帧
+//   · 进度条               — optmum 专属（黑底 + 米色扫过，一圈 = 媒体时长，无限循环）
+//   · 水印                 — al.png(大框) / as.png(小框)，removeWatermark=true 才去掉
 //
-// Exposes: window.qqqFrameRenderer
-// Depends: qqqThumbnailCache, bridge.fs, bridge.media
+// 几何（老 q1.js buildAfterStyle 口径）:
+//   外框 = preview + 12（box-sizing: border-box；= 6 内容余量 + 2*2 padding + 2*1 虚线边）
+//   内容区 = preview + 6；图像显示尺寸由 fitIntoBox 决定（enlargeSmallImages 控放大）
+//
+// 构建是异步的（探测 + 预览生成），返回的 DOM 自带 _zoneH（视口机器据此设 ViewZone 高度）；
+// 预览失败时原地降级为图标帧并调 _requestResize（老语义：ffmpeg 解析不了 → 图标框）。
+//
+// 暴露: window.qqqFrameRenderer
+// 依赖: qqqPrefs / qqqThumbnailCache / bridge.fs / bridge.media
 // ============================================================================
 
 (function () {
   'use strict';
 
   var bridge = window.qqqideBridge;
-  var thumbCache = window.qqqThumbnailCache;
 
-  // ═══ Constants (from q3 q1.js) ═══
+  // ═══ 常量（老 q3 q1.js 原值）═══
   var LARGE_W = 512, LARGE_H = 288;
   var SMALL_W = 256, SMALL_H = 144;
-  var BORDER_W = 6;
+  var OUT_PAD = 12;          // 外框 = preview + 12
+  var ICON_SIZE = 32;        // 图标帧内容 32x32（老 extract_icon LARGEICON）
   var BG_LIGHT = '#fef6e3';
-  var BG_DARK = '#1a1a1a';
-  var CHECKER_LIGHT = '#e6e1cf';
-  var CHECKER_DARK = '#333';
-  var TEXT_FONT_SIZE = 12;
+  var BG_DARK = '#1B1411';
+  var CHECKER_A = '#fdf6e3';
+  var CHECKER_B = '#e6e1cf';
+  var WM_LARGE = 'assets/frames/al.png';
+  var WM_SMALL = 'assets/frames/as.png';
+  var TEXT_FONT_DEFAULT = 14;
 
-  // Ext sets
-  var IMG_EXTS = { '.png':1,'.jpg':1,'.jpeg':1,'.gif':1,'.bmp':1,'.webp':1,'.svg':1,'.ico':1,'.tiff':1,'.avif':1 };
-  var VID_EXTS = { '.mp4':1,'.mkv':1,'.avi':1,'.mov':1,'.webm':1,'.flv':1,'.wmv':1,'.m4v':1,'.ts':1,'.mpg':1 };
-  var AUD_EXTS = { '.mp3':1,'.wav':1,'.flac':1,'.ogg':1,'.m4a':1,'.aac':1,'.wma':1,'.opus':1 };
+  var _removeWatermark = false;
+  function setRemoveWatermark(v) { _removeWatermark = !!v; }
+  function shouldRemoveWatermark() { return _removeWatermark; }
+
+  // ═══ 用户偏好（core/qqq-prefs.js；未加载时按老项目默认模板）═══
+  function _pref(key) {
+    try {
+      if (window.qqqPrefs && window.qqqPrefs.get) return window.qqqPrefs.get(key);
+    } catch (e) { /* */ }
+    return undefined;
+  }
+  function _perfMode() { return _pref('performanceMode') || 'optmum'; }
+  function _frameSizeMode() { return _pref('frameSizeMode') || 'fix'; }
+  function _enlarge() { return !!_pref('enlargeSmallImages'); }
+  function _textScheme() { return _pref('textSlideColorScheme') || 'light'; }
+  function _textFontSize() {
+    var n = Number(_pref('textSlideFontSize'));
+    return (isFinite(n) && n > 0) ? n : TEXT_FONT_DEFAULT;
+  }
+  function _bgColor() { return _textScheme() === 'dark' ? BG_DARK : BG_LIGHT; }
+
+  // 影响帧 DOM 的偏好组合键（视口机器据此判定重建）
+  function variantKey() {
+    return [
+      _perfMode(), _frameSizeMode(), _enlarge() ? 1 : 0,
+      _textScheme(), _textFontSize(), _removeWatermark ? 1 : 0,
+    ].join('|');
+  }
+
+  // ═══ 扩展名表（老 q3 global.js 原表）═══
+  var IMAGE_EXTS = { '.png':1,'.jpg':1,'.jpeg':1,'.gif':1,'.bmp':1,'.webp':1,'.ico':1,'.tiff':1,'.tif':1,'.svg':1,'.ai':1,'.eps':1,'.cdr':1,'.psd':1 };
+  var VIDEO_EXTS = { '.mp4':1,'.mkv':1,'.webm':1,'.avi':1,'.mov':1,'.wmv':1,'.flv':1,'.rmvb':1,'.mpeg':1,'.mpg':1,'.3gp':1,'.m4v':1,'.f4v':1,'.ts':1,'.mts':1,'.m2ts':1,'.vob':1 };
+  var AUDIO_EXTS = { '.mp3':1,'.wav':1,'.flac':1,'.m4a':1,'.aac':1,'.ogg':1,'.wma':1 };
+  var BROWSER_NATIVE = { '.png':1,'.jpg':1,'.jpeg':1,'.gif':1,'.bmp':1,'.webp':1,'.svg':1,'.ico':1 };
   var TEXT_EXTS = {
     '.txt':1,'.md':1,'.markdown':1,'.log':1,'.ini':1,'.cfg':1,'.conf':1,'.config':1,
     '.json':1,'.xml':1,'.yaml':1,'.yml':1,'.toml':1,
@@ -59,7 +101,12 @@
     return d >= 0 ? name.slice(d).toLowerCase() : '';
   }
 
-  // ═══ fitIntoBox — from q3 q1.js exactly ═══
+  function _fileUrl(p) {
+    var s = String(p || '').replace(/\\/g, '/');
+    try { return 'file:///' + encodeURI(s); } catch (e) { return 'file:///' + s; }
+  }
+
+  // ═══ fitIntoBox — 老 q1.js 逐字移植 ═══
   function fitIntoBox(srcW, srcH, boxW, boxH, enlarge) {
     if (!srcW || !srcH) {
       return { width: boxW, height: boxH, scale: 1, unknown: true };
@@ -85,542 +132,471 @@
     return { width: finalW, height: finalH, scale: s };
   }
 
-  // ═══ Checkerboard background ═══
-  function _checkerCss(light, dark) {
-    var a = light || CHECKER_LIGHT;
-    var b = dark || BG_LIGHT;
-    return 'background-image:conic-gradient(' + a + ' 0.25turn,' + b + ' 0.25turn 0.5turn,' + a + ' 0.5turn 0.75turn,' + b + ' 0.75turn);background-size:20px 20px;';
-  }
+  // ═══ 相框尺寸决策 — 老 q1.js getFrameConfig 逐字移植 ═══
+  //   fix: 原图 <= 256x144 → 小框，否则大框；尺寸未知 → 大框（small 模式除外）
+  function getFrameConfig(info) {
+    var mode = 'large';
+    var width = LARGE_W;
+    var height = LARGE_H;
+    var fsm = _frameSizeMode();
 
-  // ═══ Utility ═══
-  function _fmtSize(bytes) {
-    if (!bytes && bytes !== 0) return '';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
-    return (bytes / 1073741824).toFixed(2) + ' GB';
-  }
-
-  function _fmtDuration(sec) {
-    if (!sec && sec !== 0) return '';
-    var m = Math.floor(sec / 60);
-    var s = Math.floor(sec % 60);
-    if (m >= 60) {
-      var h = Math.floor(m / 60);
-      m = m % 60;
-      return h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    if (!info || !info.width || !info.height) {
+      if (fsm === 'small') { mode = 'small'; width = SMALL_W; height = SMALL_H; }
+    } else {
+      if (fsm === 'small') { mode = 'small'; width = SMALL_W; height = SMALL_H; }
+      else if (fsm === 'large') { mode = 'large'; width = LARGE_W; height = LARGE_H; }
+      else {
+        if (info.width <= SMALL_W && info.height <= SMALL_H) {
+          mode = 'small'; width = SMALL_W; height = SMALL_H;
+        }
+      }
     }
-    return m + ':' + String(s).padStart(2,'0');
+    return { mode: mode, width: width, height: height };
   }
 
-  function _fmtDate(ts) {
-    if (!ts) return '';
-    var d = new Date(ts);
-    return d.getFullYear() + '-' +
-      String(d.getMonth()+1).padStart(2,'0') + '-' +
-      String(d.getDate()).padStart(2,'0');
+  // ═══ 棋盘格 + 底色（老 buildAfterStyle 口径：conic 20px + 底色）═══
+  function _bgCss() {
+    return 'background-color:' + _bgColor() + ';' +
+      'background-image:conic-gradient(' + CHECKER_A + ' 0.25turn,' + CHECKER_B + ' 0.25turn 0.5turn,' +
+      CHECKER_A + ' 0.5turn 0.75turn,' + CHECKER_B + ' 0.75turn);' +
+      'background-size:20px 20px;';
   }
 
-  // ═══ File stat cache ═══
-  var _statCache = {};
-  async function _statFile(filePath) {
-    if (!filePath) return null;
-    var np = filePath.replace(/\\/g, '/');
-    if (_statCache[np]) return _statCache[np];
-    if (!bridge || !bridge.fs || !bridge.fs.stat) return null;
-    try {
-      var st = await bridge.fs.stat(filePath);
-      if (st) _statCache[np] = st;
-      return st;
-    } catch (e) { return null; }
-  }
-
-  // ═══ Icon emoji by type ═══
-  function _iconForFile(name, isDir) {
-    if (isDir) return '\uD83D\uDCC1';
-    var ext = extOf(name);
-    if (IMG_EXTS[ext]) return '\uD83D\uDDBC';
-    if (VID_EXTS[ext]) return '\uD83C\uDFAC';
-    if (AUD_EXTS[ext]) return '\uD83C\uDFB5';
-    if (TEXT_EXTS[ext]) return '\uD83D\uDCC4';
-    if (ext === '.zip' || ext === '.rar' || ext === '.7z' || ext === '.tar' || ext === '.gz') return '\uD83D\uDCE6';
-    if (ext === '.pdf') return '\uD83D\uDCD5';
-    if (ext === '.exe' || ext === '.dll' || ext === '.msi') return '\u2699';
-    return '\uD83D\uDCC4';
-  }
-
-  function _colorForType(name, isDir) {
-    if (isDir) return '#b58900';
-    var ext = extOf(name);
-    if (IMG_EXTS[ext]) return '#2aa198';
-    if (VID_EXTS[ext]) return '#d33682';
-    if (AUD_EXTS[ext]) return '#6c71c4';
-    if (TEXT_EXTS[ext]) return '#268bd2';
-    return '#839496';
-  }
-
-  // ═══ Click handler — open file ═══
+  // ═══ 点击 → 打开文件（老 hover「Open file」语义；OS 默认程序）═══
+  //   桥路径唯一：bridge.shell.openPath（qqqide:shell:openPath，win32 走 cmd 短命 relay）
   function _bindClick(root, entry) {
     if (!root || !entry || !entry.path) return;
     root.style.cursor = 'pointer';
+    root.title = entry.fileName || '';
     root.addEventListener('click', function () {
-      if (bridge && bridge.fs && bridge.fs.openExternal) {
-        bridge.fs.openExternal(entry.path).catch(function () {});
-      }
+      try {
+        var sh = bridge && bridge.shell;
+        if (sh && sh.openPath) { sh.openPath(entry.path); return; }
+        if (sh && sh.openExternal) {
+          sh.openExternal('file:///' + String(entry.path).replace(/\\/g, '/'));
+        }
+      } catch (e) { /* */ }
     });
   }
 
-  // ═══ Image Frame ═══
-  function buildImageFrame(entry, opts) {
-    opts = opts || {};
-    var mode = opts.mode || 'large';
-    var boxW = mode === 'large' ? LARGE_W : SMALL_W;
-    var boxH = mode === 'large' ? LARGE_H : SMALL_H;
-    var info = opts.info || null;
+  // ═══ 帧外壳（媒体/文本/图标三族共用几何）═══
+  function _buildShell(entry, opts) {
+    var pw = opts.pw;
+    var ph = opts.ph;
 
     var root = document.createElement('div');
-    root.className = 'qqq-frame qqq-frame-image';
+    root.className = 'qqq-frame qqq-frame-' + opts.kind;
     root.style.cssText = 'display:inline-block;margin:4px 0;';
 
-    var bg = document.createElement('div');
-    bg.className = 'qqq-frame-bg';
-    bg.style.cssText =
-      _checkerCss(CHECKER_LIGHT, BG_LIGHT) +
-      'width:' + boxW + 'px;height:' + boxH + 'px;' +
-      'display:flex;align-items:center;justify-content:center;' +
-      'border:1px dashed #888;padding:2px;position:relative;';
-    root.appendChild(bg);
+    var box = document.createElement('div');
+    box.className = 'qqq-frame-box';
+    box.style.cssText =
+      'position:relative;box-sizing:border-box;' +
+      'width:' + (pw + OUT_PAD) + 'px;height:' + (ph + OUT_PAD) + 'px;' +
+      'padding:2px;border:1px dashed #888;' + _bgCss();
+    root.appendChild(box);
 
     var img = document.createElement('img');
-    img.className = 'qqq-frame-thumb';
+    img.className = 'qqq-frame-img';
     img.alt = entry.fileName || '';
-    img.title = (entry.fileName || '') + ' | Click to open | Space for info';
-    img.style.cssText = 'display:block;';
+    img.draggable = false;
+    img.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;';
+    box.appendChild(img);
 
-    if (info && info.width && info.height) {
-      var fit = fitIntoBox(info.width, info.height, boxW - BORDER_W, boxH - BORDER_W, false);
-      img.style.maxWidth = fit.width + 'px';
-      img.style.maxHeight = fit.height + 'px';
-      img.style.width = 'auto';
-      img.style.height = 'auto';
-    } else {
-      img.style.maxWidth = (boxW - BORDER_W) + 'px';
-      img.style.maxHeight = (boxH - BORDER_W) + 'px';
+    // 进度条（optmum 专属；老 createProgressSvg 一层——黑底 4px + 米色扫过）
+    var pbar = document.createElement('div');
+    pbar.className = 'qqq-frame-pbar';
+    pbar.style.width = pw + 'px';
+    var pfill = document.createElement('div');
+    pfill.className = 'qqq-frame-pbar-fill';
+    pbar.appendChild(pfill);
+    box.appendChild(pbar);
+
+    // 水印（老：仅精确命中大/小框尺寸时贴对应水印）
+    if (!_removeWatermark && ((pw === LARGE_W && ph === LARGE_H) || (pw === SMALL_W && ph === SMALL_H))) {
+      var wm = document.createElement('img');
+      wm.className = 'qqq-frame-wm';
+      wm.draggable = false;
+      wm.src = (pw === LARGE_W) ? WM_LARGE : WM_SMALL;
+      wm.onerror = function () { try { wm.style.display = 'none'; } catch (e) { /* */ } };
+      box.appendChild(wm);
+      root._wmEl = wm;
     }
-    bg.appendChild(img);
 
-    var meta = document.createElement('div');
-    meta.className = 'qqq-frame-meta';
-    meta.style.cssText = 'font-size:11px;line-height:1.4;margin-top:2px;color:#888;text-align:center;';
-    var parts = [entry.fileName || ''];
-    if (info && info.width && info.height) parts.push(info.width + 'x' + info.height);
-    if (info && info.size) parts.push(_fmtSize(info.size));
-    meta.textContent = parts.join(' \u00B7 ');
-    root.appendChild(meta);
-
+    root._boxEl = box;
     root._imgEl = img;
-    root._bgEl = bg;
-    root._metaEl = meta;
-    root._boxW = boxW;
-    root._boxH = boxH;
-
+    root._pbarEl = pbar;
+    root._pfillEl = pfill;
+    root._pw = pw;
+    root._ph = ph;
+    root._zoneH = ph + OUT_PAD + 8;   // 视口机器 ViewZone 高度（+ 上下各 4px 外边距）
     _bindClick(root, entry);
     return root;
   }
 
-  // ═══ Video Frame ═══
-  function buildVideoFrame(entry, opts) {
-    opts = opts || {};
-    var mode = opts.mode || 'large';
-    var boxW = mode === 'large' ? LARGE_W : SMALL_W;
-    var boxH = mode === 'large' ? LARGE_H : SMALL_H;
-    var info = opts.info || null;
-
-    var root = document.createElement('div');
-    root.className = 'qqq-frame qqq-frame-video';
-    root.style.cssText = 'display:inline-block;margin:4px 0;';
-
-    var bg = document.createElement('div');
-    bg.className = 'qqq-frame-bg';
-    bg.style.cssText =
-      _checkerCss(CHECKER_DARK, BG_DARK) +
-      'width:' + boxW + 'px;height:' + boxH + 'px;' +
-      'display:flex;align-items:center;justify-content:center;' +
-      'border:1px dashed #666;padding:2px;position:relative;';
-    root.appendChild(bg);
-
-    var img = document.createElement('img');
-    img.className = 'qqq-frame-thumb';
-    img.alt = entry.fileName || '';
-    img.title = (entry.fileName || '') + ' | Click to play | Space for info';
-    img.style.cssText = 'display:block;';
-    if (info && info.width && info.height) {
-      var fit = fitIntoBox(info.width, info.height, boxW - BORDER_W, boxH - BORDER_W, false);
-      img.style.maxWidth = fit.width + 'px';
-      img.style.maxHeight = fit.height + 'px';
-    } else {
-      img.style.maxWidth = (boxW - BORDER_W) + 'px';
-      img.style.maxHeight = (boxH - BORDER_W) + 'px';
-    }
-    bg.appendChild(img);
-
-    var play = document.createElement('span');
-    play.className = 'qqq-frame-play';
-    play.textContent = '\u25B6';
-    play.style.cssText =
-      'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);' +
-      'font-size:36px;color:rgba(255,255,255,0.85);pointer-events:none;' +
-      'text-shadow:0 0 8px rgba(0,0,0,0.6);z-index:1;';
-    bg.appendChild(play);
-
-    var meta = document.createElement('div');
-    meta.className = 'qqq-frame-meta';
-    meta.style.cssText = 'font-size:11px;line-height:1.4;margin-top:2px;color:#888;text-align:center;';
-    var parts = ['\uD83C\uDFAC ' + (entry.fileName || '')];
-    if (info && info.width && info.height) parts.push(info.width + 'x' + info.height);
-    if (info && info.duration) parts.push(_fmtDuration(info.duration));
-    if (info && info.size) parts.push(_fmtSize(info.size));
-    meta.textContent = parts.join(' \u00B7 ');
-    root.appendChild(meta);
-
-    root._imgEl = img;
-    root._bgEl = bg;
-    root._metaEl = meta;
-    root._boxW = boxW;
-    root._boxH = boxH;
-
-    _bindClick(root, entry);
-    return root;
+  function _showProgressBar(frameDom, duration) {
+    var bar = frameDom && frameDom._pbarEl;
+    var fill = frameDom && frameDom._pfillEl;
+    if (!bar || !fill) return;
+    var d = Number(duration) || 0;
+    if (!(d > 0.1)) return;
+    d = Math.max(0.2, Math.min(600, d));
+    fill.style.animationDuration = d.toFixed(3) + 's';
+    bar.classList.add('qqq-pbar-on');
   }
 
-  // ═══ Text Film Frame ═══
-  function buildTextFilmFrame(entry, opts) {
-    opts = opts || {};
-    var mode = opts.mode || 'large';
-    var boxW = mode === 'large' ? 514 : 257;
-    var boxH = mode === 'large' ? 290 : 145;
-    var previewText = opts.previewText || '';
-
-    var root = document.createElement('div');
-    root.className = 'qqq-frame qqq-frame-textfilm';
-    root.style.cssText = 'display:inline-block;margin:4px 0;';
-
-    var pre = document.createElement('pre');
-    pre.className = 'qqq-frame-textpre';
-    pre.style.cssText =
-      'width:' + boxW + 'px;height:' + boxH + 'px;' +
-      'overflow:hidden;font-family:Consolas,"Courier New",monospace;' +
-      'font-size:' + TEXT_FONT_SIZE + 'px;line-height:1.5;' +
-      'border:1px dashed #888;padding:8px;margin:0;' +
-      'background:' + BG_LIGHT + ';color:#586e75;' +
-      'white-space:pre-wrap;word-wrap:break-word;' +
-      'user-select:none;-webkit-user-select:none;';
-    pre.textContent = previewText || '(Loading preview...)';
-    root.appendChild(pre);
-
-    var meta = document.createElement('div');
-    meta.className = 'qqq-frame-meta';
-    meta.style.cssText = 'font-size:11px;line-height:1.4;margin-top:2px;color:#888;text-align:center;';
-    var info = opts.info || {};
-    var parts = ['\uD83D\uDCDD ' + (entry.fileName || '')];
-    if (info.lineCount) parts.push(info.lineCount + ' lines');
-    if (info.size) parts.push(_fmtSize(info.size));
-    meta.textContent = parts.join(' \u00B7 ');
-    root.appendChild(meta);
-
-    root._preEl = pre;
-    root._metaEl = meta;
-    root._boxW = boxW;
-    root._boxH = boxH;
-
-    _bindClick(root, entry);
-    return root;
-  }
-
-  // ═══ Audio Frame ═══
-  function buildAudioFrame(entry, opts) {
-    opts = opts || {};
-    var info = opts.info || {};
-
-    var root = document.createElement('div');
-    root.className = 'qqq-frame qqq-frame-audio';
-    root.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 10px;' +
-      'border:1px dashed #888;border-radius:4px;background:' + BG_LIGHT + ';max-width:512px;';
-
-    var icon = document.createElement('span');
-    icon.style.cssText = 'font-size:32px;flex-shrink:0;';
-    icon.textContent = '\uD83C\uDFB5';
-    root.appendChild(icon);
-
-    var infoDiv = document.createElement('div');
-    infoDiv.style.cssText = 'font-size:12px;line-height:1.5;color:#586e75;min-width:0;';
-    var lines = [entry.fileName || 'Audio'];
-    if (info.duration) lines.push('Duration: ' + _fmtDuration(info.duration));
-    if (info.size) lines.push(_fmtSize(info.size));
-    if (info.codec) lines.push('Codec: ' + info.codec);
-    infoDiv.textContent = lines.join(' \u00B7 ');
-    root.appendChild(infoDiv);
-
-    root._metaEl = infoDiv;
-
-    _bindClick(root, entry);
-    return root;
-  }
-
-  // ═══ File Icon Frame ═══
-  function buildFileIconFrame(entry, opts) {
-    opts = opts || {};
-    var info = opts.info || {};
-
-    var root = document.createElement('div');
-    root.className = 'qqq-frame qqq-frame-icon qqq-frame-file';
-    root.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 10px;' +
-      'border:1px dashed #888;border-radius:4px;background:' + BG_LIGHT + ';max-width:512px;';
-
-    var icon = document.createElement('span');
-    icon.style.cssText = 'font-size:28px;flex-shrink:0;';
-    icon.textContent = _iconForFile(entry.fileName, false);
-    root.appendChild(icon);
-
-    var infoDiv = document.createElement('div');
-    infoDiv.style.cssText = 'font-size:12px;line-height:1.5;color:#586e75;min-width:0;';
-    var lines = [entry.fileName || 'File'];
-    if (info.size) lines.push(_fmtSize(info.size));
-    if (info.mtimeMs) lines.push(_fmtDate(info.mtimeMs));
-    infoDiv.textContent = lines.join(' \u00B7 ');
-    root.appendChild(infoDiv);
-
-    var dot = document.createElement('span');
-    dot.style.cssText = 'width:6px;height:6px;border-radius:50%;flex-shrink:0;align-self:flex-start;margin-top:6px;' +
-      'background:' + _colorForType(entry.fileName, false) + ';';
-    root.appendChild(dot);
-
-    root._metaEl = infoDiv;
-
-    _bindClick(root, entry);
-    return root;
-  }
-
-  // ═══ Directory Icon Frame ═══
-  function buildDirIconFrame(entry, opts) {
-    opts = opts || {};
-    var info = opts.info || {};
-
-    var root = document.createElement('div');
-    root.className = 'qqq-frame qqq-frame-icon qqq-frame-dir';
-    root.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 10px;' +
-      'border:1px dashed #b58900;border-radius:4px;background:' + BG_LIGHT + ';max-width:512px;';
-
-    var icon = document.createElement('span');
-    icon.style.cssText = 'font-size:28px;flex-shrink:0;';
-    icon.textContent = '\uD83D\uDCC1';
-    root.appendChild(icon);
-
-    var infoDiv = document.createElement('div');
-    infoDiv.style.cssText = 'font-size:12px;line-height:1.5;color:#586e75;min-width:0;';
-    var lines = [entry.fileName || 'Directory'];
-    if (info.fileCount !== undefined) lines.push(info.fileCount + ' files');
-    if (info.size) lines.push(_fmtSize(info.size));
-    infoDiv.textContent = lines.join(' \u00B7 ');
-    root.appendChild(infoDiv);
-
-    root._metaEl = infoDiv;
-
-    _bindClick(root, entry);
-    return root;
-  }
-
-  // ═══ Async thumbnail loading ═══
-
-  async function loadThumbnail(frameDom, entry) {
-    if (!frameDom || !entry || !frameDom._imgEl) return;
-    var imgEl = frameDom._imgEl;
-    var filePath = entry.path;
-    if (!filePath) return;
-
-    var ext = extOf(entry.fileName);
-    if (IMG_EXTS[ext] && !VID_EXTS[ext]) {
-      var fileUrl = 'file:///' + filePath.replace(/\\/g, '/').replace(/^([A-Za-z]):/, '$1:');
-      imgEl.src = fileUrl;
-      imgEl.onerror = function () {
-        // ★ F121 加固: 文件名 `_` 变体容错 — 旧格式 token（paste_20260809_110322hg4vt.png）
-        //   引用新格式文件（paste_20260809_110322_hg4vt.png）→ 404 破图。exists 校验后切换，零误伤。
-        _tryFileNameVariant(filePath, imgEl);
-      };
-      return;
-    }
-    _loadViaThumbCache(filePath, imgEl);
-  }
-
-  // ★ F121: 文件名 `_` 变体容错 — 双向尝试（去最后一个 `_` / 6位数字+5位随机间补 `_`）
-  function _tryFileNameVariant(filePath, imgEl) {
-    var variants = [];
-    var a = filePath.replace(/_([^_\\/]*)$/, '$1');  // 去最后 `_`（旧格式）
-    if (a !== filePath) variants.push(a);
-    var b = filePath.replace(/(\d{6})([a-z0-9]{5})(\.\w+)$/, '$1_$2$3');  // 补 `_`（新格式）
-    if (b !== filePath && variants.indexOf(b) < 0) variants.push(b);
-    var next = function (i) {
-      if (i >= variants.length) { _loadViaThumbCache(filePath, imgEl); return; }
-      var alt = variants[i];
-      if (!bridge || !bridge.fs || !bridge.fs.exists) { _loadViaThumbCache(filePath, imgEl); return; }
-      bridge.fs.exists(alt).then(function (ok) {
-        if (ok && imgEl) {
-          var altUrl = 'file:///' + alt.replace(/\\/g, '/').replace(/^([A-Za-z]):/, '$1:');
-          imgEl.src = altUrl;
-        } else {
-          next(i + 1);
-        }
-      }).catch(function () { next(i + 1); });
+  // ═══ 图像落地（fit 模式：老 outputSize 语义；natural/fill 备选）═══
+  function _setMediaSrc(dom, filePath, mode, natW, natH, onFail) {
+    var img = dom && dom._imgEl;
+    if (!img) return;
+    img.onload = function () {
+      var nw = natW || img.naturalWidth || 0;
+      var nh = natH || img.naturalHeight || 0;
+      if (mode === 'fill') {
+        img.style.width = dom._pw + 'px';
+        img.style.height = dom._ph + 'px';
+        return;
+      }
+      if (mode === 'natural') {
+        img.style.width = (nw || dom._pw) + 'px';
+        img.style.height = (nh || dom._ph) + 'px';
+        return;
+      }
+      var fit = fitIntoBox(nw, nh, dom._pw, dom._ph, _enlarge());
+      img.style.width = fit.width + 'px';
+      img.style.height = fit.height + 'px';
     };
-    next(0);
+    img.onerror = function () { if (onFail) { try { onFail(); } catch (e) { /* */ } } };
+    img.src = _fileUrl(filePath);
   }
 
-  function _loadViaThumbCache(filePath, imgEl) {
-    if (!thumbCache || !thumbCache.getThumbnail) return;
-    thumbCache.getThumbnail(filePath, 'large').then(function (thumbPath) {
-      if (thumbPath && imgEl) {
-        var thumbUrl = 'file:///' + thumbPath.replace(/\\/g, '/').replace(/^([A-Za-z]):/, '$1:');
-        imgEl.src = thumbUrl;
-      }
-    }).catch(function () {});
-  }
-
-  // ═══ Async text preview ═══
-
-  async function loadTextPreview(frameDom, entry) {
-    if (!frameDom || !entry || !entry.path || !frameDom._preEl) return;
-    if (!bridge || !bridge.fs || !bridge.fs.readFile) return;
-    try {
-      var content = await bridge.fs.readFile(entry.path);
-      if (content && frameDom._preEl) {
-        // Trim to first ~1500 chars for display
-        var preview = typeof content === 'string' ? content : String(content);
-        if (preview.length > 1500) preview = preview.slice(0, 1500) + '\n...(truncated)';
-        frameDom._preEl.textContent = preview;
-      }
-    } catch (e) {
-      if (frameDom._preEl) {
-        frameDom._preEl.textContent = '(Cannot preview)';
-      }
-    }
-  }
-
-  // ═══ Async file info loading ═══
-
-  async function loadFileInfo(frameDom, entry) {
-    if (!frameDom || !entry || !entry.path) return;
-    var st = await _statFile(entry.path);
-    if (!st || !frameDom._metaEl) return;
-
-    var parts = [];
-    if (st.size) parts.push(_fmtSize(st.size));
-    if (st.mtimeMs) parts.push(_fmtDate(st.mtimeMs));
-    var existing = frameDom._metaEl.textContent || '';
-    var namePart = existing.split(' \u00B7 ')[0] || '';
-    frameDom._metaEl.textContent = [namePart].concat(parts).join(' \u00B7 ');
-  }
-
-  // ═══ Media probe ═══
-
+  // ═══ 媒体信息探测（dims/duration/size）═══
+  var _infoMemo = {};
   async function probeMediaInfo(filePath) {
     if (!filePath) return null;
-    if (thumbCache && thumbCache.getInfo) {
-      try { return await thumbCache.getInfo(filePath); } catch (e) { /* */ }
-    }
-    if (bridge && bridge.media && bridge.media.probe) {
+    var k = String(filePath).replace(/\\/g, '/');
+    if (Object.prototype.hasOwnProperty.call(_infoMemo, k)) return _infoMemo[k];
+    var out = null;
+    try {
+      if (bridge && bridge.media && bridge.media.probe) {
+        var r = await bridge.media.probe(filePath);
+        if (r && r.ok) {
+          out = { width: r.width || 0, height: r.height || 0, duration: r.duration || 0, codec: r.codec || '' };
+        }
+      }
+    } catch (e) { out = null; }
+    if (out) {
       try {
-        var result = await bridge.media.probe(filePath);
-        if (result && result.ok) return result;
+        var st = await bridge.fs.stat(filePath);
+        if (st && st.size) out.size = st.size;
       } catch (e) { /* */ }
     }
-    return null;
+    _infoMemo[k] = out;
+    return out;
   }
 
-  // ═══ Main entry: build a full frame for an anchor entry ═══
+  // ═══ 原生文件图标（老 extract_icon → Electron app.getFileIcon）═══
+  var _iconMemo = {};
+  async function _fetchIcon(filePath) {
+    if (!filePath) return null;
+    var k = String(filePath).replace(/\\/g, '/');
+    if (Object.prototype.hasOwnProperty.call(_iconMemo, k)) return _iconMemo[k];
+    var out = null;
+    try {
+      if (bridge && bridge.fs && bridge.fs.fileIcon) {
+        var r = await bridge.fs.fileIcon(filePath);
+        if (r && r.ok && r.dataUrl) out = r.dataUrl;
+      }
+    } catch (e) { out = null; }
+    _iconMemo[k] = out;
+    return out;
+  }
 
-  function buildFrame(entry) {
-    if (!entry) return null;
+  function _glyphFor(entry, isDir) {
+    if (isDir) return '\uD83D\uDCC1';
+    var ext = extOf(entry && entry.fileName);
+    if (AUDIO_EXTS[ext]) return '\uD83C\uDFB5';
+    return '\uD83D\uDCC4';
+  }
 
-    var type = entry.type;
-    var ext = extOf(entry.fileName);
-    var isText = TEXT_EXTS[ext];
-    var isImg = IMG_EXTS[ext];
-    var isVid = VID_EXTS[ext];
-    var isAud = AUD_EXTS[ext];
+  // ═══ 图标帧体（几何重设为 32x32 内容框）═══
+  async function _applyIconBody(dom, entry, isDir) {
+    if (!dom || !dom._boxEl) return false;
+    dom._pw = ICON_SIZE;
+    dom._ph = ICON_SIZE;
+    dom._boxEl.style.width = (ICON_SIZE + OUT_PAD) + 'px';
+    dom._boxEl.style.height = (ICON_SIZE + OUT_PAD) + 'px';
+    if (dom._pbarEl) { dom._pbarEl.style.display = 'none'; }
+    if (dom._wmEl) { dom._wmEl.style.display = 'none'; }
 
-    if (type === 'file' && isImg) type = 'image';
-    if (type === 'file' && isVid) type = 'video';
-    if (type === 'file' && isAud) type = 'audio';
-    if (type === 'file' && isText) type = 'text';
-
-    var frameDom;
-
-    switch (type) {
-      case 'image':
-        frameDom = buildImageFrame(entry, { mode: 'large' });
-        break;
-      case 'video':
-        frameDom = buildVideoFrame(entry, { mode: 'large' });
-        break;
-      case 'audio':
-        frameDom = buildAudioFrame(entry, {});
-        break;
-      case 'text':
-        frameDom = buildTextFilmFrame(entry, { mode: 'large' });
-        break;
-      case 'directory':
-        frameDom = buildDirIconFrame(entry, {});
-        break;
-      default:
-        frameDom = buildFileIconFrame(entry, {});
-        break;
+    if (dom._isIcon) return true;   // 幂等（防重复调用叠字形）
+    var iconUrl = await _fetchIcon(entry.path);
+    var img = dom._imgEl;
+    if (iconUrl) {
+      img.style.width = ICON_SIZE + 'px';
+      img.style.height = ICON_SIZE + 'px';
+      img.src = iconUrl;
+    } else if (img) {
+      // 壳层未重启（fileIcon 桥缺失）→ 字形兜底，防止空框
+      img.style.display = 'none';
+      var g = document.createElement('span');
+      g.textContent = _glyphFor(entry, !!isDir);
+      g.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;line-height:1;';
+      dom._boxEl.appendChild(g);
     }
+    dom._zoneH = ICON_SIZE + OUT_PAD + 8;
+    dom._isIcon = true;
+    if (typeof dom._requestResize === 'function') {
+      try { dom._requestResize(); } catch (e) { /* */ }
+    }
+    return true;
+  }
 
-    if (!frameDom) return null;
+  // 媒体预览失败 → 降级为图标帧（老语义：ffmpeg 解析不了 → 图标框）
+  async function _swapToIcon(dom, entry) {
+    var isDir = false;
+    try {
+      var st = entry && entry.path ? await bridge.fs.stat(entry.path) : null;
+      isDir = !!(st && (st.isDirectory || st.isDir));
+    } catch (e) { /* */ }
+    return await _applyIconBody(dom, entry, isDir);
+  }
 
-    // Async: load thumbnail / text preview / file info
-    if (type === 'image' || type === 'video') {
-      loadThumbnail(frameDom, entry);
-      probeMediaInfo(entry.path).then(function (info) {
-        if (info && frameDom._metaEl) {
-          var parts = [entry.fileName || ''];
-          if (info.width && info.height) parts.push(info.width + 'x' + info.height);
-          if (info.duration) parts.push(_fmtDuration(info.duration));
-          if (info.size) parts.push(_fmtSize(info.size));
-          frameDom._metaEl.textContent = parts.join(' \u00B7 ');
-        }
+  // ═══ 异步内容加载：媒体帧 ═══
+  // 判定「handler 不存在」（壳层未重启；preload 已更新而主进程未重启时 invoke 拒绝）
+  function _isNoHandler(e) {
+    return !!(e && String(e.message || e).indexOf('No handler registered') >= 0);
+  }
+
+  async function _loadMediaContent(dom, entry, info) {
+    var perf = _perfMode();
+    var hasBridge = !!(bridge && bridge.media && bridge.media.preview);
+    var res = null;
+    var noHandler = false;
+    try {
+      if (hasBridge) { res = await bridge.media.preview({ src: entry.path, mode: perf }); }
+    } catch (e) { res = null; noHandler = _isNoHandler(e); }
+
+    if (res && res.ok && res.path) {
+      _setMediaSrc(dom, res.path, 'fit', res.width, res.height);
+      // 进度条：老口径 webpDuration > 0.1 且 optmum 才显示
+      if (perf === 'optmum' && res.duration > 0.1) { _showProgressBar(dom, res.duration); }
+      return;
+    }
+    // 壳层未重启（preview 桥缺失 / handler 缺失）→ 退回直显原文件（老直读语义；绝不让媒体全变图标框）
+    if (!hasBridge || noHandler) {
+      _setMediaSrc(dom, entry.path, 'fit', info && info.width, info && info.height, function () {
+        _swapToIcon(dom, entry);   // 浏览器原生解码不了（如 AVI）→ 退回图标帧，不留空框
       });
+      return;
     }
-    if (type === 'text') {
-      loadTextPreview(frameDom, entry);
+    // 预览生成失败（ffmpeg 缺失/源损坏）→ 老语义：图标帧
+    await _swapToIcon(dom, entry);
+  }
+
+  // ═══ 文本胶片（老 generateTextPreview → 壳层 drawtext；失败降级图标帧）═══
+  async function _loadTextContent(dom, entry) {
+    var res = null;
+    try {
+      if (bridge && bridge.media && bridge.media.textPreview) {
+        res = await bridge.media.textPreview({
+          src: entry.path,
+          scheme: _textScheme(),
+          fontSize: _textFontSize(),
+        });
+      }
+    } catch (e) { res = null; }
+    if (res && res.ok && res.path) {
+      _setMediaSrc(dom, res.path, 'natural', res.width, res.height);
+      return;
     }
-    if (type === 'file' || type === 'directory') {
-      loadFileInfo(frameDom, entry);
+    await _swapToIcon(dom, entry);
+  }
+
+  // ═══ 文本探测（老 isPlainTextFile 全语义移植：扩展名白名单 → 8KB 头部嗅探 → 二进制签名）═══
+  //   老口径三段判：① 空字节 → 非文本 ② 控制字符 >10% → 非文本 ③ 头部魔数命中二进制签名 → 非文本
+  var BINARY_SIGS = [
+    '89504e47',                                                          // PNG
+    'ffd8ffe0', 'ffd8ffe1', 'ffd8ffe2', 'ffd8ffdb', 'ffd8ffee',          // JPEG
+    '47494638',                                                          // GIF
+    '52494646',                                                          // RIFF (WebP/AVI/WAV)
+    '504b0304',                                                          // ZIP/DOCX/XLSX
+    '25504446',                                                          // PDF
+    '7f454c46',                                                          // ELF
+    '4d5a9000', '4d5a5000', '4d5a0000',                                  // PE/MZ
+    'cafebabe',                                                          // Java class
+    'feedface', 'feedfacf', 'cefaedfe', 'cffaedfe',                      // Mach-O
+  ];
+  var _textMemo = {};
+
+  // 头部字节（优先壳层 fs.readHead：只读前 N 字节，200MB 文件零负担；
+  // 壳层未重启时回退 readBase64 首段，仅限 ≤2MB 文件）
+  async function _readHeadBytes(filePath, maxBytes) {
+    var base64 = '';
+    try {
+      if (bridge && bridge.fs && bridge.fs.readHead) {
+        try {
+          var r = await bridge.fs.readHead(filePath, maxBytes);
+          if (r && r.ok && r.base64) base64 = r.base64;
+        } catch (e1) { /* handler 缺失（壳层未重启）→ 走下方 readBase64 兜底 */ }
+      }
+      if (!base64 && bridge && bridge.fs && bridge.fs.readBase64) {
+        var st = await bridge.fs.stat(filePath);
+        if (!st || !(st.size > 0) || st.size > 2 * 1024 * 1024) return null;
+        var full = await bridge.fs.readBase64(filePath);
+        if (full) {
+          var keep = Math.floor((maxBytes * 4) / 3 / 4) * 4;
+          base64 = full.length > keep ? full.slice(0, keep) : full;
+        }
+      }
+    } catch (e) { return null; }
+    if (!base64) return null;
+    try {
+      var bin = atob(base64);
+      var out = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 0xFF;
+      return out;
+    } catch (e2) { return null; }
+  }
+
+  async function _looksLikeText(filePath, ext) {
+    if (TEXT_EXTS[ext]) return true;
+    if (IMAGE_EXTS[ext] || VIDEO_EXTS[ext] || AUDIO_EXTS[ext]) return false;
+    if (!filePath) return false;
+    var k = String(filePath).replace(/\\/g, '/');
+    if (Object.prototype.hasOwnProperty.call(_textMemo, k)) return _textMemo[k];
+    var verdict = false;
+    try {
+      var head = await _readHeadBytes(filePath, 8192);
+      if (head === null) {
+        verdict = false;                       // 读不到（不存在/权限）→ 非文本（后续降级图标帧）
+      } else if (head.length === 0) {
+        verdict = true;                        // 空文件 = 文本（老语义）
+      } else {
+        var nulls = 0, ctrl = 0;
+        for (var i = 0; i < head.length; i++) {
+          var c = head[i];
+          if (c === 0) nulls++;
+          else if (c < 9 || (c > 13 && c < 32 && c !== 27)) ctrl++;
+        }
+        if (nulls > 0) verdict = false;
+        else if (ctrl > head.length * 0.1) verdict = false;
+        else if (head.length >= 4) {
+          var hex = '';
+          for (var j = 0; j < 4; j++) hex += ('0' + head[j].toString(16)).slice(-2);
+          verdict = BINARY_SIGS.indexOf(hex) < 0;
+        } else verdict = true;
+      }
+    } catch (e) { verdict = false; }
+    _textMemo[k] = verdict;
+    return verdict;
+  }
+
+  // ═══ 类型解析（老 renderImages 分流语义）═══
+  function _resolveType(entry) {
+    var ext = extOf(entry && entry.fileName);
+    if (entry && entry.type === 'directory') return 'dir';
+    if (IMAGE_EXTS[ext]) return 'image';
+    if (VIDEO_EXTS[ext]) return 'video';
+    if (AUDIO_EXTS[ext]) return 'audio';
+    return 'file';
+  }
+
+  // ═══ 帧构建入口（异步；返回的 DOM 自带 _zoneH）═══
+
+  async function _buildMediaFrame(entry, type) {
+    var info = await probeMediaInfo(entry.path);
+    var ext = extOf(entry.fileName);
+
+    if ((!info || !info.width || !info.height) && !BROWSER_NATIVE[ext]) {
+      // 老语义：ffmpeg 解析不了 → 图标帧
+      var domIcon = _buildShell(entry, { pw: ICON_SIZE, ph: ICON_SIZE, kind: 'icon' });
+      await _applyIconBody(domIcon, entry, false);
+      return domIcon;
     }
 
-    frameDom._entryType = type;
-    return frameDom;
+    var cfg = getFrameConfig(info);
+    var dom = _buildShell(entry, { pw: cfg.width, ph: cfg.height, kind: type });
+    dom._info = info;
+    _loadMediaContent(dom, entry, info).catch(function () { /* 已内部降级 */ });
+    return dom;
+  }
+
+  async function _buildTextFilmFrame(entry) {
+    var cfg = getFrameConfig(null);
+    var dom = _buildShell(entry, { pw: cfg.width, ph: cfg.height, kind: 'text' });
+    _loadTextContent(dom, entry).catch(function () { /* 已内部降级 */ });
+    return dom;
+  }
+
+  async function _buildIconFrame(entry, isDir) {
+    var dom = _buildShell(entry, { pw: ICON_SIZE, ph: ICON_SIZE, kind: 'icon' });
+    await _applyIconBody(dom, entry, isDir);
+    return dom;
+  }
+
+  async function buildFrame(entry) {
+    if (!entry || !entry.path) return null;   // 路径未解析 → 不建帧（自愈后重扫会补上）
+    var type = _resolveType(entry);
+
+    if (type === 'image' || type === 'video') {
+      return await _buildMediaFrame(entry, type);
+    }
+    if (type === 'audio') {
+      return await _buildIconFrame(entry, false);
+    }
+    if (type === 'dir') {
+      return await _buildIconFrame(entry, true);
+    }
+    // file：目录定先（folder 图标）；已知文本扩展名 → 文本胶片；未知 → 按内容判（老 isPlainTextFile）
+    var st = null;
+    try { st = await bridge.fs.stat(entry.path); } catch (e) { /* */ }
+    if (st && (st.isDir || st.isDirectory)) {
+      return await _buildIconFrame(entry, true);
+    }
+    var ext = extOf(entry.fileName);
+    if (await _looksLikeText(entry.path, ext)) {
+      return await _buildTextFilmFrame(entry);
+    }
+    return await _buildIconFrame(entry, false);
+  }
+
+  // ═══ memo 失效（viewport mtime 校验发现源文件变更 → 帧重建前调用）═══
+  function invalidateMemo(p) {
+    if (!p) return;
+    var k = String(p).replace(/\\/g, '/');
+    delete _infoMemo[k];
+    delete _iconMemo[k];
+    delete _textMemo[k];
   }
 
   // ═══ Public API ═══
 
   window.qqqFrameRenderer = {
-    fitIntoBox: fitIntoBox,
     buildFrame: buildFrame,
-    buildImageFrame: buildImageFrame,
-    buildVideoFrame: buildVideoFrame,
-    buildTextFilmFrame: buildTextFilmFrame,
-    buildAudioFrame: buildAudioFrame,
-    buildFileIconFrame: buildFileIconFrame,
-    buildDirIconFrame: buildDirIconFrame,
-    loadThumbnail: loadThumbnail,
-    loadTextPreview: loadTextPreview,
-    loadFileInfo: loadFileInfo,
+    invalidateMemo: invalidateMemo,
+    getFrameConfig: getFrameConfig,
+    fitIntoBox: fitIntoBox,
     probeMediaInfo: probeMediaInfo,
+    // ★ codelens 按钮机器消费（qqq-codelens.js）：类型判定与文本探针（老 isPlainTextFile 三段语义同源）
+    classifyExt: function (ext) {
+      var e = String(ext || '').toLowerCase();
+      if (IMAGE_EXTS[e]) return 'image';
+      if (VIDEO_EXTS[e]) return 'video';
+      if (AUDIO_EXTS[e]) return 'audio';
+      return 'file';
+    },
+    isTextExt: function (ext) { return !!TEXT_EXTS[String(ext || '').toLowerCase()]; },
+    looksLikeText: _looksLikeText,
+    variantKey: variantKey,
+    setRemoveWatermark: setRemoveWatermark,
+    shouldRemoveWatermark: shouldRemoveWatermark,
     LARGE_W: LARGE_W,
     LARGE_H: LARGE_H,
     SMALL_W: SMALL_W,
     SMALL_H: SMALL_H,
+    ICON_SIZE: ICON_SIZE,
+    OUT_PAD: OUT_PAD,
   };
 
 })();

@@ -71,7 +71,12 @@ const QQQ = {
             }
             return result;
         },
-        stat: (p: string) => ipcRenderer.invoke('qqqide:fs:stat', p),
+        stat: (p: string) => ipcRenderer.invoke('qqqide:fs:stat', p),
+        fileIcon: (p: string) => ipcRenderer.invoke('qqqide:fs:fileIcon', p),
+        // ★ 文件夹体积汇总（codelens「🗀qqq」按钮：体积 + 悬停摘要；主进程扫描不阻塞渲染）
+        dirSummary: (p: string) => ipcRenderer.invoke('qqqide:fs:dirSummary', p),
+        // ★ 头部字节读取（文本探针用：只读前 N 字节，200MB 级文件零负担）
+        readHead: (p: string, n?: number) => ipcRenderer.invoke('qqqide:fs:readHead', p, n),
         exists: (p: string) => ipcRenderer.invoke('qqqide:fs:exists', p),
         mkdir: (p: string) => ipcRenderer.invoke('qqqide:fs:mkdir', p),
         remove: (p: string) => ipcRenderer.invoke('qqqide:fs:remove', p),
@@ -192,6 +197,7 @@ const QQQ = {
     shell: {
         openExternal: (url: string) => ipcRenderer.invoke('qqqide:shell:openExternal', url),
         openPath: (p: string) => ipcRenderer.invoke('qqqide:shell:openPath', p),
+        showItemInFolder: (p: string) => ipcRenderer.invoke('qqqide:shell:showItemInFolder', p),
         openTerminal: (p: string, termType: string) => ipcRenderer.invoke('qqqide:shell:openTerminal', p, termType),
         openRecycleBin: () => ipcRenderer.invoke('qqqide:shell:openRecycleBin'),
         hardRefresh: () => ipcRenderer.invoke('qqqide:shell:hardRefresh'),
@@ -461,7 +467,9 @@ const QQQ = {
         thumb: (opts: any) => ipcRenderer.invoke('qqqide:media:thumb', opts),
         transcode: (opts: any) => ipcRenderer.invoke('qqqide:media:transcode', opts),
         probe: (src: string) => ipcRenderer.invoke('qqqide:media:probe', src),
-        ffmpegPath: () => ipcRenderer.invoke('qqqide:media:ffmpegPath'),
+        ffmpegPath: () => ipcRenderer.invoke('qqqide:media:ffmpegPath'),
+        preview: (opts: any) => ipcRenderer.invoke('qqqide:media:preview', opts),
+        textPreview: (opts: any) => ipcRenderer.invoke('qqqide:media:textPreview', opts),
     },
 
     // ---- key (global shortcut bridge; per-window/iframe handled in renderer) ----
