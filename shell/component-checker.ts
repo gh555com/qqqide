@@ -85,7 +85,23 @@ function _cmdOk(binPath: string, args: string[]): boolean {
 
 function _enginesRoot(portableRoot: string): string {
     const resApp = path.join(portableRoot, 'resources', 'app');
-    return fs.existsSync(path.join(resApp, 'engines')) ? resApp : portableRoot;
+    if (fs.existsSync(path.join(resApp, 'engines'))) { return resApp; }
+    // ★ mac .app 布局（2026-09-14）: resources/app 挂在 Contents/Resources/app →
+    //   portableRoot(= Contents/MacOS) 拼接全线落空 → 组件系统静默跳过、python 永不可见。
+    //   app.getAppPath() 全平台通用（win 同源），静态兜底放最后。
+    try {
+        const ap = require('electron').app.getAppPath();
+        if (ap && fs.existsSync(path.join(ap, 'engines'))) { return ap; }
+    } catch { /* electron 不可用忽略 */ }
+    return portableRoot;
+}
+
+// ── 有效完整性阈值 — min_size_mb 的语义 = Windows PortableGit 全量树（≥180MB）。
+//    unix 二进制是精简形态（mac git ~37MB / linux ~12MB），拿 180 判必然失败 →
+//    误判「missing」→ 触发 CDN 恢复 → 破坏性重建（mac 实测事故 2026-09-14）。
+//    unix 走 min_size_mb_unix（可缺省 = 不检查）。
+function _effMinMB(def: any): number | undefined {
+    return process.platform === 'win32' ? def.min_size_mb : def.min_size_mb_unix;
 }
 
 // ── 清单加载（缓存） ──
@@ -269,7 +285,7 @@ async function _checkAll(
             const ok = def.kind === 'files'
                 ? _filesOk(_componentDir(portableRoot, def) || '', def)
                 : ((_binPath(portableRoot, def) || '') !== '' && fs.existsSync(_binPath(portableRoot, def)!)
-                    && (!(def as any).min_size_mb || _dirSizeMB(_componentDir(portableRoot, def) || '') >= (def as any).min_size_mb));
+                    && (_effMinMB(def) === undefined || _dirSizeMB(_componentDir(portableRoot, def) || '') >= _effMinMB(def)!));
             if (ok) continue;
             console.log('[components] ' + name + ': bundled but missing on disk, downloading...');
         }
@@ -446,7 +462,7 @@ async function _ensureOne(
 
     // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
     if (isFiles ? _filesOk(finalDir, def) : (fs.existsSync(binPath) && _cmdOk(binPath, verifyArgs)
-        && (!(def as any).min_size_mb || _dirSizeMB(finalDir) >= (def as any).min_size_mb))) {
+        && (_effMinMB(def) === undefined || _dirSizeMB(finalDir) >= _effMinMB(def)!))) {
         const old = versions[name];
 
         // 版本升级 → 删除旧版，触发重新下载
@@ -541,8 +557,14 @@ async function _downloadAndInstall(
     if (size < 512) throw new Error('Download too small: ' + size + ' bytes');
     console.log('[components] ' + name + ': ' + (size / 1024 / 1024).toFixed(1) + 'MB');
 
-    // 清空目标目录（全新安装）
-    _safeRmDir(targetDir);
+    // 清空目标目录（全新安装）— ★ 非破坏模式（2026-09-14 mac 事故）: 旧树先改名保底，
+    //   解压/验证失败自动还原（坏下载 + 无条件清场 → 完好旧树被删，永不重犯）。
+    const oldDir = targetDir + '.replacing';
+    let hadOld = false;
+    try {
+        _safeRmDir(oldDir);
+        if (fs.existsSync(targetDir)) { fs.renameSync(targetDir, oldDir); hadOld = true; }
+    } catch { /* rename 失败 → 保持原状走原有逻辑 */ }
     fs.mkdirSync(targetDir, { recursive: true });
     try {
 
@@ -561,7 +583,16 @@ async function _downloadAndInstall(
             execSync(`unzip -o "${dlFile}" -d "${targetDir}"`, { timeout: 120000 });
         }
     } else if (src.kind === 'tar.gz') {
-        execSync(`tar -xzf "${dlFile}" -C "${targetDir}" --strip-components=1`, { timeout: 120000 });
+        // ★ 扁平制品兼容（2026-09-14 mac 实测）: mac/linux git 制品是扁平树（顶层直接
+        //   是 git/git-shell…，无包裹目录）——--strip-components=1 会把每条目唯一路径段
+        //   剥光 → 解压 0MB → 断言失败 → 所有源码耗尽。先探测：顶层条目含 '/' 才 strip。
+        let stripArgs = '--strip-components=1';
+        try {
+            const listing = execSync(`tar -tzf "${dlFile}"`, { encoding: 'utf8', timeout: 60000 });
+            const first = (listing.split('\n').find(l => l.trim().length > 0) || '').trim();
+            if (first && first.indexOf('/') === -1) { stripArgs = ''; }
+        } catch { stripArgs = ''; }
+        execSync(`tar -xzf "${dlFile}" -C "${targetDir}" ${stripArgs}`.trim(), { timeout: 120000 });
     } else if (src.kind === 'sfx7z') {
         // 7-Zip SFX 自解压制品（Git for Windows PortableGit 官方 .7z.exe）: -y 静默 + -o 目标目录。
         // execSync 等待 GUI 子系统进程退出（cmd 不等待，Node spawnSync 会），退出码非 0 即抛错。
@@ -575,13 +606,12 @@ async function _downloadAndInstall(
     if (pruneList && pruneList.length) {
         for (const rel of pruneList) {
             const p = path.join(targetDir, rel);
-            _safeRmDir(p);
-            console.log('[components] ' + name + ': pruned ' + rel);
+            if (fs.existsSync(p)) { _safeRmDir(p); console.log('[components] ' + name + ': pruned ' + rel); }
         }
     }
 
     // min_size_mb 完整性断言（2026-08-11 防半成品: SFX 解压被锁/中断残留残缺目录 → 骗过 bundled 检查 → 每启动重下重装循环 + 闪 SFX 窗口）
-    const minMB = (def as any).min_size_mb as number | undefined;
+    const minMB = _effMinMB(def);
     if (minMB && _dirSizeMB(targetDir) < minMB) {
         throw new Error('Extract incomplete: ' + _dirSizeMB(targetDir).toFixed(0) + 'MB < required ' + minMB + 'MB');
     }
@@ -611,15 +641,19 @@ async function _downloadAndInstall(
         }
 
         if (!fs.existsSync(binPath)) throw new Error('Binary not found after extract: ' + binPath);
+        // ★ unix 解压可能丢可执行位（zip 无 unix 属性 / tar 权限丢失）→ chmod 后再验（防 EACCES 假"Verification failed"）
+        if (process.platform !== 'win32') { try { fs.chmodSync(binPath, 0o755); } catch { /* ignore */ } }
         if (!_cmdOk(binPath, verifyArgs)) throw new Error('Verification failed');
     }
 
     } catch (e) {
-        // 已动安装目录（旧安装已删）→ 清残留半成品，防下轮骗过 bundled 检查；网络失败发生在 _safeRmDir 之前，旧安装完好不受影响
+        // 半成品清掉防骗过下轮检查；★ 新装失败 → 旧树还原（非破坏）
         _safeRmDir(targetDir);
+        if (hadOld) { try { fs.renameSync(oldDir, targetDir); console.log('[components] ' + name + ': install failed — previous tree restored'); } catch { /* ignore */ } }
         throw e;
     }
 
+    if (hadOld) { _safeRmDir(oldDir); }
     console.log('[components] ' + name + ': installed ✓');
 }
 

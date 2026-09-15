@@ -166,6 +166,11 @@
     if (goods.has('inbox')) {
       _renderInboxButton();
     }
+
+    // help 按钮 — inbox 右边（core/help-menu.js；hover 三行菜单 contact / video / community）
+    if (window.qqqHelpMenu && typeof window.qqqHelpMenu.mount === 'function') {
+      window.qqqHelpMenu.mount(_tabBarEl);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════

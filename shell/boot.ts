@@ -285,7 +285,14 @@ export async function loadRemoteWithCacheGuard(
         const reqStartTimes = new Map<string, number>();
         let cooldownTimer: NodeJS.Timeout | null = null;
         const COOLDOWN_MS = 4000; // 4 秒无新请求 → 真·完成（SPA 动态 import 链）
+        // ★ 回环地址请求不参与 boot 追踪（2026-09-14）: goods 本地服务探测
+        //   （如 kope-a 面板轮询 127.0.0.1:19820-19829）在服务未运行时是无限
+        //   失败重试循环 → 冷却期被永久顶住 + boot.log 日志洪水。boot 面板只
+        //   度量页面资源加载；回环探测属运行时行为，与其是否完成无关。
+        const _isLoopbackUrl = (u?: string): boolean =>
+            !!u && /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//i.test(u);
         const onBeforeReq = (details: any, cb: any) => {
+            if (_isLoopbackUrl(details.url)) { cb({}); return; }
             const now = Date.now();
             reqStartTimes.set(details.url, now);
             pendingReqs++;
@@ -296,6 +303,7 @@ export async function loadRemoteWithCacheGuard(
             cb({});
         };
         const onReqDone = (details: any) => {
+            if (_isLoopbackUrl(details.url)) { return; }
             doneReqs++;
             pendingReqs = Math.max(0, pendingReqs - 1);
             const startTime = reqStartTimes.get(details.url);
@@ -309,6 +317,7 @@ export async function loadRemoteWithCacheGuard(
             tryCooldown();
         };
         const onReqErr = (details: any) => {
+            if (_isLoopbackUrl(details.url)) { return; }
             pendingReqs = Math.max(0, pendingReqs - 1);
             const startTime = reqStartTimes.get(details.url);
             const elapsed = startTime ? Date.now() - startTime : -1;
