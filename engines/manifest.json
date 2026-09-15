@@ -236,6 +236,7 @@
       ],
       "version": "2.51.0-portable",
       "min_size_mb": 180,
+      "min_size_mb_unix": 25,
       "prune": [
         "mingw64/share/doc",
         "usr/share/gtk-doc",

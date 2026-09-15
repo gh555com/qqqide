@@ -96,6 +96,12 @@ check((EP + 'shell-out/bootstrap.js') in nameset, 'shell-out/bootstrap.js presen
 check(count(EP + 'webapp/') > 100, 'webapp bundled (%d entries)' % count(EP + 'webapp/'))
 check((EP + 'engines/manifest.json') in nameset, 'engines/manifest.json present')
 
+# ── node_modules runtime deps (shell-out require targets) ──
+check((EP + 'node_modules/sql.js/package.json') in nameset, 'node_modules/sql.js bundled (shell hard dep)')
+check((EP + 'node_modules/sql.js/dist/sql-wasm.js') in nameset, 'sql.js dist/sql-wasm.js present')
+check((EP + 'node_modules/sql.js/dist/sql-wasm.wasm') in nameset, 'sql.js dist/sql-wasm.wasm present')
+check(count(EP + 'node_modules/monaco-editor/min/') > 0, 'monaco-editor/min bundled')
+
 # ── junk (must be zero) ──
 check(count(EP + 'engines/__pycache__/') == 0, 'no engines/__pycache__')
 check(count(EP + 'shell-out/__pycache__/') == 0, 'no shell-out/__pycache__')

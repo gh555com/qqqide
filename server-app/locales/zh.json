@@ -183,7 +183,7 @@
             "copyImage": "复制图片二进制",
             "rename": "重命名",
             "copyFile": "复制文件",
-            "qode": "在右边分组打开文件并进入编辑状态",
+            "openRight": "在右边分组打开文件并进入编辑状态",
             "created": "创建",
             "modified": "修改",
             "codec": "编码",
@@ -605,5 +605,15 @@
         "modalHint": "处理后可随时点击版本号旁的圆点查看全部通知",
         "dot": "通知",
         "dotPending": "有未读通知"
+    },
+    "help": {
+        "email": "邮箱",
+        "phone": "电话号码",
+        "copied": "已复制",
+        "comments": "评论",
+        "changelog": "更新日志",
+        "announcements": "公告",
+        "docs": "官方文档",
+        "activity": "活动"
     }
 }

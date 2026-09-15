@@ -32,6 +32,11 @@ export class AudioEngine {
             path.join(this.appRoot, 'engines', 'miniaudio_bridge.py'),
             path.join(this.appRoot, 'resources', 'app', 'engines', 'miniaudio_bridge.py'),
         ];
+        // ★ mac .app: resources/app 在 Contents/Resources/app —— app.getAppPath() 兜底（2026-09-14）
+        try {
+            const ap = require('electron').app.getAppPath();
+            candidates.push(path.join(ap, 'engines', 'miniaudio_bridge.py'));
+        } catch { /* ignore */ }
         for (const p of candidates) {
             if (fs.existsSync(p)) { return p; }
         }
@@ -41,6 +46,12 @@ export class AudioEngine {
     private resolvePython(): string {
         // Use whatever python is on PATH. Allow override via env.
         if (process.env.QQQ_PYTHON) { return process.env.QQQ_PYTHON; }
+        // ★ 优先绿色包内置 Python（自带 miniaudio/cffi —— 系统 python 没有这些包）
+        try {
+            const { getComponentBin } = require('./component-checker');
+            const own = getComponentBin(this.appRoot, 'python');
+            if (own) { return own; }
+        } catch { /* ignore */ }
         return process.platform === 'win32' ? 'python' : 'python3';
     }
 

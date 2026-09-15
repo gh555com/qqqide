@@ -155,8 +155,11 @@
   }
 
   // ═══ 棋盘格 + 底色（老 buildAfterStyle 口径：conic 20px + 底色）═══
-  function _bgCss() {
-    return 'background-color:' + _bgColor() + ';' +
+  //   kind='text' → 底色满幅：文本胶片不留棋盘格缝（用户口径「在格子上填底色」要盖满）
+  function _bgCss(kind) {
+    var s = 'background-color:' + _bgColor() + ';';
+    if (kind === 'text') return s;
+    return s +
       'background-image:conic-gradient(' + CHECKER_A + ' 0.25turn,' + CHECKER_B + ' 0.25turn 0.5turn,' +
       CHECKER_A + ' 0.5turn 0.75turn,' + CHECKER_B + ' 0.75turn);' +
       'background-size:20px 20px;';
@@ -193,7 +196,7 @@
     box.style.cssText =
       'position:relative;box-sizing:border-box;' +
       'width:' + (pw + OUT_PAD) + 'px;height:' + (ph + OUT_PAD) + 'px;' +
-      'padding:2px;border:1px dashed #888;' + _bgCss();
+      'padding:2px;border:1px dashed #888;' + _bgCss(opts.kind);
     root.appendChild(box);
 
     var img = document.createElement('img');
@@ -328,6 +331,12 @@
     dom._boxEl.style.height = (ICON_SIZE + OUT_PAD) + 'px';
     if (dom._pbarEl) { dom._pbarEl.style.display = 'none'; }
     if (dom._wmEl) { dom._wmEl.style.display = 'none'; }
+
+    // 文本胶片降级为图标帧 → 底色恢复棋盘格（防「满幅纸面」样式残留）
+    try {
+      dom._boxEl.style.backgroundImage = 'conic-gradient(' + CHECKER_A + ' 0.25turn,' + CHECKER_B + ' 0.25turn 0.5turn,' + CHECKER_A + ' 0.5turn 0.75turn,' + CHECKER_B + ' 0.75turn)';
+      dom._boxEl.style.backgroundSize = '20px 20px';
+    } catch (_ebg) { /* */ }
 
     if (dom._isIcon) return true;   // 幂等（防重复调用叠字形）
     var iconUrl = await _fetchIcon(entry.path);

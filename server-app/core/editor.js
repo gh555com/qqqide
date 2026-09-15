@@ -1017,6 +1017,10 @@
       const monaco = await loadMonaco();
       if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
       hookThemeSync(monaco);
+      // ★ codelens 按钮机器（幂等；真实文件编辑器走本路径——缺它则按钮永不出现）
+      if (window.qqqCodelens && window.qqqCodelens.install) {
+        try { window.qqqCodelens.install(monaco); } catch (_) { }
+      }
       // configureMonacoTypescript(monaco); // LSP OFF
       var lang = langOf(filePath);
       var isBin = await isBinaryFileAsync(filePath);

@@ -225,6 +225,24 @@ async function manualAssemble() {
     cpFile('engines');
   }
   cpFile('node_modules/monaco-editor/min');
+  // ★ sql.js — shell-out 运行时硬依赖（state-sqlite/ipc-*.ts → require('sql.js')）。
+  //   require('sql.js') → package.json main = ./dist/sql-wasm.js（wasm 与 js 必须同目录）。
+  //   漏拷 = 启动即崩（Cannot find module 'sql.js'）——mac/linux 手动装配实测事故。
+  cpFile('node_modules/sql.js');
+  {
+    const sqlDist = path.join(appDst, 'node_modules', 'sql.js', 'dist');
+    if (fs.existsSync(sqlDist)) {
+      const keepSql = new Set(['sql-wasm.js', 'sql-wasm.wasm', 'worker.sql-wasm.js']);
+      let sqlSaved = 0;
+      for (const f of fs.readdirSync(sqlDist)) {
+        const fp = path.join(sqlDist, f);
+        if (fs.statSync(fp).isFile() && !keepSql.has(f)) { sqlSaved += fs.statSync(fp).size; fs.rmSync(fp); }
+      }
+      console.log('[pack] bundled node_modules/sql.js (pruned ' + Math.round(sqlSaved / 1048576) + 'MB)')
+    } else {
+      console.warn('[pack] WARN: node_modules/sql.js missing — shell will fail to boot!');
+    }
+  }
   cpFile('package.json');
   // ★ webapp: bundle server-app/ so first boot is instant + offline-capable
   {

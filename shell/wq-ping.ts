@@ -183,8 +183,11 @@ function readDoerID(): string {
 // dev 模式无绿色包结构 → 返回 null（零字段零噪音）。
 function collectUpdHealth(): Record<string, unknown> | null {
   try {
+    // ★ 2026-09-15 路径修复: base = {pack}/gh555.com/Data → liveDir = {pack}/gh555.com → packRoot = {pack}
+    //   旧代码 path.join(dirname(base), 'gh555.com') 二次拼接出 gh555.com/gh555.com
+    //   → versions.json/qqqide.exe 探测恒失败 → 遥测字段永不携带（生产 qqqide_upd_health 全表 0 行）。
     const base = _userDataPath || path.join(path.dirname(process.execPath), 'Data');
-    const liveDir = path.join(path.dirname(base), 'gh555.com');
+    const liveDir = path.dirname(base);
     const packRoot = path.dirname(liveDir);
     if (!fs.existsSync(path.join(liveDir, 'versions.json')) ||
         !fs.existsSync(path.join(packRoot, 'qqqide.exe'))) return null;

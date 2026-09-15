@@ -860,6 +860,7 @@ export class MediaService {
             '-vf', parts.join(':'),
             '-frames:v', '1',
             '-c:v', 'libwebp', '-lossless', '0', '-compression_level', '0', '-q:v', '71',
+            '-f', 'webp',
             '-y', tmpPath,
         ];
         const r = await this.qz.spawn({

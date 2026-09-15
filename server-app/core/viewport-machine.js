@@ -606,6 +606,22 @@
       if (jobs.length) { try { await Promise.all(jobs); } catch (e2) { /* */ } }
       if (vp.state === 'closed' || vp.editor !== editor) return;
 
+      // ★ 暗号行上提几何（消灭「空气墙」：codelens 与相框零间隙）
+      //   帧 DOM 即 zone 主体：marginTop=-lh 让帧顶上提一整行盖住暗号行（与老 q3 绝对定位 top:0 同视觉），
+      //   zone 高度同步减 (lh+4)，帧底到下一行保持 4px 呼吸（总占位精确守恒）。
+      var _lh = 0;
+      try {
+        var _EOpt = (vp.monaco && vp.monaco.editor && vp.monaco.editor.EditorOption) ? vp.monaco.editor.EditorOption : null;
+        var _lhVal = (typeof editor.getOption === 'function') ? editor.getOption(_EOpt ? _EOpt.lineHeight : 61) : 0;
+        _lh = (typeof _lhVal === 'number' && _lhVal > 0) ? _lhVal : 0;
+      } catch (_eLh) { _lh = 0; }
+      function _pullGeom(frameDom, lh2) {
+        var h = frameDom._zoneH;
+        var m = 4;   // _buildShell 默认 margin:4px 0
+        if (lh2 > 0 && (h - lh2 - 4) >= 24) { h = h - lh2 - 4; m = -lh2; }
+        return { h: h, m: m, pull: lh2 };
+      }
+
       // ② 一次批量落 zone（新增/重建/移除）
       editor.changeViewZones(function (accessor) {
         var valid = {};
@@ -629,7 +645,7 @@
           var stale = !ent2 || !c2 || !c2.frameDom ||
             meta.entry.line !== ent2.line || meta.entry.col !== ent2.col ||
             meta.entry.path !== ent2.path || meta.entry.fileName !== ent2.fileName ||
-            meta.height !== c2.frameDom._zoneH;
+            meta.height !== _pullGeom(c2.frameDom, _lh).h || meta.pull !== _lh;
           if (stale) {
             try { accessor.removeZone(meta.zoneId); } catch (e3) { /* */ }
             delete vp._zoneMeta[k2];
@@ -647,16 +663,19 @@
           var frameDom = c3.frameDom;
           frameDom.classList.add('qqq-vz-media');
           frameDom._requestResize = function () { self._scheduleSync(vp); };
+          var geom3 = _pullGeom(frameDom, _lh);
+          try { frameDom.style.marginTop = geom3.m + 'px'; } catch (_eM) { /* */ }
           var zoneId = accessor.addZone({
             afterLineNumber: ent3.line,
-            heightInPx: frameDom._zoneH,
+            heightInPx: geom3.h,
             domNode: frameDom,
           });
           vp._zoneMeta[mk] = {
             zoneId: zoneId,
             frameDom: frameDom,
             entry: { line: ent3.line, col: ent3.col, path: ent3.path, fileName: ent3.fileName },
-            height: frameDom._zoneH,
+            height: geom3.h,
+            pull: _lh,
           };
         }
       });
