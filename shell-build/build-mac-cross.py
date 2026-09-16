@@ -361,6 +361,15 @@ def build_python():
                 'manual:sitecustomize\n')
 
     slim_tree(sp)
+
+    # ★ PySide2→PySide6 透明垫片注入（mac 运行时只有 PySide6 —— PySide2 无 arm64 轮子；
+    #   goods 源码保持 PySide2 写法零改动）。载体 = site-packages 内 .pth + 垫片模块，
+    #   解释器启动自动加载、仅 darwin 激活、惰性映射零提前导入。唯一真理源: shell-build/mac_shims/
+    shim_src = os.path.join(ROOT, 'shell-build', 'mac_shims')
+    for f in ('_qqq_pyside2_shim.py', '_qqq_pyside2_shim.pth'):
+        shutil.copy2(os.path.join(shim_src, f), os.path.join(sp, f))
+    log('[py] pyside2 shim injected (2 files)')
+
     _fix_shebang_and_junk(out_dir)
 
     zip_out = os.path.join(DIST, 'python-darwin-%s.zip' % ARCH)

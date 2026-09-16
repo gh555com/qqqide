@@ -188,7 +188,9 @@
       "procsSuffix2": " 进程",
       "uptime": "已启动",
       "avgBadge": "{v} 均占 ",
-      "meanBadge": "{v} 均值 "
+      "meanBadge": "{v} 均值 ",
+      "warnMsg": "主进程内存偏高（堆 {heap}GB / 总 {rss}GB），建议重启窗口释放内存",
+      "warnOk": "知道了"
     },
     "gp": {
       "stop": "关停",
@@ -260,6 +262,20 @@
     "exit": {
       "confirm": "确认退出？",
       "ok": "确认退出"
+    },
+    "wq": {
+      "tip": "wq 前摇统计：粘贴探针执行时间\n点击重置",
+      "tipShort": "wq 前摇统计"
+    },
+    "goods": {
+      "kmdXTip": "按 x 键打开一个新 kmd"
+    },
+    "aZone": {
+      "nullTip": "收起 A 区 / 点击还原"
+    },
+    "bulb": {
+      "left": "左 AI 面板",
+      "right": "右 AI 面板"
     }
   },
   "editor": {
@@ -695,7 +711,17 @@
     "featureWip": "该功能正在建设中",
     "auditBtn": "审计",
     "translateBtn": "翻译",
-    "auditCopied": "审计文本已复制到剪贴板 ({0} KB)，可粘贴到任意 AI 对话框。"
+    "auditCopied": "审计文本已复制到剪贴板 ({0} KB)，可粘贴到任意 AI 对话框。",
+    "waitSwitch": "当前任务 AI 尚未回复，请稍后再切换",
+    "waitNew": "当前任务 AI 尚未回复，请稍后再新建",
+    "recoverPrefix": "网络恢复重连。此前楼层中断记录：",
+    "recoverSuffix": "｜请基于完整对话上下文继续完成原始任务。",
+    "retryExhausted": "已重试 3 次仍未成功，可能是计费/配额耗尽或服务器故障，请稍后再试",
+    "pathIncompatible": "路径含不兼容字符，无法附加",
+    "bulletTrunc": "\n\n... [中间已截断, 原始 {0}KB] ...\n\n",
+    "exhaustedMsg": "⚠ 已达到最大工具调用次数 (200)，但 AI 未能生成最终回答。对话上下文已保留，你可以继续提问。",
+    "floorAbortedMsg": "⚠️ 楼层异常中断，对话已保存。",
+    "sseSkipNote": "[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: {0}。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]"
   },
   "goods": {
     "conv": {
@@ -749,7 +775,8 @@
       "lblBiscuitN": "压缩饼干 × {0} floors",
       "noAgent": "未找到 Agent",
       "building": "⏳ AI 建楼中…",
-      "compressingNow": "⏳ 压缩中…"
+      "compressingNow": "⏳ 压缩中…",
+      "guardPh": "[服务端 Go 注入到 messages[0] 之前，客户端不可见]\n[文件: gaea/guard/system-prompt.txt，{n} 字符]"
     },
     "navigator": {
       "inputPlaceholder": "键入路径片段，Enter 打开 / Esc 关闭",
@@ -1529,6 +1556,14 @@
       "p19": "不能保证「用最高的智能去写最重要的代码」，我们知道这一点至关重要，但总会有边界情况。",
       "p20": "自动换档本质上是让最高智能的 AI 来评估问题复杂度（再来选择实际干活的 AI），但长远来看，每一层楼都会凭空增加至少一次「最高智能 AI」的调用，这是一笔长远账单，但如果反之，我们不用最高智能去做评估，又会增加第一点对应的风险。",
       "p21": "最终 qqqide 决定做一个更好用的换档杆，将换档权，百分百地只交在你手里。"
+    },
+    "stamp": {
+      "none": "❌ 无",
+      "readFail": "构建戳读取失败",
+      "ok": "最新代码 ✅ buildId={id}",
+      "stale": "SW缓存了旧代码！磁盘={disk} 浏览器={browser}",
+      "fetchFail": "❌ fetch失败",
+      "fetchFailTitle": "构建戳 fetch 失败"
     }
   },
   "squad": {
@@ -1569,7 +1604,8 @@
       "reason": "原因：{r}",
       "retrying": "正在重试…",
       "stillFail": "仍无法连接，请稍后再试…",
-      "retryFail": "重试失败：{e}"
+      "retryFail": "重试失败：{e}",
+      "noCache": "无可用缓存，请稍后再试。"
     },
     "update": {
       "title": "需要更新",
@@ -1627,5 +1663,15 @@
       "copyLink": "复制链接",
       "close": "关闭"
     }
+  },
+  "pasteRouter": {
+    "noDir": "无法确定粘贴目录（编辑器未关联文件？）",
+    "writeFail": "写盘失败: {msg}",
+    "imgSaveFail": "粘贴图片失败: {msg}",
+    "imgPasteDone": "粘贴: {ok} 成功, {fail} 失败",
+    "dropImgFail": "拖放图片失败: {msg}",
+    "dropDone": "拖放: {ok} 成功, {fail} 失败",
+    "unknownErr": "未知错误",
+    "unknownErrSave": "未知错误（保存未返回结果）"
   }
 }

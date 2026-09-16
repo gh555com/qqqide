@@ -453,7 +453,9 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
                 .replace(/\x0a{3,}/g, '\x0a\x0a').trim();
             // ★ 格式 E 未执行的工具 → 注入说明，模型下一 house 会看到并重做（原生 tool_calls 或直接回答）
             if (_skipNames.length > 0) {
-                var _skipNote = '[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: ' + _skipNames.join(', ') + '。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]';
+                var _skipNote = (typeof _qq === 'function')
+                    ? _qq('ai.sseSkipNote', '[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: {0}。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]', { 0: _skipNames.join(', ') })
+                    : ('[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: ' + _skipNames.join(', ') + '。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]');
                 finalized.cleanContent = ((finalized.cleanContent || '') + '\n\n' + _skipNote).trim();
                 _skipReasons.push(_skipNames.length + ' unrecoverable');
             }

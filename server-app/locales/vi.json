@@ -188,7 +188,9 @@
             "procsSuffix2": " tiến trình",
             "uptime": "Thời gian hoạt động",
             "avgBadge": "{v} mức trung bình",
-            "meanBadge": "{v} giá trị trung bình"
+            "meanBadge": "{v} giá trị trung bình",
+            "warnMsg": "Bộ nhớ tiến trình chính khá cao (Heap {heap}GB / Tổng {rss}GB), khuyến nghị khởi động lại cửa sổ để giải phóng bộ nhớ",
+            "warnOk": "Đã hiểu"
         },
         "gp": {
             "stop": "Tắt",
@@ -260,6 +262,20 @@
         "exit": {
             "confirm": "Xác nhận thoát?",
             "ok": "Xác nhận thoát"
+        },
+        "wq": {
+            "tip": "Thống kê thời gian chuẩn bị wq: thời gian thực thi probe dán\nNhấp để đặt lại",
+            "tipShort": "Thống kê thời gian chuẩn bị wq"
+        },
+        "goods": {
+            "kmdXTip": "Nhấn phím x để mở một kmd mới"
+        },
+        "aZone": {
+            "nullTip": "Thu gọn khu vực A / Nhấp để khôi phục"
+        },
+        "bulb": {
+            "left": "Bảng AI bên trái",
+            "right": "Bảng AI bên phải"
         },
         "free": {}
     },
@@ -646,6 +662,8 @@
             "model": "Tên mô hình",
             "modelPh": "Tên mô hình trong tài liệu của nhà cung cấp dịch vụ",
             "think": "Gửi tham số suy nghĩ (thinking / reasoning_effort; tắt nếu nhà cung cấp dịch vụ không hỗ trợ)",
+            "thinkLevel": "Mức độ suy luận (reasoning_effort)",
+            "thinkJson": "JSON tham số tùy chỉnh (tùy chọn, nếu điền sẽ ưu tiên hơn gói)",
             "route": "Kênh mạng",
             "routeDirect": "Kết nối trực tiếp (Khuyến nghị)",
             "routeRelay": "Proxy nền tảng (tuyến Mỹ)",
@@ -694,7 +712,17 @@
         "featureWip": "Tính năng này đang được phát triển",
         "auditBtn": "Kiểm toán",
         "translateBtn": "Dịch",
-        "auditCopied": "Văn bản kiểm tra đã được sao chép vào clipboard ({0} KB), có thể dán vào bất kỳ hộp thoại AI nào."
+        "auditCopied": "Văn bản kiểm tra đã được sao chép vào clipboard ({0} KB), có thể dán vào bất kỳ hộp thoại AI nào.",
+        "waitSwitch": "AI chưa phản hồi cho tác vụ hiện tại, vui lòng chờ trước khi chuyển đổi",
+        "waitNew": "AI chưa phản hồi cho tác vụ hiện tại, vui lòng chờ trước khi tạo mới",
+        "recoverPrefix": "Kết nối mạng đã được khôi phục. Ghi chép gián đoạn trước đó:",
+        "recoverSuffix": "｜Vui lòng dựa trên ngữ cảnh hội thoại đầy đủ để tiếp tục hoàn thành tác vụ ban đầu.",
+        "retryExhausted": "Đã thử lại 3 lần nhưng vẫn không thành công, có thể do hết hạn mức/thanh toán hoặc lỗi máy chủ, vui lòng thử lại sau",
+        "pathIncompatible": "Đường dẫn chứa ký tự không tương thích, không thể đính kèm",
+        "bulletTrunc": "\n\n... [Phần giữa đã bị cắt bớt, bản gốc {0}KB] ...\n\n",
+        "exhaustedMsg": "⚠ Đã đạt số lần gọi công cụ tối đa (200), nhưng AI không tạo được câu trả lời cuối cùng. Ngữ cảnh hội thoại vẫn được giữ lại, bạn có thể tiếp tục đặt câu hỏi.",
+        "floorAbortedMsg": "⚠️ Tầng bị gián đoạn bất thường, cuộc trò chuyện đã được lưu.",
+        "sseSkipNote": "[Hệ thống: Phát hiện phản hồi trước đó viết lệnh gọi công cụ dưới dạng văn bản (định dạng hiển thị [A → …]) thay vì tool_calls gốc. Các công cụ sau không được thực thi vì không thể xây dựng lại tham số một cách an toàn: {0}. Vui lòng thực thi lại các công cụ này bằng tool_calls gốc, hoặc đưa ra câu trả lời cuối cùng trực tiếp.]"
     },
     "goods": {
         "conv": {
@@ -748,7 +776,8 @@
             "lblBiscuitN": "Bánh quy nén × {0} tầng",
             "noAgent": "Không tìm thấy Agent",
             "building": "⏳ AI đang xây dựng…",
-            "compressingNow": "⏳ Đang nén…"
+            "compressingNow": "⏳ Đang nén…",
+            "guardPh": "[Phía máy chủ Go chèn vào trước messages[0], không hiển thị phía máy khách]\n[Tệp: gaea/guard/system-prompt.txt, {n} ký tự]"
         },
         "navigator": {
             "inputPlaceholder": "Nhập đoạn đường dẫn, Enter để mở / Esc để đóng",
@@ -1508,7 +1537,7 @@
             "title": "Giải thích cấp độ AI",
             "lv1": "Cấp 1:",
             "t1": "Trí tuệ thấp nhất, nhanh, rẻ.",
-            "lv6": "Số 6:",
+            "lv6": "Số 3:",
             "t6": "Trí tuệ cao nhất, chậm, đắt.",
             "noAuto": "qqqide không còn cung cấp chức năng tự động chuyển cấp độ,",
             "noAutoReason": "qqqide không còn cung cấp tính năng chuyển số tự động, lý do:",
@@ -1536,6 +1565,14 @@
             "p19": "Không thể đảm bảo \"dùng trí thông minh cao nhất để viết mã quan trọng nhất\". Chúng tôi biết điều này rất quan trọng, nhưng luôn tồn tại các trường hợp biên.",
             "p20": "Về bản chất, chuyển số tự động để AI thông minh nhất đánh giá mức độ phức tạp của vấn đề (và chọn AI thực thi phù hợp). Tuy nhiên, về lâu dài, mỗi tầng sẽ phát sinh ít nhất một lần gọi đến \"AI thông minh nhất\", dẫn đến chi phí tăng. Ngược lại, nếu không dùng AI thông minh nhất để đánh giá, rủi ro liên quan đến điểm thứ nhất sẽ tăng lên.",
             "p21": "Cuối cùng, qqqide quyết định tạo ra một cần số dễ sử dụng hơn, trao toàn quyền kiểm soát việc chuyển số hoàn toàn vào tay bạn."
+        },
+        "stamp": {
+            "none": "❌ Không có",
+            "readFail": "Không đọc được dấu xây dựng",
+            "ok": "Mã mới nhất ✅ buildId={id}",
+            "stale": "SW đã lưu trữ mã cũ trong bộ nhớ đệm! Đĩa={disk} Trình duyệt={browser}",
+            "fetchFail": "❌ Fetch thất bại",
+            "fetchFailTitle": "Fetch dấu xây dựng thất bại"
         }
     },
     "squad": {
@@ -1576,7 +1613,8 @@
             "reason": "Nguyên nhân: {r}",
             "retrying": "Đang thử lại…",
             "stillFail": "Vẫn không thể kết nối, vui lòng thử lại sau…",
-            "retryFail": "Thử lại thất bại: {e}"
+            "retryFail": "Thử lại thất bại: {e}",
+            "noCache": "Không có bộ nhớ đệm khả dụng, vui lòng thử lại sau."
         },
         "update": {
             "title": "Cần cập nhật",
@@ -1634,5 +1672,15 @@
             "copyLink": "Sao chép liên kết",
             "close": "Đóng"
         }
+    },
+    "pasteRouter": {
+        "noDir": "Không thể xác định thư mục dán (trình soạn thảo chưa liên kết với tệp?)",
+        "writeFail": "Ghi đĩa thất bại: {msg}",
+        "imgSaveFail": "Dán ảnh thất bại: {msg}",
+        "imgPasteDone": "Dán: {ok} thành công, {fail} thất bại",
+        "dropImgFail": "Kéo thả ảnh thất bại: {msg}",
+        "dropDone": "Kéo thả: {ok} thành công, {fail} thất bại",
+        "unknownErr": "Lỗi không xác định",
+        "unknownErrSave": "Lỗi không xác định (lưu không trả về kết quả)"
     }
 }

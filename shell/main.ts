@@ -71,6 +71,7 @@ import { startAutoUpdater } from './auto-updater';
 import { AudioEngine } from './audio-engine';
 import { registerAudioIpc, playSfxFile } from './ipc-audio';
 import { registerSquadIpc } from './ipc-squads';
+import { focusWindowBySlot } from './squad-manager';
 import { registerSecureIpc } from './ipc-secure';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
@@ -555,6 +556,11 @@ app.whenReady().then(async () => {
         try { console.log('[squad] summon', ev.squad, ev.ok ? 'OK' : 'miss', ev.folder || ''); } catch { /* ignore */ }
         if (ev.ok) {
             try { playSfxFile(audioEngine, portable.root, 'yz:kj3.mp3'); } catch (e) {}
+            // ★ mac 兜底: NSRunningApplication 激活无法还原最小化窗口 →
+            //   本实例窗口直接 restore/show/focus（winId+pid 双条件，他实例不碰）
+            if (process.platform === 'darwin') {
+                try { focusWindowBySlot(String(ev.squad || '')); } catch { /* ignore */ }
+            }
         }
     });
 

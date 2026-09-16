@@ -102,6 +102,18 @@ check((EP + 'node_modules/sql.js/dist/sql-wasm.js') in nameset, 'sql.js dist/sql
 check((EP + 'node_modules/sql.js/dist/sql-wasm.wasm') in nameset, 'sql.js dist/sql-wasm.wasm present')
 check(count(EP + 'node_modules/monaco-editor/min/') > 0, 'monaco-editor/min bundled')
 
+# ── PySide2→PySide6 垫片 + mac 热键分支（2026-09-16）──
+shim_sp = EP + 'engines/python/lib/python3.11/site-packages/'
+check((shim_sp + '_qqq_pyside2_shim.py') in nameset, 'pyside2 shim module present')
+check((shim_sp + '_qqq_pyside2_shim.pth') in nameset, 'pyside2 shim .pth present (auto-load)')
+pb = EP + 'shell-out/py-broker.py'
+if pb in nameset:
+    pb_txt = tf.extractfile(pb).read().decode('utf-8', 'replace')
+    check('_mac_squad_summon' in pb_txt and 'NSRunningApplication' in pb_txt,
+          'py-broker.py carries mac summon branch')
+else:
+    check(False, 'shell-out/py-broker.py present')
+
 # ── junk (must be zero) ──
 check(count(EP + 'engines/__pycache__/') == 0, 'no engines/__pycache__')
 check(count(EP + 'shell-out/__pycache__/') == 0, 'no shell-out/__pycache__')

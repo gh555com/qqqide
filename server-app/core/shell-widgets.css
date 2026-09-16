@@ -88,6 +88,10 @@
 .qqq-anchor-hidden {
   color: transparent !important;
   opacity: 0 !important;
+  /* ★ 老 q3 markerHideType 口径：令牌缩到 11px —— 透明文字仍占宽，超大字号下会折行
+     （42 号字实测 45 字符令牌宽 1086px → 折 3 行 = 行高 171px → 帧只盖首行 → 2 行空气墙）；
+     缩字号后令牌约 270px 永不折行，行高恒 = 编辑器行高 */
+  font-size: 11px !important;
 }
 
 /* ═══ codelens 按钮（q3 FileCodeLensProvider 移植；字号/字体由 qqq-codelens 走 Monaco 选项层）═══ */

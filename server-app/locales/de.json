@@ -188,7 +188,9 @@
             "procsSuffix2": " Prozesse",
             "uptime": "Laufzeit",
             "avgBadge": "{v} Durchschnitt",
-            "meanBadge": "{v} Mittelwert"
+            "meanBadge": "{v} Mittelwert",
+            "warnMsg": "Hoher Speicherverbrauch im Hauptprozess (Heap {heap}GB / Gesamt {rss}GB). Es wird empfohlen, das Fenster neu zu starten, um Speicher freizugeben.",
+            "warnOk": "Verstanden"
         },
         "gp": {
             "stop": "Beenden",
@@ -260,6 +262,20 @@
         "exit": {
             "confirm": "Beenden bestätigen?",
             "ok": "Beenden bestätigen"
+        },
+        "wq": {
+            "tip": "wq Vorlauf-Statistik: Einfügen der Probe-Ausführungszeit\nKlicken zum Zurücksetzen",
+            "tipShort": "wq Vorlauf-Statistik"
+        },
+        "goods": {
+            "kmdXTip": "Drücken Sie x, um ein neues kmd zu öffnen"
+        },
+        "aZone": {
+            "nullTip": "Bereich A einklappen / Klicken zum Wiederherstellen"
+        },
+        "bulb": {
+            "left": "Linkes AI-Panel",
+            "right": "Rechtes AI-Panel"
         },
         "free": {}
     },
@@ -645,7 +661,9 @@
             "showKey": "Anzeigen/Ausblenden",
             "model": "Modellname",
             "modelPh": "Modellname aus der Dokumentation des Anbieters",
-            "think": "Denkparameter hochladen (thinking / reasoning_effort; deaktivieren, wenn der Anbieter dies nicht unterstützt)",
+            "think": "Denk-Parameter senden (deaktivieren, wenn vom Anbieter nicht unterstützt)",
+            "thinkLevel": "Denk-Level (reasoning_effort)",
+            "thinkJson": "Benutzerdefinierte Parameter als JSON (optional, hat Vorrang vor dem Level)",
             "route": "Netzwerkkanel",
             "routeDirect": "Direkte Verbindung (empfohlen)",
             "routeRelay": "Plattform-Proxy (USA-Route)",
@@ -694,7 +712,17 @@
         "featureWip": "Diese Funktion ist noch in Entwicklung",
         "auditBtn": "Prüfung",
         "translateBtn": "Übersetzen",
-        "auditCopied": "Audit-Text in die Zwischenablage kopiert ({0} KB). Kann in jeden KI-Dialog eingefügt werden."
+        "auditCopied": "Audit-Text in die Zwischenablage kopiert ({0} KB). Kann in jeden KI-Dialog eingefügt werden.",
+        "waitSwitch": "Die aktuelle AI-Antwort steht noch aus. Bitte warten Sie, bevor Sie wechseln.",
+        "waitNew": "Die aktuelle AI-Antwort steht noch aus. Bitte warten Sie, bevor Sie eine neue Aufgabe erstellen.",
+        "recoverPrefix": "Netzwerkverbindung wiederhergestellt. Unterbrochene Verlaufseinträge:",
+        "recoverSuffix": "｜Bitte setzen Sie die ursprüngliche Aufgabe basierend auf dem vollständigen Konversationskontext fort.",
+        "retryExhausted": "Nach 3 Wiederholungen immer noch kein Erfolg. Möglicherweise sind das Budget/Quota erschöpft oder ein Serverfehler liegt vor. Bitte versuchen Sie es später erneut.",
+        "pathIncompatible": "Pfad enthält inkompatible Zeichen, Anhängen nicht möglich",
+        "bulletTrunc": "\n\n... [Mitte abgeschnitten, ursprünglich {0}KB] ...\n\n",
+        "exhaustedMsg": "⚠ Maximale Anzahl an Tool-Aufrufen (200) erreicht, aber die AI konnte keine endgültige Antwort generieren. Der Konversationskontext bleibt erhalten, Sie können weitere Fragen stellen.",
+        "floorAbortedMsg": "⚠️ Verlaufseintrag abnormal unterbrochen, Konversation wurde gespeichert.",
+        "sseSkipNote": "[System: Die letzte Antwort enthielt Tool-Aufrufe als Text ([A → …] Format) statt als native tool_calls. Folgende Tools wurden aufgrund unsicherer Parameterrekonstruktion nicht ausgeführt: {0}. Bitte führen Sie diese Tools erneut mit nativen tool_calls aus oder geben Sie direkt die endgültige Antwort.]"
     },
     "goods": {
         "conv": {
@@ -748,7 +776,8 @@
             "lblBiscuitN": "Kompressionskeks × {0} Ebenen",
             "noAgent": "Kein Agent gefunden",
             "building": "⏳ KI erstellt Gebäude…",
-            "compressingNow": "⏳ Komprimierung läuft…"
+            "compressingNow": "⏳ Komprimierung läuft…",
+            "guardPh": "[Vom Serverseitigen Go in messages[0] injiziert, für den Client unsichtbar]\n[Datei: gaea/guard/system-prompt.txt, {n} Zeichen]"
         },
         "navigator": {
             "inputPlaceholder": "Pfadabschnitt eingeben, Enter zum Öffnen / Esc zum Schließen",
@@ -1536,6 +1565,14 @@
             "p19": "Es kann nicht garantiert werden, dass „die höchste Intelligenz stets für den wichtigsten Code verwendet wird“. Wir wissen, dass dies entscheidend ist, aber Grenzfälle werden immer auftreten.",
             "p20": "Automatisches Schalten bedeutet im Wesentlichen, dass die KI mit der höchsten Intelligenz die Komplexität des Problems bewertet (und dann die tatsächlich arbeitende KI auswählt). Langfristig erhöht jedoch jede Etage mindestens einen Aufruf der „KI mit höchster Intelligenz“, was langfristig ins Gewicht fällt. Wenn wir hingegen nicht die KI mit höchster Intelligenz zur Bewertung nutzen, steigt das unter Punkt 1 genannte Risiko.",
             "p21": "Letztendlich hat sich qqqide dafür entschieden, einen benutzerfreundlicheren Schalthebel zu entwickeln, der die Schaltkontrolle zu 100 % in Ihre Hände legt."
+        },
+        "stamp": {
+            "none": "❌ Keine",
+            "readFail": "Lesen des Build-Stamps fehlgeschlagen",
+            "ok": "Neuester Code ✅ buildId={id}",
+            "stale": "SW hat alten Code gecacht! Disk={disk} Browser={browser}",
+            "fetchFail": "❌ Fetch fehlgeschlagen",
+            "fetchFailTitle": "Build-Stamp Fetch fehlgeschlagen"
         }
     },
     "squad": {
@@ -1576,7 +1613,8 @@
             "reason": "Grund: {r}",
             "retrying": "Wiederholungsversuch läuft…",
             "stillFail": "Verbindung immer noch nicht möglich, bitte später erneut versuchen…",
-            "retryFail": "Wiederholungsversuch fehlgeschlagen: {e}"
+            "retryFail": "Wiederholungsversuch fehlgeschlagen: {e}",
+            "noCache": "Kein verfügbarer Cache, bitte versuchen Sie es später erneut."
         },
         "update": {
             "title": "Update erforderlich",
@@ -1634,5 +1672,15 @@
             "copyLink": "Link kopieren",
             "close": "Schließen"
         }
+    },
+    "pasteRouter": {
+        "noDir": "Zielverzeichnis für das Einfügen kann nicht ermittelt werden (ist der Editor mit keiner Datei verknüpft?)",
+        "writeFail": "Schreiben auf Datenträger fehlgeschlagen: {msg}",
+        "imgSaveFail": "Einfügen des Bildes fehlgeschlagen: {msg}",
+        "imgPasteDone": "Eingefügt: {ok} erfolgreich, {fail} fehlgeschlagen",
+        "dropImgFail": "Drag & Drop des Bildes fehlgeschlagen: {msg}",
+        "dropDone": "Drag & Drop: {ok} erfolgreich, {fail} fehlgeschlagen",
+        "unknownErr": "Unbekannter Fehler",
+        "unknownErrSave": "Unbekannter Fehler (Speichern hat kein Ergebnis zurückgegeben)"
     }
 }

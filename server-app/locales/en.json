@@ -188,7 +188,9 @@
             "procsSuffix2": " Processes",
             "uptime": "Uptime",
             "avgBadge": "{v} Avg Usage",
-            "meanBadge": "{v} Mean"
+            "meanBadge": "{v} Mean",
+            "warnMsg": "Main process memory usage is high (Heap {heap}GB / Total {rss}GB). Restarting the window is recommended to free up memory.",
+            "warnOk": "Got it"
         },
         "gp": {
             "stop": "Stop",
@@ -260,6 +262,20 @@
         "exit": {
             "confirm": "Confirm exit?",
             "ok": "Confirm Exit"
+        },
+        "wq": {
+            "tip": "wq Warm-up Stats: Paste probe execution time\nClick to reset",
+            "tipShort": "wq Warm-up Stats"
+        },
+        "goods": {
+            "kmdXTip": "Press x to open a new kmd"
+        },
+        "aZone": {
+            "nullTip": "Collapse Zone A / Click to restore"
+        },
+        "bulb": {
+            "left": "Left AI Panel",
+            "right": "Right AI Panel"
         },
         "free": {}
     },
@@ -645,7 +661,9 @@
             "showKey": "Show/Hide",
             "model": "Model Name",
             "modelPh": "Model name from provider documentation",
-            "think": "Send thinking parameters (thinking / reasoning_effort; disable if unsupported by provider)",
+            "think": "Send reasoning parameters (disable if unsupported by provider)",
+            "thinkLevel": "Reasoning Effort Level",
+            "thinkJson": "Custom Parameters JSON (optional; overrides level if provided)",
             "route": "Network Channel",
             "routeDirect": "Direct connection (recommended)",
             "routeRelay": "Platform Proxy (US Route)",
@@ -694,7 +712,17 @@
         "featureWip": "This feature is under construction",
         "auditBtn": "Audit",
         "translateBtn": "Translate",
-        "auditCopied": "Audit text copied to clipboard ({0} KB). You can paste it into any AI chat."
+        "auditCopied": "Audit text copied to clipboard ({0} KB). You can paste it into any AI chat.",
+        "waitSwitch": "AI has not yet replied to the current task. Please wait before switching.",
+        "waitNew": "AI has not yet replied to the current task. Please wait before creating a new one.",
+        "recoverPrefix": "Network reconnected. Previous floor interruption record:",
+        "recoverSuffix": "| Please continue completing the original task based on the full conversation context.",
+        "retryExhausted": "Retried 3 times without success. This may be due to exhausted billing/quotas or server issues. Please try again later.",
+        "pathIncompatible": "Path contains incompatible characters and cannot be appended",
+        "bulletTrunc": "\n\n... [Middle content truncated, original {0}KB] ...\n\n",
+        "exhaustedMsg": "⚠ Maximum tool call limit (200) reached, but AI failed to generate a final response. Context retained; you may continue asking questions.",
+        "floorAbortedMsg": "⚠️ Floor abnormally interrupted. Conversation saved.",
+        "sseSkipNote": "[System: Detected that the previous response formatted tool calls as text ([A → …]) instead of native tool_calls. The following tools were not executed because their parameters could not be safely reconstructed: {0}. Please re-execute these tools using native tool_calls, or provide the final answer directly.]"
     },
     "goods": {
         "conv": {
@@ -748,7 +776,8 @@
             "lblBiscuitN": "Compression Biscuits × {0} floors",
             "noAgent": "Agent not found",
             "building": "⏳ AI is building...",
-            "compressingNow": "⏳ Compressing…"
+            "compressingNow": "⏳ Compressing…",
+            "guardPh": "[Injected by server-side Go into messages[0]; not visible to client]\n[File: gaea/guard/system-prompt.txt, {n} characters]"
         },
         "navigator": {
             "inputPlaceholder": "Type path segments, Enter to open / Esc to close",
@@ -1536,6 +1565,14 @@
             "p19": "We cannot guarantee \"using the highest intelligence to write the most critical code.\" We know this is crucial, but edge cases will always exist.",
             "p20": "Automatic gear shifting essentially lets the highest-intelligence AI assess problem complexity (and choose the actual working AI). However, in the long run, each floor incurs at least one extra call to the \"highest-intelligence AI,\" adding to the cost. Conversely, not using the highest intelligence for assessment increases the risks mentioned in point one.",
             "p21": "Ultimately, qqqide decided to create a better gear shifter, placing 100% of the shifting control in your hands."
+        },
+        "stamp": {
+            "none": "❌ None",
+            "readFail": "Failed to read build stamp",
+            "ok": "Latest code ✅ buildId={id}",
+            "stale": "SW cached old code! Disk={disk} Browser={browser}",
+            "fetchFail": "❌ Fetch failed",
+            "fetchFailTitle": "Build Stamp Fetch Failed"
         }
     },
     "squad": {
@@ -1576,7 +1613,8 @@
             "reason": "Reason: {r}",
             "retrying": "Retrying...",
             "stillFail": "Still unable to connect, please try again later...",
-            "retryFail": "Retry failed: {e}"
+            "retryFail": "Retry failed: {e}",
+            "noCache": "No cache available. Please try again later."
         },
         "update": {
             "title": "Update Required",
@@ -1634,5 +1672,15 @@
             "copyLink": "Copy Link",
             "close": "Close"
         }
+    },
+    "pasteRouter": {
+        "noDir": "Unable to determine paste directory (is the editor linked to a file?)",
+        "writeFail": "Disk write failed: {msg}",
+        "imgSaveFail": "Failed to paste image: {msg}",
+        "imgPasteDone": "Paste: {ok} succeeded, {fail} failed",
+        "dropImgFail": "Failed to drop image: {msg}",
+        "dropDone": "Drop: {ok} succeeded, {fail} failed",
+        "unknownErr": "Unknown error",
+        "unknownErrSave": "Unknown error (save returned no result)"
     }
 }

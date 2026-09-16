@@ -61,6 +61,8 @@
     // ── Disposables ──
     this._disposables = [];
     this._syncTimer = null;
+    this._fontTimer = null;          // 字号/行高变更 → 几何重排去抖
+    this._forceLiftRebuild = false;  // 一次性强制：下一轮 zone 全量 remove+add（Monaco 增量布局陈旧清零）
 
     // ── 常量 ──
     //   帧高度不再硬编码：frameDom._zoneH 由 frame-renderer 按帧族/偏好/媒体尺寸算出
@@ -166,6 +168,12 @@
       // 订阅 model 变更（增量更新 anchor map）
       this._hookModelChange(editor, vp);
 
+      // 订阅配置变更（字号/行高/折行 → 帧几何整批重排）
+      this._hookConfigChange(editor, vp);
+
+      // 订阅布局变更（窗口/面板 resize → 折行数可能变化 → 锚点行真实高度变化 → 帧几何自愈）
+      this._hookLayoutChange(editor, vp);
+
       // 挂载 paste handler
       this._attachPasteHandler(editor, vp);
     },
@@ -240,9 +248,11 @@
       vp._zoneMeta = {};
       vp._frameCache = {};
       vp._hideDeco = null;
+      vp._hideSig = '';
       vp._anchorMap = {};
       vp._disposables = [];
       if (vp._syncTimer) clearTimeout(vp._syncTimer);
+      if (vp._fontTimer) clearTimeout(vp._fontTimer);
       this._registry.delete(editor);
     },
 
@@ -285,6 +295,7 @@
           }
           vp._disposables = [];
           if (vp._syncTimer) clearTimeout(vp._syncTimer);
+          if (vp._fontTimer) clearTimeout(vp._fontTimer);
           _machine._registry.delete(editor);
         });
         vp._disposables.push(dd);
@@ -301,6 +312,89 @@
         });
         vp._disposables.push(d1);
       } catch (e) { /* ignore */ }
+    },
+
+    // 监听 editor 配置变更（字号/行高）→ 帧几何整批重排
+    //   ★ 帧上提 marginTop=-rowH 与 zone 高度减 (rowH+4) 都是「行真实高度」的函数：只读一次的实现
+    //   在字号变更后几何必漂（字号调大 → 折行/空隙；调小 → 重叠），且中途任何一次 sync 会在错误
+    //   高度下固化错误几何（回改字号也修不回，须手动重排才复活）
+    _hookConfigChange: function (editor, vp) {
+      if (vp._cfgHooked) return;   // 幂等：created 可能多次进入（build/openInPane 路径），监听只挂一次
+      if (typeof editor.onDidChangeConfiguration !== 'function') return;
+      vp._cfgHooked = true;
+      try {
+        var d = editor.onDidChangeConfiguration(function (e) {
+          var hit = false;
+          try {
+            var EO = (vp.monaco && vp.monaco.editor && vp.monaco.editor.EditorOption) ? vp.monaco.editor.EditorOption : null;
+            if (EO && typeof e.hasChanged === 'function') {
+              if (EO.fontSize != null && e.hasChanged(EO.fontSize)) hit = true;
+              if (!hit && EO.lineHeight != null && e.hasChanged(EO.lineHeight)) hit = true;
+              if (!hit && EO.wordWrap != null && e.hasChanged(EO.wordWrap)) hit = true;
+            } else {
+              hit = true;   // 读不到 option id → 保守触发（重排幂等，代价 = 一次几何比对）
+            }
+          } catch (_e) { hit = true; }
+          if (hit) { _machine._scheduleFontRelayout(vp); }
+        });
+        vp._disposables.push(d);
+      } catch (e0) { /* ignore */ }
+    },
+
+    // 监听 editor 布局变更（窗口/面板 resize、编辑器宽度变化 → 折行数可能变化）
+    //   不整批重排：只 scheduleSync —— _buildAndApply 的 stale 检查按当前 rowH 逐条比对，
+    //   真变化的条目才 remove+add；resize 高频但多数无变化 → 零成本跳过。
+    _hookLayoutChange: function (editor, vp) {
+      if (vp._layoutHooked) return;
+      if (typeof editor.onDidLayoutChange !== 'function') return;
+      vp._layoutHooked = true;
+      try {
+        var d = editor.onDidLayoutChange(function () {
+          if (vp.state === 'closed') return;
+          _machine._scheduleSync(vp);
+        });
+        vp._disposables.push(d);
+      } catch (e) { /* ignore */ }
+    },
+
+    // 锚点行的「真实渲染高度」（含折行）：rowH = 行高 × 折行数
+    //   为什么需要它：隐藏令牌（透明）仍占宽——超大字号/窄窗口下会折行（42 号字实测折 3 行 = 171px），
+    //   只按编辑器行高(57)上提 → 帧只盖住首行，剩余折行区 = 空气墙（lens 与相框间 114px 空洞）。
+    //   公式：getTopForPosition(行, 末列) − getTopForLineNumber(行) + 行高 = 整行高度
+    //   （同一模型行内部无 zone，差值纯净；读写皆安全，不依赖 Monaco 内部结构）。
+    _rowHeightAt: function (editor, line) {
+      try {
+        if (typeof editor.getTopForPosition !== 'function') return 0;
+        var model = editor.getModel && editor.getModel();
+        if (!model || line < 1 || line > model.getLineCount()) return 0;
+        var lh = 0;
+        try {
+          var EO = (window.monaco && window.monaco.editor && window.monaco.editor.EditorOption) ? window.monaco.editor.EditorOption : null;
+          var lv = (typeof editor.getOption === 'function') ? editor.getOption(EO ? EO.lineHeight : 61) : 0;
+          lh = (typeof lv === 'number' && lv > 0) ? lv : 0;
+        } catch (_e1) { lh = 0; }
+        if (!lh) return 0;
+        var tTop = editor.getTopForLineNumber(line);
+        var tEnd = editor.getTopForPosition(line, model.getLineMaxColumn(line));
+        var h = Math.round(tEnd - tTop) + lh;
+        return (h >= lh) ? h : lh;
+      } catch (e) { return 0; }
+    },
+
+    // 字号/行高变更 → 去抖重排（连点 +/- 只在停手后跑一次）
+    //   _forceLiftRebuild = 一次性强制：stale 检查在行高相同时零动作，这里要求下一轮把全部
+    //   zone remove+add（remove+add = Monaco 全量重算 zone 偏移，任何增量布局陈旧一并根治）
+    _scheduleFontRelayout: function (vp) {
+      vp._forceLiftRebuild = true;
+      if (vp._fontTimer) clearTimeout(vp._fontTimer);
+      var self = this;
+      vp._fontTimer = setTimeout(function () {
+        vp._fontTimer = null;
+        // ★ 只避 closed：suspended 不禁（suspend/resume 可能不成对——历史状态泄漏，“可见却记挂 suspended”
+        //   会把字号重排永久挂起；重排是纯几何+DOM 操作，隐藏面板执行无害）
+        if (vp.state === 'closed') return;
+        self._syncAll(vp);
+      }, 160);
     },
 
     // 挂载 paste handler
@@ -538,6 +632,46 @@
       });
     },
 
+    // ═══ 锚点原文隐藏（老 q3 「Phase 1: sync scan, fast hide」语义）═══
+    //   隐藏条件 = 路径已解析（exists 校验通过 = 文件真实存在可渲染）——不等帧 DOM：
+    //   帧构建含探测/ffmpeg 数百 ms，等帧才隐会让令牌文本（含文件名）在打开文档时裸奔 = 穿帮；
+    //   未解析（文件缺失/候选根全 miss）→ 保留文字可读（防「隐了但没渲染」的空洞）。
+    _applyHideDecos: function (vp) {
+      var editor = vp.editor;
+      if (!editor || vp.state === 'closed') return;
+      try {
+        if (!vp.monaco || !vp.monaco.Range) return;
+        if (!vp._hideDeco && typeof editor.createDecorationsCollection === 'function') {
+          vp._hideDeco = editor.createDecorationsCollection([]);
+        }
+        if (!vp._hideDeco || typeof vp._hideDeco.set !== 'function') return;
+        var keys = Object.keys(vp._anchorMap);
+        var decos = [];
+        var sig = [];
+        // 签名带模型身份（预览复用/切文件 = 换 model → 签名必变，防旧签名撞车漏隐）
+        var _m = null;
+        try { _m = editor.getModel(); } catch (_em) { /* */ }
+        var _mId = (_m && _m.id != null) ? _m.id : 0;
+        for (var i = 0; i < keys.length; i++) {
+          var ent = vp._anchorMap[keys[i]];
+          if (!ent || !ent.path) continue;   // 未解析 → 不隐（文字保留可读）
+          // 隐藏长度 = 令牌真实字符数（_rawLen，含引号；旧式空格令牌解析命中时已在解析器内扩至整段）
+          // 旧条目无记录时按重建公式回落
+          var tlen = (ent._rawLen > 0) ? ent._rawLen
+            : (2 + (ent.sha256 ? String(ent.sha256).length : 0) + 1 + String(ent.fileName || '').length);
+          sig.push(ent.line + ',' + ent.col + ',' + tlen);
+          decos.push({
+            range: new vp.monaco.Range(ent.line, ent.col, ent.line, ent.col + tlen),
+            options: { inlineClassName: 'qqq-anchor-hidden' },
+          });
+        }
+        var sigStr = _mId + '#' + sig.join(';');
+        if (sigStr === vp._hideSig) return;   // 无变化零成本（每轮 sync 都会调用）
+        vp._hideSig = sigStr;
+        vp._hideDeco.set(decos);
+      } catch (e) { /* */ }
+    },
+
     // ★ 唯一落点：异步建帧（缓存命中零成本）→ 一次 changeViewZones 批量应用
     //   全族统一 ViewZone（媒体/文本/图标同一机制，帧高 = frameDom._zoneH 精确值）
     _buildAndApply: async function (vp) {
@@ -546,6 +680,9 @@
       if (typeof editor.changeViewZones !== 'function') return;
       var fr = this._frameRenderer || window.qqqFrameRenderer;
       if (!fr || !fr.buildFrame) return;
+
+      // ★ 提前隐藏（老 q3 Phase 1 fast hide）：路径已解析的令牌立即隐，不等帧 DOM 构建完
+      this._applyHideDecos(vp);
 
       var self = this;
       var variant = (typeof fr.variantKey === 'function') ? fr.variantKey() : '';
@@ -607,19 +744,32 @@
       if (vp.state === 'closed' || vp.editor !== editor) return;
 
       // ★ 暗号行上提几何（消灭「空气墙」：codelens 与相框零间隙）
-      //   帧 DOM 即 zone 主体：marginTop=-lh 让帧顶上提一整行盖住暗号行（与老 q3 绝对定位 top:0 同视觉），
-      //   zone 高度同步减 (lh+4)，帧底到下一行保持 4px 呼吸（总占位精确守恒）。
+      //   帧 DOM 即 zone 主体：marginTop=-rowH 让帧顶上提整行盖住暗号行（与老 q3 绝对定位 top:0 同视觉）。
+      //   ★ rowH = 锚点行真实渲染高度（含折行；见 _rowHeightAt）——大字号/窄窗口下隐藏令牌会折行，
+      //   只按编辑器行高上提 → 帧只盖首行，剩余折行区露成空气墙（42 号字实测 2 行 = 114px）。
+      //   几何 = rowH 的函数 → 重建/字号变更（_hookConfigChange）/ resize（_hookLayoutChange）都必须重算。
       var _lh = 0;
       try {
         var _EOpt = (vp.monaco && vp.monaco.editor && vp.monaco.editor.EditorOption) ? vp.monaco.editor.EditorOption : null;
         var _lhVal = (typeof editor.getOption === 'function') ? editor.getOption(_EOpt ? _EOpt.lineHeight : 61) : 0;
         _lh = (typeof _lhVal === 'number' && _lhVal > 0) ? _lhVal : 0;
       } catch (_eLh) { _lh = 0; }
-      function _pullGeom(frameDom, lh2) {
+      function _pullGeom(frameDom, rowH) {
         var h = frameDom._zoneH;
-        var m = 4;   // _buildShell 默认 margin:4px 0
-        if (lh2 > 0 && (h - lh2 - 4) >= 24) { h = h - lh2 - 4; m = -lh2; }
-        return { h: h, m: m, pull: lh2 };
+        if (rowH > 0) {
+          var hh = h - rowH - 4;
+          // 常规：zone 高度同步减 (rowH+4)；帧比 rowH 还矮（图标帧 × 大字号）：保持整帧高度仅上提
+          // （防图标被裁切；底部节奏 = 帧底→下一行恒为 rowH，与常规路径一致）
+          return { h: (hh >= 24 ? hh : h), m: -rowH, pull: rowH };
+        }
+        return { h: h, m: 4, pull: rowH };   // 行高读不到：旧行为（_buildShell 默认 margin:4px 0）
+      }
+
+      // ② 行真实高度预计算（含折行；每锚点一行；changeViewZones 事务外读取）
+      var rowHByKey = {};
+      for (var rhI = 0; rhI < keys.length; rhI++) {
+        var rhEnt = vp._anchorMap[keys[rhI]];
+        if (rhEnt && rhEnt.path) rowHByKey[keys[rhI]] = this._rowHeightAt(editor, rhEnt.line) || _lh;
       }
 
       // ② 一次批量落 zone（新增/重建/移除）
@@ -642,10 +792,11 @@
           var meta = vp._zoneMeta[k2];
           var ent2 = valid[k2];
           var c2 = vp._frameCache[k2];
-          var stale = !ent2 || !c2 || !c2.frameDom ||
+          var rowH2 = (rowHByKey[k2] !== undefined) ? rowHByKey[k2] : _lh;
+          var stale = vp._forceLiftRebuild || !ent2 || !c2 || !c2.frameDom ||
             meta.entry.line !== ent2.line || meta.entry.col !== ent2.col ||
             meta.entry.path !== ent2.path || meta.entry.fileName !== ent2.fileName ||
-            meta.height !== _pullGeom(c2.frameDom, _lh).h || meta.pull !== _lh;
+            meta.height !== _pullGeom(c2.frameDom, rowH2).h || meta.pull !== rowH2;
           if (stale) {
             try { accessor.removeZone(meta.zoneId); } catch (e3) { /* */ }
             delete vp._zoneMeta[k2];
@@ -663,7 +814,8 @@
           var frameDom = c3.frameDom;
           frameDom.classList.add('qqq-vz-media');
           frameDom._requestResize = function () { self._scheduleSync(vp); };
-          var geom3 = _pullGeom(frameDom, _lh);
+          var rowH3 = (rowHByKey[mk] !== undefined) ? rowHByKey[mk] : _lh;
+          var geom3 = _pullGeom(frameDom, rowH3);
           try { frameDom.style.marginTop = geom3.m + 'px'; } catch (_eM) { /* */ }
           var zoneId = accessor.addZone({
             afterLineNumber: ent3.line,
@@ -675,36 +827,15 @@
             frameDom: frameDom,
             entry: { line: ent3.line, col: ent3.col, path: ent3.path, fileName: ent3.fileName },
             height: geom3.h,
-            pull: _lh,
+            pull: rowH3,
           };
         }
       });
 
-      // ③ 锚点原文隐藏（老 markerHideType 语义：有帧才隐，无帧留文字可读）
-      try {
-        if (vp.monaco && vp.monaco.Range) {
-          if (!vp._hideDeco && typeof editor.createDecorationsCollection === 'function') {
-            vp._hideDeco = editor.createDecorationsCollection([]);
-          }
-          if (vp._hideDeco && typeof vp._hideDeco.set === 'function') {
-            var decos = [];
-            for (var di = 0; di < keys.length; di++) {
-              var dEnt = vp._anchorMap[keys[di]];
-              var dCache = vp._frameCache[keys[di]];
-              if (!dEnt || !dCache || !dCache.frameDom) continue;
-              // 隐藏长度 = 令牌真实字符数（_rawLen，含引号；旧式空格令牌解析命中时已在解析器内扩至整段）
-              // 旧条目无记录时按重建公式回落
-              var tlen = (dEnt._rawLen > 0) ? dEnt._rawLen
-                : (2 + (dEnt.sha256 ? String(dEnt.sha256).length : 0) + 1 + String(dEnt.fileName || '').length);
-              decos.push({
-                range: new vp.monaco.Range(dEnt.line, dEnt.col, dEnt.line, dEnt.col + tlen),
-                options: { inlineClassName: 'qqq-anchor-hidden' },
-              });
-            }
-            vp._hideDeco.set(decos);
-          }
-        }
-      } catch (e4) { /* */ }
+      vp._forceLiftRebuild = false;   // 强制重排标志一次性消费（本轮已把全部 zone remove+add）
+
+      // ③ 锚点原文隐藏（老 q3 Phase 1 fast hide 语义，统一入口见 _applyHideDecos）
+      this._applyHideDecos(vp);
 
       // ④ 空-path 锚点自愈：粘/拖/新键入的 token 能解析出真实路径就补上（相框立即出图）
       this._resolveNullPaths(vp);
@@ -754,6 +885,7 @@
       if (meta.rawLen) entry._rawLen = meta.rawLen;
       delete entry._tail;   // 注册的真名优先，补偿候选作废
 
+      this._applyHideDecos(vp);   // ★ 粘贴即隐令牌原文（不等 sync 防抖；帧随后补上）
       this._scheduleSync(vp);
       return true;
     },
@@ -802,7 +934,10 @@
       });
       Promise.all(jobs).then(function () {
         vp._resolvingPaths = false;
-        if (any) self._scheduleSync(vp);
+        if (any) {
+          self._applyHideDecos(vp);   // ★ 解析命中立即隐藏（不等 100ms sync 防抖）
+          self._scheduleSync(vp);
+        }
       }).catch(function () { vp._resolvingPaths = false; });
     },
 
@@ -825,6 +960,8 @@
 
     _cleanupViewport: function (vp) {
       if (vp._syncTimer) clearTimeout(vp._syncTimer);
+      if (vp._fontTimer) clearTimeout(vp._fontTimer);
+      vp._fontTimer = null;
 
       var editor = vp.editor;
 
@@ -847,6 +984,7 @@
       // 锚点原文隐藏集合解散 + 帧缓存清理
       try { if (vp._hideDeco && typeof vp._hideDeco.clear === 'function') { vp._hideDeco.clear(); } } catch (_) { /* */ }
       vp._hideDeco = null;
+      vp._hideSig = '';   // 集合已清 → 签名缓存必须同步失效（防同签名回访时漏隐）
       vp._frameCache = {};
       vp._building = {};
 

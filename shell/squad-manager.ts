@@ -235,6 +235,23 @@ export function getSquadOf(winId: number): string | null {
     return null;
 }
 
+/** ★ mac 召回兜底（2026-09-16）: pynput 热键召回的 NSRunningApplication 激活无法还原
+ *  最小化窗口 → 事件回传后由本函数在进程内 restore/show/focus（winId+pid 双条件匹配，
+ *  他实例窗口不碰）。Windows 不走此路径（py-broker SetForegroundWindow 已覆盖）。 */
+export function focusWindowBySlot(slot: string): boolean {
+    try {
+        const reg = _loadFresh();
+        const e = reg.slots[slot];
+        if (!e || e.pid !== process.pid) { return false; }
+        const win = BrowserWindow.fromId(e.winId);
+        if (!win || win.isDestroyed()) { return false; }
+        try { if (win.isMinimized()) { win.restore(); } } catch { /* ignore */ }
+        try { win.show(); } catch { /* ignore */ }
+        try { win.focus(); } catch { /* ignore */ }
+        return true;
+    } catch { return false; }
+}
+
 function _findFreeSlot(): string | null {
     const reg = _load();
     for (const k of SQUAD_ORDER) {

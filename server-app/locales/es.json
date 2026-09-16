@@ -188,7 +188,9 @@
             "procsSuffix2": " procesos",
             "uptime": "Tiempo activo",
             "avgBadge": "{v} uso medio ",
-            "meanBadge": "{v} valor medio "
+            "meanBadge": "{v} valor medio ",
+            "warnMsg": "El uso de memoria del proceso principal es alto (heap {heap}GB / total {rss}GB), se recomienda reiniciar la ventana para liberar memoria",
+            "warnOk": "Entendido"
         },
         "gp": {
             "stop": "Detener",
@@ -260,6 +262,20 @@
         "exit": {
             "confirm": "¿Confirmar salida?",
             "ok": "Confirmar salida"
+        },
+        "wq": {
+            "tip": "Estadísticas de precalentamiento wq: pega el tiempo de ejecución de la sonda\nHaz clic para reiniciar",
+            "tipShort": "Estadísticas de precalentamiento wq"
+        },
+        "goods": {
+            "kmdXTip": "Presiona la tecla x para abrir un nuevo kmd"
+        },
+        "aZone": {
+            "nullTip": "Contraer zona A / Haz clic para restaurar"
+        },
+        "bulb": {
+            "left": "Panel izquierdo de IA",
+            "right": "Panel derecho de IA"
         },
         "free": {}
     },
@@ -645,7 +661,9 @@
             "showKey": "Mostrar/Ocultar",
             "model": "Nombre del modelo",
             "modelPh": "Nombre del modelo en la documentación del proveedor",
-            "think": "Enviar parámetros de razonamiento (thinking / reasoning_effort; desactivar si el proveedor no lo admite)",
+            "think": "Enviar parámetro de razonamiento (desactivar si el proveedor no lo admite)",
+            "thinkLevel": "Nivel de razonamiento (reasoning_effort)",
+            "thinkJson": "JSON de parámetros personalizados (opcional, tiene prioridad sobre el nivel si se completa)",
             "route": "Canal de red",
             "routeDirect": "Conexión directa (recomendado)",
             "routeRelay": "Proxy de plataforma (ruta EE. UU.)",
@@ -694,7 +712,17 @@
         "featureWip": "Esta función está en desarrollo",
         "auditBtn": "Auditar",
         "translateBtn": "Traducir",
-        "auditCopied": "Texto de auditoría copiado al portapapeles ({0} KB), puede pegarlo en cualquier cuadro de diálogo de IA."
+        "auditCopied": "Texto de auditoría copiado al portapapeles ({0} KB), puede pegarlo en cualquier cuadro de diálogo de IA.",
+        "waitSwitch": "La IA aún no ha respondido a la tarea actual, por favor cambia más tarde",
+        "waitNew": "La IA aún no ha respondido a la tarea actual, por favor crea una nueva más tarde",
+        "recoverPrefix": "Reconexión de red restaurada. Registro de interrupción anterior del hilo:",
+        "recoverSuffix": "| Por favor, continúa completando la tarea original basándote en el contexto completo de la conversación.",
+        "retryExhausted": "Se reintentó 3 veces sin éxito, puede ser debido al agotamiento de la cuota/facturación o a un fallo del servidor, por favor inténtalo de nuevo más tarde",
+        "pathIncompatible": "La ruta contiene caracteres incompatibles, no se puede adjuntar",
+        "bulletTrunc": "\n\n... [Intermedio truncado, original {0}KB] ...\n\n",
+        "exhaustedMsg": "⚠ Se ha alcanzado el número máximo de llamadas a herramientas (200), pero la IA no pudo generar una respuesta final. El contexto de la conversación se ha conservado, puedes continuar preguntando.",
+        "floorAbortedMsg": "⚠️ El hilo se interrumpió anormalmente, la conversación se ha guardado.",
+        "sseSkipNote": "[Sistema: Se detectó que la última respuesta escribió la llamada a la herramienta como texto (formato de visualización [A → …]) en lugar de tool_calls nativos. Las siguientes herramientas no se ejecutaron porque sus parámetros no pudieron reconstruirse de forma segura: {0}. Por favor, vuelve a ejecutar estas herramientas usando tool_calls nativos o proporciona directamente la respuesta final.]"
     },
     "goods": {
         "conv": {
@@ -748,7 +776,8 @@
             "lblBiscuitN": "Galleta comprimida × {0} pisos",
             "noAgent": "Agente no encontrado",
             "building": "⏳ IA construyendo estructura…",
-            "compressingNow": "⏳ Comprimiendo…"
+            "compressingNow": "⏳ Comprimiendo…",
+            "guardPh": "[Inyectado por Go del servidor en messages[0], no visible para el cliente]\n[Archivo: gaea/guard/system-prompt.txt, {n} caracteres]"
         },
         "navigator": {
             "inputPlaceholder": "Escribe fragmentos de ruta, Enter para abrir / Esc para cerrar",
@@ -1536,6 +1565,14 @@
             "p19": "No podemos garantizar «usar la máxima inteligencia para escribir el código más importante». Sabemos que esto es crucial, pero siempre habrá casos límite.",
             "p20": "El cambio automático de marchas permite que la IA más inteligente evalúe la complejidad del problema (y seleccione la IA adecuada para ejecutarla). Sin embargo, a largo plazo, cada piso añade al menos una llamada adicional a la «IA más inteligente», lo cual representa un costo considerable. Por otro lado, no utilizar la IA más inteligente para la evaluación aumenta los riesgos mencionados anteriormente.",
             "p21": "Finalmente, qqqide decidió crear una palanca de cambios más eficiente, entregándote el control total y exclusivo sobre la selección de marchas."
+        },
+        "stamp": {
+            "none": "❌ Ninguno",
+            "readFail": "Error al leer el ID de compilación",
+            "ok": "Código más reciente ✅ buildId={id}",
+            "stale": "¡SW almacenó en caché código antiguo! Disco={disk} Navegador={browser}",
+            "fetchFail": "❌ Error en fetch",
+            "fetchFailTitle": "Error al obtener el ID de compilación"
         }
     },
     "squad": {
@@ -1576,7 +1613,8 @@
             "reason": "Motivo: {r}",
             "retrying": "Reintentando…",
             "stillFail": "Aún no se puede conectar, inténtelo más tarde…",
-            "retryFail": "Error al reintentar: {e}"
+            "retryFail": "Error al reintentar: {e}",
+            "noCache": "No hay caché disponible, por favor inténtalo de nuevo más tarde."
         },
         "update": {
             "title": "Actualización requerida",
@@ -1634,5 +1672,15 @@
             "copyLink": "Copiar enlace",
             "close": "Cerrar"
         }
+    },
+    "pasteRouter": {
+        "noDir": "No se puede determinar el directorio de pegado (¿el editor no está asociado a un archivo?)",
+        "writeFail": "Error al escribir en disco: {msg}",
+        "imgSaveFail": "Error al pegar imagen: {msg}",
+        "imgPasteDone": "Pegado: {ok} exitoso(s), {fail} fallido(s)",
+        "dropImgFail": "Error al soltar imagen: {msg}",
+        "dropDone": "Soltado: {ok} exitoso(s), {fail} fallido(s)",
+        "unknownErr": "Error desconocido",
+        "unknownErrSave": "Error desconocido (guardar no devolvió resultado)"
     }
 }

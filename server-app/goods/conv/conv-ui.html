@@ -326,7 +326,7 @@ function buildCells(ag) {
     cells.push({
         id: 'guard', type: 'guard', role: 'guard',
         label: 'Server Guard', group: _i('goods.conv.gInject', '注入'),
-        content: '[服务端 Go 注入到 messages[0] 之前，客户端不可见]\n[文件: gaea/guard/system-prompt.txt，' + _gc + ' 字符]',
+        content: _i('goods.conv.guardPh', '[服务端 Go 注入到 messages[0] 之前，客户端不可见]\n[文件: gaea/guard/system-prompt.txt，{n} 字符]').replace('{n}', _gc),
         chars: _gc
     });
 
@@ -362,7 +362,7 @@ function buildCells(ag) {
     cells.push({
         id: 'toolsdef', type: 'toolsdef', role: 'toolsdef',
         label: (toolsCount > 0) ? ('Tools Definition (' + toolsCount + ' tools)') : 'Tools Definition',
-        group: '注入',
+        group: _i('goods.conv.gInject', '注入'),
         content: toolsContent || _i('goods.conv.toolsNotReady', '[工具定义尚未加载，请稍后刷新]'), chars: toolsChars || 4200
     });
 

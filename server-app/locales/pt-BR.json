@@ -188,7 +188,9 @@
             "procsSuffix2": " processo(s)",
             "uptime": "Tempo de atividade",
             "avgBadge": "{v} de uso médio",
-            "meanBadge": "{v} valor médio"
+            "meanBadge": "{v} valor médio",
+            "warnMsg": "Uso de memória do processo principal está alto (Heap {heap}GB / Total {rss}GB). Recomenda-se reiniciar a janela para liberar memória.",
+            "warnOk": "Entendi"
         },
         "gp": {
             "stop": "Parar",
@@ -260,6 +262,20 @@
         "exit": {
             "confirm": "Confirmar saída?",
             "ok": "Confirmar saída"
+        },
+        "wq": {
+            "tip": "Estatísticas de preparação do wq: tempo de execução da sonda de colagem\nClique para redefinir",
+            "tipShort": "Estatísticas de preparação do wq"
+        },
+        "goods": {
+            "kmdXTip": "Pressione a tecla x para abrir um novo kmd"
+        },
+        "aZone": {
+            "nullTip": "Recolher Zona A / Clicar para restaurar"
+        },
+        "bulb": {
+            "left": "Painel de IA esquerdo",
+            "right": "Painel de IA direito"
         },
         "free": {}
     },
@@ -646,6 +662,8 @@
             "model": "Nome do modelo",
             "modelPh": "Nome do modelo conforme documentação do provedor",
             "think": "Enviar parâmetros de pensamento (thinking / reasoning_effort; desative se o provedor não suportar)",
+            "thinkLevel": "Nível de raciocínio (reasoning_effort)",
+            "thinkJson": "JSON de parâmetros personalizados (opcional; se preenchido, tem prioridade sobre o nível)",
             "route": "Canal de rede",
             "routeDirect": "Conexão direta (recomendado)",
             "routeRelay": "Proxy da plataforma (rota dos EUA)",
@@ -694,7 +712,17 @@
         "featureWip": "Esta funcionalidade está em desenvolvimento",
         "auditBtn": "Auditar",
         "translateBtn": "Traduzir",
-        "auditCopied": "Texto de auditoria copiado para a área de transferência ({0} KB), pode ser colado em qualquer caixa de diálogo de IA."
+        "auditCopied": "Texto de auditoria copiado para a área de transferência ({0} KB), pode ser colado em qualquer caixa de diálogo de IA.",
+        "waitSwitch": "A IA ainda não respondeu à tarefa atual. Aguarde antes de alternar.",
+        "waitNew": "A IA ainda não respondeu à tarefa atual. Aguarde antes de criar uma nova.",
+        "recoverPrefix": "Reconexão de rede restaurada. Registro da interrupção anterior do bloco:",
+        "recoverSuffix": "｜Por favor, continue e conclua a tarefa original com base no contexto completo da conversa.",
+        "retryExhausted": "Tentativa repetida 3 vezes sem sucesso. Pode ser devido ao esgotamento da cota/faturamento ou falha no servidor. Tente novamente mais tarde.",
+        "pathIncompatible": "O caminho contém caracteres incompatíveis e não pode ser anexado",
+        "bulletTrunc": "\n\n... [Intermediário truncado, original {0}KB] ...\n\n",
+        "exhaustedMsg": "⚠ Atingido o número máximo de chamadas de ferramenta (200), mas a IA não gerou uma resposta final. O contexto da conversa foi mantido. Você pode continuar fazendo perguntas.",
+        "floorAbortedMsg": "⚠️ Interrupção anormal do bloco. A conversa foi salva.",
+        "sseSkipNote": "[Sistema: Detectado que a última resposta escreveu a chamada de ferramenta como texto (formato de exibição [A → …]) em vez de tool_calls nativo. As seguintes ferramentas não foram executadas porque os parâmetros não puderam ser reconstruídos com segurança: {0}. Por favor, execute essas ferramentas novamente usando tool_calls nativos ou forneça diretamente a resposta final.]"
     },
     "goods": {
         "conv": {
@@ -748,7 +776,8 @@
             "lblBiscuitN": "Bolacha Comprimida × {0} andares",
             "noAgent": "Agente não encontrado",
             "building": "⏳ IA construindo estrutura…",
-            "compressingNow": "⏳ Compactando…"
+            "compressingNow": "⏳ Compactando…",
+            "guardPh": "[Injetado pelo servidor Go em messages[0], invisível para o cliente]\n[Arquivo: gaea/guard/system-prompt.txt, {n} caracteres]"
         },
         "navigator": {
             "inputPlaceholder": "Digite um caminho, Enter para abrir / Esc para fechar",
@@ -1508,7 +1537,7 @@
             "title": "Explicação dos Níveis de IA",
             "lv1": "Nível 1:",
             "t1": "Inteligência mínima, rápida e barata.",
-            "lv6": "Nível 6:",
+            "lv6": "Nível 3:",
             "t6": "Maior inteligência: lento e caro.",
             "noAuto": "O qqqide não oferece mais a função de troca automática de nível,",
             "noAutoReason": "qqqide não oferece mais a função de troca automática de marcha, pelos seguintes motivos:",
@@ -1536,6 +1565,14 @@
             "p19": "Não podemos garantir que «a inteligência mais alta será usada para escrever o código mais importante». Sabemos que isso é crucial, mas sempre haverá casos extremos.",
             "p20": "A troca automática de nível consiste, essencialmente, em permitir que a IA de maior inteligência avalie a complexidade da pergunta (para então escolher a IA que executará a tarefa). No entanto, a longo prazo, cada andar adiciona pelo menos uma chamada à «IA de maior inteligência», o que representa um custo adicional. Por outro lado, se não utilizarmos a IA de maior inteligência para essa avaliação, aumentamos o risco mencionado no primeiro ponto.",
             "p21": "Por fim, o qqqide decidiu criar uma alavanca de troca de nível mais eficiente, entregando 100% do controle dessa troca apenas às suas mãos."
+        },
+        "stamp": {
+            "none": "❌ Nenhum",
+            "readFail": "Falha na leitura do identificador de build",
+            "ok": "Código mais recente ✅ buildId={id}",
+            "stale": "O Service Worker armazenou código antigo! Disco={disk} Navegador={browser}",
+            "fetchFail": "❌ Falha no fetch",
+            "fetchFailTitle": "Falha no fetch do identificador de build"
         }
     },
     "squad": {
@@ -1576,7 +1613,8 @@
             "reason": "Motivo: {r}",
             "retrying": "Tentando novamente…",
             "stillFail": "Ainda não foi possível conectar, tente novamente mais tarde…",
-            "retryFail": "Falha na nova tentativa: {e}"
+            "retryFail": "Falha na nova tentativa: {e}",
+            "noCache": "Nenhum cache disponível. Tente novamente mais tarde."
         },
         "update": {
             "title": "Atualização necessária",
@@ -1634,5 +1672,15 @@
             "copyLink": "Copiar link",
             "close": "Fechar"
         }
+    },
+    "pasteRouter": {
+        "noDir": "Não foi possível determinar o diretório de colagem (o editor não está associado a um arquivo?)",
+        "writeFail": "Falha ao escrever no disco: {msg}",
+        "imgSaveFail": "Falha ao colar imagem: {msg}",
+        "imgPasteDone": "Colar: {ok} com sucesso, {fail} falhas",
+        "dropImgFail": "Falha ao arrastar e soltar imagem: {msg}",
+        "dropDone": "Arrastar e soltar: {ok} com sucesso, {fail} falhas",
+        "unknownErr": "Erro desconhecido",
+        "unknownErrSave": "Erro desconhecido (salvamento não retornou resultado)"
     }
 }

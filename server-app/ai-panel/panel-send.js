@@ -385,7 +385,7 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     // ── N-house 路径（不变）：封顶旧楼层 + 建新楼层 ──
 
     // ★ 恢复消息：含错误历史让 AI 看到中断原因（含时间戳）
-    var _recoveryText = '网络恢复重连。此前楼层中断记录：';
+    var _recoveryText = (typeof _i === 'function') ? _i('ai.recoverPrefix', '网络恢复重连。此前楼层中断记录：') : '网络恢复重连。此前楼层中断记录：';
     var _allLogs2 = [];
     if (agent._questErrorLogByFloor) {
         for (var _fn2 in agent._questErrorLogByFloor) {
@@ -400,7 +400,7 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
             _recoveryText += '｜' + _allLogs2[_ei2].time + ' ' + _allLogs2[_ei2].reason;
         }
     }
-    _recoveryText += '｜请基于完整对话上下文继续完成原始任务。';
+    _recoveryText += (typeof _i === 'function') ? _i('ai.recoverSuffix', '｜请基于完整对话上下文继续完成原始任务。') : '｜请基于完整对话上下文继续完成原始任务。';
 
     var _savedInput = $input.value;
 
@@ -443,7 +443,7 @@ async function _retrySameFloor(questId, agent, linkEl) {
         _finishRecovery(linkEl, agent, false);
         try {
             if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
-                '已重试 3 次仍未成功，可能是计费/配额耗尽或服务器故障，请稍后再试',
+                ((typeof _i === 'function') ? _i('ai.retryExhausted', '已重试 3 次仍未成功，可能是计费/配额耗尽或服务器故障，请稍后再试') : '已重试 3 次仍未成功，可能是计费/配额耗尽或服务器故障，请稍后再试'),
                 { type: 'error', duration: 5000 }
             );
         } catch (_) { }
@@ -639,7 +639,7 @@ $input.addEventListener('focus', function () {
 function insertChipAtCursor(filePath, isDir, lineRange) {
     // ★ L1 守卫：仅拒绝 ASCII 直双引号 " (U+0022)，NTFS 禁用此字符 → 分隔符与路径零碰撞
     if (filePath.indexOf('"') !== -1) {
-        try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('路径含不兼容字符，无法附加', { type: 'warning', duration: 4000 }); } catch (_) { }
+        try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(((typeof _i === 'function') ? _i('ai.pathIncompatible', '路径含不兼容字符，无法附加') : '路径含不兼容字符，无法附加'), { type: 'warning', duration: 4000 }); } catch (_) { }
         return;
     }
     // ★ 准许多次注入同一文件（如先喂 L1-L20 再喂 L500-L520，自然对话中多次提及同一文件）
@@ -977,7 +977,8 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         var MAX_BULLET = 3 * 1024 * 1024;
         if (clipText.length > MAX_BULLET) {
             var HALF = MAX_BULLET / 2;
-            clipText = clipText.slice(0, HALF) + '\n\n... [中间已截断, 原始 ' + Math.round(clipText.length / 1024) + 'KB] ...\n\n' + clipText.slice(-HALF);
+            var _truncTip = (typeof _qq === 'function') ? _qq('ai.bulletTrunc', '\n\n... [中间已截断, 原始 {0}KB] ...\n\n', { 0: Math.round(clipText.length / 1024) }) : ('\n\n... [中间已截断, 原始 ' + Math.round(clipText.length / 1024) + 'KB] ...\n\n');
+            clipText = clipText.slice(0, HALF) + _truncTip + clipText.slice(-HALF);
         }
 
         // 3. 项目路径

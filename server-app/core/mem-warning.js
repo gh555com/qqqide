@@ -7,12 +7,12 @@
     window.qqqideBridge.mem.onWarning(function (data) {
       var heapGB = (data && data.heapMB ? data.heapMB / 1024 : 1.5).toFixed(1);
       var rssGB = (data && data.rssMB ? data.rssMB / 1024 : 0).toFixed(1);
-      var msg = '主进程内存偏高（堆 ' + heapGB + 'GB / 总 ' + rssGB + 'GB），建议重启窗口释放内存';
+      var msg = (window._i ? window._i('shell.mem.warnMsg', '主进程内存偏高（堆 {heap}GB / 总 {rss}GB），建议重启窗口释放内存', { heap: heapGB, rss: rssGB }) : ('主进程内存偏高（堆 ' + heapGB + 'GB / 总 ' + rssGB + 'GB），建议重启窗口释放内存'));
       if (window.qqqideQoast) {
         var q = window.qqqideQoast.show(msg, {
           duration: 0,
           type: 'warning',
-          action: { label: '知道了', onClick: function () { try { q.dismiss(); } catch (_) {} } },
+          action: { label: (window._i ? window._i('shell.mem.warnOk', '知道了') : '知道了'), onClick: function () { try { q.dismiss(); } catch (_) {} } },
         });
       } else {
         console.warn('[mem-warning]', msg);
