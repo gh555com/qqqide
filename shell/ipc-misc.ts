@@ -25,6 +25,7 @@ import { claimProject } from './project-lock';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { HashService } from './hash-service';
 import { CacheStore } from './cache-store';
+import { getComponentBin } from './component-checker';
 
 // ═══ 跨窗口脏文件快照（主进程内存，所有窗口共享） ═══
 const _dirtySnapshots = new Map<string, string>();  // normalizedPath → latest dirty content
@@ -112,10 +113,40 @@ export function registerMiscIpc(
     ipcMain.handle('qqqide:clipboard:readImage', async () => { var img = clipboard.readImage(); return img.isEmpty() ? null : img.toDataURL(); });
     ipcMain.handle('qqqide:clipboard:hasImage', async () => !clipboard.readImage().isEmpty());
 
+    // readFiles(mac) — NSPasteboard 全量读取（pyobjc 助手）；Electron 原生单文件兜底
+    //   对位物 = Win 的 CF_HDROP：Finder 复制文件 → public.file-url / NSFilenamesPboardType
+    async function _readFilesMac(): Promise<string[]> {
+        try {
+            const py = getComponentBin(portableRoot, 'python');
+            const script = path.join(__dirname, 'mac-pasteboard.py');
+            if (py && fs.existsSync(script)) {
+                const out = await new Promise<string>((resolve, reject) => {
+                    cp.execFile(py, ['-u', script, 'files'], { timeout: 8000, encoding: 'utf8' }, (err, stdout) => {
+                        if (err) { reject(err); return; }
+                        resolve(stdout || '');
+                    });
+                });
+                const lines = String(out).split(/\r?\n/).map(s => s.trim())
+                    .filter(s => s.length > 0 && fs.existsSync(s));
+                if (lines.length > 0) return lines;
+            }
+        } catch { /* → Electron 原生兜底 */ }
+        try {
+            const u = String(clipboard.read('public.file-url') || '');
+            const m = u.match(/^file:\/\/(?:localhost)?(\/.+)$/);
+            if (m) {
+                const p = decodeURIComponent(m[1]);
+                if (fs.existsSync(p)) return [p];
+            }
+        } catch { /* ignore */ }
+        return [];
+    }
+
     // readFiles — CF_HDROP: 原生直读优先 (sub-ms, 零 spawn) + PowerShell 兜底
     // ★ 2026-09-03: PS 冷启动 1.5~3s 曾致 roam 粘贴「等 3 秒才出 ioast」假死感（用户实测）。
     //   FileNameW = Explorer 复制文件的标准 CF_HDROP 格式（UTF-16LE 双 NUL 路径列表）。
     ipcMain.handle('qqqide:clipboard:readFiles', async () => {
+        if (process.platform === 'darwin') return await _readFilesMac();
         if (process.platform !== 'win32') return [];
         try {
             const rawBuf = clipboard.readBuffer('FileNameW');

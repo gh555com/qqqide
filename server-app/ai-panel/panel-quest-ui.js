@@ -527,8 +527,9 @@ function _estimateTokensFull() {
     var userCount = 0, userChars = 0;
     var aiCount = 0, aiContentChars = 0;
     var aiToolCallsCount = 0, aiToolCallsChars = 0;
+    var aiReasonCount = 0, aiReasonChars = 0;   // ★ 2026-09-17: 思维链统计（reasoning_content 原样回传 → 实际进入请求体）
     var toolCount = 0, toolChars = 0;
-    var factsCount = 0, factsChars = 0;   // ★ 2026-08-11: fx 独立统计（与 goods 管理页「压缩 · 事实 (fx)」一致）
+    var factsCount = 0, factsChars = 0;   // ★ 2026-08-11: fx 消息级统计（唯一 fx 消息恒 1 条，供 msgCount/jsonOverhead）；显示用事实组数见 factsGroupCount（2026-09-16）
     var sysCount = 0, sysChars = 0;
     var errCount = 0, errChars = 0;
     for (var i = 0; i < conv.length; i++) {
@@ -542,12 +543,18 @@ function _estimateTokensFull() {
         else if (m.role === "assistant") {
             // ★ 2026-08-12: 互斥分类——tool_calls 消息 content 非空（2026-08-11 起带正文）时
             //   旧逻辑会同时计入 AI tool_calls 与 AI text（else 挂在 _error 上未排除 tool_calls）→ 双计
+            // ★ 2026-09-17: 零漏项补口——reasoning_content（thinking 模式原样回传）与 tool_calls 消息正文
+            //   同样进入请求体，必须计入总量（旧实现两项全漏 → 显示低估；q293 f23 实测漏 ≈40K tokens）
             if (m._error) { errCount++; errChars += cn; }
-            else if (m.tool_calls) {
-                aiToolCallsCount++;
-                try { aiToolCallsChars += JSON.stringify(m.tool_calls).length; } catch (_) { }
+            else {
+                if (typeof m.reasoning_content === 'string' && m.reasoning_content.length > 0) { aiReasonCount++; aiReasonChars += m.reasoning_content.length; }
+                if (m.tool_calls) {
+                    aiToolCallsCount++;
+                    try { aiToolCallsChars += JSON.stringify(m.tool_calls).length; } catch (_) { }
+                    if (cn > 0) aiToolCallsChars += cn;   // tool_calls 消息正文（API 规范携带）
+                }
+                else if (cn > 0) { aiCount++; aiContentChars += cn; }
             }
-            else if (cn > 0) { aiCount++; aiContentChars += cn; }
         }
         else if (m.role === "tool") {
             toolCount++;
@@ -557,6 +564,10 @@ function _estimateTokensFull() {
         }
         else if (m.role === "system") { sysCount++; sysChars += cn; }
     }
+    // ★ 2026-09-16: 事实组数 = ctx.facts 条目数（历次提取批次数）——所有提取都增量追加进同一 fx 消息，
+    //   消息数恒 1（旧显示用 factsCount → 永远「× 1」无信息量）；「组合了几组事实」真值 = ctx.facts.length，
+    //   ctx 缺失回退消息数（宁缺勿假）。
+    var factsGroupCount = (ctx && ctx.facts && ctx.facts.length) ? ctx.facts.length : factsCount;
 
     // ── 5. JSON 结构开销 ──
     // ★ 2026-08-11: msgCount 含 fx/biscuit（fx/biscuit 是 system 角色消息，确实进入 API body，
@@ -663,10 +674,11 @@ function _estimateTokensFull() {
     var userTok = _tk(userChars);
     var aiTextTok = _tk(aiContentChars);
     var aiToolCallsTok = _tk(aiToolCallsChars);
+    var aiReasonTok = _tk(aiReasonChars);
     var toolTok = _tk(toolChars);
     var sysTok = _tk(sysChars);
     var errTok = _tk(errChars);
-    var localTotal = guardTok + msg0Tok + factsTok + biscuitTok + deTok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + errTok + jsonOverheadTok + toolsTok + bodyConstTok;
+    var localTotal = guardTok + msg0Tok + factsTok + biscuitTok + deTok + userTok + aiTextTok + aiToolCallsTok + aiReasonTok + toolTok + sysTok + errTok + jsonOverheadTok + toolsTok + bodyConstTok;
 
     // ═══ 构建行 ═══
     var rows = [];
@@ -684,7 +696,7 @@ function _estimateTokensFull() {
         if (reminderChars > 0) _r("  Reminder", _tk(reminderChars), 1, "#cb4b16");
     }
     // ★ 2026-08-11: fx 行插在 Client rules 之下、压缩饼干之上（背包容序 Z → fx → biscuit，与 goods 管理页一致）
-    if (factsChars > 0) _r(_qq('ai.ctx.bdFacts', '压缩 · 事实 (fx) × {0}', { 0: factsCount }), factsTok, 0, "#d33682");
+    if (factsChars > 0) _r(_qq('ai.ctx.bdFacts', '压缩 · 事实 (fx) × {0}', { 0: factsGroupCount }), factsTok, 0, "#d33682");
     if (biscuitChars > 0) {
         _r(_qq('ai.ctx.bdBiscuit', '压缩饼干 × {0} floors', { 0: biscuitFloorCount }), biscuitTok, 0, "#859900");
         // ★ 绝对包装盒子统计（仅统计有数据的工具）
@@ -704,6 +716,7 @@ function _estimateTokensFull() {
     if (userCount > 0) _r("User × " + userCount, userTok, 0, "#268bd2");
     if (aiCount > 0) _r("AI text × " + aiCount, aiTextTok, 0, "#2aa198");
     if (aiToolCallsCount > 0) _r("AI tool_calls × " + aiToolCallsCount, aiToolCallsTok, 0, "#d2991d");
+    if (aiReasonCount > 0) _r("AI reasoning × " + aiReasonCount, aiReasonTok, 0, "#6c71c4");
     if (toolCount > 0) _r("Tool Results × " + toolCount, toolTok, 0, "#dc322f");
     // ★ 2026-08-11: fx/biscuit 已独立统计，裸 system 消息创建点为零 → 本行理论永不显示（防御保留）
     if (sysCount > 0) _r("System messages × " + sysCount, sysTok, 0, "#6c71c4");
@@ -722,6 +735,63 @@ function _estimateTokensFull() {
     return displayTotal;
 }
 var CTX_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
+
+// ═══ 浮动卡片防越界机器（2026-09-16，q299）═══
+// 唯一入口 _placeFloatingCard(cardEl, anchorEl, {margin, gapY, offX, scrollEl})。
+// 契约：卡片任何时刻四边距 ≥ margin、完全落于面板视口内——与锚点当前位置无关（按钮挪到哪都成立）。
+//   ① 宽度先行：内层 wrap 的 max/min-width 按面板实时可用宽收紧（面板比理想宽更窄 → 收窄，标签省略号兜底）
+//   ② 双轴钳制：右缘偏好 = 锚点右缘 + offX，底缘偏好 = 锚点顶 + gapY；任一侧越界 → 贴边修正
+//   ③ 高度兜底：卡片高于面板 → max-height 压顶 + scrollEl 内部滚动
+// 时序：内容渲染完成后调用（先量后位）；幂等可重入——锚点移动/面板缩放直接重跑即收敛。
+function _placeFloatingCard(cardEl, anchorEl, opts) {
+    if (!cardEl || !anchorEl) return;
+    opts = opts || {};
+    var margin = (opts.margin != null) ? opts.margin : 8;
+    var gapY = (opts.gapY != null) ? opts.gapY : 10;
+    var offX = (opts.offX != null) ? opts.offX : 18;
+    var de = document.documentElement;
+    var vw = (de && de.clientWidth) || window.innerWidth || 0;
+    var vh = (de && de.clientHeight) || window.innerHeight || 0;
+    var wrap = cardEl.firstElementChild;
+    if (wrap) {
+        if (!wrap._qqqBaseW) {
+            var cs = getComputedStyle(wrap);
+            var _bb = (cs.boxSizing === 'border-box');
+            wrap._qqqBaseW = {
+                min: parseFloat(cs.minWidth) || 0,
+                max: parseFloat(cs.maxWidth) || 0,
+                extraW: _bb ? 0 : (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0),
+                extraH: _bb ? 0 : (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0)
+            };
+        }
+        var base = wrap._qqqBaseW;
+        var availW = Math.max(80, vw - margin * 2) - base.extraW;
+        wrap.style.maxWidth = Math.round(base.max > 0 ? Math.min(base.max, availW) : availW) + 'px';
+        wrap.style.minWidth = Math.round(Math.min(base.min, availW)) + 'px';
+    }
+    // ③ 高度兜底：天然高度超面板 → 压顶 + 行区滚动（不超则清空内联值，幂等）
+    if (wrap) {
+        var maxTotalH = Math.max(80, vh - margin * 2);
+        if (cardEl.getBoundingClientRect().height > maxTotalH) {
+            wrap.style.maxHeight = Math.round(maxTotalH - wrap._qqqBaseW.extraH) + 'px';
+            if (opts.scrollEl) { opts.scrollEl.style.overflowY = 'auto'; opts.scrollEl.style.minHeight = '0'; }
+        } else {
+            wrap.style.maxHeight = '';
+            if (opts.scrollEl) { opts.scrollEl.style.overflowY = ''; opts.scrollEl.style.minHeight = ''; }
+        }
+    }
+    // ② 先量后位 + 双轴钳制
+    var cr = cardEl.getBoundingClientRect();
+    var ar = anchorEl.getBoundingClientRect();
+    var right = vw - (ar.right + offX);                            // 偏好：卡片右缘 = 锚点右缘 + offX
+    var maxRight = vw - cr.width - margin;                         // 约束：卡片左缘 ≥ margin
+    right = Math.max(margin, Math.min(right, Math.max(margin, maxRight)));
+    var bottom = vh - ar.top + gapY;                               // 偏好：卡片底缘 = 锚点顶 + gapY
+    var maxBottom = vh - cr.height - margin;                       // 约束：卡片顶缘 ≥ margin
+    bottom = Math.max(margin, Math.min(bottom, Math.max(margin, maxBottom)));
+    cardEl.style.right = right + 'px';
+    cardEl.style.bottom = bottom + 'px';
+}
 
 function renderCtxBreakdown() {
     var bd = document.getElementById('ctx-breakdown');
@@ -771,18 +841,17 @@ function renderCtxBreakdown() {
             '<span class="ctx-bd-num" style="color:' + c + '">' + valStr + '</span></div>';
     }
     rowsEl.innerHTML = html;
-    var btnRect = $ctxBtn.getBoundingClientRect();
-    bd.style.bottom = (window.innerHeight - btnRect.top + 10) + 'px';
-    // ★ 2026-08-17: 卡片整体右移（卡片总宽 380+padding+border≈406px > 面板可用宽，左缘被面板左边界截断，q178 f59）
-    bd.style.right = (window.innerWidth - btnRect.right - 18) + 'px';  
+    // ★ 2026-09-16 q299: 定位统一走防越界机器（先量后位 + 双轴钳制，按钮/面板怎么变都不越界）
+    _placeFloatingCard(bd, $ctxBtn, { scrollEl: rowsEl });
 }
 function showCtxBreakdown() {
     if (!_activeAgent || !_activeAgent.conversation) return;
     clearTimeout(_ctxBreakdownTimer);
     _ctxBreakdownTimer = setTimeout(function () {
-        renderCtxBreakdown();
         var bd = document.getElementById('ctx-breakdown');
-        if (bd) { bd.classList.add('show'); _ctxBreakdownVisible = true; }
+        if (bd) bd.classList.add('show');   // ★ 先显形再量体位（display:none 下 rect 全零，防越界机器必须先量后位）
+        renderCtxBreakdown();
+        if (bd) { _ctxBreakdownVisible = true; }
     }, 200);
 }
 
@@ -924,6 +993,15 @@ if (_bdPanel) {
         hideCtxBreakdown();
     });
 }
+// ★ 面板缩放 → 已显示的卡片重新量体钳制（防越界机器闭环，150ms 防抖）
+var _ctxBdResizeTimer = null;
+window.addEventListener('resize', function () {
+    if (!_ctxBreakdownVisible) return;
+    clearTimeout(_ctxBdResizeTimer);
+    _ctxBdResizeTimer = setTimeout(function () {
+        try { renderCtxBreakdown(); } catch (_) { }
+    }, 150);
+});
 
 // ★★ 帮助按钮 — 跳转上下文背包文档（无 hover 提示，仅点击，URL 去 lang 参数支持 13 语言）
 var _ctxHelpBtn = document.getElementById('ctx-help');

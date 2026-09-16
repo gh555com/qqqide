@@ -102,9 +102,12 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 <div id="bar">
   <div id="bar-left">
     <!-- shell 三按钮（2026-08-16：下拉 → 按钮，选中态 accent 底；点击即切换；Clear/正方形菜单在右侧） -->
-    <button class="shell-btn active" data-shell="cmd">cmd</button>
-    <button class="shell-btn" data-shell="powershell">PowerShell</button>
-    <button class="shell-btn" data-shell="gitbash">Git Bash</button>
+    <!-- ★ 2026-09-16：shell 集按平台切换（data-plat：win/mac；非本平台按钮 init 时隐藏） -->
+    <button class="shell-btn active" data-shell="cmd" data-plat="win">cmd</button>
+    <button class="shell-btn" data-shell="powershell" data-plat="win">PowerShell</button>
+    <button class="shell-btn" data-shell="gitbash" data-plat="win">Git Bash</button>
+    <button class="shell-btn" data-shell="zsh" data-plat="mac">zsh</button>
+    <button class="shell-btn" data-shell="bash" data-plat="mac">bash</button>
   </div>
   <span id="bar-spacer"></span>
   <div id="bar-right">
@@ -149,13 +152,21 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var bridge = null;
     try { bridge = parent.qqqideBridge; } catch (_) { }
 
-    var sessionId = null, cwd = '', shellType = 'cmd';
+    // ★ 2026-09-16 mac 分支：shell 集按平台切换（win: cmd/PowerShell/Git Bash ｜ mac: zsh/bash）
+    var _isMac = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
+    var _defaultShell = _isMac ? 'zsh' : 'cmd';
+
+    var sessionId = null, cwd = '', shellType = _defaultShell;
     var outEl = document.getElementById('out');
     var inputEl = document.getElementById('input');
     var promptEl = document.getElementById('prompt');
     var shellBtns = {};
     var _sb = document.querySelectorAll('#bar .shell-btn');
-    for (var si = 0; si < _sb.length; si++) shellBtns[_sb[si].dataset.shell] = _sb[si];
+    for (var si = 0; si < _sb.length; si++) {
+        shellBtns[_sb[si].dataset.shell] = _sb[si];
+        var _plat = _sb[si].dataset.plat || 'win';
+        if ((_plat === 'mac') !== _isMac) _sb[si].style.display = 'none';
+    }
 
     var history = [];
     var histIdx = -1;
@@ -203,7 +214,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             updateInputState();
             sessionId = d.sessionId;
             cwd = d.cwd || '';
-            shellType = d.shellType || 'cmd';
+            shellType = d.shellType || _defaultShell;
             gbCwd = winToMsys(cwd); // 会话初始目录 → gitbash 路径抬头（OSC 首到后自动校正）
             nameInput.value = d.title || ''; // 命名键入框初始值 = 当前标签标题（用户可立即改名）
             setShellUI(shellType);
@@ -387,7 +398,9 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             return curLine;
         }
         var el = document.createElement('div');
-        el.className = 'line stream' + (stream === 'err' && shellType !== 'gitbash' ? ' err' : '');
+        // ★ posix shell（gitbash/zsh/bash）的 stderr = 提示符/警告噪音为主 → 不标红（防满屏红）；cmd/PS 的 stderr 是真报错保留红
+        var _posixErrNoise = (shellType === 'gitbash' || shellType === 'zsh' || shellType === 'bash');
+        el.className = 'line stream' + (stream === 'err' && !_posixErrNoise ? ' err' : '');
         outEl.appendChild(el);
         lineCount++;
         trimLines();
@@ -715,6 +728,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             lastSentCmd = v.trim();
             gbPrompt = 0;
             appendLine('self', v, v, gbCwd || winToMsys(cwd));
+        } else if (shellType === 'zsh' || shellType === 'bash') {
+            // ★ 2026-09-16 mac：zsh/bash 无 tty 不回显命令 → UI 蓝色 ❯ 行承担命令回显（同 gitbash 模式）
+            lastSentCmd = v.trim();
+            appendLine('self', v, v);
         }
         if (bridge && bridge.kmd) {
             bridge.kmd.write(sessionId, v + '\n').catch(function (err) {
@@ -726,7 +743,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     // ── 工具栏：shell 三按钮（选中态 accent 底，setShellUI 维护） ──
     function setShellUI(t) {
         shellType = t;
-        promptEl.textContent = t === 'gitbash' ? '❯' : (t === 'powershell' ? 'PS>' : 'C>');
+        promptEl.textContent = (t === 'gitbash' || t === 'zsh') ? '❯' : (t === 'bash' ? '$' : (t === 'powershell' ? 'PS>' : 'C>'));
         for (var k in shellBtns) shellBtns[k].classList.toggle('active', k === t);
     }
 

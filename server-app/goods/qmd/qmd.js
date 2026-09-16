@@ -30,6 +30,12 @@
     registerQmd();
 
     function registerQmd() {
+        // ★ 2026-09-16 mac: ConPTY 为 Windows OS API —— mac 不注册 qmd（终端用 kmd 行模式）
+        var _isMac = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
+        if (_isMac) {
+            console.log('[qmd] ConPTY 仅 Windows 支持 —— 跳过注册（mac 请用 kmd）');
+            return;
+        }
         var bridge = window.qqqideBridge;
         var iframes = {}; // sessionId → iframe.contentWindow
         var _tabs = {};   // sessionId → tab（右键再开用）

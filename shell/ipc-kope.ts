@@ -13,13 +13,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { ipcMain } from 'electron';
+import { getOsBaseDir } from './portable-paths';
 
 const initSqlJs = require('sql.js');
 
 // ── DB 路径 (与 Python kope_store._get_db_dir 保持一致) ──
 function getDbPath(): string {
-    const localAppData = path.join(os.homedir(), 'AppData', 'Local');
-    const dir = path.join(localAppData, 'kope-a');
+    const dir = path.join(getOsBaseDir(), 'kope-a');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return path.join(dir, 'kope.sq3');
 }

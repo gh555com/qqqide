@@ -26,6 +26,7 @@ import { BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { getOsBaseDir } from './portable-paths';
 
 export const SQUAD_ORDER = ['1', '2', 'q', 'w', 'a', 's', 'z', 'x'];
 
@@ -54,7 +55,7 @@ interface SquadRegistry {
 let _cache: SquadRegistry | null = null;
 
 function registryPath(): string {
-    const dir = path.join(os.homedir(), 'AppData', 'Local', 'qqqide');
+    const dir = path.join(getOsBaseDir(), 'qqqide');
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
     return path.join(dir, 'squads.json');
 }
@@ -417,7 +418,7 @@ function _cleanStaleTmp(): void {
     if (_tmpCleaned) { return; }
     _tmpCleaned = true;
     try {
-        const dir = path.join(os.homedir(), 'AppData', 'Local', 'qqqide');
+        const dir = path.join(getOsBaseDir(), 'qqqide');
         for (const f of fs.readdirSync(dir)) {
             if (f.startsWith('squads.json.tmp-')) {
                 try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore */ }
@@ -519,7 +520,7 @@ export function startSquadWatcher(): void {
 
 function _startWatcher(): void {
     try {
-        const dir = path.join(os.homedir(), 'AppData', 'Local', 'qqqide');
+        const dir = path.join(getOsBaseDir(), 'qqqide');
         fs.mkdirSync(dir, { recursive: true });
         const watcher = fs.watch(dir, (_evt, filename) => {
             // 有事件 = watcher 活着 → 取消挂起的重建退避

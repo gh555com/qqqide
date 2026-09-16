@@ -696,6 +696,7 @@
       "keysDepleted": "AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）",
       "authFail": "认证失败，请检查 Token",
       "geInsufficient": "ge 余额不足，请赞助",
+      "geTopupHint": "（充值后点击「继续任务」可从断点续跑）",
       "tooFrequent": "请求过于频繁，请稍后再试",
       "serviceUnavailable": "服务暂时不可用 ({0}) — 可能是计费/配额耗尽或服务器过载",
       "allLinesDown": "，所有线路均未可达",

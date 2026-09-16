@@ -6,6 +6,7 @@
 
 import sqlite3
 import os
+import sys
 import hashlib
 import time
 import threading
@@ -14,9 +15,13 @@ import queue
 
 def _get_db_dir():
     # ★ 不用 LOCALAPPDATA 环境变量 (Electron 便携模式会劫持到 <app>/Data/LocalAppData)
-    # 直接用 expanduser('~') 拿到真实 Windows 路径，保证所有窗口/进程共享同一个 kope.sq3
-    localappdata = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
-    db_dir = os.path.join(localappdata, 'kope-a')
+    # 直接用 expanduser('~') 拿真实路径，保证所有窗口/进程共享同一个 kope.sq3。
+    # OS 级根与 shell portable-paths.getOsBaseDir 对齐：mac → Library/Application Support
+    if sys.platform == 'darwin':
+        base = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support')
+    else:
+        base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    db_dir = os.path.join(base, 'kope-a')
     os.makedirs(db_dir, exist_ok=True)
     return db_dir
 

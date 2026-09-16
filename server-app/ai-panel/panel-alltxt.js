@@ -675,7 +675,10 @@ async function _onAuditClick(block) {
         if (facts.length) {
             for (var fi = 0; fi < facts.length; fi++) {
                 var f = facts[fi];
-                parts.push('- [' + (f.type || '') + '] ' + (f.content || ''));
+                // ★ 2026-09-16: 条目是对象 {source,extracted_at,text}（旧数据可能为纯字符串）——旧实现读不存在的
+                //   f.type/f.content → 恒输出 "- [] " 空内容；text 提取口径与 panel-floor/conv-ui 同源。
+                var _fTx = (typeof f === 'string') ? f : ((f && (f.text || f.content)) || '');
+                parts.push('- [' + ((f && f.source) || '') + '] ' + _fTx);
             }
         } else {
             parts.push('(无压缩事实)');

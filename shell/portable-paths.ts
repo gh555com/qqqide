@@ -13,6 +13,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
 /** Returns the directory containing the running executable. */
 export function getAppRoot(): string {
@@ -50,6 +51,51 @@ export function getDataDir(): string {
     return path.join(getHostDir(), 'Data');
 }
 
+/** ★ OS 级共享目录根 —— 跨绿色包/跨实例一致（squads.json / ai|ws|roam|search.sq3 / goods 状态）。
+ *   win: %LOCALAPPDATA% ｜ mac: ~/Library/Application Support ｜ linux: XDG_DATA_HOME 或 ~/.local/share。
+ *   一切 OS 级路径拼接必须走此函数（禁散落硬编码 'AppData/Local'）。 */
+export function getOsBaseDir(): string {
+    if (process.platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Application Support');
+    }
+    if (process.platform === 'linux') {
+        return process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+    }
+    return path.join(os.homedir(), 'AppData', 'Local');
+}
+
+/** mac 一次性迁移：旧 ~/AppData/Local/* → ~/Library/Application Support/*（该目录全部为本产品系产物）。
+ *  条目级 rename；目标已存在时只补迁缺失子项（不覆盖）；最后仅清理空壳目录。 */
+function migrateMacOsDirs(): void {
+    if (process.platform !== 'darwin') { return; }
+    const legacyRoot = path.join(os.homedir(), 'AppData', 'Local');
+    try { if (!fs.existsSync(legacyRoot)) { return; } } catch { return; }
+    const targetRoot = getOsBaseDir();
+    let migrated = 0;
+    try {
+        for (const name of fs.readdirSync(legacyRoot)) {
+            const src = path.join(legacyRoot, name);
+            const dst = path.join(targetRoot, name);
+            try {
+                if (!fs.existsSync(dst)) {
+                    fs.mkdirSync(targetRoot, { recursive: true });
+                    fs.renameSync(src, dst);
+                    migrated++;
+                } else if (fs.statSync(src).isDirectory() && fs.statSync(dst).isDirectory()) {
+                    for (const child of fs.readdirSync(src)) {
+                        const cs = path.join(src, child);
+                        const cd = path.join(dst, child);
+                        if (!fs.existsSync(cd)) { fs.renameSync(cs, cd); migrated++; }
+                    }
+                }
+            } catch { /* 单条失败不阻塞 */ }
+        }
+        try { fs.rmdirSync(legacyRoot); } catch { /* 非空/占用则保留 */ }
+        try { fs.rmdirSync(path.dirname(legacyRoot)); } catch { /* ~/AppData 空壳 */ }
+    } catch { /* ignore */ }
+    if (migrated > 0) { console.log('[portable-paths] mac: migrated ' + migrated + ' OS-dir entries -> ' + targetRoot); }
+}
+
 /** mac 一次性迁移：bundle 内旧 Data → 外置托管根（原地覆盖升级场景兜底）。 */
 function migrateMacLegacyData(): void {
     if (process.platform !== 'darwin') { return; }
@@ -72,6 +118,7 @@ function migrateMacLegacyData(): void {
 export function applyPortablePaths(): { root: string; userData: string; cache: string; logs: string } {
     const root = getAppRoot();
     migrateMacLegacyData();
+    migrateMacOsDirs();
     const userData = getDataDir();
     // ★ 所有运行时目录收进 userData/，根目录保持干净
     const cache = path.join(userData, 'Cache');

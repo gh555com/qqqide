@@ -66,6 +66,14 @@ async function build() {
     console.log('[esbuild] copied py-broker.py ->', OUT);
   }
 
+  // Copy mac-pasteboard.py (macOS clipboard file reader, not bundled)
+  var pasteSrc = path.join(SRC, 'mac-pasteboard.py');
+  var pasteDst = path.join(OUT, 'mac-pasteboard.py');
+  if (fs.existsSync(pasteSrc)) {
+    fs.copyFileSync(pasteSrc, pasteDst);
+    console.log('[esbuild] copied mac-pasteboard.py ->', OUT);
+  }
+
   // Copy qmd-pty.py (ConPTY bridge for goods qmd, not bundled)
   var qmdPtySrc = path.join(SRC, 'qmd-pty.py');
   var qmdPtyDst = path.join(OUT, 'qmd-pty.py');
