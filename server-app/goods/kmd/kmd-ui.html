@@ -108,7 +108,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
   </div>
   <span id="bar-spacer"></span>
   <div id="bar-right">
-    <input id="name-input" maxlength="40" spellcheck="false" autocomplete="off" placeholder="命名此终端" title="命名此终端（实时同步标签标题）">
+    <input id="name-input" maxlength="40" spellcheck="false" autocomplete="off" placeholder="命名此终端" data-i18n-placeholder="goods.kmd.namePh" title="命名此终端（实时同步标签标题）" data-i18n-title="goods.kmd.nameTitle">
     <div id="terminate-menu-wrap">
       <button id="btn-kill" class="bar-action icon-only" aria-label="Terminate menu" aria-haspopup="menu" aria-expanded="false">
         <svg class="bar-icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4.2" y="4.2" width="11.6" height="11.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
@@ -125,22 +125,26 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 <div id="here-marker"></div>
 <div id="out-marks"></div>
 <div id="find-bar" class="hidden">
-  <input id="find-input" placeholder="查找（Enter 下一个 / Shift+Enter 上一个）" spellcheck="false">
+  <input id="find-input" placeholder="查找（Enter 下一个 / Shift+Enter 上一个）" data-i18n-placeholder="goods.kmd.findPh" spellcheck="false">
   <span id="find-count"></span>
-  <button id="find-aa" title="区分大小写">Aa</button>
-  <button id="find-prev" title="上一个（Shift+Enter）">↑</button>
-  <button id="find-next" title="下一个（Enter）">↓</button>
-  <button id="find-close" title="关闭（Esc）">✕</button>
+  <button id="find-aa" title="区分大小写" data-i18n-title="goods.kmd.findCase">Aa</button>
+  <button id="find-prev" title="上一个（Shift+Enter）" data-i18n-title="goods.kmd.findPrev">↑</button>
+  <button id="find-next" title="下一个（Enter）" data-i18n-title="goods.kmd.findNext">↓</button>
+  <button id="find-close" title="关闭（Esc）" data-i18n-title="goods.kmd.findClose">✕</button>
 </div>
 <div id="line-wrap">
   <span id="prompt">❯</span>
   <textarea id="input" rows="3" wrap="soft" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-         placeholder="键入命令回车执行 · Shift+Enter 换行 · 点击键入行任意位置移动光标 · ↑↓ 历史"></textarea>
-  <button id="newline-btn" title="插入换行" data-no-cd>&#8629;</button>
+         placeholder="键入命令回车执行 · Shift+Enter 换行 · 点击键入行任意位置移动光标 · ↑↓ 历史" data-i18n-placeholder="goods.kmd.inputPh"></textarea>
+  <button id="newline-btn" title="插入换行" data-i18n-title="goods.kmd.newline" data-no-cd>&#8629;</button>
 </div>
+<script src="../../core/i18n.js"></script>
 <script>
 (function () {
     'use strict';
+
+    // i18n 小助手：_kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
+    var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
 
     var bridge = null;
     try { bridge = parent.qqqideBridge; } catch (_) { }
@@ -226,10 +230,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             appendOut(d.stream, d.data);
         } else if (d.type === 'kmd:exit') {
             running = false;
-            appendLine('dim', '── 进程已退出 (code=' + d.code + ')' + (d.error ? ' · ' + d.error : '') + ' ──');
+            appendLine('dim', _kk('goods.kmd.procExited', '── 进程已退出 (code={0}) ──', d.code + (d.error ? ' · ' + d.error : '')));
         } else if (d.type === 'kmd:restarted') {
             clearOut();
-            appendLine('dim', '── 会话已原地重启 ──');
+            appendLine('dim', _kk('goods.kmd.restarted', '── 会话已原地重启 ──'));
             running = true;
         } else if (d.type === 'kmd:cd') {
             // roam 空区 x 键/右键：原地切目录（kill + 重 spawn，同 shell 切换模式）
@@ -242,12 +246,12 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 }).then(function (r) {
                     if (r && r.ok) {
                         running = true;
-                        appendLine('dim', '── 已切换目录 ' + cwd + ' ──');
+                        appendLine('dim', _kk('goods.kmd.cdOk', '── 已切换目录 {0} ──', cwd));
                     } else {
-                        appendLine('err', '[切换目录失败] ' + ((r && r.error) || 'unknown'));
+                        appendLine('err', _kk('goods.kmd.cdFail', '[切换目录失败] {0}', (r && r.error) || 'unknown'));
                     }
                 }).catch(function (err) {
-                    appendLine('err', '[切换目录异常] ' + String(err && err.message || err));
+                    appendLine('err', _kk('goods.kmd.cdErr', '[切换目录异常] {0}', String(err && err.message || err)));
                 });
             }
         }
@@ -298,19 +302,19 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     function start() {
         gbPrompt = 0;
         if (!bridge || !bridge.kmd) {
-            appendLine('err', '[错误] 无法访问主进程桥（bridge.kmd 不存在）');
+            appendLine('err', _kk('goods.kmd.noBridge', '[错误] 无法访问主进程桥（bridge.kmd 不存在）'));
             return;
         }
-        appendLine('dim', 'kmd · 行模式终端 · ' + shellType + (cwd ? ' · ' + cwd : ''));
-        appendLine('dim', '键入行是原生编辑器控件 → 点击任意位置即可移动光标');
+        appendLine('dim', _kk('goods.kmd.banner', 'kmd · 行模式终端 · {0}', shellType + (cwd ? ' · ' + cwd : '')));
+        appendLine('dim', _kk('goods.kmd.lineHint', '键入行是原生编辑器控件 → 点击任意位置即可移动光标'));
         bridge.kmd.spawn(sessionId, shellType, cwd).then(function (r) {
             if (r && r.ok) {
                 running = true;
             } else {
-                appendLine('err', '[会话启动失败] ' + ((r && r.error) || 'unknown'));
+                appendLine('err', _kk('goods.kmd.spawnFail', '[会话启动失败] {0}', (r && r.error) || 'unknown'));
             }
         }).catch(function (err) {
-            appendLine('err', '[会话启动异常] ' + String(err && err.message || err));
+            appendLine('err', _kk('goods.kmd.spawnErr', '[会话启动异常] {0}', String(err && err.message || err)));
         });
     }
 
@@ -701,7 +705,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 
     function exec(v) {
         if (!sessionId || !running) {
-            appendLine('err', '[会话未就绪]');
+            appendLine('err', _kk('goods.kmd.notReady', '[会话未就绪]'));
             return;
         }
         // 回显策略：cmd（2026-08-12 去 /q 后原生回显）+ PS 自带提示符回显；gitbash 自身会回显（stderr）
@@ -714,7 +718,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
         if (bridge && bridge.kmd) {
             bridge.kmd.write(sessionId, v + '\n').catch(function (err) {
-                appendLine('err', '[写入失败] ' + String(err && err.message || err));
+                appendLine('err', _kk('goods.kmd.writeFail', '[写入失败] {0}', String(err && err.message || err)));
             });
         }
     }
@@ -737,16 +741,16 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             }).then(function (r) {
                 if (r && r.ok) {
                     running = true;
-                    appendLine('dim', '── 已切换 ' + t + ' ──');
+                    appendLine('dim', _kk('goods.kmd.switched', '── 已切换 {0} ──', t));
                  if (t === 'gitbash') {
                     var p = gbCwd || winToMsys(cwd);
                     if (p) appendLine('dim', ' ❯ ' + p);
                 }
                 } else {
-                    appendLine('err', '[切换失败] ' + ((r && r.error) || 'unknown'));
+                    appendLine('err', _kk('goods.kmd.switchFail', '[切换失败] {0}', (r && r.error) || 'unknown'));
                 }
             }).catch(function (err) {
-                appendLine('err', '[切换异常] ' + String(err && err.message || err));
+                appendLine('err', _kk('goods.kmd.switchErr', '[切换异常] {0}', String(err && err.message || err)));
             });
         }
     }
@@ -795,7 +799,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     function sendInterrupt() {
         if (!bridge || !bridge.kmd || !sessionId || !running) return;
         bridge.kmd.write(sessionId, '\x03').catch(function (err) {
-            appendLine('err', '[Ctrl+C 发送失败] ' + String(err && err.message || err));
+            appendLine('err', _kk('goods.kmd.ctrlCFail', '[Ctrl+C 发送失败] {0}', String(err && err.message || err)));
         });
     }
 
@@ -807,7 +811,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 if (r && r.ok) {
                     running = true;
                 } else {
-                    appendLine('err', '[会话启动失败] ' + ((r && r.error) || 'unknown'));
+                    appendLine('err', _kk('goods.kmd.spawnFail', '[会话启动失败] {0}', (r && r.error) || 'unknown'));
                 }
             }).catch(function () { });
             return;

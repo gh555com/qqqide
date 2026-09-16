@@ -663,17 +663,17 @@ async function _executeSend(intent) {
     // ★ V15: compress 楼层标记（az 区外观正常，GE 账单 type=f3）
     if (_isCompress) {
         agent._compressFloor = true;
-        agent._aiStartTime = _fmtTime(new Date());
-        // ★ 压缩楼层强制 tier 4：标签用 intent.tierIndex，而非 selectedTier（否则显示 A6）
-        agent._aiTierLabel = 'A' + (tierIndex || 4);
+        agent._aiStartTime = _fmtTime(new Date());        // ★ 压缩楼层强制 tier 4：标签用 intent.tierIndex，而非 selectedTier（否则显示 A6）
+        //   三键档位（2026-09-16）：标签恒显示三键数（_tierUiOf：4 → A2）
+        agent._aiTierLabel = 'A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(tierIndex || 4) : (tierIndex || 4));
     } else {
         // ★ V21: 防 compress 标志泄漏到后续正常楼层
         //   （q147 事故：f97 only facts 后 agent._compressFloor 未重置 → f98 起所有楼层被误标
         //    _compressFloor → 全部跳过饼干 + 楼层回答被当作 facts 提取进 fx）
-        agent._compressFloor = false;
-        if (sendType !== 'recovery') {
-            agent._aiStartTime = _fmtTime(new Date());
-            agent._aiTierLabel = 'A' + (selectedTier || 6);
+        agent._compressFloor = false;        if (sendType !== 'recovery') {
+            agent._aiStartTime = _fmtTime(new Date());
+            // ★ 三键档位（2026-09-16）：标签恒显示三键数（1/2/3），旧存量 1..6 自动换算
+            agent._aiTierLabel = 'A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(selectedTier || 6) : (selectedTier || 6));
         }
     }
     agent._streamingContent = null;

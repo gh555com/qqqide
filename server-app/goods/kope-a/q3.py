@@ -8,6 +8,16 @@ _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)
 from _singleton import check_and_register as _check_singleton
 _check_singleton('kope-a')
 
+# 共享翻译助手（goods/_goods_i18n.py）— 语言随 IDE 全局设置，5s TTL 热更新
+try:
+    from _goods_i18n import t as _t
+except Exception:
+    def _t(key, fallback=None, **params):
+        val = fallback if fallback is not None else key
+        for _k, _v in params.items():
+            val = val.replace('{' + str(_k) + '}', str(_v))
+        return val
+
 """
 v5.1.0
 
@@ -463,7 +473,7 @@ class ClipboardMonitor(Qaqqlication):
                     "type": "image",
                     "top_text": img_text,
                     "top_text_snippet": img_text,
-                    "bottom_text": f"截图: {self.format_size(len(buffer.data()))}",
+                    "bottom_text": _t('goods.kopea.screenshot', '截图: {size}', size=self.format_size(len(buffer.data()))),
                 }
 
             image = self.clipboard().image()
@@ -477,7 +487,7 @@ class ClipboardMonitor(Qaqqlication):
                     "type": "image",
                     "top_text": img_text,
                     "top_text_snippet": img_text,
-                    "bottom_text": f"截图: {self.format_size(len(buffer.data()))}",
+                    "bottom_text": _t('goods.kopea.screenshot', '截图: {size}', size=self.format_size(len(buffer.data()))),
                 }
 
             image_data = mime_data.data("image/png") if "image/png" in all_formats else b""
@@ -487,10 +497,10 @@ class ClipboardMonitor(Qaqqlication):
                     if not img.isNull():
                         pixmap = QPixmap.fromImage(img)
                         img_text = f"{pixmap.width()}×{pixmap.height()}"
-                        bottom_text = f"截图: {self.format_size(len(image_data))}"
+                        bottom_text = _t('goods.kopea.screenshot', '截图: {size}', size=self.format_size(len(image_data)))
                     else:
-                        img_text = "未知尺寸"
-                        bottom_text = f"截图: {self.format_size(len(image_data))}"
+                        img_text = _t('goods.kopea.unknownDims', '未知尺寸')
+                        bottom_text = _t('goods.kopea.screenshot', '截图: {size}', size=self.format_size(len(image_data)))
                     return {
                         "type": "image",
                         "top_text": img_text,
@@ -540,14 +550,14 @@ class ClipboardMonitor(Qaqqlication):
             top_text = "\n".join(os.path.basename(p) for p in local_paths)
 
             if count == 1:
-                bottom_template = "文件夹: {}" if num_folders == 1 else "文件: {}"
+                bottom_template = _t('goods.kopea.tplFolder', '文件夹: {size}') if num_folders == 1 else _t('goods.kopea.tplFile', '文件: {size}')
             else:
                 if num_files and num_folders:
-                    bottom_template = f"{count} 个项目: {{}}"
+                    bottom_template = _t('goods.kopea.tplItemsN', '{n} 个项目: {size}', n=count)
                 elif num_folders:
-                    bottom_template = f"{count} 个文件夹: {{}}"
+                    bottom_template = _t('goods.kopea.tplFoldersN', '{n} 个文件夹: {size}', n=count)
                 else:
-                    bottom_template = f"{count} 个文件: {{}}"
+                    bottom_template = _t('goods.kopea.tplFilesN', '{n} 个文件: {size}', n=count)
 
             return {
                 "type": "file",
@@ -611,7 +621,7 @@ class ClipboardMonitor(Qaqqlication):
                             }
                     except Exception:
                         pass
-                    unknown_text = f"未知内容，类型: {primary_type}"
+                    unknown_text = _t('goods.kopea.unknownType', '未知内容，类型: {type}', type=primary_type)
                     return {
                         "type": "other",
                         "top_text": unknown_text,
@@ -619,12 +629,12 @@ class ClipboardMonitor(Qaqqlication):
                         "bottom_text": self.format_size(data_size),
                     }
                 except Exception:
-                    unknown_text = f"未知内容，类型: {primary_type}"
+                    unknown_text = _t('goods.kopea.unknownType', '未知内容，类型: {type}', type=primary_type)
                     return {
                         "type": "other",
                         "top_text": unknown_text,
                         "top_text_snippet": unknown_text,
-                        "bottom_text": "大小未知",
+                        "bottom_text": _t('goods.kopea.unknownSize', '大小未知'),
                     }
 
         return {
@@ -644,7 +654,7 @@ class ClipboardMonitor(Qaqqlication):
                 future.result() for future in futs if not future.exception()
             )
             self.calculation_done.emit(
-                template.format(self.format_size(total_size)), popup
+                template.format(size=self.format_size(total_size)), popup
             )
 
         self.executor.submit(aggregate_and_emit, futures)
@@ -657,7 +667,7 @@ class ClipboardMonitor(Qaqqlication):
 
     def format_size(self, size_bytes):
         if size_bytes < 0:
-            return "未知大小"
+            return _t('goods.kopea.unknownSize', '大小未知')
         if size_bytes < 1024:
             return f"{size_bytes}b"
         if size_bytes < 1024 * 1024:
@@ -834,7 +844,7 @@ class ClipboardMonitor(Qaqqlication):
             self.set_cooldown()
 
             if data.get("type") == "file" and "paths" in data:
-                new_popup.update_bottom_text(data["bottom_template"].format("●"))
+                new_popup.update_bottom_text(data["bottom_template"].format(size="●"))
                 self.calculate_total_size_async(
                     data["paths"], new_popup, data["bottom_template"]
                 )

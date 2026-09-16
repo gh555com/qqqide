@@ -104,7 +104,7 @@
   document.addEventListener('paste', handlePaste, true);
 
   Q.commands.register('paste-image.paste', () => {
-    Q.window.showInformationMessage('请使用 Ctrl+V 粘贴图片');
+    Q.window.showInformationMessage(window._i('goods.pasteImage.useCtrlV', '请使用 Ctrl+V 粘贴图片'));
   });
 
   // [silent] paste-image ready

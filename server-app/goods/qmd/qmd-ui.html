@@ -50,16 +50,16 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
   <button class="shell-btn" data-shell="gitbash">Git Bash</button>
   <div id="bar-spacer"></div>
   <div id="bar-right">
-    <input id="name-input" maxlength="40" spellcheck="false" autocomplete="off" placeholder="命名此终端" title="命名此终端（实时同步标签标题）">
+    <input id="name-input" maxlength="40" spellcheck="false" autocomplete="off" placeholder="命名此终端" data-i18n-placeholder="goods.kmd.namePh" title="命名此终端（实时同步标签标题）" data-i18n-title="goods.kmd.nameTitle">
     <span id="st"></span>
     <div id="kill-wrap">
-      <button id="kill-btn" title="会话操作" aria-label="会话操作">
+      <button id="kill-btn" title="会话操作" data-i18n-title="goods.qmd.sessionOps" aria-label="会话操作">
         <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
       </button>
       <div id="kill-menu">
         <button data-act="restart">Restart</button>
         <button data-act="terminate">Terminate</button>
-        <div class="m-hint">Terminate 强杀整个进程树并原地重启；Restart 正常重启会话</div>
+        <div class="m-hint" data-i18n="goods.qmd.killHint">Terminate 强杀整个进程树并原地重启；Restart 正常重启会话</div>
       </div>
     </div>
   </div>
@@ -68,9 +68,12 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 
 <script src="vendor/xterm/xterm.js"></script>
 <script src="vendor/xterm/xterm-addon-fit.js"></script>
+<script src="../../core/i18n.js"></script>
 <script>
 (function () {
     'use strict';
+    // i18n 小助手：_kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
+    var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
     var bridge = null;
     try { bridge = window.parent.qqqideBridge || window.qqqideBridge || null; } catch (_) { }
     var sessionId = '';
@@ -184,11 +187,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             if (r && r.ok) {
                 setStatus('');
             } else {
-                setStatus('[启动失败] ' + ((r && r.error) || 'unknown'));
-                if (term) term.write('\r\n\x1b[31m[qmd] 会话启动失败: ' + ((r && r.error) || 'unknown') + '\x1b[0m\r\n');
+                setStatus(_kk('goods.qmd.startFail', '[启动失败] {0}', (r && r.error) || 'unknown'));
+                if (term) term.write('\r\n\x1b[31m' + _kk('goods.qmd.startFailTerm', '[qmd] 会话启动失败: {0}', (r && r.error) || 'unknown') + '\x1b[0m\r\n');
             }
         }).catch(function (err) {
-            setStatus('[启动异常]');
+            setStatus(_kk('goods.qmd.startErr', '[启动异常]'));
         });
     }
     // 切换 shell：杀当前（不重启）→ 同 cwd 开新会话
@@ -222,11 +225,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         } else if (d.type === 'qmd:exit') {
             running = false;
             var why = d.error ? (' · ' + d.error) : (' code=' + d.code);
-            setStatus('已退出' + why);
-            if (term) term.write('\r\n\x1b[2m── 会话已退出' + why + ' ──\x1b[0m\r\n');
+            setStatus(_kk('goods.qmd.exited', '已退出{0}', why));
+            if (term) term.write('\r\n\x1b[2m' + _kk('goods.qmd.exitedTerm', '── 会话已退出{0} ──', why) + '\x1b[0m\r\n');
         } else if (d.type === 'qmd:restarted') {
             running = true;
-            setStatus('● 已重启');
+            setStatus(_kk('goods.qmd.restarted', '● 已重启'));
             setTimeout(function () { setStatus(''); }, 3000);
         } else if (d.type === 'qmd:focus') {
             try { if (term) { if (d.on) term.focus(); else term.blur(); } } catch (_) { }

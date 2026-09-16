@@ -823,7 +823,7 @@ var CardPool = (function () {
           var _rawGe = _liveAg._floorCostWge / 10000;
           var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
           aiEl._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-          aiEl._clockCost.textContent = _displayGe + ' ge' + ((_liveAg._floorHadBilling && _liveAg._floorCostWge === 0) ? ' Free' : '');
+          aiEl._clockCost.textContent = _displayGe + ' ge' + ((_liveAg._floorHadBilling && _liveAg._floorCostWge === 0) ? ' Free' : '') + (_liveAg._floorByokUsed ? ' BYOK' : '');
           aiEl._clockCost.style.display = 'inline';
           aiEl._clockCost._houses = _liveAg._houses || [];
           aiEl._clockCost._floorNum = fNum;
@@ -868,7 +868,7 @@ var CardPool = (function () {
       var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
       var isFree = fData.floorFree === true;
       aiEl._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-      aiEl._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
+      aiEl._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '') + (fData.byokUsed ? ' BYOK' : '');
       aiEl._clockCost.style.display = 'inline';
       aiEl._clockCost._houses = fData.houses || [];
       aiEl._clockCost._floorNum = fNum;

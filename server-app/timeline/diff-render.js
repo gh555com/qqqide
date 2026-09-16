@@ -30,12 +30,12 @@
                     resolve();
                 }, function (err) {
                     console.error('[diff] monaco load failed:', err);
-                    $emptyState.textContent = 'Monaco 加载失败';
+                    $emptyState.textContent = _i('timeline.monacoFailed', 'Monaco 加载失败');
                     resolve();
                 });
             };
             s.onerror = function () {
-                $emptyState.textContent = 'Monaco 加载失败';
+                $emptyState.textContent = _i('timeline.monacoFailed', 'Monaco 加载失败');
                 resolve();
             };
             document.head.appendChild(s);

@@ -11,7 +11,7 @@
         if (_loading) return; // 防并发重入
         _loading = true;
         try {
-            $emptyState.textContent = '加载版本列表…';
+            $emptyState.textContent = _i('timeline.loadingVersions', '加载版本列表…');
             $emptyState.style.display = '';
             $diffContainer.style.display = 'none';
             try {
@@ -27,7 +27,7 @@
             }
             await _refreshFileStat(filePath);
             if (_versions.length === 0 && !_lastContent) {
-                $emptyState.textContent = '该文件没有历史版本';
+                $emptyState.textContent = _i('timeline.noVersions', '该文件没有历史版本');
                 return;
             }
             // 加载项目级持久化偏好：仅差异模式（走 qgs 唯一真理入口，自动注册+缓存）
@@ -307,7 +307,7 @@
         }
         return '<div class="v-dropdown-item" data-value="' + _escAttr(mo.value) + '">' +
             displayHtml + markerHtml +
-            '<button class="v-copy-btn" title="复制此行文本">📋</button></div>';
+            '<button class="v-copy-btn" title="' + _escAttr(_i('timeline.copyRow', '复制此行文本')) + '">📋</button></div>';
     }
     function _buildItemsHtml(from, to) {
         var html = '';
@@ -317,7 +317,7 @@
     // 闸门行（列表顶部，start>0 时存在；滚到顶自动加载 + 点击兜底）
     function _gateHtml(win) {
         if (win.start <= 0) return '';
-        return '<div class="v-gate-item" title="点击加载更早的快照">⬆ 加载更早的 ' + Math.min(_LAZY_BATCH, win.start) + ' 条（还剩 ' + win.start + ' 条）</div>';
+        return '<div class="v-gate-item" title="' + _escAttr(_i('timeline.loadEarlierTip', '点击加载更早的快照')) + '">' + _i('timeline.loadEarlierGate', '⬆ 加载更早的 {n} 条（还剩 {m} 条）').replace('{n}', Math.min(_LAZY_BATCH, win.start)).replace('{m}', win.start) + '</div>';
     }
     // 初始渲染 = 最近 _LAZY_BATCH 条（两个下拉共享同一份 HTML，构建一次共用——原实现同流水线白跑两遍）
     function _renderDropdownLists() {

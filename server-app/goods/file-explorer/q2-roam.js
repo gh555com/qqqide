@@ -9,6 +9,27 @@
 // Extracted from q2-roam.html to keep HTML under size limits.
 // ============================================================================
 
+// ---- i18n 小工具（q2-roam.js 最先加载，全局共享给 ui/boot）----
+// _kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
+var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
+// roam 自定义 tooltip 系统（data-tooltip）不走 i18n.js updateDom → 专用同步器
+function _syncRoamTooltips() {
+	try {
+		var els = document.querySelectorAll('[data-i18n-tooltip]');
+		for (var i = 0; i < els.length; i++) {
+			var k = els[i].getAttribute('data-i18n-tooltip');
+			if (k) els[i].setAttribute('data-tooltip', _kk(k, els[i].getAttribute('data-tooltip')));
+		}
+	} catch (_) {}
+}
+if (window.i18n && window.i18n.init) { window.i18n.init().then(_syncRoamTooltips); } else { _syncRoamTooltips(); }
+window.addEventListener('message', function (e) {
+	if (e.data && e.data.type === 'qqq-lang-change') {
+		try { if (window.i18n) window.i18n.updateDom(document); } catch (_) {}
+		_syncRoamTooltips();
+	}
+});
+
 // ---- Color scheme randomizer (runs immediately, sets --selection-bg/text) ----
 (function() {
 	var isDark = false;
@@ -1329,7 +1350,7 @@ function _openQqqideWindowForFolder(folderPath) {
 			if (r && !r.ok && r.locked) {
 				try {
 					if (parent && parent.qqqideQoast) {
-						parent.qqqideQoast.show('⚠️ 该项目已在另一个窗口打开，请直接使用该窗口，或关闭它后再开', { duration: 6000, type: 'warn' });
+						parent.qqqideQoast.show(_kk('shell.viewport.openElsewhere', '⚠️ 该项目已在另一个窗口作为主文件夹打开'), { duration: 6000, type: 'warn' });
 					}
 				} catch (_) {}
 			}
@@ -1557,7 +1578,7 @@ if (emptyCtxMenu) {
 		var aiItem = em.querySelector('[data-action="feedFolderToAi"] span');
 		if (aiItem) {
 			var tt = _getAiTargetPanel();
-			aiItem.textContent = tt === 0 ? '←喂给 AI' : tt === 2 ? '喂给 AI→' : '喂给 AI';
+			aiItem.textContent = tt === 0 ? _kk('goods.roam.feedAiL', '←喂给 AI') : tt === 2 ? _kk('goods.roam.feedAiR', '喂给 AI→') : _kk('goods.roam.feedAi', '喂给 AI');
 		}
 		var ep = _zoomFix(e.clientX, e.clientY);
 		em.style.left = ep.left + 'px';

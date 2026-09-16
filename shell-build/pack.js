@@ -1171,6 +1171,28 @@ function swapEnginesForMac(unpacked) {
     if (junk) { console.log('[pack] mac: junk cleanup (' + junk + ' items)'); }
   }
 
+  // ── manifest 剪枝: vc_runtime 是 win-only 组件（无 darwin srcs）——留在清单里会让
+  //    component-checker 每次启动空转一遍下载尝试（no sources → CDN recovery FAILED 噪声）。
+  {
+    const mfPath = path.join(engDir, 'manifest.json');
+    if (fs.existsSync(mfPath)) {
+      try {
+        const mf = JSON.parse(fs.readFileSync(mfPath, 'utf8'));
+        let pruned = false;
+        if (mf.components && mf.components.vc_runtime) { delete mf.components.vc_runtime; pruned = true; }
+        if (Array.isArray(mf.rank0)) {
+          const n0 = mf.rank0.length;
+          mf.rank0 = mf.rank0.filter(x => x !== 'vc_runtime');
+          if (mf.rank0.length !== n0) { pruned = true; }
+        }
+        if (pruned) {
+          fs.writeFileSync(mfPath, JSON.stringify(mf, null, 2));
+          console.log('[pack] mac: manifest pruned vc_runtime (win-only)');
+        }
+      } catch (e) { console.log('[pack] mac: manifest prune skipped: ' + e.message); }
+    }
+  }
+
   if (need.length) {
     throw new Error('[pack] FATAL: mac package is missing cross-platform engines:\n  - ' + need.join('\n  - '));
   }

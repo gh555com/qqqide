@@ -1196,12 +1196,13 @@
       'display:none; background:' + _co.c + '; cursor:pointer; opacity:0.6; forced-color-adjust:none; pointer-events:auto; ' +
       'transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease;';
     var _sbDragging = false;   // ★ F107: 拖拽期间保持粗态，光标移出滑轨 x 范围也不收缩
+    // ★ 颜色恒定（2026-09-16）: hover/拖拽只变宽绝不加深——对齐 roam / AI 面板聊天区（曾升 opacity 1 = 纯黑条，白主题视觉过重）
     sbOuter.addEventListener('mouseenter', function () {
-      sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
+      sbThumb.style.width = '12px'; sbThumb.style.right = '0';
     });
     sbOuter.addEventListener('mouseleave', function () {
       if (_sbDragging) return;
-      sbThumb.style.width = '2px'; sbThumb.style.right = '10px'; sbThumb.style.opacity = '0.6';
+      sbThumb.style.width = '2px'; sbThumb.style.right = '10px';
     });
     function _syncSB() {
       var sh = inner.scrollHeight, ch = inner.clientHeight;
@@ -1239,7 +1240,7 @@
       if (e.button !== 0) return;
       _dr = true; _dsY = e.clientY; _dsS = inner.scrollTop;
       _sbDragging = true;   // ★ F107: 抓住即粗
-      sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
+      sbThumb.style.width = '12px'; sbThumb.style.right = '0';
       e.preventDefault(); e.stopPropagation();
     });
     document.addEventListener('mousemove', function (e) {
@@ -1256,9 +1257,9 @@
       // 松开：光标仍落在滑轨上 → 保持粗态；已离开 → 收缩
       var at = (e && e.clientX != null) ? document.elementFromPoint(e.clientX, e.clientY) : null;
       if (at && sbOuter.contains(at)) {
-        sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
+        sbThumb.style.width = '12px'; sbThumb.style.right = '0';
       } else {
-        sbThumb.style.width = '2px'; sbThumb.style.right = '10px'; sbThumb.style.opacity = '0.6';
+        sbThumb.style.width = '2px'; sbThumb.style.right = '10px';
       }
     });
     setTimeout(_syncSB, 50);

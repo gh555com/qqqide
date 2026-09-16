@@ -322,6 +322,9 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 _gwEndWait(self);
                 return null;
             }
+            // ★ BYOK 通道标记（byok.js 在响应对象挂 _byokRoute）：本楼层以自带密钥服务
+            //   → 楼层费用后缀 ' BYOK' + 详单行为标记依据（平台通道路径零影响）
+            if (resp && resp._byokRoute) { self._floorByokUsed = true; self._floorByokRoute = resp._byokRoute; }
             var _ttfbMs = performance.now() - _fetchStart;
             _ttfbAccum += _ttfbMs;
             if (!resp.ok) {
@@ -486,6 +489,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             if (_result) {
                 _result._ttfbMs = _ttfbAccum;
                 _result._streamMs = _result._streamMs || 0;
+                self._synthByokBilling(_result);  // ★ BYOK：从上游 usage 合成详单口径（平台事件缺位时）
             } else if (self._sseError) {
                 // ★ SSE 流中断（非 AbortError）= 连接断开
                 //    把错误详情写入 _lastGatewayMessage，避免 UI 显示泛泛的 "Unexpected response"

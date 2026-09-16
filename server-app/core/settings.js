@@ -65,11 +65,8 @@
       defaultValue: String(_D['ai.defaultTier'] || 3),
       options: [
         { value: '1', label: '1', desc: '轻量', descKey: 'settings.defaultTier.d1' },
-        { value: '2', label: '2', desc: '轻量+推理', descKey: 'settings.defaultTier.d2' },
-        { value: '3', label: '3', desc: '轻量+深度推理', descKey: 'settings.defaultTier.d3' },
-        { value: '4', label: '4', desc: '专业', descKey: 'settings.defaultTier.d4' },
-        { value: '5', label: '5', desc: '专业+推理', descKey: 'settings.defaultTier.d5' },
-        { value: '6', label: '6', desc: '专业+深度推理', descKey: 'settings.defaultTier.d6' }
+        { value: '3', label: '2', desc: '轻量+推理', descKey: 'settings.defaultTier.d2' },
+        { value: '5', label: '3', desc: '专业+深度推理', descKey: 'settings.defaultTier.d6' }
       ]
     },
     {
@@ -267,7 +264,7 @@
       var _scDesc = sc.dk ? _i(sc.dk, sc.desc || '') : (sc.desc || '');
       h += '<label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none;" title="' + _scDesc + '">';
       h += '<input type="checkbox" class="qqq-sfx-check" data-sfx-key="' + sc.key + '"' + (on ? ' checked' : '') + ' style="margin:0; accent-color:' + accent + '; flex-shrink:0;">';
-      h += '<span style="font-size:12px; color:' + text + '; white-space:nowrap;">' + _scLabel + '</span>';
+      h += '<span style="font-size:12px; color:' + text + '; white-space:normal; word-break:break-word; line-height:1.3;">' + _scLabel + '</span>';
       h += '<span style="font-size:10px; color:' + textDim + '; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + sc.file + ' · ' + _scDesc + '</span>';
       h += '</label>';
     }
@@ -437,7 +434,8 @@
         html += '</div>';
         // ★ 显示楼层：未激活用户点 32/64 → 拉杆右侧红字提示（2026-09-05；64 档 2026-09-06）
         if (def.key === 'ai.floorCap' && _floorCapHintOn) {
-          html += '<span style="font-size:11px; color:' + red + '; white-space:nowrap;">' + _i('settings.needActivation', '该功能需先激活') + '</span>';
+          // ★ 长译文布局韧性（2026-09-16）：允许换行回卷，防法语/俄语长译戳出面板（实测 fr 535px>480px）
+          html += '<span style="font-size:11px; color:' + red + '; white-space:normal; word-break:break-word; line-height:1.3;">' + _i('settings.needActivation', '该功能需先激活') + '</span>';
         }
         html += '</div>';
         // ★ 音效开关子卡片（音量 1 by 1 展开态，紧随拉杆下方）
@@ -456,12 +454,13 @@
         html += '<span style="font-size:12px; color:' + text + ';">' + (boolOn ? _i('settings.on', '已开启') : _i('settings.off', '已关闭')) + '</span>';
         html += '</label>';
       } else if (def.type === 'radio') {
-        // ★ 默认 AI 等级：6 个水平格子（紧凑1-2行），选中打勾 ✓
+        // ★ 默认 AI 等级：3 个水平格子（显示 1/2/3 = 线上值 1/3/5；旧存量 2/4/6 自动换算到同组）
         if (def.key === 'ai.defaultTier') {
           html += '<div style="display:flex; gap:6px;">';
+          var _tierRep = function (v) { var n = parseInt(v, 10); if (!(n >= 1)) return ''; return String(Math.ceil(n / 2) * 2 - 1); };
           for (var j = 0; j < def.options.length; j++) {
             var opt = def.options[j];
-            var checked = (currentVal === opt.value);
+            var checked = (_tierRep(currentVal) === opt.value);
             html += '<label style="flex:1; min-width:40px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; padding:6px 4px; border-radius:4px; border:2px solid ' + (checked ? accent : border) + '; background:' + (checked ? accent + '20' : 'transparent') + '; cursor:pointer; font-size:12px; color:' + text + '; user-select:none;">';
             html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="display:none;">';
             html += checked ? '<span style="font-weight:bold; color:' + accent + ';">\u2713</span>' : '';
@@ -790,14 +789,14 @@
     if (!_tierExpanded) {
       // ── 收拢态 ──
       html += '<div style="margin-bottom:12px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv1', '1档：') + '</b>' + _i('settings.tier.t1', '最低智能，快、便宜。') + '</div>';
-      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv6', '6档：') + '</b>' + _i('settings.tier.t6', '最高智能，慢、贵。') + '</div>';
+      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv6', '3档：') + '</b>' + _i('settings.tier.t6', '最高智能，慢、贵。') + '</div>';
       html += '<div style="margin-bottom:4px;">' + _i('settings.tier.noAuto', 'qqqide 不再提供自动换档功能，');
       html += '<span id="tier-reason-link" style="color:' + red + '; text-decoration:underline; cursor:pointer;">' + _i('settings.tier.reason', '理由') + '</span>';
       html += '</div>';
     } else {
       // ── 展开态：完整说明 ──
       html += '<div style="margin-bottom:10px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv1', '1档：') + '</b>' + _i('settings.tier.t1', '最低智能，快、便宜。') + '</div>';
-      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv6', '6档：') + '</b>' + _i('settings.tier.t6', '最高智能，慢、贵。') + '</div>';
+      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv6', '3档：') + '</b>' + _i('settings.tier.t6', '最高智能，慢、贵。') + '</div>';
       html += '<div style="margin-bottom:10px;">' + _i('settings.tier.noAutoReason', 'qqqide 不再提供自动换档功能，理由：') + '</div>';
 
       html += '<div style="color:' + textDim + '; line-height:1.8;">';

@@ -194,30 +194,32 @@ function _buildBillingTable(houses, passby) {
         var ms = h.ms || 0;
         var timeStr = Math.round(ms / 1000) + 's';
         var wge = h.wgeCost || 0;
+        var wgeShow = h.byok ? '-' : wge;   // ★ BYOK 行：平台 wge 不适用（你自付服务商）
         // 缓存命中率 / tokens / 查账凭据：effect 类型无 LLM 概念，统一 —
         var isEffect = h.type === 'effect';
         var cacheHit = isEffect ? '-' : (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '-');
         var usage = h.usage;
         var promptTokens, completionTokens, totalTokens;
-        if (isEffect) {
+        if (isEffect || !usage) {
+            // effect 无 LLM 概念；BYOK 上游未回传 usage → 统一 '-'（区分「无数据」与「真 0」）
             promptTokens = '-';
             completionTokens = '-';
             totalTokens = '-';
         } else {
-            promptTokens = usage ? (usage.prompt_tokens || 0) : 0;
-            completionTokens = usage ? (usage.completion_tokens || 0) : 0;
+            promptTokens = usage.prompt_tokens || 0;
+            completionTokens = usage.completion_tokens || 0;
             totalTokens = promptTokens + completionTokens;
         }
         var _cacheStyle = 'text-align:right';
         if (!isEffect && h.cacheHitRate >= 0 && h.cacheHitRate < 90) _cacheStyle += ';background:rgba(203,75,22,0.10)';
-        var receipt = h.billingRequestId || '';
+        var receipt = h.byok ? '-' : (h.billingRequestId || '');
         html += '<tr>'
             + '<td style="text-align:right">' + houseLabel + '</td>'
             + '<td style="text-align:right">' + type + '</td>'
             + '<td style="text-align:right">' + toolCount + '</td>'
             + '<td style="text-align:right">' + aiLv + '</td>'
             + '<td style="text-align:right">' + timeStr + '</td>'
-            + '<td style="text-align:right;background:rgba(133,153,0,0.08)">' + wge + '</td>'
+            + '<td style="text-align:right;background:rgba(133,153,0,0.08)">' + wgeShow + '</td>'
             + '<td style="' + _cacheStyle + '">' + cacheHit + '</td>'
             + '<td style="text-align:right">' + promptTokens + '</td>'
             + '<td style="text-align:right">' + completionTokens + '</td>'
@@ -245,6 +247,18 @@ function _buildBillingTable(houses, passby) {
             + _pbTokenStr + ' tokens;\u3000'
             + _pbWge + ' wge'
             + ' \u2248 ' + _pbGe + ' ge'
+            + '</div>';
+    }
+    // ★ BYOK 注记：本层对话走自带密钥（平台计费零参与——ge 只算平台通道）
+    var _byokRoute = '';
+    for (var _bk = 0; _bk < houses.length; _bk++) {
+        if (houses[_bk].byok) { _byokRoute = houses[_bk].byok; if (_byokRoute === 'relay') break; }
+    }
+    if (_byokRoute) {
+        html += '<div class="billing-byok-note" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888);text-align:center">'
+            + (_byokRoute === 'relay'
+                ? _i2('ai.billing.byokNoteRelay', '🔑 本层对话经平台代理转发（你自付服务商；ge 仅计平台通道）')
+                : _i2('ai.billing.byokNote', '🔑 本层对话走自带密钥（你自付服务商；ge 仅计平台通道）'))
             + '</div>';
     }
     return html;

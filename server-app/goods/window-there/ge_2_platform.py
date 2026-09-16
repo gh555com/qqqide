@@ -4,6 +4,16 @@
 import sys
 import os
 
+# 共享翻译助手（goods/_goods_i18n.py）
+try:
+    from _goods_i18n import t as _t
+except Exception:
+    def _t(key, fallback=None, **params):
+        val = fallback if fallback is not None else key
+        for _k, _v in params.items():
+            val = val.replace('{' + str(_k) + '}', str(_v))
+        return val
+
 # --- 平台抽象基类 ---
 class BasePlatformManager:
     """
@@ -21,7 +31,7 @@ class BasePlatformManager:
         """
         检查平台特定需求 (如 Wayland 警告, macOS 权限)
         """
-        show_message_callback("错误", f"当前平台 ({sys.platform}) 尚不支持。")
+        show_message_callback(_t('common.error', '错误'), _t('goods.winthere.platformUnsupported', '当前平台 ({platform}) 尚不支持。', platform=sys.platform))
         return False # 默认失败
 
     def create_mutex(self, aqq_id, show_message_callback):
@@ -134,7 +144,7 @@ if sys.platform == 'win32':
             last_error = kernel32.GetLastError()
 
             if not self.mutex_handle:
-                show_message_callback("kqs 窗口布局 - 启动错误", f"创建互斥锁失败，无法启动。\n错误码: {last_error}", "ok")
+                show_message_callback(_t('goods.winthere.titleStartupError', 'kqs 窗口布局 - 启动错误'), _t('goods.winthere.mutexFail', '创建互斥锁失败，无法启动。\n错误码: {code}', code=last_error), "ok")
                 return False
 
             if last_error == ERROR_ALREADY_EXISTS:
@@ -316,21 +326,23 @@ elif sys.platform == 'linux':
                 # 尝试检测是否支持XWayland
                 if self._check_xwayland_support():
                     show_message_callback(
-                        "kqs 窗口布局 - 有限支持",
-                        "检测到 Wayland 显示服务器，但检测到 XWayland 支持。\n\n"
-                        "程序将以有限模式运行，仅支持 XWayland 应用程序。\n\n"
-                        "对于原生 Wayland 应用程序，窗口管理功能可能不可用。",
+                        _t('goods.winthere.titleLimitedSupport', 'kqs 窗口布局 - 有限支持'),
+                        _t('goods.winthere.waylandLimited',
+                           "检测到 Wayland 显示服务器，但检测到 XWayland 支持。\n\n"
+                           "程序将以有限模式运行，仅支持 XWayland 应用程序。\n\n"
+                           "对于原生 Wayland 应用程序，窗口管理功能可能不可用。"),
                         "ok"
                     )
                     self.wayland_mode = "XWayland"
                     return True
                 else:
                     show_message_callback(
-                        "kqs 窗口布局 - 不兼容",
-                        "检测到 Wayland 显示服务器，且未检测到 XWayland 支持。\n\n"
-                        "Wayland 的安全策略禁止本程序抓取其他窗口信息和监听全局按键。\n\n"
-                        "请尝试在登录界面切换到 X11 (X.Org) 会话以使用本程序。\n\n"
-                        "或者，您可以尝试安装 XWayland 以获得有限支持。",
+                        _t('goods.winthere.titleIncompatible', 'kqs 窗口布局 - 不兼容'),
+                        _t('goods.winthere.waylandNoSupport',
+                           "检测到 Wayland 显示服务器，且未检测到 XWayland 支持。\n\n"
+                           "Wayland 的安全策略禁止本程序抓取其他窗口信息和监听全局按键。\n\n"
+                           "请尝试在登录界面切换到 X11 (X.Org) 会话以使用本程序。\n\n"
+                           "或者，您可以尝试安装 XWayland 以获得有限支持。"),
                         "ok"
                     )
                     self.wayland_mode = "Unsupported"
@@ -344,9 +356,8 @@ elif sys.platform == 'linux':
                 print(f"检测到 {self.display_server} 会话, Xlib 已安装。")
             except ImportError:
                 show_message_callback(
-                    "kqs 窗口布局 - 缺少依赖",
-                    f"在 Linux ({self.display_server}) 平台运行需要 `python-xlib` 库。\n\n"
-                    "请运行: pip install python-xlib",
+                    _t('goods.winthere.titleMissingDep', 'kqs 窗口布局 - 缺少依赖'),
+                    _t('goods.winthere.linuxNeedXlib', '在 Linux ({server}) 平台运行需要 `python-xlib` 库。\n\n请运行: pip install python-xlib', server=self.display_server),
                     "ok"
                 )
                 return False
@@ -762,20 +773,21 @@ elif sys.platform == 'darwin':
                     is_trusted_with_prompt = AXIsProcessTrustedWithOptions(options)
 
                     if not is_trusted_with_prompt:
-                        return False, "辅助功能权限被拒绝"
+                        return False, "DENIED"
                     else:
-                        return False, "需要重启程序以使权限生效"
+                        return False, "RESTART_NEEDED"
 
                 return True, ""
 
             except Exception as e:
-                return False, f"检查权限时出错: {str(e)}"
+                return False, "ERROR: " + str(e)
 
         def _get_accessibility_instructions(self):
             """
             获取详细的辅助功能权限设置指导
             """
-            return (
+            return _t(
+                'goods.winthere.macPermGuide',
                 "请按以下步骤操作:\n\n"
                 "1. 打开 [系统偏好设置]\n"
                 "2. 进入 [安全性与隐私]\n"
@@ -797,11 +809,12 @@ elif sys.platform == 'darwin':
                 print("R24: pyobjc 已安装。")
             except ImportError:
                 show_message_callback(
-                    "kqs 窗口布局 - 缺少依赖",
-                    "在 macOS 平台运行需要 `pyobjc` 库。\n\n"
-                    "请运行: pip install pyobjc\n\n"
-                    "或者使用完整安装命令:\n"
-                    "pip install pyobjc-framework-Cocoa pyobjc-framework-ApplicationServices",
+                    _t('goods.winthere.titleMissingDep', 'kqs 窗口布局 - 缺少依赖'),
+                    _t('goods.winthere.macNeedPyobjc',
+                       "在 macOS 平台运行需要 `pyobjc` 库。\n\n"
+                       "请运行: pip install pyobjc\n\n"
+                       "或者使用完整安装命令:\n"
+                       "pip install pyobjc-framework-Cocoa pyobjc-framework-ApplicationServices"),
                     "ok"
                 )
                 return False
@@ -812,18 +825,17 @@ elif sys.platform == 'darwin':
             self.accessibility_granted = has_permission
 
             if not has_permission:
-                if "需要重启程序" in error_message:
+                if error_message == "RESTART_NEEDED":
                     show_message_callback(
-                        "kqs 窗口布局 - 权限已更新",
-                        "辅助功能权限已更新，但需要重启程序才能生效。\n\n"
-                        "请重启本程序以继续。",
+                        _t('goods.winthere.titlePermUpdated', 'kqs 窗口布局 - 权限已更新'),
+                        _t('goods.winthere.macPermRestart',
+                           "辅助功能权限已更新，但需要重启程序才能生效。\n\n请重启本程序以继续。"),
                         "ok"
                     )
                 else:
                     show_message_callback(
-                        "kqs 窗口布局 - 需要权限",
-                        f"macOS 需要您手动开启\"辅助功能\"权限，本程序才能工作。\n\n"
-                        f"{self._get_accessibility_instructions()}",
+                        _t('goods.winthere.titleNeedPerm', 'kqs 窗口布局 - 需要权限'),
+                        _t('goods.winthere.macNeedPerm', 'macOS 需要您手动开启"辅助功能"权限，本程序才能工作。\n\n{guide}', guide=self._get_accessibility_instructions()),
                         "ok"
                     )
                 return False
