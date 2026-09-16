@@ -27,10 +27,52 @@ export function getAppRoot(): string {
     return path.dirname(process.execPath);
 }
 
+/**
+ * ★ mac .app 外置托管根（2026-09-16）：往 .app bundle 内写数据会破坏代码签名封条
+ *   （TCC csreq 失配 → 已授权限全部失效），且更新换装时数据随旧 app 全灭。
+ *   mac bundle 模式 → {.app 同级}/qqqide-data（≈ Windows 的 gh555.com：内含 Data/ + engines/）；
+ *   win 绿色包 → root 本身（gh555.com）；dev → 项目根。三者内部结构均为 {host}/Data。
+ *   engines/ 经 bundle 内相对符号链接桥接（写穿透到外置，签名不破）。
+ */
+export function getHostDir(): string {
+    const root = getAppRoot();
+    const norm = root.replace(/\\/g, '/');
+    const idx = norm.indexOf('.app/Contents/MacOS');
+    if (idx >= 0) {
+        const bundle = norm.slice(0, idx + 4);          // .../qqqide.app
+        return path.join(path.dirname(bundle), 'qqqide-data');
+    }
+    return root;
+}
+
+/** ★ Data 目录唯一真理源。一切 {X}/Data 拼接必须走此函数（禁散落硬编码路径推导）。 */
+export function getDataDir(): string {
+    return path.join(getHostDir(), 'Data');
+}
+
+/** mac 一次性迁移：bundle 内旧 Data → 外置托管根（原地覆盖升级场景兜底）。 */
+function migrateMacLegacyData(): void {
+    if (process.platform !== 'darwin') { return; }
+    const host = getHostDir();
+    if (host === getAppRoot()) { return; }              // dev / 非 bundle 运行
+    const oldData = path.join(getAppRoot(), 'Data');    // 旧：.app/Contents/MacOS/Data
+    const newData = path.join(host, 'Data');
+    try {
+        if (fs.existsSync(oldData) && !fs.existsSync(path.join(newData, 'alphal'))) {
+            fs.mkdirSync(path.dirname(newData), { recursive: true });
+            fs.renameSync(oldData, newData);
+            console.log('[portable-paths] mac: migrated legacy Data →', newData);
+        }
+    } catch (e: any) {
+        console.warn('[portable-paths] mac legacy Data migrate failed:', (e && e.message) || e);
+    }
+}
+
 /** Apply portable redirects. Call this BEFORE app.whenReady(). */
 export function applyPortablePaths(): { root: string; userData: string; cache: string; logs: string } {
     const root = getAppRoot();
-    const userData = path.join(root, 'Data');
+    migrateMacLegacyData();
+    const userData = getDataDir();
     // ★ 所有运行时目录收进 userData/，根目录保持干净
     const cache = path.join(userData, 'Cache');
     const temp = path.join(userData, 'Temp');

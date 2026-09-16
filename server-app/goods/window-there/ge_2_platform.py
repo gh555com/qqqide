@@ -906,250 +906,294 @@ elif sys.platform == 'darwin':
                 except Exception as e:
                     print(f"R24: 释放互斥锁时出错: {e}")
 
+        def _walk_to_window(self, element, max_depth=60):
+            """
+            (R24) 沿 AX 父链爬到顶层窗口 (AXWindow)；找不到返回 None
+            """
+            import ApplicationServices as AS
+            cur = element
+            for _ in range(max_depth):
+                r = AS.AXUIElementCopyAttributeValue(cur, "AXRole", None)
+                role = str(r[1]) if (r[0] == 0 and r[1] is not None) else ""
+                if role == "AXWindow":
+                    return cur
+                p = AS.AXUIElementCopyAttributeValue(cur, "AXParent", None)
+                if p[0] != 0 or p[1] is None:
+                    # 兜底：直接读当前元素的 AXWindow 属性
+                    w = AS.AXUIElementCopyAttributeValue(cur, "AXWindow", None)
+                    if w[0] == 0 and w[1] is not None:
+                        return w[1]
+                    return None
+                cur = p[1]
+            return None
+
+        def _read_window_geometry(self, win):
+            """
+            (R24) 读窗口 title/position/size → (title, x, y, w, h)
+            """
+            import ApplicationServices as AS
+            title = ""
+            r = AS.AXUIElementCopyAttributeValue(win, "AXTitle", None)
+            if r[0] == 0 and r[1] is not None:
+                title = str(r[1])
+
+            x = y = w = h = 0
+            r = AS.AXUIElementCopyAttributeValue(win, "AXPosition", None)
+            if r[0] == 0 and r[1] is not None:
+                res = AS.AXValueGetValue(r[1], AS.kAXValueCGPointType, None)
+                if isinstance(res, tuple) and res[0]:
+                    pt = res[1]
+                    x = int(pt.x)
+                    y = int(pt.y)
+            r = AS.AXUIElementCopyAttributeValue(win, "AXSize", None)
+            if r[0] == 0 and r[1] is not None:
+                res = AS.AXValueGetValue(r[1], AS.kAXValueCGSizeType, None)
+                if isinstance(res, tuple) and res[0]:
+                    sz = res[1]
+                    w = int(sz.width)
+                    h = int(sz.height)
+            return title, x, y, w, h
+
+        def _app_display_class(self, pid):
+            """
+            (R24) 类名语义：bundle id 优先，回退应用名（等价 Windows 窗口类名）
+            """
+            try:
+                from AppKit import NSRunningApplication
+                app = NSRunningApplication.runningApplicationWithProcessIdentifier_(int(pid))
+                if app is not None:
+                    bid = app.bundleIdentifier()
+                    if bid:
+                        return str(bid)
+                    nm = app.localizedName()
+                    if nm:
+                        return str(nm)
+            except Exception:
+                pass
+            return ""
+
+        def _build_window_info(self, pid, title, x, y, w, h):
+            """
+            (R24) 组装统一窗口信息字典（含主屏分辨率）
+            """
+            dw = dh = 0
+            try:
+                from Cocoa import NSScreen
+                screens = NSScreen.screens()
+                frame = screens[0].frame() if screens else NSScreen.mainScreen().frame()
+                dw = int(frame.size.width)
+                dh = int(frame.size.height)
+            except Exception:
+                pass
+            return {
+                'handle': int(pid),
+                'title': title,
+                'class_name': self._app_display_class(pid),
+                'x': int(x),
+                'y': int(y),
+                'width': int(w),
+                'height': int(h),
+                'desktop_width': dw,
+                'desktop_height': dh
+            }
+
+        def _window_under_cursor_cgl(self, x, y):
+            """
+            (R24) 兜底：CGWindowList 顶层窗口命中测试（不穿 AX 树）
+            """
+            try:
+                import Quartz
+                wl = Quartz.CGWindowListCopyWindowInfo(
+                    Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements, 0)
+                for w in (wl or []):
+                    d = dict(w)
+                    if d.get("kCGWindowLayer") != 0:
+                        continue
+                    b = d.get("kCGWindowBounds")
+                    if not b:
+                        continue
+                    bx, by = b.get("X"), b.get("Y")
+                    bw, bh = b.get("Width"), b.get("Height")
+                    if None in (bx, by, bw, bh):
+                        continue
+                    if bx <= x <= bx + bw and by <= y <= by + bh:
+                        pid = int(d.get("kCGWindowOwnerPID") or 0)
+                        if pid <= 0:
+                            continue
+                        title = d.get("kCGWindowName") or d.get("kCGWindowOwnerName") or ""
+                        return self._build_window_info(pid, str(title), bx, by, bw, bh)
+                return None
+            except Exception as e:
+                print(f"CGWindowList 兜底失败: {e}")
+                return None
+
         def get_window_under_cursor(self):
             """
             (R24) macOS实现：获取光标下的窗口信息
+            主路径 = AX 系统级元素 + 父链爬窗；兜底 = CGWindowList 命中测试
             """
             # 检查权限
             if self.accessibility_checked and not self.accessibility_granted:
                 return self._handle_accessibility_error("获取光标下窗口信息")
 
             try:
-                from Cocoa import NSEvent
-                from ApplicationServices import AXUIElementCopyElementAtPosition, AXUIElementCopyAttributeValue, kAXWindowPositionAttribute, kAXWindowSizeAttribute, kAXTitleAttribute, kAXWindowRoleAttribute, kAXWindowRoleDescriptionAttribute, kAXFocusedWindowAttribute, kAXMainWindowAttribute, kAXWindowAttribute, kAXPIDAttribute, kAXChildrenAttribute, kAXErrorSuccess
+                import Quartz
+                import ApplicationServices as AS
 
-                # 获取当前鼠标位置
-                mouse_location = NSEvent.mouseLocation()
-                # 转换坐标系（Cocoa坐标系原点在左下角）
-                screen_frame = NSEvent.mouseLocation()
-                from Cocoa import NSScreen
-                main_screen = NSScreen.mainScreen()
-                screen_frame = main_screen.frame()
-                mouse_y = screen_frame.size.height - mouse_location.y
+                # 光标位置：CGEvent 与 AX 同为左上原点坐标系，免翻转换算
+                cg = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+                cursor_x, cursor_y = float(cg.x), float(cg.y)
 
-                # 获取鼠标位置的窗口元素
-                window_element = AXUIElementCopyElementAtPosition(None, mouse_location.x, mouse_y, None)
+                # AX 主路径：系统级元素 → 光标处元素 → 父链爬到窗口
+                # 注意：首参传 None 会返回 kAXErrorIllegalArgument(-25201)，必须系统级元素
+                win = None
+                err, element = AS.AXUIElementCopyElementAtPosition(
+                    AS.AXUIElementCreateSystemWide(), cursor_x, cursor_y, None)
+                if err == 0 and element is not None:
+                    win = self._walk_to_window(element)
 
-                if not window_element[0] == kAXErrorSuccess:
-                    return self._handle_accessibility_error("获取光标下窗口信息", f"无法获取窗口元素 (错误代码: {window_element[0]})")
+                if win is not None:
+                    title, x, y, w, h = self._read_window_geometry(win)
+                    pid = 0
+                    r = AS.AXUIElementGetPid(win, None)
+                    if r[0] == 0 and r[1] is not None:
+                        pid = int(r[1])
+                    if pid > 0 and w > 0 and h > 0:
+                        return self._build_window_info(pid, title, x, y, w, h)
 
-                window_ref = window_element[1]
+                # 兜底：CGWindowList
+                return self._window_under_cursor_cgl(cursor_x, cursor_y)
 
-                # 获取窗口属性
-                position = AXUIElementCopyAttributeValue(window_ref, kAXWindowPositionAttribute, None)
-                size = AXUIElementCopyAttributeValue(window_ref, kAXWindowSizeAttribute, None)
-                title = AXUIElementCopyAttributeValue(window_ref, kAXTitleAttribute, None)
-
-                # 获取窗口ID
-                pid = AXUIElementCopyAttributeValue(window_ref, kAXPIDAttribute, None)
-
-                # 获取窗口类名/角色
-                role = AXUIElementCopyAttributeValue(window_ref, kAXWindowRoleAttribute, None)
-
-                # 获取屏幕分辨率
-                screen_width = int(screen_frame.size.width)
-                screen_height = int(screen_frame.size.height)
-
-                # 解析位置和大小
-                x = 0
-                y = 0
-                width = 0
-                height = 0
-
-                if position[0] == kAXErrorSuccess and position[1]:
-                    x = int(position[1].valueAtIndex_(0))
-                    y = int(position[1].valueAtIndex_(1))
-
-                if size[0] == kAXErrorSuccess and size[1]:
-                    width = int(size[1].valueAtIndex_(0))
-                    height = int(size[1].valueAtIndex_(1))
-
-                # 解析标题
-                window_title = ""
-                if title[0] == kAXErrorSuccess and title[1]:
-                    window_title = str(title[1])
-
-                # 解析PID
-                window_pid = 0
-                if pid[0] == kAXErrorSuccess and pid[1]:
-                    window_pid = int(pid[1])
-
-                # 解析角色
-                window_role = ""
-                if role[0] == kAXErrorSuccess and role[1]:
-                    window_role = str(role[1])
-
-                return {
-                    'handle': window_pid,  # 在macOS上使用PID作为句柄
-                    'title': window_title,
-                    'class_name': window_role,
-                    'x': x,
-                    'y': y,
-                    'width': width,
-                    'height': height,
-                    'desktop_width': screen_width,
-                    'desktop_height': screen_height
-                }
-
-            except ImportError:
-                print("错误: 需要安装 pyobjc 库")
+            except ImportError as e:
+                print(f"错误: pyobjc 导入失败: {e}")
                 return None
             except Exception as e:
                 return self._handle_accessibility_error("获取光标下窗口信息", e)
 
         def get_window_info(self, handle):
             """
-            (R24) macOS实现：获取指定句柄的窗口信息
+            (R24) macOS实现：获取指定句柄（PID）的窗口信息
             """
             # 检查权限
             if self.accessibility_checked and not self.accessibility_granted:
                 return self._handle_accessibility_error("获取窗口信息")
 
             try:
-                from ApplicationServices import AXUIElementCreateApplication, AXUIElementCopyAttributeValue, kAXWindowPositionAttribute, kAXWindowSizeAttribute, kAXTitleAttribute, kAXWindowRoleAttribute, kAXFocusedWindowAttribute, kAXMainWindowAttribute, kAXWindowAttribute, kAXErrorSuccess
+                import ApplicationServices as AS
 
-                # 通过PID获取应用程序元素
-                app_element = AXUIElementCreateApplication(handle)
-
+                pid = int(handle)
+                app_element = AS.AXUIElementCreateApplication(pid)
                 if not app_element:
-                    return self._handle_accessibility_error("获取窗口信息", f"无法创建应用程序元素 (PID: {handle})")
+                    return self._handle_accessibility_error("获取窗口信息", f"无法创建应用程序元素 (PID: {pid})")
 
-                # 获取主窗口
-                main_window = AXUIElementCopyAttributeValue(app_element, kAXMainWindowAttribute, None)
+                # 主窗口 → 焦点窗口 → 第一个窗口
+                win = None
+                for attr in ("AXMainWindow", "AXFocusedWindow", "AXWindows"):
+                    r = AS.AXUIElementCopyAttributeValue(app_element, attr, None)
+                    if r[0] != 0 or r[1] is None:
+                        continue
+                    v = r[1]
+                    if attr == "AXWindows":
+                        try:
+                            if len(v) == 0:
+                                continue
+                            v = v[0]
+                        except Exception:
+                            continue
+                    win = v
+                    break
 
-                if main_window[0] != kAXErrorSuccess or not main_window[1]:
-                    # 尝试获取焦点窗口
-                    focused_window = AXUIElementCopyAttributeValue(app_element, kAXFocusedWindowAttribute, None)
+                if win is None:
+                    return None
 
-                    if focused_window[0] != kAXErrorSuccess or not focused_window[1]:
-                        # 尝试获取所有窗口
-                        windows = AXUIElementCopyAttributeValue(app_element, kAXWindowAttribute, None)
+                title, x, y, w, h = self._read_window_geometry(win)
+                return self._build_window_info(pid, title, x, y, w, h)
 
-                        if windows[0] != kAXErrorSuccess or not windows[1] or windows[1].count() == 0:
-                            return None
-
-                        window_ref = windows[1].objectAtIndex_(0)
-                    else:
-                        window_ref = focused_window[1]
-                else:
-                    window_ref = main_window[1]
-
-                # 获取窗口属性
-                position = AXUIElementCopyAttributeValue(window_ref, kAXWindowPositionAttribute, None)
-                size = AXUIElementCopyAttributeValue(window_ref, kAXWindowSizeAttribute, None)
-                title = AXUIElementCopyAttributeValue(window_ref, kAXTitleAttribute, None)
-                role = AXUIElementCopyAttributeValue(window_ref, kAXWindowRoleAttribute, None)
-
-                # 获取屏幕分辨率
-                from Cocoa import NSScreen
-                main_screen = NSScreen.mainScreen()
-                screen_frame = main_screen.frame()
-                screen_width = int(screen_frame.size.width)
-                screen_height = int(screen_frame.size.height)
-
-                # 解析位置和大小
-                x = 0
-                y = 0
-                width = 0
-                height = 0
-
-                if position[0] == kAXErrorSuccess and position[1]:
-                    x = int(position[1].valueAtIndex_(0))
-                    y = int(position[1].valueAtIndex_(1))
-
-                if size[0] == kAXErrorSuccess and size[1]:
-                    width = int(size[1].valueAtIndex_(0))
-                    height = int(size[1].valueAtIndex_(1))
-
-                # 解析标题
-                window_title = ""
-                if title[0] == kAXErrorSuccess and title[1]:
-                    window_title = str(title[1])
-
-                # 解析角色
-                window_role = ""
-                if role[0] == kAXErrorSuccess and role[1]:
-                    window_role = str(role[1])
-
-                return {
-                    'handle': handle,
-                    'title': window_title,
-                    'class_name': window_role,
-                    'x': x,
-                    'y': y,
-                    'width': width,
-                    'height': height,
-                    'desktop_width': screen_width,
-                    'desktop_height': screen_height
-                }
-
-            except ImportError:
-                print("错误: 需要安装 pyobjc 库")
+            except ImportError as e:
+                print(f"错误: pyobjc 导入失败: {e}")
                 return None
             except Exception as e:
                 return self._handle_accessibility_error("获取窗口信息", e)
 
         def set_window_layout(self, handle, layout_info):
             """
-            (R24) macOS实现：设置窗口布局
+            (R24) macOS实现：设置窗口布局（PID 定位应用；标题精确匹配优先，其次位置就近）
             """
             # 检查权限
             if self.accessibility_checked and not self.accessibility_granted:
                 return self._handle_accessibility_error("设置窗口布局")
 
             try:
-                from ApplicationServices import AXUIElementCreateApplication, AXUIElementSetAttributeValue, kAXWindowPositionAttribute, kAXWindowSizeAttribute, kAXErrorSuccess
-                from Cocoa import NSValue, NSPoint, NSSize
+                import Quartz
+                import ApplicationServices as AS
 
-                # 通过PID获取应用程序元素
-                app_element = AXUIElementCreateApplication(handle)
-
+                pid = int(handle)
+                app_element = AS.AXUIElementCreateApplication(pid)
                 if not app_element:
-                    return self._handle_accessibility_error("设置窗口布局", f"无法创建应用程序元素 (PID: {handle})")
-
-                # 获取主窗口
-                main_window = AXUIElementCopyAttributeValue(app_element, kAXMainWindowAttribute, None)
-
-                if main_window[0] != kAXErrorSuccess or not main_window[1]:
-                    # 尝试获取焦点窗口
-                    focused_window = AXUIElementCopyAttributeValue(app_element, kAXFocusedWindowAttribute, None)
-
-                    if focused_window[0] != kAXErrorSuccess or not focused_window[1]:
-                        # 尝试获取所有窗口
-                        windows = AXUIElementCopyAttributeValue(app_element, kAXWindowAttribute, None)
-
-                        if windows[0] != kAXErrorSuccess or not windows[1] or windows[1].count() == 0:
-                            return False
-
-                        window_ref = windows[1].objectAtIndex_(0)
-                    else:
-                        window_ref = focused_window[1]
-                else:
-                    window_ref = main_window[1]
-
-                # 获取布局信息
-                x, y, width, height = layout_info['x'], layout_info['y'], layout_info['width'], layout_info['height']
-
-                # 设置窗口位置
-                position = NSValue.valueWithPoint_(NSPoint(x, y))
-                position_result = AXUIElementSetAttributeValue(window_ref, kAXWindowPositionAttribute, position, None)
-
-                # 设置窗口大小
-                size = NSValue.valueWithSize_(NSSize(width, height))
-                size_result = AXUIElementSetAttributeValue(window_ref, kAXWindowSizeAttribute, size, None)
-
-                if position_result == kAXErrorSuccess and size_result == kAXErrorSuccess:
-                    print(f"窗口布局已设置 (handle: {handle})")
-                    return True
-                else:
-                    print(f"设置窗口布局失败 (handle: {handle})")
+                    self._handle_accessibility_error("设置窗口布局", f"无法创建应用程序元素 (PID: {pid})")
                     return False
 
-            except ImportError:
-                print("错误: 需要安装 pyobjc 库")
+                # 收集候选窗口
+                win_list = []
+                r = AS.AXUIElementCopyAttributeValue(app_element, "AXWindows", None)
+                if r[0] == 0 and r[1] is not None:
+                    try:
+                        for i in range(len(r[1])):
+                            win_list.append(r[1][i])
+                    except Exception:
+                        pass
+                if not win_list:
+                    for attr in ("AXMainWindow", "AXFocusedWindow"):
+                        rr = AS.AXUIElementCopyAttributeValue(app_element, attr, None)
+                        if rr[0] == 0 and rr[1] is not None:
+                            win_list.append(rr[1])
+                            break
+                if not win_list:
+                    return False
+
+                # 选窗：标题精确匹配优先，其次位置最接近保存值
+                target = None
+                want_title = layout_info.get('title') or ""
+                if want_title:
+                    for w in win_list:
+                        t, _, _, _, _ = self._read_window_geometry(w)
+                        if t == want_title:
+                            target = w
+                            break
+                if target is None:
+                    tx = int(layout_info.get('x', 0))
+                    ty = int(layout_info.get('y', 0))
+                    best_d = None
+                    for w in win_list:
+                        _, x, y, _, _ = self._read_window_geometry(w)
+                        d = abs(x - tx) + abs(y - ty)
+                        if best_d is None or d < best_d:
+                            target = w
+                            best_d = d
+
+                x = int(layout_info['x'])
+                y = int(layout_info['y'])
+                width = int(layout_info['width'])
+                height = int(layout_info['height'])
+
+                # 写位置与尺寸（必须 AXValueCreate 造值，3 参调用）
+                pos_value = AS.AXValueCreate(AS.kAXValueCGPointType, Quartz.CGPointMake(x, y))
+                pos_ret = AS.AXUIElementSetAttributeValue(target, AS.kAXPositionAttribute, pos_value)
+                size_value = AS.AXValueCreate(AS.kAXValueCGSizeType, Quartz.CGSizeMake(width, height))
+                size_ret = AS.AXUIElementSetAttributeValue(target, AS.kAXSizeAttribute, size_value)
+
+                if pos_ret == 0 and size_ret == 0:
+                    print(f"窗口布局已设置 (PID: {pid} -> {x},{y} {width}x{height})")
+                    return True
+                print(f"设置窗口布局失败 (PID: {pid}, pos_err={pos_ret}, size_err={size_ret})")
+                return False
+
+            except ImportError as e:
+                print(f"错误: pyobjc 导入失败: {e}")
                 return False
             except Exception as e:
-                return self._handle_accessibility_error("设置窗口布局", e)
+                self._handle_accessibility_error("设置窗口布局", e)
+                return False
 
         def get_screen_metrics(self):
             """

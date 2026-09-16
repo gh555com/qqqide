@@ -12,6 +12,7 @@ import * as https from 'https';
 import { URL } from 'url';
 import { BrowserWindow } from 'electron';
 import { APP_VERSION, readManifestId } from './version';
+import { getDataDir } from './portable-paths';
 import { mi, miDict } from './main-i18n';
 
 // ── 全局启动锁：一旦 bootSequence 成功完成，绝不允许 fallback 再入侵窗口 ──
@@ -106,6 +107,9 @@ export function healthCheck(urlStr: string, timeoutMs: number, isOffline: boolea
 // 格式: "N|文字" (进度%|阶段描述) 或 "ready" (启动完成)
 function writeBootStatus(portableRoot: string, line: string): void {
     if (!portableRoot) return;
+    // ★ mac（2026-09-16）：无 C 启动器消费方；且写 .app bundle 内会破坏代码签名封条
+    //   （TCC csreq 失配）→ 直接跳过，零 bundle 写入。
+    if (process.platform === 'darwin') return;
     try {
         fs.writeFileSync(path.join(portableRoot, 'loading-status'), line, 'utf-8');
     } catch (_) { }
@@ -147,7 +151,7 @@ function _copyDirContentsSync(src: string, dest: string): void {
  *   （webapp 单元增量更新的目标），webapp bundle 仅兜底（bundle 不随增量刷新）。
  */
 export function ensureLocalWebapp(portableRoot: string): string | null {
-    const localDir = path.join(portableRoot, 'Data', 'webapp');
+    const localDir = path.join(getDataDir(), 'webapp');
     const manifestId = readManifestId(portableRoot);
     const stampPath = path.join(localDir, '.qqq-webapp-version');
 
@@ -616,7 +620,7 @@ export async function bootSequence(
 ): Promise<void> {
     // 0) Init boot file log + clean stale loading-status (from previous run)
     const bootT0 = Date.now();
-    initBootLog(path.join(portableRoot, 'Data', 'Logs'));
+    initBootLog(path.join(getDataDir(), 'Logs'));
     try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
     writeBootStatus(portableRoot, '0|' + mi('main.boot.firstBoot'));
 

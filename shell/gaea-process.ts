@@ -30,6 +30,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { getComponentBin } from './component-checker';
 import { mi } from './main-i18n';
+import { getDataDir } from './portable-paths';
 
 export type GaeaLifecycle = 'attached' | 'independent';
 
@@ -428,7 +429,7 @@ export function getAllGoodsSettings(goodsId: string): Record<string, any> {
 
 function _resolveGoodsScript(portableRoot: string, scriptPath: string): string {
     // ① Data/webapp/ — packaged green pack, hot-updated via u pipeline
-    const dataWebapp = path.join(portableRoot, 'Data', 'webapp');
+    const dataWebapp = path.join(getDataDir(), 'webapp');
     const p1 = path.join(dataWebapp, scriptPath);
     if (fs.existsSync(p1)) return p1;
 
@@ -505,7 +506,7 @@ export function startGaeaProcess(
     lifecycle: GaeaLifecycle = 'attached',
     allowMultiple: boolean = true
 ): { ok: boolean; pid?: number; error?: string; alreadyRunning?: boolean } {
-    const userData = path.join(portableRoot, 'Data');
+    const userData = getDataDir();
     _userDataPath = userData;
     _goodsMeta.set(goodsId, { allowMultiple });
 
@@ -910,7 +911,7 @@ export function startGaeaWatchdog(
     runtime: string = 'python',
     lifecycle: GaeaLifecycle = 'attached'
 ): void {
-    const userData = path.join(portableRoot, 'Data');
+    const userData = getDataDir();
 
     // 防重复
     stopGaeaWatchdog(goodsId);

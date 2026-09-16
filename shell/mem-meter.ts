@@ -6,6 +6,9 @@
 //   ctypes 直调 ~7.5ms/次，实测 288 进程全系统）→ 树内 Σ 专用工作集
 //   （SYSTEM_PROCESS_INFORMATION offset 8，任务管理器「内存」列同口径，
 //   2026-08-29 实测 8/8 逐字节命中 WMI WorkingSetPrivate）。
+//   macOS（2026-09-16）: py-broker _mac_mem_snapshot —— libproc（proc_listpids +
+//   bsdinfo + pid_rusage/pidinfo），内存 = phys_footprint（活动监视器口径），
+//   CPU 时间 = rusage 纳秒，同一树 Σ 口径；此前 mac 恒 --。
 // ★ v6 CPU 口径定案（2026-08-29 用户要求「更直观更好量化，不用单核百分比」）：
 //   单核百分比在 64 核机上 1% = 0.64 核，四舍五入全显示 0% → 无价值。
 //   改为三个量化维度（任务管理器/资源监视器认知模型）：
@@ -324,6 +327,7 @@ function _resolveLabel(): string {
     let p = app.getAppPath();
     for (let i = 0; i < 10; i++) {
       try { if (fs.existsSync(path.join(p, 'qqqide.exe'))) return p; } catch { break; }
+      if (p.endsWith('.app')) return path.dirname(p);   // mac: .app 包根 → 其父目录（启动包位置）
       const up = path.dirname(p);
       if (up === p) break;
       p = up;

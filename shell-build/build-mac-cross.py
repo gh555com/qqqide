@@ -327,7 +327,13 @@ def build_python():
         'pyobjc-core==10.3.2',
         'pyobjc-framework-Cocoa==10.3.2',
         'pyobjc-framework-Quartz==10.3.2',
+        'pyobjc-framework-CoreText==10.3.2',
         'pyobjc-framework-ApplicationServices==10.3.2',
+        # ★ CoreText 是 ApplicationServices 伞形包的硬依赖（其 __init__ 直接
+        #   import CoreText —— 缺它则 import ApplicationServices 必炸，
+        #   window-there 的依赖检测与 AX 辅助功能 API 全部不可用）。
+        #   2026-09-16 实测补齐（Quartz 轮子内只有 Quartz/CoreGraphics 子包，
+        #   顶层 CoreText 是独立轮子）。
     ]
     pip_cross_install(sp, wheels, 'core')
     mini_used = '1.61'
@@ -354,10 +360,11 @@ def build_python():
                 'manual:PySide6==6.6.3.1\n'
                 'manual:shiboken6==6.6.3.1\n'
                 'manual:PySide6-Essentials==6.6.3.1\n'
-                'manual:pyobjc-core==10.3.2\n'
-                'manual:pyobjc-framework-Cocoa==10.3.2\n'
-                'manual:pyobjc-framework-Quartz==10.3.2\n'
-                'manual:pyobjc-framework-ApplicationServices==10.3.2\n'
+         'manual:pyobjc-core==10.3.2\n'
+        'manual:pyobjc-framework-Cocoa==10.3.2\n'
+        'manual:pyobjc-framework-Quartz==10.3.2\n'
+        'manual:pyobjc-framework-CoreText==10.3.2\n'
+        'manual:pyobjc-framework-ApplicationServices==10.3.2\n'
                 'manual:sitecustomize\n')
 
     slim_tree(sp)
@@ -439,4 +446,5 @@ def main():
     log('[done] cross artifacts under %s' % CROSS)
 
 
-main()
+if __name__ == '__main__':
+    main()

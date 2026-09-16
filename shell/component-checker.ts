@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { spawnSync, execSync } from 'child_process';
+import { getDataDir } from './portable-paths';
 
 // ── 类型 ──
 interface SrcEntry { url: string; kind: 'zip' | 'tar.gz' | 'binary' | 'sfx7z'; }
@@ -546,7 +547,7 @@ async function _downloadAndInstall(
     verifyArgs: string[],
     portableRoot: string,
 ): Promise<void> {
-    const dlDir = path.join(portableRoot, 'Data');
+    const dlDir = getDataDir();
     const ext = src.kind === 'tar.gz' ? '.tar.gz' : (src.kind === 'sfx7z' ? '.7z.exe' : '.zip');
     const dlFile = path.join(dlDir, '_dl_' + name + ext);
 

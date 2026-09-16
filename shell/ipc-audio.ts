@@ -15,10 +15,11 @@ import { ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { AudioEngine } from './audio-engine';
+import { getDataDir } from './portable-paths';
 
 function resolveWebappDir(appRoot: string): string | null {
     const candidates = [
-        path.join(appRoot, 'Data', 'webapp'),       // packaged (gh555.com/Data/webapp)
+        path.join(getDataDir(), 'webapp'),          // packaged (mac: qqqide-data/Data · win: gh555.com/Data)
         path.join(appRoot, 'server-app'),           // dev (project root)
         path.join(appRoot, 'resources', 'app', 'webapp'),
     ];

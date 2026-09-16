@@ -11,7 +11,8 @@ import * as http from 'http';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker } from './py-broker';
 import { claimSquad, releaseSquad, broadcastSquadState } from './squad-manager';
-import { releaseProject } from './project-lock';
+import { releaseProject } from './project-lock';
+import { getDataDir } from './portable-paths';
 import { SimpleWebSocket } from './cdp-sniffer';
 import { crashNetLog, crashNetSnapshot } from './crash-net';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
@@ -450,7 +451,7 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
     // ★ 渲染进程崩溃监控 + 自动恢复 (2026-08-08 F13):
     //   崩溃(含 V8 OOM) → 记录 reason + exitCode 到 Data/alphal/render-crash.log → 防抖 3s 自动 reload
     //   窗口不消失; 下次崩溃即可凭 reason 实锤根因 ('oom' = V8 堆耗尽)
-    const _crashLogPath = path.join(portableRoot, 'Data', 'alphal', 'render-crash.log');
+    const _crashLogPath = path.join(getDataDir(), 'alphal', 'render-crash.log');
     win.webContents.on('render-process-gone', (_e, details) => {
         const reason = (details && details.reason) || 'unknown';
         try {

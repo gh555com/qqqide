@@ -14,6 +14,7 @@
 import { spawn, ChildProcess, execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getDataDir } from './portable-paths';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import * as http from 'http';
@@ -244,7 +245,7 @@ export class CdpSniffer {
         // User data dir: use provided or create in portable cache
         let userDataDir = options.userDataDir;
         if (!userDataDir) {
-            userDataDir = path.join(this.appRoot, 'Data', 'chrome-user-data');
+            userDataDir = path.join(getDataDir(), 'chrome-user-data');
             try { fs.mkdirSync(userDataDir, { recursive: true }); } catch { }
         }
         this.tmpDir = userDataDir;

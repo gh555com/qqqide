@@ -23,6 +23,7 @@ import * as crypto from 'crypto';
 import * as https from 'https';
 import { safeStorage } from 'electron';
 import { APP_VERSION } from './version';
+import { getDataDir } from './portable-paths';
 import { getAuthPhone } from './auth-state';
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ let _userDataPath = '';              // ★ portable.userData，启动时注入
 let _logPath = '';
 function pingLog(msg: string): void {
     if (!_logPath) {
-        const base = _userDataPath || path.join(path.dirname(process.execPath), 'Data');
+        const base = _userDataPath || getDataDir();
         _logPath = path.join(base, 'alphal', 'wq-ping.log');
         try { fs.mkdirSync(path.dirname(_logPath), { recursive: true }); } catch (_) { }
     }
@@ -64,7 +65,7 @@ function pingLog(msg: string): void {
 function alphalDir(): string {
     // ★ 优先用注入的 userData 路径（与 main.ts 一致），
     //    兜底用 execPath 旁 Data/alphal（绿色包兼容）
-    const base = _userDataPath || path.join(path.dirname(process.execPath), 'Data');
+    const base = _userDataPath || getDataDir();
     const dataDir = path.join(base, 'alphal');
     try { fs.mkdirSync(dataDir, { recursive: true }); } catch (_) { }
     return dataDir;
@@ -186,7 +187,7 @@ function collectUpdHealth(): Record<string, unknown> | null {
     // ★ 2026-09-15 路径修复: base = {pack}/gh555.com/Data → liveDir = {pack}/gh555.com → packRoot = {pack}
     //   旧代码 path.join(dirname(base), 'gh555.com') 二次拼接出 gh555.com/gh555.com
     //   → versions.json/qqqide.exe 探测恒失败 → 遥测字段永不携带（生产 qqqide_upd_health 全表 0 行）。
-    const base = _userDataPath || path.join(path.dirname(process.execPath), 'Data');
+    const base = _userDataPath || getDataDir();
     const liveDir = path.dirname(base);
     const packRoot = path.dirname(liveDir);
     if (!fs.existsSync(path.join(liveDir, 'versions.json')) ||
