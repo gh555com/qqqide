@@ -511,6 +511,27 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqq-lang-change') translateUi();
   });
+
+  // ★ i18n 助手（供全面板 JS 用）: _i(key, fb) / _qq(key, fb, params) —— 代理父窗口，{name} 插值
+  window._i = function (key, fallback) {
+    try { if (parent && parent._i) return parent._i(key, fallback); } catch (_) { }
+    return (fallback !== undefined && fallback !== null) ? fallback : key;
+  };
+  window._qq = function (key, fallback, params) {
+    var s = null;
+    try {
+      if (parent && parent.window && parent.window.i18n && parent.window.i18n.t) {
+        var r = parent.window.i18n.t(key, params || undefined);
+        if (r !== key) s = r;
+      }
+    } catch (_) { }
+    if (s === null) s = window._i(key, fallback);
+    if (s === null || s === undefined || s === key) s = (fallback !== undefined && fallback !== null) ? fallback : key;
+    if (params && typeof s === 'string') {
+      Object.keys(params).forEach(function (k) { s = s.split('{' + k + '}').join(String(params[k])); });
+    }
+    return s;
+  };
 })();
 </script>
 </head>
@@ -565,7 +586,7 @@ var _orig={};
     <span class="quest-tofu-prefix" id="quest-tofu-prefix"></span>
     <span class="quest-tofu-text" id="quest-tofu-text">─</span>
     <input class="quest-tofu-edit" id="quest-tofu-edit" type="text" style="display:none">
-    <span class="quest-tofu-pen" id="quest-tofu-pen" title="编辑名称" style="display:none">✏️</span>
+    <span class="quest-tofu-pen" id="quest-tofu-pen" title="编辑名称" data-i18n-title="ai.quest.renameTitle" style="display:none">✏️</span>
   </div>
   <!-- q2x 行已删除：统一走 dropdown 头行（hover q2 才出现） -->
 </div>
@@ -576,9 +597,9 @@ var _orig={};
 <div id="search-bar">
   <span class="search-input-wrap">
     <textarea id="search-input" rows="1" placeholder="" spellcheck="false"></textarea>
-    <button id="search-clear" class="search-clear" title="清除">✕</button>
+    <button id="search-clear" class="search-clear" title="清除" data-i18n-title="ai.search.clear">✕</button>
   </span>
-  <button id="search-case" class="search-tog" title="区分大小写">Aa</button>
+  <button id="search-case" class="search-tog" title="区分大小写" data-i18n-title="ai.search.caseSensitive">Aa</button>
   <span class="search-nav" id="search-nav"></span>
   <button id="search-prev">▲</button>
   <button id="search-next">▼</button>
@@ -592,7 +613,7 @@ var _orig={};
 <div id="floor-indicator"><span class="floor-ind-tofu">-</span><span class="floor-ind-needle"></span></div>
 </div>
 <div id="input-area">
-  <button id="bullet-btn" title="子弹"><img src="../img/zd4.png" alt="子弹" style="opacity:0.75"></button>
+  <button id="bullet-btn" title="子弹" data-i18n-title="ai.bulletTip"><img src="../img/zd4.png" alt="子弹" style="opacity:0.75"></button>
   <div id="queue-strip"></div>
   <div id="image-strip"></div>
   <div id="input-limit-warn" data-i18n="ai.inputLimitWarn">键入已达上限 58KB，无法继续键入</div>
@@ -602,7 +623,7 @@ var _orig={};
     </div>
   </div>
   <div id="input-progress"><div id="input-progress-fill"></div></div>
-  <button id="newline-btn" title="插入换行" data-no-cd>&#8629;</button>
+  <button id="newline-btn" title="插入换行" data-i18n-title="ai.newline" data-no-cd>&#8629;</button>
   <div id="btn-row">
     <div class="tier-group">
       <button class="tier-btn tier-a" id="tier-a">A</button>
@@ -628,14 +649,14 @@ var _orig={};
   <div class="ctx-panel-overlay"></div>
   <div class="ctx-panel-box">
     <div class="ctx-panel-body">
-      <p><strong>上下文背包 V24 引擎</strong></p>
-      <p>对于长程（高楼层）任务，请点击管理，为上下文背包减重。</p>
-      <p>最佳实践：进入下一楼层之前，背包重量维持在 100k 以内。那可以显著降低费用和提高 AI 注意力。</p>
+      <p><strong data-i18n="ai.ctxPanel.title">上下文背包 V24 引擎</strong></p>
+      <p data-i18n="ai.ctxPanel.hint">对于长程（高楼层）任务，请点击管理，为上下文背包减重。</p>
+      <p data-i18n="ai.ctxPanel.best">最佳实践：进入下一楼层之前，背包重量维持在 100k 以内。那可以显著降低费用和提高 AI 注意力。</p>
     </div>
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-color,#555);">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;user-select:none;">
         <input type="checkbox" id="ctx-perq-level" style="accent-color:var(--blue);cursor:pointer;">
-        <span id="ctx-perq-title">独立滴压缩策略</span>
+        <span id="ctx-perq-title" data-i18n="ai.ctxPanel.perQuest">独立滴压缩策略</span>
       </label>
       <div id="ctx-perq-slider" style="display:none;margin-top:10px;">
         <div style="display:flex;align-items:center;gap:10px;">
@@ -652,8 +673,8 @@ var _orig={};
     </div>
     <div class="ctx-panel-actions">
       <button id="ctx-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;margin-right:auto;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;pointer-events:auto;top:-1px;background:transparent;color:var(--text-primary);line-height:1;">?</button>
-      <button id="ctx-snap">📸 快照</button>
-      <button id="ctx-manage">📋 管理</button>
+      <button id="ctx-snap">📸 <span data-i18n="ai.snap">快照</span></button>
+      <button id="ctx-manage">📋 <span data-i18n="ai.ctxPanel.manage">管理</span></button>
 
     </div>
   </div>
@@ -662,7 +683,7 @@ var _orig={};
 <!-- 上下文占用拆解面板（hover ctx-btn 弹出） -->
 <div id="ctx-breakdown">
   <div class="ctx-bd-wrap">
-    <div class="ctx-bd-title">上下文背包</div>
+    <div class="ctx-bd-title" data-i18n="ai.ctx.backpack">上下文背包</div>
     <div class="ctx-bd-rows"></div>
   </div>
 </div>
@@ -678,6 +699,7 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="system-prompt.js"></script>
 <script src="embedding-service.js"></script>
 <script src="ai-gateway.js"></script>
+<script src="byok.js"></script>
 <script src="tools-defs.js"></script>
 <script src="tools-exec-write.js"></script>
 <script src="tools-exec.js"></script>

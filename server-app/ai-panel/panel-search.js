@@ -143,7 +143,7 @@
     }
 
     function _updateNav() {
-        if (_marks.length === 0) { $searchNav.textContent = _searchText ? '无匹配' : ''; }
+        if (_marks.length === 0) { $searchNav.textContent = _searchText ? _qq('ai.search.noMatch', '无匹配') : ''; }
         else { $searchNav.textContent = (_activeIdx + 1) + '/' + _marks.length; }
     }
 

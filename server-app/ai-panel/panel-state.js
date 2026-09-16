@@ -246,7 +246,7 @@ window._toggleBillingDebug = function () {
         var st = ag._billingDebug ? '✅ ON' : '❌ OFF';
         console.log('[billing debug] ' + st + ' — 楼层完结时打印全账单明细');
         if (typeof window.parent !== 'undefined' && window.parent.qqqideQoast) {
-            window.parent.qqqideQoast.show('记账调试 ' + (ag._billingDebug ? '已开启' : '已关闭'), { duration: 2000 });
+            window.parent.qqqideQoast.show(_qq('ai.billingDebugQoast', '记账调试 {0}', { 0: (ag._billingDebug ? _qq('ai.billingDebugOn', '已开启') : _qq('ai.billingDebugOff', '已关闭')) }), { duration: 2000 });
         }
         return ag._billingDebug;
     }

@@ -81,6 +81,7 @@
     } else {
       el.style.display = 'none';
     }
+    _scheduleFit(); // ★ badge 宽度变化影响预算 → 重算
   }
 
   function _startGitBadgePolling() {
@@ -94,6 +95,44 @@
   let _dirCache = new Map(); // per-dropdown cache: key=dirPath, value=entries[]
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
+
+  // ---- ★ 超窄窗口自适应机器（2026-09-16）: 三档降级 全名 → 均分 → 图标态 ----
+  //   背景: 旧 flex-wrap:wrap 会换行撑破 30px 固定高菜单行；旧名字固定 140px 不可缩。
+  //   机制: 容器 flex:1 1 auto 恒=可用宽（外部决定，与内容无关）→ 此处按预算均分名字宽
+  //         统一档位（不各自为政）→ 预算不足统一转图标态（aiv-noname）→ 极限溢出滚轮横滚兜底。
+  //   ⚠ 魔法数字与 shell-main.css 同步: gap=6 / 容器 padding=16 / 固定块成本≈72
+  var AIV_NAME_MIN = 32;    // 名字可读下限（≈3字符级）: 低于此值名字无识别价值 → 全部块转图标态
+  var AIV_NAME_MAX = 140;   // 名字上限（与 .aiv-block-name 设计一致）
+  var AIV_BLOCK_FIXED = 72; // 每块固定成本估算（padding16+icon19+rm22+平均badge15）
+  var _fitRaf = 0;
+
+  function _scheduleFit() {
+    if (_fitRaf) return;
+    _fitRaf = requestAnimationFrame(function () { _fitRaf = 0; _fitViewport(); });
+  }
+
+  function _fitViewport() {
+    if (!container || !projects.length) return;
+    var n = projects.length;
+    var avail = container.clientWidth;
+    if (avail <= 0) return;
+    var per = Math.floor((avail - 16 - 6 * n) / n - AIV_BLOCK_FIXED);
+    if (per >= AIV_NAME_MIN) {
+      if (per > AIV_NAME_MAX) per = AIV_NAME_MAX;
+      if (container.style.getPropertyValue('--aiv-name-w') !== per + 'px') {
+        container.style.setProperty('--aiv-name-w', per + 'px');
+      }
+      container.classList.remove('aiv-noname');
+      // 单向防溢校正（估算误差兜底；最多 2 轮只减不增，防振荡）
+      for (var i = 0; i < 2 && container.scrollWidth > container.clientWidth + 1; i++) {
+        var over = container.scrollWidth - container.clientWidth;
+        per = Math.max(AIV_NAME_MIN, per - Math.ceil(over / n) - 1);
+        container.style.setProperty('--aiv-name-w', per + 'px');
+      }
+    } else {
+      container.classList.add('aiv-noname');
+    }
+  }
 
   // ★ 模糊匹配：空格 = AND，逐字符顺序匹配
   function _fuzzyMatch(query, target) {
@@ -236,7 +275,7 @@
   function _createFilterBar(scrollContainer, dirPath) {
     var bar = document.createElement('div');
     bar.className = 'aiv-filter-bar';
-    bar.style.cssText = 'display:flex; padding:4px 6px; flex-shrink:0; border-bottom:1px solid var(--border-color); align-items:center; gap:4px;';
+    bar.style.cssText = 'display:flex; padding:4px 6px; flex-shrink:0; border-bottom:1px solid var(--border-color); align-items:center; gap:4px; position:relative; z-index:60;'; // ★ z-index 60 > 滑轨 50：筛选框/排序按钮点击不被滑轨命中区截胡
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'aiv-filter-input';
@@ -1141,9 +1180,11 @@
     });
 
     // ★ 自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
+    // ★ 无滑轨绘制（2026-09-16）: 滑轨仅作 12px hover 命中区，零背景（开放厨房式纯滚动块）；参数对齐 AI 面板聊天区 qh 标准
+    // ★ 独立命中区（2026-09-16）: 滑轨 100% 遮挡光标事件（点击绝不穿透到下层行，防误点文件喂 AI）；hover 变粗 / 点击跳转 / 滚轮转发滚屏
     var sbOuter = document.createElement('div');
     sbOuter.className = 'qh-scroll-track';
-    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50; pointer-events:none; background:var(--base2);';
+    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50;';
     var sbThumb = document.createElement('div');
     sbThumb.className = 'qh-scroll-thumb';
     function _qhCol() {
@@ -1151,7 +1192,7 @@
       return { c: isDark ? '#fff' : '#000' };
     }
     var _co = _qhCol();
-    sbThumb.style.cssText = 'position:absolute; right:2px; width:3px; min-height:20px; border-radius:0; ' +
+    sbThumb.style.cssText = 'position:absolute; right:10px; width:2px; min-height:24px; border-radius:0; ' +
       'display:none; background:' + _co.c + '; cursor:pointer; opacity:0.6; forced-color-adjust:none; pointer-events:auto; ' +
       'transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease;';
     var _sbDragging = false;   // ★ F107: 拖拽期间保持粗态，光标移出滑轨 x 范围也不收缩
@@ -1160,7 +1201,7 @@
     });
     sbOuter.addEventListener('mouseleave', function () {
       if (_sbDragging) return;
-      sbThumb.style.width = '3px'; sbThumb.style.right = '2px'; sbThumb.style.opacity = '0.6';
+      sbThumb.style.width = '2px'; sbThumb.style.right = '10px'; sbThumb.style.opacity = '0.6';
     });
     function _syncSB() {
       var sh = inner.scrollHeight, ch = inner.clientHeight;
@@ -1185,6 +1226,14 @@
       inner.scrollTop = Math.max(0, Math.min(sh - ch, Math.round(ratio * (sh - ch))));
       e.preventDefault();
     });
+    // ★ 滚轮转发（2026-09-16）: 滑轨遮挡事件后，滚轮在本区域照常滚屏
+    sbOuter.addEventListener('wheel', function (e) {
+      var sh = inner.scrollHeight, ch = inner.clientHeight;
+      if (sh <= ch) return;
+      var d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      inner.scrollTop += d;
+      e.preventDefault();
+    }, { passive: false });
     var _dr = false, _dsY = 0, _dsS = 0;
     sbThumb.addEventListener('mousedown', function (e) {
       if (e.button !== 0) return;
@@ -1209,7 +1258,7 @@
       if (at && sbOuter.contains(at)) {
         sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
       } else {
-        sbThumb.style.width = '3px'; sbThumb.style.right = '2px'; sbThumb.style.opacity = '0.6';
+        sbThumb.style.width = '2px'; sbThumb.style.right = '10px'; sbThumb.style.opacity = '0.6';
       }
     });
     setTimeout(_syncSB, 50);
@@ -1310,7 +1359,7 @@
     if (entries.length === 0) {
       const empty = document.createElement('div');
       empty.style.cssText = 'padding:6px 12px; color:var(--base1); font-size:11px;';
-      empty.textContent = '(空)';
+      empty.textContent = window._i('shell.viewport.empty', '(空)');
       parentEl.appendChild(empty);
       return;
     }
@@ -1684,6 +1733,7 @@
 
     // trailing "add" block (dashed)
     container.appendChild(createAddBlock());
+    _scheduleFit(); // ★ 块增删 → 重新均分名字预算
   }
 
   function createBlock(proj, idx) {
@@ -1875,16 +1925,16 @@
     try {
       const r = await bridge.dialog.message({
         type: 'question',
-        title: '移除项目',
-        message: `确定从 AI 视口移除「${proj.name}」？`,
+        title: window._i('shell.viewport.removeTitle', '移除项目'),
+        message: window._i('shell.viewport.removeConfirm', '确定从 AI 视口移除「{n}」？').split('{n}').join(proj.name),
         detail: proj.path,
-        buttons: ['移除', '取消'],
+        buttons: [window._i('shell.viewport.removeBtn', '移除'), window._i('common.cancel', '取消')],
         defaultId: 1,
         cancelId: 1,
       });
       return r && r.response === 0;
     } catch (_) {
-      return confirm(`移除「${proj.name}」？`);
+      return confirm(window._i('shell.viewport.removeAsk', '移除「{n}」？').split('{n}').join(proj.name));
     }
   }
 
@@ -1949,7 +1999,7 @@
         // 其他实例活锁 → 拒绝添加
         console.warn('[ai-viewport] lock pre-check failed for ' + folderPath + ' (pid=' + (res.holder && res.holder.pid) + ')');
         if (window.qqqideQoast) {
-          window.qqqideQoast.show('⚠️ 该项目已在另一个窗口作为主文件夹打开', { duration: 6000, type: 'warn' });
+          window.qqqideQoast.show(window._i('shell.viewport.openElsewhere', '⚠️ 该项目已在另一个窗口作为主文件夹打开'), { duration: 6000, type: 'warn' });
         }
         return;
       }
@@ -1985,6 +2035,22 @@
     _loadSortPrefs();
     _loadViewportState();
     render();
+    // ★ 超窄窗口兜底（2026-09-16）: 豆腐块已收缩到极限（名字全隐图标态）仍横向溢出时，
+    //   滚轮纵向滚动转换为横向滚动——滚动条全隐，没有这层溢出块将永远不可达
+    container.addEventListener('wheel', function (e) {
+      if (container.scrollWidth <= container.clientWidth + 1) return; // 无溢出 → 不拦截
+      var d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (!d) return;
+      var step = e.deltaMode === 1 ? 40 : 1; // 行模式设备放大步进
+      container.scrollLeft += d * step;
+      e.preventDefault();
+    }, { passive: false });
+    // ★ 容器宽度变化（窗口缩放/控件变化）→ 重新均分（容器 flex:1 1 auto 恒=可用宽，零振荡）
+    if (typeof ResizeObserver !== 'undefined') {
+      var _aivFitRO = new ResizeObserver(function () { _scheduleFit(); });
+      _aivFitRO.observe(container);
+    }
+    _scheduleFit();
     // ★ 关闭下拉：左键点击列表外任何位置（窗口内+窗口外）
     function _isOutsideDropdown(target) {
       if (!activeDropdown) return false;
@@ -2051,7 +2117,7 @@
     render();
     _notifyChanged();
     if (window.qqqideQoast) {
-      window.qqqideQoast.show('⚠️ 主文件夹已被另一窗口占用，AI 视口已清空为干净窗口', { duration: 6000, type: 'warn' });
+      window.qqqideQoast.show(window._i('shell.viewport.clearedBusy', '⚠️ 主文件夹已被另一窗口占用，AI 视口已清空为干净窗口'), { duration: 6000, type: 'warn' });
     }
     return true;
   }

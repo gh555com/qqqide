@@ -30,6 +30,7 @@
 
 import { ipcMain, WebContents } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
+import { mi } from './main-i18n';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -228,7 +229,7 @@ export function registerQmdIpc(appRoot: string): void {
         if (sessions.size >= MAX_SESSIONS) return { ok: false, error: 'session_limit' };
         if (shellType === 'gitbash') {
             if (!_qmdCmdline('gitbash', appRoot)) {
-                return { ok: false, error: 'no_bash_found: 未找到可用的 Git Bash（git 组件缺失，重启 IDE 自动修复）' };
+                return { ok: false, error: 'no_bash_found: ' + mi('main.term.noBash') };
             }
         }
         const cwd = String(o.cwd || process.env.USERPROFILE || '');
@@ -283,7 +284,7 @@ export function registerQmdIpc(appRoot: string): void {
                 sessions.set(sid, ns);
                 _push(owner, 'qqqide:qmd:restarted', { id: sid });
             } else {
-                _push(owner, 'qqqide:qmd:exit', { id: sid, code: -1, error: 'restart_failed: ' + shellType + ' 不可用' });
+                _push(owner, 'qqqide:qmd:exit', { id: sid, code: -1, error: 'restart_failed: ' + shellType + ' ' + mi('main.term.unavailable') });
             }
         }
         return { ok: true };

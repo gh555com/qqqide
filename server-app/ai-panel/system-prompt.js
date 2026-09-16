@@ -15,6 +15,8 @@ var _GW_FALLBACK_RETRY_MS = 5 * 60 * 1000;
 
 // 切线路 + qoast 提示
 function _gwSwitch(toFallback) {
+    // ★ 自带 API Key 通道（byok.js）：单端点直连，无平台线路概念——静默跳过，防误报「线路切换」
+    try { if (window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()) return; } catch (_) { }
     if (_gwUsingFallback === toFallback) return;
     _gwUsingFallback = toFallback;
     GATEWAY_URL = toFallback ? GATEWAY_URL_FALLBACK : GATEWAY_URL_PRIMARY;
@@ -22,7 +24,7 @@ function _gwSwitch(toFallback) {
     try {
         var q = window.parent && window.parent.qqqideQoast;
         if (q) q.show(
-            toFallback ? 'AI 网关已自动切换到备用线路' : 'AI 网关已切回主线路',
+            toFallback ? _qq('ai.gwFallback', 'AI 网关已自动切换到备用线路') : _qq('ai.gwPrimary', 'AI 网关已切回主线路'),
             { type: toFallback ? 'warning' : 'success' }
         );
     } catch (_) { }

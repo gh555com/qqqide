@@ -313,11 +313,11 @@ var CardPool = (function () {
     if (!conv || !conv.length) {
       // ★ 仅在真正流式中断时展示 _streamingText（_streaming 为 true 才说明是中断，而非正常完成后的残留）
       if (fData && fData._streamingText && fData._streaming) {
-        return '<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div><div class="msg-status">⏳ 打印中断（已自动保存）</div>';
+        return '<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div><div class="msg-status">' + _escHtml(_qq('ai.status.printInterrupted', '⏳ 打印中断（已自动保存）')) + '</div>';
       }
       // ★ fatal 楼层兜底：conversation 为空时显示简要状态（红框由 floor-gap DOM 层单独渲染）
       if (fData && fData.floorFatal) {
-        return '<div class="msg-status">⚠️ 楼层异常中断，对话已保存。</div>';
+        return '<div class="msg-status">' + _escHtml(_qq('ai.status.floorInterrupted', '⚠️ 楼层异常中断，对话已保存。')) + '</div>';
       }
       return '';
     }
@@ -339,16 +339,16 @@ var CardPool = (function () {
       if (m._guideAck && m.role === 'assistant') {
         // 引导确认回合：渲染引导注入信息 + AI 确认回复
         if (m._guideText) {
-          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">⚡</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(m._guideText) + '</div></div>');
+          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">⚡</span> ' + _escHtml(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + _escHtml(m._guideText) + '</div></div>');
         }
-        var _ackText = (m.content || '已收到引导').replace(/^✅\s*/, '').trim();
+        var _ackText = (m.content || _qq('ai.guideAck', '已收到引导')).replace(/^✅\s*/, '').trim();
         // ★ 始终渲染绿条（即使 _ackText 为空也显示占位，防止空洞）
-        parts.push('<div class="msg-flow-guide-ack"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> 已收到引导</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackText || '已收到引导') + '</div></div>');
+        parts.push('<div class="msg-flow-guide-ack"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> ' + _escHtml(_qq('ai.guideAck', '已收到引导')) + '</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackText || _qq('ai.guideAck', '已收到引导')) + '</div></div>');
       } else if (m._injected && m.role === 'user') {
         // 降级注入消息（如 [GUIDE] 注入）
         var _injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '').trim();
         if (_injText) {
-          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
+          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> ' + _escHtml(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
         }
       } else if (m._error && m.role === 'assistant') {
         // ★ 错误消息：跳过不渲染（红框由 DOM 层 floor-gap 单独管理）
@@ -363,7 +363,7 @@ var CardPool = (function () {
     // ★ 附加流式中断文本（仅在真正中断时，而非 floor 正常完成后残留的 _streamingText）
     if (fData && fData._streamingText && fData._streaming) {
       parts.push('<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div>');
-      parts.push('<div class="msg-status">⏳ 打印中断（已自动保存）</div>');
+      parts.push('<div class="msg-status">' + _escHtml(_qq('ai.status.printInterrupted', '⏳ 打印中断（已自动保存）')) + '</div>');
     }
 
     // ★ 工具执行总结（仅正常完成的 tool-only 楼层；fatal/流式中断不显示幽灵文本）
@@ -372,7 +372,7 @@ var CardPool = (function () {
       for (var _ti = 0; _ti < fData.houses.length; _ti++) {
         _tc += (fData.houses[_ti].toolCount || (fData.houses[_ti].tools ? fData.houses[_ti].tools.length : 0));
       }
-      parts.push('<div class="msg-flow-tools-done">' + _escHtml('工具执行完毕' + (_tc > 0 ? '（' + _tc + ' 次调用）' : '')) + '</div>');
+      parts.push('<div class="msg-flow-tools-done">' + _escHtml(_qq('ai.toolsDone', '工具执行完毕') + (_tc > 0 ? _qq('ai.toolsDoneCount', '（{0} 次调用）', { 0: _tc }) : '')) + '</div>');
     }
 
     // ★ 红框不再由 _buildConversationFlowHtml 渲染 — 由 floor-gap DOM 层单独管理
@@ -437,7 +437,7 @@ var CardPool = (function () {
     var b = document.createElement('span');
     b.className = 'table-roam-btn';
     b.textContent = 'Roam';
-    b.title = '在 Roam 中定位此文件';
+    b.title = _qq('ai.roamLocate', '在 Roam 中定位此文件');
     wrap.insertBefore(b, wrap.firstChild);
   }
 
@@ -672,7 +672,7 @@ var CardPool = (function () {
         var _rbtn = document.createElement('span');
         _rbtn.className = 'table-roam-btn';
         _rbtn.textContent = 'Roam';
-        _rbtn.title = '在 Roam 中定位此文件';
+        _rbtn.title = _qq('ai.roamLocate', '在 Roam 中定位此文件');
         _twrap.appendChild(_rbtn);
       }
       _twrap.appendChild(_bImg);

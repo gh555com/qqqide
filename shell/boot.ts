@@ -12,6 +12,7 @@ import * as https from 'https';
 import { URL } from 'url';
 import { BrowserWindow } from 'electron';
 import { APP_VERSION, readManifestId } from './version';
+import { mi, miDict } from './main-i18n';
 
 // ── 全局启动锁：一旦 bootSequence 成功完成，绝不允许 fallback 再入侵窗口 ──
 let bootCompleted = false;
@@ -248,12 +249,17 @@ export async function loadStaticFallback(
             } catch (e) {
                 bootLog('fallback: loadFile crashed — ' + (e && (e as Error).message || String(e)));
                 // 最后的最后的兜底：data URL
-                try { await mainWindow.loadURL('data:text/html,<h1>qd (qqqide) offline</h1><p>请重启应用</p>'); } catch (_) { }
+                try { await mainWindow.loadURL('data:text/html,' + encodeURIComponent('<h1>qd (qqqide) offline</h1><p>' + mi('main.boot.restartApp') + '</p>')); } catch (_) { }
             }
+            // ★ 离线页 i18n 注入（页面暴露 __qqqApplyLang；注入失败不阻塞）
+            try {
+                const dict = miDict(['main.boot.noServer', 'main.boot.retry', 'main.boot.portableHint', 'main.boot.firstWait', 'main.boot.connecting', 'main.boot.retrying', 'main.boot.stillFail', 'main.boot.reason', 'main.boot.retryFail']);
+                await mainWindow.webContents.executeJavaScript('window.__qqqApplyLang && window.__qqqApplyLang(' + JSON.stringify(dict) + ')');
+            } catch (_) { /* ignore */ }
             return 'fallback';
         }
     }
-    try { await mainWindow.loadURL('data:text/html,<h1>qd (qqqide) offline</h1><p>请重启应用</p>'); } catch (_) { }
+    try { await mainWindow.loadURL('data:text/html,' + encodeURIComponent('<h1>qd (qqqide) offline</h1><p>' + mi('main.boot.restartApp') + '</p>')); } catch (_) { }
     return 'fallback';
 }
 
@@ -351,7 +357,7 @@ export async function loadRemoteWithCacheGuard(
                 #__qqq_boot_panel .pct{color:#93a1a1;font-size:12px;margin-top:8px}
                 @keyframes __qqq_spin{to{transform:rotate(360deg)}}
             `.replace(/\n\s*/g, '');
-            const html = '<div id="__qqq_boot_panel"><div class="wrap"><div class="spinner"></div><div class="stage">正在连接服务器…</div><div class="bar-bg"><div class="bar-fg" id="__qqq_boot_bar"></div></div><div class="pct" id="__qqq_boot_pct">0%</div></div></div>';
+            const html = '<div id="__qqq_boot_panel"><div class="wrap"><div class="spinner"></div><div class="stage">' + mi('main.boot.connecting') + '</div><div class="bar-bg"><div class="bar-fg" id="__qqq_boot_bar"></div></div><div class="pct" id="__qqq_boot_pct">0%</div></div></div>';
             wc.executeJavaScript(`
                 try{
                     // ★ 彻底隐藏 IDE 内容 — 不是遮罩，是完全不显示
@@ -369,13 +375,15 @@ export async function loadRemoteWithCacheGuard(
         };
         const updateLoadingPanel = (stage: string, pct: number) => {
             writeLoadingStatus(pct + '|' + stage);
+            // 翻译文本可含引号 → JS 注入转义（防注入串被破坏）
+            const _esc = String(stage).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
             wc.executeJavaScript(`
                 try{
                     var s=document.getElementById("__qqq_boot_pct");
                     if(s&&s.parentElement){s.textContent="${pct}%"}
                     var b=document.getElementById("__qqq_boot_bar");
                     if(b){b.style.width="${pct}%"}
-                    Array.from(document.querySelectorAll("#__qqq_boot_panel .stage")).forEach(function(e){e.textContent="${stage}"})
+                    Array.from(document.querySelectorAll("#__qqq_boot_panel .stage")).forEach(function(e){e.textContent="${_esc}"})
                 }catch(_){}
             `.replace(/\n\s*/g, '')).catch(() => { });
         };
@@ -393,10 +401,10 @@ export async function loadRemoteWithCacheGuard(
             const total = pendingReqs + doneReqs;
             if (total === 0) { return; }
             const pct = Math.min(94, Math.round(doneReqs / Math.max(total, 1) * 100));
-            const stage = pct < 30 ? '正在加载页面结构…'
-                : pct < 60 ? '正在加载组件脚本…'
-                    : pct < 85 ? '正在加载样式资源…'
-                        : '正在初始化 IDE…';
+            const stage = pct < 30 ? mi('main.boot.structure')
+                : pct < 60 ? mi('main.boot.scripts')
+                    : pct < 85 ? mi('main.boot.styles')
+                        : mi('main.boot.init');
             updateLoadingPanel(stage, pct);
             // ★ Win7 上 dom-ready/did-stop-loading 均不触发，通过 webReq 冷却期判断完成
             if (pendingReqs === 0 && doneReqs > 0) {
@@ -419,7 +427,7 @@ export async function loadRemoteWithCacheGuard(
             wc.removeListener('did-stop-loading', onStopLoading);
             wc.removeListener('did-fail-load', onFail);
             bootLog('remote: all resources loaded + dom-ready → IDE ready');
-            updateLoadingPanel('正在启动 IDE…', 100);
+            updateLoadingPanel(mi('main.boot.starting'), 100);
             writeLoadingStatus('ready');
             // ★ 重要：resolve Promise，否则 30s 超时会把 fallback 盖到 IDE 上
             finish(true, 'live');
@@ -474,7 +482,7 @@ export async function loadRemoteWithCacheGuard(
         const onNavigate = (_e: any, _url: string, httpCode: number) => {
             bootLog('remote: did-navigate http=' + httpCode);
             if (httpCode >= 200 && httpCode < 400) {
-                if (!isDev) { injectLoadingPanel(); updateLoadingPanel('正在解析页面…', 5); }
+                if (!isDev) { injectLoadingPanel(); updateLoadingPanel(mi('main.boot.parsing'), 5); }
                 // ★ 时间兜底进度 + 定期状态报告
                 let lastPct = 5;
                 let tickCount = 0;
@@ -488,16 +496,16 @@ export async function loadRemoteWithCacheGuard(
                         clearInterval(progressTickId!); progressTickId = null; return;
                     }
                     lastPct = Math.min(88, lastPct + 6);
-                    const stage = lastPct < 35 ? '正在加载页面结构…'
-                        : lastPct < 60 ? '正在加载组件脚本…'
-                            : lastPct < 80 ? '正在加载样式资源…'
-                                : '正在初始化 IDE…';
+                    const stage = lastPct < 35 ? mi('main.boot.structure')
+                        : lastPct < 60 ? mi('main.boot.scripts')
+                            : lastPct < 80 ? mi('main.boot.styles')
+                                : mi('main.boot.init');
                     updateLoadingPanel(stage, lastPct);
                 }, 2500);
                 // 10 分钟终极兜底（跨洋弱网 + Win7 极端慢）
                 panelTimer = setTimeout(() => {
                     bootLog('remote: ultimate fallback after 10min — force show (pending=' + pendingReqs + ' done=' + doneReqs + ')');
-                    updateLoadingPanel('即将完成…', 95);
+                    updateLoadingPanel(mi('main.boot.almost'), 95);
                     writeLoadingStatus('ready');  // ★ 告知 C 启动器可以关了
                     removeLoadingPanel();
                     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -516,7 +524,7 @@ export async function loadRemoteWithCacheGuard(
             // ★ 兜底：webRequest 没追踪到资源时，dom-ready 本身就是强信号
             if (doneReqs === 0) {
                 bootLog('remote: dom-ready fallback (no requests tracked) → 90%');
-                updateLoadingPanel('正在初始化 IDE…', 90);
+                updateLoadingPanel(mi('main.boot.init'), 90);
             }
             if (pendingReqs === 0) { onAllReady(); }
         };
@@ -610,7 +618,7 @@ export async function bootSequence(
     const bootT0 = Date.now();
     initBootLog(path.join(portableRoot, 'Data', 'Logs'));
     try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
-    writeBootStatus(portableRoot, '0|正在启动…');
+    writeBootStatus(portableRoot, '0|' + mi('main.boot.firstBoot'));
 
     // ★ 开发模式：直连本地 dev-server，不走网络
     const DEV_URL = 'http://127.0.0.1:8090/qqqide/';

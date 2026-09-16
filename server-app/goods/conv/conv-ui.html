@@ -580,9 +580,9 @@ window.addEventListener('message', function (e) {
         // only facts 中间状态：r 已替换，楼层建楼中
         if (e.data.status === 'floor-starting') {
             var _stEl = document.getElementById('cmp-status');
-            if (_stEl) { _stEl.style.display = 'inline'; _stEl.textContent = '⏳ AI 提取 facts 中…'; }
-            var _titleMap = { onlyfacts: '🧠 Facts 提取中…' };
-            showCompressAnimation(_titleMap[e.data.action] || '压缩中…', e.data.beforeChars, e.data.afterChars);
+            if (_stEl) { _stEl.style.display = 'inline'; _stEl.textContent = _i('goods.conv.factsExtracting', '⏳ AI 提取 facts 中…'); }
+            var _titleMap = { onlyfacts: _i('goods.conv.factsExtractingTitle', '🧠 Facts 提取中…') };
+            showCompressAnimation(_titleMap[e.data.action] || _i('goods.conv.compressing', '压缩中…'), e.data.beforeChars, e.data.afterChars);
             return;
         }
         clearTimeout(window._cmpTimeout);
@@ -596,8 +596,8 @@ window.addEventListener('message', function (e) {
                 //   完成时不再重复播放，仅 toast 提示结果
                 toast(_i('goods.conv.compressOnlyfactsOk', '✅ Facts 已提取'));
             } else {
-                var titleMap = { absolut: '🧹 绝对包装盒已剥离', editonly: '✂️ 已精简为仅编辑包装盒' };
-                var title = titleMap[e.data.action] || '✅ 压缩完成';
+                var titleMap = { absolut: _i('goods.conv.compressAbsolutOk', '🧹 绝对包装盒已剥离'), editonly: _i('goods.conv.compressEditonlyOk', '✂️ 已精简为仅编辑包装盒') };
+                var title = titleMap[e.data.action] || _i('goods.conv.compressDone', '✅ 压缩完成');
                 showCompressAnimation(title, e.data.beforeChars, e.data.afterChars);
                 // 动画后自动关闭（动画1.6s + 停留4.4s = 6s，取6s）
                 setTimeout(function () {

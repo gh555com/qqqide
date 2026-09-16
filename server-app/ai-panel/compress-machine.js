@@ -246,7 +246,7 @@
     // ★ 2026-08-23 F88: 自动提取可见提示（q178 f87 实锤：楼层凭空出现用户无法理解，必须告知）
     try {
       if (window.parent && window.parent.qqqideQoast) {
-        window.parent.qqqideQoast.show('自动压缩：已按全托管档位提取事实（仅此一次，5 层冷却内不再自动提取）', { type: 'info', duration: 6000 });
+        window.parent.qqqideQoast.show(_qq('ai.autoCompressFacts', '自动压缩：已按全托管档位提取事实（仅此一次，5 层冷却内不再自动提取）'), { type: 'info', duration: 6000 });
       }
     } catch (_) { }
     // 派发复用手动 handler 全链路（切半/写子弹/建楼层/tier-4 提取/注入 fx），

@@ -23,6 +23,11 @@
 (function () {
   'use strict';
 
+  // ── i18n 助手（key 缺失回退中文；i18n 未就绪时直接用回退）──
+  function _i(k, fb) {
+    return (typeof window._i === 'function') ? window._i(k, fb) : (fb || k);
+  }
+
   // ── 状态 ──
   var _cache = {};           // 内存缓存
   var _qgsHandle = null;
@@ -38,45 +43,53 @@
     {
       key: 'editor.undoMode',
       label: '编辑器撤销模式',
+      labelKey: 'settings.undoMode.label',
       desc: 'Ctrl+Z 在代码编辑器中撤销的粒度',
+      descKey: 'settings.undoMode.desc',
       type: 'radio',
       tab: 'general',
       defaultValue: _D['editor.undoMode'] || 'char',
       options: [
-        { value: 'char', label: '逐字回退', desc: '每按一次 Ctrl+Z 撤销一个字符' },
-        { value: 'word', label: '单词回退', desc: 'Monaco 原生撤销，按编辑操作分组（推荐用于代码）' }
+        { value: 'char', label: '逐字回退', labelKey: 'settings.undoMode.char', desc: '每按一次 Ctrl+Z 撤销一个字符', descKey: 'settings.undoMode.charDesc' },
+        { value: 'word', label: '单词回退', labelKey: 'settings.undoMode.word', desc: 'Monaco 原生撤销，按编辑操作分组（推荐用于代码）', descKey: 'settings.undoMode.wordDesc' }
       ]
     },
     {
       key: 'ai.defaultTier',
       label: '默认 AI 等级',
+      labelKey: 'settings.defaultTier.label',
       desc: '数字越大=思考越深、质量越高、越慢、越贵',
+      descKey: 'settings.defaultTier.desc',
       type: 'radio',
       tab: 'general',
       defaultValue: String(_D['ai.defaultTier'] || 3),
       options: [
-        { value: '1', label: '1', desc: '轻量' },
-        { value: '2', label: '2', desc: '轻量+推理' },
-        { value: '3', label: '3', desc: '轻量+深度推理' },
-        { value: '4', label: '4', desc: '专业' },
-        { value: '5', label: '5', desc: '专业+推理' },
-        { value: '6', label: '6', desc: '专业+深度推理' }
+        { value: '1', label: '1', desc: '轻量', descKey: 'settings.defaultTier.d1' },
+        { value: '2', label: '2', desc: '轻量+推理', descKey: 'settings.defaultTier.d2' },
+        { value: '3', label: '3', desc: '轻量+深度推理', descKey: 'settings.defaultTier.d3' },
+        { value: '4', label: '4', desc: '专业', descKey: 'settings.defaultTier.d4' },
+        { value: '5', label: '5', desc: '专业+推理', descKey: 'settings.defaultTier.d5' },
+        { value: '6', label: '6', desc: '专业+深度推理', descKey: 'settings.defaultTier.d6' }
       ]
     },
     {
       key: 'ai.compressLevel',
       label: '自动压缩 上下文背包',
+      labelKey: 'settings.compress.label',
       desc: '默认值为中等',
+      descKey: 'settings.compress.desc',
       type: 'slider-stepped',
       tab: 'general',
       defaultValue: _D['ai.compressLevel'] || 'medium',
       showLabel: true,
       stopsLabels: ['关闭', '中等', '全托管'],
+      stopsLabelKeys: ['settings.compress.off', 'settings.compress.medium', 'settings.compress.full'],
       stops: ['off', 'medium', 'full']
     },
     {
       key: 'ai.floorCap',
       label: '显示楼层',
+      labelKey: 'settings.floorCap.label',
       desc: '',
       type: 'slider-stepped',
       tab: 'general',
@@ -88,7 +101,9 @@
     {
       key: 'audio.volume',
       label: '音量',
+      labelKey: 'settings.volume.label',
       desc: 'IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。出厂默认 25%。',
+      descKey: 'settings.volume.desc',
       type: 'slider-stepped',
       tab: 'general',
       defaultValue: _D['audio.volume'] || '25',
@@ -97,6 +112,7 @@
     {
       key: 'desktop.shortcut',
       label: '自动生成快捷方式',
+      labelKey: 'settings.shortcut.label',
       type: 'bool',
       tab: 'general',
       defaultValue: _D['desktop.shortcut'] !== undefined ? String(_D['desktop.shortcut']) : 'true'
@@ -104,7 +120,9 @@
     {
       key: 'timeline.trackRunCommand',
       label: '追踪命令文件变更',
+      labelKey: 'settings.trackRun.label',
       desc: '开启后，AI 执行的 shell 命令修改的文件会自动记录到版本时间线。关闭可减少 timeline 快照噪音。',
+      descKey: 'settings.trackRun.desc',
       type: 'bool',
       tab: 'advanced',
       defaultValue: _D['timeline.trackRunCommand'] || false
@@ -112,7 +130,9 @@
     {
       key: 'secret.maskHelp',
       label: '协助密钥脱敏',
+      labelKey: 'settings.secret.label',
       desc: '发现项目有未提交更改时，自动识别并抹除其中的密钥（API Key/密码/Token 等）。无法自动确认的会弹窗请你协同处理。',
+      descKey: 'settings.secret.desc',
       type: 'bool',
       tab: 'advanced',
       defaultValue: 'false'
@@ -209,7 +229,7 @@
     _$btn = document.createElement('button');
     _$btn.className = 'qqq-settings-btn';
     _$btn.setAttribute('data-i18n-title', 'settings.title');
-    _$btn.title = '设置';
+    _$btn.title = _i('settings.title', '设置');
     _$btn.textContent = '\u2699'; // ⚙ gear
     _$btn.addEventListener('click', function (e) {
       e.preventDefault();
@@ -237,16 +257,18 @@
     var scenes = (q && q.sfxScenes) ? q.sfxScenes() : [];
     var h = '<div style="margin-top:10px; padding:10px 12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg + ';">';
     h += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">';
-    h += '<span style="font-size:12px; font-weight:bold; color:' + text + ';">音效开关</span>';
-    h += '<span style="font-size:10px; color:' + textDim + ';">默认全部启用 · 即时生效</span>';
+    h += '<span style="font-size:12px; font-weight:bold; color:' + text + ';">' + _i('settings.sfxTitle', '音效开关') + '</span>';
+    h += '<span style="font-size:10px; color:' + textDim + ';">' + _i('settings.sfxSubtitle', '默认全部启用 · 即时生效') + '</span>';
     h += '</div>';
     for (var i = 0; i < scenes.length; i++) {
       var sc = scenes[i];
       var on = (q && q.sfxOn) ? q.sfxOn(sc.key) : true;
-      h += '<label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none;" title="' + (sc.desc || '') + '">';
+      var _scLabel = sc.lk ? _i(sc.lk, sc.label) : sc.label;
+      var _scDesc = sc.dk ? _i(sc.dk, sc.desc || '') : (sc.desc || '');
+      h += '<label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none;" title="' + _scDesc + '">';
       h += '<input type="checkbox" class="qqq-sfx-check" data-sfx-key="' + sc.key + '"' + (on ? ' checked' : '') + ' style="margin:0; accent-color:' + accent + '; flex-shrink:0;">';
-      h += '<span style="font-size:12px; color:' + text + '; white-space:nowrap;">' + sc.label + '</span>';
-      h += '<span style="font-size:10px; color:' + textDim + '; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + sc.file + ' · ' + (sc.desc || '') + '</span>';
+      h += '<span style="font-size:12px; color:' + text + '; white-space:nowrap;">' + _scLabel + '</span>';
+      h += '<span style="font-size:10px; color:' + textDim + '; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + sc.file + ' · ' + _scDesc + '</span>';
       h += '</label>';
     }
     h += '</div>';
@@ -328,8 +350,8 @@
     // 标题行
     html += '<div style="padding:16px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center; justify-content:space-between;">';
     html += '<div style="display:flex; align-items:center; gap:12px;">';
-    html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">设置</span>';
-    html += '<button id="qqq-settings-restart" style="padding:3px 10px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:11px; cursor:default; white-space:nowrap;">重置窗口</button>';
+    html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">' + _i('settings.title', '设置') + '</span>';
+    html += '<button id="qqq-settings-restart" style="padding:3px 10px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:11px; cursor:default; white-space:nowrap;">' + _i('settings.restart', '重置窗口') + '</button>';
     // ★ 构建戳（与重置窗口成对）：SW缓存旧代码 → 红色⚠️ → 按「重置窗口」
     html += '<span id="qqq-status-build" style="font-family:Consolas,monospace;font-size:11px;color:' + textDim + ';">stamp: --</span>';
     html += '</div>';
@@ -338,8 +360,8 @@
 
     // ★ 标签栏
     html += '<div style="display:flex; border-bottom:1px solid ' + border + ';">';
-    html += '<button id="qqq-settings-tab-general" class="qqq-settings-tab" style="flex:1; padding:8px 0; border:none; border-bottom:2px solid ' + (_activeTab === 'general' ? accent : 'transparent') + '; background:transparent; color:' + (_activeTab === 'general' ? text : textDim) + '; font-size:13px; font-weight:' + (_activeTab === 'general' ? 'bold' : 'normal') + ';">常规</button>';
-    html += '<button id="qqq-settings-tab-advanced" class="qqq-settings-tab" style="flex:1; padding:8px 0; border:none; border-bottom:2px solid ' + (_activeTab === 'advanced' ? accent : 'transparent') + '; background:transparent; color:' + (_activeTab === 'advanced' ? text : textDim) + '; font-size:13px; font-weight:' + (_activeTab === 'advanced' ? 'bold' : 'normal') + ';">高级</button>';
+    html += '<button id="qqq-settings-tab-general" class="qqq-settings-tab" style="flex:1; padding:8px 0; border:none; border-bottom:2px solid ' + (_activeTab === 'general' ? accent : 'transparent') + '; background:transparent; color:' + (_activeTab === 'general' ? text : textDim) + '; font-size:13px; font-weight:' + (_activeTab === 'general' ? 'bold' : 'normal') + ';">' + _i('settings.tabGeneral', '常规') + '</button>';
+    html += '<button id="qqq-settings-tab-advanced" class="qqq-settings-tab" style="flex:1; padding:8px 0; border:none; border-bottom:2px solid ' + (_activeTab === 'advanced' ? accent : 'transparent') + '; background:transparent; color:' + (_activeTab === 'advanced' ? text : textDim) + '; font-size:13px; font-weight:' + (_activeTab === 'advanced' ? 'bold' : 'normal') + ';">' + _i('settings.tabAdvanced', '高级') + '</button>';
     html += '</div>';
 
     html += '<div style="padding:12px 20px;">';
@@ -352,7 +374,7 @@
     }
 
     if (tabDefs.length === 0) {
-      html += '<div style="font-size:12px; color:' + textDim + '; text-align:center; padding:40px 0;">此标签页暂无设置项</div>';
+      html += '<div style="font-size:12px; color:' + textDim + '; text-align:center; padding:40px 0;">' + _i('settings.empty', '此标签页暂无设置项') + '</div>';
     }
 
     // 渲染每个设置项
@@ -363,22 +385,22 @@
       if (def.key === 'ai.compressLevel') {
         // ★ 标题行右侧问号按钮（外观照搬 ctx-panel #ctx-help），点击跳转上下文背包文档
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
-        html += '<span style="font-size:13px;font-weight:bold;color:' + text + ';">' + def.label + '</span>';
+        html += '<span style="font-size:13px;font-weight:bold;color:' + text + ';">' + _i(def.labelKey, def.label) + '</span>';
         html += '<button class="qqq-compress-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;background:transparent;color:var(--text-primary,#eee);line-height:1;">?</button>';
         html += '</div>';
       } else if (def.key !== 'audio.volume') {
         // 音量卡片的标题行由下方 flex 分支渲染（右侧挂 1 by 1 按钮）
-        html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + def.label + '</div>';
+        html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + _i(def.labelKey, def.label) + '</div>';
       }
       // ★ 音量卡片：标题行右侧挂「1 by 1」按钮（音效开关子卡片开合）
       if (def.key === 'audio.volume') {
         html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">';
-        html += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + def.label + '</span>';
-        html += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap; margin-left:20px;" title="逐个音效开关">1 by 1</button>';
+        html += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + _i(def.labelKey, def.label) + '</span>';
+        html += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap; margin-left:20px;" title="' + _i('settings.sfxTooltip', '逐个音效开关') + '">1 by 1</button>';
         html += '</div>';
       }
       // ★ 无 desc 项不渲染描述行（防 undefined）
-      if (def.desc) html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
+      if (def.desc) html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + _i(def.descKey, def.desc) + '</div>';
 
       if (def.type === 'slider-stepped') {
         var stops = def.stops || ['0', '25', '50', '75', '100'];
@@ -389,7 +411,7 @@
         // ★ 紧凑一行：左边标签 + 右边拉杆（无刻度数字）
         // ★ 2026-08-23: showLabel 变体（压缩档位三档）——左侧显示 stopsLabels 中文，非百分比
         var _sliderLabel = def.showLabel
-          ? (def.stopsLabels ? def.stopsLabels[curIdx] : stops[curIdx])
+          ? (def.stopsLabels ? (def.stopsLabelKeys ? _i(def.stopsLabelKeys[curIdx], def.stopsLabels[curIdx]) : def.stopsLabels[curIdx]) : stops[curIdx])
           : (stops[curIdx] + '%');
         html += '<div style="display:flex; align-items:center; gap:12px;">';
         html += '<span style="font-size:12px; color:' + (def.key === 'ai.floorCap' ? green : textDim) + '; white-space:nowrap; min-width:32px;">' + _sliderLabel + '</span>';
@@ -415,7 +437,7 @@
         html += '</div>';
         // ★ 显示楼层：未激活用户点 32/64 → 拉杆右侧红字提示（2026-09-05；64 档 2026-09-06）
         if (def.key === 'ai.floorCap' && _floorCapHintOn) {
-          html += '<span style="font-size:11px; color:' + red + '; white-space:nowrap;">该功能需先激活</span>';
+          html += '<span style="font-size:11px; color:' + red + '; white-space:nowrap;">' + _i('settings.needActivation', '该功能需先激活') + '</span>';
         }
         html += '</div>';
         // ★ 音效开关子卡片（音量 1 by 1 展开态，紧随拉杆下方）
@@ -431,7 +453,7 @@
         html += '<div style="position:absolute; top:2px; left:' + (boolOn ? '22px' : '2px') + '; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.3); transition:left 150ms;"></div>';
         html += '</div>';
         html += '<input type="checkbox" id="' + toggleId + '" ' + (boolOn ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="position:absolute; opacity:0; pointer-events:none;">';
-        html += '<span style="font-size:12px; color:' + text + ';">' + (boolOn ? '已开启' : '已关闭') + '</span>';
+        html += '<span style="font-size:12px; color:' + text + ';">' + (boolOn ? _i('settings.on', '已开启') : _i('settings.off', '已关闭')) + '</span>';
         html += '</label>';
       } else if (def.type === 'radio') {
         // ★ 默认 AI 等级：6 个水平格子（紧凑1-2行），选中打勾 ✓
@@ -455,8 +477,8 @@
             html += '<label style="display:flex; align-items:flex-start; margin-bottom:6px; padding:6px 8px; border-radius:3px; background:' + (checked ? accent + '20' : 'transparent') + '; border:1px solid ' + (checked ? accent : 'transparent') + ';">';
             html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="margin-top:2px; margin-right:8px; accent-color:' + accent + ';">';
             html += '<div>';
-            html += '<div style="font-size:12px; color:' + text + ';">' + opt.label + '</div>';
-            html += '<div style="font-size:10px; color:' + textDim + ';">' + opt.desc + '</div>';
+            html += '<div style="font-size:12px; color:' + text + ';">' + (opt.labelKey ? _i(opt.labelKey, opt.label) : opt.label) + '</div>';
+            html += '<div style="font-size:10px; color:' + textDim + ';">' + (opt.descKey ? _i(opt.descKey, opt.desc) : opt.desc) + '</div>';
             html += '</div>';
             html += '</label>';
           }
@@ -494,7 +516,7 @@
     var $restart = document.getElementById('qqq-settings-restart');
     if ($restart) {
       $restart.addEventListener('click', function () {
-        $restart.textContent = '重置中...';
+        $restart.textContent = _i('settings.restarting', '重置中...');
         $restart.style.opacity = '0.6';
         $restart.style.pointerEvents = 'none';
 
@@ -592,7 +614,8 @@
     var helpBtns = _$panel.querySelectorAll('.qqq-compress-help');
     for (var hb = 0; hb < helpBtns.length; hb++) {
       helpBtns[hb].addEventListener('click', function () {
-        window.open('https://www.gh555.com/gaea/d/qqqide?lang=zh#docs/qqqide-2', '_blank');
+        var _docLang = (window.i18n && window.i18n.getLang) ? window.i18n.getLang() : 'zh';
+        window.open('https://www.gh555.com/gaea/d/qqqide?lang=' + encodeURIComponent(_docLang) + '#docs/qqqide-2', '_blank');
       });
     }
 
@@ -676,6 +699,11 @@
     // 桌面快捷方式：初始同步 + 变更监听
     setTimeout(function () { _syncDesktopShortcut(); }, 2000);
     onChange('desktop.shortcut', function () { _syncDesktopShortcut(); });
+    // ★ 语言切换 → 打开中的面板/弹窗即时按新语言重渲染（i18n.setLang 广播 qqq-lang-change）
+    window.addEventListener('qqq-lang-change', function () {
+      if (_$overlay && _$overlay.style.display !== 'none') _renderPanel();
+      if (_tierOverlay && _tierOverlay.style.display !== 'none') _renderTierPopup();
+    });
   }
 
   // 自动初始化（DOM 就绪后）
@@ -753,7 +781,7 @@
     var html = '';
     // 标题行
     html += '<div style="padding:14px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center; justify-content:space-between;">';
-    html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">AI 等级说明</span>';
+    html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">' + _i('settings.tier.title', 'AI 等级说明') + '</span>';
     html += '<button id="tier-popup-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center; cursor:pointer;">✕</button>';
     html += '</div>';
 
@@ -761,41 +789,41 @@
 
     if (!_tierExpanded) {
       // ── 收拢态 ──
-      html += '<div style="margin-bottom:12px;"><b style="color:' + accent + ';">1档：</b>最低智能，快、便宜。</div>';
-      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">6档：</b>最高智能，慢、贵。</div>';
-      html += '<div style="margin-bottom:4px;">qqqide 不再提供自动换档功能，';
-      html += '<span id="tier-reason-link" style="color:' + red + '; text-decoration:underline; cursor:pointer;">理由</span>';
+      html += '<div style="margin-bottom:12px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv1', '1档：') + '</b>' + _i('settings.tier.t1', '最低智能，快、便宜。') + '</div>';
+      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv6', '6档：') + '</b>' + _i('settings.tier.t6', '最高智能，慢、贵。') + '</div>';
+      html += '<div style="margin-bottom:4px;">' + _i('settings.tier.noAuto', 'qqqide 不再提供自动换档功能，');
+      html += '<span id="tier-reason-link" style="color:' + red + '; text-decoration:underline; cursor:pointer;">' + _i('settings.tier.reason', '理由') + '</span>';
       html += '</div>';
     } else {
       // ── 展开态：完整说明 ──
-      html += '<div style="margin-bottom:10px;"><b style="color:' + accent + ';">1档：</b>最低智能，快、便宜。</div>';
-      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">6档：</b>最高智能，慢、贵。</div>';
-      html += '<div style="margin-bottom:10px;">qqqide 不再提供自动换档功能，理由：</div>';
+      html += '<div style="margin-bottom:10px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv1', '1档：') + '</b>' + _i('settings.tier.t1', '最低智能，快、便宜。') + '</div>';
+      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">' + _i('settings.tier.lv6', '6档：') + '</b>' + _i('settings.tier.t6', '最高智能，慢、贵。') + '</div>';
+      html += '<div style="margin-bottom:10px;">' + _i('settings.tier.noAutoReason', 'qqqide 不再提供自动换档功能，理由：') + '</div>';
 
       html += '<div style="color:' + textDim + '; line-height:1.8;">';
-      html += '<p style="margin-top:0;">为了方便你理解，我们划分出了如下架构：</p>';
+      html += '<p style="margin-top:0;">' + _i('settings.tier.arch', '为了方便你理解，我们划分出了如下架构：') + '</p>';
       html += '<p style="text-align:center; font-weight:bold; color:' + text + ';">project → quest → floor → house → room</p>';
-      html += '<p>一个 project 就是一个项目你也可以理解为就是一个文件夹，一个 quest 就是一个任务，你可以在一个任务里盖多层楼，你每发送出去一次消息就等于是盖了一层楼，也就是一个 floor，那你同时可以开多个任务（quest），每一个任务又可以盖多层楼，这很好理解。</p>';
-      html += '<p>而在你看不到的后台，其实每一层楼都会跟服务器往返多次消息，也就是表面上你只按了一次发送，但实际上会做多次发送、和接收。</p>';
-      html += '<p>为什么会那样？假想一种情况，比如你让服务器改一个超大项目的代码，服务器大概会多次返回查询指定代码的指令，以尽可能地了解你的本地代码，服务器的这种要求可以并行也可以串行，对于串行，服务器发送一个指令回来，你本地接收指令、按指令查询指令要求的代码（结果），再将结果发送回服务器，这样的一来一回我们叫做一个 <b>house</b>。</p>';
-      html += '<p>而实际上，服务器可以一次提出多个要求，也就是服务器送回一次消息，你本地会「并行地」去执行多个指令，那么每一个指令我们叫他一个 <b>room</b>，每一个 room 返回一个结果，那看上去「多间 room」就组成了一个 house（对应了跟服务器的一来一回）。但非常重要的一点是，表面上看你只按了一次发送按钮：house 和 room 都是静默、自动地进行的（与服务器的交互）。</p>';
-      html += '<p>最终看上去，一个 project 可以包含多个 quest，一个 quest 可以包含多个 floor，一个 floor 可以包含多个 house，一个 house 可以包含多个 room。</p>';
-      html += '<p style="margin-top:18px;"><b style="color:' + text + ';">你可以休息一会儿，因为接下来就是重点。</b></p>';
-      html += '<p>首先，你最难接受但必须接受的一个事实是：</p>';
-      html += '<p style="font-weight:bold; border-left:3px solid ' + red + '; padding-left:12px; color:' + text + ';">别说 project 和 quest，哪怕是同一个 floor 里面的不同 house（对应物理上的一次服务器往返），它们请求的可能都是物理隔绝的服务器（大模型），简单讲就是，服务器那边即便有缓存，但你也要假设服务器那边根本不会存在任何关于你本次任务（project、quest 或 floor）的任何记忆，也就是你首先必须要颠覆的一点认知是：<span style="color:' + red + ';">AI 根本不存在记忆。</span></p>';
-      html += '<p>那你可能好奇，AI 是怎么记住 50 层楼之前你们的聊天内容的？你很难接受但必须接受的事实是：每一间 house，也就是哪怕是最细分的一次服务器往返，你发送给服务器的，都尽可能地带上了你之前每一层楼的所有对话、甚至工具查询结果，注意，每一次最细分的服务器往返，代表你即便不是按发送按钮而是后台自动静默的 house 级别的往返，都会尽量带上之前的一切，更别说 floor 级别的发送。而「一切」是指从第一层楼到现在的一切对话、工具调用结果，那样的一个集合也就是「上下文」。</p>';
-      html += '<p>你的第一个问题是，那为什么没有盖两层楼就把 1M 的上下文总空间撑爆，主要原因是，根据 IDE 的策略选择不同，即便最保守的 AI IDE，也不会把 200KB 的源代码查询结果直接放进上下文，实际上大概只会截取里面 2KB 的关键行代码，而其他的工具结果，比如日志，基本都会被做成摘要，同样回到 KB 级别。</p>';
-      html += '<p>而且 AI IDE 基本都会有自己的压缩策略，qqqide 的压缩策略是保留最近 6 层楼的完整信息，假设压缩时在最近 6 层楼之前有 200 层楼，那那 200 层楼会被压缩成最大 32KB 的摘要。压缩是一次专门的 AI 请求，就比如给 AI 1M 的文本（上下文），要求 AI 总结，返回不超过 32KB 的文本。</p>';
-      html += '<p>我希望这就解释了，为什么在一个 quest 里，当你楼修到第 5 层，你放着不管过半年回来，你再按一次发送按钮，AI 还能跟你接着聊（似乎之前的一切它都记得），即便过了半年、模型早已更新换代……因为大模型是无状态的（不会保存关于你的任何记录），而你每一次都会发送完整上下文（它们不是储存在你本地硬盘，就是储存在中转服务器的硬盘里）。</p>';
-      html += '<p>你可能还有一点不相信：「AI（大模型）总应该记得些什么？」。没有，什么都不记得。你认为的那些「记得」，只是你本地硬盘或者中转服务器偷偷在记的「小本本」，下次按发送按钮小本本会一起发给 AI。</p>';
-      html += '<p style="margin-top:18px;">ok，有了上面的认知，你可以得到第一个让你放心的结论：</p>';
-      html += '<p style="font-weight:bold; border-left:3px solid ' + accent + '; padding-left:12px; color:' + text + ';">「无论怎样切换模型档位都不会导致记忆丢失」</p>';
-      html += '<p>即：在任何时间点切换模型档位 → 记忆不会丢失 → 但会左右中间推论的质量。</p>';
-      html += '<p style="margin-top:18px;">回到最原始的问题：qqqide 为什么不再提供自动换档功能。</p>';
-      html += '<p>答案有两点：</p>';
-      html += '<p><b>1、</b>不能保证「用最高的智能去写最重要的代码」，我们知道这一点至关重要，但总会有边界情况。</p>';
-      html += '<p><b>2、</b>自动换档本质上是让最高智能的 AI 来评估问题复杂度（再来选择实际干活的 AI），但长远来看，每一层楼都会凭空增加至少一次「最高智能 AI」的调用，这是一笔长远账单，但如果反之，我们不用最高智能去做评估，又会增加第一点对应的风险。</p>';
-      html += '<p style="font-weight:bold; margin-top:16px;">最终 qqqide 决定做一个更好用的换档杆，将换档权，百分百地只交在你手里。</p>';
+      html += '<p>' + _i('settings.tier.p1', '一个 project 就是一个项目你也可以理解为就是一个文件夹，一个 quest 就是一个任务，你可以在一个任务里盖多层楼，你每发送出去一次消息就等于是盖了一层楼，也就是一个 floor，那你同时可以开多个任务（quest），每一个任务又可以盖多层楼，这很好理解。') + '</p>';
+      html += '<p>' + _i('settings.tier.p2', '而在你看不到的后台，其实每一层楼都会跟服务器往返多次消息，也就是表面上你只按了一次发送，但实际上会做多次发送、和接收。') + '</p>';
+      html += '<p>' + _i('settings.tier.p3', '为什么会那样？假想一种情况，比如你让服务器改一个超大项目的代码，服务器大概会多次返回查询指定代码的指令，以尽可能地了解你的本地代码，服务器的这种要求可以并行也可以串行，对于串行，服务器发送一个指令回来，你本地接收指令、按指令查询指令要求的代码（结果），再将结果发送回服务器，这样的一来一回我们叫做一个 <b>house</b>。') + '</p>';
+      html += '<p>' + _i('settings.tier.p4', '而实际上，服务器可以一次提出多个要求，也就是服务器送回一次消息，你本地会「并行地」去执行多个指令，那么每一个指令我们叫他一个 <b>room</b>，每一个 room 返回一个结果，那看上去「多间 room」就组成了一个 house（对应了跟服务器的一来一回）。但非常重要的一点是，表面上看你只按了一次发送按钮：house 和 room 都是静默、自动地进行的（与服务器的交互）。') + '</p>';
+      html += '<p>' + _i('settings.tier.p5', '最终看上去，一个 project 可以包含多个 quest，一个 quest 可以包含多个 floor，一个 floor 可以包含多个 house，一个 house 可以包含多个 room。') + '</p>';
+      html += '<p style="margin-top:18px;"><b style="color:' + text + ';">' + _i('settings.tier.p6', '你可以休息一会儿，因为接下来就是重点。') + '</b></p>';
+      html += '<p>' + _i('settings.tier.p7', '首先，你最难接受但必须接受的一个事实是：') + '</p>';
+      html += '<p style="font-weight:bold; border-left:3px solid ' + red + '; padding-left:12px; color:' + text + ';">' + _i('settings.tier.p8a', '别说 project 和 quest，哪怕是同一个 floor 里面的不同 house（对应物理上的一次服务器往返），它们请求的可能都是物理隔绝的服务器（大模型），简单讲就是，服务器那边即便有缓存，但你也要假设服务器那边根本不会存在任何关于你本次任务（project、quest 或 floor）的任何记忆，也就是你首先必须要颠覆的一点认知是：') + '<span style="color:' + red + ';">' + _i('settings.tier.p8b', 'AI 根本不存在记忆。') + '</span></p>';
+      html += '<p>' + _i('settings.tier.p9', '那你可能好奇，AI 是怎么记住 50 层楼之前你们的聊天内容的？你很难接受但必须接受的事实是：每一间 house，也就是哪怕是最细分的一次服务器往返，你发送给服务器的，都尽可能地带上了你之前每一层楼的所有对话、甚至工具查询结果，注意，每一次最细分的服务器往返，代表你即便不是按发送按钮而是后台自动静默的 house 级别的往返，都会尽量带上之前的一切，更别说 floor 级别的发送。而「一切」是指从第一层楼到现在的一切对话、工具调用结果，那样的一个集合也就是「上下文」。') + '</p>';
+      html += '<p>' + _i('settings.tier.p10', '你的第一个问题是，那为什么没有盖两层楼就把 1M 的上下文总空间撑爆，主要原因是，根据 IDE 的策略选择不同，即便最保守的 AI IDE，也不会把 200KB 的源代码查询结果直接放进上下文，实际上大概只会截取里面 2KB 的关键行代码，而其他的工具结果，比如日志，基本都会被做成摘要，同样回到 KB 级别。') + '</p>';
+      html += '<p>' + _i('settings.tier.p11', '而且 AI IDE 基本都会有自己的压缩策略，qqqide 的压缩策略是保留最近 6 层楼的完整信息，假设压缩时在最近 6 层楼之前有 200 层楼，那那 200 层楼会被压缩成最大 32KB 的摘要。压缩是一次专门的 AI 请求，就比如给 AI 1M 的文本（上下文），要求 AI 总结，返回不超过 32KB 的文本。') + '</p>';
+      html += '<p>' + _i('settings.tier.p12', '我希望这就解释了，为什么在一个 quest 里，当你楼修到第 5 层，你放着不管过半年回来，你再按一次发送按钮，AI 还能跟你接着聊（似乎之前的一切它都记得），即便过了半年、模型早已更新换代……因为大模型是无状态的（不会保存关于你的任何记录），而你每一次都会发送完整上下文（它们不是储存在你本地硬盘，就是储存在中转服务器的硬盘里）。') + '</p>';
+      html += '<p>' + _i('settings.tier.p13', '你可能还有一点不相信：「AI（大模型）总应该记得些什么？」。没有，什么都不记得。你认为的那些「记得」，只是你本地硬盘或者中转服务器偷偷在记的「小本本」，下次按发送按钮小本本会一起发给 AI。') + '</p>';
+      html += '<p style="margin-top:18px;">' + _i('settings.tier.p14', 'ok，有了上面的认知，你可以得到第一个让你放心的结论：') + '</p>';
+      html += '<p style="font-weight:bold; border-left:3px solid ' + accent + '; padding-left:12px; color:' + text + ';">' + _i('settings.tier.p15', '「无论怎样切换模型档位都不会导致记忆丢失」') + '</p>';
+      html += '<p>' + _i('settings.tier.p16', '即：在任何时间点切换模型档位 → 记忆不会丢失 → 但会左右中间推论的质量。') + '</p>';
+      html += '<p style="margin-top:18px;">' + _i('settings.tier.p17', '回到最原始的问题：qqqide 为什么不再提供自动换档功能。') + '</p>';
+      html += '<p>' + _i('settings.tier.p18', '答案有两点：') + '</p>';
+      html += '<p><b>1、</b>' + _i('settings.tier.p19', '不能保证「用最高的智能去写最重要的代码」，我们知道这一点至关重要，但总会有边界情况。') + '</p>';
+      html += '<p><b>2、</b>' + _i('settings.tier.p20', '自动换档本质上是让最高智能的 AI 来评估问题复杂度（再来选择实际干活的 AI），但长远来看，每一层楼都会凭空增加至少一次「最高智能 AI」的调用，这是一笔长远账单，但如果反之，我们不用最高智能去做评估，又会增加第一点对应的风险。') + '</p>';
+      html += '<p style="font-weight:bold; margin-top:16px;">' + _i('settings.tier.p21', '最终 qqqide 决定做一个更好用的换档杆，将换档权，百分百地只交在你手里。') + '</p>';
       html += '</div>';
     }
 

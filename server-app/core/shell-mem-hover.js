@@ -15,6 +15,14 @@
 //   区域（含全部 iframe 内部）关闭。瞬间弹出，350ms 延迟隐藏。
 (function () {
   'use strict';
+
+  // i18n 助手：翻译 + 中文回退 + {x} 参数（i18n 未就绪/缺失时回退原样）
+  function _T(k, fb, p) {
+    var v = null;
+    try { if (window.i18n && window.i18n.t) { var r = window.i18n.t(k, p); if (r && r !== k) v = r; } } catch (e) { }
+    if (v === null) { v = fb; if (p) { for (var x in p) v = v.split('{' + x + '}').join(String(p[x])); } }
+    return v;
+  }
   var $mem = document.getElementById('qqq-status-mem');
   var $memVal = document.querySelector('.qqq-mem-block .qqq-mem-val');
   var $cpuVal = document.querySelector('.qqq-mem-block .qqq-cpu-val');
@@ -48,7 +56,9 @@
   var $plist = null;
   var boots = []; // 重启标记（主进程 mem-curve.log {boot:ts}）→ 曲线浅白虚线垂线
   var hideTimer = null, shown = false;
-  var PH_TITLE_TEXT = 'qqqide 专用工作集（包含一切子进程）'; // q 行标题原文案（v29: 纯血缘受管圈——打开通道 relay 化后圈外无外人，回归 f42 定稿文案）
+  // q 行标题原文案（v29: 纯血缘受管圈——打开通道 relay 化后圈外无外人，回归 f42 定稿文案）；
+  // ★ 惰性取词（i18n 异步加载完成后才准）
+  function phTitleText() { return _T('shell.mem.qTitle', 'qqqide 专用工作集（包含一切子进程）'); }
   var PH_TITLE_MORPH_MS = 3000; // 3s 文字变换（2026-09-03 用户定案）：每次 hover/点击弹卡先显示原文案 3s，再切换为启动包完整目录路径
   var titleTimer = null; // q 行标题 morph 定时器
   var pinned = false; // 点击状态区 a 区域固定面板（可交互滚动进程列表），再点取消
@@ -71,12 +81,12 @@
   // 核数：<10 一位小数（0.4核），≥10 整数（12核）
   function fmtCores(c) {
     if (c === null || typeof c !== 'number' || c < 0) return '--';
-    return (c < 10 ? c.toFixed(1) : Math.round(c)) + '核';
+    return (c < 10 ? c.toFixed(1) : Math.round(c)) + _T('shell.mem.coresUnit', '核');
   }
   // 核数三位小数（均占徽章专用：10h55m均占 0.056核，2026-09-03 用户定案）
   function fmtCores3(c) {
     if (c === null || typeof c !== 'number' || c < 0) return '--';
-    return c.toFixed(3) + '核';
+    return c.toFixed(3) + _T('shell.mem.coresUnit', '核');
   }
   // 行级累计时间
   function fmtRowTime(sec) {
@@ -102,7 +112,7 @@
       // ── MEM 段（上） ──
       '<div class="qqq-mem-hover-head">' +
       '<span class="qqq-mem-hover-title"><span class="qqq-mem-hover-tname">MEM</span><span class="qqq-mem-hover-dot"></span></span>' +
-      '<button class="qqq-mem-hover-reset" data-scope="mem" title="清除内存曲线历史，从零重记（删 mem-curve.log，不影响 CPU 曲线）">reset</button>' +
+      '<button class="qqq-mem-hover-reset" data-scope="mem" title="' + _T('shell.mem.resetMem', '清除内存曲线历史，从零重记（删 mem-curve.log，不影响 CPU 曲线）') + '">reset</button>' +
       '</div>' +
       '<div class="qqq-mem-hover-num">' +
       '<span class="qqq-mem-hover-num-main"><span class="qqq-mem-hover-val">--</span><span class="qqq-mem-hover-unit">MB</span></span>' +
@@ -135,10 +145,10 @@
       // ── CPU 段（下，橙色系；独立 reset——v7 定案各区各清） ──
       '<div class="qqq-cpu-hover-head">' +
       '<span class="qqq-mem-hover-title"><span class="qqq-mem-hover-tname">CPU</span><span class="qqq-cpu-hover-dot"></span></span>' +
-      '<button class="qqq-mem-hover-reset" data-scope="cpu" title="清除 CPU 曲线历史，从零重记（删 cpu-curve.log）">reset</button>' +
+      '<button class="qqq-mem-hover-reset" data-scope="cpu" title="' + _T('shell.mem.resetCpu', '清除 CPU 曲线历史，从零重记（删 cpu-curve.log）') + '">reset</button>' +
       '</div>' +
       '<div class="qqq-cpu-hover-num">' +
-      '<span class="qqq-cpu-hover-num-main"><span class="qqq-cpu-hover-val">--</span><span class="qqq-cpu-hover-unit">CPU单核时间</span></span>' +
+      '<span class="qqq-cpu-hover-num-main"><span class="qqq-cpu-hover-val">--</span><span class="qqq-cpu-hover-unit">' + _T('shell.mem.cpuSoloUnit', 'CPU单核时间') + '</span></span>' +
       '<span class="qqq-cpu-hover-avg">--</span>' +
       '</div>' +
       '<div class="qqq-cpu-hover-chart">' +
@@ -167,8 +177,8 @@
       '<div class="qqq-cpu-hover-stats">--</div>' +
       // ── 共用进程列表 ──
       '<div class="qqq-mem-hover-plist-head">' +
-      '<div class="qqq-mem-hover-ph-row"><span class="qqq-mem-hover-ph-title">qqqide 专用工作集（本包进程）</span></div>' +
-      '<div class="qqq-mem-hover-ph-row"><span class="qqq-mem-hover-ph-win">--窗口</span><span class="qqq-mem-hover-ph-procs">--</span><span class="qqq-mem-hover-ph-up">--</span></div>' +
+      '<div class="qqq-mem-hover-ph-row"><span class="qqq-mem-hover-ph-title">' + _T('shell.mem.plistTitle', 'qqqide 专用工作集（本包进程）') + '</span></div>' +
+      '<div class="qqq-mem-hover-ph-row"><span class="qqq-mem-hover-ph-win">--' + _T('shell.mem.winUnit', '窗口') + '</span><span class="qqq-mem-hover-ph-procs">--</span><span class="qqq-mem-hover-ph-up">--</span></div>' +
       '</div>' +
       '<div class="qqq-mem-hover-plist"></div>';
     document.body.appendChild($panel);
@@ -270,7 +280,7 @@
   function startTitleMorph() {
     if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
     if (!$phTitle) return;
-    $phTitle.textContent = PH_TITLE_TEXT; // 重置原文案（每次打开重新 3s 倒计时）
+    $phTitle.textContent = phTitleText(); // 重置原文案（每次打开重新 3s 倒计时）
     titleTimer = setTimeout(function () {
       titleTimer = null;
       if (!shown) return; // 已关闭不切
@@ -567,12 +577,12 @@
         if (cpuPts[i].cu > cpuPts[cpi].cu) cpi = i;
         if (cpuPts[i].cu < cpuPts[cvi].cu) cvi = i;
       }
-      $cStats.innerHTML = '<span>峰值 ' + fmtCores(cpuPts[cpi].cu) + '<i class="qqq-mem-hover-tip">[' + hmd(cpuPts[cpi].t) + ']</i></span>' +
-        '<span>谷值 ' + fmtCores(cpuPts[cvi].cu) + '<i class="qqq-mem-hover-tip">[' + hmd(cpuPts[cvi].t) + ']</i></span>';
+      $cStats.innerHTML = '<span>' + _T('shell.mem.peak', '峰值') + ' ' + fmtCores(cpuPts[cpi].cu) + '<i class="qqq-mem-hover-tip">[' + hmd(cpuPts[cpi].t) + ']</i></span>' +
+        '<span>' + _T('shell.mem.valley', '谷值') + ' ' + fmtCores(cpuPts[cvi].cu) + '<i class="qqq-mem-hover-tip">[' + hmd(cpuPts[cvi].t) + ']</i></span>';
       var s = 0;
       for (i = 0; i < cpuPts.length; i++) s += cpuPts[i].cu;
       var cSpanMin = Math.round(cpuRunT[cpuRunT.length - 1] / 60000); // CPU 窗口 = CPU 流运行时长（独立 reset 后各自窗口）
-      $cAvg.innerHTML = '<span>' + (cSpanMin >= 1440 ? '24h 均占 ' : spanTxt(cSpanMin) + ' 均占 ') + '</span><b>' + fmtCores3(s / cpuPts.length) + '</b>';
+      $cAvg.innerHTML = '<span>' + (cSpanMin >= 1440 ? _T('shell.mem.avg24h', '24h 均占 ') : _T('shell.mem.avgBadge', '{v} 均占 ', { v: spanTxt(cSpanMin) })) + '</span><b>' + fmtCores3(s / cpuPts.length) + '</b>';
       // v20: CPU x 刻度 = CPU 流自己的窗口（独立 reset 后与 mem 不同步——2026-09-02 用户实锤
       // 「左边固定 -24h」：数据不足 24h 时左边刻度应是实际最早时间，够 24h 才到 -24h）
       if ($cLabels._left) {
@@ -584,7 +594,7 @@
       }
     } else {
       clearChart({ poly: $cPoly, area: $cArea, dot: $cDot, dotPulse: $cDotPulse, curVal: $cCurVal, ylbl: $cGrid._ylbl });
-      $cStats.textContent = '采样中…';
+      $cStats.textContent = _T('shell.mem.sampling', '采样中…');
       $cAvg.textContent = '--';
       if ($cLabels._left) { $cLabels._left.textContent = '--'; $cLabels._mid.textContent = '--'; }
 
@@ -600,7 +610,7 @@
       // v18: 只清 MEM 段——旧实现连 CPU 图/统计/均值一起清（mem reset 后 CPU 显示被连带重置，用户实锤「内存一重置 CPU 也被重置」）
       clearChart({ poly: $poly, area: $area, dot: $dot, dotPulse: $dotPulse, curVal: $curVal, ylbl: $grid._ylbl });
       if ($bootPath) $bootPath.setAttribute('d', '');
-      $stats.textContent = n === 0 ? '采样中 · 每 60s 一个点' : '采样中…';
+      $stats.textContent = n === 0 ? _T('shell.mem.samplingDetail', '采样中 · 每 60s 一个点') : _T('shell.mem.sampling', '采样中…');
       $avg.textContent = '--';
       if ($labels._left) { $labels._left.textContent = '--'; $labels._mid.textContent = '--'; }
       if ($avg) $avg.classList.remove('hot'); // 曲线清空时红态同步复位
@@ -633,12 +643,12 @@
     }
     renderUpText();
     $stats.innerHTML =
-      '<span>峰值 ' + fmtVal(memPts[peakI].v) + '<i class="qqq-mem-hover-tip">[' + hmd(memPts[peakI].t) + ']</i></span>' +
-      '<span>谷值 ' + fmtVal(memPts[valleyI].v) + '<i class="qqq-mem-hover-tip">[' + hmd(memPts[valleyI].t) + ']</i></span>';
+      '<span>' + _T('shell.mem.peak', '峰值') + ' ' + fmtVal(memPts[peakI].v) + '<i class="qqq-mem-hover-tip">[' + hmd(memPts[peakI].t) + ']</i></span>' +
+      '<span>' + _T('shell.mem.valley', '谷值') + ' ' + fmtVal(memPts[valleyI].v) + '<i class="qqq-mem-hover-tip">[' + hmd(memPts[valleyI].t) + ']</i></span>';
     // CPU stats/均值 → renderCpuCurve() 内（v18 抽出，防 mem reset 连带清空）
     // MEM 均值徽章（抗尖峰口径；窗口 = 运行时长）
     var avg = computeAvg();
-    $avg.innerHTML = '<span>' + (spanMin >= 1440 ? '24h 均值 ' : spanTxt(spanMin) + ' 均值 ') + '</span><b>' + avg + 'M</b>';
+    $avg.innerHTML = '<span>' + (spanMin >= 1440 ? _T('shell.mem.mean24h', '24h 均值 ') : _T('shell.mem.meanBadge', '{v} 均值 ', { v: spanTxt(spanMin) })) + '</span><b>' + avg + 'M</b>';
     checkAvgThreshold(avg);
     // CPU 均值徽章 → renderCpuCurve() 内（v18 抽出）
     // 动态刻度：MEM 标签 = MEM 流窗口；CPU 标签 = CPU 流窗口（renderCpuCurve 内各自换算——
@@ -657,7 +667,7 @@
   function renderRows() {
     if (!shown || !$plist) return;
     if (!rows.length) {
-      $plist.innerHTML = '<div class="qqq-mem-hover-prow muted">采样中…</div>';
+      $plist.innerHTML = '<div class="qqq-mem-hover-prow muted">' + _T('shell.mem.sampling', '采样中…') + '</div>';
       return;
     }
     var lvl = {};
@@ -715,7 +725,7 @@
     if (over && !curOver && Date.now() - curQoastAt > 3600000) {
       curQoastAt = Date.now();
       curOver = true;
-      var msg = '独立启动包：' + (latest.label || 'qqqide') + ' 当前总内存（本包进程）达 ' + Math.round(avg) + ' MB';
+      var msg = _T('shell.mem.alertCur', '独立启动包：{label} 当前总内存（本包进程）达 {mb} MB', { label: latest.label || 'qqqide', mb: Math.round(avg) });
       if (window.qqqideQoast) {
         // v22: 常规自动消失（默认 9s）——用户定案「不要常驻，自动消失滴常规滴那种」
         window.qqqideQoast.show(msg, { type: 'warning' });
@@ -733,7 +743,7 @@
     if (over && !avgWasOver && Date.now() - avgQoastAt > 3600000) {
       avgQoastAt = Date.now();
       avgWasOver = true;
-      var msg = '独立启动包：' + (latest.label || 'qqqide') + ' 当前总内存（本包进程）均值占用超 1g';
+      var msg = _T('shell.mem.alertAvg', '独立启动包：{label} 当前总内存（本包进程）均值占用超 1g', { label: latest.label || 'qqqide' });
       if (window.qqqideQoast) {
         // v22: 常规自动消失（默认 9s）——与暴涨档同款，用户定案不要常驻
         window.qqqideQoast.show(msg, { type: 'warning' });
@@ -942,7 +952,7 @@
     if (!$procs) return;
     var cur = latest.procs;
     var pk = peakProcs();
-    $procs.textContent = (pk > cur) ? (cur + '（峰值' + pk + '）进程') : (cur + ' 进程');
+    $procs.textContent = (pk > cur) ? (cur + _T('shell.mem.procsPeakPrefix', '（峰值') + pk + _T('shell.mem.procsSuffix', '）进程')) : (cur + _T('shell.mem.procsSuffix2', ' 进程'));
   }
 
   // 已启动时长（q 行右侧；5s 广播同步刷新）
@@ -952,7 +962,7 @@
     if (!$phUp) return;
     renderWinText();
     $phUp.textContent = latest.bootAt > 0 ?
-      '\u25A0已启动 ' + uptimeTxt(Math.max(0, Math.round((Date.now() - latest.bootAt) / 60000))) : '';
+      '\u25A0' + _T('shell.mem.uptime', '已启动') + ' ' + uptimeTxt(Math.max(0, Math.round((Date.now() - latest.bootAt) / 60000))) : '';
   }
 
   // 窗口数（q 行第二行最左；2026-09-05 用户定案「3窗口 30(峰值40)进程 已启动11min」三项同排）
@@ -960,7 +970,7 @@
   //（IDE 各窗 + DevTools 独立窗；dock 内嵌 DevTools 非独立窗不计）——5s 广播真值
   function renderWinText() {
     if (!$phWin) return;
-    $phWin.textContent = (latest.win > 0) ? (latest.win + '窗口') : '--窗口';
+    $phWin.textContent = (latest.win > 0) ? (latest.win + _T('shell.mem.winUnit', '窗口')) : '--' + _T('shell.mem.winUnit', '窗口');
   }
 
   // 3 点移动平均（瞬时核数平滑；无基线返回 null）

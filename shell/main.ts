@@ -31,6 +31,7 @@ import * as fs from 'fs';
 
 // ── 子模块 ──
 import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, BootMode, BootConfig } from './boot';
+import { initMainI18n, refreshMainI18nLang, mi } from './main-i18n';
 import { APP_VERSION, checkForcedUpdate } from './version';
 import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen, setPackRoot, packWsKey } from './window-manager';
 import { claimProject, registerProjectLockIpc } from './project-lock';
@@ -70,6 +71,7 @@ import { startAutoUpdater } from './auto-updater';
 import { AudioEngine } from './audio-engine';
 import { registerAudioIpc, playSfxFile } from './ipc-audio';
 import { registerSquadIpc } from './ipc-squads';
+import { registerSecureIpc } from './ipc-secure';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
 import { QzSpawn, registerQzSpawnIpc } from './qz-spawn';
@@ -310,6 +312,7 @@ function registerAllIpc(): void {
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
     registerSquadIpc();
+    registerSecureIpc();
     registerProjectLockIpc();
 }
 
@@ -470,6 +473,10 @@ app.whenReady().then(async () => {
     // ★ 启动包内存真理机器: getAppMetrics 聚合 → 广播所有窗口 (2026-08-29; v3 传 userData 持久化 24h 曲线)
     try { memMeterInit(portable.userData); } catch (e) { try { console.warn('[mem-meter] init failed:', e); } catch (_) { } }
 
+    // ★ 主进程 i18n（强制更新对话框/原生串）— 早于渲染层，先按 OS 语言初始化；
+    //   state 就绪后下方 refreshMainI18nLang 再按用户历史选择刷新（boot 面板在此之后）
+    try { await initMainI18n(portable.root); } catch { /* ignore */ }
+
     // ★ If another instance already holds the lock, quit immediately — don't create windows
     if (_shouldQuitEarly) {
         app.quit();
@@ -483,30 +490,30 @@ app.whenReady().then(async () => {
         const DOWNLOAD_URL = 'https://gh555.com/dl/qqqide';
         const result = dialog.showMessageBoxSync({
             type: 'warning',
-            title: 'qd (qqqide) — 需要更新',
-            message: '您的 qqqide 版本过低，必须重新下载安装。',
+            title: 'qd (qqqide) — ' + mi('main.update.title'),
+            message: mi('main.update.message'),
             detail: [
-                '当前版本: ' + forced.currentVersion,
-                '最低要求: ' + forced.minVersion,
+                mi('main.update.current', { v: forced.currentVersion }),
+                mi('main.update.min', { v: forced.minVersion }),
                 '',
-                '由于架构升级，旧版本无法通过自动更新完成升级。',
-                '请前往下载页面获取最新绿色包。',
+                mi('main.update.why'),
+                mi('main.update.get'),
                 '',
-                '【安装方法】',
-                '① 关闭 IDE',
-                '② 下载最新绿色包（约 94MB）',
-                '③ 直接解压覆盖到原位置即可（推荐）',
+                mi('main.update.installTitle'),
+                mi('main.update.s1'),
+                mi('main.update.s2'),
+                mi('main.update.s3'),
                 '',
-                '【偏好保留】',
-                '项目数据（对话记录/设置）在项目文件夹的 qqq/ 目录下，',
-                '覆盖安装不会丢失。登录状态和应用偏好需要重新设置。',
-                '如需保留: 先备份 gh555.com\\Data\\alphal\\ 文件夹，',
-                '安装并首次运行后再复制回去。',
+                mi('main.update.prefsTitle'),
+                mi('main.update.prefs1'),
+                mi('main.update.prefs2'),
+                mi('main.update.prefs3'),
+                mi('main.update.prefs4'),
                 '',
-                '【干净安装】',
-                '删除旧的 qqqide-win-x64 文件夹 → 解压新绿色包即可。',
+                mi('main.update.cleanTitle'),
+                mi('main.update.clean1'),
             ].join('\n'),
-            buttons: ['前往下载', '退出'],
+            buttons: [mi('main.update.download'), mi('main.update.exit')],
             defaultId: 0,
             cancelId: 1,
         });
@@ -529,6 +536,9 @@ app.whenReady().then(async () => {
     registerShellState();
 
     await hydrateAssetRootsFromState(stateStore);
+
+    // ★ 主进程 i18n 语言刷新（state 就绪 → 用户历史选择优先于 OS 语言；boot 面板出现于此之后）
+    try { await refreshMainI18nLang(() => stateStore.get('qqq.i18n', 'lang')); } catch { /* ignore */ }
 
     // Security hardening
     hardenSession();

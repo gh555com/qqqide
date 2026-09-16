@@ -654,7 +654,7 @@ var AgentLoop = (function () {
                         if (_aiDiv3 && _aiDiv3._guideMarker) {
                             _aiDiv3._guideMarker.style.cssText = '';
                             _aiDiv3._guideMarker.className = 'msg-flow-guide';
-                            _aiDiv3._guideMarker.innerHTML = '<span class="msg-flow-icon">⚠️</span> 引导确认异常，已跳过';
+                            _aiDiv3._guideMarker.innerHTML = '<span class="msg-flow-icon">⚠️</span> ' + _qq('ai.guideAckFail', '引导确认异常，已跳过');
                             _aiDiv3._guideMarker = null;
                         }
                     } else {
@@ -665,7 +665,7 @@ var AgentLoop = (function () {
                         if (_aiDiv4 && _aiDiv4._guideMarker) {
                             _aiDiv4._guideMarker.style.cssText = '';
                             _aiDiv4._guideMarker.className = 'msg-flow-guide';
-                            _aiDiv4._guideMarker.innerHTML = '<span class="msg-flow-icon">⚠️</span> 引导确认超时，已跳过';
+                            _aiDiv4._guideMarker.innerHTML = '<span class="msg-flow-icon">⚠️</span> ' + _qq('ai.guideAckTimeout', '引导确认超时，已跳过');
                             _aiDiv4._guideMarker = null;
                         }
                     }

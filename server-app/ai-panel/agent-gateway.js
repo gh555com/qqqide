@@ -56,8 +56,8 @@ function _gwWaitTick(ag) {
         var io = window.parent && window.parent.qqqideIoast;
         if (!io || !io.task) return;
         io.task(_gwCardId(ag), {
-            title: '⏳ 上游无响应 ' + _gwDur(waitS),
-            subtitle: '第 ' + (ag._currentFloorNum || '?') + ' 层 · ' + (ag._upstreamWaitSec > 0 ? '服务器确认等待中' : '等待首字输出')
+            title: _qq('ai.gwWait.title', '⏳ 上游无响应 {0}', { 0: _gwDur(waitS) }),
+            subtitle: _qq('ai.gwWait.subtitle', '第 {0} 层 · {1}', { 0: (ag._currentFloorNum || '?'), 1: (ag._upstreamWaitSec > 0 ? _qq('ai.gwWait.serverAck', '服务器确认等待中') : _qq('ai.gwWait.firstToken', '等待首字输出')) })
         });
         ag._gwCardShown = true;
     } catch (_) { }
@@ -93,6 +93,10 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
 
     // ★ 号池：从 opts.token 获取初始 key，支持 429 自动切换
     var _currentToken = opts.token || '';
+
+    // ★ 自带 API Key 通道（byok.js）判定：key 轮换 / 线路切换 / 欠费换 key 均为平台专属语义，BYOK 下全部跳过
+    var _isByok = false;
+    try { _isByok = !!(window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()); } catch (_) { }
 
     self.abortController = new AbortController();
 
@@ -309,11 +313,11 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 var _nowMs = Date.now();
                 if (!self._hangQoastAt || _nowMs - self._hangQoastAt > 600000) {
                     self._hangQoastAt = _nowMs;
-                    var _hangNote = self._aiHangCount >= 2 ? '（第 ' + self._aiHangCount + ' 次）' : '';
+                    var _hangNote = self._aiHangCount >= 2 ? _qq('ai.gwWait.hangCount', '（第 {0} 次）', { 0: self._aiHangCount }) : '';
                     self._log('✗ HANG EXHAUSTED: both lines hung, count=' + self._aiHangCount + ' — suggest Ctrl+R');
-                    try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('网络通道疑似损坏' + _hangNote + '，已自动尝试全部线路。楼层已保存，建议 Ctrl+R 刷新窗口后点击「继续任务」', { type: 'warning', duration: 9000 }); } catch (_) { }
+                    try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.gwWait.hangBroken', '网络通道疑似损坏{0}，已自动尝试全部线路。楼层已保存，建议 Ctrl+R 刷新窗口后点击「继续任务」', { 0: _hangNote }), { type: 'warning', duration: 9000 }); } catch (_) { }
                 }
-                self._lastGatewayMessage = '连接超时（已自动尝试全部线路，对话完整保留，可点击「继续任务」重试）';
+                self._lastGatewayMessage = _qq('ai.gw.hangTimeout', '连接超时（已自动尝试全部线路，对话完整保留，可点击「继续任务」重试）');
                 self._exitReason = 'deadline';
                 _gwEndWait(self);
                 return null;
@@ -335,8 +339,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     _serverMsg = _json.error || _json.message || '';
                     if (_serverMsg && _serverMsg.length > 120) _serverMsg = _serverMsg.substring(0, 120) + '…';
                 } catch (_) { }
-                // ★ 429 时优先切换 key，再退避重试
-                if (resp.status === 429 && _keyRotations < MAX_KEY_ROTATIONS) {
+                // ★ 429 时优先切换 key，再退避重试（自带密钥无 key 可换 → 跳过，走普通退避）
+                if (!_isByok && resp.status === 429 && _keyRotations < MAX_KEY_ROTATIONS) {
                     if (_rotateKey()) {
                         _keyRotations++;
                         retry = -1;  // 重置重试计数（新 key 新机会）
@@ -368,6 +372,13 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 }
                 // ★ 402（key 欠费）：切换 key slot，不换线路（缓存保留）
                 if (resp.status === 402) {
+                    if (_isByok) {
+                        // 自带密钥欠费：无 key 可换，如实报错（重试无意义）
+                        self._exitReason = 'http_' + resp.status;
+                        self._lastGatewayMessage = _serverMsg || _qq('ai.byok.balance', '你的 API Key 余额不足（自带密钥）');
+                        _gwEndWait(self);
+                        return null;
+                    }
                     if (self._questKeySlot === 0) {
                         self._questKeySlot = 1;
                         self._log('  key depleted — switched to fallback key (slot 1), cache reset unavoidable');
@@ -376,7 +387,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     }
                     // 两把 key 都欠费
                     self._exitReason = 'http_' + resp.status;
-                    self._lastGatewayMessage = _serverMsg || 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）';
+                    self._lastGatewayMessage = _serverMsg || _qq('ai.gw.keysDepleted', 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）');
                     _gwEndWait(self);
                     return null;
                 }
@@ -387,24 +398,24 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     self._lastGatewayError = 401;
                     self._exitReason = 'second_auth_required';
                     self._sendTerminated = true;
-                    self._lastGatewayMessage = '\u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\uFF0C\u5B8C\u6210\u9A8C\u8BC1\u540E\u5373\u53EF\u7EE7\u7EED\u4F7F\u7528';
+                    self._lastGatewayMessage = _qq('ai.secondAuth.continueMsg', '需进行二次认证，完成验证后即可继续使用');
                     try {
                         if (window.parent && window.parent.qqqLogin && window.parent.qqqLogin.login) {
                             window.parent.qqqLogin.login();
                         } else if (window.parent && window.parent.qqqideQoast) {
-                            window.parent.qqqideQoast.show('\u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\uFF1A\u8BF7\u70B9\u51FB\u53F3\u4E0A\u89D2\u767B\u5F55\u6309\u94AE\u5B8C\u6210\u9A8C\u8BC1', { type: 'warn', duration: 0 });
+                            window.parent.qqqideQoast.show(_qq('ai.secondAuth.qoast', '需进行二次认证：请点击右上角登录按钮完成验证'), { type: 'warn', duration: 0 });
                         }
                     } catch (_) {}
                     _gwEndWait(self);
                     return null;
                 }
-                var friendly = resp.status === 401 ? '认证失败，请检查 Token'
-                    : resp.status === 402 ? (_serverMsg || 'ge 余额不足，请赞助')
-                        : resp.status === 429 ? '请求过于频繁，请稍后再试'
+                var friendly = resp.status === 401 ? (_isByok ? (_serverMsg || _qq('ai.byok.authFail', '自带密钥认证失败（API Key 无效或无权限）')) : _qq('ai.gw.authFail', '认证失败，请检查 Token'))
+                    : resp.status === 402 ? (_serverMsg || _qq('ai.gw.geInsufficient', 'ge 余额不足，请赞助'))
+                        : resp.status === 429 ? _qq('ai.gw.tooFrequent', '请求过于频繁，请稍后再试')
                             : ContentGateway.HttpError.isGatewayDown(resp.status)
                                 ? (_serverMsg
                                     ? _serverMsg + ' (' + resp.status + ')'
-                                    : '服务暂时不可用 (' + resp.status + ') — 可能是计费/配额耗尽或服务器过载')
+                                    : _qq('ai.gw.serviceUnavailable', '服务暂时不可用 ({0}) — 可能是计费/配额耗尽或服务器过载', { 0: resp.status }))
                                 : (_serverMsg || 'Server error (' + resp.status + ')');
                 try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
                 // ★ 502/503/504: 切线路（带防 ping-pong）
@@ -433,7 +444,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     }
                     // 无可切换线路 或 已达切换上限 → 交给上层 auto-repair 处理
                     self._exitReason = 'http_' + resp.status;
-                    self._lastGatewayMessage = friendly + '，所有线路均未可达';
+                    self._lastGatewayMessage = friendly + (_isByok ? '' : _qq('ai.gw.allLinesDown', '，所有线路均未可达'));
 
 
                     // ★ 不在此处 onError / _sendTerminated — 让 agent loop 的 auto-repair 先尝试修复
@@ -588,8 +599,14 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 return null;
             }
 
-            // ★ 402（key 欠费）：切换 key slot
+            // ★ 402（key 欠费）：切换 key slot（自带密钥无 key 可换 → 直接如实报错）
             if (self._lastGatewayError === 402) {
+                if (_isByok) {
+                    clearTimeout(_fetchDeadline);
+                    self._exitReason = 'http_402';
+                    self._lastGatewayMessage = _qq('ai.byok.balance', '你的 API Key 余额不足（自带密钥）');
+                    return null;
+                }
                 if (self._questKeySlot === 0) {
                     self._questKeySlot = 1;
                     self._log('  key depleted — switched to fallback key (slot 1)');
@@ -600,7 +617,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 self._log('  AI upstream 402 — both keys depleted');
                 clearTimeout(_fetchDeadline);
                 self._exitReason = 'http_402';
-                self._lastGatewayMessage = 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）';
+                self._lastGatewayMessage = _qq('ai.gw.keysDepleted', 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）');
                 return null;
             } else {
                 var _isHttp2Like = msg.indexOf("ERR_HTTP2") >= 0
@@ -671,7 +688,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             if (!self._lastGatewayMessage) {
                 // ★ 如果 _lastGatewayError 已设（SSE/上游错误），优先用原始错误消息，不套泛泛网络失败壳
                 if (self._lastGatewayError && msg && msg !== 'Failed to fetch' && msg.indexOf('Network request failed') < 0) {
-                    self._lastGatewayMessage = msg + '（已重试' + MAX_RETRIES + '次 + 切换' + MAX_LINE_SWITCHES + '条线路，对话已保存）';
+                    self._lastGatewayMessage = msg + _qq('ai.gw.retriedSuffix', '（已重试{0}次 + 切换{1}条线路，对话已保存）', { 0: MAX_RETRIES, 1: MAX_LINE_SWITCHES });
                 } else {
                     var _errDet = 'Network request failed. Retried ' + MAX_RETRIES + 'x + switched ' + MAX_LINE_SWITCHES + 'x lines. All recovery exhausted.';
                     if (msg) _errDet += ' Error: ' + msg + '.';

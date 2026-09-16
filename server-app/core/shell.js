@@ -261,10 +261,10 @@ function showCloseConfirm() {
   var panel = document.createElement('div');
   panel.style.cssText = 'width:300px;max-width:90vw;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);padding:24px;text-align:center;background:' + bg + ';color:' + text + ';';
   panel.innerHTML =
-    '<div style="font-size:16px;margin-bottom:20px;color:' + text + ';">确认退出？</div>' +
+    '<div style="font-size:16px;margin-bottom:20px;color:' + text + ';">' + window._i('shell.exit.confirm', '确认退出？') + '</div>' +
     '<div style="display:flex;gap:8px;">' +
-    '<button id="qqq-exit-cancel" style="flex:1;padding:10px 0;border:1px solid ' + muted + ';border-radius:4px;background:transparent;color:' + muted + ';font-size:13px;cursor:default;">取消</button>' +
-    '<button id="qqq-exit-confirm" data-no-cd style="flex:1;padding:10px 0;border:none;border-radius:4px;background:' + red + ';color:#fff;font-size:13px;font-weight:bold;">确认退出</button>' +
+    '<button id="qqq-exit-cancel" style="flex:1;padding:10px 0;border:1px solid ' + muted + ';border-radius:4px;background:transparent;color:' + muted + ';font-size:13px;cursor:default;">' + window._i('common.cancel', '取消') + '</button>' +
+    '<button id="qqq-exit-confirm" data-no-cd style="flex:1;padding:10px 0;border:none;border-radius:4px;background:' + red + ';color:#fff;font-size:13px;font-weight:bold;">' + window._i('shell.exit.ok', '确认退出') + '</button>' +
     '</div>';
 
   _closeConfirmOverlay.appendChild(panel);

@@ -707,6 +707,13 @@ const QQQ = {
         },
     },
 
+    // ---- secure（安全存储 — safeStorage/DPAPI；BYOK 密钥加密等，2026-09-16）----
+    secure: {
+        available: () => ipcRenderer.invoke('qqqide:secure:available'),
+        encrypt: (text: string) => ipcRenderer.invoke('qqqide:secure:encrypt', text),
+        decrypt: (b64: string) => ipcRenderer.invoke('qqqide:secure:decrypt', b64),
+    },
+
 
 };
 

@@ -308,7 +308,7 @@ $input.addEventListener('keydown', function (e) {
         if (streaming) { stopStream(); return; }
         // 登录闸门
         if (!_isLoggedIn()) {
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_e2) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
             return;
         }
         // ★ 立即反馈前置：发送意图经 sendMessage → _enqueueSend 入链（同步段完成，任何 await 之前）

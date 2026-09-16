@@ -12,6 +12,17 @@
 (function () {
   'use strict';
 
+  // ── i18n 助手（key 缺失回退中文；params 在翻译后按 {x} 替换）──
+  function _t(k, fb, params) {
+    var s = null;
+    try { if (window.i18n && typeof window.i18n.t === 'function') s = window.i18n.t(k); } catch (e) { /* ignore */ }
+    if (!s || s === k) s = fb || k;
+    if (params && typeof s === 'string') {
+      for (var p in params) s = s.split('{' + p + '}').join(params[p]);
+    }
+    return s;
+  }
+
   var ORDER = ['1', '2', 'q', 'w', 'a', 's', 'z', 'x'];
   var _btn = null;
   var _label = null;
@@ -63,15 +74,15 @@
     if (sq) {
       _label.textContent = sq;  // 编队字符（只写 label，绝不动按钮子节点）
       _btn.style.color = 'var(--text-primary,#e8e8e8)';
-      _btn.title = '编队 ' + sq + ' — 空格+' + sq + ' 召回（点击更换编队）';
+      _btn.title = _t('squad.tipActive', '编队 {sq} — 空格+{sq} 召回（点击更换编队）', { sq: sq });
     } else if (none) {
       _label.textContent = '\u2014';  // none 态: 长横（与下拉 none 行左列同符）
       _btn.style.color = 'var(--text-secondary,#777)';
-      _btn.title = '编队 none（不可召回）— 点击选择分组';
+      _btn.title = _t('squad.tipNone', '编队 none（不可召回）— 点击选择分组');
     } else {
       _label.textContent = '\u25A0';  // >8 窗口: 无可用槽位
       _btn.style.color = 'var(--text-secondary,#777)';
-      _btn.title = '无可用编队（窗口超过 8 个，不可召回）— 点击选择分组';
+      _btn.title = _t('squad.tipFull', '无可用编队（窗口超过 8 个，不可召回）— 点击选择分组');
     }
     if (_dd) _renderDd();
   }
@@ -111,24 +122,24 @@
         var label = document.createElement('span');
         label.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary,#e8e8e8);';
         // 中列: 带编队前缀（x■ + 标题/文件夹名/窗口#N 兜底）
-        var labelText = '空闲';
+        var labelText = _t('squad.idle', '空闲');
         if (entry) {
           var t = String(entry.title || '').replace(/^[1-2qwaszx]\u25A0/, '');
           var f = String(entry.folder || '').replace(/\\/g, '/').replace(/\/+$/, '');
-          var name = t || (f ? (f.split('/').pop() || f) : ('窗口#' + entry.winId));
+          var name = t || (f ? (f.split('/').pop() || f) : _t('squad.windowN', '窗口#{n}', { n: entry.winId }));
           labelText = slot + '\u25A0' + name;
         }
         label.textContent = labelText;
         var curTag = document.createElement('span');
         if (current) {
-          curTag.textContent = '当前';
+          curTag.textContent = _t('squad.current', '当前');
           curTag.style.cssText = 'color:#b58900;font-size:11px;flex-shrink:0;';
         }
         row.appendChild(tag); row.appendChild(label); row.appendChild(curTag);
         if (entry && !current) {
           row.style.cursor = 'not-allowed';
           row.style.opacity = '0.55';
-          row.title = '已被占用：' + (entry.folder || entry.title || '');
+          row.title = _t('squad.occupiedTip', '已被占用：{x}', { x: (entry.folder || entry.title || '') });
         } else if (current) {
           row.style.cursor = 'default';
         } else {
@@ -151,11 +162,11 @@
       tag.textContent = '\u2014';
       tag.style.cssText = 'width:20px;text-align:center;flex-shrink:0;font-size:13px;color:' + (current ? '#b58900' : 'var(--text-secondary,#777)') + ';';
       var label = document.createElement('span');
-      label.textContent = 'none（不指定分组）';
+      label.textContent = _t('squad.noneRow', 'none（不指定分组）');
       label.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary,#e8e8e8);';
       var curTag = document.createElement('span');
       if (current) {
-        curTag.textContent = '当前';
+        curTag.textContent = _t('squad.current', '当前');
         curTag.style.cssText = 'color:#b58900;font-size:11px;flex-shrink:0;';
       }
       row.appendChild(tag); row.appendChild(label); row.appendChild(curTag);
@@ -176,7 +187,7 @@
     if (!b) { _close(); return; }
     b.set(slot).then(function (r) {
       if (r && !r.ok && r.reason && r.reason === 'occupied') {
-        try { window.qqqideQoast.show('该编队已被占用', { type: 'warn', duration: 3000 }); } catch (_) { }
+        try { window.qqqideQoast.show(_t('squad.occupied', '该编队已被占用'), { type: 'warn', duration: 3000 }); } catch (_) { }
       }
       _close();
       _refresh();
@@ -195,6 +206,9 @@
     if (_dd) { try { _dd.remove(); } catch (_) { } }
     _dd = null;
   }
+
+  // ★ 语言切换 → 按钮提示 + 展开中的下拉即时重渲染
+  window.addEventListener('qqq-lang-change', function () { if (_btn) _render(); });
 
   // ── boot ──
   if (document.readyState === 'loading') {

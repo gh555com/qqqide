@@ -57,14 +57,14 @@
 <body>
 <div class="box" id="box">
   <h1>qqq-shell offline</h1>
-  <p id="msg">无法连接服务器，可能网络中断或服务器未就绪。</p>
+  <p id="msg" data-k="main.boot.noServer">无法连接服务器，可能网络中断或服务器未就绪。</p>
   <p class="url" id="url"></p>
   <p class="reason" id="reason" style="display:none"></p>
   <div class="row" id="retry-row">
-    <button id="btn-retry">立即重试</button>
+    <button id="btn-retry" data-k="main.boot.retry">立即重试</button>
   </div>
   <p class="status" id="status"></p>
-  <p class="small" id="small-hint">壳保持便携模式。所有数据仅写入应用目录。</p>
+  <p class="small" id="small-hint" data-k="main.boot.portableHint">壳保持便携模式。所有数据仅写入应用目录。</p>
 </div>
 <script>
   (function () {
@@ -72,17 +72,37 @@
     document.getElementById('url').textContent = params.get('url') || '';
     const reason = params.get('reason') || '';
 
+    // ── 主进程 i18n 注入（main-i18n.ts miDict → window.__qqqApplyLang）──
+    // 无注入时全部中文回退原样；注入后按用户语言覆盖
+    window.__qqqDict = window.__qqqDict || {};
+    function _t(k, fb) { var v = window.__qqqDict[k]; return (typeof v === 'string' && v) ? v : fb; }
+    function _applyDict() {
+      document.querySelectorAll('[data-k]').forEach(function (el) {
+        var v = window.__qqqDict[el.getAttribute('data-k')];
+        if (typeof v === 'string' && v) el.textContent = v;
+      });
+      var sEl = document.getElementById('boot-stage');
+      if (sEl) sEl.textContent = _t('main.boot.connecting', sEl.textContent);
+      var rEl = document.getElementById('reason');
+      if (rEl && rEl.style.display !== 'none') rEl.textContent = _t('main.boot.reason', '原因：{r}').replace('{r}', reason);
+    }
+    window.__qqqApplyLang = function (dict) {
+      try { if (dict) { for (var k in dict) { if (dict[k]) window.__qqqDict[k] = dict[k]; } } } catch (e) { /* ignore */ }
+      try { _applyDict(); } catch (e) { /* ignore */ }
+    };
+
     // ── 连接中（首次加载、无错误） ──
     if (!reason || reason === 'connecting') {
       document.body.className = 'connecting';
       document.getElementById('box').innerHTML =
         '<div class="spinner"></div>' +
-        '<p class="stage-text" id="boot-stage">正在连接服务器…</p>' +
+        '<p class="stage-text" id="boot-stage" data-k="main.boot.connecting">正在连接服务器…</p>' +
         '<div class="progress-wrap">' +
         '<div class="bar-bg"><div class="bar-fg" id="boot-bar"></div></div>' +
         '<div class="pct-text" id="boot-pct">0%</div>' +
         '</div>' +
-        '<p style="font-size:12px;color:#93a1a1;margin:8px 0 0">首次连接可能需要稍等…</p>';
+        '<p style="font-size:12px;color:#93a1a1;margin:8px 0 0" data-k="main.boot.firstWait">首次连接可能需要稍等…</p>';
+      _applyDict();
       // ★ 监听主进程注入的进度更新
       window.__qqqBootUpdate = function(stage, pct) {
         var sEl = document.getElementById('boot-stage');
@@ -97,7 +117,7 @@
 
     // ── 错误状态 ──
     if (reason) {
-      document.getElementById('reason').textContent = '原因：' + reason;
+      document.getElementById('reason').textContent = _t('main.boot.reason', '原因：{r}').replace('{r}', reason);
     }
 
     const cdEl = document.getElementById('cd');
@@ -117,18 +137,18 @@
       if (busy) { return; }
       busy = true;
       btnRetry.disabled = true;
-      setStatus('正在重试…', false);
+      setStatus(_t('main.boot.retrying', '正在重试…'), false);
       try {
         if (window.qqqide && window.qqqide.boot && typeof window.qqqide.boot.retry === 'function') {
           const ok = await window.qqqide.boot.retry();
           if (!ok) {
-            setStatus('仍无法连接，请稍后再试…', true);
+            setStatus(_t('main.boot.stillFail', '仍无法连接，请稍后再试…'), true);
           }
         } else {
           location.reload();
         }
       } catch (e) {
-        setStatus('重试失败：' + (e && e.message), true);
+        setStatus(_t('main.boot.retryFail', '重试失败：{e}').replace('{e}', (e && e.message) || ''), true);
       } finally {
         busy = false;
         btnRetry.disabled = false;

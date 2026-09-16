@@ -98,7 +98,7 @@
   // ═══════════ 识别器 ═══════════
   // T1: 前缀+格式双重校验的强签名。kind: prefix(保留前缀)/block(私钥块)/url(连接串)
   var T1_PATTERNS = [
-    { name: '阿里云 AccessKey', kind: 'prefix', keepPrefix: 4, re: /\bLTAI[A-Za-z0-9]{16,24}\b/g },
+    { name: 'Alibaba AccessKey', kind: 'prefix', keepPrefix: 4, re: /\bLTAI[A-Za-z0-9]{16,24}\b/g },
     { name: 'AWS AccessKey',    kind: 'prefix', keepPrefix: 4, re: /\bAKIA[0-9A-Z]{16}\b/g },
     { name: 'GitHub Token',     kind: 'prefix', keepPrefix: 4, re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,200}\b/g },
     { name: 'GitHub PAT',       kind: 'prefix', keepPrefix: 12, re: /\bgithub_pat_[A-Za-z0-9_]{22,200}\b/g },
@@ -110,8 +110,8 @@
     { name: 'Slack Token',      kind: 'prefix', keepPrefix: 5, re: /\bxox[baprs]-[A-Za-z0-9\-]{10,200}\b/g },
     { name: 'Telegram Bot Token', kind: 'prefix', keepPrefix: 0, re: /\b\d{8,10}:AA[A-Za-z0-9_\-]{30,40}\b/g },
     { name: 'npm Token',        kind: 'prefix', keepPrefix: 4, re: /\bnpm_[A-Za-z0-9]{36}\b/g },
-    { name: '私钥块', kind: 'block', re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY(?: BLOCK)?-----/g },
-    { name: '数据库连接串', kind: 'url', re: /\b(?:postgres|postgresql|mysql|mariadb|redis|rediss|mongodb(?:\+srv)?):\/\/[^\s"'<>]+/g }
+    { name: 'Private Key Block', kind: 'block', re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY(?: BLOCK)?-----/g },
+    { name: 'DB Connection URI', kind: 'url', re: /\b(?:postgres|postgresql|mysql|mariadb|redis|rediss|mongodb(?:\+srv)?):\/\/[^\s"'<>]+/g }
   ];
 
   // T2/T3 共用: 强标签（值长度/熵分级）
@@ -166,10 +166,10 @@
   function _syntaxCheck(relPath, content) {
     var base = relPath.toLowerCase();
     if (base.indexOf('.json') !== -1) {
-      try { JSON.parse(content); return null; } catch (e) { return 'JSON 语法错误: ' + e.message; }
+      try { JSON.parse(content); return null; } catch (e) { return window._i('secretGuard.syntaxJson', 'JSON 语法错误: ') + e.message; }
     }
     if (base.indexOf('.js') !== -1 || base.indexOf('.mjs') !== -1 || base.indexOf('.cjs') !== -1) {
-      try { new Function(content); return null; } catch (e) { return 'JS 语法错误: ' + e.message; }
+      try { new Function(content); return null; } catch (e) { return window._i('secretGuard.syntaxJs', 'JS 语法错误: ') + e.message; }
     }
     return null;
   }
@@ -407,7 +407,7 @@
     try {
       if (!_enabled()) return;
       _engineReadOnly = await _selfCheck();
-      if (_engineReadOnly) _appendLog(projPath, 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）');
+      if (_engineReadOnly) _appendLog(projPath, window._i('secretGuard.staleEngine', 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）'));
       var files = _parsePorcelain(porcelain);
       if (!files.length) { _clearPending(projPath); return; }
 
@@ -783,7 +783,7 @@
   async function _sgScanDirty(projPath) {
     if (!_enabled()) return { disabled: true };
     _engineReadOnly = await _selfCheck();
-    if (_engineReadOnly) _appendLog(projPath, 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）');
+    if (_engineReadOnly) _appendLog(projPath, window._i('secretGuard.staleEngine', 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）'));
     var porcelain = await _gitPorcelain(projPath);
     var files = _parsePorcelain(porcelain);
     var auto = [], t3 = [], skip = [];
@@ -869,7 +869,7 @@
       if (!b || !b.qz || !b.qz.spawn) return { found: false, detail: 'bridge unavailable' };
       var r = await b.qz.spawn({ cmd: await _gitBin(), args: ['-C', projPath, 'log', '--all', '-S', value, '--oneline'], timeout: 30000 });
       var out = String(r.stdout || '').trim();
-      return { found: out.length > 0, detail: out || '（全历史零命中，未暴露）' };
+      return { found: out.length > 0, detail: out || window._i('secretGuard.gitNoHit', '（全历史零命中，未暴露）') };
     } catch (e) { return { found: false, detail: 'err: ' + (e && e.message ? e.message : e) }; }
   }
 
@@ -888,10 +888,10 @@
         try {
           await b.qz.spawn({ cmd: await _gitBin(), args: ['-C', projPath, 'rm', '--cached', '--', relPath], timeout: 15000 });
         } catch (e) {
-          return { ok: true, msg: '已加入 .gitignore（rm --cached 失败: ' + (e && e.message ? e.message : e) + '）' };
+          return { ok: true, msg: window._i('secretGuard.gitignoreRmFail', '已加入 .gitignore（rm --cached 失败: ') + (e && e.message ? e.message : e) + '）' };
         }
       }
-      return { ok: true, msg: rmCached ? '已忽略并取消跟踪' : '已加入 .gitignore' };
+      return { ok: true, msg: rmCached ? window._i('secretGuard.ignoredUntracked', '已忽略并取消跟踪') : window._i('secretGuard.addedGitignore', '已加入 .gitignore') };
     } catch (e) { return { ok: false, msg: 'err: ' + (e && e.message ? e.message : e) }; }
   }
 
