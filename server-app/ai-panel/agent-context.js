@@ -587,7 +587,9 @@
             }
             var _hasActiveErrors = false;
             for (var _omi = 0; _omi < _ofMsgs.length; _omi++) {
-                if (_ofMsgs[_omi]._error && !_ofMsgs[_omi]._recovered) {
+                // ★ 2026-09-17: capped（封顶放弃）残块可打包——否则 _error 无 _recovered 的残块被
+                //   守卫永久跳过 → 横跨多楼层占位（q293 实测 f18 残块 ≈32 万真实 tokens 白背 f19-f22）
+                if (_ofMsgs[_omi]._error && !_ofMsgs[_omi]._recovered && !_ofMsgs[_omi]._capped) {
                     _hasActiveErrors = true;
                     break;
                 }
@@ -843,7 +845,8 @@
                 }
                 // 同步 ctx.facts
                 if (!self._ctx.facts) self._ctx.facts = [];
-                self._ctx.facts.push({ source: 'f3', extracted_at: Math.floor(Date.now()/1000), text: _newFacts.join('\n') });
+                // ★ 2026-09-16: source 曾恒为 'f3' 占位——改记真实提取楼层号（'f' + floorNum），审计文本可见事实批次来源
+                self._ctx.facts.push({ source: 'f' + floorNum, extracted_at: Math.floor(Date.now()/1000), text: _newFacts.join('\n') });
                 // ★ V21: 清理 compress floor 全部原始消息（assistant/tool 无 _compressFloor 标记，
                 //   按标记删会残留 → 残留被下一楼层 rebuild 压缩进 biscuit（q147 f96 A 全文 2407 事故）。
                 //   floorStart 之后即当前 compress 楼层，无条件截断。

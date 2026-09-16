@@ -20,13 +20,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { ipcMain, BrowserWindow } from 'electron';
+import { getOsBaseDir } from './portable-paths';
 
 const initSqlJs = require('sql.js');
 
 // ── DB 路径 (OS 级唯一: %LOCALAPPDATA%/qqqide/search.sq3, 与 ai.sq3/roam.sq3/ws.sq3 同目录) ──
 function getDbPath(): string {
-    const localAppData = path.join(os.homedir(), 'AppData', 'Local');
-    const dir = path.join(localAppData, 'qqqide');
+    const dir = path.join(getOsBaseDir(), 'qqqide');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return path.join(dir, 'search.sq3');
 }

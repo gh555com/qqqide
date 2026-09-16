@@ -30,7 +30,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { getComponentBin } from './component-checker';
 import { mi } from './main-i18n';
-import { getDataDir } from './portable-paths';
+import { getDataDir, getOsBaseDir } from './portable-paths';
 
 export type GaeaLifecycle = 'attached' | 'independent';
 
@@ -140,7 +140,7 @@ function _removePidFile(userData: string, goodsId: string): void {
 // ═══════════════════════════════════════════════════════════════
 
 function _getOsStateDir(goodsId: string): string {
-    const dir = path.join(os.homedir(), 'AppData', 'Local', goodsId);
+    const dir = path.join(getOsBaseDir(), goodsId);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return dir;
 }

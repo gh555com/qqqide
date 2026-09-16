@@ -30,7 +30,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 
 // ── 子模块 ──
-import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, BootMode, BootConfig } from './boot';
+import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, ensureLocalWebapp, BootMode, BootConfig } from './boot';
 import { initMainI18n, refreshMainI18nLang, mi } from './main-i18n';
 import { APP_VERSION, checkForcedUpdate } from './version';
 import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen, setPackRoot, packWsKey } from './window-manager';
@@ -546,6 +546,14 @@ app.whenReady().then(async () => {
 
     // ★ 组件自检: 缺了 rank0 组件自动后台下载（不阻塞启动）
     checkRank0Components(portable.root);
+
+    // ★ 时序修复（2026-09-16）：webapp 运行副本先就位，再 spawn 任何 stdio 组件与 process goods——
+    //   原时序 goods 自启早于副本刷新（升级首启 +28s 实锤）→ goods 跑旧代码（旧 OS 目录/旧锁路径）；
+    //   且副本拷贝阻塞主线程数十秒 → py-broker ready 握手被误判超时（假超时重启实锤）。
+    //   ensureLocalWebapp 幂等（戳一致零拷贝）；dev 模式跳过（懒拷贝走 dev server）。
+    if (!isDevFlag) {
+        try { ensureLocalWebapp(portable.root); } catch { /* 失败不阻塞启动 */ }
+    }
 
     // ★ Python broker: 仅当已安装时启动（未安装则下次启动自动下载后再启）
     startPyBroker(portable.root);

@@ -307,10 +307,11 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 #btn-row button:disabled{opacity:.3;}
 #send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1}
 #guide-btn,#queue-btn{padding:3px 5px}
-
-
+/* q297 f20 (2026-09-17)：右簇间隙 — 三空隙各 +4px；Send 前额外 +5px（叠加于行 gap 4px 之上） */
+#queue-btn{margin-left:4px}
+#ctx-btn{margin-left:4px}
 #guide-btn:disabled{opacity:0.35}
-#send-btn{min-width:42px;text-align:center}
+#send-btn{min-width:42px;text-align:center;margin-left:9px}
 
 #btn-row #ctx-btn{position:relative;overflow:hidden;min-width:53px;background:linear-gradient(to right,transparent var(--ctx-pct),var(--card-bg) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #btn-row #ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),var(--base3) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
@@ -369,10 +370,11 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 .ctx-panel-actions{display:flex;gap:24px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
 .ctx-panel-actions button{padding:6px 18px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;white-space:nowrap}
 #ctx-manage{background:var(--blue);color:#fff;border-color:var(--blue)}
-/* ── 上下文占用拆解面板（hover ctx-btn 弹出） ── */
+/* ── 上下文占用拆解面板（hover ctx-btn 弹出）── */
+/* 定位与尺寸 = JS 防越界机器 _placeFloatingCard（panel-quest-ui.js）：「先量后位」双轴钳制 + 宽度随面板收紧，按钮/面板怎么变都不越界；此处 bottom/right 仅为初始值 */
 #ctx-breakdown{position:fixed;z-index:10001;display:none;bottom:60px;right:10px}
 #ctx-breakdown.show{display:block}
-.ctx-bd-wrap{background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;padding:10px 12px 8px;min-width:300px;max-width:380px;box-shadow:0 2px 16px rgba(0,0,0,0.35);font-size:11px;line-height:1.5}
+.ctx-bd-wrap{background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;padding:10px 12px 8px;min-width:300px;max-width:380px;box-shadow:0 2px 16px rgba(0,0,0,0.35);font-size:11px;line-height:1.5;display:flex;flex-direction:column}
 .ctx-bd-title{font-weight:600;font-size:12px;margin-bottom:6px;color:var(--text-primary);border-bottom:1px solid var(--border-color);padding-bottom:4px}
 .ctx-bd-row{position:relative;display:flex;align-items:center;gap:5px;padding:1.5px 0}
 .ctx-bd-bar{position:absolute;left:-12px;right:0;top:0;bottom:0;display:flex;align-items:stretch;z-index:0;pointer-events:none}

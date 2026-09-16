@@ -1007,10 +1007,15 @@ async function loadFileList(p) {
 }
 
 // 2026-08-05 性能: 预建 template, cloneNode 替代 createElement 链 (N×5 DOM API→N×1)
+// ★ 2026-09-17 文件图标平台分治：.file-icon 走 "Segoe UI Symbol" 单色渲染——Windows 上 1F4Cx 区字形（📄）
+//   在该字体里是实心剪影，与实心文件夹 📁 撞脸成一团黑；1F5Cx 区字形（🗎）是细线条画，区分清晰。
+//   macOS 无 1F5Cx 字形（会豆腐），保留 📄。
+var _ROAM_IS_MAC = /Mac/i.test(String(navigator.platform || '') + ' ' + String(navigator.userAgent || ''));
+var _ROAM_FILE_ICON = _ROAM_IS_MAC ? '📄' : '🗎';   // mac: U+1F4C4 / win: U+1F5CE
 var _folderTpl = document.createElement('template');
 _folderTpl.innerHTML = '<div class="sz-area"></div><div class="file-select-area"><span class="file-icon">📁</span></div><div class="folder-name-area"></div>';
 var _fileTpl = document.createElement('template');
-_fileTpl.innerHTML = '<div class="sz-area"></div><div class="file-name-area"><span class="file-icon">📄</span><span></span></div>';
+_fileTpl.innerHTML = '<div class="sz-area"></div><div class="file-name-area"><span class="file-icon">' + _ROAM_FILE_ICON + '</span><span></span></div>';
 
 function buildFileItem(entry, fullPath) {
 	var item = document.createElement('div');

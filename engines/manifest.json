@@ -1,5 +1,5 @@
 {
-  "_version": 6,
+  "_version": 7,
   "_note": "Component manifest — server-driven, client reads at every boot. rank0=auto-install, rank1=user-triggered. bundled=true means included in green zip (skip download). Changing install_to or srcs on server → clients restructure themselves, no new zip ever needed.",
   "rank0": [
     "ripgrep",
@@ -85,6 +85,12 @@
         "darwin-arm64": [
           {
             "url": "https://gh555.com/dl/qqqide-up/python-darwin-arm64.zip",
+            "kind": "zip"
+          }
+        ],
+        "darwin-x64": [
+          {
+            "url": "https://gh555.com/dl/qqqide-up/python-darwin-x64.zip",
             "kind": "zip"
           }
         ]

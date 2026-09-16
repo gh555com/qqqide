@@ -40,7 +40,12 @@ let _restartTimer: NodeJS.Timeout | null = null;
 let _restartDelay = 2000;          // 指数退避起点 2s
 let _readyTimer: NodeJS.Timeout | null = null;  // ready 握手看门狗
 const RESTART_MAX_DELAY = 30000;   // 退避上限 30s
-const READY_TIMEOUT_MS = 15000;    // spawn 后 15s 未 ready 视为僵尸，杀后重启
+// spawn 后未 ready 视为僵尸，杀后重启。
+// ★ 2026-09-16 mac：首次开机（换装后 pyc/首执行全冷 + pyobjc 导入）实测 >15s → 假超时误杀一次；
+//   darwin 放宽到 60s（正常热启动 ~3s，60s 仍能捕获真僵尸）。
+const READY_TIMEOUT_MS = process.platform === 'darwin' ? 60000 : 30000;
+//   ★ 2026-09-16 放宽 15s→30s：慢机冷启动（首次解包后磁盘冷缓存 + pyobjc 重导入）
+//   实测 >15s → 误杀重启（能自愈但多花 ~17s）。真僵尸检测延迟 +15s 可接受。
 // ──────────────────────────────────────────────────
 
 export function startPyBroker(portableRoot: string): void {

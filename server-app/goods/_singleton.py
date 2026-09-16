@@ -129,9 +129,15 @@ def check_and_register(goods_id):
     global _GOODS_PID_FILE, _GLOBAL_LOCK_FD
 
     # ⓪ ★ 全局 OS 级文件锁 — 跨 IDE 实例防多开（第一道防线）
-    #     位置: C:\Users\{用户}\AppData\Local\{goods_id}\.singleton.lock
+    #     位置: {OS根}/{goods_id}/.singleton.lock（win %LOCALAPPDATA% / mac ~/Library/Application Support）
     #     整个操作系统只允许一个 goods 实例，无论开了多少个 IDE 窗口
-    global_lock_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', goods_id)
+    if sys.platform == 'darwin':
+        _os_base = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support')
+    elif sys.platform == 'win32':
+        _os_base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    else:
+        _os_base = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
+    global_lock_dir = os.path.join(_os_base, goods_id)
     os.makedirs(global_lock_dir, exist_ok=True)
     global_lock_file = os.path.join(global_lock_dir, '.singleton.lock')
     try:

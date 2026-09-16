@@ -437,11 +437,23 @@ except Exception:
     _HAS_PYNPUT = False
 
 
+def _squad_os_base():
+    """OS 级目录根 — 与 shell portable-paths.getOsBaseDir() 逐字对齐。
+    win: %LOCALAPPDATA% ｜ mac: ~/Library/Application Support ｜ linux: XDG_DATA_HOME 或 ~/.local/share"""
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    if sys.platform == "win32":
+        return os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    return os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+
+
 def _squad_registry_path():
-    # 主进程真理源: os.homedir()/AppData/Local/qqqide/squads.json (squad-manager.ts registryPath)
-    # ★ mac 同布局（主进程 os.homedir() 推导 /Users/{u}/AppData/Local/qqqide，2026-09-16）
-    # ★ env LOCALAPPDATA 可能被 C 启动器便携层重定向 → 仅作候选，USERPROFILE 路径优先探测存在性
-    candidates = []
+    # 主进程真理源: squad-manager.ts registryPath（= {getOsBaseDir()}/qqqide/squads.json）
+    # ★ 旧布局（win 式 ~/AppData/Local）保留兜底：迁移窗口期 / 旧包共存
+    # ★ env LOCALAPPDATA 可能被 C 启动器便携层重定向 → 仅作候选，探测存在性优先
+    candidates = [os.path.join(_squad_os_base(), "qqqide", "squads.json")]
+    if sys.platform == "darwin":
+        candidates.append(os.path.join(os.path.expanduser("~"), "AppData", "Local", "qqqide", "squads.json"))
     up = os.environ.get("USERPROFILE") or os.path.expanduser("~")
     candidates.append(os.path.join(up, "AppData", "Local", "qqqide", "squads.json"))
     la = os.environ.get("LOCALAPPDATA")

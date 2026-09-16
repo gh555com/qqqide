@@ -695,7 +695,9 @@ var AgentLoop = (function () {
                 //   从不单独做 absolut——F80 定案：editOnly ⊇ absolut，单独做是白工分支）。
 
                 self._houseIndex++;
-                opts._netRetryCount = 0;  // ★ 每 house 重置网络重试预算
+                // ★ 网络重试预算不再按 house 归零（2026-09-17 livelock 修复）：旧逻辑每 house 重置
+                //   → 连续失败计数恒 ≤1 → 「house++ / 3s / 重试」无限重试风暴（402 欠费风暴 718 发实锤，
+                //   只能靠 20min 停滞看门狗强杀）。现改为跨 house 累积、成功响应才归零（见下方）。
                 // ★ 跨面板写冲突预警：检查上一轮 AI 调用以来是否有其他面板修改了文件
                 if (self._lastCallTs && typeof _panelId !== 'undefined') {
                     try {
@@ -783,6 +785,8 @@ var AgentLoop = (function () {
                     // 不回滚 conversation — 保留已执行的 tool call 结果，用户可重试
                     return null;
                 }
+                // ★ 成功拿到响应 → 网络重试预算归零（连续失败预算跨 house 累积，防无限重试 livelock）
+                opts._netRetryCount = 0;
                 // 引导中断 → 继续循环（上面 _guidePending 检测会触发确认回合）
                 if (response._abortedForGuide) {
                     continue;

@@ -373,12 +373,23 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                         continue;
                     }
                 }
-                // ★ 402（key 欠费）：切换 key slot，不换线路（缓存保留）
+                // ★ 402：账号级欠费（服务器 INSUFFICIENT_GE）= 楼层终态（2026-09-17 修复）
+                //   旧实现 return null 时漏设 _lastGatewayError → agent-loop 误判「网络掉线」无限自动重试
+                //   （实锤：账户欠费后 718 发 / 32 分钟风暴，只能靠 20min 停滞看门狗强杀）；
+                //   欠费换 key slot 亦无意义——slot 只切平台上游 key，改不了用户余额。
                 if (resp.status === 402) {
-                    if (_isByok) {
-                        // 自带密钥欠费：无 key 可换，如实报错（重试无意义）
-                        self._exitReason = 'http_' + resp.status;
-                        self._lastGatewayMessage = _serverMsg || _qq('ai.byok.balance', '你的 API Key 余额不足（自带密钥）');
+                    var _geEmpty = !!(_json && _json.code === 'INSUFFICIENT_GE');
+                    if (_isByok || _geEmpty) {
+                        self._lastGatewayError = 402;  // ★ 必设：防 agent-loop 当网络掉线无限重试
+                        self._sendTerminated = true;
+                        self._exitReason = _geEmpty ? 'insufficient_ge' : 'http_' + resp.status;
+                        if (_isByok && !_geEmpty) {
+                            self._lastGatewayMessage = _serverMsg || _qq('ai.byok.balance', '你的 API Key 余额不足（自带密钥）');
+                        } else {
+                            self._lastGatewayMessage = (_serverMsg || _qq('ai.gw.geInsufficient', 'ge 余额不足，请赞助'))
+                                + _qq('ai.gw.geTopupHint', '（充值后点击「继续任务」可从断点续跑）');
+                        }
+                        clearTimeout(_fetchDeadline);  // ★ 全路径清理（防幽灵中断）
                         _gwEndWait(self);
                         return null;
                     }
@@ -388,7 +399,9 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                         retry = -1;
                         continue;
                     }
-                    // 两把 key 都欠费
+                    // 两把 key 都欠费（历史语义兜底：非 INSUFFICIENT_GE 的 402）
+                    self._lastGatewayError = 402;  // ★ 必设：防无限重试风暴
+                    clearTimeout(_fetchDeadline);  // ★ 全路径清理（防幽灵中断）
                     self._exitReason = 'http_' + resp.status;
                     self._lastGatewayMessage = _serverMsg || _qq('ai.gw.keysDepleted', 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）');
                     _gwEndWait(self);
@@ -409,6 +422,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                             window.parent.qqqideQoast.show(_qq('ai.secondAuth.qoast', '需进行二次认证：请点击右上角登录按钮完成验证'), { type: 'warn', duration: 0 });
                         }
                     } catch (_) {}
+                    clearTimeout(_fetchDeadline);  // ★ 全路径清理（防幽灵中断：漏 clear → 1000s 后炸掉任意在飞请求）
                     _gwEndWait(self);
                     return null;
                 }
@@ -706,4 +720,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             return null;
         }
     } // retry loop
+    // ★ 兜底（理论不可达——循环内一切出口均 return/continue）：最终防漏网清定时器 + 空返回
+    clearTimeout(_fetchDeadline);
+    return null;
 };

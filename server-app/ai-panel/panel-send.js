@@ -293,6 +293,17 @@ function _capRecoveryLink(agent, floorNum) {
 
     _st.capped = true;
 
+    // ★ 2026-09-17: 封顶 = 该楼层已放弃 → 对话残块标记 _capped（rebuild 活跃错误守卫加 !_capped），
+    //   下一次背包重建即回收——否则 _error 无 _recovered 的残块被守卫永久跳过、横跨多楼层占位
+    try {
+        if (agent.conversation) {
+            for (var _cmi = 0; _cmi < agent.conversation.length; _cmi++) {
+                var _cmsg = agent.conversation[_cmi];
+                if (_cmsg._error && _cmsg._floor === _fn) _cmsg._capped = true;
+            }
+        }
+    } catch (_) { }
+
     // ★ DOM 层：找红框 DOM 移除链接 + 标记 capped + 消最后分割线
     var _box = _ensureErrorBoxDOM(agent, _fn);
     if (_box) {
@@ -540,6 +551,17 @@ function _finishRecovery(linkEl, agent, succeeded) {
         }
         // ★ V14 fix: 传 _originFloor 防 _recoveryOriginFloor 已清零导致误伤新楼层
         if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent, _originFloor);
+        // ★ 2026-09-17: 恢复成功后立即补一次背包重建——刚标记 _recovered 的中断楼层残块不必等
+        //   "下一层干净完结"才回收（链式中断时后续楼层可能全部被杀 → 残块横跨多楼层，q293
+        //   实测 f18 残块 ≈32 万真实 tokens 白背 f19-f22）。300ms 防抖 + idle 守卫，忙碌跳过
+        //   （下一次干净完结的 rebuild 自然回收，零丢失）。
+        setTimeout(function () {
+            try {
+                if (agent._stopState === 'idle' && typeof agent._rebuildBackpack === 'function') {
+                    agent._rebuildBackpack().catch(function () { });
+                }
+            } catch (_) { }
+        }, 300);
     } else {
         // ★ 失败：恢复链接为可点击（同一红框垒行后用户可重试）
         // ★ 2026-08-17 修复：_renderAllErrorBoxes 的 innerHTML='' 会销毁 linkEl，

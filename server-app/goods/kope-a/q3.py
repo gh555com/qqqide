@@ -172,14 +172,16 @@ def _read_ide_volume():
 
 def _read_show_card_setting():
     """读取 OS 级 goods 设置：是否弹出卡片。
-    路径: %LOCALAPPDATA%/kope-a/.gaea-settings.json
+    路径: {OS根}/kope-a/.gaea-settings.json（win %LOCALAPPDATA% / mac ~/Library/Application Support）
     默认 True（弹出卡片）。
     """
     try:
         import json
-        settings_path = os.path.join(
-            os.path.expanduser('~'), 'AppData', 'Local', 'kope-a', '.gaea-settings.json'
-        )
+        if sys.platform == 'darwin':
+            _os_base = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support')
+        else:
+            _os_base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+        settings_path = os.path.join(_os_base, 'kope-a', '.gaea-settings.json')
         if os.path.exists(settings_path):
             with open(settings_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)

@@ -15,6 +15,7 @@
 //
 // 编码：cmd/powershell 管道输出 = OEM 码页（中文系统 GBK）→ TextDecoder('gbk')
 //       gitbash 输出 UTF-8 → TextDecoder('utf-8')
+//   ★ mac（2026-09-16）：zsh/bash 原生宿主，全链 UTF-8（与 gitbash 同款）；cmd/powershell/gitbash = Windows 专属
 // ============================================================================
 
 import { ipcMain, WebContents } from 'electron';
@@ -29,7 +30,7 @@ const MAX_SESSIONS = 16; // 会话上限，防进程泄漏
 
 export interface KmdSpawnOpts {
     id: string;
-    shellType: 'cmd' | 'powershell' | 'gitbash';
+    shellType: 'cmd' | 'powershell' | 'gitbash' | 'zsh' | 'bash';
     cwd?: string;
 }
 
@@ -62,6 +63,16 @@ export function _enginesRoot(appRoot: string): string {
 // ── Shell 解析（自给自足：git 组件内 bash 优先，系统 Git 兑底） ──
 export function _resolveShell(shellType: string, appRoot: string): { cmd: string; args: string[]; env: NodeJS.ProcessEnv } | null {
     const env: NodeJS.ProcessEnv = { ...process.env };
+    // ★ mac（2026-09-16）: zsh/bash 原生宿主（同一行模式架构：无 PTY，stdin 管道写行）。
+    //   TERM 供提示符着色/宽度判定；-i 强制交互模式 → 提示符块与回显进管道（UI 端渲染）
+    if (process.platform === 'darwin') {
+        env.TERM = env.TERM || 'xterm-256color';
+        // zsh：去「命令未以换行结尾」的反白 % 标记（非交互管道下的噪音，UI 日志式渲染不需要）
+        if (!('PROMPT_EOL_MARK' in env)) { env.PROMPT_EOL_MARK = ''; }
+        if (shellType === 'zsh' && fs.existsSync('/bin/zsh')) { return { cmd: '/bin/zsh', args: ['-i'], env }; }
+        if (shellType === 'bash' && fs.existsSync('/bin/bash')) { return { cmd: '/bin/bash', args: ['-i'], env }; }
+        return null; // cmd/powershell/gitbash = Windows 专属
+    }
     if (shellType === 'gitbash') {
         // ① 自带组件：git = Git for Windows Portable（2026-08-11 B 方案）→ bin/bash.exe
         //    登录 shell（--login）加载 /etc/profile 构建 MSYS PATH；MSYSTEM=MINGW64 选中 64 位运行时；
@@ -144,8 +155,8 @@ function _spawnOne(opts: KmdSpawnOpts, appRoot: string, owner: WebContents): Kmd
     const res = _resolveShell(opts.shellType, appRoot);
     if (!res) return null;
 
-    // 编码：cmd/powershell 管道输出 = OEM 码页(GBK)；gitbash = UTF-8
-    const gbk = opts.shellType !== 'gitbash';
+    // 编码：cmd/powershell 管道输出 = OEM 码页(GBK)；gitbash / mac zsh|bash = UTF-8
+    const gbk = process.platform === 'win32' && (opts.shellType === 'cmd' || opts.shellType === 'powershell');
     let decoder: TextDecoder;
     try { decoder = new TextDecoder(gbk ? 'gbk' : 'utf-8'); } catch { decoder = new TextDecoder('utf-8'); }
 
@@ -156,6 +167,8 @@ function _spawnOne(opts: KmdSpawnOpts, appRoot: string, owner: WebContents): Kmd
             env: res.env,
             stdio: ['pipe', 'pipe', 'pipe'],
             windowsHide: true,
+            // 非 Win：新进程组（独立 PGID）→ _killTree 的 kill(-pid) 能杀全树（后代一并回收）
+            detached: process.platform !== 'win32',
         });
     } catch { return null; }
 
@@ -219,7 +232,7 @@ export function registerKmdIpc(appRoot: string): void {
         const shellType = String(o.shellType || 'cmd');
         if (!id || sessions.has(id)) return { ok: false, error: 'bad_id' };
         if (sessions.size >= MAX_SESSIONS) return { ok: false, error: 'session_limit' };
-        const cwd = String(o.cwd || process.env.USERPROFILE || '');
+        const cwd = String(o.cwd || process.env.USERPROFILE || process.env.HOME || '');
         // gitbash 先 probe：自带组件损坏（如解压中断）时给出明确报错而非黑屏
         if (shellType === 'gitbash') {
             const probeRes = _resolveShell('gitbash', appRoot);

@@ -105,6 +105,7 @@ eng_link = linkmap.get(EP + 'engines')
 check(eng_link == '../../../../qqqide-data/engines',
       'engines symlink -> ../../../../qqqide-data/engines (got %s)' % eng_link)
 check((QD + 'engines/python/bin/python3.11') in nameset, 'external engines python tree present')
+check(str(ARCH) in ('arm64', 'x64'), 'arch flag sane (%s)' % ARCH)
 check(count('qqqide.app/Contents/MacOS/Data') == 0, 'no Data inside .app bundle (sig seal safe)')
 check((QD + 'Data/alphal/factory_version') in nameset, 'qqqide-data/Data/alphal/factory_version present')
 
@@ -173,6 +174,31 @@ if roamjs in nameset:
           'roam: file icon glyph renderable on mac (no tofu)')
 else:
     check(False, 'webapp/goods/file-explorer/q2-roam.js present')
+
+# ── 批次 B 回归断言（2026-09-16：OS 目录 mac 化 / kmd zsh / 剪贴板 / qmd 守卫）──
+mj = EP + 'shell-out/main.js'
+if mj in nameset:
+    mj_txt = tf.extractfile(mj).read().decode('utf-8', 'replace')
+    check('Application Support' in mj_txt, 'shell: getOsBaseDir mac path (Library/Application Support)')
+    check('/bin/zsh' in mj_txt, 'shell: kmd zsh resolver present')
+    check('mac-pasteboard.py' in mj_txt, 'shell: mac clipboard helper wired')
+else:
+    check(False, 'shell-out/main.js present')
+check((EP + 'shell-out/mac-pasteboard.py') in nameset, 'shell-out/mac-pasteboard.py present')
+check((EP + 'shell-out/py-broker.py') in nameset, 'shell-out/py-broker.py present (batch B)')
+kmdhtml = EP + 'webapp/goods/kmd/kmd-ui.html'
+if kmdhtml in nameset:
+    kh = tf.extractfile(kmdhtml).read().decode('utf-8', 'replace')
+    check('data-shell="zsh"' in kh and 'data-shell="bash"' in kh, 'kmd-ui: zsh/bash tabs present')
+    check("_isMac" in kh, 'kmd-ui: platform switch present')
+else:
+    check(False, 'webapp/goods/kmd/kmd-ui.html present')
+qmdjs = EP + 'webapp/goods/qmd/qmd.js'
+if qmdjs in nameset:
+    qj = tf.extractfile(qmdjs).read().decode('utf-8', 'replace')
+    check('_isMac' in qj and 'ConPTY' in qj, 'qmd: mac skip guard present')
+else:
+    check(False, 'webapp/goods/qmd/qmd.js present')
 
 # ── junk (must be zero) ──
 check(count(QD + 'engines/__pycache__/') == 0, 'no engines/__pycache__')

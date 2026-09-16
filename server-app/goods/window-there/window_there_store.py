@@ -4,11 +4,17 @@
 
 import os
 import sqlite3
+import sys
 import time
 
 def _get_db_dir():
+    # OS 级根与 shell portable-paths.getOsBaseDir 对齐：mac → Library/Application Support
     home = os.path.expanduser('~')
-    return os.path.join(home, 'AppData', 'Local', 'window-there')
+    if sys.platform == 'darwin':
+        base = os.path.join(home, 'Library', 'Application Support')
+    else:
+        base = os.path.join(home, 'AppData', 'Local')
+    return os.path.join(base, 'window-there')
 
 def _get_db_path():
     return os.path.join(_get_db_dir(), 'pz.sq3')

@@ -12,6 +12,7 @@ import { _sn } from './ipc-state';
 import { _tlBlobPath, _gunzipSync } from './timeline-store';
 import { decodeFile, encodeFile, registerFileEncodingIpc } from './file-encoding';
 import { CacheStore } from './cache-store';
+import { getOsBaseDir } from './portable-paths';
 
 const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
 
@@ -283,7 +284,7 @@ function _txStorePath(): string {
     try {
         const override = process.env.QQQIDE_COPY_TX;
         if (override) return override;
-        const base = process.env.LOCALAPPDATA || (process.env.USERPROFILE ? process.env.USERPROFILE + '\\AppData\\Local' : '');
+        const base = getOsBaseDir();
         return base ? path.join(base, 'qqqide', 'copy-tx.json') : '';
     } catch { return ''; }
 }
