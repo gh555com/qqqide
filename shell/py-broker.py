@@ -5,7 +5,7 @@
 常驻子进程。stdin 读 JSON 行命令，stdout 返回 JSON 行响应。
 职责:
   1. DevTools 窗口改名 (Win: ctypes / Mac: osascript / Linux: wmctrl)
-  2. ★ 窗口编队热键 (Win, pynput 全局钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+  2. ★ 窗口编队热键 (Win/mac, pynput 全局钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
      Truth: %LOCALAPPDATA%/qqqide/squads.json (Electron 主进程唯一写入者, 本进程只读)
      → 召回结果以 {type:"event", event:"summon"} 主动上报主进程 (播放音效反馈)
 日志: 写入 {appRoot}/Data/Logs/_py_broker.log
@@ -294,9 +294,8 @@ except Exception:
 
 
 def _squad_registry_path():
-    if OS != "Windows":
-        return ""
     # 主进程真理源: os.homedir()/AppData/Local/qqqide/squads.json (squad-manager.ts registryPath)
+    # ★ mac 同布局（主进程 os.homedir() 推导 /Users/{u}/AppData/Local/qqqide，2026-09-16）
     # ★ env LOCALAPPDATA 可能被 C 启动器便携层重定向 → 仅作候选，USERPROFILE 路径优先探测存在性
     candidates = []
     up = os.environ.get("USERPROFILE") or os.path.expanduser("~")
@@ -322,12 +321,15 @@ def _load_squad_registry():
 
 
 def _normalize_key(key):
-    """归一化 pynput 按键（Windows 下 press/release 可能产生不同对象）"""
+    """归一化 pynput 按键（win/mac press/release 可能产生不同对象）
+    ★ mac: space 可能以 KeyCode(char=' ') 到达 → 先于 name 判定并转 special:space"""
     try:
+        if hasattr(key, 'char') and key.char:
+            if key.char == ' ':
+                return "special:space"
+            return "char:" + key.char.lower()
         if hasattr(key, 'name') and key.name:
             return "special:" + key.name
-        if hasattr(key, 'char') and key.char:
-            return "char:" + key.char.lower()
         if hasattr(key, 'vk') and key.vk is not None:
             if key.vk == 32:
                 return "special:space"
@@ -390,16 +392,57 @@ def _find_hwnd_by_title(title, pid):
         return 0
 
 
+def _mac_squad_summon(slot, entry):
+    """macOS: NSRunningApplication 激活（应用激活不需辅助功能授权，TCC 不拦）。
+    最小化窗口的还原由 Electron 侧 focusWindowBySlot 兜底（summon 事件回传后进程内执行）。"""
+    pid = int(entry.get("pid") or 0)
+    folder = str(entry.get("folder") or "")
+    if pid <= 0:
+        return {"ok": False, "folder": folder}
+    try:
+        os.kill(pid, 0)  # 进程存活校验（信号 0 探测，不发送真实信号）
+    except OSError:
+        _log(f"[Squad] summon {slot} miss (pid {pid} gone) folder={folder}")
+        return {"ok": False, "folder": folder}
+    try:
+        from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+        if app is None:
+            _log(f"[Squad] summon {slot} miss (no NSRunningApplication for pid {pid})")
+            return {"ok": False, "folder": folder}
+        try:
+            if app.isActive():
+                return {"ok": False, "folder": folder, "already": True}
+        except Exception:
+            pass
+        try:
+            if app.isHidden():
+                app.unhide()
+        except Exception:
+            pass
+        ok = bool(app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps))
+        if ok:
+            _log(f"[Squad] summon {slot} pid={pid} folder={folder}")
+            return {"ok": True, "folder": folder}
+        _log(f"[Squad] summon {slot} activate returned False pid={pid}")
+        return {"ok": False, "folder": folder}
+    except Exception as e:
+        _log(f"[Squad] mac summon exception: {e}")
+        return {"ok": False, "folder": folder}
+
+
 def _squad_summon(slot):
     """召回 slot 对应编队窗口 → {ok, folder, already}"""
-    if OS != "Windows":
-        return {"ok": False}
     reg = _load_squad_registry()
     if not reg:
         return {"ok": False}
     slots = reg.get("slots") or {}
     entry = slots.get(slot)
     if not entry:
+        return {"ok": False}
+    if OS == "Darwin":
+        return _mac_squad_summon(slot, entry)
+    if OS != "Windows":
         return {"ok": False}
     pid = int(entry.get("pid") or 0)
     folder = str(entry.get("folder") or "")
@@ -480,10 +523,24 @@ _MUTEX_NAME = os.environ.get("QQQIDE_SQUAD_MUTEX") or "Local\\QqqIdeSquadHotkey"
 
 
 def _try_acquire_hotkey_mutex():
-    """CreateMutexW(Local\\QqqIdeSquadHotkey) — 抢到返回 True，被占返回 False"""
+    """Win: CreateMutexW(Local\\QqqIdeSquadHotkey)；mac: /tmp flock — 抢到 True，被占 False"""
     global _HOTKEY_MUTEX_HANDLE, _HOTKEY_MUTEX_ACQUIRED
     if OS != "Windows":
-        return True
+        # ★ mac（2026-09-16）: 文件锁替代命名互斥——flock 随进程退出自动释放，与 mutex
+        #   同语义（先启动者监听 / 后启动者改名服务 / 持有者退出 → guard 轮接管）
+        try:
+            import fcntl
+            import tempfile
+            lock_path = os.path.join(tempfile.gettempdir(), 'qqqide-squad-hotkey.lock')
+            fh = open(lock_path, 'a+')
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _HOTKEY_MUTEX_HANDLE = fh
+            _HOTKEY_MUTEX_ACQUIRED = True
+            _log("[Squad] hotkey flock acquired")
+            return True
+        except Exception as e:
+            _log(f"[Squad] hotkey flock busy -> rename-only mode ({e})")
+            return False
     import ctypes
     ERROR_ALREADY_EXISTS = 183
     try:
@@ -562,7 +619,19 @@ def main():
     _log(f"OS={OS} python={sys.version} pid={os.getpid()}")
 
     # ★ 编队热键抢锁 + 监听（先于就绪信号 — ready.hotkeys 必须反映真实监听状态）
-    if OS == "Windows":
+    #   mac（2026-09-16）: pynput 监听需「输入监控」TCC 授权 —— 未授权时 tap 静默无效；
+    #   启动预检 + 触发系统授权弹窗（CGRequestListenEventAccess，仅首次）
+    if OS in ("Windows", "Darwin"):
+        if OS == "Darwin":
+            try:
+                from Quartz import CGPreflightListenEventAccess, CGRequestListenEventAccess
+                granted = bool(CGPreflightListenEventAccess())
+                _log(f"[Squad] mac input-monitoring preflight: {granted}")
+                if not granted:
+                    r = bool(CGRequestListenEventAccess())
+                    _log(f"[Squad] mac input-monitoring request -> {r} (System Settings > Privacy > Input Monitoring)")
+            except Exception as e:
+                _log(f"[Squad] mac permission probe failed: {e}")
         _try_acquire_hotkey_mutex()
         if _HOTKEY_MUTEX_ACQUIRED:
             try:

@@ -188,7 +188,9 @@
             "procsSuffix2": " 行程",
             "uptime": "已啟動",
             "avgBadge": "{v} 平均佔用",
-            "meanBadge": "{v} 平均值"
+            "meanBadge": "{v} 平均值",
+            "warnMsg": "主行程記憶體偏高（堆積 {heap}GB / 總計 {rss}GB），建議重新啟動視窗以釋放記憶體",
+            "warnOk": "知道了"
         },
         "gp": {
             "stop": "停止",
@@ -260,6 +262,20 @@
         "exit": {
             "confirm": "確認退出？",
             "ok": "確認退出"
+        },
+        "wq": {
+            "tip": "wq 前搖統計：貼上探針執行時間\n點擊重置",
+            "tipShort": "wq 前搖統計"
+        },
+        "goods": {
+            "kmdXTip": "按 x 鍵開啟新 kmd"
+        },
+        "aZone": {
+            "nullTip": "收起 A 區 / 點擊還原"
+        },
+        "bulb": {
+            "left": "左側 AI 面板",
+            "right": "右側 AI 面板"
         },
         "free": {}
     },
@@ -646,6 +662,8 @@
             "model": "模型名稱",
             "modelPh": "服務商文件中的模型名稱",
             "think": "上傳思考參數（thinking / reasoning_effort；若不支援請關閉）",
+            "thinkLevel": "思考檔位（reasoning_effort）",
+            "thinkJson": "自訂參數 JSON（選填，填寫後優先於檔位）",
             "route": "網路通道",
             "routeDirect": "直連（推薦）",
             "routeRelay": "平台代理（美國線路）",
@@ -694,7 +712,17 @@
         "featureWip": "該功能正在開發中",
         "auditBtn": "審計",
         "translateBtn": "翻譯",
-        "auditCopied": "審計文字已複製到剪貼簿 ({0} KB)，可貼上到任意 AI 對話框。"
+        "auditCopied": "審計文字已複製到剪貼簿 ({0} KB)，可貼上到任意 AI 對話框。",
+        "waitSwitch": "當前任務 AI 尚未回覆，請稍後再切換",
+        "waitNew": "當前任務 AI 尚未回覆，請稍後再新建",
+        "recoverPrefix": "網路恢復重連。此前樓層中斷記錄：",
+        "recoverSuffix": "｜請基於完整對話脈絡繼續完成原始任務。",
+        "retryExhausted": "已重試 3 次仍未成功，可能是計費/配額耗盡或伺服器故障，請稍後再試",
+        "pathIncompatible": "路徑包含不相容字元，無法附加",
+        "bulletTrunc": "\n\n... [中間已截斷, 原始 {0}KB] ...\n\n",
+        "exhaustedMsg": "⚠ 已達到最大工具呼叫次數 (200)，但 AI 未能生成最終回答。對話脈絡已保留，你可以繼續提問。",
+        "floorAbortedMsg": "⚠️ 樓層異常中斷，對話已儲存。",
+        "sseSkipNote": "[System: 偵測到上一則回覆將工具呼叫寫成文字（[A → …] 顯示格式），而非原生 tool_calls。以下工具因參數無法安全重建而未執行: {0}。請使用原生 tool_calls 重新執行這些工具，或直接給出最終答案。]"
     },
     "goods": {
         "conv": {
@@ -748,7 +776,8 @@
             "lblBiscuitN": "壓縮餅乾 × {0} floors",
             "noAgent": "未找到 Agent",
             "building": "⏳ AI 建構中…",
-            "compressingNow": "⏳ 壓縮中…"
+            "compressingNow": "⏳ 壓縮中…",
+            "guardPh": "[服務端 Go 注入到 messages[0] 之前，用戶端不可見]\n[檔案: gaea/guard/system-prompt.txt，{n} 字元]"
         },
         "navigator": {
             "inputPlaceholder": "輸入路徑片段，按 Enter 開啟 / Esc 關閉",
@@ -1508,7 +1537,7 @@
             "title": "AI 等級說明",
             "lv1": "1 檔：",
             "t1": "最低智能，快速、便宜。",
-            "lv6": "6 檔：",
+            "lv6": "3 檔：",
             "t6": "最高智能，速度慢、成本高。",
             "noAuto": "qqqide 不再提供自動換檔功能，",
             "noAutoReason": "qqqide 不再提供自動換檔功能，理由：",
@@ -1536,6 +1565,14 @@
             "p19": "不能保證「用最高的智能去寫最重要的程式碼」，我們知道這一點至關重要，但總會有邊界情況。",
             "p20": "自動換檔本質上是讓最高智能的 AI 來評估問題複雜度（再來選擇實際幹活的 AI），但長遠來看，每一層樓都會憑空增加至少一次「最高智能 AI」的呼叫，這是一筆長遠帳單，但如果反之，我們不用最高智能去做評估，又會增加第一點對應的風險。",
             "p21": "最終 qqqide 決定做一個更好用的換檔桿，將換檔權，百分之百地只交在你手裡。"
+        },
+        "stamp": {
+            "none": "❌ 無",
+            "readFail": "讀取建構戳記失敗",
+            "ok": "最新程式碼 ✅ buildId={id}",
+            "stale": "SW 快取了舊版程式碼！磁碟={disk} 瀏覽器={browser}",
+            "fetchFail": "❌ fetch 失敗",
+            "fetchFailTitle": "建構戳記 fetch 失敗"
         }
     },
     "squad": {
@@ -1576,7 +1613,8 @@
             "reason": "原因：{r}",
             "retrying": "正在重試…",
             "stillFail": "仍無法連線，請稍後再試…",
-            "retryFail": "重試失敗：{e}"
+            "retryFail": "重試失敗：{e}",
+            "noCache": "無可用快取，請稍後再試。"
         },
         "update": {
             "title": "需要更新",
@@ -1634,5 +1672,15 @@
             "copyLink": "複製連結",
             "close": "關閉"
         }
+    },
+    "pasteRouter": {
+        "noDir": "無法確定貼上目錄（編輯器未關聯檔案？）",
+        "writeFail": "寫入磁碟失敗: {msg}",
+        "imgSaveFail": "貼上圖片失敗: {msg}",
+        "imgPasteDone": "貼上: {ok} 成功, {fail} 失敗",
+        "dropImgFail": "拖放圖片失敗: {msg}",
+        "dropDone": "拖放: {ok} 成功, {fail} 失敗",
+        "unknownErr": "未知錯誤",
+        "unknownErrSave": "未知錯誤（儲存未回傳結果）"
     }
 }

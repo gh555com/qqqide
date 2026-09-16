@@ -221,7 +221,7 @@
     var dir = _getPasteDir(e);
     if (!dir) {
       console.error('[paste-router] _saveImage: _getPasteDir returned null');
-      return { error: '无法确定粘贴目录（编辑器未关联文件？）' };
+      return { error: (window._i ? window._i('pasteRouter.noDir', '无法确定粘贴目录（编辑器未关联文件？）') : '无法确定粘贴目录（编辑器未关联文件？）') };
     }
     console.log('[paste-router] _saveImage: dir=' + dir);
 
@@ -273,7 +273,7 @@
       console.log('[paste-router] write OK: ' + fullPath);
     } catch (ex) {
       console.error('[paste-router] writeBase64 失败:', ex && (ex.message || ex), 'fullPath=' + fullPath);
-      return { error: '写盘失败: ' + (ex && (ex.message || ex)) };
+      return { error: (window._i ? window._i('pasteRouter.writeFail', '写盘失败: {msg}', { msg: (ex && (ex.message || ex)) }) : ('写盘失败: ' + (ex && (ex.message || ex)))) };
     }
 
     // Register paste dir as asset root for thumbnail serving
@@ -386,10 +386,10 @@
           var fn2 = genName(ext);
           var token2 = _makeAnchorToken('', fn2);
           _insertTokenAtCursor(token2, { path: null, sha256: '', fileName: fn2 }, targetEd);
-          var errMsg = (result && result.error) ? result.error : '未知错误（_saveImage 返回 null）';
+          var errMsg = (result && result.error) ? result.error : (window._i ? window._i('pasteRouter.unknownErrSave', '未知错误（保存未返回结果）') : '未知错误（保存未返回结果）');
           console.error('[paste-router] 图片保存失败: ' + errMsg);
           if (window.qqqideQoast) {
-            window.qqqideQoast.show('粘贴图片失败: ' + errMsg, { duration: 5000 });
+            window.qqqideQoast.show((window._i ? window._i('pasteRouter.imgSaveFail', '粘贴图片失败: {msg}', { msg: errMsg }) : ('粘贴图片失败: ' + errMsg)), { duration: 5000 });
           }
         }
       }
@@ -437,7 +437,7 @@
             }
           }
           if (copiedFail > 0 && window.qqqideQoast) {
-            window.qqqideQoast.show('粘贴: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败', { duration: 4000 });
+            window.qqqideQoast.show((window._i ? window._i('pasteRouter.imgPasteDone', '粘贴: {ok} 成功, {fail} 失败', { ok: copiedOk, fail: copiedFail }) : ('粘贴: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败')), { duration: 4000 });
           }
           return;
         }
@@ -559,10 +559,10 @@
         } else {
           copiedFail++;
           _insertTokenAtCursor(_makeAnchorToken('', name), { path: null, sha256: '', fileName: name }, targetEd);
-          var errMsg = (result && result.error) ? result.error : '未知错误';
+          var errMsg = (result && result.error) ? result.error : (window._i ? window._i('pasteRouter.unknownErr', '未知错误') : '未知错误');
           console.error('[paste-router] drop 图片写盘失败: ' + errMsg);
           if (window.qqqideQoast) {
-            window.qqqideQoast.show('拖放图片失败: ' + errMsg, { duration: 5000 });
+            window.qqqideQoast.show((window._i ? window._i('pasteRouter.dropImgFail', '拖放图片失败: {msg}', { msg: errMsg }) : ('拖放图片失败: ' + errMsg)), { duration: 5000 });
           }
         }
         return;
@@ -576,7 +576,7 @@
     for (var n = 0; n < otherFiles.length; n++) await _land(otherFiles[n], false);
 
     if (copiedFail > 0 && window.qqqideQoast) {
-      window.qqqideQoast.show('拖放: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败', { duration: 4000 });
+      window.qqqideQoast.show((window._i ? window._i('pasteRouter.dropDone', '拖放: {ok} 成功, {fail} 失败', { ok: copiedOk, fail: copiedFail }) : ('拖放: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败')), { duration: 4000 });
     }
     return true;
   }

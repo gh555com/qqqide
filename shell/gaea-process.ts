@@ -585,7 +585,9 @@ export function startGaeaProcess(
     }
 
     try {
-        const cwd = fullPath.substring(0, fullPath.lastIndexOf('\\'));
+        // ★ mac 修复（2026-09-16）: 旧式 lastIndexOf('\\') 在 POSIX 路径（全 '/'）上返回 -1
+        //   → cwd 变空串（spawn 行为未定义）。path.dirname 双平台正确。
+        const cwd = path.dirname(fullPath);
         const isDetached = (lifecycle === 'independent');
         const pidFile = _pidFilePath(userData, goodsId);
 
@@ -596,25 +598,48 @@ export function startGaeaProcess(
         }
 
         // ★ Qt 防护: 显式指定插件路径 + 运行时 DLL 目录（防客户电脑缺 VC++ 运行时）
+        // ★ mac（2026-09-16）: 运行时为 PySide6，插件在 site-packages/PySide6/Qt/plugins
         const pyEngineDir = path.dirname(exe);
-        const qtPluginDir = path.join(pyEngineDir, 'site-packages', 'PySide2', 'plugins');
+        const qtPluginDir = process.platform === 'darwin'
+            ? path.join(pyEngineDir, 'site-packages', 'PySide6', 'Qt', 'plugins')
+            : path.join(pyEngineDir, 'site-packages', 'PySide2', 'plugins');
         const envExt: any = {
             PYTHONUNBUFFERED: '1',
             PYTHONIOENCODING: 'utf-8',
             PYTHONPATH: cwd,
-            QT_PLUGIN_PATH: qtPluginDir,
-            QT_QPA_PLATFORM_PLUGIN_PATH: qtPluginDir,
         };
+        if (fs.existsSync(qtPluginDir)) {
+            envExt.QT_PLUGIN_PATH = qtPluginDir;
+            envExt.QT_QPA_PLATFORM_PLUGIN_PATH = qtPluginDir;
+        }
         // 把 python 引擎目录加入 PATH，确保 VC++ 运行时 DLL (msvcp140/vcruntime140) 可被 Qt 插件找到
         envExt.PATH = pyEngineDir + path.delimiter + (process.env.PATH || '');
 
-        const proc = spawn(exe, args, {
-            stdio: 'ignore',
-            windowsHide: false,
-            cwd: cwd,
-            env: { ...process.env, ...envExt },
-            detached: isDetached,
-        });
+        // ★ 输出落盘（2026-09-16）: mac 无控制台 + 原 stdio:'ignore' 使崩溃现场不可见 →
+        //   统一追加 Data/Logs/goods-{id}.log（超 2MB 轮换重开），远程/事后可查
+        let logFd = -1;
+        let stdioOpt: any = 'ignore';
+        try {
+            const logDir = path.join(userData, 'Logs');
+            fs.mkdirSync(logDir, { recursive: true });
+            const logPath = path.join(logDir, 'goods-' + goodsId + '.log');
+            try { if (fs.statSync(logPath).size > 2 * 1024 * 1024) { fs.unlinkSync(logPath); } } catch { /* not exists */ }
+            logFd = fs.openSync(logPath, 'a');
+            stdioOpt = ['ignore', logFd, logFd];
+        } catch { logFd = -1; stdioOpt = 'ignore'; }
+
+        let proc: ChildProcess;
+        try {
+            proc = spawn(exe, args, {
+                stdio: stdioOpt,
+                windowsHide: false,
+                cwd: cwd,
+                env: { ...process.env, ...envExt },
+                detached: isDetached,
+            });
+        } finally {
+            if (logFd >= 0) { try { fs.closeSync(logFd); } catch { /* ignore */ } }
+        }
 
         const entry: ProcEntry = { proc, pid: proc.pid || null, scriptPath: fullPath, lifecycle, allowMultiple };
         _registry.set(goodsId, entry);

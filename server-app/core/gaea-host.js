@@ -124,6 +124,7 @@
       var def = goods.get(id);
       var btn = document.createElement('button');
       btn.className = 'gaea-tab-btn qqq-goods-btn';
+      // ★ goods 品牌名恒原文直读（全小写品牌名铁律——不参与 i18n；曾包 _i 动态键 goods.{id}.title 致控制台 Missing 连刷）
       btn.textContent = def.title || id;
       btn.dataset.gaeaId = id;
       btn.title = def.title || id;
@@ -144,7 +145,7 @@
             _ktip = document.createElement('div');
             _ktip.className = 'qqq-roam-tip';
             _ktip.dataset.owner = 'kmd-btn';
-            _ktip.textContent = '按 x 键打开一个新 kmd';
+            _ktip.textContent = (window._i ? window._i('shell.goods.kmdXTip', '按 x 键打开一个新 kmd') : '按 x 键打开一个新 kmd');
             document.body.appendChild(_ktip);
           }
           var r = btn.getBoundingClientRect();
@@ -783,7 +784,7 @@
     var nrow = document.createElement('div');
     nrow.className = 'qqq-brand-dd-item qqq-brand-dd-null';
     nrow.textContent = 'null';
-    nrow.title = '收起 A 区 / 点击还原';
+    nrow.title = (window._i ? window._i('shell.aZone.nullTip', '收起 A 区 / 点击还原') : '收起 A 区 / 点击还原');
     if (_azoneNull) nrow.classList.add('active');
     nrow.addEventListener('click', function (e) {
       e.stopPropagation();

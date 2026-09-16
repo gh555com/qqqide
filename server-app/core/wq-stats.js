@@ -138,7 +138,7 @@
     }
 
     _$el.style.cssText = 'font-family:Consolas,monospace;font-size:11px;cursor:pointer;';
-    _$el.title = 'wq 前摇统计：粘贴探针执行时间\n点击重置';
+    _$el.title = (window._i ? window._i('shell.wq.tip', 'wq 前摇统计：粘贴探针执行时间\n点击重置') : 'wq 前摇统计：粘贴探针执行时间\n点击重置');
 
     _$el.addEventListener('click', function () {
       reset();

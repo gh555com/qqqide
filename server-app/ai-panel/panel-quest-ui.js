@@ -24,7 +24,7 @@ async function switchQuest(id) {
             if ($messages) $messages.classList.remove('qqq-switching');
             try {
                 if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
-                    '当前任务 AI 尚未回复，请稍后再切换',
+                    _qq('ai.waitSwitch', '当前任务 AI 尚未回复，请稍后再切换'),
                     { type: 'warning', duration: 4000 }
                 );
             } catch (_) { }
@@ -299,7 +299,7 @@ async function createNewQuest() {
             if (_noHouse12) {
                 try {
                     if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
-                        '当前任务 AI 尚未回复，请稍后再新建',
+                        _qq('ai.waitNew', '当前任务 AI 尚未回复，请稍后再新建'),
                         { type: 'warning', duration: 4000 }
                     );
                 } catch (_) { }

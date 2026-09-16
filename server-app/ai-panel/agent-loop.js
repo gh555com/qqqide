@@ -1112,7 +1112,7 @@ var AgentLoop = (function () {
                     return finalResp.content;
                 }
                 // 强制回答也失败 → 优雅降级，不丢上下文
-                var _exhaustedMsg = '⚠ 已达到最大工具调用次数 (200)，但 AI 未能生成最终回答。对话上下文已保留，你可以继续提问。';
+                var _exhaustedMsg = (typeof _qq === 'function') ? _qq('ai.exhaustedMsg', '⚠ 已达到最大工具调用次数 (200)，但 AI 未能生成最终回答。对话上下文已保留，你可以继续提问。') : '⚠ 已达到最大工具调用次数 (200)，但 AI 未能生成最终回答。对话上下文已保留，你可以继续提问。';
                 self.conversation.push({ role: 'assistant', content: _exhaustedMsg, _floor: self._ctx.totalFloors });
                 self._floorCompletedCleanly = true;  // ★ 看门狗：已给出降级消息
                 await onDone(_exhaustedMsg, self._floorTiming);
@@ -1120,7 +1120,7 @@ var AgentLoop = (function () {
             }
 
             // 不应到达这里，但兜底
-            self._lastGatewayMessage = '⚠️ 楼层异常中断，对话已保存。';
+            self._lastGatewayMessage = (typeof _qq === 'function') ? _qq('ai.floorAbortedMsg', '⚠️ 楼层异常中断，对话已保存。') : '⚠️ 楼层异常中断，对话已保存。';
             if (!self._floorOnErrorCalled && self._stopState === 'sending') {
                 self._floorFatal = true;
                 onError(self._lastGatewayMessage);

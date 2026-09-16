@@ -976,7 +976,7 @@ function bootAiOverlay() {
     if (!el.isConnected) return;
     if (ok) {
       el.classList.add('qqq-path-ok');
-      if (!el.title) el.title = '在 Roam 中打开';
+      if (!el.title) el.title = (window._i ? window._i('ai.roamOpen', '在 Roam 中打开') : '在 Roam 中打开');
       if (onOk) onOk();
     } else {
       try {

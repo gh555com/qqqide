@@ -100,7 +100,7 @@
     el.innerHTML = [
       '<div class="qiioast-head">',
       '  <span class="qiioast-title"></span>',
-      '  <span class="qiioast-close" title="关闭">\u2715</span>',
+      '  <span class="qiioast-close" title="' + (window._i ? window._i('common.close', '关闭') : '关闭') + '">\u2715</span>',
       '</div>',
       '<div class="qiioast-bar"><div class="qiioast-bar-in"></div></div>',
       '<div class="qiioast-sub"></div>',
@@ -115,7 +115,7 @@
       e.stopPropagation();
       _remove(id);
     });
-    el.querySelector('.qiioast-cancel').textContent = '\u53D6\u6D88';
+    el.querySelector('.qiioast-cancel').textContent = (window._i ? window._i('common.cancel', '取消') : '\u53D6\u6D88');
     el.querySelector('.qiioast-cancel').addEventListener('click', function (e) {
       e.stopPropagation();
       var t = _tasks[id];

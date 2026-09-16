@@ -119,8 +119,8 @@ var _orig={};
           <button class="qqq-update-btn" id="qqq-update-btn" data-i18n-title="shell.update.check" title="检查更新" style="display:none">&#x21BB;</button>
         </div>
         <span class="qqq-bulb" id="qqq-bulbs">
-          <span class="qqq-bulb-dot" id="qqq-bulb-1" title="左 AI 面板"></span>
-          <span class="qqq-bulb-dot" id="qqq-bulb-2" title="右 AI 面板"></span>
+          <span class="qqq-bulb-dot" id="qqq-bulb-1" data-i18n-title="shell.bulb.left" title="左 AI 面板"></span>
+          <span class="qqq-bulb-dot" id="qqq-bulb-2" data-i18n-title="shell.bulb.right" title="右 AI 面板"></span>
         </span>
       </div>
     </div>
@@ -155,7 +155,7 @@ var _orig={};
           <a class="qqq-sponsor-link" id="qqq-sponsor-link" href="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">知佳</a>
         </span>
         <span class="qqq-spacer"></span>
-        <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="wq 前摇统计">wq: --</span>
+        <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" data-i18n-title="shell.wq.tipShort" title="wq 前摇统计">wq: --</span>
         <!-- ★ 总在线时间（累计陪伴小时）：服务器 wq.doer_state.companion_seconds 权威值，客户端零记录直接打印 -->
         <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace;font-size:11px;">--</span>
         <!-- ★ 启动包监控 a 区域（2026-08-30 合并定案）：内存图标 + 内存占用 + CPU 占用（CPU 图标已移除），hover/点击弹合并卡片（MEM+CPU 双段 + 共用进程列表），一包多窗口恒同值 -->
@@ -241,19 +241,20 @@ var _orig={};
   }
   function _refresh() {
     var diskId = (window.__QQQ_BUILD_ID || '????');
+    var _t = function (k, fb, p) { try { return (window._i ? window._i(k, fb, p) : fb); } catch (_) { return fb; } };
     fetch('/qqqide/qqq/_BUILD_STAMP.json?_=' + Date.now(), {cache:'no-cache'})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(data){
         if (!data) {
-          _apply({text: '\u274c 无', color: '#dc322f', title: '构建戳读取失败'});
+          _apply({text: _t('settings.stamp.none', '\u274c 无'), color: '#dc322f', title: _t('settings.stamp.readFail', '构建戳读取失败')});
         } else if (data.buildId === window.__QQQ_BUILD_ID) {
-          _apply({text: '\u2705 ' + data.buildId.slice(0,8), title: '最新代码 \u2705 buildId=' + data.buildId});
+          _apply({text: '\u2705 ' + data.buildId.slice(0,8), title: _t('settings.stamp.ok', '最新代码 \u2705 buildId={id}', { id: data.buildId })});
         } else {
-          _apply({text: '\u26a0\ufe0f ' + data.buildId.slice(0,8) + '\u2260' + diskId.slice(0,6), color: '#dc322f', bold: true, title: 'SW\u7f13\u5b58\u4e86\u65e7\u4ee3\u7801\uff01\u78c1\u76d8=' + data.buildId + ' \u6d4f\u89c8\u5668=' + diskId});
+          _apply({text: '\u26a0\ufe0f ' + data.buildId.slice(0,8) + '\u2260' + diskId.slice(0,6), color: '#dc322f', bold: true, title: _t('settings.stamp.stale', 'SW\u7f13\u5b58\u4e86\u65e7\u4ee3\u7801\uff01\u78c1\u76d8={disk} \u6d4f\u89c8\u5668={browser}', { disk: data.buildId, browser: diskId })});
         }
       })
       .catch(function(){
-        _apply({text: '\u274c fetch失败', color: '#dc322f', title: '构建戳 fetch 失败'});
+        _apply({text: _t('settings.stamp.fetchFail', '\u274c fetch失败'), color: '#dc322f', title: _t('settings.stamp.fetchFailTitle', '构建戳 fetch 失败')});
       });
   }
   window.__qqqBuildStampRefresh = function(){

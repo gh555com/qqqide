@@ -188,7 +188,9 @@
             "procsSuffix2": " processus",
             "uptime": "Temps de fonctionnement",
             "avgBadge": "{v} Moyenne",
-            "meanBadge": "{v} Moyenne"
+            "meanBadge": "{v} Moyenne",
+            "warnMsg": "Utilisation mémoire élevée du processus principal (tas {heap}Go / total {rss}Go), il est recommandé de redémarrer la fenêtre pour libérer la mémoire",
+            "warnOk": "Compris"
         },
         "gp": {
             "stop": "Arrêter",
@@ -260,6 +262,20 @@
         "exit": {
             "confirm": "Confirmer la fermeture ?",
             "ok": "Confirmer la fermeture"
+        },
+        "wq": {
+            "tip": "Statistiques de préchauffage wq : coller le temps d'exécution de la sonde\nCliquez pour réinitialiser",
+            "tipShort": "Statistiques de préchauffage wq"
+        },
+        "goods": {
+            "kmdXTip": "Appuyez sur la touche x pour ouvrir un nouveau kmd"
+        },
+        "aZone": {
+            "nullTip": "Réduire la zone A / Cliquer pour restaurer"
+        },
+        "bulb": {
+            "left": "Panneau IA gauche",
+            "right": "Panneau IA droit"
         },
         "free": {}
     },
@@ -645,7 +661,9 @@
             "showKey": "Afficher/Masquer",
             "model": "Nom du modèle",
             "modelPh": "Nom du modèle dans la documentation du fournisseur",
-            "think": "Envoyer les paramètres de réflexion (thinking / reasoning_effort ; désactiver si non pris en charge par le fournisseur)",
+            "think": "Envoyer le paramètre de réflexion (désactiver si non pris en charge par le fournisseur)",
+            "thinkLevel": "Niveau de réflexion (reasoning_effort)",
+            "thinkJson": "Paramètres JSON personnalisés (optionnel, priorité sur le niveau s'il est renseigné)",
             "route": "Canal réseau",
             "routeDirect": "Connexion directe (recommandé)",
             "routeRelay": "Proxy de la plateforme (ligne États-Unis)",
@@ -694,7 +712,17 @@
         "featureWip": "Cette fonctionnalité est en cours de développement",
         "auditBtn": "Audit",
         "translateBtn": "Traduire",
-        "auditCopied": "Texte d'audit copié dans le presse-papiers ({0} Ko), vous pouvez le coller dans n'importe quelle boîte de dialogue IA."
+        "auditCopied": "Texte d'audit copié dans le presse-papiers ({0} Ko), vous pouvez le coller dans n'importe quelle boîte de dialogue IA.",
+        "waitSwitch": "L'IA n'a pas encore répondu à la tâche en cours, veuillez patienter avant de changer",
+        "waitNew": "L'IA n'a pas encore répondu à la tâche en cours, veuillez patienter avant d'en créer une nouvelle",
+        "recoverPrefix": "Reconnexion après rétablissement du réseau. Historique des interruptions précédentes :",
+        "recoverSuffix": "｜Veuillez poursuivre la tâche originale en vous basant sur le contexte complet de la conversation.",
+        "retryExhausted": "Échec après 3 tentatives, probablement dû à l'épuisement du quota/facturation ou à une panne serveur, veuillez réessayer plus tard",
+        "pathIncompatible": "Le chemin contient des caractères incompatibles, impossible d'ajouter",
+        "bulletTrunc": "\n\n... [Partie centrale tronquée, original {0}KB] ...\n\n",
+        "exhaustedMsg": "⚠ Nombre maximal d'appels d'outils atteint (200), mais l'IA n'a pas pu générer de réponse finale. Le contexte de la conversation est conservé, vous pouvez continuer à poser des questions.",
+        "floorAbortedMsg": "⚠️ Interruption anormale de l'étage, la conversation a été sauvegardée.",
+        "sseSkipNote": "[Système : La dernière réponse semble avoir formaté l'appel d'outil en texte (format [A → …]) au lieu d'utiliser les tool_calls natifs. Les outils suivants n'ont pas été exécutés car leurs paramètres n'ont pas pu être reconstruits en toute sécurité : {0}. Veuillez réexécuter ces outils via les tool_calls natifs, ou fournir directement la réponse finale.]"
     },
     "goods": {
         "conv": {
@@ -748,7 +776,8 @@
             "lblBiscuitN": "Biscuit compressé × {0} étages",
             "noAgent": "Agent introuvable",
             "building": "⏳ Construction par l'IA en cours…",
-            "compressingNow": "⏳ Compression en cours…"
+            "compressingNow": "⏳ Compression en cours…",
+            "guardPh": "[Injecté par le serveur Go dans messages[0], invisible côté client]\n[Fichier : gaea/guard/system-prompt.txt, {n} caractères]"
         },
         "navigator": {
             "inputPlaceholder": "Saisissez un fragment de chemin, Entrée pour ouvrir / Échap pour fermer",
@@ -1536,6 +1565,14 @@
             "p19": "Nous ne pouvons pas garantir « l'utilisation de l'intelligence la plus élevée pour écrire le code le plus important ». Nous savons que c'est crucial, mais il y aura toujours des cas limites.",
             "p20": "Le changement de mode automatique repose sur l'IA la plus intelligente pour évaluer la complexité de la question (et choisir ainsi l'IA exécutive appropriée). Cependant, à long terme, cela ajoute systématiquement au moins un appel à l'« IA la plus intelligente » par étage, ce qui représente un coût significatif. À l'inverse, ne pas utiliser l'IA la plus intelligente pour l'évaluation accroît les risques mentionnés au premier point.",
             "p21": "En définitive, qqqide a choisi de créer un levier de vitesse plus ergonomique, vous laissant ainsi le contrôle total du changement de mode."
+        },
+        "stamp": {
+            "none": "❌ Aucun",
+            "readFail": "Échec de la lecture de l'identifiant de build",
+            "ok": "Dernier code ✅ buildId={id}",
+            "stale": "Le SW a mis en cache un ancien code ! Disque={disk} Navigateur={browser}",
+            "fetchFail": "❌ Échec du fetch",
+            "fetchFailTitle": "Échec du fetch de l'identifiant de build"
         }
     },
     "squad": {
@@ -1576,7 +1613,8 @@
             "reason": "Raison : {r}",
             "retrying": "Nouvelle tentative…",
             "stillFail": "Impossible de se connecter, veuillez réessayer plus tard…",
-            "retryFail": "Échec de la nouvelle tentative : {e}"
+            "retryFail": "Échec de la nouvelle tentative : {e}",
+            "noCache": "Aucun cache disponible, veuillez réessayer plus tard."
         },
         "update": {
             "title": "Mise à jour requise",
@@ -1634,5 +1672,15 @@
             "copyLink": "Copier le lien",
             "close": "Fermer"
         }
+    },
+    "pasteRouter": {
+        "noDir": "Impossible de déterminer le répertoire de collage (l'éditeur n'est-il pas associé à un fichier ?)",
+        "writeFail": "Échec de l'écriture sur le disque : {msg}",
+        "imgSaveFail": "Échec du collage de l'image : {msg}",
+        "imgPasteDone": "Collage : {ok} réussi(s), {fail} échoué(s)",
+        "dropImgFail": "Échec du dépôt de l'image : {msg}",
+        "dropDone": "Dépôt : {ok} réussi(s), {fail} échoué(s)",
+        "unknownErr": "Erreur inconnue",
+        "unknownErrSave": "Erreur inconnue (sauvegarde sans résultat retourné)"
     }
 }
