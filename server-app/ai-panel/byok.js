@@ -23,6 +23,8 @@
 //      http/https（本地地址→http）、仅 host 自动补 /v1、Key 可留空（跳过授权头）、本地地址强制直连
 //   7. 密钥静态加密：壳层 bridge.secure（safeStorage/DPAPI）——仅存密文（apiKeyEnc 字段）；
 //      旧明文存量加载自动迁移；桥缺失/加密失败自动回退明文（零破坏）
+//   8. 身份头（2026-09-16）：对话请求 index 0 注入最小身份声明（qqq AI + 语言 + 工具指引）；
+//      服务端甲壳绝不经本通道外发（防提取 + 用户自付 token）；_ 前缀内部标记字段外发前剥离
 //
 // 边界：本模块只管【对话】通道；贴图识别/生图/抠图/搜索等仍走平台内置通道。
 // ============================================================================
@@ -261,10 +263,36 @@
     // ── 请求体构造：平台 body → 用户端点 body ──
     // ★ 平台内部字段（floor_id / house_hint / tier / model 映射值）绝不外发
     // ★ 思考参数：与平台档位解耦（详下方内注释）
+    // ★ 身份头（2026-09-16）：BYOK 请求在 index 0 注入最小身份声明——用户模型以
+    //   qqq AI 身份服务（与平台通道体验一致）；服务端甲壳绝不经本通道外发（甲壳为服务端
+    //   防提取设计 + 用户自付 token，且其平台内部规则与本场景无关）
+    var _ID_PREAMBLE = 'You are qqq AI, the built-in IDE assistant. Help the user with their project using the provided tools. Always reply in the user\'s language. If asked who you are, answer: "I am qqq AI."';
+
+    // 消息净化：剥离平台内部标记字段（_ 前缀：_persistent/_biscuit/_floor/_dynamic 等），
+    // 仅发标准线上字段（role/content/tool_calls/tool_call_id/name/reasoning_content…），
+    // 防严格校验的服务商对未知字段报 400；不改动原数组（逐条浅拷贝后过滤）
+    function _sanitizeMessages(arr) {
+        var out = [];
+        for (var i = 0; i < arr.length; i++) {
+            var m = arr[i];
+            if (!m || typeof m !== 'object') continue;
+            var c = {};
+            for (var k in m) {
+                if (!Object.prototype.hasOwnProperty.call(m, k)) continue;
+                if (k.charAt(0) === '_') continue;
+                c[k] = m[k];
+            }
+            out.push(c);
+        }
+        return out;
+    }
+
     function _buildBody(body, opts, cfg) {
+        var msgs = _sanitizeMessages((body && body.messages) || []);
+        msgs.unshift({ role: 'system', content: _ID_PREAMBLE });
         var out = {
             model: cfg.model,
-            messages: (body && body.messages) || [],
+            messages: msgs,
             stream: true,
             stream_options: { include_usage: true },
             max_tokens: (body && body.max_tokens) || ((typeof ContentGateway !== 'undefined' && ContentGateway.MAX_RESPONSE_TOKENS) ? ContentGateway.MAX_RESPONSE_TOKENS : 393216)

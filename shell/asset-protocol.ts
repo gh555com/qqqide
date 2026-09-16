@@ -11,6 +11,7 @@ import * as os from 'os';
 import { URL } from 'url';
 import { ChildProcess, spawn as cpSpawn } from 'child_process';
 import { StateStore } from './state-sqlite';
+import { getDataDir } from './portable-paths';
 
 // ---- Asset file allow-list ----
 const _assetFileBuiltinRoots: string[] = [];
@@ -112,7 +113,7 @@ export function registerAssetProtocol(portableRoot: string): void {
         monaco: path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'min'),
         'monaco-maps': path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'min-maps'),
         'monaco-esm': path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'esm'),
-        monaco_deps: path.join(portableRoot, 'Data', 'monaco-deps'),
+        monaco_deps: path.join(getDataDir(), 'monaco-deps'),
         ts: path.join(appAssetsRoot, 'node_modules', 'typescript', 'lib'),
         shell: path.join(appAssetsRoot, 'shell-out'),
     };

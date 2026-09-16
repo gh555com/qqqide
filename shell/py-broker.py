@@ -159,6 +159,150 @@ def _win_mem_snapshot(root_pid: int):
             'rows': rows, 'nwin': nwin}
 
 
+def _mac_mem_snapshot(root_pid: int):
+    """macOS: libproc 全系统快照 → root_pid + 全部后代（纯血缘进程树，与 Win 同口径）。
+    - 进程表: proc_listpids(PROC_ALL_PIDS)
+    - ppid/名: proc_pidinfo(PROC_PIDTBSDINFO)（实测 sizeof=136: ppid@16 comm@48 name@64）
+    - 内存: proc_pid_rusage(RUSAGE_INFO_V2).ri_phys_footprint@72（活动监视器「内存」
+      列同口径=去重共享内存）；失败回落 PROC_PIDTASKINFO.pti_resident_size@8
+    - CPU 时间: rusage ri_user_time@16 / ri_system_time@24（纳秒，VM busy-loop 实测
+      0.93 核/1.0 正确）→ ÷100 换算 100ns ticks（与 Win 差分公式 dt/1e7 同量纲）；
+      失败回落 taskinfo pti_total_user/system（同实测纳秒）
+    返回 {totalMB, nodes, ncpu, rows, nwin} 或 None；rows 的 ws 单位 KB（与 Win 一致）。
+    """
+    import ctypes
+
+    class _proc_bsdinfo(ctypes.Structure):
+        _fields_ = [('pbi_flags', ctypes.c_uint32), ('pbi_status', ctypes.c_uint32),
+                    ('pbi_xstatus', ctypes.c_uint32), ('pbi_pid', ctypes.c_uint32),
+                    ('pbi_ppid', ctypes.c_uint32), ('pbi_uid', ctypes.c_uint32),
+                    ('pbi_gid', ctypes.c_uint32), ('pbi_ruid', ctypes.c_uint32),
+                    ('pbi_rgid', ctypes.c_uint32), ('pbi_svuid', ctypes.c_uint32),
+                    ('pbi_svgid', ctypes.c_uint32), ('rfu_1', ctypes.c_uint32),
+                    ('pbi_comm', ctypes.c_char * 16), ('pbi_name', ctypes.c_char * 32),
+                    ('pbi_nfiles', ctypes.c_uint32), ('pbi_pgid', ctypes.c_uint32),
+                    ('pbi_pjobc', ctypes.c_uint32), ('e_tdev', ctypes.c_uint32),
+                    ('e_tpgid', ctypes.c_uint32), ('pbi_nice', ctypes.c_int32),
+                    ('pbi_start_tvsec', ctypes.c_uint64), ('pbi_start_tvusec', ctypes.c_uint64)]
+
+    class _proc_taskinfo(ctypes.Structure):
+        _fields_ = [('pti_virtual_size', ctypes.c_uint64), ('pti_resident_size', ctypes.c_uint64),
+                    ('pti_total_user', ctypes.c_uint64), ('pti_total_system', ctypes.c_uint64),
+                    ('pti_threads_user', ctypes.c_uint64), ('pti_threads_system', ctypes.c_uint64),
+                    ('pti_policy', ctypes.c_int32), ('pti_faults', ctypes.c_int32),
+                    ('pti_pageins', ctypes.c_int32), ('pti_cow_faults', ctypes.c_int32),
+                    ('pti_messages_sent', ctypes.c_int32), ('pti_messages_received', ctypes.c_int32),
+                    ('pti_syscalls_mach', ctypes.c_int32), ('pti_syscalls_unix', ctypes.c_int32),
+                    ('pti_csw', ctypes.c_int32), ('pti_threadnum', ctypes.c_int32),
+                    ('pti_numrunning', ctypes.c_int32), ('pti_priority', ctypes.c_int32)]
+
+    try:
+        libproc = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
+    except OSError:
+        try:
+            libproc = ctypes.CDLL('libproc.dylib', use_errno=True)
+        except OSError:
+            _log("mem-snapshot(mac): libproc.dylib load failed")
+            return None
+
+    libproc.proc_listpids.restype = ctypes.c_int
+    libproc.proc_listpids.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_int]
+    libproc.proc_pidinfo.restype = ctypes.c_int
+    libproc.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
+    libproc.proc_pid_rusage.restype = ctypes.c_int
+    libproc.proc_pid_rusage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
+
+    PROC_ALL_PIDS = 1
+    PROC_PIDTBSDINFO = 3
+    PROC_PIDTASKINFO = 4
+    RUSAGE_INFO_V2 = 2
+
+    # 1) 全部 pid（两段式：先问大小再取表）
+    need = libproc.proc_listpids(PROC_ALL_PIDS, 0, None, 0)
+    if need <= 0:
+        _log("mem-snapshot(mac): proc_listpids size probe failed")
+        return None
+    cnt = need // ctypes.sizeof(ctypes.c_int) + 64
+    arr = (ctypes.c_int * cnt)()
+    got = libproc.proc_listpids(PROC_ALL_PIDS, 0, arr, ctypes.sizeof(arr))
+    if got <= 0:
+        _log("mem-snapshot(mac): proc_listpids fetch failed")
+        return None
+    pids = [p for p in arr[:min(cnt, got // ctypes.sizeof(ctypes.c_int))] if p > 0]
+
+    # 2) 每进程取 ppid/名 + 内存 + CPU 时间（无权限的（如他人/系统进程）跳过，
+    #    血缘树只依赖本方进程——同用户全可读）
+    procs = {}
+    ru_buf = ctypes.create_string_buffer(2048)  # rusage V2 结构 < 512B，留足余量
+    for pid in pids:
+        bsd = _proc_bsdinfo()
+        if libproc.proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, ctypes.byref(bsd), ctypes.sizeof(bsd)) <= 0:
+            continue
+        try:
+            nm = bytes(bsd.pbi_name).split(b'\x00', 1)[0].decode('utf-8', 'replace') or \
+                 bytes(bsd.pbi_comm).split(b'\x00', 1)[0].decode('utf-8', 'replace')
+        except Exception:
+            nm = ''
+        ws = 0
+        ut = 0
+        kt = 0
+        ok = False
+        ctypes.memset(ru_buf, 0, 2048)
+        if libproc.proc_pid_rusage(pid, RUSAGE_INFO_V2, ru_buf) == 0:
+            raw = ru_buf.raw
+            ws = int.from_bytes(raw[72:80], 'little')           # ri_phys_footprint
+            ut = int.from_bytes(raw[16:24], 'little') // 100    # ns → 100ns ticks
+            kt = int.from_bytes(raw[24:32], 'little') // 100    # ns → 100ns ticks
+            ok = True
+        if (not ok) or ws <= 0:
+            ti = _proc_taskinfo()
+            if libproc.proc_pidinfo(pid, PROC_PIDTASKINFO, 0, ctypes.byref(ti), ctypes.sizeof(ti)) > 0:
+                if ws <= 0:
+                    ws = int(ti.pti_resident_size)
+                if not ok:
+                    ut = int(ti.pti_total_user) // 100
+                    kt = int(ti.pti_total_system) // 100
+                ok = True
+        if not ok:
+            continue
+        procs[pid] = (int(bsd.pbi_ppid), ws, nm, ut, kt)
+
+    children = {}
+    for pid, (ppid, _ws, _nm, _ut, _kt) in procs.items():
+        children.setdefault(ppid, []).append(pid)
+    # 单遍 BFS：主进程 + 全部后代（纯血缘——与 v29 通道绝缘定案同语义）
+    queue = [root_pid]
+    seen = set()
+    rows = []
+    total = 0
+    while queue:
+        p = queue.pop(0)
+        if p in seen:
+            continue
+        seen.add(p)
+        info = procs.get(p)
+        if info:
+            ppid, ws, nm, ut, kt = info
+            total += ws
+            rows.append({'pid': p, 'ppid': ppid, 'ws': ws >> 10, 'n': nm, 'ut': ut, 'kt': kt})
+        for c in children.get(p, []):
+            if c not in seen:
+                queue.append(c)
+    # 窗口数：CGWindowList 屏上窗口按属主 pid（Electron 全部顶层窗归 browser 进程）
+    nwin = 0
+    try:
+        from Quartz import CGWindowListCopyWindowInfo, kCGWindowListOptionOnScreenOnly, kCGNullWindowID
+        for w in (CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID) or []):
+            if w.get('kCGWindowOwnerPID') == root_pid:
+                nwin += 1
+    except Exception:
+        nwin = 0
+    total_mb = round(total / 1048576)
+    _log(f"mem-snapshot(mac): root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
+    return {'totalMB': total_mb, 'nodes': len(rows), 'ncpu': os.cpu_count() or 0,
+            'rows': rows, 'nwin': nwin}
+
+
 def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:
     """
     Windows: EnumWindows 枚举所有顶层窗口 →
@@ -672,17 +816,21 @@ def main():
                 break
             elif action == "mem-snapshot":
                 root_pid = int(cmd.get("rootPid") or 0)
-                if OS == "Windows" and root_pid > 0:
-                    r = _win_mem_snapshot(root_pid)  # v29: 纯血缘整树（v28 pkgRoot 分类参数已废弃）
-                    if r is None:
-                        result["ok"] = False
-                        result["error"] = "NtQuery failed"
-                    else:
-                        result["ok"] = True
-                        result.update(r)
-                else:
+                r = None
+                err = "unsupported platform or missing rootPid"
+                if root_pid > 0:
+                    if OS == "Windows":
+                        r = _win_mem_snapshot(root_pid)  # v29: 纯血缘整树（v28 pkgRoot 分类参数已废弃）
+                        err = "NtQuery failed"
+                    elif OS == "Darwin":
+                        r = _mac_mem_snapshot(root_pid)
+                        err = "libproc snapshot failed"
+                if r is None:
                     result["ok"] = False
-                    result["error"] = "unsupported platform or missing rootPid"
+                    result["error"] = err
+                else:
+                    result["ok"] = True
+                    result.update(r)
             elif action == "rename-devtools":
                 _log(f"rename-devtools: mainHwnd={cmd.get('mainHwnd')} title={cmd.get('title')}")
                 if OS == "Windows":

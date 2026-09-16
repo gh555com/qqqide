@@ -18,6 +18,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { getComponentBin, getComponentDir } from './component-checker';
 import { isNodeBrokerAvailable, renameDevToolsViaNodeBroker } from './node-broker';
+import { getDataDir } from './portable-paths';
 
 let _proc: ChildProcess | null = null;
 let _pending: Map<number, { resolve: (r: any) => void; reject: (e: any) => void; timer: NodeJS.Timeout }> = new Map();
@@ -82,7 +83,7 @@ function _spawn(): void {
     }
 
     try {
-        const logFile = path.join(_portableRoot, 'Data', 'Logs', '_py_broker.log');
+        const logFile = path.join(getDataDir(), 'Logs', '_py_broker.log');
         _proc = spawn(pyExe, ['-u', scriptPath, '--log-file', logFile], {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },

@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlRecord, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob } from './timeline-store';
 import { BootConfig } from './boot';
 import { APP_VERSION } from './version';
+import { getDataDir } from './portable-paths';
 
 export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig): void {
     // ★ 编辑类快照防抖真理机（唯一入口，改一处全局生效）
@@ -315,7 +316,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         // ★ 绿色包/离线模式: 优先用本地 webapp 协议加载 diff-window.html
         var diffBaseUrl = bootConfig.url.replace(/\/*$/, '/');
         try {
-            var webappIndex = path.join(portableRoot, 'Data', 'webapp', 'index.html');
+            var webappIndex = path.join(getDataDir(), 'webapp', 'index.html');
             if (fs.existsSync(webappIndex)) {
                 diffBaseUrl = 'qqqide-webapp://app/qqqide/';
             }

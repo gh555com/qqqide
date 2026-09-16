@@ -16,6 +16,14 @@ var path = require('path');
 function bootstrapLog(msg) {
     try {
         var rootDir = path.dirname(process.execPath);
+        // ★ mac .app bundle（2026-09-16）：禁写 bundle 内——写数据破代码签名封条
+        //   （TCC csreq 失配 → 已授权限全失效）。日志重定向到 .app 同级
+        //   qqqide-data/Data/Logs（与 portable-paths.getDataDir 同源）。
+        var norm = rootDir.replace(/\\/g, '/');
+        var idx = norm.indexOf('.app/Contents/MacOS');
+        if (idx >= 0) {
+            rootDir = path.join(path.dirname(norm.slice(0, idx)), 'qqqide-data');
+        }
         var logDir = path.join(rootDir, 'Data', 'Logs');
         fs.mkdirSync(logDir, { recursive: true });
         var ts = new Date().toISOString();

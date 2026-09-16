@@ -45,7 +45,10 @@ def _add(tf, full, arc):
     if os.path.islink(full):
         ti = tarfile.TarInfo(arc)
         ti.type = tarfile.SYMTYPE
-        ti.linkname = os.readlink(full)
+        # ★ Windows 宿主机修正：Node fs.symlinkSync 会把目标归一化为反斜杠
+        #   （..\..\..\qqqide-data\engines）——tar 内 symlink 目标语义永远是
+        #   POSIX 正斜杠，读盘后统一转换（2026-09-16 engines 外置实测）。
+        ti.linkname = os.readlink(full).replace('\\', '/')
         ti.mode = 0o777
         ti.mtime = int(st.st_mtime)
         tf.addfile(ti)

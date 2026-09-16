@@ -18,6 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
+import { getDataDir } from './portable-paths';
 
 const ALL_LANGS = ['zh', 'zh-tw', 'en', 'ja', 'de', 'ko', 'ru', 'ar', 'es', 'fr', 'pt-BR', 'hi', 'vi'];
 
@@ -73,7 +74,7 @@ export async function refreshMainI18nLang(persistedGetter: () => Promise<any>): 
 function _dictDirs(): string[] {
     const dirs: string[] = [];
     if (_root) {
-        dirs.push(path.join(_root, 'Data', 'webapp', 'locales'));
+        dirs.push(path.join(getDataDir(), 'webapp', 'locales'));
         dirs.push(path.join(_root, 'resources', 'app', 'webapp', 'locales'));
         dirs.push(path.join(_root, 'resources', 'app', 'server-app', 'locales'));
         dirs.push(path.join(_root, 'server-app', 'locales'));

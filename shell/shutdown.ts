@@ -10,6 +10,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { URL } from 'url';
 import { BootConfig } from './boot';
+import { getDataDir } from './portable-paths';
 import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
@@ -24,7 +25,7 @@ const AUTO_VERSION_TOGGLE_OFF = 'auto-version-off';
 function autoIncrementVersion(portableRoot: string): void {
     try {
         // ── 开关: Data/auto-version-off 存在 → 跳过 ──
-        const toggleOff = path.join(portableRoot, 'Data', AUTO_VERSION_TOGGLE_OFF);
+        const toggleOff = path.join(getDataDir(), AUTO_VERSION_TOGGLE_OFF);
         if (fs.existsSync(toggleOff)) {
             console.log('[auto-version] OFF (toggle file exists), skip');
             return;

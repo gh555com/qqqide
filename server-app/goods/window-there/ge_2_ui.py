@@ -1,6 +1,7 @@
 # Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 # ui.py (R22 更新版)
+import os
 import sys
 import time
 from PySide2.QtWidgets import (
@@ -347,6 +348,11 @@ class LayoutSelectorWindow(QWidget):
         self.setWindowOpacity(0.97)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool | Qt.NoDropShadowWindowHint)
+        # ★ macOS（2026-09-16 VM 实测）: Qt.Tool 窗口默认随应用失活自动隐藏（NSPanel
+        #   hidesOnDeactivate）——而 3X/3Shift 天生在「其他应用前台」时触发（用户悬停的
+        #   目标窗口不是焦点窗口）→ 选择器被系统静默藏起 = 用户「按了没反应」。
+        #   此属性 = 失活也常显（Windows 上枚举存在但为 no-op，零影响）。
+        self.setAttribute(Qt.WA_MacAlwaysShowToolWindow, True)
         self.setFocusPolicy(Qt.StrongFocus)
 
         self.setStyleSheet(f"""
@@ -386,6 +392,18 @@ class LayoutSelectorWindow(QWidget):
         self.center_window()
 
         self.focus_timer = QTimer(self); self.focus_timer.timeout.connect(self.check_focus); self.focus_timer.start(1000)
+
+    def showEvent(self, event):
+        """★ macOS（2026-09-16 VM 实测）: 本 goods 由其他应用前台时的热键触发——
+        后台应用无法把自己的窗口带到最前（NSApp 非活动态不处理 activateWindow）。
+        显示时主动激活本应用（失败静默，绝不中断流程）；Windows 零分支零影响。"""
+        super().showEvent(event)
+        if sys.platform == 'darwin':
+            try:
+                from AppKit import NSApplication
+                NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            except Exception:
+                pass
 
     def populate_grid(self):
         while self.grid_layout.count():
@@ -445,6 +463,16 @@ class LayoutSelectorWindow(QWidget):
 
             foreground_handle = g_platform_manager.get_foreground_window_handle()
             if not foreground_handle: return
+
+            # ★ macOS（2026-09-16 VM 实测）: 前台句柄 = 前台应用 PID；本选择器归本进程。
+            #   原逻辑拿 winId（NSView 指针）与 PID 比 → 恒不等 → 选择器创建 3 秒后
+            #   必被自杀（用户侧「选择器刚现就没了」）。darwin 语义 = 前台还是本进程?
+            #   不是（用户点了别的应用/桌面）才关闭——与 Windows「点击别处自动收起」对齐。
+            if sys.platform == 'darwin':
+                if int(foreground_handle) == os.getpid():
+                    return
+                self.close()
+                return
 
             my_handle = int(self.winId())
             if foreground_handle == my_handle: return

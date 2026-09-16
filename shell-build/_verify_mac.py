@@ -8,6 +8,7 @@
 #
 # 检查项：sha256 指纹 / 顶层结构 / 残留（pycache·vc_runtime）/ 关键二进制
 #         Mach-O 架构 / 符号链接（数量 + 反斜杠）/ Info.plist 契约 / 入口链
+#         pyobjc 完整链（objc/Cocoa/Quartz/CoreText/ApplicationServices）
 # ============================================================================
 import hashlib
 import os
@@ -75,6 +76,7 @@ print('entries:', len(names))
 
 EP = 'qqqide.app/Contents/Resources/app/'
 C = 'qqqide.app/Contents/'
+QD = 'qqqide-data/'          # ★ mac 外置托管根（≈ Windows gh555.com：Data/ + engines/）
 
 
 def first_bytes(name, n=8):
@@ -91,10 +93,29 @@ def count(prefix):
 
 # ── structure ──
 check('qqqide.app' in {n.split('/')[0] for n in names}, 'top-level qqqide.app present')
+check('qqqide-data' in {n.split('/')[0] for n in names}, 'top-level qqqide-data present')
 check(count(EP + 'shell-out/') > 0 and (EP + 'shell-out/main.js') in nameset, 'shell-out/main.js present')
 check((EP + 'shell-out/bootstrap.js') in nameset, 'shell-out/bootstrap.js present')
 check(count(EP + 'webapp/') > 100, 'webapp bundled (%d entries)' % count(EP + 'webapp/'))
-check((EP + 'engines/manifest.json') in nameset, 'engines/manifest.json present')
+check((QD + 'engines/manifest.json') in nameset, 'qqqide-data/engines/manifest.json present')
+
+# ── mac 外置托管根（2026-09-16）：engines 出 bundle + 相对 symlink 桥接 ──
+linkmap = {m.name: m.linkname for m in tf.getmembers() if m.issym()}
+eng_link = linkmap.get(EP + 'engines')
+check(eng_link == '../../../../qqqide-data/engines',
+      'engines symlink -> ../../../../qqqide-data/engines (got %s)' % eng_link)
+check((QD + 'engines/python/bin/python3.11') in nameset, 'external engines python tree present')
+check(count('qqqide.app/Contents/MacOS/Data') == 0, 'no Data inside .app bundle (sig seal safe)')
+check((QD + 'Data/alphal/factory_version') in nameset, 'qqqide-data/Data/alphal/factory_version present')
+
+# ── mac 一键启动脚本（去隔离 + 自签名 + 启动）──
+if '\u9996\u6b21\u542f\u52a8.command' in nameset:
+    cmd_txt = tf.extractfile('\u9996\u6b21\u542f\u52a8.command').read().decode('utf-8', 'replace')
+    check('codesign' in cmd_txt and 'xattr -dr com.apple.quarantine' in cmd_txt,
+          'launcher .command: codesign + dequarantine present')
+else:
+    check(False, 'launcher .command present')
+check('README-\u4f7f\u7528\u8bf4\u660e.txt' in nameset, 'README present')
 
 # ── node_modules runtime deps (shell-out require targets) ──
 check((EP + 'node_modules/sql.js/package.json') in nameset, 'node_modules/sql.js bundled (shell hard dep)')
@@ -103,32 +124,71 @@ check((EP + 'node_modules/sql.js/dist/sql-wasm.wasm') in nameset, 'sql.js dist/s
 check(count(EP + 'node_modules/monaco-editor/min/') > 0, 'monaco-editor/min bundled')
 
 # ── PySide2→PySide6 垫片 + mac 热键分支（2026-09-16）──
-shim_sp = EP + 'engines/python/lib/python3.11/site-packages/'
+shim_sp = QD + 'engines/python/lib/python3.11/site-packages/'
 check((shim_sp + '_qqq_pyside2_shim.py') in nameset, 'pyside2 shim module present')
 check((shim_sp + '_qqq_pyside2_shim.pth') in nameset, 'pyside2 shim .pth present (auto-load)')
+
+# ── pyobjc 完整链（window-there AX 功能 + ApplicationServices 伞形包）──
+check((shim_sp + 'objc/_objc.cpython-311-darwin.so') in nameset, 'pyobjc-core (objc) present')
+check((shim_sp + 'Cocoa/__init__.py') in nameset, 'pyobjc Cocoa present')
+check((shim_sp + 'Quartz/__init__.py') in nameset, 'pyobjc Quartz present')
+check((shim_sp + 'CoreText/__init__.py') in nameset and
+      (shim_sp + 'CoreText/_manual.cpython-311-darwin.so') in nameset,
+      'pyobjc CoreText present (ApplicationServices hard dep)')
+check((shim_sp + 'ApplicationServices/__init__.py') in nameset, 'pyobjc ApplicationServices present')
+
+# ── window-there macOS AX 链（3W/3X 修复：正确 API 面 + 无坏常量）──
+gpf = EP + 'webapp/goods/window-there/ge_2_platform.py'
+if gpf in nameset:
+    gpf_txt = tf.extractfile(gpf).read().decode('utf-8', 'replace')
+    check('AXUIElementCopyElementAtPosition' in gpf_txt and 'AXUIElementGetPid' in gpf_txt,
+          'window-there: AX system-wide + GetPid path present')
+    check(('kAXWindowPositionAttribute' not in gpf_txt) and ('kAXPIDAttribute' not in gpf_txt),
+          'window-there: no invalid AX constants')
+else:
+    check(False, 'webapp/goods/window-there/ge_2_platform.py present')
 pb = EP + 'shell-out/py-broker.py'
 if pb in nameset:
     pb_txt = tf.extractfile(pb).read().decode('utf-8', 'replace')
     check('_mac_squad_summon' in pb_txt and 'NSRunningApplication' in pb_txt,
           'py-broker.py carries mac summon branch')
+    check('_mac_mem_snapshot' in pb_txt and 'proc_pid_rusage' in pb_txt,
+          'py-broker.py: mac mem snapshot present')
 else:
     check(False, 'shell-out/py-broker.py present')
 
+# ── mac 三项修复回归断言（2026-09-16：3X 选择器可见性 / Roam 图标 / 内存快照）──
+gui = EP + 'webapp/goods/window-there/ge_2_ui.py'
+if gui in nameset:
+    gui_txt = tf.extractfile(gui).read().decode('utf-8', 'replace')
+    check('WA_MacAlwaysShowToolWindow' in gui_txt, 'window-there: selector MacAlwaysShowToolWindow present')
+    check('activateIgnoringOtherApps' in gui_txt, 'window-there: selector NSApp activate present')
+    check("== 'darwin'" in gui_txt, 'window-there: check_focus darwin branch present')
+else:
+    check(False, 'webapp/goods/window-there/ge_2_ui.py present')
+roamjs = EP + 'webapp/goods/file-explorer/q2-roam.js'
+if roamjs in nameset:
+    roam_txt = tf.extractfile(roamjs).read().decode('utf-8', 'replace')
+    check('\U0001F4C4' in roam_txt and '\U0001F5C8' not in roam_txt,
+          'roam: file icon glyph renderable on mac (no tofu)')
+else:
+    check(False, 'webapp/goods/file-explorer/q2-roam.js present')
+
 # ── junk (must be zero) ──
-check(count(EP + 'engines/__pycache__/') == 0, 'no engines/__pycache__')
+check(count(QD + 'engines/__pycache__/') == 0, 'no engines/__pycache__')
 check(count(EP + 'shell-out/__pycache__/') == 0, 'no shell-out/__pycache__')
-check(not ((EP + 'engines/vc_runtime') in nameset or count(EP + 'engines/vc_runtime/') > 0),
+check(not ((QD + 'engines/vc_runtime') in nameset or count(QD + 'engines/vc_runtime/') > 0),
       'no engines/vc_runtime (win-only)')
 
 # ── key binaries: Mach-O + exec bit ──
 bins = [
     ('Contents/MacOS/qqqide', 'qqqide.app/Contents/MacOS/qqqide'),
-    ('engines/ghrun', EP + 'engines/ghrun'),
-    ('engines/watchdog', EP + 'engines/watchdog'),
-    ('engines/ripgrep/rg', EP + 'engines/ripgrep/rg'),
-    ('engines/git/git', EP + 'engines/git/git'),
-    ('engines/python/bin/python3.11', EP + 'engines/python/bin/python3.11'),
-    ('engines/ffmpeg/darwin-%s/ffmpeg' % ARCH, EP + 'engines/ffmpeg/darwin-%s/ffmpeg' % ARCH),
+    ('engines/ghrun', QD + 'engines/ghrun'),
+    ('engines/watchdog', QD + 'engines/watchdog'),
+    ('engines/ripgrep/rg', QD + 'engines/ripgrep/rg'),
+    ('engines/git/git', QD + 'engines/git/git'),
+    ('engines/python/bin/python3.11', QD + 'engines/python/bin/python3.11'),
+    ('engines/ffmpeg/darwin-%s/ffmpeg' % ARCH, QD + 'engines/ffmpeg/darwin-%s/ffmpeg' % ARCH),
 ]
 for label, p in bins:
     if p not in nameset:

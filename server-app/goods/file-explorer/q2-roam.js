@@ -1010,7 +1010,7 @@ async function loadFileList(p) {
 var _folderTpl = document.createElement('template');
 _folderTpl.innerHTML = '<div class="sz-area"></div><div class="file-select-area"><span class="file-icon">📁</span></div><div class="folder-name-area"></div>';
 var _fileTpl = document.createElement('template');
-_fileTpl.innerHTML = '<div class="sz-area"></div><div class="file-name-area"><span class="file-icon">🗈</span><span></span></div>';
+_fileTpl.innerHTML = '<div class="sz-area"></div><div class="file-name-area"><span class="file-icon">📄</span><span></span></div>';
 
 function buildFileItem(entry, fullPath) {
 	var item = document.createElement('div');

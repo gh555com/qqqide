@@ -1198,6 +1198,154 @@ function swapEnginesForMac(unpacked) {
   }
 }
 
+// 3.9b) externalizeMacBundle — engines 移出 .app（2026-09-16）
+//   动机: 往 .app bundle 内写数据会破坏代码签名封条（TCC csreq 失配 → 已授权限全失效），
+//   且更新换装时数据随旧 app 全灭。pyc 缓存 / 组件自愈解压 / 运行写入必须全部穿透到外置。
+//   布局: {unpacked}/qqqide-data/engines（实体）
+//         qqqide.app/Contents/Resources/app/engines → ../../../../qqqide-data/engines（相对 symlink）
+//   与 Windows 的 gh555.com/engines 同构（qqqide-data ≈ 外置托管根，内含 Data/ + engines/）。
+function externalizeMacBundle(unpacked) {
+  if (!target.startsWith('mac-')) { return; }
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir) { throw new Error('[pack] mac: app resources dir not found'); }
+  const engSrc = path.join(appDir, 'engines');
+  const hostDir = path.join(unpacked, 'qqqide-data');
+  const engDst = path.join(hostDir, 'engines');
+
+  if (!fs.existsSync(engSrc) || !fs.statSync(engSrc).isDirectory()) {
+    throw new Error('[pack] mac: engines missing before externalize');
+  }
+  if (fs.existsSync(engDst)) { fs.rmSync(engDst, { recursive: true, force: true }); }
+  fs.mkdirSync(hostDir, { recursive: true });
+  fs.renameSync(engSrc, engDst);
+
+  // 相对 symlink 回填（.app 与 qqqide-data 同级；从 .../Resources/app/ 上溯 4 级）
+  // mac 上读写穿透 → pyc/组件解压落外置；bundle 内 symlink 本身无人写 → 签名不破
+  fs.symlinkSync('../../../../qqqide-data/engines', engSrc, 'dir');
+  console.log('[pack] mac: engines externalized -> qqqide-data/engines (+ relative symlink)');
+
+  // factory_version 注入外置 Data（全新安装读它；已装用户换装时旧 Data 保留不覆盖）
+  try {
+    const fvDir = path.join(hostDir, 'Data', 'alphal');
+    fs.mkdirSync(fvDir, { recursive: true });
+    fs.writeFileSync(path.join(fvDir, 'factory_version'), APP_VERSION, 'utf8');
+    console.log('[pack] mac: injected factory_version -> qqqide-data/Data/alphal/');
+  } catch (e) {
+    console.warn('[pack] mac: factory_version inject failed:', e.message);
+  }
+}
+
+// 3.9c) writeMacLaunchers — mac 一键启动脚本 + 使用说明（2026-09-16）
+//   首次启动.command: 去隔离 + 本地自签名（TCC 授权跨更新稳定）+ 启动；已签名时秒过。
+//   README-使用说明.txt: 给非技术用户的操作说明（启动/数据位置/升级步骤）。
+function writeMacLaunchers(unpacked) {
+  if (!target.startsWith('mac-')) { return; }
+  const firstCmd = [
+    '#!/bin/bash',
+    '# qqqide mac 启动 — 去隔离 + 本地签名 + 启动（双击本文件即可）',
+    'cd "$(dirname "$0")"',
+    'echo "=== qqqide 启动器 ==="',
+    '',
+    'APP="$PWD/qqqide.app"',
+    'KC="$HOME/Library/Keychains/qqqide-sign.keychain-db"',
+    '',
+    '# 1. 移除下载隔离标记（防 Gatekeeper 拦截）',
+    'xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true',
+    '',
+    '# 2. 本地签名证书（首次创建；后续启动复用）——同一证书 = 系统权限授权跨更新保留',
+    'if [ ! -f "$KC" ]; then',
+    '  echo "[1/3] 创建本地签名证书（一次性，稍等）..."',
+    '  TMP=$(mktemp -d)',
+    '  cat > "$TMP/o.cnf" <<\'EOF\'',
+    '[req]',
+    'distinguished_name = dn',
+    'x509_extensions = req_ext',
+    'prompt = no',
+    '[dn]',
+    'CN = qqqide Local Sign',
+    'O = qqqide',
+    '[req_ext]',
+    'extendedKeyUsage = codeSigning',
+    'keyUsage = digitalSignature',
+    'basicConstraints = critical, CA:false',
+    'EOF',
+    '  openssl req -x509 -newkey rsa:2048 -keyout "$TMP/k.pem" -out "$TMP/c.pem" -days 3650 -nodes -config "$TMP/o.cnf" 2>/dev/null',
+    '  openssl pkcs12 -export -inkey "$TMP/k.pem" -in "$TMP/c.pem" -out "$TMP/s.p12" -passout pass:qqqide 2>/dev/null',
+    '  security create-keychain -p qqqide "$KC" >/dev/null',
+    '  security unlock-keychain -p qqqide "$KC"',
+    '  security import "$TMP/s.p12" -k "$KC" -P qqqide -T /usr/bin/codesign -T /usr/bin/security >/dev/null',
+    '  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k qqqide "$KC" >/dev/null 2>&1',
+    '  rm -rf "$TMP"',
+    '  echo "      证书 OK"',
+    'fi',
+    '',
+    '# 2b. 确保签名钥匙串在搜索列表（缺失时 codesign 会拒绝访问 → errSecInternalComponent）',
+    'KCLIST=()',
+    'while IFS= read -r line; do',
+    '  k=$(echo "$line" | sed \'s/^ *"//; s/" *$//\')',
+    '  [ -n "$k" ] && KCLIST+=("$k")',
+    'done <<< "$(security list-keychains -d user)"',
+    'found=0',
+    'for k in "${KCLIST[@]}"; do [ "$k" = "$KC" ] && found=1; done',
+    'if [ $found -eq 0 ]; then',
+    '  security list-keychains -d user -s "${KCLIST[@]}" "$KC" >/dev/null',
+    'fi',
+    '',
+    '# 3. 签名（已签且完好时秒过；新包首次约 30 秒-2 分钟）',
+    'echo "[2/3] 检查签名..."',
+    'if codesign --verify "$APP" 2>/dev/null; then',
+    '  echo "      签名已就绪"',
+    'else',
+    '  echo "      正在签名（稍等）..."',
+    '  security unlock-keychain -p qqqide "$KC" >/dev/null 2>&1',
+    '  SIGN_ERR=$(codesign --force --deep --sign "qqqide Local Sign" --keychain "$KC" "$APP" 2>&1)',
+    '  if codesign --verify "$APP" 2>/dev/null; then',
+    '    echo "      签名 OK"',
+    '  else',
+    '    echo "      签名未完成（仍可启动；若系统权限每次开机需重设，请把下面输出反馈）"',
+    '    echo "$SIGN_ERR" | tail -3',
+    '  fi',
+    'fi',
+    '',
+    '# 4. 启动',
+    'echo "[3/3] 启动 qqqide..."',
+    'open "$APP"',
+    'echo ""',
+    'echo "完成！可关闭本窗口。"',
+    ''
+  ].join('\n');
+  const readme = [
+    'qqqide (mac) 使用说明',
+    '============================',
+    '',
+    '【启动】',
+    '双击「首次启动.command」即可（新包首次会先签名，稍等 1-2 分钟）。',
+    '  · 若双击提示“无法打开”，请右键点它 → 打开 → 再点“打开”。',
+    '',
+    '【数据位置】',
+    '全部数据在 qqqide-data 文件夹（与 qqqide.app 同级）——升级时只换 qqqide.app，',
+    'qqqide-data 保留即可，数据零丢失。',
+    '',
+    '【升级】',
+    '1. 解压新包；',
+    '2. 用新的 qqqide.app + qqqide-data/engines 覆盖旧目录同名项；',
+    '3. 双击「首次启动.command」。',
+    '（qqqide-data/Data 目录不要动；签名证书在系统钥匙串里，升级零配置。）',
+    '',
+    '【提示】',
+    '本地签名版（非 App Store），首次启动后系统可能询问“辅助功能/输入监控”权限，',
+    '请允许 —— 这是窗口编队热键与跨窗口功能所需；同一签名证书下升级不再重问。',
+    ''
+  ].join('\n');
+  try {
+    fs.writeFileSync(path.join(unpacked, '首次启动.command'), firstCmd);
+    fs.writeFileSync(path.join(unpacked, 'README-使用说明.txt'), readme, 'utf8');
+    console.log('[pack] mac: launchers written (首次启动.command + README-使用说明.txt)');
+  } catch (e) {
+    console.warn('[pack] mac: launcher write failed:', e.message);
+  }
+}
+
 // 3.10) prune server-app — remove generated AI images from bundle
 function pruneServerApp(unpacked) {
   const appDir = appResourcesDir(unpacked);
@@ -1608,6 +1756,8 @@ function packSfx(unpacked) {
   pruneShellOut(unpacked);
   prunePythonSlim(unpacked);
   cleanRuntimeDirs(unpacked);
+  externalizeMacBundle(unpacked);
+  writeMacLaunchers(unpacked);
   if (isSfx) {
     packSfx(unpacked);
   } else {
