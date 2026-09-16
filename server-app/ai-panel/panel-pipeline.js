@@ -246,19 +246,19 @@ async function _executeSend(intent) {
             _requeueFromQueue();
             try {
                 if (window.parent && window.parent.qqqideQoast) {
-                    window.parent.qqqideQoast.show('网络中断：任务已中断，排队消息已保留在队列中——点击红框「继续任务」恢复后自动续发', { type: 'warning', duration: 6000 });
+                    window.parent.qqqideQoast.show(_qq('ai.pipeline.netInterrupt', '网络中断：任务已中断，排队消息已保留在队列中——点击红框「继续任务」恢复后自动续发'), { type: 'warning', duration: 6000 });
                 }
             } catch (_e2) { }
             return;
         }
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('该任务已中断，请点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_e2) { }
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.taskInterrupted', '该任务已中断，请点击楼层红框「继续任务」恢复'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
         return;
     }
     if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
     // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
     if (!_isLoggedIn()) {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_e2) { }
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
         return;
     }
 
@@ -354,7 +354,7 @@ async function _executeSend(intent) {
             }
         } catch (_dErr) {
             console.warn('[pipeline] draft creation failed:', _dErr && _dErr.message);
-            addMessageEl('error', '创建 Quest 失败：' + ((_dErr && _dErr.message) || '未知错误'));
+            addMessageEl('error', _qq('ai.pipeline.questFail', '创建 Quest 失败：{0}', { 0: ((_dErr && _dErr.message) || _qq('ai.errUnknown', '未知错误')) }));
             _clearPromoting();
             return;
         }
@@ -384,7 +384,7 @@ async function _executeSend(intent) {
         if (_ssSyncOwner !== undefined && _ssSyncOwner !== _panelId) {
             // ★ 2026-08-17 F51: compress（only facts）被所有权拦截时显式提示，不静默
             if (_isCompress) {
-                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('only facts：该任务正在其他面板处理，请切换到对应面板或稍后再试', { type: 'warning', duration: 5000 }); } catch (_e8) { }
+                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.onlyfactsBusy', 'only facts：该任务正在其他面板处理，请切换到对应面板或稍后再试'), { type: 'warning', duration: 5000 }); } catch (_e8) { }
             }
             _setPanelFocus(false);
             _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
@@ -465,7 +465,7 @@ async function _executeSend(intent) {
     } else if (_deferUserBubble) {
         userMsgEl = null;
         agent._deferredUserEl = null;
-        agent._deferredUserText = '继续';  // ★ B2: 恢复消息气泡只显示「继续」
+        agent._deferredUserText = _qq('ai.recovery.bubble', '继续');  // ★ B2: 恢复消息气泡只显示「继续」
     } else {
         // ★ 2026-08-10: Enter 已同步插入气泡（立即反馈）→ 复用不重复插入
         if (window.__qqq_userBubbleEl && window.__qqq_userBubbleEl.isConnected) {
@@ -635,19 +635,19 @@ async function _executeSend(intent) {
                     $input.value = _lostText;
                     if (typeof autoResizeInput === 'function') autoResizeInput();
                     if (typeof updateQueueBtn === 'function') updateQueueBtn();
-                    _qoastTail = '——内容已恢复到编辑框，请重试';
+                    _qoastTail = _qq('ai.pipeline.allocRestored', '——内容已恢复到编辑框，请重试');
                 } else {
                     // 编辑框非空（用户已键入新内容）→ 不覆盖，error 气泡保留原文
                     try {
-                        addMessageEl('error', '发送失败（楼层创建异常）：' + ((_allocErr && _allocErr.message) || '未知错误') + '。以下内容未发出：\n' + _lostText);
+                        addMessageEl('error', _qq('ai.pipeline.sendFailPrefix', '发送失败（楼层创建异常）：{0}', { 0: ((_allocErr && _allocErr.message) || _qq('ai.errUnknown', '未知错误')) }) + _qq('ai.pipeline.notSent', '。以下内容未发出：') + '\n' + _lostText);
                     } catch (_) { }
-                    _qoastTail = '——未发出的内容已显示在上方消息区';
+                    _qoastTail = _qq('ai.pipeline.allocShown', '——未发出的内容已显示在上方消息区');
                 }
             } catch (_) { }
         }
         try {
             if (window.parent && window.parent.qqqideQoast) {
-                window.parent.qqqideQoast.show('发送失败（楼层创建异常）：' + ((_allocErr && _allocErr.message) || '未知错误') + _qoastTail, { type: 'error', duration: 6000 });
+                window.parent.qqqideQoast.show(_qq('ai.pipeline.sendFailPrefix', '发送失败（楼层创建异常）：{0}', { 0: ((_allocErr && _allocErr.message) || _qq('ai.errUnknown', '未知错误')) }) + _qoastTail, { type: 'error', duration: 6000 });
             }
         } catch (_) { }
         return;
@@ -904,7 +904,7 @@ async function _executeSend(intent) {
                 var _capErrFloor = agent._recoveryOriginFloor || agent._currentFloorNum;
                 var _capNow = new Date();
                 var _capTs = _capNow.getHours().toString().padStart(2, '0') + ':' + _capNow.getMinutes().toString().padStart(2, '0');
-                var _capReason = '发送停滞（>20 分钟无进展）已自动终止';
+                var _capReason = _qq('ai.pipeline.stallAbort', '发送停滞（>20 分钟无进展）已自动终止');
                 if (!agent._questErrorLogByFloor) agent._questErrorLogByFloor = {};
                 if (!agent._questErrorLogByFloor[_capErrFloor]) agent._questErrorLogByFloor[_capErrFloor] = [];
                 if (agent._questErrorLogByFloor[_capErrFloor].length === 0) {
@@ -920,7 +920,7 @@ async function _executeSend(intent) {
                 if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(agent, null, _capErrFloor);
             } catch (_) { }
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.stallAbortQoast', '发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复'), { type: 'warning', duration: 6000 }); } catch (_) { }
             _chimeSettled('bad');  // ★ 停滞终止 = 异常中断 → bad；_sendTerminated 标记防止 finally 再补一响
             // ★ 2026-09-07 aq 楼层闭环：_capAbort 是 send 永不返回的路径（HTTP/2 死连接踹锁），
             //   finally 可能永不执行 → 此处就地采样定稿（采样在 error 消息 push 之后，峰值含错误行）
@@ -991,7 +991,7 @@ async function _executeSend(intent) {
                         }
                     }
                     // ★ B2: 恢复成功，创建「继续」用户气泡
-                    var _recBubbleText = agent._deferredUserText || '继续';
+                    var _recBubbleText = agent._deferredUserText || _qq('ai.recovery.bubble', '继续');
                     agent._deferredUserText = null;
                     var _recBubble = addMessageEl('user', _recBubbleText);
                     if (_recBubble) {
@@ -1109,7 +1109,7 @@ async function _executeSend(intent) {
                         }
                     }
                     // ★ B2: 恢复成功，创建「继续」用户气泡
-                    var _recBubbleText = agent._deferredUserText || '继续';
+                    var _recBubbleText = agent._deferredUserText || _qq('ai.recovery.bubble', '继续');
                     agent._deferredUserText = null;
                     var _recBubble = addMessageEl('user', _recBubbleText);
                     if (_recBubble) {

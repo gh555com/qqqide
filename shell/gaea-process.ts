@@ -29,6 +29,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { getComponentBin } from './component-checker';
+import { mi } from './main-i18n';
 
 export type GaeaLifecycle = 'attached' | 'independent';
 
@@ -515,13 +516,13 @@ export function startGaeaProcess(
     const conflictTs = _singletonConflicts.get(goodsId);
     if (conflictTs && (Date.now() - conflictTs) < SINGLETON_CONFLICT_COOLDOWN_MS) {
         console.log('[' + goodsId + '] singleton conflict cooldown active — skip spawn');
-        return { ok: false, error: '另一实例正在运行，请稍后再试' };
+        return { ok: false, error: mi('main.gaea.anotherRunning') };
     }
 
     // ★ 内存锁防并发竞态：同一 goodsId 同时只能有一个 start 调用
     if (_startingLocks.has(goodsId)) {
         console.log('[' + goodsId + '] start already in progress — skip');
-        return { ok: false, error: '启动进行中，请稍后重试' };
+        return { ok: false, error: mi('main.gaea.starting') };
     }
     _startingLocks.add(goodsId);
 
@@ -567,20 +568,20 @@ export function startGaeaProcess(
     let exe: string | null = null;
     if (runtime === 'python') {
         exe = getComponentBin(portableRoot, 'python');
-        if (!exe) return { ok: false, error: 'Python 未安装。重启 IDE 后将自动下载。' };
+        if (!exe) return { ok: false, error: mi('main.gaea.noPython') };
     } else {
         const binFromComponent = getComponentBin(portableRoot, runtime);
         if (binFromComponent) {
             exe = binFromComponent;
         } else {
-            return { ok: false, error: '运行时未找到: ' + runtime };
+            return { ok: false, error: mi('main.gaea.runtimeMissing', { p: runtime }) };
         }
     }
 
     // Resolve script path (scriptPath like "goods/kope-a/q3.py")
     const fullPath = _resolveGoodsScript(portableRoot, scriptPath);
     if (!fs.existsSync(fullPath)) {
-        return { ok: false, error: '脚本未找到: ' + fullPath };
+        return { ok: false, error: mi('main.gaea.scriptMissing', { p: fullPath }) };
     }
 
     try {
@@ -678,7 +679,7 @@ export function startGaeaProcess(
 
         return { ok: true, pid: entry.pid || undefined };
     } catch (e: any) {
-        return { ok: false, error: '启动失败: ' + (e.message || e) };
+        return { ok: false, error: mi('main.gaea.startFail', { err: e.message || e }) };
     }
     } finally {
         _startingLocks.delete(goodsId);

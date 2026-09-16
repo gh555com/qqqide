@@ -831,7 +831,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
 
     // ★ fatal 落盘兜底：conversation 为空时记入错误消息（防重启丢上下文）
     if (cleanConv.length === 0 && ag._floorFatal) {
-        var _fatalErr3 = '⚠️ 楼层异常中断（' + (ag._exitReason || '未知原因') + '），对话已保存。';
+        var _fatalErr3 = _qq('ai.status.floorInterruptedReason', '⚠️ 楼层异常中断（{0}），对话已保存。', { 0: (ag._exitReason || _qq('ai.errUnknownReason', '未知原因')) });
         cleanConv = [{ role: 'assistant', content: _fatalErr3, _error: true, _floor: floorNum || ag._currentFloorNum || 0 }];
     }
 

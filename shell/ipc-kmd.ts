@@ -19,6 +19,7 @@
 
 import { ipcMain, WebContents } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
+import { mi } from './main-i18n';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -222,9 +223,9 @@ export function registerKmdIpc(appRoot: string): void {
         // gitbash 先 probe：自带组件损坏（如解压中断）时给出明确报错而非黑屏
         if (shellType === 'gitbash') {
             const probeRes = _resolveShell('gitbash', appRoot);
-            if (!probeRes) return { ok: false, error: 'no_bash_found: 未找到可用的 Git Bash（git 组件缺失，重启 IDE 自动修复）' };
+            if (!probeRes) return { ok: false, error: 'no_bash_found: ' + mi('main.term.noBash') };
             const ok = await _probeBash(probeRes.cmd);
-            if (!ok) return { ok: false, error: 'bash_broken: 检测到 bash 但无法运行（git 组件异常，重启 IDE 自动修复）' };
+            if (!ok) return { ok: false, error: 'bash_broken: ' + mi('main.term.bashBroken') };
         }
         const s = _spawnOne({ id, shellType, cwd }, appRoot, e.sender);
         if (!s) return { ok: false, error: 'spawn_failed' };
@@ -260,7 +261,7 @@ export function registerKmdIpc(appRoot: string): void {
                 _push(owner, 'qqqide:kmd:restarted', { id: sid });
             } else {
                 // 重启失败（如 gitbash 无可用 bash）→ 如实上报，UI 显示原因而非静默
-                _push(owner, 'qqqide:kmd:exit', { id: sid, code: -1, error: 'restart_failed: ' + shellType + ' 不可用' });
+                _push(owner, 'qqqide:kmd:exit', { id: sid, code: -1, error: 'restart_failed: ' + shellType + ' ' + mi('main.term.unavailable') });
             }
         }
         return { ok: true };

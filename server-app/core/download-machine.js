@@ -37,6 +37,12 @@
   function _b() { try { return window.qqqideBridge || null; } catch (_) { return null; } }
   function _io() { try { return window.qqqideIoast || null; } catch (_) { return null; } }
   function _qoast(m, o) { try { if (window.qqqideQoast) { window.qqqideQoast.show(m, o || {}); } } catch (_) {} }
+  // i18n 助手：翻译 + 中文回退（i18n 未就绪/缺失时回退原样）
+  function _T(k, fb) {
+    var v = null;
+    try { if (window.i18n && window.i18n.t) { var r = window.i18n.t(k); if (r && r !== k) v = r; } } catch (e) { }
+    return (v === null) ? fb : v;
+  }
 
   function _fmt(n) {
     n = Number(n) || 0;
@@ -120,19 +126,19 @@
           if (io) io.remove(t.taskId);
         } else {
           var emsg = String(entry.error).slice(0, 80);
-          if (io) io.fail(t.taskId, { summary: '下载失败：' + emsg });
-          _qoast('下载失败：' + t.name + '（' + emsg + '）', { type: 'error', duration: 12000 });
+          if (io) io.fail(t.taskId, { summary: _T('shell.dl.failed', '下载失败：') + emsg });
+          _qoast(_T('shell.dl.failed', '下载失败：') + t.name + '（' + emsg + '）', { type: 'error', duration: 12000 });
         }
         if (fin) { try { fin({ ok: false, error: entry.error, cancelled: entry.error === 'cancelled' }); } catch (_) {} }
       } else {
         // 终稿文件名取实际落盘名（静默直存重名时 = name (1).ext，与用户看到的磁盘一致）
         var finalName = t.name;
         if (entry.filePath) { var bn = _baseOf(entry.filePath); if (bn) { finalName = bn; } }
-        if (io) io.done(t.taskId, { summary: '已保存：' + (entry.filePath || t.name) });
-        _qoast('已保存：' + finalName, {
+        if (io) io.done(t.taskId, { summary: _T('shell.dl.saved', '已保存：') + (entry.filePath || t.name) });
+        _qoast(_T('shell.dl.saved', '已保存：') + finalName, {
           type: 'success', duration: 12000,
           action: {
-            label: '📂 Roam 定位',
+            label: _T('shell.dl.roamLocate', '📂 Roam 定位'),
             onClick: function () { _revealLocal(entry.filePath); },
           },
         });
@@ -166,13 +172,13 @@
   function _blobSave(url, filename, opts) {
     opts = opts || {};
     var io = _io();
-    var name = filename || '文件';
+    var name = filename || _T('shell.dl.file', '文件');
     var fin = (typeof opts.onDone === 'function') ? opts.onDone : null;
     function fireFin(r) { if (fin) { try { fin(r); } catch (_) {} } }
     var taskId = 'qdl_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
     var MAX_BLOB = 600 * 1024 * 1024;
     if (opts.size && opts.size > MAX_BLOB) { _external(url); fireFin({ ok: false, external: true }); return Promise.resolve({ ok: false, external: true }); }
-    if (io) io.task(taskId, { title: '⬇ ' + name, subtitle: '下载中…', progress: 0 });
+    if (io) io.task(taskId, { title: '⬇ ' + name, subtitle: _T('shell.dl.downloading', '下载中…'), progress: 0 });
     var lastTs = Date.now(), lastBytes = 0, bps = 0;
     return fetch(url, { credentials: 'omit' }).then(function (r) {
       if (!r.ok) { throw new Error('HTTP ' + r.status); }
@@ -207,8 +213,8 @@
       return pump();
     }).catch(function (err) {
       var emsg = String((err && err.message) || err).slice(0, 80);
-      if (io) io.fail(taskId, { summary: '下载失败：' + emsg });
-      _qoast('下载失败：' + name + '（' + emsg + '）', { type: 'error', duration: 12000 });
+      if (io) io.fail(taskId, { summary: _T('shell.dl.failed', '下载失败：') + emsg });
+      _qoast(_T('shell.dl.failed', '下载失败：') + name + '（' + emsg + '）', { type: 'error', duration: 12000 });
       fireFin({ ok: false, error: emsg });
       return { ok: false, error: emsg };
     });
@@ -224,8 +230,8 @@
         try { URL.revokeObjectURL(objUrl); } catch (_) {}
         try { a.remove(); } catch (_) {}
       }, 5000);
-      if (io) io.done(taskId, { summary: '已保存：' + name + '（' + _fmt(bl.size) + '）' });
-      _qoast('已保存：' + name, { type: 'success', duration: 12000 });
+      if (io) io.done(taskId, { summary: _T('shell.dl.saved', '已保存：') + name + '（' + _fmt(bl.size) + '）' });
+      _qoast(_T('shell.dl.saved', '已保存：') + name, { type: 'success', duration: 12000 });
       fireFin({ ok: true, blob: true, name: name });
       return { ok: true, blob: true };
     }
@@ -236,9 +242,9 @@
     var b = _b();
     var io = _io();
     var taskId = 'qdl_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
-    var name = filename || '文件';
+    var name = filename || _T('shell.dl.file', '文件');
     var t = { taskId: taskId, name: name, lastTs: 0, lastBytes: 0, bps: 0, onDone: (typeof onDone === 'function') ? onDone : null };
-    if (io) io.task(taskId, { title: '⬇ ' + name, subtitle: waitingText || '准备中…', progress: 0 });
+    if (io) io.task(taskId, { title: '⬇ ' + name, subtitle: waitingText || _T('shell.dl.preparing', '准备中…'), progress: 0 });
     _pending[url] = true;
     return b.download.start(payload).then(function (r) {
       delete _pending[url];
@@ -262,14 +268,14 @@
         return _blobSave(url, filename, { onDone: onDone });
       }
       if (io) io.remove(taskId);
-      _qoast('无法开始下载：' + msg.slice(0, 60), { type: 'error', duration: 10000 });
+      _qoast(_T('shell.dl.cannotStart', '无法开始下载：') + msg.slice(0, 60), { type: 'error', duration: 10000 });
       return { ok: false, error: msg };
     });
   }
 
   function _afterStart(r) {
     if (r && (r.ok || r.canceled)) { return r; }
-    _qoast('无法开始下载' + (r && r.error ? '：' + r.error : ''), { type: 'error', duration: 10000 });
+    _qoast(_T('shell.dl.cannotStartBare', '无法开始下载') + (r && r.error ? '：' + r.error : ''), { type: 'error', duration: 10000 });
     return r || { ok: false };
   }
 
@@ -285,15 +291,15 @@
     var lastDir = _getLastDir();
     if (lastDir && !opts.ask) {
       // 记忆命中：静默直存（零对话框；重名自动唯一化不覆盖）——失败回退保存对话框
-      return _startNative(url, filename, { url: url, fileName: filename || '', dir: lastDir, saveAs: false }, '保存中…', onDone)
+      return _startNative(url, filename, { url: url, fileName: filename || '', dir: lastDir, saveAs: false }, _T('shell.dl.saving', '保存中…'), onDone)
         .then(function (r) {
           if (r && r.ok) { return r; }
           if (r && r.canceled) { return r; }
-          return _startNative(url, filename, { url: url, fileName: filename || '', dir: lastDir, saveAs: true }, '等待选择保存位置…', onDone)
+          return _startNative(url, filename, { url: url, fileName: filename || '', dir: lastDir, saveAs: true }, _T('shell.dl.waitSaveAs', '等待选择保存位置…'), onDone)
             .then(_afterStart);
         });
     }
-    return _startNative(url, filename, { url: url, fileName: filename || '', dir: lastDir, saveAs: true }, '等待选择保存位置…', onDone)
+    return _startNative(url, filename, { url: url, fileName: filename || '', dir: lastDir, saveAs: true }, _T('shell.dl.waitSaveAs', '等待选择保存位置…'), onDone)
       .then(_afterStart);
   }
 

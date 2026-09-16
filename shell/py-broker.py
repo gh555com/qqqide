@@ -61,17 +61,26 @@ def _win_mem_snapshot(root_pid: int):
     import ctypes
     import struct as _struct
     ntdll = ctypes.WinDLL('ntdll', use_last_error=True)
+    # ★ NTSTATUS 无符号铁律（2026-09-15 实锤）：NtQuerySystemInformation 默认 restype=c_int
+    #   → 失败码高位=1 被 ctypes 变负（0xC0000004 → -1073741820），与 Python 正数常量
+    #   比较恒不等 → 缓冲不足时永不重试、静默 return None（进程表突破 1MB 后快照全灭，
+    #   状态栏恒显示 --）。修复 = 显式 c_ulong + 掩码比较 + 失败落日志（防再静默）。
+    ntdll.NtQuerySystemInformation.restype = ctypes.c_ulong
+    ntdll.NtQuerySystemInformation.argtypes = [ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p]
     STATUS_INFO_LENGTH_MISMATCH = 0xC0000004
     buf = None
-    for size in (1 << 20, 4 << 20, 16 << 20):
+    last_status = 0
+    for size in (1 << 20, 4 << 20, 16 << 20, 64 << 20):
         b = ctypes.create_string_buffer(size)
         status = ntdll.NtQuerySystemInformation(5, b, size, None)  # 5 = SystemProcessInformation
         if status == 0:
             buf = b
             break
-        if status != STATUS_INFO_LENGTH_MISMATCH:
-            return None
+        last_status = status & 0xFFFFFFFF
+        if last_status != STATUS_INFO_LENGTH_MISMATCH:
+            break
     if buf is None:
+        _log(f"mem-snapshot: NtQuery failed status=0x{last_status:08X} (buffers 1/4/16/64MB tried)")
         return None
     raw = buf.raw
     n = len(raw)

@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as cp from 'child_process';
 import { URL } from 'url';
 import { BootConfig, getWebappBaseUrl } from './boot';
+import { mi } from './main-i18n';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
 import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState, beginQuitAllBatch, recordWindowOpen } from './window-manager';
 import { StateStore } from './state-sqlite';
@@ -381,7 +382,7 @@ ${escapedPaths}
                 if (dirOk) { defDir = dir; }
                 else { try { defDir = app.getPath('downloads'); } catch { /* ignore */ } }
                 const save = await dialog.showSaveDialog(win as any, {
-                    title: '保存文件',
+                    title: mi('main.dlg.saveFile'),
                     defaultPath: fileName ? path.join(defDir, fileName) : (defDir || undefined),
                 });
                 if (save.canceled || !save.filePath) { return { ok: false, canceled: true }; }

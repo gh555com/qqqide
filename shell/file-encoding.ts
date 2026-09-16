@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as iconv from 'iconv-lite';
 import { ipcMain } from 'electron';
+import { mi } from './main-i18n';
 
 // ── 类型与常量 ────────────────────────────────────────────────────────────
 export type EncName = 'utf8' | 'gbk' | 'gb18030' | 'big5' | 'shiftjis' | 'windows1252' | 'utf16le' | 'utf16be';
@@ -143,7 +144,7 @@ function _assertRepresentable(text: string, enc: EncName): void {
     const ch = text[i] != null ? text[i] : (back[i] != null ? back[i] : '?');
     let cp = '';
     try { cp = 'U+' + (ch.codePointAt(0) || 0).toString(16).toUpperCase().padStart(4, '0'); } catch { /* ignore */ }
-    throw new Error('保存被拒：字符 "' + ch + '"（' + cp + '）无法用 ' + encLabel(enc) + ' 编码表示，内容未写入。可：① 删除该字符后重存；② 在标签页编码菜单选「另存为 UTF-8/GB18030」（全字符编码，永不丢失）。');
+    throw new Error(mi('main.enc.saveRejected', { ch: ch, cp: cp, enc: encLabel(enc) }));
 }
 
 // ── 读取：解码 + 记忆/固定 语义 ──

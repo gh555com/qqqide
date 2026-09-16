@@ -965,11 +965,11 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
                 clipText = await navigator.clipboard.readText();
             }
         } catch (e) {
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('无法读取剪贴板，请授予权限后重试', { type: 'warning', duration: 4000 }); } catch (_) { }
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(_qq('ai.bullet.clipFail', '无法读取剪贴板，请授予权限后重试'), { type: 'warning', duration: 4000 }); } catch (_) { }
             return;
         }
         if (!clipText || !clipText.trim()) {
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('剪贴板为空，请先复制内容', { type: 'info', duration: 3000 }); } catch (_) { }
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(_qq('ai.bullet.clipEmpty', '剪贴板为空，请先复制内容'), { type: 'info', duration: 3000 }); } catch (_) { }
             return;
         }
 
@@ -1045,10 +1045,10 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
             // 9. Qoast
             var sizeKB = Math.round(clipText.length / 1024);
             var sizeStr = sizeKB >= 1024 ? (sizeKB / 1024).toFixed(1) + 'MB' : sizeKB + 'KB';
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹已射出 ' + sizeStr + ' → ' + filename, { type: 'success', duration: 3500 }); } catch (_) { }
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(_qq('ai.bullet.fired', '子弹已射出 {0} → {1}', { 0: sizeStr, 1: filename }), { type: 'success', duration: 3500 }); } catch (_) { }
 
         } catch (err) {
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹写入失败: ' + (err.message || err), { type: 'error', duration: 5000 }); } catch (_) { }
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(_qq('ai.bullet.writeFail', '子弹写入失败: {0}', { 0: (err.message || err) }), { type: 'error', duration: 5000 }); } catch (_) { }
         }
     };
 })();

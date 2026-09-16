@@ -21,6 +21,7 @@
 
 import { shell as electronShell, dialog, clipboard, app } from 'electron';
 import { spawn, execSync } from 'child_process';
+import { mi } from './main-i18n';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -145,10 +146,10 @@ function showNativeFallbackDialog(url: string): void {
     diag('Showing native fallback dialog');
     dialog.showMessageBox({
         type: 'warning',
-        title: '无法自动打开浏览器 — qd (qqqide)',
-        message: '自动打开浏览器失败。请复制以下链接到浏览器地址栏：',
+        title: mi('main.browser.openFailTitle'),
+        message: mi('main.browser.openFailMsg'),
         detail: url,
-        buttons: ['复制链接', '关闭'],
+        buttons: [mi('main.browser.copyLink'), mi('main.browser.close')],
         defaultId: 0,
         cancelId: 1,
         noLink: true

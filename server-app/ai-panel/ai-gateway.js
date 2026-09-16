@@ -6,6 +6,7 @@
 // 铁律（参见 do/拓扑/铁律 §14b）：
 //   1. 一切 AI 模型调用必须经 AiGateway 走出，禁止直接 fetch 第三方端点
 //   2. 所有模型名/厂商名/API 端点字符串收敛于本文件 + Go 后端，客户端零暴露
+//      （唯一例外：自带 API Key 通道 —— 信息全部来自用户输入，见 byok.js）
 //   3. tier 1-6 数字传参，模型映射由本文件 + Go 双端保障
 //
 // 使用方式：
@@ -253,6 +254,14 @@
         // ──────────────────────────────────────────────
         chatFetch: async function (body, opts) {
             opts = opts || {};
+
+            // ★ 自带 API Key（byok.js）：启用后对话请求直连用户端点（不经平台网关、不计费）
+            //   返回 null = 未启用 → 回落平台通道；throw = 用户端点网络失败（走统一重试链）
+            if (window.qqqByok && typeof window.qqqByok.intercept === 'function') {
+                var _byokResp = await window.qqqByok.intercept(body, opts);
+                if (_byokResp) return _byokResp;
+            }
+
             var token = opts.token || _getToken();
             if (!token) throw new Error('No token');
 

@@ -145,7 +145,7 @@ function _guardAllTxtSize(lines, agent) {
         _allTxtBlockedQoastTs = now;
         try {
             if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
-                '\u26a0\ufe0f all.txt ' + sizeMB.toFixed(1) + 'MB \u8d85\u8fc7 ' + _ALL_TXT_MAX_MB + 'MB \u4e0a\u9650\uff0c\u5f52\u6863\u5df2\u6682\u505c\uff08SQLite \u5b8c\u597d\uff09',
+                _qq('ai.allTxtTooBig', '⚠️ all.txt {0}MB 超过 {1}MB 上限，归档已暂停（SQLite 完好）', { 0: sizeMB.toFixed(1), 1: _ALL_TXT_MAX_MB }),
                 { type: 'error', duration: 8000 }
             );
         } catch (_) { }
@@ -251,16 +251,16 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
     r3.style.cssText = 'display:flex;align-items:stretch;gap:8px;';
 
     function _showA1Qoast() {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\u8be5\u529f\u80fd\u6b63\u5728\u5efa\u8bbe\u4e2d', { duration: 3000 }); } catch (_) { }
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.featureWip', '该功能正在建设中'), { duration: 3000 }); } catch (_) { }
     }
 
     var auditBtn = document.createElement('button');
     auditBtn.className = 'msg-a1-audit-btn';
-    auditBtn.textContent = '\u5ba1\u8ba1';
+    auditBtn.textContent = _qq('ai.auditBtn', '审计');
     auditBtn.onclick = function (e) { e.stopPropagation(); _showA1Qoast(); };
     var translateBtn = document.createElement('button');
     translateBtn.className = 'msg-a1-audit-btn';
-    translateBtn.textContent = '\u7ffb\u8bd1';
+    translateBtn.textContent = _qq('ai.translateBtn', '翻译');
     translateBtn.onclick = function (e) { e.stopPropagation(); _showA1Qoast(); };
 
     var langSelect = document.createElement('select');
@@ -643,7 +643,7 @@ async function _onAuditClick(block) {
     if (_auditBusy) return;
     _auditBusy = true;
     var btn = block._auditBtn;
-    var origText = btn ? btn.textContent : '\u5ba1\u8ba1';
+    var origText = btn ? btn.textContent : _qq('ai.auditBtn', '审计');
     if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
 
     try {
@@ -833,10 +833,10 @@ async function _onAuditClick(block) {
             var kb = (auditText.length / 1024).toFixed(0);
             try {
                 if (window.parent && window.parent.qqqideQoast) {
-                    window.parent.qqqideQoast.show('\u5ba1\u8ba1\u6587\u672c\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f (' + kb + ' KB)\uff0c\u53ef\u7c98\u8d34\u5230\u4efb\u610f AI \u5bf9\u8bdd\u6846\u3002', { duration: 5000, type: 'success' });
+                    window.parent.qqqideQoast.show(_qq('ai.auditCopied', '审计文本已复制到剪贴板 ({0} KB)，可粘贴到任意 AI 对话框。', { 0: kb }), { duration: 5000, type: 'success' });
                 }
             } catch (_) { }
-            setTimeout(function () { if (btn) btn.textContent = '\u5ba1\u8ba1'; }, 2000);
+            setTimeout(function () { if (btn) btn.textContent = _qq('ai.auditBtn', '审计'); }, 2000);
         } else {
             if (btn) { btn.textContent = origText; btn.disabled = false; }
             console.warn('[audit] clipboard write failed');
@@ -855,7 +855,7 @@ async function _onTranslateClick(block) {
     if (_translateBusy) return;
     _translateBusy = true;
     var btn = block._translateBtn;
-    var origText = btn ? btn.textContent : '\u7ffb\u8bd1';
+    var origText = btn ? btn.textContent : _qq('ai.translateBtn', '翻译');
     if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
 
     try {
@@ -890,7 +890,7 @@ async function _onTranslateClick(block) {
             if (_exists) {
                 _postToHost({ type: 'qqq-file-open-right', path: translatedPath, readOnly: true });
                 if (btn) { btn.textContent = '\u2713'; btn.disabled = false; }
-                setTimeout(function () { if (btn) btn.textContent = '\u7ffb\u8bd1'; }, 1500);
+                setTimeout(function () { if (btn) btn.textContent = _qq('ai.translateBtn', '翻译'); }, 1500);
                 _translateBusy = false;
                 return;
             }
@@ -905,7 +905,7 @@ async function _onTranslateClick(block) {
             } else {
                 _postToHost({ type: 'qqq-file-open-right', path: translatedPath, readOnly: true });
                 if (btn) { btn.textContent = '\u2713'; btn.disabled = false; }
-                setTimeout(function () { if (btn) btn.textContent = '\u7ffb\u8bd1'; }, 1500);
+                setTimeout(function () { if (btn) btn.textContent = _qq('ai.translateBtn', '翻译'); }, 1500);
                 _translateBusy = false;
                 return;
             }
@@ -932,7 +932,7 @@ async function _onTranslateClick(block) {
         _postToHost({ type: 'qqq-file-open-right', path: translatedPath, readOnly: true });
 
         if (btn) { btn.textContent = '\u2713'; btn.disabled = false; }
-        setTimeout(function () { if (btn) btn.textContent = '\u7ffb\u8bd1'; }, 1500);
+        setTimeout(function () { if (btn) btn.textContent = _qq('ai.translateBtn', '翻译'); }, 1500);
     } catch (e) {
         console.warn('[translate] failed:', e && e.message);
         if (btn) { btn.textContent = origText; btn.disabled = false; }

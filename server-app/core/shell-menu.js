@@ -22,6 +22,14 @@ var _shellEvangelistSubDropdown = null;
 var _shellEvangelistSubTimer = null;
 var EVANGELIST_SUB_CLOSE_DELAY = 800; // 0.8s 关闭延迟
 
+// i18n 助手：翻译 + 中文回退 + {x} 参数（window._i 无参数版不足以覆盖带参场景）
+function _mi(k, fb, p) {
+  var v = null;
+  try { if (window.i18n && window.i18n.t) { var r = window.i18n.t(k, p); if (r && r !== k) v = r; } } catch (e) { }
+  if (v === null) { v = fb; if (p) { for (var x in p) v = v.split('{' + x + '}').join(String(p[x])); } }
+  return v;
+}
+
 // ★ Gaea process 状态变更事件驱动（非轮询）—— 更新当前弹出菜单中的按钮
 (function () {
   var br = window.qqqideBridge;
@@ -31,11 +39,11 @@ var EVANGELIST_SUB_CLOSE_DELAY = 800; // 0.8s 关闭延迟
       var btn = _shellActiveMenubarPopup.querySelector('button[data-gp-id="' + goodsId + '"]');
       if (!btn) return;
       if (running) {
-        btn.textContent = '关停';
+        btn.textContent = window._i('shell.gp.stop', '关停');
         btn.style.background = 'var(--primary-color)';
         btn.style.color = '#1e1e1e';
       } else {
-        btn.textContent = '启动';
+        btn.textContent = window._i('shell.gp.start', '启动');
         btn.style.background = 'var(--card-bg)';
         btn.style.color = 'var(--text-primary)';
       }
@@ -231,7 +239,7 @@ function _openWindowFromRecent(folderPath) {
         console.warn('[shell-menu] newWindow failed:', r);
         // ★ 锁拦截必须可见（F-2026-08-06）：静默失败会诱导用户手动添加错项目 → 主文件夹错乱
         if (r.locked && window.qqqideQoast) {
-          window.qqqideQoast.show('⚠️ 该项目已在另一个窗口打开，请直接使用该窗口，或关闭它后再开', { duration: 6000, type: 'warn' });
+          window.qqqideQoast.show(window._i('shell.menu.lockedHint', '⚠️ 该项目已在另一个窗口打开，请直接使用该窗口，或关闭它后再开'), { duration: 6000, type: 'warn' });
         }
       }
     }).catch(function (e) {
@@ -396,7 +404,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
 
       // ── 右边: 自启动 pill toggle ──
       const gpToggle = document.createElement('div');
-      gpToggle.title = '自启动';
+      gpToggle.title = window._i('shell.gp.autoStart', '自启动');
       gpToggle.style.cssText =
         'position:relative; width:44px; height:24px; border-radius:12px; ' +
         'background:var(--border-color); transition:background 200ms; ' +
@@ -410,7 +418,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       // ── 中间: 进程状态指示灯（独立按钮，可点击启停）──
       // 描边: a版=box-shadow inset 0.5px 亚像素细线(当前); 想回 q 版改回 border:1px solid #000
       const gpDot = document.createElement('span');
-      gpDot.title = '启停';
+      gpDot.title = window._i('shell.gp.runStop', '启停');
       gpDot.className = 'gp-dot';
       gpDot.style.cssText =
         'width:10px; height:10px; transform:rotate(45deg); box-shadow:inset 0 0 0 0.5px #000; flex-shrink:0; ' +
@@ -769,12 +777,12 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     var login = window.qqqLogin;
     if (!login || !login.isLoggedIn()) {
       if (login && login.login) { login.login(); }
-      if (window.qqqideQoast) window.qqqideQoast.show('请先登录后再指定导师', { type: 'warning', duration: 5000 });
+      if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.mv.notLoggedIn', '请先登录后再指定导师'), { type: 'warning', duration: 5000 });
       return;
     }
     var mentorPhone = window._evangelistMentorPhone;
     if (mentorPhone && mentorPhone.length > 0) {
-      if (window.qqqideQoast) window.qqqideQoast.show('你滴导师是 ' + mentorPhone, { type: 'info', duration: 6000 });
+      if (window.qqqideQoast) window.qqqideQoast.show(_mi('shell.mv.yourMentor', '你滴导师是 {p}', { p: mentorPhone }), { type: 'info', duration: 6000 });
       return;
     }
     _showEvangelistDesignatePopup();
@@ -854,12 +862,12 @@ function _showEvangelistDesignatePopup() {
   box.style.cssText = 'background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.25);padding:24px;min-width:360px;max-width:440px;';
 
   var title = document.createElement('h3');
-  title.textContent = '指定导师';
+  title.textContent = window._i('shell.mv.designateTitle', '指定导师');
   title.style.cssText = 'margin:0 0 8px;font-size:16px;color:var(--text-primary);';
   box.appendChild(title);
 
   var desc = document.createElement('p');
-  desc.textContent = '键入导师滴完整手机号（如 8618283073262）';
+  desc.textContent = window._i('shell.mv.designateDesc', '键入导师滴完整手机号（如 8618283073262）');
   desc.style.cssText = 'margin:0 0 16px;font-size:13px;color:var(--text-muted);';
   box.appendChild(desc);
 
@@ -874,20 +882,20 @@ function _showEvangelistDesignatePopup() {
   btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
 
   var cancelBtn = document.createElement('button');
-  cancelBtn.textContent = '取消';
+  cancelBtn.textContent = window._i('common.cancel', '取消');
   cancelBtn.style.cssText = 'padding:8px 20px;border:1px solid var(--border-color);border-radius:4px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px;';
   cancelBtn.addEventListener('click', function () { overlay.remove(); });
   btnRow.appendChild(cancelBtn);
 
   var submitBtn = document.createElement('button');
-  submitBtn.textContent = '确定';
+  submitBtn.textContent = window._i('common.confirm', '确定');
   submitBtn.style.cssText = 'padding:8px 24px;border:none;border-radius:4px;background:#b58900;color:#fff;cursor:pointer;font-size:13px;font-weight:bold;';
   btnRow.appendChild(submitBtn);
 
   function _doEvangelistSubmit() {
     var phone = input.value.trim();
-    if (!phone) { if (window.qqqideQoast) window.qqqideQoast.show('请键入导师手机号', { type: 'warning', duration: 3000 }); return; }
-    if (!/^[0-9]{10,15}$/.test(phone)) { if (window.qqqideQoast) window.qqqideQoast.show('手机号格式不对，请键入纯数字（如 8618283073262）', { type: 'warning', duration: 4000 }); return; }
+    if (!phone) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.mv.needPhone', '请键入导师手机号'), { type: 'warning', duration: 3000 }); return; }
+    if (!/^[0-9]{10,15}$/.test(phone)) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.mv.badPhone', '手机号格式不对，请键入纯数字（如 8618283073262）'), { type: 'warning', duration: 4000 }); return; }
 
     // ★ 二次确认弹窗（终身一次绑定）
     _showEvangelistConfirmPopup(phone, overlay);
@@ -912,17 +920,17 @@ function _showEvangelistConfirmPopup(phone, parentOverlay) {
   cfBox.style.cssText = 'background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.35);padding:28px;min-width:340px;max-width:400px;text-align:center;';
 
   var cfTitle = document.createElement('h3');
-  cfTitle.textContent = '确认绑定导师';
+  cfTitle.textContent = window._i('shell.mv.confirmTitle', '确认绑定导师');
   cfTitle.style.cssText = 'margin:0 0 16px;font-size:17px;color:var(--text-primary);';
   cfBox.appendChild(cfTitle);
 
   var cfWarn = document.createElement('p');
-  cfWarn.textContent = '终身只能绑定一次、请确认无误';
+  cfWarn.textContent = window._i('shell.mv.confirmWarn', '终身只能绑定一次、请确认无误');
   cfWarn.style.cssText = 'margin:0 0 6px;font-size:14px;color:#e67e22;font-weight:700;';
   cfBox.appendChild(cfWarn);
 
   var cfPhone = document.createElement('p');
-  cfPhone.textContent = '导师手机号：' + phone;
+  cfPhone.textContent = _mi('shell.mv.confirmPhone', '导师手机号：{p}', { p: phone });
   cfPhone.style.cssText = 'margin:0 0 20px;font-size:13px;color:var(--text-secondary);';
   cfBox.appendChild(cfPhone);
 
@@ -930,17 +938,17 @@ function _showEvangelistConfirmPopup(phone, parentOverlay) {
   cfBtnRow.style.cssText = 'display:flex;gap:10px;justify-content:center;';
 
   var cfCancel = document.createElement('button');
-  cfCancel.textContent = '取消';
+  cfCancel.textContent = window._i('common.cancel', '取消');
   cfCancel.style.cssText = 'padding:9px 24px;border:1px solid var(--border-color);border-radius:4px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:14px;';
   cfCancel.addEventListener('click', function () { cfOverlay.remove(); });
   cfBtnRow.appendChild(cfCancel);
 
   var cfConfirm = document.createElement('button');
-  cfConfirm.textContent = '确认绑定';
+  cfConfirm.textContent = window._i('shell.mv.confirmBtn', '确认绑定');
   cfConfirm.style.cssText = 'padding:9px 28px;border:none;border-radius:4px;background:#e67e22;color:#fff;cursor:pointer;font-size:14px;font-weight:700;';
   cfConfirm.addEventListener('click', function () {
     cfConfirm.disabled = true;
-    cfConfirm.textContent = '提交中...';
+    cfConfirm.textContent = window._i('shell.mv.submitting', '提交中...');
     var login = window.qqqLogin;
     var token = login ? login.getAuthToken() : '';
     fetch('https://www.gh555.com/api/evangelist/designate', {
@@ -953,19 +961,19 @@ function _showEvangelistConfirmPopup(phone, parentOverlay) {
         // ★ 立即刷新菜单标签 + 子菜单
         _refreshEvangelistMenuLabel();
         _refreshEvangelistSubDropdown();
-        if (window.qqqideQoast) window.qqqideQoast.show('导师指定成功！', { type: 'success', duration: 5000 });
+        if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.mv.ok', '导师指定成功！'), { type: 'success', duration: 5000 });
         cfOverlay.remove();
         if (parentOverlay) parentOverlay.remove();
       } else {
-        var msg = d.msg || d.code || '指定失败';
+        var msg = d.msg || d.code || window._i('shell.mv.fail', '指定失败');
         if (window.qqqideQoast) window.qqqideQoast.show(msg, { type: 'error', duration: 6000 });
         cfConfirm.disabled = false;
-        cfConfirm.textContent = '确认绑定';
+        cfConfirm.textContent = window._i('shell.mv.confirmBtn', '确认绑定');
       }
     }).catch(function () {
-      if (window.qqqideQoast) window.qqqideQoast.show('网络错误，请重试', { type: 'error', duration: 5000 });
+      if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.mv.netErr', '网络错误，请重试'), { type: 'error', duration: 5000 });
       cfConfirm.disabled = false;
-      cfConfirm.textContent = '确认绑定';
+      cfConfirm.textContent = window._i('shell.mv.confirmBtn', '确认绑定');
     });
   });
   cfBtnRow.appendChild(cfConfirm);
@@ -1167,7 +1175,7 @@ function _showEvangelistSubDropdown(left, top) {
   r1.style.cssText =
     'padding:9px 16px; font-size:13px; color:var(--text-primary); white-space:nowrap; ' +
     'cursor:' + (mentorPhone ? 'pointer' : 'pointer') + ';';
-  r1.textContent = '我滴导师：' + (mentorPhone || '无') +
+  r1.textContent = _mi('shell.mv.myMentor', '我滴导师：{v}', { v: (mentorPhone || window._i('shell.mv.none', '无')) }) +
     (mentorPhone && mentorStudentCount > 0 ? ' (' + mentorStudentCount + ')' : '');
   if (!mentorPhone) {
     r1.style.color = '#b58900';
@@ -1206,7 +1214,7 @@ function _showEvangelistSubDropdown(left, top) {
   r2.style.cssText =
     'padding:9px 16px; font-size:13px; color:var(--text-secondary); white-space:nowrap; ' +
     'cursor:pointer;';
-  r2.textContent = '我滴学生：' + studentCount + '人';
+  r2.textContent = _mi('shell.st.myStudents', '我滴学生：{n}人', { n: studentCount });
   r2.addEventListener('click', function (e) {
     e.stopPropagation();
     _shellCloseMenubarPopup();
@@ -1250,7 +1258,7 @@ function _showEvangelistClaimPopup() {
   var login = window.qqqLogin;
   if (!login || !login.isLoggedIn()) {
     if (login && login.login) { login.login(); }
-    if (window.qqqideQoast) window.qqqideQoast.show('请先登录后再认领学生', { type: 'warning', duration: 5000 });
+    if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.st.notLoggedIn', '请先登录后再认领学生'), { type: 'warning', duration: 5000 });
     return;
   }
   var ex = document.querySelector('.qqq-evangelist-claim-overlay');
@@ -1264,28 +1272,28 @@ function _showEvangelistClaimPopup() {
   box.style.cssText = 'background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.25);padding:24px;min-width:360px;max-width:440px;';
 
   var title = document.createElement('h3');
-  title.textContent = '➕ 认领学生';
+  title.textContent = window._i('shell.st.claimTitle', '➕ 认领学生');
   title.style.cssText = 'margin:0 0 4px;font-size:16px;color:var(--text-primary);';
   box.appendChild(title);
 
   var hint = document.createElement('p');
-  hint.textContent = '填学生手机号和载入日期，只能试一次。';
+  hint.textContent = window._i('shell.st.claimHint', '填学生手机号和载入日期，只能试一次。');
   hint.style.cssText = 'margin:0 0 16px;font-size:12px;color:var(--text-muted);';
   box.appendChild(hint);
 
   var lbl1 = document.createElement('label');
-  lbl1.textContent = '学生完整手机号';
+  lbl1.textContent = window._i('shell.st.phoneLabel', '学生完整手机号');
   lbl1.style.cssText = 'display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);';
   box.appendChild(lbl1);
 
   var inputPhone = document.createElement('input');
   inputPhone.type = 'text';
-  inputPhone.placeholder = '例如：8615812345678';
+  inputPhone.placeholder = window._i('shell.st.phonePh', '例如：8615812345678');
   inputPhone.style.cssText = 'width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;border:1px solid var(--border-color);border-radius:4px;background:var(--background-color);color:var(--text-primary);outline:none;margin-bottom:14px;';
   box.appendChild(inputPhone);
 
   var lbl2 = document.createElement('label');
-  lbl2.textContent = '学生载入日期';
+  lbl2.textContent = window._i('shell.st.dateLabel', '学生载入日期');
   lbl2.style.cssText = 'display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);';
   box.appendChild(lbl2);
 
@@ -1298,26 +1306,26 @@ function _showEvangelistClaimPopup() {
   btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
 
   var cancelBtn = document.createElement('button');
-  cancelBtn.textContent = '取消';
+  cancelBtn.textContent = window._i('common.cancel', '取消');
   cancelBtn.style.cssText = 'padding:8px 20px;border:1px solid var(--border-color);border-radius:4px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px;';
   cancelBtn.addEventListener('click', function () { overlay.remove(); });
   btnRow.appendChild(cancelBtn);
 
   var submitBtn = document.createElement('button');
-  submitBtn.textContent = '确认认领';
+  submitBtn.textContent = window._i('shell.st.claimBtn', '确认认领');
   submitBtn.style.cssText = 'padding:8px 24px;border:none;border-radius:4px;background:#d4a04a;color:#fff;cursor:pointer;font-size:13px;font-weight:700;';
   btnRow.appendChild(submitBtn);
 
   function _doClaimSubmit() {
     var phone = inputPhone.value.trim();
     var dateVal = inputDate.value;
-    if (!phone) { if (window.qqqideQoast) window.qqqideQoast.show('请键入学生手机号', { type: 'warning', duration: 3000 }); return; }
-    if (!/^[0-9]{10,15}$/.test(phone)) { if (window.qqqideQoast) window.qqqideQoast.show('手机号格式不对', { type: 'warning', duration: 4000 }); return; }
-    if (!dateVal) { if (window.qqqideQoast) window.qqqideQoast.show('请选择载入日期', { type: 'warning', duration: 3000 }); return; }
+    if (!phone) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.st.needPhone', '请键入学生手机号'), { type: 'warning', duration: 3000 }); return; }
+    if (!/^[0-9]{10,15}$/.test(phone)) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.st.badPhone', '手机号格式不对'), { type: 'warning', duration: 4000 }); return; }
+    if (!dateVal) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.st.needDate', '请选择载入日期'), { type: 'warning', duration: 3000 }); return; }
     var loginDate = dateVal.replace(/-/g, '');
 
     submitBtn.disabled = true;
-    submitBtn.textContent = '提交中...';
+    submitBtn.textContent = window._i('shell.st.submitting', '提交中...');
     var token = login.getAuthToken();
     fetch('https://www.gh555.com/api/evangelist/claim', {
       method: 'POST',
@@ -1325,19 +1333,19 @@ function _showEvangelistClaimPopup() {
       body: JSON.stringify({ student_phone: phone, login_date: loginDate })
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.ok) {
-        if (window.qqqideQoast) window.qqqideQoast.show('认领成功！', { type: 'success', duration: 5000 });
+        if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.st.ok', '认领成功！'), { type: 'success', duration: 5000 });
         overlay.remove();
         _fetchEvangelistMentor();
       } else {
-        var msg = d.msg || d.code || '认领失败';
+        var msg = d.msg || d.code || window._i('shell.st.fail', '认领失败');
         if (window.qqqideQoast) window.qqqideQoast.show(msg, { type: 'error', duration: 6000 });
         submitBtn.disabled = false;
-        submitBtn.textContent = '确认认领';
+        submitBtn.textContent = window._i('shell.st.claimBtn', '确认认领');
       }
     }).catch(function () {
-      if (window.qqqideQoast) window.qqqideQoast.show('网络错误，请重试', { type: 'error', duration: 5000 });
+      if (window.qqqideQoast) window.qqqideQoast.show(window._i('shell.mv.netErr', '网络错误，请重试'), { type: 'error', duration: 5000 });
       submitBtn.disabled = false;
-      submitBtn.textContent = '确认认领';
+      submitBtn.textContent = window._i('shell.st.claimBtn', '确认认领');
     });
   }
 
@@ -1435,7 +1443,7 @@ function _refreshEvangelistMenuLabel() {
   if (!lab) return;
   var mentorPhone = window._evangelistMentorPhone;
   if (mentorPhone && mentorPhone.length > 0) {
-    lab.textContent = '导师：' + mentorPhone;
+    lab.textContent = _mi('shell.mv.label', '导师：{p}', { p: mentorPhone });
   } else {
     lab.textContent = (window._i) ? window._i('shell.menu.evangelist', '导师') : '导师';
   }
@@ -1451,7 +1459,7 @@ function _refreshEvangelistSubDropdown() {
   var mentorStudentCount = window._evangelistMentorStudentCount || 0;
   var lines = dd.querySelectorAll('.qqq-ev-sub-line');
   if (lines.length >= 2) {
-    lines[0].textContent = '我滴导师：' + (mentorPhone || '无') +
+    lines[0].textContent = _mi('shell.mv.myMentor', '我滴导师：{v}', { v: (mentorPhone || window._i('shell.mv.none', '无')) }) +
       (mentorPhone && mentorStudentCount > 0 ? ' (' + mentorStudentCount + ')' : '');
     if (!mentorPhone) {
       lines[0].style.color = '#b58900';
@@ -1460,7 +1468,7 @@ function _refreshEvangelistSubDropdown() {
       lines[0].style.color = 'var(--text-primary)';
       lines[0].style.cursor = 'pointer';
     }
-    lines[1].textContent = '我滴学生：' + studentCount + '人';
+    lines[1].textContent = _mi('shell.st.myStudents', '我滴学生：{n}人', { n: studentCount });
   }
 }
 
@@ -1503,7 +1511,7 @@ function _showGoodsSettings(goodsId) {
     'display:flex; align-items:center; margin-bottom:16px; gap:8px;';
 
   var titleText = document.createElement('span');
-  titleText.textContent = (goodsId === 'kope-a') ? 'kope-a 设置' : 'window there 设置';
+  titleText.textContent = (goodsId === 'kope-a') ? window._i('shell.gs.titleKopea', 'kope-a 设置') : window._i('shell.gs.titleWinThere', 'window there 设置');
   titleText.style.cssText = 'font-weight:700; font-size:15px; flex:1;';
   titleRow.appendChild(titleText);
 
@@ -1524,9 +1532,9 @@ function _showGoodsSettings(goodsId) {
     'color:var(--text-muted); font-size:12px; line-height:1.6; margin-bottom:20px; ' +
     'padding:12px; background:var(--background-color); border-radius:6px;';
   if (goodsId === 'kope-a') {
-    intro.textContent = '用右下角滴卡片，或者一个音效提示你已经复制成功，点击右下角卡片滴下半区域可以让该卡片进入或退出编辑模式。';
+    intro.textContent = window._i('shell.gs.kopeaIntro', '用右下角滴卡片，或者一个音效提示你已经复制成功，点击右下角卡片滴下半区域可以让该卡片进入或退出编辑模式。');
   } else {
-    intro.textContent = '记录和还原窗口滴位置和尺寸。记录：1、确保当前要记录滴那个窗口在屏幕上显示但没有获得焦点，简单讲就是不要让要记录滴窗口是焦点窗口。2、光标到达该窗口范围内。3、按3下 w 键。还原：1、同样确保要还原滴那个窗口在屏幕上显示但没有获得焦点。2、同样光标进入该窗口范围。3、按3下 x 键。';
+    intro.textContent = window._i('shell.gs.winThereIntro', '记录和还原窗口滴位置和尺寸。记录：1、确保当前要记录滴那个窗口在屏幕上显示但没有获得焦点，简单讲就是不要让要记录滴窗口是焦点窗口。2、光标到达该窗口范围内。3、按3下 w 键。还原：1、同样确保要还原滴那个窗口在屏幕上显示但没有获得焦点。2、同样光标进入该窗口范围。3、按3下 x 键。');
   }
   modal.appendChild(intro);
 
@@ -1538,13 +1546,13 @@ function _showGoodsSettings(goodsId) {
       'border-top:1px solid var(--border-color);';
 
     var settingLabel = document.createElement('span');
-    settingLabel.textContent = '启用卡片';
+    settingLabel.textContent = window._i('shell.gs.enableCard', '启用卡片');
     settingLabel.style.cssText = 'flex:1; font-weight:600;';
     settingRow.appendChild(settingLabel);
 
     // ── toggle switch for showCard ──
     var cardToggle = document.createElement('div');
-    cardToggle.title = '是否弹出卡片';
+    cardToggle.title = window._i('shell.gs.cardTip', '是否弹出卡片');
     cardToggle.style.cssText =
       'position:relative; width:44px; height:24px; border-radius:12px; ' +
       'background:var(--border-color); transition:background 200ms; ' +

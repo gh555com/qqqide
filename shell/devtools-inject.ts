@@ -8,6 +8,7 @@
 
 import type { WebContents, BrowserWindow } from 'electron';
 import { dialog } from 'electron';
+import { mi } from './main-i18n';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -282,7 +283,7 @@ function _startPushLoop(wc: WebContents, dwc: WebContents, getText: () => string
           const p = (n: number) => n < 10 ? '0' + n : '' + n;
           const ts = now.getFullYear()+'-'+p(now.getMonth()+1)+'-'+p(now.getDate())+'_'+p(now.getHours())+'-'+p(now.getMinutes())+'-'+p(now.getSeconds());
           const defPath = pr ? path.join(pr, 'logs', 'console_'+ts+'.log') : 'console_'+ts+'.log';
-          const result = await dialog.showSaveDialog(mw, { title: '保存控制台日志', defaultPath: defPath, filters: [{ name: '日志文件', extensions: ['log'] }] });
+          const result = await dialog.showSaveDialog(mw, { title: mi('main.dlg.saveConsole'), defaultPath: defPath, filters: [{ name: mi('main.dlg.logFile'), extensions: ['log'] }] });
           if (!result.canceled && result.filePath) { fs.mkdirSync(path.dirname(result.filePath), { recursive: true }); fs.writeFileSync(result.filePath, text, 'utf-8'); }
         } catch {}
         _saveLock = false;

@@ -8,6 +8,17 @@
 (function () {
   'use strict';
 
+  // ── i18n 助手（key 缺失回退中文；params 在翻译后按 {x} 替换，值可为 HTML 片段）──
+  function _i18(k, fb, params) {
+    var s = null;
+    try { if (window.i18n && typeof window.i18n.t === 'function') s = window.i18n.t(k); } catch (e) { /* ignore */ }
+    if (!s || s === k) s = fb || k;
+    if (params && typeof s === 'string') {
+      for (var p in params) s = s.split('{' + p + '}').join(params[p]);
+    }
+    return s;
+  }
+
   var _authData = null;
   var _initDone = false;
   var _stateListeners = [];
@@ -618,8 +629,7 @@
       // ★ F110: 上赛季行结算后显示「已返 X ge」徽章
       var refundBadge = '';
       if (e.refund_ge !== undefined && e.refund_ge !== null && e.refund_ge !== '') {
-        refundBadge = '<span style="min-width:66px;text-align:right;font-size:11px;color:var(--text-dim,#888);white-space:nowrap;">已返 <b style="color:#b58900;">'
-          + _ldrFmtGe(e.refund_ge) + 'ge</b></span>';
+        refundBadge = '<span style="min-width:66px;text-align:right;font-size:11px;color:var(--text-dim,#888);white-space:nowrap;">' + _i18('login.lbr.refunded', '已返 {v}', { v: '<b style="color:#b58900;">' + _ldrFmtGe(e.refund_ge) + 'ge</b>' }) + '</span>';
       }
       s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', _ldrPhone(e.phone))
         .replace('{lv}', lvDisplay).replace('{refund}', refundBadge);
@@ -655,8 +665,8 @@
   }
 
   function _ldrBuildCurrentRows(list) {
-    if (!list) return '<div style="color:var(--text-dim,#888);padding:16px;text-align:center;font-size:12px;">数据准备中</div>';
-    if (!list.length) return '<div style="color:var(--text-dim,#888);padding:16px;text-align:center;font-size:12px;">本周暂无参与</div>';
+    if (!list) return '<div style="color:var(--text-dim,#888);padding:16px;text-align:center;font-size:12px;">' + _i18('login.lbr.prep', '数据准备中') + '</div>';
+    if (!list.length) return '<div style="color:var(--text-dim,#888);padding:16px;text-align:center;font-size:12px;">' + _i18('login.lbr.noJoin', '本周暂无参与') + '</div>';
     var s = '';
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
@@ -666,7 +676,7 @@
       var refundLine = '';
       if (e.refund_ge !== undefined && e.refund_ge !== null && e.refund_ge !== '') {
         refundLine = '<div style="display:flex;justify-content:flex-end;gap:6px;font-size:11px;padding-right:2px;margin-top:1px;">'
-          + '<span style="color:var(--text-dim,#888);">返 ' + (e.rate_bp ? e.rate_bp / 100 : 0) + '%</span>'
+          + '<span style="color:var(--text-dim,#888);">' + _i18('login.lbr.rate', '返 {p}%', { p: (e.rate_bp ? e.rate_bp / 100 : 0) }) + '</span>'
           + '<span style="color:#b58900;font-weight:bold;">' + _ldrFmtGe(e.refund_ge) + 'ge</span></div>';
       }
       var rowStyle = 'padding:4px 1px;' + (e.me ? 'background:rgba(181,137,0,0.10);border-radius:3px;' : '');
@@ -682,15 +692,15 @@
   }
 
   function _ldrBuildCurrentMe(m) {
-    if (!m) return '我的：本周未参赛';
+    if (!m) return _i18('login.lbr.meNone', '我的：本周未参赛');
     var lvNum = parseFloat(m.level_str);
     var lvDisplay = isNaN(lvNum) ? m.level_str : lvNum.toFixed(4);
-    var base = '我的：第 ' + m.rank + ' 名 · Lv ' + lvDisplay;
+    var base = _i18('login.lbr.me', '我的：第 {rank} 名 · Lv {lv}', { rank: m.rank, lv: lvDisplay });
     if (m.rank <= 10 && m.refund_ge !== undefined && m.refund_ge !== null && m.refund_ge !== '') {
-      return base + ' · 预计返 <b style="color:#b58900;">' + _ldrFmtGe(m.refund_ge) + 'ge</b>';
+      return base + ' · ' + _i18('login.lbr.meEst', '预计返 {v}', { v: '<b style="color:#b58900;">' + _ldrFmtGe(m.refund_ge) + 'ge</b>' });
     }
-    if (m.rank <= 10) return base + ' · 结算日按名次返还';
-    return base + ' · 未入前 10（无返现）';
+    if (m.rank <= 10) return base + ' · ' + _i18('login.lbr.meSettle', '结算日按名次返还');
+    return base + ' · ' + _i18('login.lbr.meOut', '未入前 10（无返现）');
   }
 
   // ★ F114: 本周榜剩余时间倒计时 + 赛季进度条（与 solar 同款：距结算 XhYm（不写秒）· 赛季已过 N%）
@@ -719,12 +729,12 @@
     bar.style.width = (frac * 100).toFixed(2) + '%';
     var left = b.end - now;
     cd.textContent = left > 0
-      ? '距结算 ' + _ldrFmtCd(left) + '（UTC 周一）· 赛季已过 ' + Math.round(frac * 100) + '%'
-      : '结算处理中……';
+      ? _i18('login.lbr.cd', '距结算 {cd}（UTC 周一）· 赛季已过 {pct}%', { cd: _ldrFmtCd(left), pct: Math.round(frac * 100) })
+      : _i18('login.lbr.settling', '结算处理中……');
   }
 
-  var LDR_ERR_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载失败</div>';
-  var LDR_LOAD_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载中...</div>';
+  function _ldrErrHtml() { return '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">' + _i18('login.lbr.err', '加载失败') + '</div>'; }
+  function _ldrLoadHtml() { return '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">' + _i18('login.lbr.load', '加载中...') + '</div>'; }
 
   function _ldrClose() {
     if (_$ldrOverlay) _$ldrOverlay.style.display = 'none';
@@ -758,15 +768,15 @@
           if ($cur) $cur.innerHTML = _ldrBuildCurrentRows(d.current);
           if ($curMe) $curMe.innerHTML = _ldrBuildCurrentMe(d.current_me);
           if ($freebie && d.freebie) $freebie.innerHTML = _ldrBuildFreebieRows(d.freebie);
-          else if ($freebie) $freebie.innerHTML = LDR_LOAD_HTML;
+          else if ($freebie) $freebie.innerHTML = _ldrLoadHtml();
           if ($left) $left.innerHTML = _ldrBuildRows(d.all_time);
           if ($right) $right.innerHTML = _ldrBuildRows(d.last_season);
         }
       } else if (!silent) {
-        if ($left) $left.innerHTML = LDR_ERR_HTML;
+        if ($left) $left.innerHTML = _ldrErrHtml();
       }
     }).catch(function () {
-      if (!silent && $left) $left.innerHTML = LDR_ERR_HTML;
+      if (!silent && $left) $left.innerHTML = _ldrErrHtml();
     }).finally(function () {
       _ldrFetching = false;
     });
@@ -796,9 +806,11 @@
       }
     }
 
-    $hdr.innerHTML = '我上周最终等级: <b style="color:#b58900;">' + lastLv
-      + '</b>，本周基座升高: <b style="color:#b58900;">' + baseRise
-      + 'ge</b>。 预计下周基座将升高: <b style="color:#b58900;">' + projected + 'ge</b>'
+    $hdr.innerHTML = _i18('login.lbr.header', '我上周最终等级: {last}，本周基座升高: {rise}。 预计下周基座将升高: {proj}', {
+      last: '<b style="color:#b58900;">' + lastLv + '</b>',
+      rise: '<b style="color:#b58900;">' + baseRise + 'ge</b>',
+      proj: '<b style="color:#b58900;">' + projected + 'ge</b>'
+    })
       + '<span id="qqq-ldr-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;margin-left:8px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;pointer-events:auto;top:-1px;">?</span>';
 
     // ★ 绑定 help tooltip
@@ -820,24 +832,25 @@
     }
     var rect = e && e.target ? e.target.getBoundingClientRect() : null;
     if (!rect) return;
+    var _b = function (s) { return '<b>' + s + '</b>'; };
     _$ldrHelpTip.innerHTML =
-      '<b style="color:#b58900;">等级及免费额度规则</b><br><br>'
-      + '一周共 13 个免费时段：<br>'
-      + '• 周一至周六 × 12 个 2 小时段<br>'
-      + '• 周日 × 1 个 24 小时段<br><br>'
-      + '<b>每个时段的免费额度</b><br>'
-      + '= 随机值（最大 1000 ge）+ <b>本周基座</b><br><br>'
-      + 'UTC 时间一周作为一个赛季，<br>'
-      + '例如：2026_28W1 代表 2026 年第 28 周，<br>'
-      + '其对应总观历史滴第一个赛季即：W1。<br><br>'
-      + '<b>本周基座</b> 由上赛季最终等级决定：<br>'
-      + '基座 = 上赛季（消费 + 陪伴折算）÷ 100<br>'
-      + '若上赛季消费 100 ge → 本周基座 = 1<br><br>'
-      + '• 周一至周六：随机 + 基座 × 1<br>'
-      + '• 周日：随机 + 基座 × 2（双倍）<br><br>'
-      + '<b>等级</b> = （消费 + 陪伴折算）÷ 10<br>'
-      + '陪伴折算：每 24 小时 = 1 级<br>'
-      + '<b>预计下周基座</b> = 本周（消费 + 陪伴折算）÷ 100';
+      '<b style="color:#b58900;">' + _i18('login.lvRules.title', '等级及免费额度规则') + '</b><br><br>'
+      + _i18('login.lvRules.periods', '一周共 13 个免费时段：') + '<br>'
+      + '• ' + _i18('login.lvRules.p1', '周一至周六 × 12 个 2 小时段') + '<br>'
+      + '• ' + _i18('login.lvRules.p2', '周日 × 1 个 24 小时段') + '<br><br>'
+      + _b(_i18('login.lvRules.perCap', '每个时段的免费额度')) + '<br>'
+      + _i18('login.lvRules.capFormula', '= 随机值（最大 1000 ge）+ {base}', { base: _b(_i18('login.lvRules.base', '本周基座')) }) + '<br><br>'
+      + _i18('login.lvRules.season', 'UTC 时间一周作为一个赛季，') + '<br>'
+      + _i18('login.lvRules.seasonEg', '例如：2026_28W1 代表 2026 年第 28 周，') + '<br>'
+      + _i18('login.lvRules.seasonEg2', '其对应总观历史滴第一个赛季即：W1。') + '<br><br>'
+      + _i18('login.lvRules.baseDecide', '{base} 由上赛季最终等级决定：', { base: _b(_i18('login.lvRules.base', '本周基座')) }) + '<br>'
+      + _i18('login.lvRules.baseFormula', '基座 = 上赛季（消费 + 陪伴折算）÷ 100') + '<br>'
+      + _i18('login.lvRules.baseEg', '若上赛季消费 100 ge → 本周基座 = 1') + '<br><br>'
+      + '• ' + _i18('login.lvRules.monSat', '周一至周六：随机 + 基座 × 1') + '<br>'
+      + '• ' + _i18('login.lvRules.sun', '周日：随机 + 基座 × 2（双倍）') + '<br><br>'
+      + _i18('login.lvRules.levelDecide', '{level} = （消费 + 陪伴折算）÷ 10', { level: _b(_i18('login.lvRules.level', '等级')) }) + '<br>'
+      + _i18('login.lvRules.comp', '陪伴折算：每 24 小时 = 1 级') + '<br>'
+      + _i18('login.lvRules.nextBaseDecide', '{nb} = 本周（消费 + 陪伴折算）÷ 100', { nb: _b(_i18('login.lvRules.nextBase', '预计下周基座')) });
     _$ldrHelpTip.style.left = (rect.left + rect.width / 2 - 200) + 'px';
     _$ldrHelpTip.style.top = (rect.bottom + 4) + 'px';
     _$ldrHelpTip.style.display = '';
@@ -881,11 +894,11 @@
       }
     } else {
       // ★ 无缓存或跨赛季 → 显示加载中，拉取新数据
-      if ($cur) $cur.innerHTML = LDR_LOAD_HTML;
+      if ($cur) $cur.innerHTML = _ldrLoadHtml();
       if ($curMe) $curMe.innerHTML = '';
-      if ($freebie) $freebie.innerHTML = LDR_LOAD_HTML;
-      if ($left) $left.innerHTML = LDR_LOAD_HTML;
-      if ($right) $right.innerHTML = LDR_LOAD_HTML;
+      if ($freebie) $freebie.innerHTML = _ldrLoadHtml();
+      if ($left) $left.innerHTML = _ldrLoadHtml();
+      if ($right) $right.innerHTML = _ldrLoadHtml();
       _ldrFetch(false);
     }
   }
@@ -914,17 +927,17 @@
       '</div>' +
       '<div style="display:flex;min-height:300px;">' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">🍀 白嫖榜</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _i18('login.lbr.freebie', '🍀 白嫖榜') + '</div>' +
       '<div id="qqq-ldr-freebie"></div></div>' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">🏆 历史总排行</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _i18('login.lbr.allTime', '🏆 历史总排行') + '</div>' +
       '<div id="qqq-ldr-left"></div></div>' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">📅 上赛季排行</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _i18('login.lbr.lastSeason', '📅 上赛季排行') + '</div>' +
       '<div id="qqq-ldr-right"></div></div>' +
       '<div style="flex:1.05;padding:10px 12px;">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:2px;">⚔️ 本周排行</div>' +
-      '<div style="font-size:10.5px;color:' + titleClr + ';opacity:0.72;margin-bottom:8px;">未决算 · 前 10 名结算日返还消费（20%↓5%）</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:2px;">' + _i18('login.lbr.current', '⚔️ 本周排行') + '</div>' +
+      '<div style="font-size:10.5px;color:' + titleClr + ';opacity:0.72;margin-bottom:8px;">' + _i18('login.lbr.currentSub', '未决算 · 前 10 名结算日返还消费（20%↓5%）') + '</div>' +
       '<div id="qqq-ldr-current"></div>' +
       '<div id="qqq-ldr-current-me" style="margin-top:6px;padding-top:6px;border-top:1px dashed ' + border + ';font-size:11.5px;color:' + titleClr + ';line-height:1.6;"></div>' +
       '<div id="qqq-ldr-current-cd" style="margin-top:7px;font-size:11px;color:' + titleClr + ';opacity:0.85;"></div>' +
@@ -988,17 +1001,17 @@
     function _ensureCopyQoast(msg) {
       if (_qoast) return;
       _qoast = window.qqqideQoast && window.qqqideQoast.show(
-        msg || '\u8BF7\u590D\u5236\u94FE\u63A5\u5728\u6D4F\u89C8\u5668\u4E2D\u5B8C\u6210\u767B\u5F55\uFF0C\u767B\u5F55\u6210\u529F\u540E\u81EA\u52A8\u8FD4\u56DE IDE',
+        msg || _i18('login.copyHint', '\u8BF7\u590D\u5236\u94FE\u63A5\u5728\u6D4F\u89C8\u5668\u4E2D\u5B8C\u6210\u767B\u5F55\uFF0C\u767B\u5F55\u6210\u529F\u540E\u81EA\u52A8\u8FD4\u56DE IDE'),
         {
           duration: 0,
           type: 'info',
           action: {
-            label: '\u590D\u5236\u767B\u5F55\u94FE\u63A5',
+            label: _i18('login.copyLink', '\u590D\u5236\u767B\u5F55\u94FE\u63A5'),
             onClick: function () {
               if (window.qqqideBridge && window.qqqideBridge.clipboard) {
                 window.qqqideBridge.clipboard.writeText(_loginUrl);
               }
-              window.qqqideQoast && window.qqqideQoast.show('\u94FE\u63A5\u5DF2\u590D\u5236\uFF0C\u8BF7\u7C98\u8D34\u5230\u6D4F\u89C8\u5668\u5730\u5740\u680F', { duration: 3000 });
+              window.qqqideQoast && window.qqqideQoast.show(_i18('login.linkCopied', '\u94FE\u63A5\u5DF2\u590D\u5236\uFF0C\u8BF7\u7C98\u8D34\u5230\u6D4F\u89C8\u5668\u5730\u5740\u680F'), { duration: 3000 });
             }
           }
         }
@@ -1014,7 +1027,7 @@
         // 3s 后若未登入 → 显示复制链接 qoast
         _qoastTimer = setTimeout(function () {
           if (!_authData || !_authData.token) {
-            _ensureCopyQoast('\u6D4F\u89C8\u5668\u5DF2\u6253\u5F00\uFF0C\u5982\u672A\u81EA\u52A8\u767B\u5F55\u8BF7\u590D\u5236\u94FE\u63A5');
+            _ensureCopyQoast(_i18('login.browserOpened', '\u6D4F\u89C8\u5668\u5DF2\u6253\u5F00\uFF0C\u5982\u672A\u81EA\u52A8\u767B\u5F55\u8BF7\u590D\u5236\u94FE\u63A5'));
           }
         }, 3000);
 
@@ -1024,7 +1037,7 @@
           if (!_authData || !_authData.token) {
             if (_qoast) { _qoast.dismiss(); _qoast = null; }
             if (window.qqqideQoast) {
-              window.qqqideQoast.show('\u767B\u5F55\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u540E\u91CD\u8BD5', { duration: 0, type: 'error' });
+              window.qqqideQoast.show(_i18('login.timeoutRetry', '\u767B\u5F55\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u540E\u91CD\u8BD5'), { duration: 0, type: 'error' });
             }
           }
           if (typeof _authUnsub === 'function') _authUnsub();
@@ -1033,13 +1046,13 @@
 
       } else {
         console.warn('[login] openLoginExternal bridge not available');
-        if (window.qqqideQoast) window.qqqideQoast.show('\u767B\u5F55\u529F\u80FD\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u542F IDE', { duration: 0, type: 'error' });
+        if (window.qqqideQoast) window.qqqideQoast.show(_i18('login.unavailable', '\u767B\u5F55\u529F\u80FD\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u542F IDE'), { duration: 0, type: 'error' });
         _finishLogin();
       }
     } catch (e) {
       console.warn('[login] external browser error:', e && e.message);
       if (window.qqqideQoast) {
-        window.qqqideQoast.show('\u767B\u5F55\u7A97\u53E3\u65E0\u6CD5\u6253\u5F00\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5', { duration: 0, type: 'error' });
+        window.qqqideQoast.show(_i18('login.openFail', '\u767B\u5F55\u7A97\u53E3\u65E0\u6CD5\u6253\u5F00\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5'), { duration: 0, type: 'error' });
       }
       if (typeof _authUnsub === 'function') _authUnsub();
       _finishLogin();
@@ -1050,12 +1063,12 @@
   function _updateLoginButtonState(active) {
     if (!_$loginBtn) return;
     if (active) {
-      _$loginBtn.textContent = '\u23F3 \u767B\u5F55\u4E2D';
+      _$loginBtn.textContent = _i18('login.loggingIn', '\u23F3 \u767B\u5F55\u4E2D');
       _$loginBtn.style.cursor = 'wait';
       _$loginBtn.style.opacity = '0.6';
-      _$loginBtn.title = '\u767B\u5F55\u4E2D\uFF0C\u70B9\u51FB\u91CD\u65B0\u6253\u5F00\u6D4F\u89C8\u5668';
+      _$loginBtn.title = _i18('login.loggingInTip', '\u767B\u5F55\u4E2D\uFF0C\u70B9\u51FB\u91CD\u65B0\u6253\u5F00\u6D4F\u89C8\u5668');
     } else {
-      _$loginBtn.textContent = '\uD83D\uDD12 \u767B\u5F55';
+      _$loginBtn.textContent = _i18('login.btn', '\uD83D\uDD12 \u767B\u5F55');
       _$loginBtn.style.cursor = '';
       _$loginBtn.style.opacity = '';
       _$loginBtn.title = '';
@@ -1203,7 +1216,7 @@
     // 登录按钮
     _$loginBtn = document.createElement('button');
     _$loginBtn.className = 'qqq-login-btn';
-    _$loginBtn.textContent = '\uD83D\uDD12 \u767B\u5F55';
+    _$loginBtn.textContent = _i18('login.btn', '\uD83D\uDD12 \u767B\u5F55');
     _$loginBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 20px;font-size:13px;';
     _$loginBtn.addEventListener('click', function (e) {
       e.preventDefault();
@@ -1213,7 +1226,7 @@
     // 手机号按钮
     _$phoneBtn = document.createElement('button');
     _$phoneBtn.className = 'qqq-login-btn qqq-phone-btn';
-    _$phoneBtn.title = '已登录 — 点击打开菜单';
+    _$phoneBtn.title = _i18('login.menuTip', '已登录 — 点击打开菜单');
     _$phoneBtn.style.cssText = NO_DRAG + 'display:none;position:relative;';
     _$phoneBtn.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
@@ -1233,7 +1246,7 @@
       dd.style.cssText = 'position:absolute;top:calc(100% + 2px);right:0;background:var(--background-color);border:2px dashed var(--border-color);border-radius:0 8px 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:120px;padding:0;overflow:hidden;';
       // ge 流水
       var flow = document.createElement('div');
-      flow.textContent = 'ge 流水';
+      flow.textContent = _i18('login.geFlow', 'ge 流水');
       flow.style.cssText = 'display:block;height:32px;line-height:32px;padding:0 16px;cursor:pointer;font-size:13px;color:var(--text-primary);white-space:nowrap;text-decoration:none;';
       flow.addEventListener('mouseenter', function () { flow.style.background = 'var(--gold-hover-bg)'; });
       flow.addEventListener('mouseleave', function () { flow.style.background = ''; });
@@ -1248,7 +1261,7 @@
       dd.appendChild(flow);
       // 退出登录（零间隙，无分隔线）
       var logout = document.createElement('div');
-      logout.textContent = '退出登录';
+      logout.textContent = _i18('login.logoutBtn', '退出登录');
       logout.style.cssText = 'display:block;height:32px;line-height:32px;padding:0 16px;cursor:pointer;font-size:13px;color:var(--red);white-space:nowrap;';
       logout.addEventListener('mouseenter', function () { logout.style.background = 'var(--gold-hover-bg)'; });
       logout.addEventListener('mouseleave', function () { logout.style.background = ''; });
@@ -1460,13 +1473,27 @@
       // ★ T3：中心大脑退出登录 → 广播所有窗口
       try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.logout) window.qqqideBridge.auth.logout(); }
       catch (e) { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); }
-      if (window.qqqideQoast) window.qqqideQoast.show('已退出登录', { duration: 3000 });
+      if (window.qqqideQoast) window.qqqideQoast.show(_i18('login.loggedOut', '已退出登录'), { duration: 3000 });
     },
     onStateChange: function (fn) {
       _stateListeners.push(fn);
       return function () { var i = _stateListeners.indexOf(fn); if (i >= 0) _stateListeners.splice(i, 1); };
     }
   };
+
+  // ★ 语言切换 → 常驻菜单元素（登录按钮/手机号下拉入口）与已打开榜单即时重渲染
+  function _onLangChange() {
+    try { _updateLoginButtonState(!!_loginActive); } catch (e) { }
+    if (_$phoneBtn) _$phoneBtn.title = _i18('login.menuTip', '已登录 — 点击打开菜单');
+    if (_$ldrHelpTip) _$ldrHelpTip.style.display = 'none';
+    if (_$ldrOverlay) {
+      var wasOpen = _$ldrOverlay.style.display !== 'none';
+      try { _$ldrOverlay.remove(); } catch (e) { }
+      _$ldrOverlay = null; _$ldrPanel = null; _ldrInited = false;
+      if (wasOpen) { try { _ldrOpen(); } catch (e) { } }
+    }
+  }
+  window.addEventListener('qqq-lang-change', _onLangChange);
 
   window.qqqLogin = api;
   setTimeout(function () { api.init(); }, 200);
@@ -1482,11 +1509,11 @@
     if (now - _saShownAt < 60000) return;
     _saShownAt = now;
     if (_saQoast) { try { _saQoast.dismiss(); } catch (_) {} _saQoast = null; }
-    _saQoast = window.qqqideQoast.show('\uD83D\uDD10 \u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\n\u70B9\u51FB\u6309\u94AE\u8D70\u6B63\u5E38\u767B\u5F55\u6D41\u7A0B\uFF08\u4E0E\u53F3\u4E0A\u89D2\u767B\u5F55\u4E00\u81F4\uFF09', {
+    _saQoast = window.qqqideQoast.show(_i18('login.secondAuthMsg', '\uD83D\uDD10 \u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\n\u70B9\u51FB\u6309\u94AE\u8D70\u6B63\u5E38\u767B\u5F55\u6D41\u7A0B\uFF08\u4E0E\u53F3\u4E0A\u89D2\u767B\u5F55\u4E00\u81F4\uFF09'), {
       duration: 0,
       type: 'warn',
       action: {
-        label: '\uD83D\uDEE1\uFE0F \u4E8C\u6B21\u8BA4\u8BC1',
+        label: _i18('login.secondAuthBtn', '\uD83D\uDEE1\uFE0F \u4E8C\u6B21\u8BA4\u8BC1'),
         onClick: function () {
           _saQoast = null;
           _doLogin().catch(function (err) { console.error('[second-auth] login error:', err); });

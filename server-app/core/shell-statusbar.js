@@ -3,10 +3,16 @@
 // ============================================================================
 // shell-statusbar.js — 状态栏时钟 + 免费时段指示器（从 shell.js 拆分）
 // 依赖: window.qqqideBridge, window._i, window._sseTimeAnchor (AI 面板推送)
-// ============================================================================
-
-function bootStatusbar(boot) {
-  var bridge = window.qqqideBridge;
+// ============================================================================function bootStatusbar(boot) {
+  var bridge = window.qqqideBridge;
+
+  // i18n 助手：翻译 + 中文回退 + {x} 参数（i18n 未就绪/缺失时回退原样）
+  function _T(k, fb, p) {
+    var v = null;
+    try { if (window.i18n && window.i18n.t) { var r = window.i18n.t(k, p); if (r && r !== k) v = r; } } catch (e) { }
+    if (v === null) { v = fb; if (p) { for (var x in p) v = v.split('{' + x + '}').join(String(p[x])); } }
+    return v;
+  }
   var $ver = document.getElementById('qqq-status-version');
   var $onl = document.getElementById('qqq-status-online');
   var $clk = document.getElementById('qqq-status-clock');
@@ -131,11 +137,11 @@ function bootStatusbar(boot) {
 						var pts = data.sample_points || 0;
 						if (pts > 0 && typeof data.avg_24h === 'number') {
 							// 值来自服务端 number（avg_24h 经 Math.round 纯数字），innerHTML 无注入面；_fmt1 强制一位小数（整数也显 .0）
-							$avg.innerHTML = '※最近24小时平均：<b>' + _fmt1(data.avg_24h) + '</b>';
-							$avg.title = pts >= 288 ? '' : '数据采样中（' + pts + '/288 点，满 24 小时后精确）';
+							$avg.innerHTML = _T('shell.onl.avg24', '※最近24小时平均：') + '<b>' + _fmt1(data.avg_24h) + '</b>';
+							$avg.title = pts >= 288 ? '' : _T('shell.onl.sampling', '数据采样中（{p}/288 点，满 24 小时后精确）', { p: pts });
 						} else {
-							$avg.textContent = '※最近24小时平均：--';
-							$avg.title = '数据采集中';
+							$avg.textContent = _T('shell.onl.avg24', '※最近24小时平均：') + '--';
+							$avg.title = _T('shell.onl.samplingShort', '数据采集中');
 						}
 					}
 					// ★ 每日均值曲线数据（服务端 avg_daily 全量 ≤201 行；旧服务端回退 avg_daily_30。
@@ -165,8 +171,8 @@ function bootStatusbar(boot) {
 			_onlPanel.innerHTML =
 				'<div class="qqq-onl-head">' +
 				'<div class="qqq-onl-lines">' +
-				'<span class="qqq-onl-title">在线人数 <b id="qqq-onl-now">0</b></span>' +
-				'<span class="qqq-onl-avg" id="qqq-onl-avg24">※最近24小时平均：--</span>' +
+				'<span class="qqq-onl-title">' + _T('shell.onl.title', '在线人数') + ' <b id="qqq-onl-now">0</b></span>' +
+				'<span class="qqq-onl-avg" id="qqq-onl-avg24">' + _T('shell.onl.avg24', '※最近24小时平均：') + '--</span>' +
 				'</div>' +
 				'<span class="qqq-onl-spark" id="qqq-onl-spark">' +
 				'<span class="qqq-onl-zoom" id="qqq-onl-zoom">' +
@@ -231,7 +237,7 @@ function bootStatusbar(boot) {
 			// ★ 档位回看窗口（2026-09-08）：30d=尾部31点（今天+30天）/ 180d=尾部181点（今天+180天 ≈ 半年）
 			var maxN = _onlRange === '180' ? 181 : 31;
 			var daily = _onlDailyHist.length > maxN ? _onlDailyHist.slice(_onlDailyHist.length - maxN) : _onlDailyHist;
-			var rangeName = _onlRange === '180' ? '近180天' : '近30天';
+			var rangeName = _onlRange === '180' ? _T('shell.onl.range180', '近180天') : _T('shell.onl.range30', '近30天');
 			var n = daily.length;
 			var ns = 'http://www.w3.org/2000/svg';
 			if (!_onlSparkSvg) {
@@ -269,9 +275,9 @@ function bootStatusbar(boot) {
 				$scale.innerHTML =
 					'<i class="pk">' + _fmt1(rawMax) + '</i>' +
 					'<i>' + _fmt1(rawMin) + '</i>';
-				$scale.title = '顶峰 ' + _fmt1(rawMax) + ' · 谷底 ' + _fmt1(rawMin) + '（' + rangeName + '日均在线）';
+				$scale.title = _T('shell.onl.scaleTip', '顶峰 {max} · 谷底 {min}（{r}日均在线）', { max: _fmt1(rawMax), min: _fmt1(rawMin), r: rangeName });
 			}
-			$spark.title = rangeName + '日均在线曲线（' + daily[0].d + ' → ' + daily[n - 1].d + '，尾点 = 当前24h平均；点 30d/180d 切换回看窗口）';
+			$spark.title = _T('shell.onl.sparkTip', '{r}日均在线曲线（{a} → {b}，尾点 = 当前24h平均；点 30d/180d 切换回看窗口）', { r: rangeName, a: daily[0].d, b: daily[n - 1].d });
 		}
 
 		function openOnlineUsers() {
@@ -295,10 +301,10 @@ function bootStatusbar(boot) {
 			// 弹窗首行当前人数与左下角恒同值（同源更新，防两数字打架）
 			var $now = document.getElementById('qqq-onl-now');
 			if ($now && $onl) $now.textContent = $onl.textContent || '0';
-			var balTh = _onlShowBal ? '<th class="r">余额</th>' : '';
+			var balTh = _onlShowBal ? '<th class="r">' + _T('shell.onl.thBalance', '余额') + '</th>' : '';
 			var html = '<table class="qqq-onl-table"><thead><tr>' +
-				'<th>手机号</th><th class="r">day</th>' + balTh + '<th class="r">消耗</th><th class="r">独立消耗</th>' +
-				'<th class="r">最近在线</th><th class="r">连续(m)</th><th class="r">独立</th><th class="r">版本</th><th class="r">累计(h)</th>' +
+				'<th>' + _T('shell.onl.thPhone', '手机号') + '</th><th class="r">' + _T('shell.onl.thDay', 'day') + '</th>' + balTh + '<th class="r">' + _T('shell.onl.thCost', '消耗') + '</th><th class="r">' + _T('shell.onl.thIndepCost', '独立消耗') + '</th>' +
+				'<th class="r">' + _T('shell.onl.thLastSeen', '最近在线') + '</th><th class="r">' + _T('shell.onl.thCont', '连续(m)') + '</th><th class="r">' + _T('shell.onl.thIndep', '独立') + '</th><th class="r">' + _T('shell.onl.thVer', '版本') + '</th><th class="r">' + _T('shell.onl.thTotal', '累计(h)') + '</th>' +
 				'</tr></thead><tbody>';
 			for (var i = 0; i < users.length; i++) {
 				var u = users[i];
@@ -366,7 +372,7 @@ function bootStatusbar(boot) {
 			if (_onlFetching) return;
 			_onlFetching = true;
 			var $body = document.getElementById('qqq-onl-body');
-			if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载中...</div>';
+			if ($body) $body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.loading', '加载中...') + '</div>';
 
 			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache' })
 				.then(function (r) { if (!r.ok) return null; return r.json(); })
@@ -375,7 +381,7 @@ function bootStatusbar(boot) {
 					if (!data || !data.ok || !$body) return;
 					var users = data.users || [];
 					if (users.length === 0) {
-						$body.innerHTML = '<div class="qqq-onl-msg">暂无用户</div>';
+						$body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.empty', '暂无用户') + '</div>';
 						return;
 					}
 					renderOnlineUsers(users);
@@ -383,7 +389,7 @@ function bootStatusbar(boot) {
 				.catch(function () {
 					_onlFetching = false;
 					var $body = document.getElementById('qqq-onl-body');
-					if ($body) $body.innerHTML = '<div class="qqq-onl-msg">加载失败，请重试</div>';
+					if ($body) $body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.loadFail', '加载失败，请重试') + '</div>';
 				});
 		}
 

@@ -775,13 +775,13 @@ async function _restoreAgentFromStore(questId, ag) {
                     if (!ag._questErrorLogByFloor[ag._currentFloorNum]) ag._questErrorLogByFloor[ag._currentFloorNum] = [];
                     ag._questErrorLogByFloor[ag._currentFloorNum].push({
                         time: '',
-                        reason: '未收到 AI 回复'
+                        reason: _qq('ai.errNoReply', '未收到 AI 回复')
                     });
                 }
                 // ★ 设置 fatal 态（使 panel-quest-ui 重建循环能渲染红框）
                 ag._floorFatal = true;
                 ag.setStopState('fatal');
-                ag._exitReason = ag._exitReason || '未收到 AI 回复';
+                ag._exitReason = ag._exitReason || _qq('ai.errNoReply', '未收到 AI 回复');
             }
         }
         // ★ fatal 态持久化恢复：最后一层楼 floorFatal → 死胡同模式
@@ -805,7 +805,7 @@ async function _restoreAgentFromStore(questId, ag) {
                     if (!ag._questErrorLogByFloor[_lastFloor.floorNum]) ag._questErrorLogByFloor[_lastFloor.floorNum] = [];
                     ag._questErrorLogByFloor[_lastFloor.floorNum].push({
                         time: '',
-                        reason: _lfData.exitReason || '任务中断（楼层异常结束）'
+                        reason: _lfData.exitReason || _qq('ai.taskAborted', '任务中断（楼层异常结束）')
                     });
                 }
             }

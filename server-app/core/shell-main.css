@@ -776,8 +776,12 @@
   padding: 2px 8px;
   overflow-x: auto;
   overflow-y: hidden;
-  flex-wrap: wrap;
-  -webkit-app-region: no-drag;
+  /* ★ 超窄窗口自适应（2026-09-16）三档降级: 全名→均分（JS 统一 --aiv-name-w）→图标态（aiv-noname）→滚轮横滚兜底
+     禁换行——换行曾把 30px 固定高的菜单行撑成两行（布局跳动根源）；flex:1 1 auto 使容器恒=可用宽（fit 计算稳定，无振荡） */
+  flex-wrap: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  -webkit-app-region: drag;      /* ★ 容器吃满后空白区保持可拖窗（块自身 no-drag）*/
   scrollbar-width: none;
 }
 
@@ -794,12 +798,17 @@
   border-radius: 0;
   font-size: 11px;
   white-space: nowrap;
-  flex-shrink: 0;
+  /* ★ 超窄窗口自适应: 允许收缩（自然下限 = 图标态 min-content），名字先缩→全隐仍溢才滚动兜底 */
+  flex-shrink: 1;
+  min-width: 0;                   /* 关键: min-width:auto 以名字全宽为自动下限 → 块级收缩永不启动 */
+  overflow: hidden;               /* 极限压缩时裁剪内容出血（内层停在 min-content，常态无感） */
+  -webkit-app-region: no-drag;    /* ★ 块可点击/弹下拉（容器空白区为可拖窗区）*/
   margin-bottom: 1px;
   transition: border-color 100ms, background 100ms;
 }
 
 .aiv-block-empty {
+  flex-shrink: 0;                 /* 加号块恒定小宽，不参与收缩 */
   border: 1px dashed var(--base1);
   color: var(--base1);
 }
@@ -826,10 +835,23 @@
 }
 
 .aiv-block-name {
-  max-width: 140px;
+  max-width: var(--aiv-name-w, 140px);  /* ★ 均分预算（JS _fitViewport 统一设定），fallback 140 */
+  min-width: 0;                   /* ★ 超窄自适应关键: 名字是块内唯一可缩项（收缩至省略号→全隐） */
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
+}
+
+/* ★ 图标档: 名字预算不足（<40px）→ 全部块统一隐名（📁 + badge + −/★，~59px/块） */
+.aiv-container.aiv-noname .aiv-block-name {
+  display: none;
+}
+
+/* ★ 视口吃满菜单行1 剩余空间（配合均分计算；row-1 的 spacer 不再抢 grow 份额） */
+.qqq-menu-row-1 > .qqq-spacer {
+  flex: 0 0 auto;
 }
 
 .aiv-git-badge {

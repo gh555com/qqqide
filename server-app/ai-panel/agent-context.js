@@ -691,7 +691,7 @@
             if (!_skipBiscuit && (!biscuitText || biscuitText.length < 20)) {
                 var _now2 = new Date();
                 var _dt2 = _now2.getFullYear() + '-' + String(_now2.getMonth()+1).padStart(2,'0') + '-' + String(_now2.getDate()).padStart(2,'0') + ' ' + String(_now2.getHours()).padStart(2,'0') + ':' + String(_now2.getMinutes()).padStart(2,'0') + ':' + String(_now2.getSeconds()).padStart(2,'0') + ' UTC+8';
-                biscuitText = '=== F' + floorNum + '  ' + _dt2 + ' ===\nQ: (压缩失败，内容过短)';
+                biscuitText = '=== F' + floorNum + '  ' + _dt2 + ' ===\nQ: ' + _qq('ai.compressErr.shortFail', '(压缩失败，内容过短)');
             }
 
             // ── 6. 更新内存状态（V13: 无 DE，仅 biscuitLines）──

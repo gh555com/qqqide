@@ -731,7 +731,7 @@ function bootAiOverlay() {
     // ★ AI 面板图片 hover「Roam」按钮：激活 roam tab + 聚焦 + 跳到目录选中文件
     if (e.data.action === 'reveal-in-roam') {
       if (typeof e.data.src === 'string' && /^file:\/\//i.test(e.data.src)) _roamRevealText(e.data.src, '');
-      else _roamQoast('该图片无本地文件，无法在 Roam 定位');
+      else _roamQoast(window._i('shell.overlay.roamNoFile', '该图片无本地文件，无法在 Roam 定位'));
       return;
     }
     // ★ 本地路径存在性探针（2026-09-07）：AI 面板权威渲染后批量确认，存在才允许显示为链接
@@ -914,16 +914,16 @@ function bootAiOverlay() {
   // 唯一入口：text=候选路径原文，ctx=树图上文目录（可选）——命中直达；未命中爬升最近祖先，杜绝死链
   async function _roamRevealText(text, ctx) {
     var r = await _roamResolveHits(text, ctx);
-    if (r.err) { _roamQoast('Roam 定位暂不可用，请稍后再试'); return; }
+    if (r.err) { _roamQoast(window._i('shell.overlay.roamUnavailable', 'Roam 定位暂不可用，请稍后再试')); return; }
     var orig = String(text || '').trim();
-    if (!r.first) { _roamQoast('该路径无本地文件，无法在 Roam 定位'); return; }
+    if (!r.first) { _roamQoast(window._i('shell.overlay.roamNoPath', '该路径无本地文件，无法在 Roam 定位')); return; }
     if (r.hit) { _roamRevealHit(r.hit.path, { isDir: r.hit.isDir }); return; }
     var near = await _roamClimb(r.first);
     if (near) {
-      _roamQoast('路径已不存在（可能被移动/删除）：' + _roamShort(orig) + ' → 已定位到最近目录 ' + _roamShort(near.path));
+      _roamQoast(window._i('shell.overlay.roamMoved', '路径已不存在（可能被移动/删除）：') + _roamShort(orig) + window._i('shell.overlay.roamMoved2', ' → 已定位到最近目录 ') + _roamShort(near.path));
       _roamSendCmd('roam.navTo', near.path);
     } else {
-      _roamQoast('未在磁盘上找到：' + _roamShort(orig));
+      _roamQoast(window._i('shell.overlay.roamNotFound', '未在磁盘上找到：') + _roamShort(orig));
     }
   }
   // ★ 全局入口（2026-09-11）：timeline diff 窗口 op 菜单「Roam」→ 主进程 executeJavaScript 调用。

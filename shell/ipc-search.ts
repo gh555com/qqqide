@@ -12,6 +12,7 @@
 // ============================================================================
 
 import { ipcMain, app } from 'electron';
+import { mi } from './main-i18n';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
@@ -101,7 +102,7 @@ async function _ripgrepSearch(
 
     const rgPath = _findRipgrep();
     if (!rgPath) {
-        return { error: 'ripgrep 未安装。运行: python op/components.py ensure ripgrep', results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} };
+        return { error: mi('main.search.rgMissing'), results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} };
     }
 
     const startTime = Date.now();
@@ -169,7 +170,7 @@ async function _ripgrepSearch(
                 windowsHide: true,
             });
         } catch (e: any) {
-            return resolve({ error: '无法启动 ripgrep: ' + (e.message || e), results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} });
+            return resolve({ error: mi('main.search.rgSpawn', { err: e.message || e }), results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} });
         }
 
         let stdout = '';
@@ -188,7 +189,7 @@ async function _ripgrepSearch(
 
         rg.on('error', (err: Error) => {
             clearTimeout(timer);
-            resolve({ error: 'ripgrep 进程错误: ' + err.message, results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} });
+            resolve({ error: mi('main.search.rgError', { err: err.message }), results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} });
         });
 
         rg.on('close', async (code: number | null) => {
@@ -201,13 +202,13 @@ async function _ripgrepSearch(
                     parsed.truncated = true;
                     return resolve(parsed);
                 }
-                return resolve({ error: '搜索超时', results: [], total: 0, elapsed: Date.now() - startTime, filesScanned: 0, truncated: true, fileStats: {} });
+                return resolve({ error: mi('main.search.timeout'), results: [], total: 0, elapsed: Date.now() - startTime, filesScanned: 0, truncated: true, fileStats: {} });
             }
 
             // code 0 = matches found, code 1 = no matches, code 2 = fatal error
             if (code === 2 && stdout.length === 0) {
                 // Try to extract useful message from stderr
-                const errMsg = stderr.split('\n').filter(Boolean).slice(-2).join('; ') || 'ripgrep 退出码 2';
+                const errMsg = stderr.split('\n').filter(Boolean).slice(-2).join('; ') || mi('main.search.rgExit2');
                 return resolve({ error: errMsg, results: [], total: 0, elapsed: Date.now() - startTime, filesScanned: 0, truncated: false, fileStats: {} });
             }
 
@@ -476,7 +477,7 @@ export function registerSearchIpc(): void {
             respectGitignore = false } = args;
 
         if (!searchPath || !query) {
-            return { error: '缺少搜索关键词或搜索路径', results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} };
+            return { error: mi('main.search.noQuery'), results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} };
         }
 
         return await _ripgrepSearch(

@@ -315,7 +315,7 @@ async function _initWorkspace(root) {
             parent.__qqq_lockState = 'blocked';
             var _holderInfo = '';
             if (lockResult.holder && lockResult.holder.pid) {
-                _holderInfo = '（占用方 pid=' + lockResult.holder.pid + '，instance ' + String(lockResult.holder.instanceId || '').slice(0, 8) + '…）';
+                _holderInfo = _qq('ai.lock.holderInfo', '（占用方 pid={0}，instance {1}…）', { 0: lockResult.holder.pid, 1: String(lockResult.holder.instanceId || '').slice(0, 8) });
             }
             console.warn('[workspace] BLOCKED: project locked' + _holderInfo);
             // ★ 2026-08-13 定案：主文件夹被占用 → 清空整个 AI 视口（干净新窗口），

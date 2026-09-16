@@ -30,7 +30,7 @@
       '<div class="qqq-progress-track"><div class="qqq-progress-fill" style="width:0%"></div></div>' +
       '<div class="qqq-progress-info">' +
         '<span class="qqq-progress-status">0%</span>' +
-        '<button class="qqq-progress-cancel" data-i18n="cancel">取消</button>' +
+        '<button class="qqq-progress-cancel" data-i18n="common.cancel">取消</button>' +
       '</div>';
     return el;
   }
@@ -83,7 +83,8 @@
     var container = _getContainer();
 
     var files = Array.isArray(opts.files) ? opts.files : [];
-    var label = opts.label || (files.length > 1 ? '正在复制 ' + files.length + ' 个文件…' : (files[0] || '').replace(/\\/g, '/').split('/').pop());
+    var _pi = function (k, fb) { return (window._i ? window._i(k, fb) : fb); };
+    var label = opts.label || (files.length > 1 ? _pi('shell.prog.copyingN', '正在复制 {n} 个文件…').split('{n}').join(String(files.length)) : (files[0] || '').replace(/\\/g, '/').split('/').pop());
 
     var el = _createProgressEl(id, type, { label: label });
     container.appendChild(el);
@@ -119,14 +120,14 @@
         if (resolved) return;
         el.classList.add('done');
         fillEl.style.width = '100%';
-        statusEl.textContent = '完成';
+        statusEl.textContent = _pi('shell.prog.done', '完成');
         cancelBtn.style.display = 'none';
         resolveOnce();
       },
       cancel: function () {
         if (resolved) return;
         el.classList.add('error');
-        statusEl.textContent = '已取消';
+        statusEl.textContent = _pi('shell.prog.cancelled', '已取消');
         cancelBtn.style.display = 'none';
         resolveOnce();
         // Rollback
@@ -138,7 +139,7 @@
       error: function (msg) {
         if (resolved) return;
         el.classList.add('error');
-        statusEl.textContent = msg || '失败';
+        statusEl.textContent = msg || _pi('shell.prog.fail', '失败');
         cancelBtn.style.display = 'none';
         resolveOnce();
       },

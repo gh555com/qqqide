@@ -713,7 +713,7 @@ function _lplWrapTextNode(node, lastByBlock, block) {
     a.setAttribute('data-p', m.raw);
     var ctxRaw = lastByBlock.get(block) || '';
     if (ctxRaw) a.setAttribute('data-c', ctxRaw);
-    a.title = '在 Roam 中打开';
+    a.title = _qq('ai.roamOpen', '在 Roam 中打开');
     a.appendChild(node.ownerDocument.createTextNode(m.raw));
     frag.appendChild(a);
     lastByBlock.set(block, m.raw);
@@ -786,7 +786,7 @@ function linkifyLocalPaths(root) {
           ca.className = 'qqq-path-link';
           ca.setAttribute('data-p', whole);
           if (ctxCode) ca.setAttribute('data-c', ctxCode);
-          ca.title = '在 Roam 中打开';
+          ca.title = _qq('ai.roamOpen', '在 Roam 中打开');
           ca.textContent = whole;
           pe.appendChild(ca);
           lastByBlock.set(blockCode, whole);
@@ -824,7 +824,7 @@ function linkifyLocalPaths(root) {
             a3.className = 'qqq-path-link';
             a3.setAttribute('data-p', hit.raw);
             if (ctxRaw) a3.setAttribute('data-c', ctxRaw);
-            a3.title = '在 Roam 中打开';
+            a3.title = _qq('ai.roamOpen', '在 Roam 中打开');
             a3.appendChild(tailN);
             loc.node.parentNode.insertBefore(a3, restN);
           }
@@ -853,7 +853,7 @@ function _lplApplyResult(el, ok) {
     if (!el || !el.isConnected) return;
     if (ok) {
       el.classList.add('qqq-path-ok');
-      if (!el.title) el.title = '在 Roam 中打开';
+      if (!el.title) el.title = _qq('ai.roamOpen', '在 Roam 中打开');
     } else {
       var tn = el.ownerDocument.createTextNode(el.textContent || '');
       if (el.parentNode) el.parentNode.replaceChild(tn, el);

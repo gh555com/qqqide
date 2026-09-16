@@ -478,6 +478,14 @@
     return String(enc == null ? '?' : enc);
   }
 
+  // i18n 助手：翻译 + 中文回退 + {x} 参数（i18n 未就绪/缺失时回退原样）
+  function _miT(k, fb, p) {
+    var v = null;
+    try { if (window.i18n && window.i18n.t) { var r = window.i18n.t(k, p); if (r && r !== k) v = r; } } catch (e) { }
+    if (v === null) { v = fb; if (p) { for (var x in p) v = v.split('{' + x + '}').join(String(p[x])); } }
+    return v;
+  }
+
   function _encInjectStyle() {
     if (_encStyleInjected) return;
     _encStyleInjected = true;
@@ -513,8 +521,8 @@
         const label = (info.bom && info.enc === 'utf8') ? 'UTF-8 BOM' : _encLabel(info.enc);
         chip.textContent = info.pinned ? label + ' *' : label;
         chip.title = info.pinned
-          ? '编码已固定为 ' + label + '（逃生舱）— 点击修改 / 恢复自动'
-          : '编码：' + label + '（自动检测）— 点击可手动指定';
+          ? _miT('editor.tabs.encFixedAt', '编码已固定为 {v}（逃生舱）— 点击修改 / 恢复自动', { v: label })
+          : _miT('editor.tabs.encAutoAt', '编码：{v}（自动检测）— 点击可手动指定', { v: label });
         chip.classList.toggle('qqq-enc-pinned', !!info.pinned);
         chip.hidden = false;
       }
@@ -547,12 +555,12 @@
     try {
       await b.fs.setFileEncoding(filePath, encOrNull); // null = 恢复自动检测（清固定）
       const content = await b.fs.read(filePath);
-      if (content == null) { if (window.qqqideQoast) window.qqqideQoast.show('读取失败：文件不存在或不可读', { duration: 4000, type: 'warn' }); return; }
+      if (content == null) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.readFail', '读取失败：文件不存在或不可读'), { duration: 4000, type: 'warn' }); return; }
       if (window.qqqEditor && window.qqqEditor.refreshLiveContent) window.qqqEditor.refreshLiveContent(filePath, content);
-      if (window.qqqideQoast) window.qqqideQoast.show('已按 ' + (encOrNull ? _encLabel(encOrNull) : '自动检测') + ' 重新解码', { duration: 3500 });
+      if (window.qqqideQoast) window.qqqideQoast.show(_miT('editor.tabs.redecoded', '已按 {v} 重新解码', { v: (encOrNull ? _encLabel(encOrNull) : window._i('editor.tabs.encAuto', '自动检测')) }), { duration: 3500 });
       refreshEncForPath(filePath);
     } catch (err) {
-      if (window.qqqideQoast) window.qqqideQoast.show('切换解码失败：' + ((err && err.message) || err), { duration: 6000, type: 'warn' });
+      if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.switchFail', '切换解码失败：') + ((err && err.message) || err), { duration: 6000, type: 'warn' });
     }
   }
 
@@ -562,15 +570,15 @@
     if (!b || !b.fs) return;
     let ed = null;
     if (window.qqqEditor && window.qqqEditor.getEditorForFile) ed = window.qqqEditor.getEditorForFile(filePath);
-    if (!ed || !ed.getValue) { if (window.qqqideQoast) window.qqqideQoast.show('未找到该文件的编辑器内容', { duration: 4000, type: 'warn' }); return; }
+    if (!ed || !ed.getValue) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.noEditor', '未找到该文件的编辑器内容'), { duration: 4000, type: 'warn' }); return; }
     try {
       await b.fs.write(filePath, ed.getValue(), enc);
       if (window.qqqEditor && window.qqqEditor.noteSaved) window.qqqEditor.noteSaved(filePath);
       _setTabDeleted(filePath, false);
-      if (window.qqqideQoast) window.qqqideQoast.show('已另存为 ' + _encLabel(enc), { duration: 3500 });
+      if (window.qqqideQoast) window.qqqideQoast.show(_miT('editor.tabs.savedAs', '已另存为 {v}', { v: _encLabel(enc) }), { duration: 3500 });
       refreshEncForPath(filePath);
     } catch (err) {
-      if (window.qqqideQoast) window.qqqideQoast.show('另存失败：' + ((err && err.message) || err), { duration: 9000, type: 'warn' });
+      if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.saveAsFail', '另存失败：') + ((err && err.message) || err), { duration: 9000, type: 'warn' });
     }
   }
 
@@ -605,7 +613,7 @@
       r.addEventListener('click', (ev) => {
         ev.stopPropagation();
         if (dis) {
-          if (window.qqqideQoast) window.qqqideQoast.show('文件有未保存修改 — 请先 Ctrl+S 保存，再切换解码（会重读磁盘）', { duration: 5000, type: 'warn' });
+          if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.dirtyFirst', '文件有未保存修改 — 请先 Ctrl+S 保存，再切换解码（会重读磁盘）'), { duration: 5000, type: 'warn' });
           return;
         }
         closeEncPopup();
@@ -832,7 +840,7 @@
         if (!_roamTip) {
           _roamTip = document.createElement('div');
           _roamTip.className = 'qqq-roam-tip';
-          _roamTip.textContent = '按 Tab 或 F2 键召回我';
+          _roamTip.textContent = window._i('editor.tabs.recallTip', '按 Tab 或 F2 键召回我');
           document.body.appendChild(_roamTip);
         }
         var r = btn.getBoundingClientRect();

@@ -245,11 +245,14 @@ body {
 .qqq-window-controls {
   display: flex;
   height: 100%;
+  /* ★ 超窄窗口保护（2026-09-16）: 右侧控件永不被 flex 压变形，收缩全部发生在 AI 视口容器内 */
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
 }
 
 .qqq-wc-btn {
   width: 46px;
+  flex-shrink: 0;
   height: var(--menu-row-h);
   border: 0;
   background: transparent;
@@ -276,6 +279,7 @@ body {
 
 /* Theme toggle */
 .qqq-theme-toggle {
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
   border: 0;
   background: transparent;
@@ -297,6 +301,7 @@ body {
 
 /* Language switcher */
 .qqq-lang-btn {
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
   border: 0;
   background: transparent;
@@ -348,6 +353,7 @@ body {
 
 /* Editor font size buttons (+/- 1, range 8-48) */
 .qqq-zoom-btn {
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
   border: 0;
   background: transparent;
@@ -369,6 +375,7 @@ body {
 
 /* Zoom factor label (non-interactive, monospace) */
 .qqq-zoom-label {
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
   font-size: 11px;
   font-family: ui-monospace, monospace;

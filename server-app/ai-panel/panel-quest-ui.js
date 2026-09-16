@@ -684,9 +684,9 @@ function _estimateTokensFull() {
         if (reminderChars > 0) _r("  Reminder", _tk(reminderChars), 1, "#cb4b16");
     }
     // ★ 2026-08-11: fx 行插在 Client rules 之下、压缩饼干之上（背包容序 Z → fx → biscuit，与 goods 管理页一致）
-    if (factsChars > 0) _r("压缩 · 事实 (fx) × " + factsCount, factsTok, 0, "#d33682");
+    if (factsChars > 0) _r(_qq('ai.ctx.bdFacts', '压缩 · 事实 (fx) × {0}', { 0: factsCount }), factsTok, 0, "#d33682");
     if (biscuitChars > 0) {
-        _r("压缩饼干 × " + biscuitFloorCount + " floors", biscuitTok, 0, "#859900");
+        _r(_qq('ai.ctx.bdBiscuit', '压缩饼干 × {0} floors', { 0: biscuitFloorCount }), biscuitTok, 0, "#859900");
         // ★ 绝对包装盒子统计（仅统计有数据的工具）
         for (var ati = 0; ati < ABS_TOOL_NAMES.length; ati++) {
             var atn = ABS_TOOL_NAMES[ati];
@@ -698,7 +698,7 @@ function _estimateTokensFull() {
         if (qBiscuitCount > 0) _r("  Q × " + qBiscuitCount, qBiscuitTok, 1, "#268bd2");
         if (aBiscuitCount > 0) _r("  A × " + aBiscuitCount, aBiscuitTok, 1, "#2aa198");
         if (gentleBiscuitCount > 0) _r("  Gentle × " + gentleBiscuitCount, gentleBiscuitTok, 1, "#b58900");
-        if (structureBiscuitChars > 0) _r("  结构行（=== F 分隔 / 时间戳 / [S] 等）", structureBiscuitTok, 1, "#586e75");
+        if (structureBiscuitChars > 0) _r("  " + _qq('ai.ctx.bdStructure', '结构行（=== F 分隔 / 时间戳 / [S] 等）'), structureBiscuitTok, 1, "#586e75");
     }
     if (deChars > 0) _r("DE Grid × " + deEntryCount + " entries", deTok, 0, "#b58900");
     if (userCount > 0) _r("User × " + userCount, userTok, 0, "#268bd2");
@@ -825,6 +825,7 @@ $ctxBtn.onclick = function () {
 // 取消 → 删除覆盖字段，立即回退全局设置，拉杆消失。
 var _CTX_LEVELS = ['off', 'medium', 'full'];
 var _CTX_LEVEL_LABELS = ['关闭', '中等', '全托管'];
+var _CTX_LEVEL_KEYS = ['settings.compress.off', 'settings.compress.medium', 'settings.compress.full']; // ★ i18n：与设置面板同键同译
 var _ctxPerqCheck = document.getElementById('ctx-perq-level');
 var _ctxPerqSlider = document.getElementById('ctx-perq-slider');
 
@@ -837,14 +838,14 @@ function _ctxPerqCurrent() {
 function _ctxPerqRender() {
     if (!_ctxPerqCheck || !_ctxPerqSlider) return;
     var _titleEl = document.getElementById('ctx-perq-title');
-    if (_titleEl) _titleEl.textContent = '独立滴压缩策略' + (questActiveId ? ' 对于 ' + questActiveId : '');
+    if (_titleEl) _titleEl.textContent = _qq('ai.ctxPanel.perQuest', '独立滴压缩策略') + (questActiveId ? ' ' + _qq('ai.ctxPanel.perQuestFor', '对于 {0}', { 0: questActiveId }) : '');
     var ov = _ctxPerqCurrent();
     _ctxPerqCheck.checked = !!ov;
     _ctxPerqSlider.style.display = ov ? 'block' : 'none';
     if (!ov) return;
     var idx = _CTX_LEVELS.indexOf(ov);
     var label = document.getElementById('ctx-perq-label');
-    if (label) label.textContent = _CTX_LEVEL_LABELS[idx];
+    if (label) label.textContent = _qq(_CTX_LEVEL_KEYS[idx], _CTX_LEVEL_LABELS[idx]);
     var fill = document.getElementById('ctx-perq-fill');
     if (fill) fill.style.width = (idx * 50) + '%';
     var dots = _ctxPerqSlider.querySelectorAll('.ctx-perq-dot');
@@ -866,6 +867,13 @@ function _ctxPerqPersist(level) {
     }
     try { if (typeof _writeCtxJson === 'function') _writeCtxJson(questActiveId, ag._ctx).catch(function () { }); } catch (_) { }
 }
+
+// ★ 语言切换 → 压缩面板动态标签（级别名校 / 标题尾巴）重渲染
+window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'qqq-lang-change') {
+        try { _ctxPerqRender(); } catch (_) { }
+    }
+});
 
 if (_ctxPerqCheck) {
     _ctxPerqCheck.addEventListener('change', function () {
@@ -966,7 +974,7 @@ if (_ctxManageBtn) {
             }
 
             // ② 新标签：创建 quest 专属背包标签（固定文本「qxxx 上下文背包」，2026-08-18 定案）
-            var questLabel = qid + ' 上下文背包';
+            var questLabel = qid + ' ' + _qq('ai.ctx.backpack', '上下文背包');
             var newTab = qqTabs.addGaeaTab(gaeaId, questLabel, function (pane, tab) {
                 pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
                 var iframe = document.createElement('iframe');
@@ -1077,7 +1085,7 @@ window.addEventListener('message', async function (e) {
     try {
         var _reqOwner = _parentGetQuestOwner(qid);
         if (_reqOwner !== undefined && _reqOwner !== _panelId) {
-            _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: '该任务由其他面板持有，请在对应面板操作' });
+            _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: _qq('ai.compressErr.notOwner', '该任务由其他面板持有，请在对应面板操作') });
             return;
         }
     } catch (_) { }
@@ -1154,7 +1162,7 @@ window.addEventListener('message', async function (e) {
                     var _CPT_loc = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
                     var _blocks = text.split(/\n(?==== F\d+ )/);
                     if (_blocks.length < 2) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '楼层数不足（需≥2）' });
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: _qq('ai.compressErr.tooFew', '楼层数不足（需≥2）') });
                         return;
                     }
                     var _totalChars = 0;
@@ -1200,7 +1208,7 @@ window.addEventListener('message', async function (e) {
                         if (/^(Q:|A:)/.test(filtered[_qai])) _qaChars += filtered[_qai].length;
                     }
                     if (Math.round(_qaChars / _CPT_loc) < 64000) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '历史问答 < 64K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: _qq('ai.compressErr.small', '历史问答 < 64K tokens，无需提取 facts'), beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
                     var _bulletDir = '';
@@ -1218,7 +1226,7 @@ window.addEventListener('message', async function (e) {
                             }
                         }
                     } catch (_be) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '子弹写入失败: ' + (_be.message || 'unknown') });
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: _qq('ai.compressErr.bullet', '子弹写入失败: {0}', { 0: (_be.message || 'unknown') }) });
                         return;
                     }
                     m.content = _rText;
@@ -1302,7 +1310,7 @@ window.addEventListener('message', async function (e) {
                                 }
                                 _respond({
                                     type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false,
-                                    error: '发送被拦截（当前有其他建楼任务或状态不允许），饼干已恢复，请稍后再试',
+                                    error: _qq('ai.compressErr.blocked', '发送被拦截（当前有其他建楼任务或状态不允许），饼干已恢复，请稍后再试'),
                                     beforeChars: beforeChars, afterChars: beforeChars
                                 });
                                 return;
@@ -1316,7 +1324,7 @@ window.addEventListener('message', async function (e) {
                     } catch (_ce) {
                         _respond({
                             type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false,
-                            error: 'Facts 提取失败: ' + (_ce.message || 'unknown'), beforeChars: beforeChars, afterChars: afterChars
+                            error: _qq('ai.compressErr.facts', 'Facts 提取失败: {0}', { 0: (_ce.message || 'unknown') }), beforeChars: beforeChars, afterChars: afterChars
                         });
                     }
                     return;
@@ -1328,7 +1336,7 @@ window.addEventListener('message', async function (e) {
                 var _savedLen = (m.content || '').length;
                 var _newLen = (text || '').length;
                 if (_savedLen - _newLen < 750) {
-                    _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: '已无可压缩内容（背包已是最精简状态）', beforeChars: beforeChars, afterChars: beforeChars });
+                    _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: _qq('ai.compressErr.nothing', '已无可压缩内容（背包已是最精简状态）'), beforeChars: beforeChars, afterChars: beforeChars });
                     return;
                 }
                 // absolut / editonly: 直接应用结果
@@ -1389,7 +1397,7 @@ window.addEventListener('message', async function (e) {
         }
 
     } catch (_err) {
-        _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: '内部错误: ' + (_err.message || 'unknown') });
+        _respond({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: _qq('ai.compressErr.internal', '内部错误: {0}', { 0: (_err.message || 'unknown') }) });
     }
 });
 
@@ -1524,7 +1532,7 @@ function renderQueueStrip() {
     var pauseBtn = document.createElement('button');
     pauseBtn.className = 'queue-header-btn';
     pauseBtn.textContent = _queuePaused ? ('▶ ' + _i('ai.queue.resume', '继续')) : ('⏸ ' + _i('ai.queue.pause', '暂停'));
-    pauseBtn.title = _queuePaused ? '恢复自动发送' : '暂停自动发送';
+    pauseBtn.title = _queuePaused ? _qq('ai.queue.resumeTip', '恢复自动发送') : _qq('ai.queue.pauseTip', '暂停自动发送');
     pauseBtn.onclick = function (e) {
         e.stopPropagation();
         if (_queuePaused) {
@@ -1548,7 +1556,7 @@ function renderQueueStrip() {
     var clearBtn = document.createElement('button');
     clearBtn.className = 'queue-header-btn';
     clearBtn.textContent = _i('ai.queue.clear', '清空');
-    clearBtn.title = '清空所有排队消息';
+    clearBtn.title = _qq('ai.queue.clearTip', '清空所有排队消息');
     clearBtn.onclick = function (e) {
         e.stopPropagation();
         _queue.length = 0;
@@ -1600,7 +1608,7 @@ function renderQueueStrip() {
                     var thumb = document.createElement('img');
                     thumb.className = 'bk-thumb';
                     thumb.src = images[imi].dataUrl || '';
-                    thumb.title = '图片 #' + (images[imi].id || (imi + 1));
+                    thumb.title = _qq('ai.queue.imageN', '图片 #{0}', { 0: (images[imi].id || (imi + 1)) });
                     row2.appendChild(thumb);
                 }
                 card.appendChild(row2);
