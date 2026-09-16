@@ -483,13 +483,13 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   <!-- ═══ SIDEBAR ═══ -->
   <div id="sidebar">
     <!-- bed 入口 2×2（2026-09-14）：左 = bed + 箱子图标；右 = 文件数 / 占用（消费入 tooltip）→ 点击打开 bed（folder=inbox） -->
-    <div id="bed-entry" title="打开 bed 我的文件">
+    <div id="bed-entry" title="打开 bed 我的文件" data-i18n-title="goods.dm.bedOpen">
       <div id="bed-left">
         <div id="bed-title">bed</div>
         <div id="bed-icon">📦</div>
       </div>
       <div id="bed-body">
-        <div id="bed-files">加载中…</div>
+        <div id="bed-files" data-i18n="common.loading">加载中…</div>
         <div id="bed-size"></div>
       </div>
     </div>
@@ -500,13 +500,13 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     </div>
     <div id="conv-list"></div>
     <div id="new-dm-bar">
-      <input type="text" id="new-peer-input" placeholder="键入完整手机号（带国家码），如正版关怀：8615802858204" maxlength="20" autocomplete="off">
+      <input type="text" id="new-peer-input" placeholder="键入完整手机号（带国家码），如正版关怀：8615802858204" data-i18n-placeholder="goods.dm.peerPh" maxlength="20" autocomplete="off">
     </div>
     <div id="sidebar-footer">
-      <button id="btn-new-msg">+ 新建消息</button>
-      <button id="btn-new-group">+ 新建群</button>
+      <button id="btn-new-msg" data-i18n="goods.dm.newMsg">+ 新建消息</button>
+      <button id="btn-new-group" data-i18n="goods.dm.newGroup">+ 新建群</button>
     </div>
-    <span id="connection-label"><span id="connection-dot"></span><span id="connection-text">连接中…</span></span>
+    <span id="connection-label"><span id="connection-dot"></span><span id="connection-text" data-i18n="goods.dm.connecting">连接中…</span></span>
   </div>
 
   <!-- 弹窗（新建群 / 群成员管理） -->
@@ -515,21 +515,21 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       <div class="modal-title" id="modal-title"></div>
       <div class="modal-body" id="modal-body"></div>
       <div class="modal-actions">
-        <button id="modal-cancel" class="modal-btn">取消</button>
-        <button id="modal-ok" class="modal-btn primary">确定</button>
+        <button id="modal-cancel" class="modal-btn" data-i18n="common.cancel">取消</button>
+        <button id="modal-ok" class="modal-btn primary" data-i18n="common.confirm">确定</button>
       </div>
     </div>
   </div>
 
   <!-- 分割线：可拖动调整左右比例 -->
-  <div id="splitter" title="拖动调整左右比例"></div>
+  <div id="splitter" title="拖动调整左右比例" data-i18n-title="goods.dm.splitterTip"></div>
 
   <!-- ═══ MAIN PANEL ═══ -->
   <div id="main">
     <div id="empty-state">
       <div id="empty-icon">💬</div>
-      <div id="empty-title">选择一条对话</div>
-      <div id="empty-sub">从左侧选择一个联系人，或搜索手机号开始新对话</div>
+      <div id="empty-title" data-i18n="goods.dm.emptyTitle">选择一条对话</div>
+      <div id="empty-sub" data-i18n="goods.dm.emptySub">从左侧选择一个联系人，或搜索手机号开始新对话</div>
     </div>
     <div id="chat-header">
       <div>
@@ -541,8 +541,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     <div id="input-area">
       <div id="attach-bar"></div>
       <div id="input-row">
-        <textarea id="msg-input" placeholder="键入消息… (Enter 发送，Shift+Enter 换行；文件直接 Ctrl+V 粘贴，或拖入窗口)" maxlength="2000" rows="1"></textarea>
-        <button id="send-btn" title="发送 (Enter)">▶</button>
+        <textarea id="msg-input" placeholder="键入消息… (Enter 发送，Shift+Enter 换行；文件直接 Ctrl+V 粘贴，或拖入窗口)" data-i18n-placeholder="goods.dm.inputPh" maxlength="2000" rows="1"></textarea>
+        <button id="send-btn" title="发送 (Enter)" data-i18n-title="goods.dm.sendTip">▶</button>
       </div>
     </div>
   </div>
@@ -552,15 +552,19 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 <div id="img-lb">
   <img id="img-lb-img" alt="">
   <div id="img-lb-bar">
-    <span id="img-lb-dl" title="保存图片（Shift+点击 = 另存为）">⬇ 保存</span>
-    <span id="img-lb-close" title="关闭 (Esc)">✕</span>
+    <span id="img-lb-dl" title="保存图片（Shift+点击 = 另存为）" data-i18n-title="goods.dm.imgSaveTip"><span data-i18n="goods.dm.imgSave">⬇ 保存</span></span>
+    <span id="img-lb-close" title="关闭 (Esc)" data-i18n-title="common.close">✕</span>
   </div>
 </div>
 
 <script src="../../core/char-undo.js"></script>
+<script src="../../core/i18n.js"></script>
 <script>
 (function () {
   'use strict';
+
+  // i18n 小助手：_kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
+  var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
 
   // ═══ STATE ═══
   var _token = '';
@@ -791,16 +795,16 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   init();
   function init() {
     getAuth(function(tok, did, name) {
-      if (!tok) { setConnStatus(false, '未登录'); return; }
+      if (!tok) { setConnStatus(false, _kk('goods.dm.notLoggedIn', '未登录')); return; }
       _token = tok;
       _doerID = did;
       _doerName = name || did;
       _doerPhoneMask = (name && name.indexOf('****') >= 0) ? name : '';
-      if (!_doerID) { setConnStatus(false, '登录信息异常'); return; }
+      if (!_doerID) { setConnStatus(false, _kk('goods.dm.authAbnormal', '登录信息异常')); return; }
       _cacheLoad();   // 本地缓存秒开（离线也能看历史，服务器随后增量修正）
       if (Object.keys(_convMap).length) {
         renderConvList();
-        setConnStatus(false, '缓存模式 · 同步中…');
+        setConnStatus(false, _kk('goods.dm.cacheSync', '缓存模式 · 同步中…'));
       }
       connectWS();
       loadConversations();
@@ -860,14 +864,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
     var wsUrl = 'wss://cnk.gh555.com/ws?token=' + encodeURIComponent(_token);
     var ws = _ws = new WebSocket(wsUrl);
-    setConnStatus(false, '连接中…');
+    setConnStatus(false, _kk('goods.dm.connecting', '连接中…'));
 
     ws.onopen = function() {
       // ★ 节能握手窗口废弃（2026-09-14）：窗口隐藏时连接仍在 CONNECTING → 不立即 close（Chrome 打
       //   "closed before the connection is established" 噪音）→ 置 _qqqDead 标记，握手完成瞬间在此自关，零噪音零副作用
       if (ws._qqqDead) { try { ws.close(); } catch(_) {} return; }
       _wsReconnectDelay = 0;  // 连上即重置退避
-      setConnStatus(true, '已连接');
+      setConnStatus(true, _kk('goods.dm.connected', '已连接'));
       ws.send(JSON.stringify({type:'sub',ch:'inbox:'+_doerID}));
       startBeat();
     };
@@ -880,7 +884,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         } else if (msg.type === 'group_msg' && msg.data) {
           handleGroupPush(msg.data);
         } else if (msg.type === 'ok' && msg.ref === 'sub') {
-          setConnStatus(true, '收件箱已就绪');
+          setConnStatus(true, _kk('goods.dm.inboxReady', '收件箱已就绪'));
  		}
 		// 在线状态唯一真理 = 服务端 wq.doer_state 最近1h ping（随 conversations 批量下发）
 		// WS 不再携带任何在线/离线事件
@@ -889,8 +893,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
     ws.onclose = function() {
       stopBeat();
-      if (_bgMode) { setConnStatus(false, '节能 · 后台仅未读数'); return; }  // 节能不重连
-      setConnStatus(false, '断开 · ' + Math.round(_wsReconnectDelay/1000) + 's 重连');
+      if (_bgMode) { setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数')); return; }  // 节能不重连
+      setConnStatus(false, _kk('goods.dm.reconnecting', '断开 · {0}s 重连', Math.round(_wsReconnectDelay/1000)));
       _wsReconnectTimer = setTimeout(connectWS, _wsReconnectDelay);
     };
 
@@ -922,7 +926,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       try { _w._qqqDead = true; } catch(_) {}
       try { if (_w.readyState === WebSocket.OPEN) _w.close(); } catch(_) {}
     }
-    setConnStatus(false, '节能 · 后台仅未读数');
+    setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'));
     startBgPoll();
   }
   function exitBg() {
@@ -972,7 +976,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         d.groups.forEach(function(g){
           var key = gkey(g.gid);
           var c = _convMap[key];
-          if (!c) { c = _convMap[key] = {kind:'group', gid:g.gid, gname:g.gname||'群', memberCnt:g.member_cnt||0, unread:0, lastMsg:'', lastTime:''}; }
+          if (!c) { c = _convMap[key] = {kind:'group', gid:g.gid, gname:g.gname||_kk('goods.dm.group', '群'), memberCnt:g.member_cnt||0, unread:0, lastMsg:'', lastTime:''}; }
           c.unread = g.unread_count || 0;
           if (g.last_msg) c.lastMsg = g.last_msg;
           if (g.last_time) c.lastTime = g.last_time;
@@ -1000,7 +1004,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       _convMap[peerID] = {unread:0,lastMsg:'',lastTime:'',peerName:'',phone:'',country:''};
     }
     var cv = _convMap[peerID];
-    cv.lastMsg = dm.content || ((Array.isArray(dm.attachments) && dm.attachments.length) ? ((dm.attachments[0].mime||'').indexOf('image/')===0 ? '[图片]' : '[文件]') : '');
+    cv.lastMsg = dm.content || ((Array.isArray(dm.attachments) && dm.attachments.length) ? ((dm.attachments[0].mime||'').indexOf('image/')===0 ? _kk('goods.dm.previewImage', '[图片]') : _kk('goods.dm.previewFile', '[文件]')) : '');
     cv.lastTime = dm.created_at;
 
     // 联系人手机号/国旗回填（推送携带双方信息 → 首次建联即带国旗）
@@ -1045,7 +1049,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           var c = _convMap[key] || {kind:'group', gid:g.gid};
           c.kind = 'group';
           c.gid = g.gid;
-          c.gname = g.gname || c.gname || '群';
+          c.gname = g.gname || c.gname || _kk('goods.dm.group', '群');
           c.memberCnt = g.member_cnt || 0;
           c.unread = g.unread_count || 0;
           if (g.last_msg) c.lastMsg = g.last_msg;
@@ -1065,10 +1069,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var dup = cacheHas(key, d.id);
 
     if (!_convMap[key]) {
-      _convMap[key] = {kind:'group', gid:d.gid, gname:d.gname||'群', unread:0, lastMsg:'', lastTime:'', memberCnt:0};
+      _convMap[key] = {kind:'group', gid:d.gid, gname:d.gname||_kk('goods.dm.group', '群'), unread:0, lastMsg:'', lastTime:'', memberCnt:0};
     }
     var cv = _convMap[key];
-    cv.lastMsg = d.content || ((Array.isArray(d.attachments) && d.attachments.length) ? ((d.attachments[0].mime||'').indexOf('image/')===0 ? '[图片]' : '[文件]') : '');
+    cv.lastMsg = d.content || ((Array.isArray(d.attachments) && d.attachments.length) ? ((d.attachments[0].mime||'').indexOf('image/')===0 ? _kk('goods.dm.previewImage', '[图片]') : _kk('goods.dm.previewFile', '[文件]')) : '');
     cv.lastTime = d.created_at;
     if (d.sender_name) cv.lastSender = d.sender_name;
     if (d.gname && !cv.gname) cv.gname = d.gname;
@@ -1157,12 +1161,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         _cacheSaveSoon();
       } else if (_activePeer === peerID && (!_msgCache[peerID] || !_msgCache[peerID].length)) {
         // HTTP 400：收件人不存在等 → 明确提示（原静默无反馈）；已有缓存视图则不覆盖（离线可继续读历史）
-        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">无法加载对话：' + escHtml(d.tip || d.code || '收件人不存在，请检查号码') + '</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">' + escHtml(_kk('goods.dm.loadConvFailTip', '无法加载对话：{0}', d.tip || d.code || _kk('goods.dm.peerNotFound', '收件人不存在，请检查号码'))) + '</div>';
       }
     }).catch(function(){
       // 已有缓存视图时不覆盖（断网继续读历史），仅无缓存时提示错误
       if (_activePeer === peerID && (!_msgCache[peerID] || !_msgCache[peerID].length)) {
-        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载对话</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">' + _kk('goods.dm.netErrorConv', '网络错误，无法加载对话') + '</div>';
       }
     });
   }
@@ -1179,11 +1183,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         renderMessages(peerID);
         _cacheSaveSoon();
       } else if (!_msgCache[peerID] || !_msgCache[peerID].length) {
-        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">无法加载群聊：' + escHtml(d.tip || d.code || '非群成员或群不存在') + '</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">' + escHtml(_kk('goods.dm.loadGroupFailTip', '无法加载群聊：{0}', d.tip || d.code || _kk('goods.dm.groupNotFound', '非群成员或群不存在'))) + '</div>';
       }
     }).catch(function(){
       if (!_msgCache[peerID] || !_msgCache[peerID].length) {
-        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载群聊</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">' + _kk('goods.dm.netErrorGroup', '网络错误，无法加载群聊') + '</div>';
       }
     });
   }
@@ -1198,7 +1202,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (oldest <= 1) { _noMoreOld[peerID] = true; return; }
     _loadingMore = true;
     var btn = document.getElementById('btn-load-more');
-    if (btn) { btn.disabled = true; btn.textContent = '加载中…'; }
+    if (btn) { btn.disabled = true; btn.textContent = _kk('common.loading', '加载中…'); }
     var url = isG
       ? 'https://cnk.gh555.com/api/group/messages?gid=' + cv.gid + '&before=' + oldest + '&limit=99'
       : 'https://cnk.gh555.com/api/dm/messages?peer='+encodeURIComponent(peerID)+'&before='+oldest+'&limit=99';
@@ -1216,7 +1220,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       }
     }).catch(function(){
       var b = document.getElementById('btn-load-more');
-      if (b) { b.disabled = false; b.textContent = '加载更早消息'; }
+      if (b) { b.disabled = false; b.textContent = _kk('goods.dm.loadEarlier', '加载更早消息'); }
     }).finally(function(){ _loadingMore = false; });
   }
 
@@ -1269,7 +1273,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   function pushTabTitle() {
     try {
       var cv = _convMap[_activePeer] || {};
-      var nm = cv.kind === 'group' ? (cv.gname || '群') : (_activePeer ? dispPlain(cv, _activePeer) : '');
+      var nm = cv.kind === 'group' ? (cv.gname || _kk('goods.dm.group', '群')) : (_activePeer ? dispPlain(cv, _activePeer) : '');
       parent.postMessage({ type: 'dm:title', title: nm ? ('📬 ' + nm) : '📬 inbox' }, '*');
     } catch (_) {}
   }
@@ -1285,7 +1289,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     peers.forEach(function(pid){
       var cv = _convMap[pid];
       var isG = cv.kind === 'group';
-      var name = isG ? (cv.gname || '群') : (cv.nickname || cv.peerName || cv.phone || pid);
+      var name = isG ? (cv.gname || _kk('goods.dm.group', '群')) : (cv.nickname || cv.peerName || cv.phone || pid);
       if (filter && name.toLowerCase().indexOf(filter) === -1 && pid.indexOf(filter) === -1) return;
 
       var cls = _activePeer === pid ? ' active' : '';
@@ -1297,14 +1301,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
       html += '<div class="conv-item'+cls+'" data-peer="'+escHtml(pid)+'">';
       // 私聊行尾 ✏️（备注昵称入口；群聊无此概念）
-      var nickBtn = isG ? '' : '<button class="conv-nick-btn" data-peer="'+escHtml(pid)+'" title="备注昵称">✏️</button>';
+      var nickBtn = isG ? '' : '<button class="conv-nick-btn" data-peer="'+escHtml(pid)+'" title="' + _kk('goods.dm.nickname', '备注昵称') + '">✏️</button>';
       html += '<div class="conv-body"><div class="conv-name">'+(icon?icon+' ':'')+nm.name+(nm.tail?' <span class="peer-phone">'+nm.tail+'</span>':'')+nickBtn+'</div>';
       html += '<div class="conv-preview">'+escHtml(preview)+'</div></div>';
       html += '<div class="conv-meta"><div class="conv-time">'+fmtBrief(cv.lastTime)+'</div>'+badge+'</div>';
       html += '</div>';
     });
 
-    $convList.innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">暂无对话</div>';
+    $convList.innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">' + _kk('goods.dm.noConv', '暂无对话') + '</div>';
 
     // Bind clicks
     $convList.querySelectorAll('.conv-item').forEach(function(el){
@@ -1323,7 +1327,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     $msgList.innerHTML = '';
     var msgs = _msgCache[peerID] || [];
     if (msgs.length === 0) {
-      $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">暂无消息，发送第一条吧</div>';
+      $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">' + _kk('goods.dm.noMsg', '暂无消息，发送第一条吧') + '</div>';
       return;
     }
 
@@ -1332,7 +1336,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (oldestId > 1 && !_noMoreOld[peerID]) {
       var moreWrap = document.createElement('div');
       moreWrap.className = 'msg-load-more';
-      moreWrap.innerHTML = '<button id="btn-load-more"' + (_loadingMore ? ' disabled' : '') + '>' + (_loadingMore ? '加载中…' : '加载更早消息') + '</button>';
+      moreWrap.innerHTML = '<button id="btn-load-more"' + (_loadingMore ? ' disabled' : '') + '>' + (_loadingMore ? _kk('common.loading', '加载中…') : _kk('goods.dm.loadEarlier', '加载更早消息')) + '</button>';
       $msgList.appendChild(moreWrap);
       moreWrap.querySelector('button').addEventListener('click', function(){ loadMoreMessages(peerID); });
     }
@@ -1363,7 +1367,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       row.className = 'msg-row ' + (isSelf ? 'self' : 'other') + (grouped ? (isSelf?' self-grouped':' other-grouped') : '');
       var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+senderNameHtml(m)+'</div>' : '';
       // 已读回执（仅私聊自己的消息）：read_at 由对方拉取会话时服务端标记
-      var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?'已读':'未读')+'</span>' : '';
+      var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?_kk('goods.dm.read','已读'):_kk('goods.dm.unread','未读'))+'</span>' : '';
       row.innerHTML = senderHtml + '<div class="msg-bubble">'+attachHtml(m.attachments)+escHtml(m.content)+'</div>' +
         (grouped ? '' : '<div class="msg-time">'+fmtTime(d)+'</div>'+readHtml);
       $msgList.appendChild(row);
@@ -1390,7 +1394,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var row = document.createElement('div');
     row.className = 'msg-row '+(isSelf?'self':'other')+(grouped?(isSelf?' self-grouped':' other-grouped'):'');
     var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+senderNameHtml(m)+'</div>' : '';
-    var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?'已读':'未读')+'</span>' : '';
+    var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?_kk('goods.dm.read','已读'):_kk('goods.dm.unread','未读'))+'</span>' : '';
     row.innerHTML = senderHtml + '<div class="msg-bubble">'+attachHtml(m.attachments)+escHtml(m.content)+'</div>' +
       (grouped?'':'<div class="msg-time">'+fmtTime(d)+'</div>'+readHtml);
     $msgList.appendChild(row);
@@ -1404,9 +1408,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     }).then(function(r){return r.json();}).then(function(d){
       if (!d.ok) return;
       var fee = (d.total_fee_ge || '0');
-      $bedFiles.textContent = d.total + ' 个文件';
-      $bedSize.textContent = '占用 ' + fmtBytes(d.total_size);
-      $bedEntry.title = '打开 bed 我的文件 · ' + d.total + ' 个文件 · ' + fmtBytes(d.total_size) + ' · 已消费 ' + fee + ' ge';
+      $bedFiles.textContent = _kk('goods.dm.bedFiles', '{0} 个文件', d.total);
+      $bedSize.textContent = _kk('goods.dm.bedSize', '占用 {0}', fmtBytes(d.total_size));
+      $bedEntry.title = _kk('goods.dm.bedTitle', '打开 bed 我的文件 · {0} 个文件 · {1} · 已消费 {2} ge', d.total, fmtBytes(d.total_size), fee);
     }).catch(function(){});
   }
   $bedEntry.addEventListener('click', function(){
@@ -1451,11 +1455,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   // 加入附件（Ctrl+V / 右键菜单粘贴共用）：全量收集 + 硬帽 + 同名同大小去重
   function addFiles(peer, files) {
     if (!peer) {
-      try { if (parent.qqqideQoast) parent.qqqideQoast.show('先选择一条对话再粘贴文件', {type:'warn', duration:3500}); } catch(_) {}
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.needConvPaste', '先选择一条对话再粘贴文件'), {type:'warn', duration:3500}); } catch(_) {}
       return;
     }
     if (_sending) {
-      try { if (parent.qqqideQoast) parent.qqqideQoast.show('正在发送上一条消息，稍后再添加文件', {type:'warn', duration:3500}); } catch(_) {}
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.sendBusy', '正在发送上一条消息，稍后再添加文件'), {type:'warn', duration:3500}); } catch(_) {}
       return;
     }
     var list = pendingList(peer);
@@ -1465,7 +1469,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var f = arr[i];
       if (!f) continue;
       if (list.length >= ATTACH_MAX) {
-        try { if (parent.qqqideQoast) parent.qqqideQoast.show('单条消息最多 ' + ATTACH_MAX + ' 个附件', {type:'warn', duration:4000}); } catch(_) {}
+        try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.attachMax', '单条消息最多 {0} 个附件', ATTACH_MAX), {type:'warn', duration:4000}); } catch(_) {}
         break;
       }
       // 无名字的文件（截图等）补默认名
@@ -1511,9 +1515,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   }
 
   function chipSubText(c) {
-    if (c.status === 'uploading') return '上传中 ' + Math.round((c.loaded / (c.size || 1)) * 100) + '%';
-    if (c.status === 'done') return '已上传 · ' + fmtBytes(c.size);
-    if (c.status === 'failed') return '上传失败 · 点发送重试';
+    if (c.status === 'uploading') return _kk('goods.dm.uploadingPct', '上传中 {0}%', Math.round((c.loaded / (c.size || 1)) * 100));
+    if (c.status === 'done') return _kk('goods.dm.uploaded', '已上传 · {0}', fmtBytes(c.size));
+    if (c.status === 'failed') return _kk('goods.dm.uploadFailedRetry', '上传失败 · 点发送重试');
     return fmtBytes(c.size);
   }
 
@@ -1624,7 +1628,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   // 菜单「Ctrl+V」：navigator.clipboard.read → 图片入条 + 文本插光标（系统复制的文件请在键入框直接 Ctrl+V）
   function pasteFromClipboardApi() {
     if (!navigator.clipboard || !navigator.clipboard.read) {
-      try { if (parent.qqqideQoast) parent.qqqideQoast.show('请在键入框直接 Ctrl+V 粘贴', {type:'info', duration:3000}); } catch(_) {}
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.pasteInInput', '请在键入框直接 Ctrl+V 粘贴'), {type:'info', duration:3000}); } catch(_) {}
       return;
     }
     navigator.clipboard.read().then(function(items){
@@ -1656,11 +1660,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           autoResize();
         }
         if (!imageFiles.length && !text) {
-          try { if (parent.qqqideQoast) parent.qqqideQoast.show('剪贴板里没有可粘贴的内容（文件请直接在键入框 Ctrl+V）', {type:'info', duration:3500}); } catch(_) {}
+          try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.clipEmpty', '剪贴板里没有可粘贴的内容（文件请直接在键入框 Ctrl+V）'), {type:'info', duration:3500}); } catch(_) {}
         }
       });
     }).catch(function(){
-      try { if (parent.qqqideQoast) parent.qqqideQoast.show('请在键入框直接 Ctrl+V 粘贴', {type:'info', duration:3000}); } catch(_) {}
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.pasteInInput', '请在键入框直接 Ctrl+V 粘贴'), {type:'info', duration:3000}); } catch(_) {}
     });
   }
 
@@ -1718,7 +1722,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var dt = e.dataTransfer;
       if (!dt || !dt.files || dt.files.length === 0) return;
       var peer = _activePeer;
-      if (!peer) { dragQoast('先选择一条对话再拖入文件'); return; }
+      if (!peer) { dragQoast(_kk('goods.dm.needConvDrop', '先选择一条对话再拖入文件')); return; }
 
       var files = Array.prototype.slice.call(dt.files);
       var b = null;
@@ -1736,7 +1740,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         for (var i = 0; i < files.length; i++) {
           if (oks[i]) keep.push(files[i]); else dirs++;
         }
-        if (dirs > 0) dragQoast(dirs + ' 个文件夹已跳过（暂不支持，请拖入文件夹内的文件）', 'info', 4200);
+        if (dirs > 0) dragQoast(_kk('goods.dm.dirsSkipped', '{0} 个文件夹已跳过（暂不支持，请拖入文件夹内的文件）', dirs), 'info', 4200);
         if (keep.length) addFiles(peer, keep);
       });
     }, true);
@@ -1762,10 +1766,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var elapsed = (Date.now() - ctl.t0) / 1000;
     var speed = (elapsed > 0.8 && loadedB > 0) ? (loadedB / 1048576) / elapsed : 0;
     var prog = totalB > 0 ? Math.min(1, loadedB / totalB) : 0;
-    var sub = (curName ? ('正在上传：' + curName) : (ctl.phase === 'send' ? '正在发送消息…' : '准备中…'));
+    var sub = (curName ? _kk('goods.dm.uploadingFile', '正在上传：{0}', curName) : (ctl.phase === 'send' ? _kk('goods.dm.sendingMsg', '正在发送消息…') : _kk('goods.dm.preparing', '准备中…')));
     if (speed > 0.01 && ctl.phase === 'upload') sub += ' · ' + speed.toFixed(1) + ' MB/s';
     ioastCall('task', ctl.taskId, {
-      title: '📤 发送到 inbox',
+      title: _kk('goods.dm.sendToInbox', '📤 发送到 inbox'),
       subtitle: sub,
       progress: prog,
       count: { done: done, total: total },
@@ -1794,8 +1798,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       if (ctl.canceled) throw { canceled: true };
       if (!d0.ok) {
         var e0 = new Error(d0.error || d0.code || 'init failed');
-        if (d0.needed_ge) e0.feeTip = '余额不足，需求 ' + d0.needed_ge + ' ge（' + c.name + '）';
-        else if (d0.error === 'daily_upload_limit') e0.feeTip = '今天上传的文件数已达上限（100 个/天）';
+        if (d0.needed_ge) e0.feeTip = _kk('goods.dm.insufficientBalance', '余额不足，需求 {0} ge（{1}）', d0.needed_ge, c.name);
+        else if (d0.error === 'daily_upload_limit') e0.feeTip = _kk('goods.dm.dailyLimit', '今天上传的文件数已达上限（100 个/天）');
         throw e0;
       }
       return new Promise(function(resolve, reject){
@@ -1808,10 +1812,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           if (_activePeer === ctl.peer) renderAttachBar();
           updateUploadTask(ctl);
         };
-        xhr.onload = function(){ if (xhr.status >= 200 && xhr.status < 300) resolve(d0); else reject(new Error('上传失败 HTTP ' + xhr.status)); };
-        xhr.onerror = function(){ reject(new Error('网络中断，文件未传完')); };
+        xhr.onload = function(){ if (xhr.status >= 200 && xhr.status < 300) resolve(d0); else reject(new Error(_kk('goods.dm.uploadHttpFail', '上传失败 HTTP {0}', xhr.status))); };
+        xhr.onerror = function(){ reject(new Error(_kk('goods.dm.netInterrupt', '网络中断，文件未传完'))); };
         xhr.onabort = function(){ reject({ canceled: true }); };
-        xhr.ontimeout = function(){ reject(new Error('上传超时')); };
+        xhr.ontimeout = function(){ reject(new Error(_kk('goods.dm.uploadTimeout', '上传超时'))); };
         xhr.send(c.file);
       });
     }).then(function(d0){
@@ -1857,11 +1861,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   // ═══ 备注昵称（2026-09-01：per-user 独立，双方互不可见；留空=清除）═══
   function editNicknameModal(peerID) {
     var cv = _convMap[peerID] || {};
-    openModal('备注昵称',
-      '<div class="form-row"><label>给这个对话设置一个备注名（仅自己可见，对方看不到）</label>' +
-      '<input id="nick-input" maxlength="32" placeholder="如：老王" value="'+escHtml(cv.nickname||'')+'" autocomplete="off"></div>' +
-      '<div class="form-tip">清空后保存 = 取消备注</div>',
-      '保存', function(){
+    openModal(_kk('goods.dm.nickname', '备注昵称'),
+      '<div class="form-row"><label>' + _kk('goods.dm.nickLabel', '给这个对话设置一个备注名（仅自己可见，对方看不到）') + '</label>' +
+      '<input id="nick-input" maxlength="32" placeholder="' + _kk('goods.dm.nickPh', '如：老王') + '" value="'+escHtml(cv.nickname||'')+'" autocomplete="off"></div>' +
+      '<div class="form-tip">' + _kk('goods.dm.nickTip', '清空后保存 = 取消备注') + '</div>',
+      _kk('common.save', '保存'), function(){
         var nick = document.getElementById('nick-input').value.trim();
         if (nick === (cv.nickname||'')) { closeModal(); return; }
         fetch('https://cnk.gh555.com/api/dm/nickname', {
@@ -1870,7 +1874,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           body:JSON.stringify({peer_id: peerID, nickname: nick})
         }).then(function(r){return r.json();}).then(function(d){
           if (!d.ok) {
-            $modalTitle.textContent = '保存失败：' + (d.tip || d.code || '未知错误');
+            $modalTitle.textContent = _kk('goods.dm.saveFailTip', '保存失败：{0}', d.tip || d.code || _kk('goods.dm.unknownErr', '未知错误'));
             return;
           }
           cv.nickname = nick || '';
@@ -1879,7 +1883,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           if (_activePeer === peerID) refreshChatHeader();
           _cacheSaveSoon();
         }).catch(function(){
-          $modalTitle.textContent = '保存失败：网络错误';
+          $modalTitle.textContent = _kk('goods.dm.saveFailNet', '保存失败：网络错误');
         });
       });
     setTimeout(function(){ var el = document.getElementById('nick-input'); if (el) el.focus(); }, 50);
@@ -1890,10 +1894,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var cv = _convMap[_activePeer] || {};
     if (cv.kind === 'group') {
       // 群：👥 群名 · N 人（成员数可点 → 成员管理弹窗）
-      $chatHdrName.innerHTML = '<span style="font-size:15px">👥</span> ' + escHtml(cv.gname || '群');
+      $chatHdrName.innerHTML = '<span style="font-size:15px">👥</span> ' + escHtml(cv.gname || _kk('goods.dm.group', '群'));
       $chatHdrStat.style.display = '';
-      $chatHdrStat.textContent = (cv.memberCnt ? cv.memberCnt + ' 人' : '') + ' · 成员';
-      $chatHdrStat.title = '查看群成员';
+      $chatHdrStat.textContent = (cv.memberCnt ? _kk('goods.dm.memberCount', '{0} 人', cv.memberCnt) : '') + ' · ' + _kk('goods.dm.members', '成员');
+      $chatHdrStat.title = _kk('goods.dm.viewMembers', '查看群成员');
     } else {
       // ★ 头部显示名+国旗（恒打印脱敏电话在旁；2026-09-14）
       var nm = dispName(cv, _activePeer);
@@ -1901,7 +1905,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       $chatHdrStat.style.display = 'none';   // 私聊不显示在线状态（1h ping 窗口有固有滞后，弃用）
       $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + nm.name +
         (nm.tail ? ' <span class="peer-phone">'+nm.tail+'</span>' : '') +
-        ' <button class="hdr-nick-btn" title="' + (cv.nickname ? '修改备注' : '备注昵称') + '">✏️</button>';
+        ' <button class="hdr-nick-btn" title="' + (cv.nickname ? _kk('goods.dm.editNick', '修改备注') : _kk('goods.dm.nickname', '备注昵称')) + '">✏️</button>';
       var b = document.getElementById('hdr-nick-btn');
       if (b) b.addEventListener('click', function(){ editNicknameModal(_activePeer); });
     }
@@ -1960,12 +1964,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var ctl = { peer: peer, canceled: false, failed: false, active: true, xhrs: [], t0: Date.now(),
                 phase: list.length ? 'upload' : 'send', taskId: 'inbox-send-' + peer };
     _sendCtl = ctl;
-    if (list.length) { ioastCall('task', ctl.taskId, { title:'📤 发送到 inbox', subtitle:'准备中…', cancelable:true, onCancel:function(){ cancelSend(ctl); } }); }
+    if (list.length) { ioastCall('task', ctl.taskId, { title:_kk('goods.dm.sendToInbox', '📤 发送到 inbox'), subtitle:_kk('goods.dm.preparing', '准备中…'), cancelable:true, onCancel:function(){ cancelSend(ctl); } }); }
 
     var todo = list.filter(function(c){ return c.status !== 'done'; });
     uploadAll(todo, ctl).then(function(){
       if (ctl.canceled) throw { canceled: true };
-      if (ctl.failed) throw (ctl.failedErr || new Error('上传失败'));
+      if (ctl.failed) throw (ctl.failedErr || new Error(_kk('goods.dm.uploadFail', '上传失败')));
       ctl.phase = 'send';
       updateUploadTask(ctl);
       var atts = [];
@@ -1981,7 +1985,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     }).then(function(d){
       if (ctl.canceled) throw { canceled: true };
       if (!(d && d.ok && d.msg)) {
-        var e = new Error((d && (d.tip || d.code)) || '发送失败');
+        var e = new Error((d && (d.tip || d.code)) || _kk('goods.dm.sendFail', '发送失败'));
         e.resp = d;
         throw e;
       }
@@ -2010,7 +2014,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       if (window.qqqCharUndo) window.qqqCharUndo.reset($msgInput);
       _cacheSaveSoon();
       if (ctl.taskId && list.length) {
-        ioastCall('done', ctl.taskId, { summary: list.length + ' 个文件已发送' });
+        ioastCall('done', ctl.taskId, { summary: _kk('goods.dm.filesSent', '{0} 个文件已发送', list.length) });
       } else if (ctl.taskId) {
         ioastCall('remove', ctl.taskId);
       }
@@ -2018,19 +2022,19 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       if (err && err.canceled) {
         // 取消发送：未完成文件回退 pending（已传成功的保留，重发免重传）
         (_pendingByPeer[peer] || []).forEach(function(c){ if (c.status === 'uploading') { c.status = 'pending'; c.loaded = 0; } });
-        if (ctl.taskId) ioastCall('fail', ctl.taskId, { summary: '已取消' });
+        if (ctl.taskId) ioastCall('fail', ctl.taskId, { summary: _kk('common.cancelled', '已取消') });
       } else {
         // 失败：中止途中残影清理（uploading → failed）；已传成功文件保留
         (_pendingByPeer[peer] || []).forEach(function(c){ if (c.status === 'uploading') { c.status = 'failed'; } });
         $msgInput.value = text;
         $msgInput.style.borderColor = '#dc322f';
         setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
-        var tip = (err && err.feeTip) ? err.feeTip : ((err && err.resp && (err.resp.tip || err.resp.code)) || (err && err.message) || '发送失败');
+        var tip = (err && err.feeTip) ? err.feeTip : ((err && err.resp && (err.resp.tip || err.resp.code)) || (err && err.message) || _kk('goods.dm.sendFail', '发送失败'));
         if (err && err.feeTip) {
           try { if (parent.qqqideQoast) parent.qqqideQoast.show(err.feeTip, {type:'error', duration:6000}); } catch(_) {}
         } else {
           $msgInput.placeholder = tip;
-          setTimeout(function(){ $msgInput.placeholder = '键入消息… (Enter 发送，Shift+Enter 换行；📎 文件直接 Ctrl+V 粘贴)'; }, 4000);
+          setTimeout(function(){ $msgInput.placeholder = _kk('goods.dm.inputPhPaperclip', '键入消息… (Enter 发送，Shift+Enter 换行；📎 文件直接 Ctrl+V 粘贴)'); }, 4000);
         }
         if (ctl.taskId && list.length) ioastCall('fail', ctl.taskId, { summary: tip });
       }
@@ -2070,11 +2074,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (!raw) { $newPeerIn.focus(); return; }
     var phone = raw.replace(/[^0-9]/g,'');
     if (phone.length < 7 || phone.length > 20) {
-      flashPeerError('号码格式不对：完整手机号（带国家码），如 8615802858204');
+      flashPeerError(_kk('goods.dm.badPhone', '号码格式不对：完整手机号（带国家码），如 8615802858204'));
       return;
     }
     if (isSelfPhone(phone)) {
-      flashPeerError('这是你自己的号码，不能给自己发消息');
+      flashPeerError(_kk('goods.dm.selfPhone', '这是你自己的号码，不能给自己发消息'));
       return;
     }
     probeAndOpen(phone);
@@ -2099,7 +2103,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       headers:{'Authorization':'Bearer '+_token}
     }).then(function(r){ return r.json(); }).then(function(d){
       if (d && d.code === 'self_msg') {
-        flashPeerError('这是你自己的号码，不能给自己发消息');
+        flashPeerError(_kk('goods.dm.selfPhone', '这是你自己的号码，不能给自己发消息'));
         return;
       }
       if (d && d.messages && d.peer) {
@@ -2138,7 +2142,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   function openModal(title, bodyHTML, okText, onOk) {
     $modalTitle.textContent = title;
     $modalBody.innerHTML = bodyHTML;
-    $modalOk.textContent = okText || '确定';
+    $modalOk.textContent = okText || _kk('common.confirm', '确定');
     $modalOk.style.display = '';
     _modalOnOk = onOk || null;
     $modalMask.style.display = 'flex';
@@ -2157,12 +2161,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
   // ═══ 新建群 ═══
   $btnNewGroup.addEventListener('click', function(){
-    openModal('新建群',
-      '<div class="form-row"><label>群名</label><input id="g-name" maxlength="100" placeholder="群名，如：开发小分队" autocomplete="off"></div>' +
-      '<div class="form-row"><label>成员手机号（逗号分隔，可留空先建群）</label>' +
+    openModal(_kk('goods.dm.newGroup', '新建群'),
+      '<div class="form-row"><label>' + _kk('goods.dm.groupName', '群名') + '</label><input id="g-name" maxlength="100" placeholder="' + _kk('goods.dm.groupNamePh', '群名，如：开发小分队') + '" autocomplete="off"></div>' +
+      '<div class="form-row"><label>' + _kk('goods.dm.groupMembers', '成员手机号（逗号分隔，可留空先建群）') + '</label>' +
       '<textarea id="g-members" placeholder="8619232854249, 8615802858204"></textarea></div>' +
-      '<div class="form-tip">仅限已注册用户，非注册号码自动跳过</div>',
-      '创建', function(){
+      '<div class="form-tip">' + _kk('goods.dm.groupMembersTip', '仅限已注册用户，非注册号码自动跳过') + '</div>',
+      _kk('goods.dm.createBtn', '创建'), function(){
         var name = document.getElementById('g-name').value.trim();
         if (!name) {
           document.getElementById('g-name').style.borderColor = '#dc322f';
@@ -2175,7 +2179,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           body:JSON.stringify({name:name})
         }).then(function(r){return r.json();}).then(function(d){
           if (!d.ok || !d.gid) {
-            $modalTitle.textContent = '创建失败：' + (d.tip || d.code || '未知错误');
+            $modalTitle.textContent = _kk('goods.dm.createFailTip', '创建失败：{0}', d.tip || d.code || _kk('goods.dm.unknownErr', '未知错误'));
             return;
           }
           var gid = d.gid;
@@ -2194,7 +2198,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
               body:JSON.stringify({gid:gid, members:members})
             }).then(function(r){return r.json();}).then(function(addD){
               if (!addD.ok && addD.code === 'group_full') {
-                $modalTitle.textContent = '创建失败：' + (addD.tip || '群成员超限');
+                $modalTitle.textContent = _kk('goods.dm.createFailTip', '创建失败：{0}', addD.tip || _kk('goods.dm.groupFull', '群成员超限'));
                 return;
               }
               doAdd();
@@ -2203,7 +2207,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
             doAdd();
           }
         }).catch(function(){
-          $modalTitle.textContent = '创建失败：网络错误';
+          $modalTitle.textContent = _kk('goods.dm.createFailNet', '创建失败：网络错误');
         });
       });
   });
@@ -2217,11 +2221,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
   function renderGroupMembers() {
     var cv = _convMap[_activePeer] || {};
-    openModal(cv.gname + ' · 成员',
-      '<div id="gm-list" style="max-height:240px;overflow-y:auto;margin-bottom:10px;">加载中…</div>' +
-      '<div class="form-row"><label>添加成员（手机号逗号分隔）</label>' +
+    openModal(cv.gname + ' · ' + _kk('goods.dm.members', '成员'),
+      '<div id="gm-list" style="max-height:240px;overflow-y:auto;margin-bottom:10px;">' + _kk('common.loading', '加载中…') + '</div>' +
+      '<div class="form-row"><label>' + _kk('goods.dm.addMembers', '添加成员（手机号逗号分隔）') + '</label>' +
       '<input id="gm-add-input" placeholder="8619232854249, 8615802858204" autocomplete="off"></div>',
-      '添加', function(){
+      _kk('goods.dm.addBtn', '添加'), function(){
         var raw = document.getElementById('gm-add-input').value;
         var members = raw.split(/[,，\s]+/).filter(Boolean);
         if (!members.length) return;
@@ -2234,10 +2238,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
             renderGroupMembers();   // 刷新成员列表
             loadGroups();           // 刷新成员数
           } else {
-            $modalTitle.textContent = '添加失败：' + (d.tip || d.code || '未知错误');
+            $modalTitle.textContent = _kk('goods.dm.addFailTip', '添加失败：{0}', d.tip || d.code || _kk('goods.dm.unknownErr', '未知错误'));
           }
         }).catch(function(){
-          $modalTitle.textContent = '添加失败：网络错误';
+          $modalTitle.textContent = _kk('goods.dm.addFailNet', '添加失败：网络错误');
         });
       });
 
@@ -2246,17 +2250,17 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     }).then(function(r){return r.json();}).then(function(d){
       var list = document.getElementById('gm-list');
       if (!list) return;
-      if (!d.members) { list.textContent = '加载失败：' + (d.tip || d.code || '未知错误'); return; }
+      if (!d.members) { list.textContent = _kk('goods.dm.loadFailTip', '加载失败：{0}', d.tip || d.code || _kk('goods.dm.unknownErr', '未知错误')); return; }
       list.innerHTML = d.members.map(function(m){
         var flag = flagImg(m.country);
         var gmn = String(m.name || m.phone || m.doer_id || '');
         return '<div class="gm-item">' + flag + ' <span class="gm-name">' + (isPhoneLike(gmn) ? phoneHtml(gmn) : escHtml(gmn)) + '</span>' +
           '<span class="gm-phone">' + phoneHtml(m.phone || '') + '</span>' +
-          (m.is_owner ? '<span class="gm-owner">群主</span>' : '') + '</div>';
-      }).join('') || '<div style="color:var(--text-dim);font-size:12px;">暂无成员</div>';
+          (m.is_owner ? '<span class="gm-owner">' + _kk('goods.dm.groupOwner', '群主') + '</span>' : '') + '</div>';
+      }).join('') || '<div style="color:var(--text-dim);font-size:12px;">' + _kk('goods.dm.noMembers', '暂无成员') + '</div>';
     }).catch(function(){
       var list = document.getElementById('gm-list');
-      if (list) list.textContent = '加载失败：网络错误';
+      if (list) list.textContent = _kk('goods.dm.loadFailNet', '加载失败：网络错误');
     });
   }
 
@@ -2265,15 +2269,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   // save / save as / open / Roam（save 记忆目录静默直存；open = 默认程序；Roam = 定位引擎）；
   // bed 删除后 404 → 已删除占位（不做引用保护）
   function _attActs(url, nm, sz) {
-    var u = escHtml(url), n = escHtml(nm || '附件'), s = String(sz || 0);
+    var u = escHtml(url), n = escHtml(nm || _kk('goods.dm.attachment', '附件')), s = String(sz || 0);
     function lk(kind, label, tip) {
       return '<a data-dlact="' + kind + '" data-dlurl="' + u + '" data-dlname="' + n + '" data-dlsize="' + s + '" title="' + tip + '">' + label + '</a>';
     }
     return '<span class="att-acts">' +
-      lk('save', 'save', '保存到上次目录（自动记忆，无对话框）') +
-      lk('saveas', 'save as', '另存为…（记住这次的目录）') +
-      lk('open', 'open', '下载后用默认程序打开') +
-      lk('roam', 'Roam', '在 Roam 定位该文件') +
+      lk('save', 'save', _kk('goods.dm.actSaveTip', '保存到上次目录（自动记忆，无对话框）')) +
+      lk('saveas', 'save as', _kk('goods.dm.actSaveAsTip', '另存为…（记住这次的目录）')) +
+      lk('open', 'open', _kk('goods.dm.actOpenTip', '下载后用默认程序打开')) +
+      lk('roam', 'Roam', _kk('goods.dm.actRoamTip', '在 Roam 定位该文件')) +
       '</span>';
   }
   function attachHtml(atts) {
@@ -2286,13 +2290,13 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var sz = a.size || 0;
       if (/^image\//.test(a.mime || '') || /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(nm)) {
         html += '<div class="att-item">' +
-          '<a href="' + url + '" target="_blank" rel="noopener" data-lb="' + escHtml(url) + '" data-lbname="' + escHtml(nm) + '" data-lbsize="' + sz + '" title="' + escHtml(nm) + ' · 点击查看">' +
+          '<a href="' + url + '" target="_blank" rel="noopener" data-lb="' + escHtml(url) + '" data-lbname="' + escHtml(nm) + '" data-lbsize="' + sz + '" title="' + escHtml(nm) + ' · ' + _kk('goods.dm.clickView', '点击查看') + '">' +
           '<img src="' + url + '" alt="" loading="lazy"></a>' +
           _attActs(url, nm, sz) + '</div>';
       } else {
-        html += '<div class="attach-file" data-dl="' + escHtml(url) + '" data-dlname="' + escHtml(nm || '附件') + '" data-dlsize="' + sz + '" title="点击保存（Shift+点击 = 另存为）">' +
+        html += '<div class="attach-file" data-dl="' + escHtml(url) + '" data-dlname="' + escHtml(nm || _kk('goods.dm.attachment', '附件')) + '" data-dlsize="' + sz + '" title="' + _kk('goods.dm.clickSave', '点击保存（Shift+点击 = 另存为）') + '">' +
           '<span class="af-ic">📄</span>' +
-          '<span class="af-meta"><span class="af-name">' + escHtml(nm || '附件') + '</span>' +
+          '<span class="af-meta"><span class="af-name">' + escHtml(nm || _kk('goods.dm.attachment', '附件')) + '</span>' +
           '<span class="af-size">' + fmtBytes(sz) + '</span></span>' +
           _attActs(url, nm, sz) + '</div>';
       }
@@ -2324,7 +2328,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (!url) return;
     var m = attMachine();
     if (!m) { attExternal(url); return; }   // 无机器（旧缓存/独立页）→ 原生兜底
-    name = name || '附件';
+    name = name || _kk('goods.dm.attachment', '附件');
     if (kind === 'saveas') { m.save(url, name, { size: size || 0, ask: true }); return; }
     var lastDir = '';
     try { lastDir = (m.getLastDir && m.getLastDir()) || ''; } catch (_) {}
@@ -2334,7 +2338,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       // 记忆目录已有同名文件 → 不重复下载（防 name (1) 副本周），给 Roam 直达
       attStat(probe).then(function (st) {
         if (st && st.isFile) {
-          attQoast('已在：' + probe, { duration: 9000, action: { label: '📂 Roam 定位', onClick: function () { attRevealRoam(probe); } } });
+          attQoast(_kk('goods.dm.alreadyAt', '已在：{0}', probe), { duration: 9000, action: { label: _kk('shell.dl.roamLocate', '📂 Roam 定位'), onClick: function () { attRevealRoam(probe); } } });
           return;
         }
         m.save(url, name, { size: size || 0 });
@@ -2409,7 +2413,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (!a || !a.parentNode) return;
     var dead = document.createElement('div');
     dead.className = 'attach-dead';
-    dead.innerHTML = '<span class="ad-ic">⚠️</span>附件已删除';
+    dead.innerHTML = '<span class="ad-ic">⚠️</span>' + _kk('goods.dm.attachDeleted', '附件已删除');
     var holder = a.parentNode;
     if (holder.classList && holder.classList.contains('att-item') && holder.parentNode) {
       holder.parentNode.replaceChild(dead, holder);   // 连四小链接行一起换掉（占位零残留）
@@ -2441,9 +2445,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var today = now.toDateString();
     var yday = new Date(now.getFullYear(),now.getMonth(),now.getDate()-1).toDateString();
     var dd = d.toDateString();
-    if (dd === today) return '今天';
-    if (dd === yday) return '昨天';
-    return (d.getMonth()+1)+'月'+d.getDate()+'日';
+    if (dd === today) return _kk('goods.dm.today', '今天');
+    if (dd === yday) return _kk('goods.dm.yesterday', '昨天');
+    return _kk('goods.dm.monthDay', '{0}月{1}日', d.getMonth()+1, d.getDate());
   }
 
   function fmtBrief(iso) {

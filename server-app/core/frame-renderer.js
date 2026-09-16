@@ -201,9 +201,11 @@
 
     var img = document.createElement('img');
     img.className = 'qqq-frame-img';
-    img.alt = entry.fileName || '';
+    img.alt = '';             // ★ 防穿帮：不挂文件名（img 无 src 时 Chromium 直接把 alt 文本画出来）
     img.draggable = false;
-    img.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;';
+    // ★ 防穿帮揭幕制：内容未解码完成前整体不可见（visibility 同时压掉 alt 文本与裂图占位），
+    //   成功加载由 _revealFrameContent 揭幕 —— 打开文档不再闪「文件名 + 裂图」
+    img.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;visibility:hidden;';
     box.appendChild(img);
 
     // 进度条（optmum 专属；老 createProgressSvg 一层——黑底 4px + 米色扫过）
@@ -220,6 +222,7 @@
       var wm = document.createElement('img');
       wm.className = 'qqq-frame-wm';
       wm.draggable = false;
+      wm.style.visibility = 'hidden';   // ★ 防穿帮：与内容图同刻揭幕（防空框先顶上水印）
       wm.src = (pw === LARGE_W) ? WM_LARGE : WM_SMALL;
       wm.onerror = function () { try { wm.style.display = 'none'; } catch (e) { /* */ } };
       box.appendChild(wm);
@@ -248,11 +251,20 @@
     bar.classList.add('qqq-pbar-on');
   }
 
+  // ★ 揭幕（防穿帮链尾）：内容图成功解码后才放行内容图 + 水印；
+  //   此前帧只露棋盘格底 —— 全链绝不出现「文件名 / 裂图」过场
+  function _revealFrameContent(dom) {
+    if (!dom) return;
+    try { if (dom._imgEl) dom._imgEl.style.visibility = 'visible'; } catch (_e1) { /* */ }
+    try { if (dom._wmEl) dom._wmEl.style.visibility = 'visible'; } catch (_e2) { /* */ }
+  }
+
   // ═══ 图像落地（fit 模式：老 outputSize 语义；natural/fill 备选）═══
   function _setMediaSrc(dom, filePath, mode, natW, natH, onFail) {
     var img = dom && dom._imgEl;
     if (!img) return;
     img.onload = function () {
+      _revealFrameContent(dom);
       var nw = natW || img.naturalWidth || 0;
       var nh = natH || img.naturalHeight || 0;
       if (mode === 'fill') {
@@ -322,6 +334,16 @@
     return '\uD83D\uDCC4';
   }
 
+  // 字形兜底（fileIcon 桥缺失 / 图标解码失败 → 防空框；幂等防叠字形）
+  function _iconGlyph(dom, entry, isDir) {
+    if (!dom || !dom._boxEl || dom._glyphDone) return;
+    dom._glyphDone = true;
+    var g = document.createElement('span');
+    g.textContent = _glyphFor(entry, !!isDir);
+    g.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;line-height:1;';
+    dom._boxEl.appendChild(g);
+  }
+
   // ═══ 图标帧体（几何重设为 32x32 内容框）═══
   async function _applyIconBody(dom, entry, isDir) {
     if (!dom || !dom._boxEl) return false;
@@ -344,14 +366,18 @@
     if (iconUrl) {
       img.style.width = ICON_SIZE + 'px';
       img.style.height = ICON_SIZE + 'px';
+      img.style.display = 'block';
+      img.style.visibility = 'hidden';   // ★ 防穿帮：图标解码完成前不可见（同走揭幕制）
+      img.onload = function () { _revealFrameContent(dom); };
+      img.onerror = function () {          // 图标解码失败 → 字形兜底（不留空框）
+        try { img.style.display = 'none'; } catch (_e) { /* */ }
+        _iconGlyph(dom, entry, isDir);
+      };
       img.src = iconUrl;
     } else if (img) {
       // 壳层未重启（fileIcon 桥缺失）→ 字形兜底，防止空框
       img.style.display = 'none';
-      var g = document.createElement('span');
-      g.textContent = _glyphFor(entry, !!isDir);
-      g.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;line-height:1;';
-      dom._boxEl.appendChild(g);
+      _iconGlyph(dom, entry, isDir);
     }
     dom._zoneH = ICON_SIZE + OUT_PAD + 8;
     dom._isIcon = true;
@@ -387,7 +413,8 @@
     } catch (e) { res = null; noHandler = _isNoHandler(e); }
 
     if (res && res.ok && res.path) {
-      _setMediaSrc(dom, res.path, 'fit', res.width, res.height);
+      // 预览图解码失败（缓存坏块等，极少）→ 同走图标帧，绝不留空框
+      _setMediaSrc(dom, res.path, 'fit', res.width, res.height, function () { _swapToIcon(dom, entry); });
       // 进度条：老口径 webpDuration > 0.1 且 optmum 才显示
       if (perf === 'optmum' && res.duration > 0.1) { _showProgressBar(dom, res.duration); }
       return;
@@ -416,7 +443,7 @@
       }
     } catch (e) { res = null; }
     if (res && res.ok && res.path) {
-      _setMediaSrc(dom, res.path, 'natural', res.width, res.height);
+      _setMediaSrc(dom, res.path, 'natural', res.width, res.height, function () { _swapToIcon(dom, entry); });
       return;
     }
     await _swapToIcon(dom, entry);

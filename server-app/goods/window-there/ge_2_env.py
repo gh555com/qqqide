@@ -9,6 +9,16 @@ from typing import Optional, Callable, Dict, Any, List
 # OS-level SQLite - same DB across all IDE instances and green packs
 import window_there_store
 
+# 共享翻译助手（goods/_goods_i18n.py）
+try:
+    from _goods_i18n import t as _t
+except Exception:
+    def _t(key, fallback=None, **params):
+        val = fallback if fallback is not None else key
+        for _k, _v in params.items():
+            val = val.replace('{' + str(_k) + '}', str(_v))
+        return val
+
 aqq = "kqs"
 
 # === 错误处理模块 ===
@@ -27,7 +37,7 @@ class ErrorHandler:
     @staticmethod
     def handle_config_error(error: Exception, operation: str) -> str:
         """处理配置相关错误"""
-        return f"配置{operation}时发生错误:\n{str(error)}"
+        return _t('goods.winthere.cfgError', '配置{op}时发生错误:\n{err}', op=operation, err=str(error))
 
     @staticmethod
     def handle_platform_error(error: Exception, operation: str) -> str:
@@ -172,13 +182,13 @@ class env:
         """内部保存回调"""
         return save_window_info_to_config(window_info, self._show_message)
 
-    def _show_message(self, title, message, buttons="ok"):
+    def _show_message(self, title, message, buttons="ok", yes_text=None):
         """显示消息的默认实现"""
         if hasattr(self, 'qt_aqq_instance') and self.qt_aqq_instance:
             try:
                 # 尝试导入UI模块并使用其消息框
                 import ui as ui
-                return ui.show_custom_message(title, message, buttons)
+                return ui.show_custom_message(title, message, buttons, yes_text)
             except ImportError:
                 # 如果UI模块不可用，使用控制台输出
                 print(f"{title}: {message}")
@@ -195,20 +205,25 @@ def save_window_info_to_config(window_info, show_prompt_callback):
     """Save via SQLite (OS-level, shared across all instances)."""
     error_handler = ErrorHandler()
     try:
-        info_text = (f"\u5149\u6807\u4e0b\u7a97\u53e3:\n  \u6807\u9898: {window_info['title']}\n  \u7c7b\u540d: {window_info['class_name']}\n"
-                     f"  \u4f4d\u7f6e: ({window_info['x']}, {window_info['y']}) \u5c3a\u5bf8: {window_info['width']}x{window_info['height']}\n"
-                     f"  \u684c\u9762: {window_info['desktop_width']}x{window_info['desktop_height']}\n\n"
-                     f"\u662f\u5426\u4fdd\u5b58\u6b64\u7a97\u53e3\u5e03\u5c40\uff1f (\u6309 'W' \u952e\u6216\u56de\u8f66\u786e\u8ba4)")
+        info_text = _t(
+            'goods.winthere.saveLayoutInfo',
+            "光标下窗口:\n  标题: {title}\n  类名: {cls}\n  位置: ({x}, {y}) 尺寸: {wh}\n"
+            "  桌面: {desk}\n\n是否保存此窗口布局？ (按 'W' 键或回车确认)",
+            title=window_info['title'], cls=window_info['class_name'],
+            x=window_info['x'], y=window_info['y'],
+            wh=f"{window_info['width']}x{window_info['height']}",
+            desk=f"{window_info['desktop_width']}x{window_info['desktop_height']}",
+        )
 
-        if not show_prompt_callback("\u4fdd\u5b58\u65b0\u5e03\u5c40", info_text, "yesno"):
+        if not show_prompt_callback(_t('goods.winthere.saveLayoutTitle', '保存新布局'), info_text, "yesno", _t('common.save', '保存')):
             return None
 
         return window_there_store.save_layout(window_info)
 
     except Exception as e:
         error_handler.log_error(e, "save_window_info_to_config")
-        error_msg = error_handler.handle_config_error(e, "\u4fdd\u5b58")
-        show_prompt_callback("\u9519\u8bef", error_msg)
+        error_msg = error_handler.handle_config_error(e, _t('common.save', '保存'))
+        show_prompt_callback(_t('common.error', '错误'), error_msg)
         return None
 
 

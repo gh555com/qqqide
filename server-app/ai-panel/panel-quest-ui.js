@@ -1574,7 +1574,8 @@ function renderQueueStrip() {
             var preview = q.text
                 ? (q.text.slice(0, 80) + (q.text.length > 80 ? '...' : ''))
                 : _i('ai.queue.imageOnly', '（仅图片）');
-            var tierLabel = (typeof q.selectedTier === 'number') ? ('A' + q.selectedTier) : '';
+            // ★ 三键档位（2026-09-16）：徽章恒显示三键数（1/2/3），旧存量 1..6 自动换算
+            var tierLabel = (typeof q.selectedTier === 'number') ? ('A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(q.selectedTier) : q.selectedTier)) : '';
 
             var card = document.createElement('div');
             card.className = 'bk-card';

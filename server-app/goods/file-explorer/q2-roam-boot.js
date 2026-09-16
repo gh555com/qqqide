@@ -156,7 +156,7 @@
 		function _ioastPush(extra) {
 			if (!ioast) return;
 			var opts = {
-				title: '粘贴 ' + paths.length + ' 项',
+				title: _kk('goods.roam.pasteTitle', '粘贴 {0} 项', paths.length),
 				count: { done: successCount + failCount + cancelCount, total: paths.length },
 				elapsed: (Date.now() - startTs) / 1000
 			};
@@ -168,12 +168,12 @@
 		function _ioastStart() {
 			if (!ioast) return;
 			ioast.task(streamId, {
-				title: '粘贴 ' + paths.length + ' 项',
+				title: _kk('goods.roam.pasteTitle', '粘贴 {0} 项', paths.length),
 				cancelable: true,
 				onCancel: function() {
 					cancelled = true;
 					try { bridge.fs.cancelCopy(streamId); } catch(e) {}
-					_ioastPush({ cancelable: false, subtitle: '正在取消…' });
+					_ioastPush({ cancelable: false, subtitle: _kk('goods.roam.cancelling', '正在取消…') });
 				}
 			});
 			elapsedTimer = setInterval(_ioastPush, 500);
@@ -182,11 +182,11 @@
 			if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
 			if (!ioast) return;
 			if (cancelCount > 0) {
-				ioast.fail(streamId, { summary: '已取消 · ' + successCount + ' 项完成' + (failCount > 0 ? '，' + failCount + ' 失败' : '') });
+				ioast.fail(streamId, { summary: _kk('goods.roam.canceledItems', '已取消 · {0} 项完成', successCount) + (failCount > 0 ? _kk('goods.roam.failSuffixItems', '，{0} 失败', failCount) : '') });
 			} else if (failCount > 0) {
-				ioast.fail(streamId, { summary: successCount + ' 项成功，' + failCount + ' 项失败' });
+				ioast.fail(streamId, { summary: _kk('goods.roam.itemsResult', '{0} 项成功，{1} 项失败', successCount, failCount) });
 			} else {
-				ioast.done(streamId, { summary: successCount + ' 项已复制' });
+				ioast.done(streamId, { summary: _kk('goods.roam.itemsCopied', '{0} 项已复制', successCount) });
 			}
 		}
 
@@ -262,7 +262,7 @@
 
 		if (ioast) {
 			ioast.task(ioastId, {
-				title: '粘贴 ' + files.length + ' 个文件',
+				title: _kk('goods.roam.pasteTitleFiles', '粘贴 {0} 个文件', files.length),
 				count: { done: 0, total: files.length },
 				cancelable: true,
 				onCancel: function() { cancelled = true; }
@@ -313,9 +313,9 @@
 		loadFileList(currentPath);
 
 		if (ioast) {
-			if (cancelled) ioast.fail(ioastId, { summary: '已取消 · ' + successCount + ' 个完成' });
-			else if (failCount > 0) ioast.fail(ioastId, { summary: successCount + ' 个成功，' + failCount + ' 个失败' });
-			else ioast.done(ioastId, { summary: successCount + ' 个已复制' });
+			if (cancelled) ioast.fail(ioastId, { summary: _kk('goods.roam.canceledFiles', '已取消 · {0} 个完成', successCount) });
+			else if (failCount > 0) ioast.fail(ioastId, { summary: _kk('goods.roam.filesResult', '{0} 个成功，{1} 个失败', successCount, failCount) });
+			else ioast.done(ioastId, { summary: _kk('goods.roam.filesCopied', '{0} 个已复制', successCount) });
 		}
 
 		if (tip) {

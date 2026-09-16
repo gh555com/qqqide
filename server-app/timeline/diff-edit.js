@@ -238,7 +238,7 @@
                 var div = document.createElement('div');
                 div.className = 'block-arrow';
                 div.innerHTML = '→';
-                div.title = '将左侧差异移到右侧';
+                div.title = _i('timeline.blockArrowTip', '将左侧差异移到右侧');
                 div.addEventListener('mousedown', function (ev) { ev.preventDefault(); ev.stopPropagation(); _copyBlockToRight(capChange); });
                 div.addEventListener('click', function (ev) { ev.stopPropagation(); });
                 // 插入到 diff-container

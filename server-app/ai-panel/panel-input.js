@@ -105,13 +105,14 @@ async function _copyAlphalDir(srcDir, dstDir) {
 
 // ── 智能等级选择（per-quest）──
 // ★ 全局默认等级由父窗口 settings 机器提供，兜底 6
-var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
-function updateTierButtons(tierIndex) {
-    document.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('sel'); });
-    if (tierIndex && tierIndex >= 1 && tierIndex <= 6) {
-        var btn = document.querySelector('.tier-btn[data-tier="' + tierIndex + '"]');
-        if (btn) btn.classList.add('sel');
-    }
+var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;function updateTierButtons(tierIndex) {
+    document.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('sel'); });
+    if (tierIndex && tierIndex >= 1 && tierIndex <= 6) {
+        // ★ 三键档位（2026-09-16）：data-tier = 组代表值 1/3/5（显示 1/2/3）——旧存量 2/4/6 自动换算到组代表
+        var _rep = (typeof _tierRepOf === 'function') ? _tierRepOf(tierIndex) : tierIndex;
+        var btn = document.querySelector('.tier-btn[data-tier="' + _rep + '"]');
+        if (btn) btn.classList.add('sel');
+    }
 }
 
 function selectTier(tierIndex) {
@@ -144,8 +145,7 @@ function selectTier(tierIndex) {
 //    弹出窗在 parent window（同设置按钮），不在 AI iframe 内
 document.getElementById('tier-a').onclick = function () {
     try { if (parent && parent.window && parent.window.openTierPopup) parent.window.openTierPopup(); } catch (_) { }
-};
-// ★ 1-6 按钮绑定等级选择
+};// ★ 三键档位绑定等级选择（显示 1/2/3 = 组代表 1/3/5；2026-09-16）
 document.querySelectorAll('.tier-btn[data-tier]').forEach(function (btn) {
     btn.onclick = function () { selectTier(parseInt(btn.dataset.tier)); };
 });

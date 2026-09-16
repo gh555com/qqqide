@@ -27,6 +27,16 @@ import ge_2_env as config
 import ge_2_ui as ui
 import ge_2_platform as platform
 
+# 共享翻译助手（goods/_goods_i18n.py）
+try:
+    from _goods_i18n import t as _t
+except Exception:
+    def _t(key, fallback=None, **params):
+        val = fallback if fallback is not None else key
+        for _k, _v in params.items():
+            val = val.replace('{' + str(_k) + '}', str(_v))
+        return val
+
 # (R20) 导入新的钩子库
 try:
     from pynput import keyboard
@@ -156,7 +166,7 @@ def handle_w_confirm_presses():
 
     window_info = g_platform.get_window_under_cursor()
     if not window_info or not window_info.get('handle'):
-        ui.show_custom_message("错误", "无法获取光标下窗口的信息。")
+        ui.show_custom_message(_t('common.error', '错误'), _t('goods.winthere.noCursorWindow', '无法获取光标下窗口的信息。'))
         return
 
     # (R24) 光标下窗口就是焦点窗口 → 用户可能在打字，跳过
@@ -186,12 +196,12 @@ def handle_three_shift_presses():
     print("R26: 主线程处理 3Shift 还原 (焦点窗口)...")
     fg_handle = g_platform.get_foreground_window_handle()
     if not fg_handle:
-        ui.show_custom_message("错误", "无法获取当前焦点窗口的句柄。")
+        ui.show_custom_message(_t('common.error', '错误'), _t('goods.winthere.noFocusHandle', '无法获取当前焦点窗口的句柄。'))
         return
 
     window_info = g_platform.get_window_info(fg_handle)
     if not window_info or not window_info.get('handle'):
-        ui.show_custom_message("错误", "无法获取当前焦点窗口的信息。")
+        ui.show_custom_message(_t('common.error', '错误'), _t('goods.winthere.noFocusWindow', '无法获取当前焦点窗口的信息。'))
         return
 
     current_dw = window_info.get('desktop_width')
@@ -211,7 +221,7 @@ def handle_three_shift_presses():
         # (R26) 记录创建时间 — check_focus 3s 宽限期内不关闭
         ui.layout_selector_window._created_at = time.time()
     else:
-        ui.show_custom_message("未找到", f"没有找到与此类名及当前分辨率匹配的已存布局。\n\n类名: {window_info['class_name']}\n当前分辨率: {current_dw}x{current_dh}")
+        ui.show_custom_message(_t('goods.winthere.notFound', '未找到'), _t('goods.winthere.layoutNotFound', '没有找到与此类名及当前分辨率匹配的已存布局。\n\n类名: {cls}\n当前分辨率: {res}', cls=window_info['class_name'], res=f"{current_dw}x{current_dh}"))
 
 
 def handle_three_x_presses():
@@ -224,7 +234,7 @@ def handle_three_x_presses():
 
     window_info = g_platform.get_window_under_cursor()
     if not window_info or not window_info.get('handle'):
-        ui.show_custom_message("错误", "无法获取光标下窗口的信息。")
+        ui.show_custom_message(_t('common.error', '错误'), _t('goods.winthere.noCursorWindow', '无法获取光标下窗口的信息。'))
         return
 
     # (R24) 光标下窗口就是焦点窗口 → 用户可能在打字，跳过
@@ -250,7 +260,7 @@ def handle_three_x_presses():
         # (R26) 记录创建时间 — check_focus 3s 宽限期内不关闭
         ui.layout_selector_window._created_at = time.time()
     else:
-        ui.show_custom_message("未找到", f"没有找到与此类名及当前分辨率匹配的已存布局。\n\n类名: {window_info['class_name']}\n当前分辨率: {current_dw}x{current_dh}")
+        ui.show_custom_message(_t('goods.winthere.notFound', '未找到'), _t('goods.winthere.layoutNotFound', '没有找到与此类名及当前分辨率匹配的已存布局。\n\n类名: {cls}\n当前分辨率: {res}', cls=window_info['class_name'], res=f"{current_dw}x{current_dh}"))
 
 
 # --- (R26) 主程序入口 ---

@@ -188,14 +188,14 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
     </div>
 
   </div>
-  <span id="file-gone-badge" data-i18n="timeline.deletedBadge" title="此文件在磁盘上已不存在——历史快照仍完整保存在记忆库" style="display:none;flex-shrink:0;font-size:11px;font-weight:700;color:var(--red);border:1px dashed var(--red);border-radius:3px;padding:1px 6px;-webkit-app-region:no-drag">🗑️ 已删除</span>
+  <span id="file-gone-badge" data-i18n="timeline.deletedBadge" data-i18n-title="timeline.deletedBadgeTip" title="此文件在磁盘上已不存在——历史快照仍完整保存在记忆库" style="display:none;flex-shrink:0;font-size:11px;font-weight:700;color:var(--red);border:1px dashed var(--red);border-radius:3px;padding:1px 6px;-webkit-app-region:no-drag">🗑️ 已删除</span>
   <div style="position:relative;flex-shrink:0;display:flex;align-items:center;-webkit-app-region:no-drag">
-    <button class="win-btn op-btn" id="btn-op" title="操作">op</button>
+    <button class="win-btn op-btn" id="btn-op" data-i18n-title="timeline.opBtn" title="操作">op</button>
     <div class="op-dropdown" id="op-dropdown" style="display:none">
       <div class="op-item" data-action="open">open in qqqide</div>
-      <div class="op-item" data-action="feed"><span id="op-feed-label">喂给 AI</span></div>
-      <div class="op-item is-last" data-action="roam" title="在 Roam 中打开">Roam</div>
-      <div class="op-item" data-action="restore" id="op-restore-item" style="display:none"><span id="op-restore-label">恢复文件</span></div>
+      <div class="op-item" data-action="feed"><span id="op-feed-label" data-i18n="timeline.opFeed">喂给 AI</span></div>
+      <div class="op-item is-last" data-action="roam" data-i18n-title="timeline.opRoam" title="在 Roam 中打开">Roam</div>
+      <div class="op-item" data-action="restore" id="op-restore-item" style="display:none"><span id="op-restore-label" data-i18n="timeline.opRestore">恢复文件</span></div>
     </div>
   </div>
   <div id="drag-handle" data-i18n-title="timeline.dragHandle" title="拖拽移动窗口">
@@ -245,7 +245,7 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
     <div class="vault-search-row">
       <span class="vault-search-ico">🔍</span>
       <input id="vault-search" class="vault-search" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="timeline.vaultSearchPh" placeholder="搜索记忆库：文件名或路径片段…">
-      <label class="vault-chip" id="vault-gone-chip" title="只显示磁盘上已删除的文件"><input type="checkbox" id="vault-only-gone"><span data-i18n="timeline.vaultOnlyGone">只看已删除</span></label>
+      <label class="vault-chip" id="vault-gone-chip" data-i18n-title="timeline.vaultOnlyGoneTip" title="只显示磁盘上已删除的文件"><input type="checkbox" id="vault-only-gone"><span data-i18n="timeline.vaultOnlyGone">只看已删除</span></label>
       <button id="vault-back" class="vault-back" data-i18n="timeline.vaultBack">✕ 返回对比</button>
     </div>
     <div class="vault-crumb-row">

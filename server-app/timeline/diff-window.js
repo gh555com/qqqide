@@ -281,7 +281,7 @@
         var dir = p.slice(0, p.length - name.length);
         var gone = (row.exists === false);
         var meta = '';
-        if (row.vcount > 0) meta = row.vcount + ' 快照';
+        if (row.vcount > 0) meta = _i('timeline.snapCount', '{n} 快照').replace('{n}', row.vcount);
         var rel = _relTime(row.ts);
         if (rel) meta += (meta ? ' · ' : '') + rel;
         return '<div class="fuzzy-item' + (gone ? ' fi-gone' : '') + '" data-path="' + _escAttr(p) + '">' +
@@ -513,8 +513,8 @@
     function _vpRowHtml(item) {
         if (item.kind === 'dir') {
             var meta = _vpOnlyGone
-                ? item.gcount + ' 已删除 · ' + item.gscount + ' 快照'
-                : item.fcount + ' 文件' + (item.scount > 0 ? ' · ' + item.scount + ' 快照' : '');
+                ? _i('timeline.goneCount', '{n} 已删除').replace('{n}', item.gcount) + ' · ' + _i('timeline.snapCount', '{n} 快照').replace('{n}', item.gscount)
+                : _i('timeline.fileCount', '{n} 文件').replace('{n}', item.fcount) + (item.scount > 0 ? ' · ' + _i('timeline.snapCount', '{n} 快照').replace('{n}', item.scount) : '');
             return '<div class="vault-row v-row-dir" data-dir="' + _escAttr(item.path) + '">' +
                 '<span class="v-caret">▸</span><span class="v-ico">📁</span>' +
                 '<span class="v-name">' + _escHtml(item.name) + '</span>' +
@@ -524,7 +524,7 @@
         var name = item.name || (p.split(/[\\/]/).pop() || p);
         var dir = p.slice(0, p.length - name.length);
         var gone = (item.exists === false);
-        var meta2 = item.vcount > 0 ? item.vcount + ' 快照' : '';
+        var meta2 = item.vcount > 0 ? _i('timeline.snapCount', '{n} 快照').replace('{n}', item.vcount) : '';
         var rel = _relTime(item.ts);
         if (rel) meta2 += (meta2 ? ' · ' : '') + rel;
         var cls = 'vault-row v-row-file' + (item.showDir ? ' v-row-search' : '') + (gone ? ' v-row-gone' : '');
@@ -897,7 +897,7 @@
             if (bridge && bridge.timeline && bridge.timeline.getAiTarget) {
                 bridge.timeline.getAiTarget().then(function (t) {
                     var lbl = document.getElementById('op-feed-label');
-                    if (lbl) lbl.textContent = t === 0 ? '←喂给 AI' : t === 2 ? '喂给 AI→' : '喂给 AI';
+                    if (lbl) lbl.textContent = t === 0 ? _i('timeline.opFeedLeft', '←喂给 AI') : t === 2 ? _i('timeline.opFeedRight', '喂给 AI→') : _i('timeline.opFeed', '喂给 AI');
                 }).catch(function () { });
             }
         } catch (_) { }

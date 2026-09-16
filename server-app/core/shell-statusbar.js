@@ -540,16 +540,44 @@
     setInterval(tick, 1000);
   }
 
-  // ═══ 窄窗口退避 — 状态区恒一行，窗口变窄逐级隐藏非核心区块 ═══
+  // ═══ 窄窗口退避（实测级联）══════════════════════════════════════════════
+  // 旧固定宽度阈值只对中文宽度成立：长译语言（fr/de/es/ru…）活动名/赞助商实测挤出裁切
+  // （实测 fr 1100px 窗口内容超界 377px）。改为「实测内容宽 vs 可用宽」逐级隐藏——语言无关、
+  // 自适应未来新增区块；4 级语义不变：1 赞助商 → 2 活动名 → 3 wq+版本+total+mem → 4 在线。
   var $statusArea = document.querySelector('.qqq-status-area');
+  var STATUS_DENSE_LEVELS = ['qqq-dense-1', 'qqq-dense-2', 'qqq-dense-3', 'qqq-dense-4'];
+  function _statusRowFits() {
+    var row = $statusArea.querySelector('.qqq-status-row');
+    if (!row) return true;
+    var lim = row.getBoundingClientRect().right - (parseFloat(getComputedStyle(row).paddingRight) || 0);
+    var kids = row.children, maxRight = -Infinity;
+    for (var i = 0; i < kids.length; i++) {
+      var r = kids[i].getBoundingClientRect();
+      if (r.width > 0 && r.right > maxRight) maxRight = r.right;
+    }
+    return maxRight <= lim + 0.5;
+  }
   function updateStatusDensity() {
     if (!$statusArea) return;
-    var w = window.innerWidth;
-    $statusArea.classList.toggle('qqq-dense-1', w < 1180); // 赞助商
-    $statusArea.classList.toggle('qqq-dense-2', w < 1020); // 活动名（保留图标+进度条+数字）
-    $statusArea.classList.toggle('qqq-dense-3', w < 900);  // wq + 版本
-    $statusArea.classList.toggle('qqq-dense-4', w < 780);  // 在线 + 网关点
+    for (var i = 0; i < STATUS_DENSE_LEVELS.length; i++) $statusArea.classList.remove(STATUS_DENSE_LEVELS[i]);
+    if (_statusRowFits()) return;
+    for (var j = 0; j < STATUS_DENSE_LEVELS.length; j++) {
+      $statusArea.classList.add(STATUS_DENSE_LEVELS[j]);
+      if (_statusRowFits()) break;
+    }
   }
   window.addEventListener('resize', updateStatusDensity);
   updateStatusDensity();
+  // 文本动态变化（i18n 切换 / 活动名换字 / 版本号到位）后重算 —— 防首次判定后长译挤出裁切
+  window.addEventListener('qqq-lang-change', function () { setTimeout(updateStatusDensity, 60); });
+  (function () {
+    var row = $statusArea && $statusArea.querySelector('.qqq-status-row');
+    if (!row || typeof MutationObserver === 'undefined') return;
+    var t = null;
+    new MutationObserver(function () {
+      if (t) clearTimeout(t);
+      t = setTimeout(function () { t = null; updateStatusDensity(); }, 400);
+    }).observe(row, { subtree: true, childList: true, characterData: true });
+  })();
+  // ═══ 窄窗口退避（实测级联）END ═══
 }

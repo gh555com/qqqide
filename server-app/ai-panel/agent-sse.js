@@ -56,6 +56,51 @@ AgentLoop.prototype._processBillingEvent = function (parsed) {
     }
 };
 
+// ═══ BYOK 记账合成 — 平台无 billing 事件（直连/代理）时从上游 usage 提取「展示口径」 ═══
+//   BYOK 对话零平台计费（wge 恒 0，ge 只算平台通道：识图/代理等）；
+//   tokens / 缓存命中率以上游回传为准（OpenAI 兼容 stream_options.include_usage）：
+//     缓存字段三家形态：prompt_cache_hit_tokens（DeepSeek 系）→ prompt_tokens_details.cached_tokens（OpenAI 系）→ cached_tokens；
+//     上游未回传 → usage=null → 详单该行显示 '-'（区分「无数据」与「真 0」）。
+//   平台事件已存在（平台通道 / live 模式代理扣费注入）→ 仅补 usage 缺位，绝不覆盖平台口径。
+//   仅 BYOK 通道合成（_floorByokRoute 由 agent-gateway 依响应标记）——平台路径 billing 事件权威，无事件不冒充。
+AgentLoop.prototype._synthByokBilling = function (response) {
+    if (!this._floorByokRoute) return;
+    var u = response && response._usage;
+    var cached = null;
+    if (u) {
+        if (typeof u.prompt_cache_hit_tokens === 'number') cached = u.prompt_cache_hit_tokens;
+        else if (u.prompt_tokens_details && typeof u.prompt_tokens_details.cached_tokens === 'number') cached = u.prompt_tokens_details.cached_tokens;
+        else if (typeof u.cached_tokens === 'number') cached = u.cached_tokens;
+    }
+    var _usageObj = (u && u.prompt_tokens) ? {
+        prompt_tokens: u.prompt_tokens || 0,
+        completion_tokens: u.completion_tokens || 0,
+        cached_tokens: cached || 0,
+        non_cached_tokens: (typeof u.prompt_cache_miss_tokens === 'number') ? u.prompt_cache_miss_tokens : (cached !== null ? Math.max(0, (u.prompt_tokens || 0) - cached) : 0)
+    } : null;
+    var _hitRate = (cached !== null && u && u.prompt_tokens > 0) ? (Math.round(cached * 1000 / u.prompt_tokens) / 10) : -1;
+    if (this._lastBilling) {
+        // 平台事件已在（权威）：只补缺位
+        if (_usageObj && !this._lastBilling.usage) this._lastBilling.usage = _usageObj;
+        if (_hitRate >= 0 && !(this._lastBilling.cacheHitRate >= 0)) this._lastBilling.cacheHitRate = _hitRate;
+        return;
+    }
+    if (!_usageObj) return;
+    this._billingSeq++;
+    this._lastBilling = {
+        seq: this._billingSeq,
+        wgeCost: 0,
+        model: '',
+        cacheHitRate: _hitRate,
+        usage: _usageObj,
+        freeWindow: false,
+        requestId: '',
+        ts: Date.now(),
+        byok: true,
+        byokRoute: this._floorByokRoute || 'direct'
+    };
+};
+
 // ---- SSE 解析 ----
 AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var self = this;

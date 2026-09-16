@@ -192,9 +192,13 @@ body {
     <div class="scrollbar-outer" id="outerScrollbar"><div class="scrollbar-outer-thumb" id="outerThumb"></div></div>
     <div id="tooltip"></div>
 </div>
+<script src="../../core/i18n.js"></script>
 <script>
 (function() {
     'use strict';
+
+    // i18n 小助手：_kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
+    var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
 
     // ── zoom 坐标归一（Chrome 108 fixed 定位 + zoom 坐标空间补偿）──
     function _zoomFix(x, y) {
@@ -354,7 +358,7 @@ body {
         var banner = document.createElement('div');
         banner.className = 'kope-offline-banner';
         banner.style.cssText = 'text-align:center;padding:5px 10px;margin:3px 8px;color:var(--text-secondary);font-size:11px;background:var(--base2);border-radius:4px;opacity:0.8;cursor:default;';
-        banner.textContent = '当前面板：kope-a 未启动';
+        banner.textContent = _kk('goods.kopea.offline', '当前面板：kope-a 未启动');
         el.historyContainer.insertBefore(banner, el.historyList);
     }
 

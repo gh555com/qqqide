@@ -79,18 +79,21 @@ input,select{-webkit-user-select:text;user-select:text}
 <body>
 <div style="display:flex;flex-direction:column;height:100%">
   <div class="tb">
-    <div class="tb-r"><span class="iw"><input class="inp" id="q" placeholder="搜索..." autofocus spellcheck="false"><div class="hdd" id="dd0"></div></span><button class="tog" id="brx" title="正则">.*</button><button class="tog" id="bcs" title="大小写">Aa</button><button class="tog" id="bww" title="全字">ab</button></div>
-    <div class="tb-r"><span class="iw"><input class="inp" id="rp" placeholder="替换..." spellcheck="false"><div class="hdd" id="dd1"></div></span><button class="btn pri" id="bra">全部替换</button></div>
-    <div class="tb-r"><span class="lbl">范围</span><span class="iw"><input class="scope" id="sp" placeholder="搜索路径（点 🔍 自动填入）" spellcheck="false"><div class="hdd" id="dd2"></div></span><label class="chk" id="lgi"><input type="checkbox" id="cgi"><span class="ckb"></span> .gitignore</label></div>
-    <div class="tb-r"><span class="lbl">仅限</span><span class="iw"><input class="scope" id="inc" placeholder="*.js, src/" spellcheck="false"><div class="hdd" id="dd3"></div></span><span class="lbl" style="margin-left:8px">排除</span><span class="iw"><input class="scope" id="exc" value=".git/, *.log, *.json" spellcheck="false"><div class="hdd" id="dd4"></div></span><span class="lbl" style="margin-left:8px">排序</span><span class="sort-wrap"><button class="sort" id="srt_btn">修改时间↓</button><div class="sort-dd" id="srt_dd"></div></span></div>
+    <div class="tb-r"><span class="iw"><input class="inp" id="q" placeholder="搜索..." data-i18n-placeholder="goods.search.qPh" autofocus spellcheck="false"><div class="hdd" id="dd0"></div></span><button class="tog" id="brx" title="正则" data-i18n-title="goods.search.regex">.*</button><button class="tog" id="bcs" title="大小写" data-i18n-title="goods.search.case">Aa</button><button class="tog" id="bww" title="全字" data-i18n-title="goods.search.wholeWord">ab</button></div>
+    <div class="tb-r"><span class="iw"><input class="inp" id="rp" placeholder="替换..." data-i18n-placeholder="goods.search.rpPh" spellcheck="false"><div class="hdd" id="dd1"></div></span><button class="btn pri" id="bra" data-i18n="goods.search.replaceAll">全部替换</button></div>
+    <div class="tb-r"><span class="lbl" data-i18n="goods.search.scope">范围</span><span class="iw"><input class="scope" id="sp" placeholder="搜索路径（点 🔍 自动填入）" data-i18n-placeholder="goods.search.spPh" spellcheck="false"><div class="hdd" id="dd2"></div></span><label class="chk" id="lgi"><input type="checkbox" id="cgi"><span class="ckb"></span> .gitignore</label></div>
+    <div class="tb-r"><span class="lbl" data-i18n="goods.search.only">仅限</span><span class="iw"><input class="scope" id="inc" placeholder="*.js, src/" spellcheck="false"><div class="hdd" id="dd3"></div></span><span class="lbl" style="margin-left:8px" data-i18n="goods.search.exclude">排除</span><span class="iw"><input class="scope" id="exc" value=".git/, *.log, *.json" spellcheck="false"><div class="hdd" id="dd4"></div></span><span class="lbl" style="margin-left:8px" data-i18n="goods.search.sort">排序</span><span class="sort-wrap"><button class="sort" id="srt_btn">修改时间↓</button><div class="sort-dd" id="srt_dd"></div></span></div>
   </div>
-  <div class="st" id="st"><span id="stt">键入关键字开始搜索</span></div>
-  <div class="rs" id="rc"><div class="emp" id="em"><span class="ic">🔍</span><span class="ht">键入关键字开始搜索</span></div></div>
+  <div class="st" id="st"><span id="stt" data-i18n="goods.search.typeToSearch">键入关键字开始搜索</span></div>
+  <div class="rs" id="rc"><div class="emp" id="em"><span class="ic">🔍</span><span class="ht" data-i18n="goods.search.typeToSearch">键入关键字开始搜索</span></div></div>
 </div>
 
 <script src="../../core/char-undo.js"></script>
+<script src="../../core/i18n.js"></script>
 <script>
 (function(){
+// i18n 小助手：_kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
+var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
 var INPS=[document.getElementById('q'),document.getElementById('rp'),document.getElementById('sp'),
   document.getElementById('inc'),document.getElementById('exc')];
 var DDS=[document.getElementById('dd0'),document.getElementById('dd1'),document.getElementById('dd2'),
@@ -243,15 +246,16 @@ LGI.onclick=function(e){e.preventDefault();CGI.checked=!CGI.checked;LGI.classLis
 var SRT_BTN=document.getElementById('srt_btn'),SRT_DD=document.getElementById('srt_dd');
 var _sortOpen=false,_sortVal='mtime';
 var SORT_OPTS=[
-  {v:'mtime',l:'修改时间↓'},{v:'mtime-asc',l:'修改时间↑'},{v:'count',l:'匹配数'},
-  {v:'path',l:'路径'},{v:'path-desc',l:'路径倒序'},{v:'birthtime',l:'创建时间↓'},
-  {v:'birthtime-asc',l:'创建时间↑'},{v:'size',l:'大小↓'},{v:'size-asc',l:'大小↑'}
+  {v:'mtime',l:_kk('goods.search.sortMtime','修改时间↓')},{v:'mtime-asc',l:_kk('goods.search.sortMtimeAsc','修改时间↑')},{v:'count',l:_kk('goods.search.sortCount','匹配数')},
+  {v:'path',l:_kk('goods.search.sortPath','路径')},{v:'path-desc',l:_kk('goods.search.sortPathDesc','路径倒序')},{v:'birthtime',l:_kk('goods.search.sortBirth','创建时间↓')},
+  {v:'birthtime-asc',l:_kk('goods.search.sortBirthAsc','创建时间↑')},{v:'size',l:_kk('goods.search.sortSize','大小↓')},{v:'size-asc',l:_kk('goods.search.sortSizeAsc','大小↑')}
 ];
 function _bldSrt(){SRT_DD.innerHTML='';for(var i=0;i<SORT_OPTS.length;i++){var o=SORT_OPTS[i],d=document.createElement('div');d.textContent=o.l;if(o.v===_sortVal)d.className='sel';d.onmousedown=(function(v,l){return function(e){e.preventDefault();_sortVal=v;SRT_BTN.textContent=l;_clsSrt();if(_last)rdr(_last)}})(o.v,o.l);SRT_DD.appendChild(d)}}
 function _tglSrt(){if(_sortOpen){_clsSrt();return}SRT_DD.style.display='block';_sortOpen=true}
 function _clsSrt(){SRT_DD.style.display='none';_sortOpen=false}
 SRT_BTN.onclick=_tglSrt;
 _bldSrt();
+SRT_BTN.textContent=_kk('goods.search.sortMtime','修改时间↓');
 document.addEventListener('mousedown',function(e){if(_sortOpen&&!e.target.closest('.sort-wrap'))_clsSrt()});
 
 function tg(b,k){return function(){if(k==='rx')_rx=!_rx;if(k==='cs')_cs=!_cs;if(k==='ww')_ww=!_ww;b.classList.toggle('on',k==='rx'?_rx:k==='cs'?_cs:_ww);trg()}}
@@ -271,24 +275,24 @@ window._expAll=_expAll;window._colAll=_colAll;
 
 function _buildSt(total,fc,ms,fsc,trunc){
   var frag=document.createDocumentFragment();
-  var b1=document.createElement('button');b1.className='cbtn';b1.textContent='⊞';b1.title='全部展开';
+  var b1=document.createElement('button');b1.className='cbtn';b1.textContent='⊞';b1.title=_kk('goods.search.expandAll','全部展开');
   b1.style.cssText='margin:0';b1.addEventListener('click',_expAll);frag.appendChild(b1);
-  var b2=document.createElement('button');b2.className='cbtn';b2.textContent='⊟';b2.title='全部折叠';
+  var b2=document.createElement('button');b2.className='cbtn';b2.textContent='⊟';b2.title=_kk('goods.search.collapseAll','全部折叠');
   b2.style.cssText='margin:0 4px 0 2px';b2.addEventListener('click',_colAll);frag.appendChild(b2);
-  var sp=document.createElement('span');sp.className='n';sp.textContent=' '+total+' 个匹配';frag.appendChild(sp);
-  var t1=document.createTextNode(' · '+fc+' 个文件 ');frag.appendChild(t1);
+  var sp=document.createElement('span');sp.className='n';sp.textContent=_kk('goods.search.matchesN',' {0} 个匹配',total);frag.appendChild(sp);
+  var t1=document.createTextNode(_kk('goods.search.filesN',' · {0} 个文件 ',fc));frag.appendChild(t1);
   var sp2=document.createElement('span');sp2.style.cssText='color:var(--tx3);font-size:10px';
-  sp2.textContent='('+ms+'ms / ripgrep / '+fsc+' 文件)';frag.appendChild(sp2);
+  sp2.textContent=_kk('goods.search.perfStat','({0}ms / ripgrep / {1} 文件)',ms,fsc);frag.appendChild(sp2);
   if(trunc){var sp3=document.createElement('span');sp3.style.cssText='color:var(--ora)';
-    sp3.textContent=' · 已截断';frag.appendChild(sp3)}
+    sp3.textContent=_kk('goods.search.truncated',' · 已截断');frag.appendChild(sp3)}
   return frag;
 }
 
 async function dos(){
-  var q=Q.value;if(!q){clr();STT.textContent='键入关键字开始搜索';return}
+  var q=Q.value;if(!q){clr();STT.textContent=_kk('goods.search.typeToSearch','键入关键字开始搜索');return}
   var sp=SP.value.trim();
   if(!sp){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){sp=m.path;SP.value=sp}}}catch(_){}}
-  if(!sp){STT.textContent='⚠️ 请指定搜索范围';return}
+  if(!sp){STT.textContent=_kk('goods.search.needScope','⚠️ 请指定搜索范围');return}
   _scopePath=sp;_add(0,q);_add(2,sp);_add(3,IC.value);_add(4,EX.value);
   _lastQuery=q;
   // Notify parent to update tab title (with query)
@@ -300,10 +304,10 @@ async function dos(){
     if(_rx){hlQ=parts.join('|')}else{hlQ=parts.map(function(p){return p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}).join('|')}
     if(_ww)hlQ='\\b'+hlQ+'\\b'
   }else if(_rx){hlQ=q}else{hlQ=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(_ww)hlQ='\\b'+hlQ+'\\b'}
-  try{_hl=new RegExp(hlQ,_cs?'g':'gi')}catch(e){Q.classList.add('err');STT.textContent='⚠️ 无效正则: '+e.message;_hl=null;return}
+  try{_hl=new RegExp(hlQ,_cs?'g':'gi')}catch(e){Q.classList.add('err');STT.textContent=_kk('goods.search.invalidRegex','⚠️ 无效正则: {0}',e.message);_hl=null;return}
   Q.classList.remove('err')
-  STT.textContent='🔍 搜索中...';
-  try{if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search){STT.textContent='⚠️ 搜索引擎未就绪';return}
+  STT.textContent=_kk('goods.search.searching','🔍 搜索中...');
+  try{if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search){STT.textContent=_kk('goods.search.engineNotReady','⚠️ 搜索引擎未就绪');return}
     var r=await bri.search.query({query:q,searchPath:sp,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
       includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,
       contextLines:0,maxResults:5000,timeoutMs:60000,respectGitignore:CGI.checked});
@@ -311,12 +315,12 @@ async function dos(){
     _last=r;_lastQ=q;rdr(r);
     var fc=0;for(var i=0;i<r.results.length;i++){if(i===0||r.results[i].file!==r.results[i-1].file)fc++}
     ST.innerHTML='';ST.appendChild(_buildSt(r.total,fc,r.elapsed,r.filesScanned,r.truncated));
-  }catch(e){STT.textContent='⚠️ 搜索出错: '+(e.message||e)}
+  }catch(e){STT.textContent=_kk('goods.search.searchFail','⚠️ 搜索出错: {0}',(e.message||e))}
 }
 function clr(){RC.innerHTML='';EM.style.display='';RC.appendChild(EM);_last=null}
 function rdr(d){
   RC.innerHTML='';EM.style.display='none';
-  if(!d.results||d.results.length===0){EM.querySelector('.ht').textContent='无匹配结果';EM.style.display='';RC.appendChild(EM);return}
+  if(!d.results||d.results.length===0){EM.querySelector('.ht').textContent=_kk('goods.search.noResult','无匹配结果');EM.style.display='';RC.appendChild(EM);return}
   var grp=new Map();
   for(var i=0;i<d.results.length;i++){var r=d.results[i];if(!grp.has(r.file))grp.set(r.file,[]);grp.get(r.file).push(r)}
   var sg=Array.from(grp.entries()),fs=d.fileStats||{},sm=_sortVal;
@@ -335,7 +339,7 @@ function rdr(d){
     var fp2=sg[gi][0],ms=sg[gi][1],fg=document.createElement('div');fg.className='fg';
     var fh=document.createElement('div'),ar=document.createElement('span'),fnE=document.createElement('span'),fpp=document.createElement('span'),fc2=document.createElement('span');
     fh.className='fh';ar.className='ar';ar.textContent='▶';fnE.className='fn';fnE.innerHTML=hlm(bn(fp2));
-    fpp.className='fp';fpp.innerHTML='/'+pq(dn(fp2));fpp.title=fp2;fc2.className='fc';fc2.textContent=ms.length+' 匹配';
+    fpp.className='fp';fpp.innerHTML='/'+pq(dn(fp2));fpp.title=fp2;fc2.className='fc';fc2.textContent=_kk('goods.search.matchCount','{0} 匹配',ms.length);
     fh.appendChild(ar);fh.appendChild(fnE);fh.appendChild(fpp);fh.appendChild(fc2);
     var fb=document.createElement('div');
     for(var k=0;k<ms.length;k++){
@@ -357,7 +361,7 @@ function dn(p){var n=p.replace(/\\/g,'/');var i=n.lastIndexOf('/');return i>0?n.
 function opn(fp,l,c){try{var abs=_scopePath?(_scopePath.replace(/[\\/]$/,'')+'/'+fp.replace(/^[\\/]+/,'').replace(/\\/g,'/')):fp;window.parent._nextPaneOpts={line:l,col:c,search:_lastQ};window.parent.document.dispatchEvent(new CustomEvent('qqq-file-open',{detail:{path:abs}}))}catch(e){console.error('[search] openFile failed:',e)}}
 BRA.onclick=async function(){
   if(!_last||!_last.results||_last.results.length===0)return;var rt=RP.value;
-  if(!rt){STT.textContent='⚠️ 请键入替换文本';return}
+  if(!rt){STT.textContent=_kk('goods.search.needReplaceText','⚠️ 请键入替换文本');return}
   if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search)return;
 
   var _trunc=_last.truncated;
@@ -369,25 +373,25 @@ BRA.onclick=async function(){
 
   // If truncated, re-scan to get complete file list
   if(_trunc){
-    STT.textContent='🔍 完整扫描所有匹配文件...';
+    STT.textContent=_kk('goods.search.fullScanning','🔍 完整扫描所有匹配文件...');
     var fullR=await bri.search.query({query:_lastQ,searchPath:_scopePath,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
       includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,
       contextLines:0,maxResults:100000,timeoutMs:120000,respectGitignore:CGI.checked});
-    if(fullR.error){STT.textContent='⚠️ 完整扫描失败: '+fullR.error;return}
+    if(fullR.error){STT.textContent=_kk('goods.search.fullScanFail','⚠️ 完整扫描失败: {0}',fullR.error);return}
     allResults=fullR.results;fileSet.clear();totalMatches=allResults.length;previewReps=[];
     for(var i3=0;i3<allResults.length;i3++){var r3=allResults[i3];fileSet.add(r3.file);
       if(previewReps.length<8)previewReps.push({file:r3.file,line:r3.line,matchText:r3.matchText||'',oldText:r3.matchText||''})}
-    if(totalMatches===0){STT.textContent='⚠️ 完整扫描后无匹配项（可能已被上次替换处理完）';setTimeout(function(){STT.textContent='键入关键字开始搜索'},2500);return}
+    if(totalMatches===0){STT.textContent=_kk('goods.search.noMatchAfterFull','⚠️ 完整扫描后无匹配项（可能已被上次替换处理完）');setTimeout(function(){STT.textContent=_kk('goods.search.typeToSearch','键入关键字开始搜索')},2500);return}
   }
 
   var fc3=fileSet.size,cm=document.getElementById('confirm-mo');
-  var smText='即将在 '+fc3+' 个文件中替换 '+totalMatches+' 处匹配';
-  if(_trunc)smText+='<br>⚠️ 上次搜索被截断，已完整扫描全部匹配项';
+  var smText=_kk('goods.search.confirmSummary','即将在 {0} 个文件中替换 {1} 处匹配',fc3,totalMatches);
+  if(_trunc)smText+='<br>'+_kk('goods.search.truncNote','⚠️ 上次搜索被截断，已完整扫描全部匹配项');
   document.getElementById('confirm-summary').innerHTML=smText;
   var ph='';
   for(var i2=0;i2<Math.min(previewReps.length,8);i2++){var pv=previewReps[i2],ot=pv.oldText||'';if(ot.length>60)ot=ot.slice(0,60)+'...';var nt2=rt;if(nt2.length>60)nt2=nt2.slice(0,60)+'...';
     ph+='<div><span class="f2">'+eh(pv.file.split('/').pop())+'</span><span class="ln2">:'+pv.line+'</span> <span class="old">'+eh(ot)+'</span><span class="arw">→</span><span class="nw">'+eh(nt2)+'</span></div>'}
-  if(previewReps.length<totalMatches)ph+='<div style="color:var(--tx3)">... 及其他 '+(totalMatches-Math.min(previewReps.length,8))+' 处</div>';
+  if(previewReps.length<totalMatches)ph+='<div style="color:var(--tx3)">'+_kk('goods.search.andMore','... 及其他 {0} 处',(totalMatches-Math.min(previewReps.length,8)))+'</div>';
   document.getElementById('confirm-preview').innerHTML=ph;cm.style.display='flex';
   var ok=await new Promise(function(rs){
     document.getElementById('confirm-ok').onclick=function(){rs(true)};
@@ -397,22 +401,22 @@ BRA.onclick=async function(){
   cm.style.display='none';if(!ok)return;
 
   var pm=document.getElementById('progress-mo'),pbar=document.getElementById('prg-bar'),pt2=document.getElementById('prg-txt'),pf=document.getElementById('prg-file'),pe=document.getElementById('prg-errs');
-  pm.style.display='flex';pbar.style.width='0%';pt2.textContent='准备替换...';pf.textContent='';pe.innerHTML='';var lp=0;
+  pm.style.display='flex';pbar.style.width='0%';pt2.textContent=_kk('goods.search.replacingPrep','准备替换...');pf.textContent='';pe.innerHTML='';var lp=0;
   try{
     var fileList=Array.from(fileSet);
-    pt2.textContent='正在替换 '+totalMatches+' 处匹配（'+fc3+' 个文件）...';
+    pt2.textContent=_kk('goods.search.replacingNow','正在替换 {0} 处匹配（{1} 个文件）...',totalMatches,fc3);
     var res=await bri.search.replace({files:fileList,find:_lastQ,replace:rt,useRegex:_rx,caseSensitive:_cs,wholeWord:_ww,searchPath:_scopePath,onProgress:function(d){
       var pct=d.total>0?Math.round(d.current/d.total*100):0;
       if(pct>lp||(d.errors&&d.errors.length)){
-        pbar.style.width=pct+'%';pt2.textContent='已完成 '+d.current+'/'+d.total+' 文件, '+d.replaced+' 处替换';
+        pbar.style.width=pct+'%';pt2.textContent=_kk('goods.search.replaceProgress','已完成 {0}/{1} 文件, {2} 处替换',d.current,d.total,d.replaced);
         pf.textContent=d.file||'';if(d.errors&&d.errors.length)pe.innerHTML=d.errors.map(function(e){return '<div>⚠️ '+eh(e)+'</div>'}).join('');
         lp=pct}}
     });
     pbar.style.width='100%';var ec=res.errors?res.errors.length:0;
-    pt2.innerHTML='✅ 已完成: <b>'+res.replaced+'</b> 处替换, <b>'+res.files+'</b> 个文件'+(ec>0?', ⚠️ '+ec+' 个错误':'');
+    pt2.innerHTML=_kk('goods.search.replaceDone','✅ 已完成: <b>{0}</b> 处替换, <b>{1}</b> 个文件',res.replaced,res.files)+(ec>0?_kk('goods.search.errCount',', ⚠️ {0} 个错误',ec):'');
     if(ec>0&&res.errors){pe.innerHTML=res.errors.map(function(e){return '<div>⚠️ '+eh(e)+'</div>'}).join('')}
     _add(1,rt);setTimeout(function(){pm.style.display='none';setTimeout(dos,300)},2500)
-  }catch(e){pt2.textContent='⚠️ 替换出错: '+(e.message||e);pm.onclick=function(ev){if(ev.target===pm)pm.style.display='none'}}
+  }catch(e){pt2.textContent=_kk('goods.search.replaceFail','⚠️ 替换出错: {0}',(e.message||e));pm.onclick=function(ev){if(ev.target===pm)pm.style.display='none'}}
 };
 (function ts(){try{var pt=window.parent.document.documentElement.getAttribute('data-theme');if(pt)document.documentElement.setAttribute('data-theme',pt)}catch(_){}})();
 window.addEventListener('message',function(e){
@@ -430,8 +434,8 @@ setTimeout(function(){try{var vp=window.parent&&window.parent.qqqideViewport;if(
 _ldHist();},200);
 })();
 </script>
-<div class="mo" id="confirm-mo" style="display:none"><div><h3>确认替换</h3><div class="stt2" id="confirm-summary"></div><div class="prv" id="confirm-preview"></div><div class="btns"><button class="btn" id="confirm-cancel">取消</button><button class="btn pri" id="confirm-ok">确认替换</button></div></div></div>
-<div class="mo" id="progress-mo" style="display:none"><div><h3>正在替换...</h3><div class="prgo"><div class="prgi" id="prg-bar" style="width:0%"></div></div><div class="prgt" id="prg-txt"></div><div class="prgf" id="prg-file"></div><div class="errs" id="prg-errs"></div></div></div>
+<div class="mo" id="confirm-mo" style="display:none"><div><h3 data-i18n="goods.search.confirmTitle">确认替换</h3><div class="stt2" id="confirm-summary"></div><div class="prv" id="confirm-preview"></div><div class="btns"><button class="btn" id="confirm-cancel" data-i18n="common.cancel">取消</button><button class="btn pri" id="confirm-ok" data-i18n="goods.search.confirmTitle">确认替换</button></div></div></div>
+<div class="mo" id="progress-mo" style="display:none"><div><h3 data-i18n="goods.search.replacingTitle">正在替换...</h3><div class="prgo"><div class="prgi" id="prg-bar" style="width:0%"></div></div><div class="prgt" id="prg-txt"></div><div class="prgf" id="prg-file"></div><div class="errs" id="prg-errs"></div></div></div>
 
 <!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
 <script>

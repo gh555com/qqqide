@@ -14,7 +14,7 @@
 //            + 文件信息行 ✎(体积) {图标} {完整路径} {缩放% 宽x高}
 //            + [✎qode*]     （*c3 仅图片；*qode 仅文本文件 → 在右分组打开）
 //
-// 样式接管 takeOverCodelensStyle=true → Tahoma 12 号 + 主题红（老「红色 13 号」，用户定 -1）
+// 样式接管 takeOverCodelensStyle=true → Tahoma 11 号 + 主题红（老「红色 13 号」，用户定 -1 后再 -1）
 //
 // 异步元数据机器（stat / 文件夹体积 / 文本探针 / 媒体探测）：
 //   全部带记忆缓存；任一数据到位 → scheduleRefresh() → Monaco 重拉 provider（按钮渐进补齐）
@@ -582,7 +582,7 @@
   }
 
   // ════════════════════════════════════════════════════════════════════
-  // 样式接管（takeOverCodelensStyle：红色 12 号 = 老 13 号口径 -1）
+  // 样式接管（takeOverCodelensStyle：红色 11 号 = 老 13 号口径 -2；用户两次定 -1）
   // ════════════════════════════════════════════════════════════════════
   function _applyStyleClass() {
     try {
@@ -601,7 +601,7 @@
       ed.updateOptions({
         codeLens: _level() !== '0',
         codeLensFontFamily: on ? 'Tahoma, Liberation Sans, DejaVu Sans, sans-serif' : '',
-        codeLensFontSize: on ? 12 : 0,
+        codeLensFontSize: on ? 11 : 0,
       });
     } catch (e) { /* */ }
   }

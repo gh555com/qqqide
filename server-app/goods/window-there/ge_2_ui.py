@@ -18,6 +18,16 @@ from PySide2.QtCore import (
 # --- (R22) 修复 2: 导入 config 模块以解决 NameError ---
 import ge_2_env as config
 
+# 共享翻译助手（goods/_goods_i18n.py）
+try:
+    from _goods_i18n import t as _t
+except Exception:
+    def _t(key, fallback=None, **params):
+        val = fallback if fallback is not None else key
+        for _k, _v in params.items():
+            val = val.replace('{' + str(_k) + '}', str(_v))
+        return val
+
 # R19 调色板 (豆沙红)
 PALETTE = {
     "BG_MAIN": "#faf3e0",
@@ -44,7 +54,7 @@ class CustomDialog(QDialog):
     """
     (R20) NFR 9 移除: 回归标准的 Qt 弹窗激活行为
     """
-    def __init__(self, title, message, buttons="ok", parent=None):
+    def __init__(self, title, message, buttons="ok", parent=None, yes_text=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Dialog)
@@ -126,16 +136,14 @@ class CustomDialog(QDialog):
         """
 
         if buttons == "yesno":
-            confirm_text = "确认"
-            if "保存" in title: confirm_text = "保存"
-            if "删除" in title: confirm_text = "删除"
+            confirm_text = yes_text or _t('common.confirm', '确定')
 
             self.yes_button = QPushButton(confirm_text)
             self.yes_button.setStyleSheet(btn_style_default)
             self.yes_button.clicked.connect(self.accept)
             self.yes_button.setDefault(True)
 
-            self.no_button = QPushButton("取消")
+            self.no_button = QPushButton(_t('common.cancel', '取消'))
             self.no_button.setStyleSheet(btn_style)
             self.no_button.clicked.connect(self.reject)
             self.no_button.setAutoDefault(False)
@@ -143,7 +151,7 @@ class CustomDialog(QDialog):
             button_layout.addWidget(self.no_button)
             button_layout.addWidget(self.yes_button)
         else:
-            self.ok_button = QPushButton("确定")
+            self.ok_button = QPushButton(_t('common.confirm', '确定'))
             self.ok_button.setStyleSheet(btn_style_default)
             self.ok_button.clicked.connect(self.accept)
             self.ok_button.setDefault(True)
@@ -189,12 +197,12 @@ class CustomDialog(QDialog):
         else:
             super().keyPressEvent(event)
 
-def show_custom_message(title, message, buttons="ok"):
+def show_custom_message(title, message, buttons="ok", yes_text=None):
     global g_qt_aqq_instance
     if QApplication.instance() is None:
         g_qt_aqq_instance = QApplication(sys.argv)
 
-    dialog = CustomDialog(title, message, buttons)
+    dialog = CustomDialog(title, message, buttons, yes_text=yes_text)
     result = dialog.exec_()
 
     return result == QDialog.Accepted
@@ -270,7 +278,7 @@ class LayoutPreviewPanel(QFrame):
             res_str = f"{dw}x{dh}" if dw and dh else "N/A"
 
             return f"{title}, {date_str}{day_str} {time_str}, {res_str}"
-        except Exception: return "信息格式错误"
+        except Exception: return _t('goods.winthere.infoFormatError', '信息格式错误')
 
     def on_delete_clicked(self):
         self.tooltip_label.hide()
@@ -335,7 +343,7 @@ class LayoutSelectorWindow(QWidget):
 
     def initUI(self):
         self.setFixedSize(800, 600)
-        self.setWindowTitle("选择布局")
+        self.setWindowTitle(_t('goods.winthere.chooseLayout', '选择布局'))
         self.setWindowOpacity(0.97)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool | Qt.NoDropShadowWindowHint)
@@ -493,7 +501,7 @@ class LayoutSelectorWindow(QWidget):
 
         # (R22) 修复: 现在 'config' 已被导入, 不会再 NameError
         if not config.delete_layout_from_config(key):
-            show_custom_message("错误", "删除布局时出错，请检查文件权限。");
+            show_custom_message(_t('common.error', '错误'), _t('goods.winthere.deleteLayoutFail', '删除布局时出错，请检查文件权限。'));
             self.cancel_deletion_mode()
             return
 
@@ -530,7 +538,7 @@ class LayoutSelectorWindow(QWidget):
             window_info = g_platform_manager.get_window_info(self.active_hwnd_handle)
 
             if not window_info or not window_info.get('handle'):
-                show_custom_message("错误", "无法获取当前窗口的信息。")
+                show_custom_message(_t('common.error', '错误'), _t('goods.winthere.noWindowInfo', '无法获取当前窗口的信息。'))
                 return
 
             new_key = g_save_callback(window_info)

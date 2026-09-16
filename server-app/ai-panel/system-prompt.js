@@ -82,6 +82,12 @@ var TIER_6 = { model: 'deep', thinking: { type: 'enabled' }, effort: 'max', labe
 
 var TIER_LIST = { 1: TIER_1, 2: TIER_2, 3: TIER_3, 4: TIER_4, 5: TIER_5, 6: TIER_6 };
 
+// ★ 三键档位映射（2026-09-16 定案）：服务端 tier_semantics 下 {1,2}/{3,4}/{5,6} 三组等价
+//   （1-4→快档 / 5-6→深档；思考档 关/high/max）→ 面板只留三个代表键（线上值 1/3/5，显示 1/2/3）
+//   旧存量 1..6 全兼容（无需迁移）：任意线上值都能换算显示数/代表值
+function _tierUiOf(idx) { var n = parseInt(idx, 10); if (!(n >= 1)) return n; return Math.ceil(n / 2); }        // 线上档 → 三键显示数（1..3）
+function _tierRepOf(idx) { var n = parseInt(idx, 10); if (!(n >= 1)) return n; return Math.ceil(n / 2) * 2 - 1; } // 任意档 → 组代表值（1/3/5；按钮高亮/点击用）
+
 // ═══ 时间上下文：与状态栏时钟共享同一 SSE 时间锚点（单调时钟，变速齿轮免疫） ═══
 window.getTimeContext = function () {
     var utcMs;
