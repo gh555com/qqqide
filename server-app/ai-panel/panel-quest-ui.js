@@ -431,7 +431,8 @@ var _ctxBreakdownTimer = null;
 var _ctxBreakdownVisible = false;
 
 // ★ 2026-09-07 aq 楼层背包闭环（agent-loop/pipeline/card-pool 共享）:
-//   __qqqCtxSampleK — 指定 agent 强算权威背包（localTotal tokens÷1000，与 ctx 按钮/压缩动画/背包图解同尺）。
+//   __qqqCtxSampleK — 指定 agent 强算权威背包（displayTotal = max(localTotal, 服务端实报) tokens÷1000，与 ctx 按钮同尺）。
+//   ★ 2026-09-18 q279: 原取 localTotal → 与按钮 max 口径分裂（f118 开局 aq 151K vs 按钮 215K 双口径同屏）→ 改按钮同尺统一。
 //   临时切换 _activeAgent + 清 _estCache 强制绕过缓存（压缩动画 q181 f77 同款模式），finally 保证还原。
 function __qqqCtxSampleK(_ag) {
     var _sa = _activeAgent;
@@ -441,7 +442,7 @@ function __qqqCtxSampleK(_ag) {
         _activeAgent = _ag;
         _estCache = null;
         if (typeof _estimateTokensFull === 'function') _estimateTokensFull();
-        if (_ctxBreakdownData) _rt = _ctxBreakdownData.localTotal || 0;
+        if (_ctxBreakdownData) _rt = _ctxBreakdownData.displayTotal || 0;
     } catch (_e) { _rt = 0; }
     finally { _activeAgent = _sa; }
     return Math.round(_rt / 1000);

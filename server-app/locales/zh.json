@@ -83,10 +83,20 @@
     },
     "update": {
       "check": "检查更新",
-      "updatedTo": "已更新到 {version}，即将重载...",
-      "failed": "更新失败",
-      "failedWith": "更新失败",
-      "newVersion": "新版本 {latest} 可用 (当前 {current})"
+      "toast": "新版本 v{version} 已就绪，重启后生效",
+      "apply": "重启更新",
+      "applying": "正在更新，应用即将重启…",
+      "checking": "正在检查更新…",
+      "downloading": "正在下载新版本 {pct}%",
+      "staging": "正在准备新版本…",
+      "readyBtn": "新版 v{version} 已就绪，点击更新",
+      "latest": "已是最新版本 v{version}",
+      "found": "发现新版本 v{version}，正在后台下载…",
+      "busy": "新版本正在后台下载，完成后会提示",
+      "done": "已更新到 v{version}",
+      "rolledback": "本次更新未完成，已回到上一版本",
+      "unavailable": "当前安装位置不支持应用内更新",
+      "failed": "更新检查失败，稍后自动重试"
     },
     "overlay": {
       "copy": "复制到剪贴板",
@@ -685,7 +695,7 @@
     },
     "gwWait": {
       "title": "⏳ 上游无响应 {0}",
-      "subtitle": "第 {0} 层 · {1}",
+      "subtitle": "{0} 第 {1} 层 · {2}",
       "serverAck": "服务器确认等待中",
       "firstToken": "等待首字输出",
       "hangCount": "（第 {0} 次）",

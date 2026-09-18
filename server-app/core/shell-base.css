@@ -266,6 +266,35 @@ body {
   border-color: var(--primary-color)
 }
 
+/* mac 应用内更新按钮（2026-09-18；窗口初始化恒隐藏，仅 core/update-machine.js 在 mac 显示） */
+.qqq-update-btn {
+  -webkit-app-region: no-drag;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary, var(--text-primary));
+  font-size: 15px;
+  line-height: 1;
+  padding: 3px 7px;
+  margin-right: 4px;
+}
+.qqq-update-btn:hover {
+  background: var(--background-color);
+  border-color: var(--border-color);
+}
+.qqq-update-btn.qqq-update-busy {
+  opacity: 0.55;
+}
+.qqq-update-btn.qqq-update-ready {
+  color: var(--orange, #e07020);
+  border-color: var(--orange, #e07020);
+  animation: qqqUpdatePulse 1.6s ease-in-out infinite;
+}
+@keyframes qqqUpdatePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 /* Window controls */
 .qqq-window-controls {
   display: flex;
