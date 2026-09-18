@@ -508,13 +508,17 @@ const QQQ = {
         },
     },
 
-    // ---- update (hot reload: pull server-app.tar.xz from gh555.com) ----
-    update: {
-        check: () => ipcRenderer.invoke('qqqide:update:check'),
-        apply: () => ipcRenderer.invoke('qqqide:update:apply'),
-        state: () => ipcRenderer.invoke('qqqide:update:state'),
-        abort: () => ipcRenderer.invoke('qqqide:update:abort'),
-        upgradeShell: () => ipcRenderer.invoke('qqqide:update:upgrade-shell'),
+    // ---- update（mac 应用内更新机制 v0: 检查/下载/暂存/换装，2026-09-18）----
+    //   Windows 无此机制（更新由 C 启动器托管）→ mac-updater 全平台注册，非 mac 返回 unsupported。
+    update: {
+        macState: () => ipcRenderer.invoke('qqqide:update:mac-state'),
+        macCheck: () => ipcRenderer.invoke('qqqide:update:mac-check'),
+        macApply: () => ipcRenderer.invoke('qqqide:update:mac-apply'),
+        onMacState: (cb: (msg: any) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[update.onMacState]', err); } };
+            ipcRenderer.on('qqqide:update:mac-state', handler);
+            return () => ipcRenderer.removeListener('qqqide:update:mac-state', handler);
+        },
     },
 
     // ---- boot info (read once on startup) ----

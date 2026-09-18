@@ -819,8 +819,8 @@ async function _executeSend(intent) {
 
     // ── agent.send ──
     // ★ 2026-09-07 aq 楼层闭环：峰值采样 + aq 行定稿（局部函数，_capAbort / onCost / onToolResult / finally 共用）
-    //   口径 = __qqqCtxSampleK（localTotal，与 ctx 按钮/背包图解/压缩动画同尺）；maxK 楼层内只增不减，
-    //   auto-repair 弹组回退天然免疫（回退不降峰值）。
+    //   口径 = __qqqCtxSampleK（displayTotal = max(localTotal, 服务端实报)，与 ctx 按钮同尺——2026-09-18 q279 统一）；
+    //   maxK 楼层内只增不减，auto-repair 弹组回退天然免疫（回退不降峰值）。
     var _samplePeakK = function () {
         try {
             if (!agent) return;

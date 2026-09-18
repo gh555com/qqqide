@@ -1162,6 +1162,25 @@ function swapEnginesForMac(unpacked) {
     for (const j of [path.join(engDir, '__pycache__'), path.join(appDir, 'shell-out', '__pycache__')]) {
       if (fs.existsSync(j)) { fs.rmSync(j, { recursive: true, force: true }); junk++; }
     }
+    // webapp 树内 __pycache__ 清扫（goods 在开发机跑过 → 源目录带 cpython-38 pyc，内嵌开发机路径，
+    // 随 webapp 入包 = 路径泄漏 + 垃圾；mac 运行时为 3.11，38 的 pyc 纯死重）
+    {
+      const walkPyc = (dir) => {
+        let entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+          if (!e.isDirectory()) { continue; }
+          const fp = path.join(dir, e.name);
+          if (e.name === '__pycache__') {
+            fs.rmSync(fp, { recursive: true, force: true });
+            junk++;
+          } else {
+            walkPyc(fp);
+          }
+        }
+      };
+      walkPyc(path.join(appDir, 'webapp'));
+    }
     const vcDir = path.join(engDir, 'vc_runtime');
     if (fs.existsSync(vcDir)) {
       fs.rmSync(vcDir, { recursive: true, force: true });

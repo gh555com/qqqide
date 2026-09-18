@@ -870,6 +870,12 @@
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
             self._lastApiCompletionTokens = 0;
+            // ★ 2026-09-18 q279 重启僵尸实报根治：清零必须同步 quest.sq3——只清内存不写盘 → 重启恢复旧「服务端实报」
+            //   复活成僵尸（f117 末 215K 经 19:37 重启复活：f118 开局按钮显示 215K，而折叠后真实首请求 184K；
+            //   无重启的楼层间因内存清零正常而表现一致）。与压缩三按钮/editOnly 同款写盘，保证「内容删除 → 实报作废」跨重启成立。
+            if (self._questId && typeof questStore !== 'undefined' && questStore.save) {
+                try { questStore.save(self._questId, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { }); } catch (_) { }
+            }
             // ★ 立即刷新 ctx-btn（否则显示压缩前僵尸值，如 80k→实际已压缩到 ~52k 本地估算）
             if (typeof updateCtxBtn === 'function') updateCtxBtn();
 

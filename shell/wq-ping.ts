@@ -190,6 +190,24 @@ function collectUpdHealth(): Record<string, unknown> | null {
     const base = _userDataPath || getDataDir();
     const liveDir = path.dirname(base);
     const packRoot = path.dirname(liveDir);
+    // ★ 2026-09-18 mac 分支: 无 qqqide.exe/versions.json —— {托管根}/qqqide.app + qqqide-data 布局
+    //   （mac 更新状态同样可观测: updater-status.json + .update/staged.json）
+    if (process.platform === 'darwin' && !fs.existsSync(path.join(packRoot, 'qqqide.exe'))) {
+      if (!fs.existsSync(path.join(packRoot, 'qqqide.app'))) return null;
+      const hm: Record<string, unknown> = { upd_live_ver: APP_VERSION, upd_launcher: '', upd_fails: 0 };
+      try {
+        const s = JSON.parse(fs.readFileSync(path.join(base, 'updater-status.json'), 'utf8'));
+        const r = s && s.result;
+        hm.upd_status = (r === 'ok' || r === 'waiting' || r === 'failed') ? r : '';
+        hm.upd_code = (typeof s.line === 'string' && s.line) ? s.line.slice(0, 200) : '';
+        hm.upd_at = Math.floor((Number(s.ts) || 0) / 1000);
+      } catch (_) { }
+      try {
+        const st = JSON.parse(fs.readFileSync(path.join(packRoot, '.update', 'staged.json'), 'utf8'));
+        hm.upd_stage = (st && typeof st.version === 'string') ? st.version.slice(0, 48) : '';
+      } catch (_) { hm.upd_stage = ''; }
+      return hm;
+    }
     if (!fs.existsSync(path.join(liveDir, 'versions.json')) ||
         !fs.existsSync(path.join(packRoot, 'qqqide.exe'))) return null;
     const h: Record<string, unknown> = {};

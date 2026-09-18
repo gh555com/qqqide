@@ -182,8 +182,17 @@ if mj in nameset:
     check('Application Support' in mj_txt, 'shell: getOsBaseDir mac path (Library/Application Support)')
     check('/bin/zsh' in mj_txt, 'shell: kmd zsh resolver present')
     check('mac-pasteboard.py' in mj_txt, 'shell: mac clipboard helper wired')
+    # mac 应用内更新机制 v0（2026-09-18）
+    check('qqqide:update:mac-state' in mj_txt, 'shell: mac updater IPC wired')
+    check('apply-update.sh' in mj_txt, 'shell: mac updater helper script present')
+    check('qqqide-app-prev' in mj_txt, 'shell: mac updater rollback point present')
 else:
     check(False, 'shell-out/main.js present')
+check((EP + 'webapp/core/update-machine.js') in nameset, 'webapp: update-machine.js present (mac update UI)')
+swf = EP + 'webapp/service-worker.js'
+if swf in nameset:
+    sw_txt = tf.extractfile(swf).read().decode('utf-8', 'replace')
+    check('core/update-machine.js' in sw_txt, 'webapp: update-machine.js precached')
 check((EP + 'shell-out/mac-pasteboard.py') in nameset, 'shell-out/mac-pasteboard.py present')
 check((EP + 'shell-out/py-broker.py') in nameset, 'shell-out/py-broker.py present (batch B)')
 kmdhtml = EP + 'webapp/goods/kmd/kmd-ui.html'
@@ -203,6 +212,25 @@ else:
 # ── junk (must be zero) ──
 check(count(QD + 'engines/__pycache__/') == 0, 'no engines/__pycache__')
 check(count(EP + 'shell-out/__pycache__/') == 0, 'no shell-out/__pycache__')
+check(sum(1 for n in names if n.startswith(EP + 'webapp/') and '__pycache__' in n) == 0,
+      'no webapp __pycache__ (goods pyc leak)')
+check((EP + 'webapp/_fix_html.js') not in nameset, 'no webapp root dev scripts (_fix_html.js)')
+
+# webapp 根级文件开发路径泄漏扫描（脚本类残留自证：内嵌 dev 机路径）
+_bad_leak = []
+for _n in names:
+    if not _n.startswith(EP + 'webapp/') or _n.count('/') != EP.count('/') + 1:
+        continue
+    try:
+        _m = tf.getmember(_n)
+        if not _m.isfile() or _m.size > 400000:
+            continue
+        _raw = tf.extractfile(_m).read()
+    except Exception:
+        continue
+    if b'wol/py/qqq-shell-v2' in _raw or b'wol\\py\\qqq-shell-v2' in _raw:
+        _bad_leak.append(_n)
+check(len(_bad_leak) == 0, 'no dev-path leak in webapp root files' + (' -> ' + ', '.join(_bad_leak) if _bad_leak else ''))
 check(not ((QD + 'engines/vc_runtime') in nameset or count(QD + 'engines/vc_runtime/') > 0),
       'no engines/vc_runtime (win-only)')
 

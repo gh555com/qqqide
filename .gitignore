@@ -103,3 +103,6 @@ _qqqide.tar.gz
 _version.json
 loading-status
 _LAST_BUILD_STAMP.txt
+
+# Python 编译缓存（goods 开发机运行产生；禁入包/入库）
+*.pyc

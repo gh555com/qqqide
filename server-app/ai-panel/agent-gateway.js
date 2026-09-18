@@ -57,7 +57,7 @@ function _gwWaitTick(ag) {
         if (!io || !io.task) return;
         io.task(_gwCardId(ag), {
             title: _qq('ai.gwWait.title', '⏳ 上游无响应 {0}', { 0: _gwDur(waitS) }),
-            subtitle: _qq('ai.gwWait.subtitle', '第 {0} 层 · {1}', { 0: (ag._currentFloorNum || '?'), 1: (ag._upstreamWaitSec > 0 ? _qq('ai.gwWait.serverAck', '服务器确认等待中') : _qq('ai.gwWait.firstToken', '等待首字输出')) })
+            subtitle: _qq('ai.gwWait.subtitle', '{0} 第 {1} 层 · {2}', { 0: (ag._questId || '?'), 1: (ag._currentFloorNum || '?'), 2: (ag._upstreamWaitSec > 0 ? _qq('ai.gwWait.serverAck', '服务器确认等待中') : _qq('ai.gwWait.firstToken', '等待首字输出')) })
         });
         ag._gwCardShown = true;
     } catch (_) { }
