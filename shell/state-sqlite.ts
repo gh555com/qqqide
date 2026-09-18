@@ -98,7 +98,9 @@ export class StateStore extends EventEmitter {
     private _enableDiskMerge = false;
     private _mergeSig = '';
     // ★ .prev 轮换备份（2026-08-09 F3: 损坏恢复链 主 → .prev → .bak → 空库）
+    //   2026-09-17: 全局库同样启用（实锤配置丢失事故 —— 以前只有项目库有备份，全局库丢失即全丢）
     private _prevEnabled = false;
+    private _lastSaveErrLogAt = 0;
     // ★ in-memory read cache (avoids append() re-reading from DB each time)
     private _memCache: Map<string, any> = new Map();
     // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 global.sq3
@@ -136,11 +138,53 @@ export class StateStore extends EventEmitter {
             this.dbPath = path.join(alphalDir, 'global.sq3');
             this.outboxDir = path.join(alphalDir, 'outbox');
             this._isGlobal = true;
+            // ★ 2026-09-17: 全局库启用 .prev 轮换 —— 实锤「升级后齿轮配置清空」（load 失败后
+            //   隔离改名失败被静默吞掉 → 空库被后续 save 覆写，恢复链形同虚设）。
+            //   全局库是单实例场景（启动器 Mutex），无需磁盘合并，只需主→.prev→.bak 恢复链。
+            this._prevEnabled = true;
         }
         try { fs.mkdirSync(this.outboxDir, { recursive: true }); } catch { /* ignore */ }
         this.deviceId = this._loadOrCreateDeviceId(path.dirname(this.outboxDir));
         this._restoreOutboxSeq();
         console.log('[state-sqlite] db=', this.dbPath, 'device=', this.deviceId);
+    }
+
+    // ----- 状态库事件日志（2026-09-17）------------------------------------------
+    //   全局库是「配置丢失」事故的唯一现场：此前 load 失败/检疫/重建只进 console，
+    //   生产环境无处可查（boot.log 不收录主进程 console）→ 事故零痕迹。
+    //   持久化生命周期事件（每启动 ≥1 行，异常附详情），供事后取证。
+    private _stateLog(message: string): void {
+        try {
+            const f = path.join(path.dirname(this.dbPath), 'state-events.log');
+            try {
+                const st = fs.statSync(f);
+                if (st.size > 256 * 1024) {
+                    try { fs.renameSync(f, f + '.old'); } catch { try { fs.unlinkSync(f); } catch { /* ignore */ } }
+                }
+            } catch { /* 文件不存在 */ }
+            fs.appendFileSync(f, new Date().toISOString() + ' | ' + message + '\n', 'utf8');
+        } catch { /* 日志失败绝不影响主流程 */ }
+    }
+
+    /** ★ 隔离旧库文件（带兜底）——rename 失败绝不静默（旧实现吞错 → 旧库被后续 save 覆写、零痕迹） */
+    private _salvageOldFile(reason: string): void {
+        try {
+            if (!fs.existsSync(this.dbPath)) { this._stateLog('salvage skip (no file) reason=' + reason); return; }
+            const target = this.dbPath + '.corrupt.' + Date.now();
+            try {
+                fs.renameSync(this.dbPath, target);
+                this._stateLog('salvage ok (rename) reason=' + reason + ' -> ' + path.basename(target));
+                return;
+            } catch { /* 被占用/杀软锁 → 降级副本保现场 */ }
+            try {
+                fs.copyFileSync(this.dbPath, target);
+                this._stateLog('salvage ok (copy) reason=' + reason + ' -> ' + path.basename(target));
+            } catch (e2: any) {
+                this._stateLog('salvage FAILED (rename+copy) reason=' + reason + ' err=' + String(e2 && e2.message));
+            }
+        } catch (e: any) {
+            this._stateLog('salvage ex reason=' + reason + ' err=' + String(e && e.message));
+        }
     }
 
     // ----- init (lazy, triggered on first use) --------------------------------
@@ -159,18 +203,22 @@ export class StateStore extends EventEmitter {
                 try {
                     const buf = fs.readFileSync(this.dbPath);
                     this._db = new this._SQL.Database(buf);
-                } catch (e) {
-                    console.warn('[state-sqlite]failed to load global.sq33, starting fresh:', e);
-                    // Quarantine corrupt DB
-                    const bak = this.dbPath + '.corrupt.' + Date.now();
-                    try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
+                } catch (e: any) {
+                    console.warn('[state-sqlite] failed to load db, starting fresh:', e);
+                    this._stateLog('LOAD FAILED err=' + String(e && e.message) + ' — salvage + recovery chain');
+                    this._salvageOldFile('load-failed');
+                    // ★ 2026-09-17: 解除“只补缺”合并开关——写出前先回收旧文件残余 key，
+                    //   防“加载失败→空库→第一次 save 覆写”静默丢配置（本事故的直接死法）
+                    this._enableDiskMerge = true;
                     // ★ 恢复链：.prev（轮换备份）→ .bak（旧格式）→ 空库（2026-08-09 F3）
                     if (!this._tryRestoreBackup()) {
                         this._db = new this._SQL.Database();
+                        this._stateLog('recovery chain exhausted — EMPTY DB (prefs will look reset)');
                     }
                 }
             } else {
                 // ★ 文件不存在 → 尝试 .prev/.bak 恢复（可能是上次腐败隔离后还没来得及写新数据）
+                this._stateLog('no db file at boot — recovery chain');
                 if (!this._tryRestoreBackup()) {
                     this._db = new this._SQL.Database();
                 }
@@ -183,14 +231,21 @@ export class StateStore extends EventEmitter {
             //    构造函数可能不报错但首次 SQL 执行才暴露 → 隔离旧文件 + 空库重试
             try {
                 this._initSchema();
-            } catch (sqlError) {
+            } catch (sqlError: any) {
                 console.warn('[state-sqlite] schema init failed (internal corruption?), quarantine & start fresh:', sqlError);
-                const bak = this.dbPath + '.corrupt.' + Date.now();
-                try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
+                this._stateLog('SCHEMA INIT FAILED err=' + String(sqlError && sqlError.message));
+                this._salvageOldFile('schema-init-failed');
+                this._enableDiskMerge = true;   // ★ 同上：写前回收旧文件残余 key
                 this._db = new this._SQL.Database();
                 // Retry on fresh DB
                 this._initSchema();
             }
+
+            // ★ 启动取证行（2026-09-17）: 每启动一行——rows 突降即「配置丢失」现场
+            try {
+                const _c = this._stmtGet('SELECT COUNT(*) AS c FROM state', []);
+                this._stateLog('boot ok rows=' + ((_c && _c.c) || 0) + ' schemas=' + this.schemas.size + ' bytes=' + (() => { try { return fs.statSync(this.dbPath).size; } catch { return 0; } })());
+            } catch { /* ignore */ }
 
             this._readyOk = true;
             console.log('[state-sqlite] ready, schemas:', this.schemas.size);
@@ -369,12 +424,14 @@ export class StateStore extends EventEmitter {
     /** ★ 运行时腐败隔离： rename 坏库 → .prev 恢复或空库 → 重建 schema → 标记脏数据全部重写 */
     private _quarantineAndRebuild(): void {
         try {
-            // 1. 隔离坏库
-            const bak = this.dbPath + '.corrupt.' + Date.now();
-            try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
+            // 1. 隔离坏库（rename 失败 → 留副本，绝不静默丢现场）
+            this._stateLog('runtime malformed db — salvage + rebuild');
+            this._salvageOldFile('runtime-malformed');
+            this._enableDiskMerge = true;   // ★ 同上：写前回收旧文件残余 key
             // 2. 优先从 .prev/.bak 恢复（2026-08-09 F3：防隔离即全丢），失败才建空库
             if (!this._tryRestoreBackup()) {
                 this._db = new this._SQL.Database();
+                this._stateLog('runtime rebuild: recovery chain exhausted — EMPTY DB');
             }
             // 3. 重建 schema（从 registry 恢复所有 namespace）
             this._initSchema();
@@ -418,6 +475,7 @@ export class StateStore extends EventEmitter {
                     this._db = new this._SQL.Database(buf);
                     this._db.exec('SELECT 1'); // 验证可读
                     console.warn('[state-sqlite] ⚠ restored from .prev: ' + prevPath);
+                    this._stateLog('restored from .prev bytes=' + buf.length);
                     return true;
                 } catch { /* .prev 也坏 → 继续 */ }
             }
@@ -434,6 +492,7 @@ export class StateStore extends EventEmitter {
                     // 验证可读
                     this._db.exec('SELECT 1');
                     console.warn('[state-sqlite] ⚠ restored from backup: ' + bakPath);
+                    this._stateLog('restored from ' + bakFile + ' bytes=' + buf.length);
                     return true;
                 } catch {
                     // 该 bak 也坏了，继续尝试下一个
@@ -772,7 +831,7 @@ export class StateStore extends EventEmitter {
         this._flushPendingWrites();
         // ★ 写前磁盘合并（仅项目级库）：另一实例已落盘的 key 补入内存，防整库互踩
         this._mergeDiskIntoMemory();
-        // ★ 写前 .prev 轮换（仅项目级库）：保留上一完好版，损坏可回退
+        // ★ 写前 .prev 轮换（项目级库 + 全局库）：保留上一完好版，损坏可回退
         if (this._prevEnabled) { try { await fs.promises.copyFile(this.dbPath, this.dbPath + '.prev'); } catch { /* ignore */ } }
         const tmp = this.dbPath + '.tmp.' + Date.now();
         try {
@@ -780,6 +839,7 @@ export class StateStore extends EventEmitter {
             // ★ 写入前验证：export 出的数据是否有效 SQLite（防 WASM 内存腐败扩散）
             if (!this._tryValidateDb(data)) {
                 console.error('[state-sqlite] CRITICAL: exported data is invalid SQLite — SKIPPING save to prevent corruption (dbPath=' + this.dbPath + ')');
+                this._stateLog('CRITICAL: invalid export — save skipped');
                 return;
             }
             const buf = Buffer.from(data);
@@ -788,12 +848,21 @@ export class StateStore extends EventEmitter {
             await fs.promises.writeFile(tmp, buf as any);
             // 原子 rename，含重试（Windows 上可能因瞬时文件锁失败）
             await this._atomicRename(tmp, this.dbPath);
-        } catch (e) {
+        } catch (e: any) {
             console.warn('[state-sqlite] _doSaveDb failed:', e);
+            this._logSaveError(e);
         } finally {
             // 无论如何清理 tmp 文件，防止堆积
             try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
         }
+    }
+
+    /** ★ 保存失败日志（节流 1/分钟，防锁持续时刷爆日志本体） */
+    private _logSaveError(e: any): void {
+        const now = Date.now();
+        if (now - this._lastSaveErrLogAt < 60000) return;
+        this._lastSaveErrLogAt = now;
+        this._stateLog('SAVE FAILED err=' + String(e && (e.code || e.message)));
     }
 
     /** 原子 rename，带重试和降级策略。绝不先删后改（防崩溃丢数据）。 */
@@ -822,7 +891,7 @@ export class StateStore extends EventEmitter {
         if (this._saveDbTimer) { clearTimeout(this._saveDbTimer); this._saveDbTimer = null; }
         // ★ 先重放 debounce 中的 pending 写入 → 内存 DB 即全量（2026-08-09）
         this._flushPendingWrites();
-        // ★ 写前磁盘合并 + .prev 轮换（仅项目级库）
+        // ★ 写前磁盘合并 + .prev 轮换（合并仅项目级/丢库自愈场景；.prev 全库启用）
         this._mergeDiskIntoMemory();
         if (this._prevEnabled) { try { fs.copyFileSync(this.dbPath, this.dbPath + '.prev'); } catch { /* ignore */ } }
         const tmp = this.dbPath + '.tmp.' + Date.now();
@@ -831,6 +900,7 @@ export class StateStore extends EventEmitter {
             // ★ 写入前验证：export 出的数据是否有效 SQLite（防 WASM 内存腐败扩散）
             if (!this._tryValidateDb(data)) {
                 console.error('[state-sqlite] CRITICAL: exported data is invalid SQLite — SKIPPING save to prevent corruption (dbPath=' + this.dbPath + ')');
+                this._stateLog('CRITICAL: invalid export — save skipped (sync)');
                 return;
             }
             const buf = Buffer.from(data);
@@ -849,8 +919,9 @@ export class StateStore extends EventEmitter {
                     throw e;
                 }
             }
-        } catch (e) {
+        } catch (e: any) {
             console.warn('[state-sqlite] _doSaveDb failed:', e);
+            this._logSaveError(e);
         } finally {
             try { fs.unlinkSync(tmp); } catch { /* ignore */ }
         }

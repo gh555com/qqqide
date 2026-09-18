@@ -496,6 +496,18 @@ const QQQ = {
         },
     },
 
+    // ---- export（文档导出机：export doc / export Zip（老 q3 移植），2026-09-18）----
+    export: {
+        doc: (payload: any) => ipcRenderer.invoke('qqqide:export:doc', payload),
+        zip: (payload: any) => ipcRenderer.invoke('qqqide:export:zip', payload),
+        cancel: (jobId: string) => ipcRenderer.invoke('qqqide:export:cancel', jobId),
+        onProgress: (cb: (msg: any) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[export.onProgress]', err); } };
+            ipcRenderer.on('qqqide:export:progress', handler);
+            return () => ipcRenderer.removeListener('qqqide:export:progress', handler);
+        },
+    },
+
     // ---- update (hot reload: pull server-app.tar.xz from gh555.com) ----
     update: {
         check: () => ipcRenderer.invoke('qqqide:update:check'),

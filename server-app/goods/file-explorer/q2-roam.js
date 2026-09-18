@@ -1420,6 +1420,48 @@ function performOpenAction(item) {
 recordDirHistory(currentPath);
 _playSfx('enter');
 }
+// W 键（多选）：全部打开——与资源管理器多选回车同款效果（2026-09-18）：
+//   ① 首个文件走系统默认打开（立即起播）② 其余文件走播放器官方「加入列表」动词（Enqueue）入列——
+//   多选 mp3 = 全部进播放列表、从第一首开始播（Explorer 多选回车实测同效果）；无 Enqueue 通道的类型
+//   （如 txt）自动回落为逐文件默认打开（= Explorer 逐文件调用，N 个记事本）
+function performOpenAllSelected() {
+	var targets = selectedItems.filter(function(s) { return s && s.name !== '..'; });
+	// [] 兜底：覆盖 selectedItem 有值但 selectedItems 数组未同步的边缘路径
+	if (targets.length === 0 && selectedItem && selectedItem.name !== '..') targets = [selectedItem];
+	if (targets.length === 0) return;
+	if (targets.length === 1) { performOpenAction(targets[0]); return; }
+	recordDirHistory(currentPath);
+	_playSfx('enter');
+	var files = [], folders = [];
+	targets.forEach(function(t) { (t.type === 'folder' ? folders : files).push(t); });
+	// 文件夹：逐个系统打开（= 资源管理器多选文件夹 N 个窗口）
+	folders.forEach(function(t) { bridge.shell.openPath(t.path).catch(function(){}); });
+	if (files.length === 0) return;
+	// ① 首文件：系统默认打开（立即起播）
+	bridge.shell.openPath(files[0].path).catch(function(){});
+	var rest = files.slice(1);
+	if (rest.length === 0) return;
+	// ② 其余文件：Enqueue 入列管线（qz 桥不可用 → 逐个默认打开兜底）
+	var qz = null;
+	try { if (parent && parent.qqqideBridge && parent.qqqideBridge.qz && parent.qqqideBridge.qz.spawn) qz = parent.qqqideBridge.qz; } catch (e) {}
+	if (!qz) {
+		rest.forEach(function(t) { bridge.shell.openPath(t.path).catch(function(){}); });
+		return;
+	}
+	var quoted = rest.map(function(t) { return "'" + String(t.path).replace(/'/g, "''") + "'"; }).join(',');
+	var script = "$ErrorActionPreference='SilentlyContinue'; Start-Sleep -Milliseconds 1500; $noEnq=@{}; " +
+		"foreach($f in @(" + quoted + ")){ " +
+		"$ext=[System.IO.Path]::GetExtension($f).ToLower(); $ok=$false; " +
+		"if(-not $noEnq[$ext]){ " +
+		"foreach($t in 1..5){ " +
+		"try{ $psi=New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName=$f; $psi.Verb='Enqueue'; $psi.UseShellExecute=$true; $null=[System.Diagnostics.Process]::Start($psi); $ok=$true; break } " +
+		"catch{ if($_.Exception.Message -match 'rejected|busy|RPC'){ Start-Sleep -Milliseconds 400 } else { $noEnq[$ext]=$true; break } } } " +
+		"if($ok){ Start-Sleep -Milliseconds 350 } } " +
+		"if(-not $ok){ try{ $psi=New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName=$f; $psi.UseShellExecute=$true; $null=[System.Diagnostics.Process]::Start($psi) }catch{}; Start-Sleep -Milliseconds 150 } }";
+	qz.spawn({ cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], cwd: '', timeout: 120000, shell: false }).catch(function() {
+		rest.forEach(function(t) { bridge.shell.openPath(t.path).catch(function(){}); });
+	});
+}
 function performDeleteAction(item) {
 	if (!item) return;
 	if (item.name === '..') return;

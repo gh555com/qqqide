@@ -12,6 +12,7 @@ import { URL } from 'url';
 import { ChildProcess, spawn as cpSpawn } from 'child_process';
 import { StateStore } from './state-sqlite';
 import { getDataDir } from './portable-paths';
+import { resolvePythonPath } from './py-broker';
 
 // ---- Asset file allow-list ----
 const _assetFileBuiltinRoots: string[] = [];
@@ -176,7 +177,11 @@ function resolveKpBridge(portableRoot: string): { script: string; python: string
     ];
     for (const p of candidates) {
         if (fs.existsSync(p)) {
-            const py = process.env.QQQ_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+            // ★ 解释器统一阶梯（唯一机器 resolvePythonPath）：内置 python → 注册表 QQQIDE_PYTHON_DIR → PATH。
+            //   禁裸名 "python"：无系统 Python 的机器会命中 Microsoft Store 假存根（rc 9009 全静默）→ 盘符不出数字
+            const py = process.env.QQQ_PYTHON
+                || resolvePythonPath(portableRoot)
+                || (process.platform === 'win32' ? 'python' : 'python3');
             return { script: p, python: py };
         }
     }
@@ -215,9 +220,26 @@ function diskFreeNodeFallback(drives: string[]): Record<string, DiskFreeEntry> {
     return result;
 }
 
+// ---- kp bridge 失败落盘日志（Data/diskfree.log）----
+// 静默失败无法现场取证的历史欠账：kp 链任一环失败必须留痕（含解释器绝对路径），
+// 将来任何一台机器再出问题，看日志一次定位。日志失败绝不影响盘符读取主流程。
+let _kpLogLast = '';
+let _kpLogLastAt = 0;
+let _kpOkLogged = false;
+function kpLog(line: string, dedupeMs?: number): void {
+    try {
+        const now = Date.now();
+        if (dedupeMs && line === _kpLogLast && (now - _kpLogLastAt) < dedupeMs) return;
+        _kpLogLast = line; _kpLogLastAt = now;
+        const f = path.join(getDataDir(), 'diskfree.log');
+        try { if (fs.statSync(f).size > 256 * 1024) fs.truncateSync(f, 0); } catch { /* 不存在即无需轮换 */ }
+        fs.appendFileSync(f, '[' + new Date().toISOString().replace('T', ' ').slice(0, 19) + '] ' + line + '\n', 'utf-8');
+    } catch { /* 日志失败静默 */ }
+}
+
 async function diskFreeViaKpBridge(portableRoot: string, drives: string[]): Promise<Record<string, DiskFreeEntry> | null> {
     const kp = resolveKpBridge(portableRoot);
-    if (!kp) { return null; }
+    if (!kp) { kpLog('kp_bridge.py not found (portableRoot=' + portableRoot + ')', 10 * 60 * 1000); return null; }
     return await new Promise(resolve => {
         let proc: ChildProcess;
         try {
@@ -226,26 +248,42 @@ async function diskFreeViaKpBridge(portableRoot: string, drives: string[]): Prom
                 stdio: ['pipe', 'pipe', 'pipe'],
                 windowsHide: true,
             });
-        } catch { return resolve(null); }
+        } catch (e: any) {
+            kpLog('spawn threw: ' + (e && e.message || e) + ' | python=' + kp.python, 60000);
+            return resolve(null);
+        }
         let stdout = '';
+        let stderr = '';
         proc.stdout!.on('data', (d: Buffer) => { stdout += d.toString(); });
-        proc.on('error', () => resolve(null));
-        proc.on('close', () => {
+        proc.stderr!.on('data', (d: Buffer) => { if (stderr.length < 4096) stderr += d.toString(); });
+        proc.on('error', (e: any) => {
+            kpLog('spawn error: ' + (e && (e.code || e.message) || e) + ' | python=' + kp.python, 60000);
+            resolve(null);
+        });
+        proc.on('close', (code: number | null) => {
             try {
                 const result = JSON.parse(stdout);
                 if (result && result.ok && result.data) {
+                    if (!_kpOkLogged) {
+                        _kpOkLogged = true;
+                        kpLog('ok via ' + kp.python + ' | keys=' + Object.keys(result.data).join(','), 0);
+                    }
                     resolve(result.data);
                 } else {
+                    kpLog('bad payload (exit=' + code + '): ' + stdout.slice(0, 200) + (stderr ? ' | stderr=' + stderr.slice(0, 200) : '') + ' | python=' + kp.python, 10 * 60 * 1000);
                     resolve(null);
                 }
-            } catch { resolve(null); }
+            } catch {
+                kpLog('unparsable stdout (exit=' + code + ', len=' + stdout.length + ')' + (stderr ? ' stderr=' + stderr.slice(0, 300) : (stdout ? ' stdout=' + stdout.slice(0, 300) : '')) + ' | python=' + kp.python, 10 * 60 * 1000);
+                resolve(null);
+            }
         });
         const input = JSON.stringify({ action: 'disk_free_batch', drives: drives || [] });
         try {
             proc.stdin!.write(input);
             proc.stdin!.end();
         } catch (e) {
-            console.warn('[diskFree] kp_bridge stdin failed:', e);
+            kpLog('stdin write failed: ' + e + ' | python=' + kp.python, 60000);
             resolve(null);
         }
     });

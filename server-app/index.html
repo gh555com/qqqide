@@ -113,7 +113,17 @@ var _orig={};
       </div>
       <div class="qqq-menu-row qqq-menu-row-2">
         <div class="qqq-toolbar" id="qqq-toolbar" style="flex:1">
-          <span class="qqq-toolbar-brand">qqq</span>
+          <!-- ★ 品牌图形按钮（2026-09-18 用户定案：不放任何文字，纯图形；图形 21×14，绘制恒定）
+               按钮响应区按定案回缩（49×22）+ 零空气墙：左缘抵窗口边界、右缘贴右侧按钮（图形居中于响应区）
+               类名 qqq-toolbar-brand = gaea-host 品牌下拉（A 区 goods 切换）hover 锚点，禁止改名
+               图形自带边框即唯一边框 —— 按钮禁加外框（双层边框违规）；外框笔触 var(--base01) 变淡一档、
+               左列黑块 var(--base03)（黑白色系禁暗金），几何按用户定案 -->
+          <button class="qqq-toolbar-brand" id="qqq-brand-btn" data-no-cd aria-label="gaea">
+            <svg width="21" height="14" viewBox="0 0 21 14" fill="none" aria-hidden="true">
+              <rect class="qqq-brand-frame" x="0.65" y="0.65" width="19.7" height="12.7" rx="2.5" stroke="currentColor" stroke-width="1.3"/>
+              <rect x="2.5" y="2.5" width="5" height="9" rx="0.6" fill="currentColor"/>
+            </svg>
+          </button>
           <span class="qqq-goods-bar" id="qqq-goods-bar"></span>
           <span class="qqq-spacer"></span>
           <button class="qqq-update-btn" id="qqq-update-btn" data-i18n-title="shell.update.check" title="检查更新" style="display:none">&#x21BB;</button>
@@ -212,6 +222,9 @@ var _orig={};
 <script src="core/gaea-host.js"></script>
 <!-- ★ 菜单行2 help 按钮（inbox 右边）— hover 三行菜单 contact / video / community，须在 gaea-host 后壳层 build 前 -->
 <script src="core/help-menu.js"></script>
+<!-- ============ 菜单行2 qqq 按钮（help 左边）：老项目侧边按钮组（export doc / export Zip / 占位） ============ -->
+<script src="core/qqq-tools.js"></script>
+<script src="core/export-machine.js"></script>
 <script src="goods/_shim.js"></script>
 <script src="goods/file-explorer/file-explorer.js"></script>
 <script src="ai-panel/ai-panel.js"></script>

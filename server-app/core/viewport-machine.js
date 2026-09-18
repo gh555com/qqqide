@@ -1071,6 +1071,40 @@
       return vp ? vp._anchorMap : {};
     },
 
+    // ═══ 导出机专用（qqq-export 唯一消费，2026-09-18）═══
+    //   全量重扫 + 强制重试空路径解析（清一次性标记）→ 等解析完成 → 返回按文档顺序的锚点快照。
+    //   语义 = 老 q3 导出同步扫描 + resolvePathToAbsolute/existsSync 校验；只读，不改视口状态。
+    prepareExportAnchors: function (editor) {
+      var vp = this._registry.get(editor);
+      if (!vp) return Promise.resolve([]);
+      var self = this;
+      self._fullScanAnchors(vp);
+      var ks = Object.keys(vp._anchorMap);
+      for (var i = 0; i < ks.length; i++) {
+        var ent = vp._anchorMap[ks[i]];
+        if (ent) delete ent._resolveTried;   // 导出 = 显式动作：历史解析失败不挡本轮重试
+      }
+      return new Promise(function (resolve) {
+        self._resolveNullPaths(vp);
+        var tries = 0;
+        (function wait() {
+          if (!vp._resolvingPaths || tries > 200) { resolve(self._orderedExportAnchors(vp)); return; }
+          tries++;
+          setTimeout(wait, 50);
+        })();
+      });
+    },
+
+    _orderedExportAnchors: function (vp) {
+      var out = [];
+      var ks = Object.keys(vp._anchorMap);
+      for (var i = 0; i < ks.length; i++) {
+        out.push(vp._anchorMap[ks[i]]);
+      }
+      out.sort(function (a, b) { return (a.line - b.line) || ((a.col || 0) - (b.col || 0)); });
+      return out;
+    },
+
     // 获取光标附近的锚点
     getAnchorNear: function (editor, line, col, tolerance) {
       var vp = this._registry.get(editor);

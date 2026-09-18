@@ -50,7 +50,8 @@ interface SearchResult {
 // ═══════════════════════════════════════════════════════════════
 // ripgrep binary finder
 // ═══════════════════════════════════════════════════════════════
-function _findRipgrep(): string | null {
+// ★ 唯一解析器（本文件 + ipc-ai-tools.ts 共用）：已知安装点候选列表
+function _rgCandidates(): { tries: string[]; rgName: string } {
     const rgName = process.platform === 'win32' ? 'rg.exe' : 'rg';
     const tries: string[] = [];
 
@@ -72,11 +73,25 @@ function _findRipgrep(): string | null {
         tries.push(path.join(__dirname, '..', 'engines', 'ripgrep', suffixed));
         tries.push(path.join(__dirname, '..', '..', 'engines', 'ripgrep', suffixed));
     }
+    return { tries, rgName };
+}
 
+/**
+ * 严格解析：仅已知安装点命中才返回绝对路径（不做 PATH 兜底）。
+ * 供 AI 搜索工具判定「rg 能不能用」——不可用 → 明确走 JS 兜底，绝不 spawn 裸名撞商店存根。
+ */
+export function findRipgrepBin(): string | null {
+    const { tries } = _rgCandidates();
     for (const p of tries) {
-        try { if (fs.existsSync(p)) { console.log('[search] ripgrep found:', p); return p; } } catch { /* skip */ }
+        try { if (fs.existsSync(p)) return p; } catch { /* skip */ }
     }
+    return null;
+}
 
+function _findRipgrep(): string | null {
+    const found = findRipgrepBin();
+    if (found) { console.log('[search] ripgrep found:', found); return found; }
+    const { rgName } = _rgCandidates();
     // 4. PATH (bare name — spawn will search PATH for brew/apt/choco installs)
     console.log('[search] ripgrep not found in known paths, trying PATH:', rgName);
     return rgName;

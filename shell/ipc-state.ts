@@ -50,7 +50,7 @@ export function getPythonExe(portableRoot: string): string {
 }
 
 // AI tool skip lists
-export const AI_SKIP_DIRS = ['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps'];
+export const AI_SKIP_DIRS = ['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'tmp', 'crashDumps'];
 export const AI_SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.mp3', '.mp4', '.zip', '.tar', '.gz', '.xz', '.woff', '.woff2', '.ttf', '.eot', '.ico', '.vsix', '.lock', '.wasm'];
 export const AI_MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -59,8 +59,14 @@ export function aiGlobToRegex(pattern: string): RegExp {
     return new RegExp('^' + esc + '$', 'i');
 }
 
-export function aiTimeout(ms: number, partial: string): Promise<string> {
-    return new Promise(resolve => { setTimeout(() => resolve((partial || '') + '\n[TIMEOUT]'), ms); });
+export function aiTimeout(ms: number, partial: string | (() => string), onTimeout?: () => void, suffix = '\n[TIMEOUT]'): Promise<string> {
+    return new Promise(resolve => {
+        setTimeout(() => {
+            try { if (onTimeout) onTimeout(); } catch { }
+            const p = typeof partial === 'function' ? partial() : (partial || '');
+            resolve((p || '') + suffix);
+        }, ms);
+    });
 }
 
 // Whitespace normalization for edit_file L2/L3 matching

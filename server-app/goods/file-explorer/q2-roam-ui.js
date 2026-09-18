@@ -9,15 +9,15 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 		var action = el.dataset.action;
 		hideAllContextMenus();
 		if (!ctxTarget) return;
-		if (selectedItems.length > 1 && action !== 'copyPath' && action !== 'delete') {
-			// Multi-select: only copyPath and delete work; others use first item
+		if (selectedItems.length > 1 && action !== 'copyPath' && action !== 'delete' && action !== 'open') {
+			// Multi-select: copyPath / delete / open 为多选感知；其余动作作用于被点击项
 		}
 		var item = ctxEntry ? { path: ctxTarget, name: ctxEntry.name, type: ctxEntry.isDir ? 'folder' : 'file' } : { path: ctxTarget, name: baseName(ctxTarget), type: 'file' };
 		if (item.name === '..' && (action === 'rename' || action === 'delete' || action === 'ai')) return;
 		switch (action) {
 			case 'ai': _feedCurrentToAi(); break;
 			case 'code': performCodeAction(item); break;
-			case 'open': performOpenAction(item); break;
+			case 'open': if (selectedItems.length > 1) performOpenAllSelected(); else performOpenAction(item); break;
 			case 'delete': performDeleteAction(item); break;
 			case 'rename': performEditAction(item); break;
 			case 'copyPath': performCopyPathAction(); break;
@@ -395,7 +395,7 @@ async function updateDriveDisplay() {
 			return;
 		}
 		// ★ 空白区快捷（有选中=选中项 / 无选中或仅 '..' = 当前文件夹）:
-		//   a → 喂给焦点 AI 面板 · z → 复制路径 · w → 系统打开（文件夹=资源管理器）· x → kmd · m → CMD · p → PowerShell
+		//   a → 喂给焦点 AI 面板 · z → 复制路径 · w → 系统打开（多选=全部打开，文件走「起播+入列」管线）· x → kmd · m → CMD · p → PowerShell
 		if (k === 'a') {
 			e.preventDefault();
 			if (selectedItem) _feedCurrentToAi(); else _feedFolderToAi();
@@ -428,7 +428,7 @@ async function updateDriveDisplay() {
 			e.preventDefault();
 			if (selectedItem && selectedItem.name !== '..') {
 				if (k === 'z') performCopyPathAction();
-				else performOpenAction(selectedItem);
+				else performOpenAllSelected();
 				return;
 			}
 			if (!currentPath) return;

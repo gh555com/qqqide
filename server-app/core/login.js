@@ -79,6 +79,8 @@
       'style="vertical-align:middle;border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,0.1);object-fit:cover;" ' +
       'alt="" title="' + cc.toUpperCase() + '" onerror="' + onerr + '">';
   }
+  // ★ 国旗唯一渲染机对外出口（语言下拉等复用同一实现，禁第二入口）
+  window._qqqFlagImg = _flagImg;
   // emoji → iso2 反解（剥离 FE0F 变体符/ZWJ/键帽等零宽修饰符后再反解）
   function _emojiToIso2(emoji) {
     if (!emoji) return '';
@@ -610,11 +612,19 @@
     return p.replace(/\*+/g, '<span style="font-size:8px;letter-spacing:-0.5px;">$&</span>');
   }
 
+  // ★ 2026-09-18: LV 整数/小数分权显示 —— 整数保持粗体 + 默认文字色（= 电话号码同色；金色已让位给 ge 金额）；小数部分常规字重 + 小一号 + 弱化（不抢眼）
+  function _ldrLvHtml(s) {
+    s = (s == null) ? '' : String(s);
+    var dot = s.indexOf('.');
+    if (dot < 0) return s;
+    return s.slice(0, dot) + '<span style="font-weight:normal;font-size:11px;opacity:0.8;">' + s.slice(dot) + '</span>';
+  }
+
   var LDR_ROW_HTML = '<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;gap:6px;">' +
     '<span style="width:24px;color:var(--text-dim,#888);text-align:right;">#{rank}</span>' +
     '<span style="width:18px;">{flag}</span>' +
     '<span style="flex:1;">{phone}</span>' +
-    '<span style="min-width:70px;color:#b58900;text-align:right;font-weight:bold;">Lv{lv}</span>' +
+    '<span style="min-width:70px;text-align:right;font-weight:bold;">Lv{lv}</span>' +
     '{refund}' +
     '</div>';
 
@@ -632,7 +642,7 @@
         refundBadge = '<span style="min-width:66px;text-align:right;font-size:11px;color:var(--text-dim,#888);white-space:nowrap;">' + _i18('login.lbr.refunded', '已返 {v}', { v: '<b style="color:#b58900;">' + _ldrFmtGe(e.refund_ge) + 'ge</b>' }) + '</span>';
       }
       s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', _ldrPhone(e.phone))
-        .replace('{lv}', lvDisplay).replace('{refund}', refundBadge);
+        .replace('{lv}', _ldrLvHtml(lvDisplay)).replace('{refund}', refundBadge);
     }
     return s;
   }
@@ -685,7 +695,7 @@
         + '<span style="width:24px;color:var(--text-dim,#888);text-align:right;">#' + e.rank + '</span>'
         + '<span style="width:18px;">' + fl + '</span>'
         + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (e.me ? 'font-weight:bold;' : '') + '">' + _ldrPhone(e.phone) + '</span>'
-        + '<span style="min-width:70px;color:#b58900;text-align:right;font-weight:bold;">Lv' + lvDisplay + '</span>'
+        + '<span style="min-width:70px;text-align:right;font-weight:bold;">Lv' + _ldrLvHtml(lvDisplay) + '</span>'
         + '</div>' + refundLine + '</div>';
     }
     return s;
@@ -695,7 +705,7 @@
     if (!m) return _i18('login.lbr.meNone', '我的：本周未参赛');
     var lvNum = parseFloat(m.level_str);
     var lvDisplay = isNaN(lvNum) ? m.level_str : lvNum.toFixed(4);
-    var base = _i18('login.lbr.me', '我的：第 {rank} 名 · Lv {lv}', { rank: m.rank, lv: lvDisplay });
+    var base = _i18('login.lbr.me', '我的：第 {rank} 名 · Lv {lv}', { rank: m.rank, lv: _ldrLvHtml(lvDisplay) });
     if (m.rank <= 10 && m.refund_ge !== undefined && m.refund_ge !== null && m.refund_ge !== '') {
       return base + ' · ' + _i18('login.lbr.meEst', '预计返 {v}', { v: '<b style="color:#b58900;">' + _ldrFmtGe(m.refund_ge) + 'ge</b>' });
     }
@@ -792,7 +802,7 @@
 
     // 上周最终等级（服务端直出真实 LV，刻度统一后不再 ×10），4 位小数
     var lastLv = (d && typeof d.last_season_level === 'number' && d.last_season_level > 0)
-      ? 'lv' + d.last_season_level.toFixed(4) : '--';
+      ? _ldrLvHtml('lv' + d.last_season_level.toFixed(4)) : '--';
     // 本周基座升高 = 上周等级 ÷ 10（归一：金额与旧版恒等），四舍五入 1 位小数
     var baseRise = (d && typeof d.last_season_level === 'number' && d.last_season_level > 0)
       ? (d.last_season_level / 10).toFixed(1) : '--';
@@ -807,7 +817,7 @@
     }
 
     $hdr.innerHTML = _i18('login.lbr.header', '我上周最终等级: {last}，本周基座升高: {rise}。 预计下周基座将升高: {proj}', {
-      last: '<b style="color:#b58900;">' + lastLv + '</b>',
+      last: '<b>' + lastLv + '</b>',
       rise: '<b style="color:#b58900;">' + baseRise + 'ge</b>',
       proj: '<b style="color:#b58900;">' + projected + 'ge</b>'
     })

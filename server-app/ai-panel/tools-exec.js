@@ -6,7 +6,7 @@
 // ============================================================================
 
 // ---- 目录/扩展名跳过列表（供 search_text / list_files / find_files 使用）----
-var SKIP_DIRS = ['node_modules', '.git', '__pycache__', '.venv', 'vendor', 'backup', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps'];
+var SKIP_DIRS = ['node_modules', '.git', '__pycache__', '.venv', 'vendor', 'backup', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'tmp', 'crashDumps'];
 var SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.pyd', '.pyc', '.pyo', '.class', '.o', '.obj', '.lib', '.a', '.sys', '.drv', '.ocx', '.scr', '.cab', '.msi', '.msc', '.cpl', '.lnk', '.dat', '.pak', '.res', '.resources', '.rom', '.elf', '.ko', '.mod', '.dex', '.jar', '.war', '.ear', '.apk', '.ipa', '.iso', '.img', '.dmg', '.pkg', '.deb', '.rpm', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.svgz', '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.zip', '.tar', '.gz', '.xz', '.bz2', '.7z', '.rar', '.woff', '.woff2', '.ttf', '.eot', '.ico', '.icns', '.vsix', '.lock', '.wasm', '.map', '.tsbuildinfo', '.sq3', '.db', '.sqlite', '.sqlite3', '.sdb'];
 
 // ══════════════════════════════════════════════════════════════
@@ -604,10 +604,25 @@ async function executeSearchContent(args) {
     }
 
     // Fast path: IPC to main process (case-insensitive only)
+    // ★ 默认工作区根与 search_text 同源（AI 视口阵营）——缺省 path 时必须解析后传 paths，
+    //   否则主进程收到空数组 → "Error: no search paths"（工具契约缝实锤）
+    var searchDirs = [];
+    if (args.path) {
+        searchDirs = [args.path];
+    } else {
+        try {
+            if (parent.qqqideViewport) {
+                var vps = parent.qqqideViewport.getProjects();
+                searchDirs = vps.map(function (p) { return p.path; });
+            }
+        } catch (_) { }
+    }
+    if (searchDirs.length === 0) return 'Error: no search path specified and no vision context available.';
+
     try {
         return await bridge.ai.search_text({
             query: pattern,
-            path: args.path || undefined,
+            paths: searchDirs,
             maxResults: maxResults
         });
     } catch (err) {

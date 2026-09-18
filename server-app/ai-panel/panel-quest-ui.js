@@ -723,7 +723,9 @@ function _estimateTokensFull() {
     if (errCount > 0) _r("Error messages × " + errCount, errTok, 0, "#f85149");
     _r("JSON overhead (" + msgCount + " msgs)", jsonOverheadTok, 0, "#586e75");
     _r("Body fields (stream, max_tokens, …)", bodyConstTok, 0, "#586e75");
-    var displayTotal = localTotal;  // ★ 2026-08-18: 恒显示当前背包——_lastApiPromptTokens 是上次请求账单数（含已压缩楼层内容），楼层完结/重启后残留僵尸数字（q178 实测 179k vs Local 64k）
+    // ★ 2026-09-17 q299: 显示口径改 max(本地估算, 服务端实报)——实报 = 上次请求真实 token 数（权威：含思维链等本地不可见字节；本地估算系统性低估，q263 f181 实测本地 236k vs 实报 408k → 旧口径 Free 虚高 172k）。
+    //   实报在压缩/切断时清零（防僵尸，清零点见 _lastApiPromptTokens 各守卫）→ 无实报时自动回落纯本地估算；旧注（2026-08-18）：恒=localTotal 防 q178 僵尸数字。
+    var displayTotal = Math.max(localTotal, _apiPrompt);
     _r("Local sum", localTotal, 0, "#c9d1d9");
     if (_apiPrompt > 0) _r("API prompt_tokens", _apiPrompt, 0, "#3fb950");
     var _free = Math.max(0, CTX_MAX - displayTotal);
@@ -873,7 +875,7 @@ function updateCtxBtn() {
     var _ag = _activeAgent;
     var used = _estimateTokensFull();
     if (used === 0 && _ag.conversation && _ag.conversation.length) { console.warn('[ctx-btn] used=0 convLen=' + _ag.conversation.length + ' _floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
-    var displayUsed = used;  // ★ 2026-08-18: 恒用当前背包估算（与图解 Local sum / 压缩动画同口径）；旧偏好 _lastApiPromptTokens = 上次请求账单，中间窗口/重启后僵尸数字
+    var displayUsed = used;  // ★ 2026-09-17 q299: used = max(本地估算, 服务端实报)（实报=权威下限；压缩后清零自动回落本地）；图解 Local sum / 压缩动画仍走 localTotal 口径
     var pct = Math.min(100, Math.round(displayUsed / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(displayUsed / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
@@ -1653,7 +1655,11 @@ function renderQueueStrip() {
                 ? (q.text.slice(0, 80) + (q.text.length > 80 ? '...' : ''))
                 : _i('ai.queue.imageOnly', '（仅图片）');
             // ★ 三键档位（2026-09-16）：徽章恒显示三键数（1/2/3），旧存量 1..6 自动换算
-            var tierLabel = (typeof q.selectedTier === 'number') ? ('A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(q.selectedTier) : q.selectedTier)) : '';
+            // ★ BYOK（2026-09-17）：按排队按钮那一刻的通道快照 q.byok=true → 徽章显 'Z'
+            //   （与 selectedTier 同为入队快照，语义一致）；旧存量队列项无该字段 → 照旧 A 档位（零迁移）
+            var tierLabel = q.byok
+                ? 'Z'
+                : ((typeof q.selectedTier === 'number') ? ('A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(q.selectedTier) : q.selectedTier)) : '');
 
             var card = document.createElement('div');
             card.className = 'bk-card';
@@ -1793,11 +1799,16 @@ $queueBtn.onclick = function () {
     // ★ 2026-08-16: 纯图片也可排队（sendMessage 允许纯图片发送，与发送语义对齐）
     if (!text && pendingImages.length === 0) return;
     // ★ 背包：冻结当前全部键入状态
+    // ★ BYOK 快照（2026-09-17）：捕获按排队按钮这一刻的实际通道（判定式与 panel-pipeline
+    //   _tierLabelOf 同源；BYOK 无静默回退，isActive 判定即实际）→ 徽章显 'Z'
+    var _byokQueued = false;
+    try { _byokQueued = !!(window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()); } catch (_) { }
     var backpack = {
         id: 'bk_' + Date.now(),
         text: text,
         images: pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; }) : [],
         selectedTier: selectedTier,
+        byok: _byokQueued,
         ts: Date.now()
     };
     _queue.push(backpack);
