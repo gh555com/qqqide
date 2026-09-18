@@ -160,10 +160,13 @@
   function set(key, value) {
     var old = _cache[key];
     _cache[key] = value;
-    // 异步持久化
+    // 异步持久化（★ 2026-09-17: 补 catch —— 旧实现 promise rejection 裸奔进控制台）
     var h = _qgs();
     if (h) {
-      try { h.set(key, value); } catch (e) { /* ignore */ }
+      try {
+        var _p = h.set(key, value);
+        if (_p && typeof _p.catch === 'function') { _p.catch(function () { /* 内存值仍在，下次变更重写 */ }); }
+      } catch (e) { /* ignore */ }
     }
     // 通知监听器
     if (value !== old) {
@@ -199,20 +202,51 @@
   }
 
   // ── 从持久层加载 ──
+  // ★ 2026-09-17: 加载失败不再静默——旧实现无 catch 无重试（rejection 被裸吞 / 句柄未就绪时直接 return）
+  //   → 整个会话 get() 恒返默认值，用户看到「齿轮里配置全丢」（即使库本身完好）。
+  //   现在：失败退避重试 ≤3 次 + 值到位后重绘打开中的面板。
+  var _loadRetryCount = 0;
+  var _loadRetryTimer = null;
+  var _rerenderTimer = null;
+
+  function _scheduleLoadRetry() {
+    if (_loadRetryTimer) return;
+    if (_loadRetryCount >= 3) {
+      try { console.warn('[qqqSettings] load from state store failed after retries — defaults this session'); } catch (e) { /* ignore */ }
+      return;
+    }
+    var delay = [1000, 3000, 8000][_loadRetryCount] || 8000;
+    _loadRetryCount++;
+    _loadRetryTimer = setTimeout(function () {
+      _loadRetryTimer = null;
+      _loadFromQgs();
+    }, delay);
+  }
+
+  // 值到位后重绘打开中的面板（拖杆/弹窗位置不受影响：面板尚未渲染时不重建）
+  function _rerenderIfOpen() {
+    if (!_$panel || !_$overlay || _$overlay.style.display === 'none') return;
+    if (_rerenderTimer) return;
+    _rerenderTimer = setTimeout(function () {
+      _rerenderTimer = null;
+      try { _renderPanel(); } catch (e) { /* ignore */ }
+    }, 80);
+  }
+
   function _loadFromQgs() {
     var h = _qgs();
-    if (!h) return;
+    if (!h) { _scheduleLoadRetry(); return; }
     for (var i = 0; i < SETTINGS_DEF.length; i++) {
-      var key = SETTINGS_DEF[i].key;
-      try {
-        h.get(key).then(function (k) {
-          return function (v) {
-            if (v !== undefined && v !== null) {
+      (function (k) {
+        try {
+          h.get(k).then(function (v) {
+            if (v !== undefined && v !== null && _cache[k] !== v) {
               _cache[k] = v;
+              _rerenderIfOpen();
             }
-          };
-        }(key));
-      } catch (e) { /* ignore */ }
+          }, function () { _scheduleLoadRetry(); });
+        } catch (e) { _scheduleLoadRetry(); }
+      })(SETTINGS_DEF[i].key);
     }
   }
 

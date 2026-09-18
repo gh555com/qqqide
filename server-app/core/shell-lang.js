@@ -12,6 +12,13 @@ var _shellLangLabels = {
   'pt-BR': 'BR', 'hi': 'hi', 'vi': 'VI'
 };
 
+// ★ 国旗映射（语言码 → 国家码 → assets/flags/{cc}.png，与网站 / 登录区同一套本地化国旗）
+var _shellLangFlags = {
+  'zh': 'cn', 'zh-tw': 'tw', 'en': 'us', 'ja': 'jp', 'de': 'de',
+  'ko': 'kr', 'ru': 'ru', 'ar': 'sa', 'es': 'es', 'fr': 'fr',
+  'pt-BR': 'br', 'hi': 'in', 'vi': 'vn'
+};
+
 function _shellCloseLangPopup() {
   if (_shellLangPopup) { try { _shellLangPopup.remove(); } catch (_) { } _shellLangPopup = null; }
 }
@@ -30,7 +37,14 @@ function _shellOpenLangPopup(anchor) {
     var row = document.createElement('div');
     row.className = 'qqq-lang-popup-item' + (lc === cur ? ' qqq-lang-active' : '');
     var name = window.i18n ? window.i18n.getLangName(lc) : lc;
-    row.textContent = name;
+    // ★ 行前国旗（本地 PNG；唯一渲染机 = login.js _flagImg，经 window._qqqFlagImg 出口）
+    var cc = _shellLangFlags[lc];
+    if (cc && typeof window._qqqFlagImg === 'function') {
+      row.innerHTML = window._qqqFlagImg(cc);
+    }
+    var label = document.createElement('span');
+    label.textContent = name;
+    row.appendChild(label);
     row.addEventListener('click', (function (lang) {
       return function (e) {
         e.stopPropagation();

@@ -5,7 +5,7 @@
 //
 // 老项目：每个相框上方一排按钮（VS Code codelens）。本机用 Monaco 原生 codeLens 复刻——
 // 数据源 = viewport-machine 的 per-editor 锚点表（唯一渲染真理机，只读消费），
-// 按钮点击 → 命令（老 qqq.* 命令语义 1:1）。
+// 按钮点击 → 命令（老 qqq.* 命令语义 1:1；例外：首列 🗀qqq = 内置 Roam 定位，2026-09-17 用户定）。
 //
 // 等级 = 偏好 codelensLevel（老枚举 0/1/7 原值）:
 //   0 = 无
@@ -377,8 +377,14 @@
     } catch (e) { /* */ }
   }
 
-  // 🗀qqq → 在文件夹中定位（老 revealFileInFolder = explorer /select）
+  // 🗀qqq → 在当前 Roam 中打开并定位该文件（2026-09-17 用户定：全平台统一，弃系统资源管理器）
+  // 定位机器唯一入口 = shell-overlay window.__qqq_roamRevealPath：命中 → revealFile 选中+滚动 / 目录 → navTo；
+  // 文件缺失 → 自动爬升最近祖先目录 + qoast 提示（引擎自带裁决，零死链）。
   function _cmdReveal(path) {
+    try {
+      if (typeof window.__qqq_roamRevealPath === 'function') { window.__qqq_roamRevealPath(String(path)); return; }
+    } catch (e) { /* */ }
+    // 兜底（shell-overlay 未加载）：系统资源管理器定位
     try {
       if (bridge && bridge.shell && bridge.shell.showItemInFolder) { bridge.shell.showItemInFolder(path); return; }
       if (bridge && bridge.shell && bridge.shell.openPath) { bridge.shell.openPath(_dirname(path)); }

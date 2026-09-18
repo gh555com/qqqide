@@ -145,10 +145,10 @@
     const ta = document.createElement('textarea');
     ta.style.cssText = 'width:100%; height:100%; box-sizing:border-box; border:0; outline:0; padding:12px; font-family:ui-monospace,Consolas,Menlo,monospace; font-size:13px; resize:none; background:var(--background-color); color:var(--text-primary);';
     host.appendChild(ta);
-    ta.addEventListener('input', () => { dirty = true; updateTitle(); });
+    ta.addEventListener('input', () => { dirty = true; });
     return {
       isFallback: true,
-      setValue(v, _lang) { ta.value = v == null ? '' : String(v); dirty = false; updateTitle(); },
+      setValue(v, _lang) { ta.value = v == null ? '' : String(v); dirty = false; },
       getValue() { return ta.value; },
       focus() { ta.focus(); },
       insertAtCursor(text) {
@@ -158,7 +158,7 @@
         const np = start + String(text).length;
         ta.selectionStart = ta.selectionEnd = np;
         ta.focus();
-        dirty = true; updateTitle();
+        dirty = true;
       },
       dispose() { /* nothing */ },
     };
@@ -697,7 +697,7 @@
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save());
       ed.onDidChangeModelContent(function (e) {
         if (ed._isRefreshing || _globalRefreshLock) return;
-        dirty = true; updateTitle();
+        dirty = true;
         if (currentFile) {
           document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: true } }));
           _pushDirtyDebounced(currentFile, ed.getValue());
@@ -748,7 +748,7 @@
           } else {
             ed.setValue(vStr);
           }
-          dirty = false; updateTitle();
+          dirty = false;
           if (_defer && model && lang) {
             var _m = model, _l = lang, _mon = monaco;
             setTimeout(function () {
@@ -796,7 +796,6 @@
       // ★ 同步清除 tab 脏标记（setValue 可能已触发 dirty:true 事件，强制复位）
       document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: file, dirty: false } }));
       lspLang = null; // LSP OFF
-      updateTitle();
       _applyMinimapPref(_editorRef, _monacoRef, file);
       // ★ 记录 mtime，用于聚焦时检测外部修改
       try { var _stOpen = await bridge.fs.stat(file); if (_stOpen) _openedMtime[file] = { mtimeMs: _stOpen.mtimeMs, size: _stOpen.size }; } catch (_) {}
@@ -814,7 +813,7 @@
     try {
       await _captureExternalBefore(currentFile);
       await bridge.fs.write(currentFile, v);
-      dirty = false; updateTitle();
+      dirty = false;
       _maybeRecordTimeline(currentFile, v);
       _removeDirty(currentFile);
       // ★ 同步清除 tab 脏标记（与 _markClean 对齐）
@@ -851,12 +850,8 @@
     } catch (_) { }
   }
 
-  function updateTitle() {
-    const name = currentFile ? currentFile.split(/[\\/]/).pop() : '(no file)';
-    const txt = (dirty ? '* ' : '') + name;
-    const $brand = document.querySelector('.qqq-toolbar-brand');
-    if ($brand) { $brand.textContent = 'qqq · ' + txt; }
-  }
+  // ★ 品牌位文字显示已退役（2026-09-18 用户定案：菜单行2 最左改纯图形按钮，不放任何文字）
+  //   文件/脏标记由 X 区标签页承担；updateTitle 函数及全部调用已删除
 
   let _monacoRef = null;   // raw monaco namespace
   let _editorRef = null;   // raw monaco IStandaloneCodeEditor
@@ -1529,7 +1524,7 @@
         _paneDirtyMap[filePath] = false;
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
       }
-      if (currentFile === filePath) { dirty = false; updateTitle(); }
+      if (currentFile === filePath) { dirty = false; }
     },
     currentFile() { return currentFile; },
     insertAtCursor(text) { if (editor && editor.insertAtCursor) { editor.insertAtCursor(text); } },

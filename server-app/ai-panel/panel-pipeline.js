@@ -659,13 +659,20 @@ async function _executeSend(intent) {
     }
     // ★ recovery: 流式状态已在 agent 上，直接复用
     agent._streamBuf = agent._streamBuf || '';
-    agent._streamParas = agent._streamParas || [];
-    // ★ V15: compress 楼层标记（az 区外观正常，GE 账单 type=f3）
-    if (_isCompress) {
+    agent._streamParas = agent._streamParas || [];    // ★ BYOK（Z）楼层标签（2026-09-17）：自带密钥（Z）通道下平台档位对请求零影响
+    //   （模型名/思考参数/max_tokens 全由用户配置或恒定值接管）→ 标签显 'Z' 替代 A1/A2/A3，
+    //   与 Z 按钮 / 费用后缀 ' BYOK' 同源；发送时按 isActive 判定（BYOK 无静默回退，判定即实际通道）
+    var _byokOn = false;
+    try { _byokOn = !!(window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()); } catch (_) { }
+    var _tierLabelOf = function (idx) {
+        return _byokOn ? 'Z' : ('A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(idx) : idx));
+    };
+    // ★ V15: compress 楼层标记（az 区外观正常，GE 账单 type=f3）
+    if (_isCompress) {
         agent._compressFloor = true;
         agent._aiStartTime = _fmtTime(new Date());        // ★ 压缩楼层强制 tier 4：标签用 intent.tierIndex，而非 selectedTier（否则显示 A6）
         //   三键档位（2026-09-16）：标签恒显示三键数（_tierUiOf：4 → A2）
-        agent._aiTierLabel = 'A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(tierIndex || 4) : (tierIndex || 4));
+        agent._aiTierLabel = _tierLabelOf(tierIndex || 4);
     } else {
         // ★ V21: 防 compress 标志泄漏到后续正常楼层
         //   （q147 事故：f97 only facts 后 agent._compressFloor 未重置 → f98 起所有楼层被误标
@@ -673,7 +680,7 @@ async function _executeSend(intent) {
         agent._compressFloor = false;        if (sendType !== 'recovery') {
             agent._aiStartTime = _fmtTime(new Date());
             // ★ 三键档位（2026-09-16）：标签恒显示三键数（1/2/3），旧存量 1..6 自动换算
-            agent._aiTierLabel = 'A' + ((typeof _tierUiOf === 'function') ? _tierUiOf(selectedTier || 6) : (selectedTier || 6));
+            agent._aiTierLabel = _tierLabelOf(selectedTier || 6);
         }
     }
     agent._streamingContent = null;

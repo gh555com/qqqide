@@ -780,6 +780,9 @@ function bootAiOverlay() {
     while (r.indexOf('./') === 0) r = r.slice(2);
     return b + '/' + r;
   }
+  // ★ 平台：POSIX 绝对路径判定（mac/linux 首字符 '/'）——2026-09-17；Windows 平台恒 false（q2-roam.js _ROAM_IS_MAC 同口径）
+  var _ROAM_MAC = /Mac/i.test(String(navigator.platform || '') + ' ' + String(navigator.userAgent || ''));
+  function _roamPosixAbs(t) { return _ROAM_MAC && String(t || '').charAt(0) === '/'; }
   function _roamParent(p) {
     var s = String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
     var i = s.lastIndexOf('/');
@@ -877,7 +880,7 @@ function bootAiOverlay() {
     }
     t = t.replace(/\\/g, '/').replace(/\/+$/, '');
     if (!t) return { hit: null, first: null, err: false };
-    var isAbs = /^[A-Za-z]:\//.test(t);
+    var isAbs = /^[A-Za-z]:\//.test(t) || _roamPosixAbs(t);   // mac：'/Users/…' = 真绝对（Windows 首字符 '/' 维持逐根相对解析）
     var roots = _roamRoots();
     var hasSep = t.indexOf('/') !== -1;
     // ① 直接候选：绝对原样；相对逐根拼接（主文件夹优先）
@@ -896,7 +899,7 @@ function bootAiOverlay() {
     // ② 裸文件名 + ctx：先解析 ctx 锚点（绝对或逐根），文件取父目录，再拼名
     if (!hasSep && !isAbs && ctx) {
       var c = String(ctx).replace(/\\/g, '/').replace(/\/+$/, '');
-      var cAbs = /^[A-Za-z]:\//.test(c);
+      var cAbs = /^[A-Za-z]:\//.test(c) || _roamPosixAbs(c);
       var cbases = cAbs ? [c] : [];
       if (!cAbs) for (var ci = 0; ci < roots.length; ci++) cbases.push(_roamJoin(roots[ci], c));
       for (var cbi = 0; cbi < cbases.length; cbi++) {

@@ -184,9 +184,12 @@ function _buildBillingTable(houses, passby) {
         var type = h.type === 'effect' ? (h.effectType || 'effect') : (h.type || '?');
         // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字
         var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : 0);
-        // AI 等级：从 tier label 提取数字
+        // ★ AI Lv（2026-09-17）：BYOK 行显 'Z'——自带密钥通道下平台档位对请求零参与，
+        //   与 aq 楼层标签 / 费用后缀 ' BYOK' 三处同源；平台行照旧提取档位数字
         var aiLv = '?';
-        if (h.tier) {
+        if (h.byok) {
+            aiLv = 'Z';
+        } else if (h.tier) {
             var parsed = parseInt(h.tier, 10);
             if (!isNaN(parsed)) aiLv = String(parsed);
         }
