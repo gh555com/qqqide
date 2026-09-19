@@ -159,8 +159,8 @@
         agent._lastApiPromptTokens = 0;
         agent._lastApiTotalTokens = 0;
         agent._lastApiCompletionTokens = 0;
-        if (typeof questStore !== 'undefined' && questStore.save) {
-          questStore.save(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { });
+        if (typeof _questMetaPatch === 'function') {
+          _questMetaPatch(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 });
         }
       } catch (_) { }
       try { if (agent._log) agent._log('◆ AutoCompress: editOnly stripped ' + (before - m.content.length) + ' chars (gain ' + gain + ' tokens ≥ ' + thresholdTokens + ')'); } catch (_) { }

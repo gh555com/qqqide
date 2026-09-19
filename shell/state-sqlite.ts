@@ -101,6 +101,9 @@ export class StateStore extends EventEmitter {
     //   2026-09-17: 全局库同样启用（实锤配置丢失事故 —— 以前只有项目库有备份，全局库丢失即全丢）
     private _prevEnabled = false;
     private _lastSaveErrLogAt = 0;
+    // ★ 落盘 tmp 序号（2026-09-19）：与 pid 一起保证 tmp 名全局唯一——
+    //   同毫秒并发保存曾互踩（同一 tmp 被截断/重复 rename → ENOENT、0 字节主库）
+    private _saveSeq = 0;
     // ★ in-memory read cache (avoids append() re-reading from DB each time)
     private _memCache: Map<string, any> = new Map();
     // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 global.sq3
@@ -202,6 +205,11 @@ export class StateStore extends EventEmitter {
             if (fs.existsSync(this.dbPath)) {
                 try {
                     const buf = fs.readFileSync(this.dbPath);
+                    // ★ 0 字节/退化文件视为损坏（2026-09-19）：sql.js 对空 buffer 静默开空库——
+                    //   配置会「被清空」且不走恢复链；强制抛错 → 检疫 + .prev/.bak 恢复链接管
+                    if (buf.length < 1024) {
+                        throw new Error('degenerate db file (' + buf.length + ' B) — treat as corrupt');
+                    }
                     this._db = new this._SQL.Database(buf);
                 } catch (e: any) {
                     console.warn('[state-sqlite] failed to load db, starting fresh:', e);
@@ -300,11 +308,20 @@ export class StateStore extends EventEmitter {
                 const fullPath = path.join(dir, f);
                 const tmpMtime = fs.statSync(fullPath).mtimeMs;
                 if (!mainExists || tmpMtime > mainMtime) {
-                    // tmp 比主 db 新（或主 db 不存在）→ 恢复！
-                    console.log('[state-sqlite] recovering from tmp:', fullPath, '→', mainDb);
-                    try { fs.renameSync(fullPath, mainDb); } catch {
-                        // rename 失败（跨设备？）→ 拷贝
-                        try { fs.copyFileSync(fullPath, mainDb); fs.unlinkSync(fullPath); } catch { /* ignore */ }
+                    // ★ 提升前验证（2026-09-19）：硬杀进程可留下 0 字节/半截 tmp——
+                    //   盲目提升会把好库覆盖成坏库（0 字节 global.sq3 事故链的一环）
+                    let _tmpOk = false;
+                    try { const _b = fs.readFileSync(fullPath); _tmpOk = _b.length >= 1024 && this._tryValidateDb(_b as any); } catch { _tmpOk = false; }
+                    if (_tmpOk) {
+                        // tmp 比主 db 新（或主 db 不存在）且完好 → 恢复！
+                        console.log('[state-sqlite] recovering from tmp:', fullPath, '→', mainDb);
+                        try { fs.renameSync(fullPath, mainDb); } catch {
+                            // rename 失败（跨设备？）→ 拷贝
+                            try { fs.copyFileSync(fullPath, mainDb); fs.unlinkSync(fullPath); } catch { /* ignore */ }
+                        }
+                    } else {
+                        console.warn('[state-sqlite] invalid/stale tmp ignored & removed:', fullPath);
+                        try { fs.unlinkSync(fullPath); } catch { /* ignore */ }
                     }
                 } else {
                     // 主 db 更新或等新 → tmp 是垃圾
@@ -441,7 +458,7 @@ export class StateStore extends EventEmitter {
             for (const [id] of this._debouncers) {
                 this._dirtySet.add(id);
             }
-            console.warn('[state-sqlite] ⚠ quarantined corrupt db → ' + bak + ', fresh db ready (data loss may have occurred)');
+            console.warn('[state-sqlite] ⚠ corrupt db quarantined (salvaged), fresh db ready (data loss may have occurred)');
         } catch (e2) {
             console.error('[state-sqlite] CRITICAL: quarantine failed:', e2);
         }
@@ -833,9 +850,16 @@ export class StateStore extends EventEmitter {
         this._mergeDiskIntoMemory();
         // ★ 写前 .prev 轮换（项目级库 + 全局库）：保留上一完好版，损坏可回退
         if (this._prevEnabled) { try { await fs.promises.copyFile(this.dbPath, this.dbPath + '.prev'); } catch { /* ignore */ } }
-        const tmp = this.dbPath + '.tmp.' + Date.now();
+        const tmp = this.dbPath + '.tmp.' + Date.now() + '.' + process.pid + '.' + (++this._saveSeq);
         try {
             const data = this._db.export();
+            // ★ 空/退化导出守卫（2026-09-19）：export 偶发 0 字节（空库/并发竞态）——
+            //   一旦落盘即把主库变 0 字节（实锤事故：global.sq3 被写空）→ 一律拒写
+            if (!data || data.length < 1024) {
+                console.error('[state-sqlite] CRITICAL: empty/degenerate export (' + (data ? data.length : 0) + ' B) — SKIPPING save (dbPath=' + this.dbPath + ')');
+                this._stateLog('CRITICAL: empty export — save skipped');
+                return;
+            }
             // ★ 写入前验证：export 出的数据是否有效 SQLite（防 WASM 内存腐败扩散）
             if (!this._tryValidateDb(data)) {
                 console.error('[state-sqlite] CRITICAL: exported data is invalid SQLite — SKIPPING save to prevent corruption (dbPath=' + this.dbPath + ')');
@@ -894,9 +918,16 @@ export class StateStore extends EventEmitter {
         // ★ 写前磁盘合并 + .prev 轮换（合并仅项目级/丢库自愈场景；.prev 全库启用）
         this._mergeDiskIntoMemory();
         if (this._prevEnabled) { try { fs.copyFileSync(this.dbPath, this.dbPath + '.prev'); } catch { /* ignore */ } }
-        const tmp = this.dbPath + '.tmp.' + Date.now();
+        const tmp = this.dbPath + '.tmp.' + Date.now() + '.' + process.pid + '.' + (++this._saveSeq);
         try {
             const data = this._db.export();
+            // ★ 空/退化导出守卫（2026-09-19）：export 偶发 0 字节（空库/并发竞态）——
+            //   一旦落盘即把主库变 0 字节（实锤事故：global.sq3 被写空）→ 一律拒写
+            if (!data || data.length < 1024) {
+                console.error('[state-sqlite] CRITICAL: empty/degenerate export (' + (data ? data.length : 0) + ' B) — SKIPPING save (dbPath=' + this.dbPath + ')');
+                this._stateLog('CRITICAL: empty export — save skipped');
+                return;
+            }
             // ★ 写入前验证：export 出的数据是否有效 SQLite（防 WASM 内存腐败扩散）
             if (!this._tryValidateDb(data)) {
                 console.error('[state-sqlite] CRITICAL: exported data is invalid SQLite — SKIPPING save to prevent corruption (dbPath=' + this.dbPath + ')');

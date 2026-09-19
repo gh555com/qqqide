@@ -114,6 +114,7 @@
   var _refreshTimer = null;
 
   var STAT_TTL = 120000;          // stat 记忆 2 分钟（到期后台刷新，先给旧值防闪）
+  var FOLDER_TTL = 120000;        // 文件夹体积记忆 2 分钟（到期后台重算，先给旧值防闪）
   var FOLDER_RETRY_MS = 15000;    // 文件夹体积失败重试冷却（老 FOLDER_SIZE_SCAN_COOLDOWN 15000）
 
   var _statMemo = {};    // path → { data:{size,mtimeMs,birthtimeMs,isDir}, ts, pending }
@@ -161,13 +162,13 @@
   }
 
   // 文件夹体积（老 geqFolderSizeSync + fetchFolderSizeInternal 语义：异步扫，未就绪显示 ●）
-  function _folderGet(dir) {
-    var m = _folderMemo[dir];
-    if (m && m.data) return m.data;
-    if (m && m.pending) return null;
-    if (m && m.triedAt && (Date.now() - m.triedAt) < FOLDER_RETRY_MS) return null;
-    if (!bridge || !bridge.fs || typeof bridge.fs.dirSummary !== 'function') return null;  // 壳层未重启
-    var rec = _folderMemo[dir] = { pending: true, triedAt: Date.now() };
+  //   记忆语义 = stat 同款：有旧值先给旧值 + TTL 后台重算（不闪断）；失败按 FOLDER_RETRY_MS 冷却
+  function _folderKick(dir) {
+    var rec = _folderMemo[dir];
+    if (!rec) { rec = _folderMemo[dir] = {}; }
+    if (rec.pending) return;
+    rec.pending = true;
+    rec.triedAt = Date.now();
     try {
       bridge.fs.dirSummary(dir).then(function (r) {
         rec.pending = false;
@@ -191,6 +192,18 @@
         scheduleRefresh();
       }).catch(function () { rec.pending = false; scheduleRefresh(); });
     } catch (e) { rec.pending = false; }
+  }
+  function _folderGet(dir) {
+    var m = _folderMemo[dir];
+    if (m && m.data) {
+      // TTL 到期：后台重算（继续给旧值；壳层同语义「旧值 + 后台重扫」，零阻塞零闪断）
+      if (!m.pending && (!m.ts || (Date.now() - m.ts) > FOLDER_TTL)) _folderKick(dir);
+      return m.data;
+    }
+    if (m && m.pending) return null;
+    if (m && m.triedAt && (Date.now() - m.triedAt) < FOLDER_RETRY_MS) return null;
+    if (!bridge || !bridge.fs || typeof bridge.fs.dirSummary !== 'function') return null;  // 壳层未重启
+    _folderKick(dir);
     return null;
   }
 
@@ -245,6 +258,26 @@
   function refreshNow() {
     if (_refreshTimer) { clearTimeout(_refreshTimer); _refreshTimer = null; }
     try { _emitter.fire({}); } catch (e) { /* */ }
+  }
+
+  // ★ 源文件变更联动（viewport mtime 检出 → 调用）：该路径四本账作废 → 数字自动重算（零按钮）
+  //   stat 保留旧值走重取（防闪断）；媒体/文本/所在文件夹作废重探；文件夹给旧值后台重算
+  function _invalidatePath(path) {
+    if (!path) return;
+    try {
+      var p = String(path);
+      var sm = _statMemo[p];
+      if (sm) { sm.ts = 0; }
+      delete _mediaMemo[p];
+      delete _textMemo[p];
+      var d = _dirname(p);
+      var fm = _folderMemo[d];
+      if (fm) {
+        if (fm.data) { if (!fm.pending) _folderKick(d); }
+        else if (!fm.pending) { delete _folderMemo[d]; }
+      }
+      scheduleRefresh();
+    } catch (e) { /* */ }
   }
 
   // ════════════════════════════════════════════════════════════════════
@@ -684,6 +717,7 @@
     install: install,
     scheduleRefresh: scheduleRefresh,
     refreshNow: refreshNow,
+    invalidatePath: _invalidatePath,
     getLevel: _level,
     openRenameModal: _openRenameModal,
     _state: function () {

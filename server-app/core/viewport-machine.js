@@ -711,6 +711,10 @@
                   if (typeof fr.invalidateMemo === 'function') {
                     try { fr.invalidateMemo(it.ent.path); } catch (e4) { /* */ }
                   }
+                  // ★ codelens 数字联动：源文件变了 → 该路径 stat/媒体/文本/文件夹四记作废（数字自动重算，零按钮）
+                  if (window.qqqCodelens && typeof window.qqqCodelens.invalidatePath === 'function') {
+                    try { window.qqqCodelens.invalidatePath(it.ent.path); } catch (e5) { /* */ }
+                  }
                 }
               }).catch(function () { /* */ });
             }));

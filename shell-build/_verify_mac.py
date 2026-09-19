@@ -186,6 +186,10 @@ if mj in nameset:
     check('qqqide:update:mac-state' in mj_txt, 'shell: mac updater IPC wired')
     check('apply-update.sh' in mj_txt, 'shell: mac updater helper script present')
     check('qqqide-app-prev' in mj_txt, 'shell: mac updater rollback point present')
+    # mac 应用内更新 v1（2026-09-19 退出即换 + 无头探针）
+    check('maybeAutoApplyOnQuit' in mj_txt, 'shell: mac updater v1: quit-apply wired')
+    check('--update-probe' in mj_txt and 'probe-result' in mj_txt, 'shell: mac updater v1: quiet probe wired')
+    check('MODE="${2:-restart}"' in mj_txt, 'shell: mac updater v1: helper MODE arg present')
 else:
     check(False, 'shell-out/main.js present')
 check((EP + 'webapp/core/update-machine.js') in nameset, 'webapp: update-machine.js present (mac update UI)')

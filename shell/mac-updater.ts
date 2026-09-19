@@ -1,16 +1,18 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// mac-updater.ts — macOS 应用内更新机制 v0（2026-09-18）
+// mac-updater.ts — macOS 应用内更新机制 v1（2026-09-19）
 //
 // 背景: Windows 更新 = C 启动器托管（r 后台下载 → 下次开机原子交换）；mac 无启动器、
 //   .app 被运行中进程占用无法自替换 → 建立等效通道:
 //   ① 检查: 拉取签名清单 mac.json（Ed25519 验签，与 C 启动器同一信任根）→ 严格更高才更新
 //   ② 下载: tar.gz 断点续传 + sha256 校验（.update/new.tar.gz）
 //   ③ 暂存: 解压 → 结构门 → 本地证书预签名（codesign）→ staged.json
-//   ④ 换装: 用户点「重启更新」→ 助手脚本等应用退出 → 原子 rename
+//   ④ 换装: 用户点「重启更新」或直接退出应用（v1 退出即换）→ 助手脚本等应用退出 → 原子 rename
 //      （qqqide.app ↔ qqqide-app-prev + engines ↔ engines-prev）→ open 重启
 //   ⑤ 守卫: 启动健康检查失败自动回滚；qqqide-data/Data 永不触碰；上一版恒留存
+//      v1 退出即换: MODE=quiet 不拉起 GUI —— 换装后跑 --update-probe 无头探针自检
+//      （不通过自动回滚）；用户下次打开应用就是新版，全程零打断。
 //
 // 布局契约（与 pack.js externalizeMacBundle / 首次启动.command 共享）:
 //   {parent}/qqqide.app               程序本体（换装对象）
@@ -135,7 +137,25 @@ export function registerMacUpdateIpc(): void {
   ipcMain.handle('qqqide:update:mac-apply', () => applyNow());
 }
 
-export function macApplyNow(): { ok: boolean; error?: string } { return applyNow(); }
+export function macApplyNow(): { ok: boolean; error?: string } { return applyNow('restart'); }
+
+// ── 退出即换（v1）── main.ts 在 before-quit 调用 ─────────────────────────────
+// 应用自然退出时若有「就绪」暂存 → 静默换装（MODE=quiet：换装后 --update-probe
+// 无头探针自检；不拉起 GUI、不打断用户；探针失败自动回滚）。
+// 手工「重启更新」路径 _applying=true → 本函数自动跳过（防双重换装）。
+export function maybeAutoApplyOnQuit(): void {
+  try {
+    if (process.platform !== 'darwin') return;
+    if (!_ctx || _applying) return;
+    if (process.env.QQQIDE_NO_QUIT_APPLY === '1') return;   // 运维/测试逃生门
+    if (_state.phase !== 'ready') return;
+    const ctx = _ctx;
+    const staged = readStaged(ctx);
+    if (!staged || !fs.existsSync(path.join(ctx.updateDir, 'staging', 'qqqide.app'))) return;
+    const r = applyNow('quiet');
+    if (!r.ok) log(ctx, 'update: quit-time apply skipped (%s)', r.error || '?');
+  } catch (_) { }
+}
 
 // ── 路径 / 门 ──────────────────────────────────────────────────────────────
 function resolveMacPaths(): MacCtx | null {
@@ -274,8 +294,8 @@ function failSoft(ctx: MacCtx, why: string): void {
   schedule(RETRY_MS);
 }
 
-// ── 应用更新（助手脚本 + 退出）─────────────────────────────────────────────
-function applyNow(): { ok: boolean; error?: string } {
+// ── 应用更新（助手脚本 + 退出；MODE=restart 手动 / quiet 退出即换）─────────────────────────────────────────────
+function applyNow(mode: 'restart' | 'quiet' = 'restart'): { ok: boolean; error?: string } {
   if (!_ctx) return { ok: false, error: 'unsupported' };
   if (_applying) return { ok: false, error: 'already-applying' };
   const ctx = _ctx;
@@ -293,7 +313,7 @@ function applyNow(): { ok: boolean; error?: string } {
     try { fs.unlinkSync(path.join(ctx.updateDir, 'apply-result')); } catch (_) { }
 
     const logFd = fs.openSync(path.join(ctx.updateDir, 'update.log'), 'a');
-    const child = spawn('/bin/bash', [helperPath, String(process.pid)], {
+    const child = spawn('/bin/bash', [helperPath, String(process.pid), mode], {
       cwd: ctx.updateDir, detached: true, stdio: ['ignore', logFd, logFd],
     });
     child.unref();
@@ -301,9 +321,11 @@ function applyNow(): { ok: boolean; error?: string } {
 
     _applying = true;
     setState({ phase: 'applying', version: staged.version });
-    log(ctx, 'update: apply requested (helper detached, app exiting; target v%s)', staged.version);
+    log(ctx, 'update: apply requested (mode=%s, helper detached; target v%s)', mode, staged.version);
     recordStatus(ctx, 'waiting');
-    setTimeout(() => { try { app.quit(); } catch (_) { } }, 900);
+    if (mode !== 'quiet') {
+      setTimeout(() => { try { app.quit(); } catch (_) { } }, 900);
+    }
     return { ok: true };
   } catch (e: any) {
     log(ctx, 'update: apply spawn FAIL: ' + ((e && e.message) || String(e)));
@@ -721,7 +743,7 @@ function tail(s: string, n: number): string {
 function helperScript(): string {
   return [
     '#!/bin/bash',
-    '# qqqide macOS 更新助手 v0（由应用内「重启更新」触发）',
+    '# qqqide macOS 更新助手 v1（「重启更新」或退出即换触发；MODE=restart|quiet）',
     '# 等待主程序退出 -> 原子换装(.app + engines) -> 换装前结构门 -> 启动健康检查失败自动回滚',
     'set -u',
     'UPD="$(cd "$(dirname "$0")" && pwd)"',
@@ -729,6 +751,7 @@ function helperScript(): string {
     'LOG="$UPD/update.log"',
     'SWAPLOG="$DIR/qqqide-data/Data/launcher-swap.log"',
     'OLD_PID="${1:-}"',
+    'MODE="${2:-restart}"',
     '',
     'APP="$DIR/qqqide.app"',
     'NEWAPP="$UPD/staging/qqqide.app"',
@@ -741,9 +764,8 @@ function helperScript(): string {
     '  echo "$(date +%Y-%m-%dT%H:%M:%S) [mac-apply] $1" >> "$SWAPLOG" 2>/dev/null || true',
     '}',
     '',
-    'tree_alive() {',
-    '  ps -axww -o command= 2>/dev/null | grep -F "$APP/" | grep -v apply-update.sh | grep -q .',
-    '}',
+    '# ★ tree_alive 用 pgrep（自动排除自身；ps|grep 会自匹配 grep 自己的 argv → 恒真假活）',
+    'tree_alive() { pgrep -f "$APP/" >/dev/null 2>&1; }',
     '',
     'log "helper start (pid=$OLD_PID dir=$DIR staged=$STAGED_VER)"',
     '',
@@ -799,21 +821,39 @@ function helperScript(): string {
     '# 7. 签名自检（仅告警: 签名已在暂存期完成）',
     'codesign --verify "$APP" 2>>"$LOG" || log "WARN: signature verify failed"',
     '',
-    '# 8. 重启',
-    'open "$APP" 2>>"$LOG" || log "WARN: open failed"',
-    '',
-    '# 9. 健康检查（每 2s 一轮 × 20 = 40s；失败自动回滚）',
+    '# 8. 启动 / 健康验证（restart: 拉起 GUI 等其稳定；quiet: 无头探针自检，不打断用户）',
     'OK=0',
+    'if [ "$MODE" = "quiet" ]; then',
+    '  PROBE="$UPD/probe-result"',
+    '  rm -f "$PROBE" 2>/dev/null',
+    '  "$APP/Contents/MacOS/qqqide" --update-probe "$PROBE" >/dev/null 2>&1 &',
+    '  PP=$!',
+    '  for i in $(seq 1 30); do',
+    '    kill -0 "$PP" 2>/dev/null || break',
+    '    sleep 1',
+    '  done',
+    '  kill -0 "$PP" 2>/dev/null && kill -9 "$PP" 2>/dev/null',
+    '  log "probe: $(cat "$PROBE" 2>/dev/null || echo no-result)"',
+    '  if grep -q "^ok" "$PROBE" 2>/dev/null; then OK=1; fi',
+    'else',
+    '  open "$APP" 2>>"$LOG" || log "WARN: open failed"',
+    '',
+    '# 9. 健康检查（restart 模式：每 2s 一轮 × 20 = 40s；pgrep 自匹配安全 + 3s 稳定性复检防“秒退假活”；失败自动回滚）',
     'for i in $(seq 1 20); do',
     '  sleep 2',
-    '  if ps -axww -o command= 2>/dev/null | grep -F "$APP/Contents/MacOS/qqqide" | grep -q .; then OK=1; break; fi',
+    '  if pgrep -f "$APP/Contents/MacOS/qqqide" >/dev/null 2>&1; then',
+    '    sleep 3',
+    '    if pgrep -f "$APP/Contents/MacOS/qqqide" >/dev/null 2>&1; then OK=1; fi',
+    '    break',
+    '  fi',
     'done',
+    'fi',
     'if [ "$OK" = "1" ]; then',
     '  log "update OK -> v$STAGED_VER"',
     '  echo "done $STAGED_VER" > "$UPD/apply-result"',
     '  rm -rf "$UPD/staging" "$UPD/new.tar.gz" "$UPD/new.meta" "$UPD/staged.json" "$UPD/staged.version" 2>/dev/null',
     'else',
-    '  log "new app did not start; ROLLING BACK"',
+    '  log "health check failed ($MODE); ROLLING BACK"',
     '  rm -rf "$DIR/qqqide.app.failed" 2>/dev/null',
     '  mv "$APP" "$DIR/qqqide.app.failed" 2>/dev/null',
     '  mv "$DIR/qqqide-app-prev" "$APP" 2>/dev/null',
@@ -822,7 +862,7 @@ function helperScript(): string {
     '    mv "$ENG" "$DIR/qqqide-data/engines.failed" 2>/dev/null',
     '    mv "$DIR/qqqide-data/engines-prev" "$ENG" 2>/dev/null',
     '  fi',
-    '  open "$APP" 2>>"$LOG"',
+    '  if [ "$MODE" != "quiet" ]; then open "$APP" 2>>"$LOG"; fi',
     '  echo "rollback" > "$UPD/apply-result"',
     '  log "ROLLED BACK to previous version"',
     'fi',
