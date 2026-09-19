@@ -848,6 +848,29 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
+        // ★ 2026-09-19: 折叠后「僵尸实报」防线——恢复出的 conversation 不含当前楼层原始消息
+        //   （该楼层已折叠进饼干，真实上下文体量已骤降）→ 元数据里的 lastApi 实报是折叠前旧
+        //   上下文的读数，已作废 → 清零（显示回落本地估算 = 入口真值 + 合并写回 meta 清磁盘僵尸）。
+        //   反例（保留）：中断/致命楼层未折叠 → 原始消息仍在 conversation → 实报仍是有效基线。
+        //   实锤：q299 f8 末 290K 经恢复复活致 f9 house1 发前 prev=290915 / 真实入口 88,227。
+        try {
+            if (ag._lastApiPromptTokens > 0 && ag._currentFloorNum > 0) {
+                var _zHasRaw = false;
+                for (var _zri = 0; _zri < ag.conversation.length; _zri++) {
+                    var _zrm = ag.conversation[_zri];
+                    if (!_zrm._persistent && !_zrm._dynamic && _zrm._floor === ag._currentFloorNum) { _zHasRaw = true; break; }
+                }
+                if (!_zHasRaw) {
+                    ag._lastApiPromptTokens = 0;
+                    ag._lastApiTotalTokens = 0;
+                    ag._lastApiCompletionTokens = 0;
+                    if (typeof _questMetaPatch === 'function') {
+                        _questMetaPatch(questId, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 });
+                    }
+                }
+            }
+        } catch (_zf) { }
+
         // [silent] restored agent state
     } catch (e) {
         console.warn('[quests] _restoreAgentFromStore error:', e && e.message);

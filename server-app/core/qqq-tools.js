@@ -7,13 +7,14 @@
 //   Savor moments for yourself      占位（待移植）
 //   Paste                           占位（待移植）
 //   Video Url  [input ▶]            占位（填空框加按钮形态）
-//   Weave                           占位（待移植）
 //   ────────
 //   export doc  ▸                   ✅ 已移植（子菜单: .doc RTF / .docx）
 //   Pure                            占位（待移植）
 //   export Zip                      ✅ 已移植
 //
 // 语义: Roam 行已按定案移除（新 IDE 已有 Roam goods）；8204（老设置卡/阿q 体系）不迁。
+//       Weave 行已按定案删除（老语义=插物理空行，新架构 ViewZone 自带高度零需求；
+//       刷新/数字重算职责已全自动化——详 铁律 §4.10，不保留无独立能力的手动按钮）。
 // 交互: 纯 hover（进入即展开，250ms 延迟关闭；行 hover 高亮）；Esc / 点别处 / resize 即关；
 //       零自定义 cursor（光标铁律）。挂载点: gaea-host renderTabBar() 尾部、help 之前。
 // 动作: export doc / export Zip → window.qqqExport（core/export-machine.js）。
@@ -120,7 +121,6 @@
       { key: 'savor', label: 'Savor moments for yourself', pending: true },
       { key: 'paste', label: 'Paste', pending: true },
       { key: 'video', label: 'Video Url', video: true, pending: true },
-      { key: 'weave', label: 'Weave', pending: true },
       { key: 'sep1', sep: true },
       { key: 'doc', label: 'export doc', sub: true },
       { key: 'pure', label: 'Pure', pending: true },

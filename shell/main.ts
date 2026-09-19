@@ -66,7 +66,7 @@ import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
 import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain';
 import { startAutoUpdater } from './auto-updater';
-import { startMacUpdater, registerMacUpdateIpc } from './mac-updater';
+import { startMacUpdater, registerMacUpdateIpc, maybeAutoApplyOnQuit } from './mac-updater';
 
 // ── 服务 ──
 
@@ -210,7 +210,8 @@ const { isOffline: isOfflineFlag, isDev: isDevFlag } = extractFlags();
 const audioEngine = new AudioEngine(portable.root);
 // ★ 退出兜底: 最后一个窗口不一定是第一个窗口(mainWindow closed 路径可能永不触发)
 //   before-quit 统一兜底停音频引擎 — 幂等(已停则 no-op), 覆盖全部退出路径
-app.on('before-quit', () => { try { audioEngine.stop(); } catch { /* ignore */ } });
+//   + mac 更新「退出即换」(v1): 就绪暂存存在时静默换装（助手等本进程退出后作业）
+app.on('before-quit', () => { try { audioEngine.stop(); } catch { /* ignore */ } try { maybeAutoApplyOnQuit(); } catch { /* ignore */ } });
 const monacoHost = new MonacoHost();
 const qzSpawn = new QzSpawn(portable.root);
 // const lspBridge = new LspBridge(portable.root); // LSP OFF — 2026-06-23
@@ -474,6 +475,23 @@ function registerGaeaProcessIpc(): void {
 
 // ── App 就绪 ── 就绪 ──
 app.whenReady().then(async () => {
+    // ★ mac 更新健康探针（v1 退出即换专用）: --update-probe <outFile>
+    //   助手在 quiet 换装后直接调用本二进制 → 验证「新包能启动」→ 写结果后立即退出。
+    //   不进入正常启动（零窗口零服务）；自检失败或崩溃 = 无结果文件 → 助手自动回滚。
+    if (process.platform === 'darwin' && process.argv.includes('--update-probe')) {
+        let probeOk = true, probeNote = 'ok';
+        const outIdx = process.argv.indexOf('--update-probe') + 1;
+        const probeOut = (outIdx > 0 && outIdx < process.argv.length) ? process.argv[outIdx] : '';
+        if (!gotTheLock) { probeNote = 'busy'; }   // 另一实例在跑（旧实例退出中/用户刚重开）——不判失败
+        try { require('sql.js'); } catch (e: any) { probeOk = false; probeNote = 'dep:' + ((e && e.message) || String(e)); }
+        try { (app as any).dock?.hide?.(); } catch { /* ignore */ }
+        try {
+            if (probeOut) fs.writeFileSync(probeOut, (probeOk ? 'ok ' : 'fail ') + probeNote + ' ' + APP_VERSION, 'utf8');
+        } catch { /* ignore */ }
+        app.exit(probeOk ? 0 : 1);
+        return;
+    }
+
     // ★ 天罗地网: 必须在任何窗口/服务之前初始化 — 崩溃记录网络 (2026-08-08 F14)
     try { crashNetInit(portable.userData); } catch (e) { try { console.warn('[crash-net] init failed:', e); } catch (_) { } }
 

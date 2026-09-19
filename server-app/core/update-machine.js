@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// update-machine.js — mac 应用内更新 UI 机器（2026-09-18）
+// update-machine.js — mac 应用内更新 UI 机器（v1 · 2026-09-19：退出即换——点「重启更新」或退出应用均可完成）
 //
 // 壳层 mac-updater 的状态（检查/下载/暂存/就绪/换装）→ 主窗口两处出口:
 //   ① 菜单行2 更新按钮（#qqq-update-btn）: 常态=手动检查；就绪=点击直接换装；下载中=仅提示
@@ -49,7 +49,7 @@
 
   function readyToast(ver) {
     _notified = ver || '?';
-    qoast(t('shell.update.toast', '新版本 v{version} 已就绪，重启后生效', { version: _notified }), {
+    qoast(t('shell.update.toast', '新版本 v{version} 已就绪：点「重启更新」立即完成，或退出应用后自动更新', { version: _notified }), {
       duration: 0, type: 'info',
       action: { label: t('shell.update.apply', '重启更新'), onClick: apply }
     });
@@ -62,7 +62,7 @@
     if (s.phase === 'checking') { title = t('shell.update.checking', '正在检查更新…'); }
     else if (s.phase === 'downloading') { title = t('shell.update.downloading', '正在下载新版本 {pct}%', { pct: (s.pct == null ? 0 : s.pct) }); }
     else if (s.phase === 'staging') { title = t('shell.update.staging', '正在准备新版本…'); }
-    else if (s.phase === 'ready') { title = t('shell.update.readyBtn', '新版 v{version} 已就绪，点击更新', { version: s.version || '?' }); }
+    else if (s.phase === 'ready') { title = t('shell.update.readyBtn', '新版 v{version} 已就绪，点击立即更新（退出应用也会自动完成）', { version: s.version || '?' }); }
     else if (s.phase === 'applying') { title = t('shell.update.applying', '正在更新，应用即将重启…'); }
     _btn.title = title;
     _btn.classList.toggle('qqq-update-ready', s.phase === 'ready');

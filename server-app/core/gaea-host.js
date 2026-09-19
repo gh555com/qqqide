@@ -169,7 +169,7 @@
     }
 
     // qqq 按钮（core/qqq-tools.js）— help 左边：hover 下拉 = 老项目侧边按钮组移植
-    //   （Savor/Paste/Video Url/Weave/export doc/Pure/export Zip；必须在 help 挂载之前调用）
+    //   （Savor/Paste/Video Url/export doc/Pure/export Zip；必须在 help 挂载之前调用）
     if (window.qqqToolsMenu && typeof window.qqqToolsMenu.mount === 'function') {
       window.qqqToolsMenu.mount(_tabBarEl);
     }

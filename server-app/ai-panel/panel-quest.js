@@ -142,7 +142,20 @@ function _getOrCreateAgent(questId) {
 // ---- Quest Management ----
 var questStore = new QuestStore();
 window.questStore = questStore;  // 暴露到全局，供 card-pool.js 等外部模块访问
-questStore.requireProjectForWrites(true);  // 底层守卫：无主项目禁止一切写入
+questStore.requireProjectForWrites(true);  // 底层守卫：无主项目禁止一切写入
+
+// ★ 2026-09-19: 合并式 quest 元数据补齐（唯一入口）——questStore.save 是「整行替换」语义：
+//   只传部分字段会把 totalCostGe/currentFloorNum 等其余字段整体铲掉（折叠/压缩清零只传 3 个
+//   token 字段即踩此坑）。凡「只改几个字段」的写盘必须走本函数：读现值 → 合并 patch → 写回。
+//   永不 reject（静默失败优于误伤）；_rootDir 未绑定等窗口期天然 no-op。
+async function _questMetaPatch(qid, patch) {
+    try {
+        if (!qid || !patch || typeof questStore === 'undefined' || !questStore.load || !questStore.save) return;
+        var _m = (await questStore.load(qid)) || {};
+        for (var _k in patch) { if (Object.prototype.hasOwnProperty.call(patch, _k)) _m[_k] = patch[_k]; }
+        await questStore.save(qid, _m);
+    } catch (_) { }
+}
 
 // ═══ 工作空间 — 绑定主文件夹 ═══
 // 铁律：一个窗口一个主文件夹，终身不变。要换主文件夹只能开新窗口。

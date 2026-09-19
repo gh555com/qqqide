@@ -431,8 +431,8 @@ var _ctxBreakdownTimer = null;
 var _ctxBreakdownVisible = false;
 
 // ★ 2026-09-07 aq 楼层背包闭环（agent-loop/pipeline/card-pool 共享）:
-//   __qqqCtxSampleK — 指定 agent 强算权威背包（displayTotal = max(localTotal, 服务端实报) tokens÷1000，与 ctx 按钮同尺）。
-//   ★ 2026-09-18 q279: 原取 localTotal → 与按钮 max 口径分裂（f118 开局 aq 151K vs 按钮 215K 双口径同屏）→ 改按钮同尺统一。
+//   __qqqCtxSampleK — 指定 agent 强算权威背包（displayTotal = 实报优先：有实报恒实报，无则本地估算；tokens÷1000，与 ctx 按钮同尺）。
+//   ★ 2026-09-18 q279 统一 → q299 收官定案「实报优先」：实报 = 最近一次请求真实 token 数（计费同源）；本地估算仅无实报时兜底。
 //   临时切换 _activeAgent + 清 _estCache 强制绕过缓存（压缩动画 q181 f77 同款模式），finally 保证还原。
 function __qqqCtxSampleK(_ag) {
     var _sa = _activeAgent;
@@ -724,9 +724,10 @@ function _estimateTokensFull() {
     if (errCount > 0) _r("Error messages × " + errCount, errTok, 0, "#f85149");
     _r("JSON overhead (" + msgCount + " msgs)", jsonOverheadTok, 0, "#586e75");
     _r("Body fields (stream, max_tokens, …)", bodyConstTok, 0, "#586e75");
-    // ★ 2026-09-17 q299: 显示口径改 max(本地估算, 服务端实报)——实报 = 上次请求真实 token 数（权威：含思维链等本地不可见字节；本地估算系统性低估，q263 f181 实测本地 236k vs 实报 408k → 旧口径 Free 虚高 172k）。
-    //   实报在压缩/切断时清零（防僵尸，清零点见 _lastApiPromptTokens 各守卫）→ 无实报时自动回落纯本地估算；旧注（2026-08-18）：恒=localTotal 防 q178 僵尸数字。
-    var displayTotal = Math.max(localTotal, _apiPrompt);
+    // ★ 2026-09-18 q299 收官: 显示口径 = 实报优先——有服务端实报（= 最近一次请求真实 token 数，与 ge 计费最新房间同源）恒显实报，永不领先最近计费；
+    //   无实报（新楼层 / 楼层折叠后 / 压缩切断后清零，清零点见 _lastApiPromptTokens 各守卫）回落本地估算。
+    //   旧口径 max(本地估算, 实报) 在建楼中显示「下一请求预估」（领先最近计费 = 刚生成未发出的思维链/工具结果，实测 +40k/+86k）且两值轮替同屏 → 废除。
+    var displayTotal = _apiPrompt > 0 ? _apiPrompt : localTotal;
     _r("Local sum", localTotal, 0, "#c9d1d9");
     if (_apiPrompt > 0) _r("API prompt_tokens", _apiPrompt, 0, "#3fb950");
     var _free = Math.max(0, CTX_MAX - displayTotal);
@@ -876,7 +877,7 @@ function updateCtxBtn() {
     var _ag = _activeAgent;
     var used = _estimateTokensFull();
     if (used === 0 && _ag.conversation && _ag.conversation.length) { console.warn('[ctx-btn] used=0 convLen=' + _ag.conversation.length + ' _floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
-    var displayUsed = used;  // ★ 2026-09-17 q299: used = max(本地估算, 服务端实报)（实报=权威下限；压缩后清零自动回落本地）；图解 Local sum / 压缩动画仍走 localTotal 口径
+    var displayUsed = used;  // ★ 2026-09-18 q299 收官: used = 实报优先（有实报恒取实报=与 ge 计费同源，永不领先最近计费；无实报回落本地估算）；图解 Local sum / 压缩动画仍走 localTotal 口径
     var pct = Math.min(100, Math.round(displayUsed / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(displayUsed / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
@@ -1340,8 +1341,8 @@ window.addEventListener('message', async function (e) {
                     ag._lastApiPromptTokens = 0;
                     ag._lastApiTotalTokens = 0;
                     ag._lastApiCompletionTokens = 0;
-                    if (typeof questStore !== 'undefined' && questStore.save) {
-                        questStore.save(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { });
+                    if (typeof _questMetaPatch === 'function') {
+                        _questMetaPatch(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 });
                     }
                     _respond({
                         type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: true,
@@ -1457,9 +1458,9 @@ window.addEventListener('message', async function (e) {
                 ag._lastApiTotalTokens = 0;
                 ag._lastApiCompletionTokens = 0;
                 if (typeof updateCtxBtn === 'function') updateCtxBtn();
-                // ★ 持久化 token 元数据到 quest.sq3（防重启恢复旧值→ctx-btn 显示僵尸数字）
-                if (typeof questStore !== 'undefined' && questStore.save) {
-                    questStore.save(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { });
+                // ★ 持久化 token 元数据到 quest.sq3（防重启恢复旧值→ctx-btn 显示僵尸数字）——合并式写盘
+                if (typeof _questMetaPatch === 'function') {
+                    _questMetaPatch(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 });
                 }
                 break;
             }
