@@ -167,6 +167,37 @@ function fixMacBundle(unpacked) {
       console.log('[pack] mac: helper ->', newBase + '.app');
     }
   }
+
+  // ── 3) 自定义应用图标（2026-09-19）: shell/icon.icns → 主 app + helpers ──
+  //   默认 Electron 图标必须替换为 qqq 自己的图标（Finder/Dock/快捷方式全部生效）。
+  //   electron.icns 覆盖 + qqqide.icns 双写 + CFBundleIconFile upsert（三重保险）。
+  try {
+    const icnsSrc = path.join(ROOT, 'shell', 'icon.icns');
+    if (fs.existsSync(icnsSrc)) {
+      const mainRes = path.join(contents, 'Resources');
+      fs.copyFileSync(icnsSrc, path.join(mainRes, 'qqqide.icns'));
+      fs.copyFileSync(icnsSrc, path.join(mainRes, 'electron.icns'));
+      let t = fs.readFileSync(mainPlist, 'utf8');
+      const reIcon = /(<key>CFBundleIconFile<\/key>\s*<string>)[^<]*(<\/string>)/;
+      if (reIcon.test(t)) {
+        t = t.replace(reIcon, '$1qqqide.icns$2');
+      } else {
+        t = t.replace(/<\/dict>\s*<\/plist>/,
+          '<key>CFBundleIconFile</key><string>qqqide.icns</string></dict></plist>');
+      }
+      fs.writeFileSync(mainPlist, t, 'utf8');
+      if (fs.existsSync(fw)) {
+        for (const d of fs.readdirSync(fw)) {
+          if (!/^qqqide Helper.*\.app$/.test(d)) { continue; }
+          const hr = path.join(fw, d, 'Contents', 'Resources');
+          if (fs.existsSync(hr)) { fs.copyFileSync(icnsSrc, path.join(hr, 'electron.icns')); }
+        }
+      }
+      console.log('[pack] mac: custom icon applied (qqqide.icns,' + fs.statSync(icnsSrc).size + 'B)');
+    } else {
+      console.warn('[pack] mac: shell/icon.icns missing, keeping default Electron icon');
+    }
+  } catch (e) { console.warn('[pack] mac: icon apply failed:', e.message); }
 }
 
 // Manual pure-prebuilt path: skip electron-builder entirely and assemble from
@@ -530,6 +561,16 @@ function injectLauncher(unpacked) {
       fs.renameSync(bin, coreExe);
       console.log('[pack] renamed ' + candidate + ' -> joker.exe');
       break;
+    }
+  }
+  // ★ joker.exe 图标（2026-09-19）: 与 launcher/启动器同一图标资产（shell/icon.ico）。
+  //   electron-builder 已给主 exe 应用 icon，但 manual assembly / 重命名路径需 rcedit 兜底。
+  if (fs.existsSync(coreExe)) {
+    const _rcedit = path.join(ROOT, 'node_modules', 'rcedit', 'bin', 'rcedit-x64.exe');
+    const _icon = path.join(ROOT, 'shell', 'icon.ico');
+    if (fs.existsSync(_rcedit) && fs.existsSync(_icon)) {
+      const rj = cp.spawnSync(_rcedit, [coreExe, '--set-icon', _icon], { stdio: 'inherit' });
+      console.log('[pack] joker.exe icon ' + (rj.status === 0 ? 'set' : 'FAILED'));
     }
   }
   console.log('[pack] moved Electron runtime -> gh555.com/');

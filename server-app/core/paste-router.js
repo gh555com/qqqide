@@ -48,6 +48,26 @@
     return '\u{1F4CE}' + prefix + ':' + name;
   }
 
+  // ═══ VIG 履历埋点（老 q3 savePasteStats 语义：一次粘贴动作 n+1，字节累加） ═══
+  function _vigPaste(bytes) {
+    try {
+      if (bridge && bridge.vig && bridge.vig.bump) {
+        bridge.vig.bump('paste', { n: 1, b: Math.max(0, Math.floor(Number(bytes) || 0)) });
+      }
+    } catch (_) { }
+  }
+  async function _sumSizes(list) {
+    var total = 0;
+    if (!list || !list.length) { return 0; }
+    try {
+      var rs = await Promise.all(list.map(function (p) {
+        return bridge.fs.stat(p).then(function (s) { return (s && s.size) || 0; }).catch(function () { return 0; });
+      }));
+      for (var i = 0; i < rs.length; i++) { total += rs[i]; }
+    } catch (_) { }
+    return total;
+  }
+
   // ═══ 时间戳 + 随机名 ═══
   function pad2(n) { return String(n).padStart(2, '0'); }
   function nowStamp() {
@@ -374,11 +394,14 @@
 
     // ★ 第 5 步：图片粘贴
     if (pr.hasImage && pr.imageBlobs.length > 0) {
+      var _vigImgOk = 0, _vigImgBytes = 0;
       for (var k = 0; k < pr.imageBlobs.length; k++) {
         var ib = pr.imageBlobs[k];
         var ext = mimeToExt[ib.type] || '.png';
         var result = await _saveImage(ib.blob, ext, e);
         if (result && result.path) {
+          _vigImgOk++;
+          _vigImgBytes += (ib.blob && ib.blob.size) || 0;
           var token = _makeAnchorToken(result.sha256, result.fileName);
           _insertTokenAtCursor(token, { path: result.path, sha256: result.sha256, fileName: result.fileName }, targetEd);
         } else {
@@ -393,6 +416,7 @@
           }
         }
       }
+      if (_vigImgOk > 0) { _vigPaste(_vigImgBytes); }
       return;
     }
 
@@ -412,6 +436,7 @@
           var psep = pdir.indexOf('\\') >= 0 ? '\\' : '/';
           var seenP = {};
           var copiedOk = 0, copiedFail = 0;
+          var landedListP = [];
           for (var n = 0; n < fullPaths.length; n++) {
             var fp = fullPaths[n];
             var fnP = fp.replace(/\\/g, '/').split('/').pop() || 'file';
@@ -425,6 +450,7 @@
               var landed = await bridge.fs.copyFile(fp, dstP);
               copiedOk++;
               var landedPath = (typeof landed === 'string' && landed) ? landed : dstP;
+              landedListP.push(landedPath);
               var landedName = landedPath.replace(/\\/g, '/').split('/').pop() || fnP;
               // 注册资产根目录（缩略图/打开可用）
               if (bridge && bridge.assetRoots && bridge.assetRoots.add) {
@@ -439,6 +465,7 @@
           if (copiedFail > 0 && window.qqqideQoast) {
             window.qqqideQoast.show((window._i ? window._i('pasteRouter.imgPasteDone', '粘贴: {ok} 成功, {fail} 失败', { ok: copiedOk, fail: copiedFail }) : ('粘贴: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败')), { duration: 4000 });
           }
+          if (copiedOk > 0) { _vigPaste(await _sumSizes(landedListP)); }
           return;
         }
         // 无编辑文件（_getPasteDir null）→ 降级插文件名锚点
@@ -515,6 +542,7 @@
     }
 
     var copiedOk = 0, copiedFail = 0;
+    var _dropLanded = [];
     var seen = {};
 
     // 统一落盘函数: 有完整路径 → 原生流式复制（保原名，目录感知）；无路径 → 图片 blob 写盘
@@ -537,6 +565,7 @@
           var landed = await bridge.fs.copyFile(f.path, dst);
           copiedOk++;
           var landedPath = (typeof landed === 'string' && landed) ? landed : dst;
+          _dropLanded.push(landedPath);
           var landedName = landedPath.replace(/\\/g, '/').split('/').pop() || name;
           if (bridge && bridge.assetRoots && bridge.assetRoots.add) {
             bridge.assetRoots.add(pdir).catch(function () {});
@@ -555,6 +584,7 @@
         var result = await _saveImage(f, ext, e);
         if (result && result.path) {
           copiedOk++;
+          _dropLanded.push(result.path);
           _insertTokenAtCursor(_makeAnchorToken(result.sha256, result.fileName), { path: result.path, sha256: result.sha256, fileName: result.fileName }, targetEd);
         } else {
           copiedFail++;
@@ -578,6 +608,7 @@
     if (copiedFail > 0 && window.qqqideQoast) {
       window.qqqideQoast.show((window._i ? window._i('pasteRouter.dropDone', '拖放: {ok} 成功, {fail} 失败', { ok: copiedOk, fail: copiedFail }) : ('拖放: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败')), { duration: 4000 });
     }
+    if (copiedOk > 0) { _vigPaste(await _sumSizes(_dropLanded)); }
     return true;
   }
 

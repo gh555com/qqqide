@@ -129,6 +129,13 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
     // 注入动态上下文（叙事摘要 + 相关事实）
     // ★ 始终创建副本：时间上下文的 push 不能污染 self.conversation
     var apiMessages = messages.slice();
+    // ★ only facts 提取楼层（_compressFloor）：发送视图剥离饼干消息（_biscuit）——提取视野 = 甲壳 + Z + fx
+    //   + 📎喂料子弹；保留半段（rText，压缩瞬间已替换进饼干）绝不可进请求（q263 f188 实锤：F187 条目
+    //   从饼干漏成 facts → 重复 + 抢密度/专注度）。纯发送视图过滤（filter 返回新数组）：不改 conversation /
+    //   不改饼干本体 / body 建一次全重试与多 house 一致；非压缩楼层零影响。
+    if (self._compressFloor) {
+        apiMessages = apiMessages.filter(function (m) { return !(m && m._biscuit); });
+    }
     // 提取最后一轮用户查询用于相关事实检索
     var lastUserQuery = '';
     for (var qi = messages.length - 1; qi >= 0; qi--) {

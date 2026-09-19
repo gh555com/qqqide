@@ -295,9 +295,14 @@ def main():
     g_signal_emitter.shift_key_triggered.connect(handle_three_shift_presses)
 
     if not g_platform.check_requirements(ui.show_custom_message):
-        print("R24: 平台需求检查失败，程序退出。")
-        config.env_instance.cleanup()
-        sys.exit(1)
+        # (R27) macOS 权限场景：保持存活等待授权（授权后自动继续）；其余场景直接退出
+        _waiter = getattr(g_platform, "wait_for_permission", None)
+        if _waiter and _waiter():
+            print("R27: 权限已就绪，继续启动流程。")
+        else:
+            print("R24: 平台需求检查失败，程序退出。")
+            config.env_instance.cleanup()
+            sys.exit(1)
 
     if not g_platform.create_mutex(config.aqq, ui.show_custom_message):
         print("R24: 单例检查失败 (程序已运行或创建互斥锁失败)，程序退出。")

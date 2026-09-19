@@ -19,8 +19,11 @@ function _reason(e: unknown): string {
 
 let _winShownPromise: Promise<void> | null = null;
 
-/** mac: 等待任一主窗口可见（最多 30s 兜底放行；非 mac 立即放行）。 */
-function _waitMainWindowShown(): Promise<void> {
+/** mac: 等待任一主窗口可见（最多 30s 兜底放行；非 mac 立即放行）。
+ *  ★ 2026-09-19 导出共享: auth-brain.restore() 同款场景——重签名后 safeStorage 首次
+ *  访问触发系统钥匙串授权弹窗，同步调用冻结主进程事件循环 → 窗口永不出现。
+ *  一切「可能触发钥匙串弹窗」的主进程调用都必须先等窗口可见。 */
+export function waitMainWindowShown(): Promise<void> {
     if (process.platform !== 'darwin') { return Promise.resolve(); }
     if (_winShownPromise) { return _winShownPromise; }
     _winShownPromise = new Promise<void>((resolve) => {
@@ -47,7 +50,7 @@ export function registerSecureIpc(): void {
 
     ipcMain.handle('qqqide:secure:encrypt', async (_e, text: unknown) => {
         try {
-            await _waitMainWindowShown();
+            await waitMainWindowShown();
             if (!safeStorage.isEncryptionAvailable()) { return { ok: false, reason: 'unavailable' }; }
             const buf = safeStorage.encryptString(String(text ?? ''));
             return { ok: true, b64: buf.toString('base64') };
@@ -56,7 +59,7 @@ export function registerSecureIpc(): void {
 
     ipcMain.handle('qqqide:secure:decrypt', async (_e, b64: unknown) => {
         try {
-            await _waitMainWindowShown();
+            await waitMainWindowShown();
             if (!safeStorage.isEncryptionAvailable()) { return { ok: false, reason: 'unavailable' }; }
             const buf = Buffer.from(String(b64 || ''), 'base64');
             return { ok: true, text: safeStorage.decryptString(buf) };

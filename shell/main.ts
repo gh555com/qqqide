@@ -54,7 +54,9 @@ import { memMeterInit } from './mem-meter';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getOsGaeaFullState, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
-import { registerKopeIpc } from './ipc-kope';
+import { registerKopeIpc, kopeWarmup } from './ipc-kope';
+import { registerVigIpc } from './ipc-vig';
+import { vigFlush, vigSquadSummon } from './vig';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
 import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
@@ -63,7 +65,7 @@ import { registerKmdIpc } from './ipc-kmd';
 import { registerQmdIpc } from './ipc-qmd';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
-import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
+import { startWqPing, stopWqPing, notifyAuthReady, setCurrentlyPlaying, triggerPlayingPing } from './wq-ping';
 import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain';
 import { startAutoUpdater } from './auto-updater';
 import { startMacUpdater, registerMacUpdateIpc, maybeAutoApplyOnQuit } from './mac-updater';
@@ -306,12 +308,15 @@ function registerAllIpc(): void {
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerMacUpdateIpc();
     registerAudioIpc(audioEngine, portable.root);
+    registerWqPlayingIpc();
+    registerVigIpc();
     registerQzSpawnIpc(qzSpawn);
     registerRoamIpc();
     registerAiStateIpc();
     registerWsStateIpc();
     registerSearchStateIpc();
     registerKopeIpc();
+    try { kopeWarmup(); } catch { /* ignore */ }   // VIG：提前预热 kope 库（card.count 首 ping 即可带上）
     registerKmdIpc(portable.root);
     registerQmdIpc(portable.root);
     registerGaeaProcessIpc();
@@ -322,6 +327,19 @@ function registerAllIpc(): void {
     registerSquadIpc();
     registerSecureIpc();
     registerProjectLockIpc();
+}
+
+// ── wq 偿还 IPC — Savor 播放状态 → ping playing=true（2026-09-19） ──
+function registerWqPlayingIpc(): void {
+    ipcMain.handle('qqqide:wq:playing', (_e, on: boolean) => {
+        try {
+            setCurrentlyPlaying(!!on);
+            if (on) { triggerPlayingPing(); }
+            return { ok: true };
+        } catch {
+            return { ok: false };
+        }
+    });
 }
 
 // ── 桌面快捷方式 IPC — PowerShell COM 创建/删除 .lnk（2026-07-28 v2 修复路径） ──
@@ -587,6 +605,8 @@ app.whenReady().then(async () => {
         if (!ev || ev.event !== 'summon') { return; }
         try { console.log('[squad] summon', ev.squad, ev.ok ? 'OK' : 'miss', ev.folder || ''); } catch { /* ignore */ }
         if (ev.ok) {
+            // ★ 编队履历: 召回成功记一次（槽位独立计数 → vig.json → wq-ping 搭便车上报）
+            try { vigSquadSummon(String(ev.squad || '')); } catch { /* ignore */ }
             try { playSfxFile(audioEngine, portable.root, 'yz:kj3.mp3'); } catch (e) {}
             // ★ mac 兜底: NSRunningApplication 激活无法还原最小化窗口 →
             //   本实例窗口直接 restore/show/focus（winId+pid 双条件，他实例不碰）
@@ -664,6 +684,7 @@ app.whenReady().then(async () => {
             try { audioEngine.stop(); } catch { /* ignore */ }
             try { cleanupAllGaeaProcesses(); } catch { /* ignore */ }
             try { stopWqPing(); } catch { /* ignore */ }
+        try { vigFlush(); } catch { /* ignore */ }
         }
     });
 

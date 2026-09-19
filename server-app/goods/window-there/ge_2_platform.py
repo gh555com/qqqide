@@ -756,7 +756,7 @@ elif sys.platform == 'darwin':
         def get_platform_name(self):
             return "macOS (darwin)"
 
-        def _check_accessibility_permission(self):
+        def _check_accessibility_permission(self, allow_prompt=True):
             """
             内部方法：检查辅助功能权限
             返回: (has_permission, error_message)
@@ -765,19 +765,20 @@ elif sys.platform == 'darwin':
                 from ApplicationServices import AXIsProcessTrusted, AXIsProcessTrustedWithOptions, kAXTrustedCheckOptionPrompt
 
                 # 检查当前进程是否有辅助功能权限
-                is_trusted = AXIsProcessTrusted()
+                if AXIsProcessTrusted():
+                    return True, ""
 
-                if not is_trusted:
-                    # 尝试显示权限请求对话框
-                    options = {kAXTrustedCheckOptionPrompt: True}
-                    is_trusted_with_prompt = AXIsProcessTrustedWithOptions(options)
+                if allow_prompt:
+                    # 尝试显示系统权限请求对话框（每次进程生命周期内仅尝试一次）
+                    try:
+                        options = {kAXTrustedCheckOptionPrompt: True}
+                        AXIsProcessTrustedWithOptions(options)
+                    except Exception:
+                        pass
+                    if AXIsProcessTrusted():
+                        return True, ""
 
-                    if not is_trusted_with_prompt:
-                        return False, "DENIED"
-                    else:
-                        return False, "RESTART_NEEDED"
-
-                return True, ""
+                return False, "DENIED"
 
             except Exception as e:
                 return False, "ERROR: " + str(e)
@@ -794,8 +795,9 @@ elif sys.platform == 'darwin':
                 "3. 选择 [隐私] 标签页\n"
                 "4. 在左侧列表中找到 [辅助功能]\n"
                 "5. 在右侧列表中找到本程序 (或运行它的终端) 并打上勾\n\n"
+                "如果列表中已有本程序但仍不可用：把开关关闭再重新打开一次（刷新授权）。\n\n"
                 "如果列表中没有本程序，请点击 + 号手动添加。\n\n"
-                "授权后请重启本程序。"
+                "授权后本程序会自动继续，无需重启。"
             )
 
         def check_requirements(self, show_message_callback):
@@ -825,23 +827,48 @@ elif sys.platform == 'darwin':
             self.accessibility_granted = has_permission
 
             if not has_permission:
-                if error_message == "RESTART_NEEDED":
-                    show_message_callback(
-                        _t('goods.winthere.titlePermUpdated', 'kqs 窗口布局 - 权限已更新'),
-                        _t('goods.winthere.macPermRestart',
-                           "辅助功能权限已更新，但需要重启程序才能生效。\n\n请重启本程序以继续。"),
-                        "ok"
-                    )
-                else:
-                    show_message_callback(
-                        _t('goods.winthere.titleNeedPerm', 'kqs 窗口布局 - 需要权限'),
-                        _t('goods.winthere.macNeedPerm', 'macOS 需要您手动开启"辅助功能"权限，本程序才能工作。\n\n{guide}', guide=self._get_accessibility_instructions()),
-                        "ok"
-                    )
+                show_message_callback(
+                    _t('goods.winthere.titleNeedPerm', 'kqs 窗口布局 - 需要权限'),
+                    _t('goods.winthere.macNeedPerm', 'macOS 需要您手动开启"辅助功能"权限，本程序才能工作。\n\n{guide}', guide=self._get_accessibility_instructions()),
+                    "ok"
+                )
                 return False
 
             print("R24: 辅助功能权限检查通过。")
             return True
+
+        def wait_for_permission(self, timeout_s=1800, poll_s=2.0):
+            """
+            (R27) 权限等待模式：检查失败后不再立即退出（会被看门狗拉起→弹窗死循环），
+            进程保持存活静默轮询，用户授权后自动继续启动（无需重启）。
+            """
+            import time
+            ok, msg = self._check_accessibility_permission(allow_prompt=False)
+            if ok:
+                return True
+            if msg.startswith("ERROR"):
+                return False
+            t0 = time.time()
+            last_log = t0
+            while (time.time() - t0) < timeout_s:
+                try:
+                    from PySide2.QtWidgets import QApplication
+                    app = QApplication.instance()
+                    if app:
+                        app.processEvents()
+                except Exception:
+                    pass
+                time.sleep(poll_s)
+                ok, msg = self._check_accessibility_permission(allow_prompt=False)
+                if ok:
+                    self.accessibility_granted = True
+                    print("R27: 辅助功能权限已生效，自动继续启动（无需重启）。")
+                    return True
+                now = time.time()
+                if now - last_log >= 30:
+                    last_log = now
+                    print(f"R27: 正在等待辅助功能权限… 已等待 {int(now - t0)}s / {timeout_s}s")
+            return False
 
         def create_mutex(self, aqq_id, show_message_callback):
             """

@@ -24,8 +24,13 @@ export class AudioEngine {
     private pending = new Map<number, PendingCall>();
     private alive = false;
     private starting: Promise<boolean> | null = null;
+    // ★ 引擎主动推送事件（无 _id 行，如 audio_state_changed）→ 广播回调（Savor 移植 2026-09-19）
+    private eventCb: ((evt: any) => void) | null = null;
 
     constructor(private appRoot: string) {}
+
+    /** 订阅引擎事件（miniaudio_bridge.py 主动写出的 {event:...} 行）。 */
+    onEvent(cb: (evt: any) => void): void { this.eventCb = cb; }
 
     private resolveScript(): string | null {
         const candidates = [
@@ -126,7 +131,13 @@ export class AudioEngine {
         if (!line || !line.trim()) { return; }
         let msg: any;
         try { msg = JSON.parse(line); } catch { return; }
-        if (msg._id === undefined) { return; }
+        if (msg._id === undefined) {
+            // ★ 无 _id = 引擎主动事件（如 audio_state_changed / audio_finished，Savor 统计与 UI 同步用）
+            if (msg && typeof msg === 'object' && msg.event && this.eventCb) {
+                try { this.eventCb(msg); } catch { /* ignore */ }
+            }
+            return;
+        }
         const cb = this.pending.get(msg._id);
         if (!cb) { return; }
         this.pending.delete(msg._id);

@@ -849,20 +849,49 @@ async function _executeSend(intent) {
     // ★ 发送停滞看门狗（2026-08-11，q184 20 分钟强拉断事故修案）：不是总时长上限——
     //   长任务（60 houses / 深度思考 / 压缩）总时长远超 20 分钟是常态，正在干活绝不能拉断。
     //   仅在「20 分钟零进展」时终止（网关重试风暴 / IPC 挂死 / SSE 静默），防三面板永久禁发；
-    //   进展信号 = 内容 token（onToken）+ house 完结（onCost，每 house 必触发）+ 工具开始（onToolCall）
-    var _sendCapTimer = null;
-    var _toolSaveT = null;  // ★ 断电保护：工具结果防抖落盘计时器
-    var _capAbort = function () {
-        try {
-            if (!agent || agent._floorCompletedCleanly) return;
-            // ★ 工具执行中 = 真实进展（上传/长命令无 onToken/onCost 信号，不能误判停滞）：
-            //   续命一次（累计 ~40min 工具窗口上限，防工具死循环永不拉断）；
-            //   挂死工具由 ghrun 15min 失速看门狗先杀（< 20min），活工具（上传 116MB）永不拉断
-            if (agent._toolExecActive && !agent._toolCapRenewed) {
-                agent._toolCapRenewed = true;
-                _touchCap();
-                return;
-            }
+    //   进展信号 = 内容 token（onToken）+ 思考流（onReasoning）+ house 完结（onCost，收尾路径）+ 工具开始/完结（onToolCall/onToolResult）
+    // ★ 2026-09-19 三修（f32 孤儿定时器杀新楼 + f36 续命失效双事故）：
+    //   R1 续命状态每楼层开局重置（原 _toolCapRenewed 无重置点——设计「每层 1 次」实现成「终身 1 次」，
+    //      f30/f36 长工具楼 40 分钟一到直接杀）；
+    //   R2 工具续命升级为预算制（每次触发 +20min 窗口，静默段累计 2h 封顶——对齐单命令硬超时；
+    //      任何进展信号清零重新累计；工具层两道看门狗 ghrun 15min 失速 / qz-spawn 2h 硬超时先行兜底）；
+    //   R3 定时器升 agent 级租约（owner=本次发送令牌对象）——新发送开局清旧租约 + 触发时双重归属校验，
+    //      陈旧闭包定时器/迟到回调结构性拒动（f32 事故：f31 卡死闭包定时器无人清除，20 分钟后拿旧账杀 f32）。
+    //   R4 工具执行中可视化：工具活跃超 10 分钟 → 任务坞亮卡「⏳ 工具执行中 mm:ss」（用户可见长任务存活）。
+    var SEND_CAP_WINDOW_MS = 20 * 60 * 1000;             // 零进展窗口（每次进展信号重置）
+    var SEND_CAP_RENEW_BUDGET_MS = 2 * 60 * 60 * 1000;   // ★ R2: 工具续命预算上限（静默段累计）
+    var SEND_TOOL_WAIT_SHOW_MS = 10 * 60 * 1000;         // ★ R4: 工具执行中卡片展示阈值
+    var _capToken = {};                                   // ★ R3: 本次发送令牌（对象身份比较，防闭包串号）
+    if (agent) {
+        // ★ R3: 清上一发送遗留租约（卡死闭包永不返回 → 其定时器仍在飞，新发送开局必须清除）
+        if (agent._capLease && agent._capLease.timer) { try { clearTimeout(agent._capLease.timer); } catch (_) { } }
+        agent._capLease = null;
+        agent._capSendToken = _capToken;
+        agent._toolCapRenewed = false;   // ★ R1: 每楼层可续命（原实现终身只一次 → f36 类事故根因）
+        agent._toolRenewUsedMs = 0;      // ★ R1/R2
+    }
+    var _toolSaveT = null;  // ★ 断电保护：工具结果防抖落盘计时器
+    var _capAbort = function (_lease) {
+        try {
+            if (!agent) return;
+            // ★ R3 双重归属校验：租约须为当前活跃租约 + 发起闭包须为当前发送（陈旧定时器拒动）
+            if (!_lease || agent._capLease !== _lease) return;
+            if (agent._capSendToken !== _capToken) return;
+            agent._capLease = null;  // 消费租约（防同租约重复触发）
+            if (agent._floorCompletedCleanly || agent._sendTerminated) return;            // ★ R1/R2: 工具执行中 = 真实进展（上传/长命令无 onToken/onCost 信号，不能误判停滞）：
+            //   预算续命（2026-09-19 f36 事故修案）——每次触发 +20min 窗口，静默段累计预算 2h 耗尽才落闸；
+            //   挂死工具由工具层两道看门狗先行兜底（ghrun 15min 失速 / qz-spawn 2h 硬超时）
+            var _capByToolBudget = false;
+            if (agent._toolExecActive) {
+                var _renewUsed = agent._toolRenewUsedMs || 0;
+                if (_renewUsed < SEND_CAP_RENEW_BUDGET_MS) {
+                    agent._toolRenewUsedMs = _renewUsed + SEND_CAP_WINDOW_MS;
+                    agent._toolCapRenewed = true;
+                    _touchCap();
+                    return;
+                }
+                _capByToolBudget = true;  // 预算耗尽（静默段累计超 2h）→ 落闸
+            }
             agent._sendTerminated = true;
             agent._floorFatal = true;
             agent._streaming = false;
@@ -876,6 +905,8 @@ async function _executeSend(intent) {
                         + ' abortSource=' + (agent._abortSource || 'none')
                         + ' toolExec=' + !!agent._toolExecActive
                         + ' toolRenew=' + !!agent._toolCapRenewed
+                        + ' renewUsedMin=' + Math.round((agent._toolRenewUsedMs || 0) / 60000)
+
                         + ' chainBusy=' + !!agent._chainBusy
                         + ' gwErr=' + (agent._lastGatewayError || 0)
                         + (agent._lastGatewayMessage ? ' msg=' + agent._lastGatewayMessage : '')
@@ -911,7 +942,9 @@ async function _executeSend(intent) {
                 var _capErrFloor = agent._recoveryOriginFloor || agent._currentFloorNum;
                 var _capNow = new Date();
                 var _capTs = _capNow.getHours().toString().padStart(2, '0') + ':' + _capNow.getMinutes().toString().padStart(2, '0');
-                var _capReason = _qq('ai.pipeline.stallAbort', '发送停滞（>20 分钟无进展）已自动终止');
+                var _capReason = _capByToolBudget
+                    ? _qq('ai.pipeline.stallAbortTool', '工具执行停滞（超 2 小时无进展）已自动终止')
+                    : _qq('ai.pipeline.stallAbort', '发送停滞（>20 分钟无进展）已自动终止');
                 if (!agent._questErrorLogByFloor) agent._questErrorLogByFloor = {};
                 if (!agent._questErrorLogByFloor[_capErrFloor]) agent._questErrorLogByFloor[_capErrFloor] = [];
                 if (agent._questErrorLogByFloor[_capErrFloor].length === 0) {
@@ -927,22 +960,64 @@ async function _executeSend(intent) {
                 if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(agent, null, _capErrFloor);
             } catch (_) { }
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.stallAbortQoast', '发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复'), { type: 'warning', duration: 6000 }); } catch (_) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_capByToolBudget ? _qq('ai.pipeline.stallAbortToolQoast', '工具执行停滞（超 2 小时无进展）已自动终止，可点击楼层红框「继续任务」恢复') : _qq('ai.pipeline.stallAbortQoast', '发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复'), { type: 'warning', duration: 6000 }); } catch (_) { }
             _chimeSettled('bad');  // ★ 停滞终止 = 异常中断 → bad；_sendTerminated 标记防止 finally 再补一响
             // ★ 2026-09-07 aq 楼层闭环：_capAbort 是 send 永不返回的路径（HTTP/2 死连接踹锁），
             //   finally 可能永不执行 → 此处就地采样定稿（采样在 error 消息 push 之后，峰值含错误行）
             _samplePeakK();
             _refreshAqLine();
         } catch (_) { }
-    };
-    var _touchCap = function () {
-        if (_sendCapTimer) { clearTimeout(_sendCapTimer); _sendCapTimer = null; }
-        if (agent && !agent._floorCompletedCleanly && !agent._sendTerminated) {
-            _sendCapTimer = setTimeout(_capAbort, 20 * 60 * 1000);
-        }
-        if (agent) agent._lastProgressPerf = performance.now();  // clock color: last progress timestamp
-    };
-    _touchCap();
+    };    var _touchCap = function (_isProgress) {
+        if (!agent) return;
+        // ★ R3: 令牌不符 = 陈旧闭包（新发送已接管）→ 零副作用早退，绝不误清/误臂新发送的租约
+        if (agent._capSendToken !== _capToken) return;
+        if (agent._capLease && agent._capLease.timer) { try { clearTimeout(agent._capLease.timer); } catch (_) { } }
+        agent._capLease = null;
+        agent._lastProgressPerf = performance.now();  // clock color: last progress timestamp
+        if (_isProgress) agent._toolRenewUsedMs = 0;  // ★ R2: 真实进展 → 续命预算清零重新累计（预算是静默段累计）
+        if (!agent._floorCompletedCleanly && !agent._sendTerminated) {
+            var _lease = { owner: _capToken, floor: floorNum, timer: null };
+            _lease.timer = setTimeout(function () { _capAbort(_lease); }, SEND_CAP_WINDOW_MS);
+            agent._capLease = _lease;
+        }
+    };
+    _touchCap();
+    // ★ R4: 工具执行中可视化（2026-09-19）——工具活跃超 10 分钟 → 任务坞亮卡「⏳ 工具执行中 mm:ss」，
+    //   用户可见长任务存活（配合 R2 预算续命）；工具结束/楼层终结/陈旧闭包 → 自摘卡；归属校验复用 R3 令牌。
+    var _toolWaitTimer = null;
+    var _toolWaitShown = false;
+    var _toolWaitCardId = function () { return 'tool-wait-' + (qid || 'q') + '-' + (floorNum || 0); };
+    var _toolWaitRemove = function () {
+        if (!_toolWaitShown) return;
+        try { if (window.parent && window.parent.qqqideIoast) window.parent.qqqideIoast.remove(_toolWaitCardId()); } catch (_) { }
+        _toolWaitShown = false;
+    };
+    var _toolWaitTick = function () {
+        if (!agent) { if (_toolWaitTimer) { clearInterval(_toolWaitTimer); _toolWaitTimer = null; } return; }
+        if (agent._capSendToken !== _capToken) {
+            // 陈旧闭包（新发送已接管）→ 自摘自终，绝不干预新发送
+            _toolWaitRemove();
+            if (_toolWaitTimer) { clearInterval(_toolWaitTimer); _toolWaitTimer = null; }
+            return;
+        }
+        if (agent._stopState !== 'sending') { _toolWaitRemove(); return; }
+        if (!agent._toolExecActive || !agent._toolExecSince || (Date.now() - agent._toolExecSince) < SEND_TOOL_WAIT_SHOW_MS) {
+            _toolWaitRemove();
+            return;
+        }
+        try {
+            var _io = window.parent && window.parent.qqqideIoast;
+            if (!_io || !_io.task) return;
+            var _durS = Math.max(0, Math.floor((Date.now() - agent._toolExecSince) / 1000));
+            var _durTxt = Math.floor(_durS / 60) + 'm' + (_durS % 60 < 10 ? '0' : '') + (_durS % 60) + 's';
+            _io.task(_toolWaitCardId(), {
+                title: _qq('ai.toolWait.title', '⏳ 工具执行中 {0}', { 0: _durTxt }),
+                subtitle: _qq('ai.toolWait.subtitle', '{0} 第 {1} 层 · 长任务执行中', { 0: (qid || '?'), 1: floorNum })
+            });
+            _toolWaitShown = true;
+        } catch (_) { }
+    };
+    if (agent) _toolWaitTimer = setInterval(_toolWaitTick, 1000);
     try {
         var token = getLoginToken();
         // ★ V15: compress 楼层强制 tier 4（facts 提取）
@@ -955,7 +1030,7 @@ async function _executeSend(intent) {
             // ★ 2026-09-07 aq 楼层闭环：权威开局已采样 → 刷新 aq 行（修正简化估算 ±差，同帧微任务）
             onFloorStart: function () { _refreshAqLine(); },
             onCost: function () {
-                _touchCap();
+                _touchCap(true);
                 _samplePeakK();   // ★ aq 峰值采样：先采样再落盘（payload 含最新 maxK）
                 // ★ 断电保护（2026-08-27）：house 完结（conversation 已 push 完整消息）→ 立即落盘。
                 //   旧 5s 定时器按「消息条数」去重——流式/工具执行期间条数不变全部空转，
@@ -964,8 +1039,10 @@ async function _executeSend(intent) {
                 //   总次数≈相等（onCost 写完 _lastAutoSaveLen 更新 → 定时器去重跳过），零额外 IO
                 if (typeof _saveAgentFloor === 'function') _saveAgentFloor(agent, qid);
             },
-            onToolCall: function () { _touchCap(); },
+            onToolCall: function () { _touchCap(true); },
+            onReasoning: function () { _touchCap(true); },  // ★ R2: 思考流 = 真实进展（深思考可超 20min 零 content token——旧实现此期间无任何续命信号）
             onToolResult: function () {
+                _touchCap(true);  // ★ R2: 工具完结 = 真实进展（旧实现漏此信号——长工具刚返回、下一请求首字未达时，旧定时器到期会误杀）
                 // ★ 断电保护（2026-08-27）：工具结果防抖落盘——工具有副作用（写文件/发布等），
                 //   结果丢失 → 恢复后 AI 重发 → 副作用重复执行。防抖 500ms 保证 agent-loop
                 //   原子推入（assistant tool_calls + 全部结果，同步无缝隙）完成后才保存
@@ -975,9 +1052,8 @@ async function _executeSend(intent) {
                     _samplePeakK();   // ★ aq 峰值采样：工具组原子推入完成后（防抖内），先采样再落盘
                     if (typeof _saveAgentFloor === 'function') _saveAgentFloor(agent, qid);
                 }, 500);
-            },
-            onToken: function (chunk) {
-                _touchCap();
+            },            onToken: function (chunk) {
+                _touchCap(true);
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
                     // ★ Path B: 揭示之前隐藏的楼层（仅在 house 1 到达时展示）
@@ -1333,7 +1409,15 @@ async function _executeSend(intent) {
         //   必须位于 _saveAgentQuestData 之前（payload 含 maxK）且早于 _activeAiDiv 清空（尾部）
         _samplePeakK();
         _refreshAqLine();
-        if (_sendCapTimer) { clearTimeout(_sendCapTimer); _sendCapTimer = null; }
+        // ★ R3 租约清除（归属校验——陈旧闭包迟到的 finally 绝不误清新发送的租约；随后释放令牌）
+        if (agent && agent._capSendToken === _capToken) {
+            if (agent._capLease && agent._capLease.timer) { try { clearTimeout(agent._capLease.timer); } catch (_) { } }
+            agent._capLease = null;
+            agent._capSendToken = null;
+        }
+        // ★ R4: 工具执行中卡片收尾（本发送闭包所有 → 只摘自己的卡）
+        if (_toolWaitTimer) { clearInterval(_toolWaitTimer); _toolWaitTimer = null; }
+        _toolWaitRemove();
         if (agent && qid && agent._floorCompletedCleanly) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }
             // ★ V12: 楼层完结 → 自动重组背包（原地追加饼干 + DE，零 splice，前缀缓存命中）

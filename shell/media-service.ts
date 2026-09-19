@@ -22,6 +22,7 @@ import * as os from 'os';
 import { QzSpawn } from './qz-spawn';
 import { CacheStore } from './cache-store';
 import { HashService } from './hash-service';
+import { vigBump } from './vig';
 
 export interface ThumbOpts {
     src: string;            // absolute source path
@@ -238,6 +239,7 @@ export class MediaService {
     private async _onHit(cacheKey: string, dst: string): Promise<{ dur: number }> {
         await this._loadIdx();
         this._idx!.stats.hit++;
+        try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
         let dur: number | null = null;
         const e = this._idx!.entries[cacheKey];
         if (e && typeof e.dur === 'number') { dur = e.dur; }
@@ -323,8 +325,10 @@ export class MediaService {
         const dst = this.cache.bucketPath('thumb' + this.shortHash(fullKey), '.' + format);
 
         if (fs.existsSync(dst)) {
+            try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
             return { ok: true, path: dst, cached: true };
         }
+        try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
 
         // Build vf filter
         const vf = fit === 'cover'
@@ -377,8 +381,10 @@ export class MediaService {
         const dst = opts.dst || this.cache.bucketPath('tx' + this.shortHash(fullKey), '.' + opts.format);
 
         if (!opts.dst && fs.existsSync(dst)) {
+            try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
             return { ok: true, path: dst, cached: true };
         }
+        if (!opts.dst) { try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ } }
 
         const args: string[] = ['-y', '-loglevel', 'error', '-i', opts.src];
         if (opts.vbr) { args.push('-b:v', opts.vbr); }
@@ -636,6 +642,7 @@ export class MediaService {
         const ik = 'preview:' + cacheKey;
         const pending = this._inflight.get(ik);
         if (pending) { return await pending as PreviewResult; }
+        try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
         const job = this._genPreview({ src: opts.src }, meta, mode, quality, tw, th, dst, cacheKey, st);
         this._inflight.set(ik, job);
         try { return await job; } finally { this._inflight.delete(ik); }
@@ -781,6 +788,7 @@ export class MediaService {
         const ik = 'text:' + cacheKey;
         const pending = this._inflight.get(ik);
         if (pending) { return await pending as PreviewResult; }
+        try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
         const job = this._genTextPreview(opts.src, scheme, fontSize, dst, cacheKey, st);
         this._inflight.set(ik, job);
         try { return await job; } finally { this._inflight.delete(ik); }

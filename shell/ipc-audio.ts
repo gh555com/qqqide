@@ -11,7 +11,7 @@
 //   - absolute path      → used as-is
 // ============================================================================
 
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { AudioEngine } from './audio-engine';
@@ -58,6 +58,17 @@ function resolveSfxPath(appRoot: string, file: string): string {
 }
 
 export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
+    // ★ 引擎主动事件广播（Savor 2026-09-19）: audio_state_changed / audio_finished → 全窗口
+    engine.onEvent((evt: any) => {
+        try {
+            for (const w of BrowserWindow.getAllWindows()) {
+                if (!w.isDestroyed() && !w.webContents.isDestroyed()) {
+                    try { w.webContents.send('qqqide:audio:event', evt); } catch { /* ignore */ }
+                }
+            }
+        } catch { /* ignore */ }
+    });
+
     ipcMain.handle('qqqide:audio:play', async (_e, file: string, opts?: any) => {
         try {
             const f = String(file || '');
@@ -88,6 +99,17 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
             const pats = params && Array.isArray(params.patterns) ? params.patterns : [];
             _sfxDisabledPatterns = pats.map((p: any) => String(p)).filter(Boolean);
             return { ok: true };
+        }
+        // ★ Savor 音乐：路径经统一解析（'assets/savor/x.mp3' → webapp 绝对路径，同 play 语义）
+        if (String(action || '') === 'play_music') {
+            try {
+                const p: any = { ...(params || {}) };
+                if (p.path) { p.path = resolveSfxPath(appRoot, String(p.path)); }
+                if (p.intro) { p.intro = resolveSfxPath(appRoot, String(p.intro)); }
+                return await engine.invoke('play_music', p, 15000);
+            } catch (err: any) {
+                return { ok: false, error: String((err && err.message) || err) };
+            }
         }
         try {
             return await engine.invoke(String(action || ''), params || {}, 10000);

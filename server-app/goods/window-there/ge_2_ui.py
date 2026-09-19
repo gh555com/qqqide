@@ -19,6 +19,9 @@ from PySide2.QtCore import (
 # --- (R22) 修复 2: 导入 config 模块以解决 NameError ---
 import ge_2_env as config
 
+# VIG 履历（3X 还原计数）
+import window_there_store
+
 # 共享翻译助手（goods/_goods_i18n.py）
 try:
     from _goods_i18n import t as _t
@@ -507,6 +510,7 @@ class LayoutSelectorWindow(QWidget):
     def on_panel_clicked(self, layout_info):
         self.cancel_deletion_mode()
         g_platform_manager.set_window_layout(self.active_hwnd_handle, layout_info)
+        window_there_store.bump_stat('restore')   # VIG 履历：3X 还原计数
         self.close()
 
     def on_delete_request(self, layout_info):

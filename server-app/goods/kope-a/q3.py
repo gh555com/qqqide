@@ -439,10 +439,33 @@ class ClipboardMonitor(Qaqqlication):
 
     def setup_clipboard_monitor(self):
         try:
-            self.clipboard().dataChanged.connect(self.on_clipboard_changed)
-            print("剪贴板监控已连接")
+            if sys.platform == 'darwin':
+                # macOS: QClipboard.dataChanged 在后台/失活场景不可靠（实测不触发）→
+                # 改用 NSPasteboard.changeCount 轮询（400ms）作为唯一变更源
+                from AppKit import NSPasteboard
+                self._last_clip_cc = int(NSPasteboard.generalPasteboard().changeCount())
+                self._clip_poll_timer = QTimer(self)
+                self._clip_poll_timer.setInterval(400)
+                self._clip_poll_timer.timeout.connect(self._poll_clipboard_native)
+                self._clip_poll_timer.start()
+                print("剪贴板监控已连接 (macOS: NSPasteboard 轮询)")
+            else:
+                self.clipboard().dataChanged.connect(self.on_clipboard_changed)
+                print("剪贴板监控已连接")
         except Exception as e:
             print(f"剪贴板监控连接失败: {e}")
+
+    def _poll_clipboard_native(self):
+        """macOS 变更源：NSPasteboard changeCount 轮询（QClipboard 信号缺失时的可靠通道）"""
+        try:
+            from AppKit import NSPasteboard
+            cc = int(NSPasteboard.generalPasteboard().changeCount())
+            if cc != self._last_clip_cc:
+                self._last_clip_cc = cc
+                print(f"[kope] pasteboard 变更 (changeCount={cc})")
+                self.on_clipboard_changed()
+        except Exception:
+            pass
 
     # === 数据解析 ===
 
@@ -794,6 +817,7 @@ class ClipboardMonitor(Qaqqlication):
         统一弹窗逻辑。
         """
         try:
+            print(f"[kope] 捕获: type={data.get('type')}")
             # ★ kope 存储: 文本类型写入 OS 级数据库
             if kope_store and data.get("type") == "text" and data.get("full_text"):
                 try:
@@ -989,6 +1013,10 @@ class TransparentPopup(QWidget):
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
+        if sys.platform == 'darwin':
+            # macOS: Qt.Tool = NSPanel(hidesOnDeactivate) — 应用失活时弹窗会被系统静默隐藏；
+            # kope 天生在「其他应用前台」时弹窗 → 必须常显（与 window-there 选择器同款修复）
+            self.setAttribute(Qt.WA_MacAlwaysShowToolWindow, True)
 
         self.setFixedSize(POPUP_WIDTH, POPUP_HEIGHT)
 

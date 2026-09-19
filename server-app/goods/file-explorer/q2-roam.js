@@ -180,6 +180,7 @@ var bridge = {
 		writeBase64: (p, b64) => rpc('fs.writeBase64', { __spread: true, args: [p, b64] }),
 		mkdir: (p) => rpc('fs.mkdir', p),
 		remove: (p) => rpc('fs.remove', p),
+		trashItem: (p) => rpc('fs.trashItem', p),
 		rename: (o, n) => rpc('fs.rename', { __spread: true, args: [o, n] }),
 		stat: (p) => rpc('fs.stat', p),
 		copyFile: (src, dest) => rpc('fs.copyFile', { __spread: true, args: [src, dest] }),
@@ -209,6 +210,15 @@ var bridge = {
 		getAll: () => rpc('roam.getAll'),
 	}
 };
+
+// ★ VIG 履历埋点（老 q3 recordRoamTick/recordRoamFileOp 语义）：q/w/x/k 键盘点击 + f/fc 文件操作
+//   k=点击（文件/文件夹/qq区/历史区）· q=Q键编辑 · w=W键打开 · x=快捷键总数 · f=新建 · fc=文件操作总数
+function _vigBump(mod, add) {
+	try {
+		var pb = parent && parent.qqqideBridge;
+		if (pb && pb.vig && pb.vig.bump) { pb.vig.bump(mod, add); }
+	} catch (e) { }
+}
 
 // 初始主题同步
 (function(){
@@ -755,6 +765,7 @@ function buildQqiqItem(item) {
 		text.className = 'qq-text'; text.textContent = fileName;
 		el.appendChild(text);
 		el.addEventListener('click', function() {
+			_vigBump('roam', { k: 1 });
 			parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
 			recordFileHistory(item.path);
 		});
@@ -767,7 +778,7 @@ function buildQqiqItem(item) {
 		pin.innerHTML = '<svg viewBox="0 0 20 20" width="14" height="14"><path d="M5 17 L15 5 M15 5 L5 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
 		pin.addEventListener('click', function(e) { e.stopPropagation(); pinDirectory(item.path); });
 		el.appendChild(pin);
-		text2.addEventListener('click', function() { navigateTo(item.path); });
+		text2.addEventListener('click', function() { _vigBump('roam', { k: 1 }); navigateTo(item.path); });
 	}
 	return el;
 }
@@ -903,7 +914,7 @@ function renderPinnedDirs() {
 			dnBtn.addEventListener('click', function(e) { e.stopPropagation(); movePinnedDir(dir, 'down'); });
 			moveGrp.appendChild(upBtn); moveGrp.appendChild(dnBtn);
 			el.appendChild(moveGrp);
-			el.addEventListener('click', function() { navigateTo(dir); });
+			el.addEventListener('click', function() { _vigBump('roam', { k: 1 }); navigateTo(dir); });
 			recentList.appendChild(el);
 		})(_pinnedDirs[i], i);
 	}
@@ -1063,10 +1074,11 @@ if (_fileListEl) {
 			for (var _i = 0; _i < _prevSel.length; _i++) {
 				if (_prevSel[_i].querySelector('.rename-input')) cancelRename(_prevSel[_i]);
 			}
-			cancelSelection();
-			return;
-		}
-		if (itemEl.dataset.name === '..') { navigateTo(itemEl.dataset.path); return; }
+					cancelSelection();
+				return;
+			}
+			_vigBump('roam', { k: 1 });   // 老语义：点击即计（'..' 也计）
+			if (itemEl.dataset.name === '..') { navigateTo(itemEl.dataset.path); return; }
 		var isSzClick = e.target.classList.contains('sz-area');
 		if (itemEl.dataset.type === 'folder' && !isSzClick) {
 			navigateTo(itemEl.dataset.path);
@@ -1238,6 +1250,7 @@ function commitRename(itemEl, oldPath, itemType, newName) {
 	if (newName && newName !== oldName) {
 		var dir = oldPath.substring(0, oldPath.length - oldName.length);
 		bridge.fs.rename(oldPath, pathJoin(dir, newName)).then(function() {
+			_vigBump('roam', { fc: 1 });   // 老 recordRoamFileOp(1,0)：重命名
 			recordDirHistory(currentPath);
 			if (currentPath) loadFileList(currentPath);
 		}).catch(function() {
@@ -1462,6 +1475,18 @@ function performOpenAllSelected() {
 		rest.forEach(function(t) { bridge.shell.openPath(t.path).catch(function(){}); });
 	});
 }
+// ★ 壳层能力探测（缓存，2026-09-19）：父窗口 preload 桥是否已支持 fs.trashItem
+//   新壳层 → 系统回收站/废纸篓（可还原）；旧壳层（尚未重启的旧版本）→ 回退历史行为 fs.remove（永久删除）
+//   注：bridge.fs.trashItem（本地 RPC 代理）恒存在，不能作为能力判据——必须探父窗口真实桥。
+var _roamShellTrashable = null;
+function _roamShellHasTrash() {
+	if (_roamShellTrashable !== null) return _roamShellTrashable;
+	try {
+		var pb = (parent && parent.qqqideBridge) || null;
+		_roamShellTrashable = !!(pb && pb.fs && typeof pb.fs.trashItem === 'function');
+	} catch (e) { _roamShellTrashable = false; }
+	return _roamShellTrashable;
+}
 function performDeleteAction(item) {
 	if (!item) return;
 	if (item.name === '..') return;
@@ -1475,9 +1500,18 @@ function performDeleteAction(item) {
 		var el = findItemByPath(t.path);
 		if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
 	});
-	// Move to recycle bin (no confirmation dialog)
-	Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
-		.then(function() { recordDirHistory(currentPath); if (currentPath) loadFileList(currentPath); });
+	// ★ 2026-09-19: 删除到系统回收站（q3 原语义：无确认弹窗、有提示音，可还原）
+	//   fs.trashItem（系统回收站/废纸篓）；旧壳层未重启 → 回退历史行为 fs.remove（能力探测见 _roamShellHasTrash）
+	// ★ VIG：删除成功数计入 fc（老 recordRoamFileOp(result.deleted,0) 语义）
+	Promise.all(targets.map(function(t) {
+		var op = _roamShellHasTrash() ? bridge.fs.trashItem(t.path) : bridge.fs.remove(t.path);
+		return op.then(function() { return 1; }).catch(function() { return 0; });
+	}))
+		.then(function(rs) {
+			var dc = 0; for (var i = 0; i < rs.length; i++) { dc += rs[i]; }
+			if (dc > 0) { _vigBump('roam', { fc: dc }); }
+			recordDirHistory(currentPath); if (currentPath) loadFileList(currentPath);
+		});
 	_playSfx('delete');
 	if (selectedItems.length > 1) { selectedItem = null; selectedItems = []; }
 	else selectedItem = null;

@@ -206,6 +206,24 @@ function _deleteItem(id: number): boolean {
     return true;
 }
 
+// ── VIG 采集（履历）公开通道 ──
+
+/** 同步读剪贴板卡片总数（_db 未初始化 → null，VIG 侧省略字段）。 */
+export function kopeStatsSync(): { total: number; pinned: number } | null {
+    if (!_db) return null;
+    try {
+        const r = _db.exec(`SELECT COUNT(*) as total, SUM(pinned) as pinned FROM clipboard_history`);
+        if (!r.length || !r[0].values.length) return { total: 0, pinned: 0 };
+        const row = r[0].values[0];
+        return { total: row[0] || 0, pinned: row[1] || 0 };
+    } catch { return null; }
+}
+
+/** 预热：提前初始化 sql.js 库，使 kopeStatsSync 可用（fire-and-forget，失败无声）。 */
+export async function kopeWarmup(): Promise<void> {
+    try { await _ensureDb(); } catch { /* ignore */ }
+}
+
 // ── IPC 注册 ──
 export function registerKopeIpc(): void {
     ipcMain.handle('qqqide:kope:getHistory', async (_e, limit: number, offset: number, keyword?: string) => {

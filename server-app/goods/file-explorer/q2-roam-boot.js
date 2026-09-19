@@ -248,6 +248,7 @@
 			setTimeout(function() { tip.classList.remove('show'); }, 3000);
 		}
 
+		if (successCount > 0) { _vigBump('roam', { fc: successCount }); }   // VIG：粘贴文件计入文件操作（老 recordRoamFileOp 语义）
 		_playSfx('copy');
 	}
 
@@ -323,6 +324,7 @@
 			setTimeout(function() { tip.classList.remove('show'); }, 3000);
 		}
 
+		if (successCount > 0) { _vigBump('roam', { fc: successCount }); }   // VIG：DOM 文件粘贴计入文件操作
 		_playSfx('copy');
 	}
 

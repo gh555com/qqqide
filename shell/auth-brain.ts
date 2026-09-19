@@ -13,6 +13,7 @@
 // ============================================================================
 
 import { net, safeStorage, BrowserWindow, ipcMain, shell } from 'electron';
+import { waitMainWindowShown } from './ipc-secure';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -144,6 +145,11 @@ class AuthBrain {
     }
 
     async restore(): Promise<boolean> {
+        // ★ mac 安全阀（2026-09-19）: safeStorage 首次访问可能触发系统钥匙串授权弹窗
+        //   （应用重签名后 ACL 变更）——同步调用会冻结主进程事件循环 → 窗口永不出现。
+        //   与 ipc-secure 同款门：等主窗口可见后再访问钥匙串（弹窗出现在窗口上方而非冻结 boot）。
+        //   非 mac 平台零行为变化（waitMainWindowShown 立即放行）。
+        await waitMainWindowShown();
         if (!safeStorage.isEncryptionAvailable()) return false;
         try {
             if (!fs.existsSync(this.authFile)) return false;
