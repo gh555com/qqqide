@@ -4,7 +4,10 @@
 // qqq-tools.js — 菜单行2 "qqq" 按钮（help 左边）· hover 下拉 = 老项目侧边按钮组移植
 //
 // 结构（hover qqq → 下拉单）:
-//   Savor moments for yourself      占位（待移植）
+//   [◉][■] Savor moments for yourself  ✅ 已移植（老 q3 按钮组 loop/stop + 电台接管 + 统计，2026-09-19）
+//         · 点文字 = normal（随机曲 ×2~6）· ◉ = 无限循环 · ■ = 停止
+//         · 电台在线 → 播电台（判定在壳层桥）+ label 暗金色 #8b6914；播放中 'Savoring...'/'Looping...'
+//         · 消费 core/savor.js（window.qqqSavor），统计与偿还 ping 在此机内闭环
 //   Paste                           占位（待移植）
 //   Video Url  [input ▶]            占位（填空框加按钮形态）
 //   ────────
@@ -34,6 +37,9 @@
   var _allTimer = null;
   var _subTimer = null;
   var _globalBound = false;
+  var _savorLabelEl = null;
+  var _savorStatsEl = null;
+  var _savorUnsub = null;
 
   function _i(key, fb) { try { return window._i ? window._i(key, fb) : fb; } catch (e) { return fb; } }
   function _qoast(m, o) { try { if (window.qqqideQoast) { window.qqqideQoast.show(m, o || {}); } } catch (e) { } }
@@ -74,6 +80,18 @@
       '.qqq-tools-video { display: flex; align-items: center; gap: 6px; padding: 6px 12px; }',
       '.qqq-tools-video input { flex: 1; min-width: 0; height: 24px; padding: 0 8px; font-size: 12px; font-family: Tahoma, sans-serif; border: 1px solid var(--border-color, #d6d6d6); border-radius: 3px; background: var(--background-color, #eee8d5); color: var(--text-primary, #586e75); outline: none; }',
       '.qqq-tools-video button { height: 22px; padding: 0 8px; font-size: 12px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 3px; background: transparent; color: var(--text-primary, #586e75); }',
+      // ── Savor 行（老 q3 savorCard 100%：按钮组在文字左 + 图标/悬停态原样）──
+      '.qqq-tools-savor { display: flex; align-items: center; gap: 8px; padding: 6px 12px; color: var(--text-primary, #586e75); white-space: nowrap; }',
+      '.qqq-tools-savor:hover { background: var(--hover-bg, rgba(0,0,0,0.06)); }',
+      '.qqq-tools-savor-btns { display: flex; gap: 4px; flex-shrink: 0; }',
+      '.qqq-tools-mini-btn { padding: 2px 6px; font-size: 13px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 3px; background: var(--base3, #eee8d5); color: var(--text-primary, #586e75); font-family: Tahoma, sans-serif; line-height: 1.2; display: inline-flex; align-items: center; }',
+      '.qqq-tools-mini-btn:hover { background: var(--primary-color, #b58900); color: #1e1e1e; }',
+      '.qqq-tools-ico { width: 14px; height: 14px; display: inline-block; vertical-align: middle; position: relative; top: -1px; }',
+      '.qqq-tools-ico.icon-loop { background: url(\'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzU0NTQ1NCI+PHBhdGggZD0iTTEyIDRWMUw4IDVsNCA0VjZjMy4zMSAwIDYgMi42OSA2IDYgMCAxLjAxLS4yNSAxLjk3LS43IDIuOGwxLjQ2IDEuNDZBNy45MyA3LjkzIDAgMCAwIDIwIDEyYzAtNC40Mi0zLjU4LTgtOC04em0wIDE0Yy0zLjMxIDAtNi0yLjY5LTYtNiAwLTEuMDEuMjUtMS45Ny43LTIuOEw1LjI0IDcuNzRBNy45MyA3LjkzIDAgMCAwIDQgMTJjMCA0LjQyIDMuNTggOCA4IDh2M2w0LTQtNC00djN6Ii8+PC9zdmc+\') no-repeat center; }',
+      '.qqq-tools-ico.icon-stop { background: url(\'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzU0NTQ1NCI+PHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iMiIvPjwvc3ZnPg==\') no-repeat center; }',
+      '[data-theme="dark"] .qqq-tools-ico.icon-loop, [data-theme="dark"] .qqq-tools-ico.icon-stop { filter: invert(0.75); }',
+      '.qqq-tools-savor-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.qqq-tools-savor-stats { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; opacity: .55; padding-left: 6px; }',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -118,7 +136,7 @@
   // ── 行表（唯一维护点）──
   function _rows() {
     return [
-      { key: 'savor', label: 'Savor moments for yourself', pending: true },
+      { key: 'savor', label: 'Savor moments for yourself', savor: true },
       { key: 'paste', label: 'Paste', pending: true },
       { key: 'video', label: 'Video Url', video: true, pending: true },
       { key: 'sep1', sep: true },
@@ -146,6 +164,54 @@
     _qoast(_i('export.pending', '此功能待移植（先占位）') + ' — ' + label, { type: 'info', duration: 5000 });
   }
 
+  // ── Savor 行（消费 core/savor.js；按钮 100% 老项目形态）──
+  function _miniBtn(iconCls, title) {
+    var b = document.createElement('button');
+    b.className = 'qqq-tools-mini-btn';
+    b.title = title;
+    var ic = document.createElement('span');
+    ic.className = 'qqq-tools-ico ' + iconCls;
+    b.appendChild(ic);
+    return b;
+  }
+  function _savorPlay(mode) {
+    var s = window.qqqSavor;
+    if (!s) {
+      _qoast('Savor: 模块未加载（需刷新）', { type: 'error', duration: 9000 });
+      return;
+    }
+    try { s.play(mode); } catch (e) { _qoast('Savor: ' + String((e && e.message) || e), { type: 'error', duration: 9000 }); }
+  }
+  function _savorStop() {
+    var s = window.qqqSavor;
+    if (!s) { return; }
+    try { s.stop(); } catch (e) { }
+  }
+  function _refreshSavorRow() {
+    var s = window.qqqSavor;
+    if (!s || !_savorLabelEl) { return; }
+    var stt = {};
+    try { stt = s.getState ? s.getState() : {}; } catch (e) { }
+    _savorLabelEl.textContent = stt.playing ? (stt.isLoop ? 'Looping...' : 'Savoring...') : 'Savor moments for yourself';
+    try { _savorLabelEl.style.color = stt.radioLive ? '#8b6914' : ''; } catch (e) { }
+    if (_savorStatsEl) {
+      var txt = '';
+      try { txt = s.formatStats ? s.formatStats() : ''; } catch (e) { txt = ''; }
+      _savorStatsEl.textContent = txt;
+      _savorStatsEl.title = txt;
+    }
+  }
+  function _bindSavorState() {
+    _unbindSavorState();
+    var s = window.qqqSavor;
+    if (s && s.onState) {
+      try { _savorUnsub = s.onState(_refreshSavorRow); } catch (e) { _savorUnsub = null; }
+    }
+  }
+  function _unbindSavorState() {
+    if (_savorUnsub) { try { _savorUnsub(); } catch (e) { } _savorUnsub = null; }
+  }
+
   // ── 主菜单 ──
   function _buildRoot() {
     var root = document.createElement('div');
@@ -163,6 +229,35 @@
         root.appendChild(sep);
         continue;
       }
+      if (d.savor) {
+        // Savor 行（老 savorCard 形态：按钮组在左 → 文字 → 统计；按钮 100% 老项目）
+        var sr = document.createElement('div');
+        sr.className = 'qqq-tools-savor';
+        sr.addEventListener('click', function (e) { e.stopPropagation(); _savorPlay('normal'); });
+        var grp = document.createElement('div');
+        grp.className = 'qqq-tools-savor-btns';
+        var bLoop = _miniBtn('icon-loop', 'Infinite Loop');
+        var bStop = _miniBtn('icon-stop', 'Stop');
+        bLoop.addEventListener('click', function (e) { e.stopPropagation(); _savorPlay('loop'); });
+        bStop.addEventListener('click', function (e) { e.stopPropagation(); _savorStop(); });
+        grp.appendChild(bLoop);
+        grp.appendChild(bStop);
+        var slab = document.createElement('span');
+        slab.className = 'qqq-tools-savor-label';
+        slab.textContent = d.label;
+        var ssta = document.createElement('span');
+        ssta.className = 'qqq-tools-savor-stats';
+        sr.appendChild(grp);
+        sr.appendChild(slab);
+        sr.appendChild(ssta);
+        root.appendChild(sr);
+        _savorLabelEl = slab;
+        _savorStatsEl = ssta;
+        _bindSavorState();
+        _refreshSavorRow();
+        continue;
+      }
+
       if (d.video) {
         // Video Url 填空框加按钮（占位形态 —— 老项目 input + ▶）
         var vr = document.createElement('div');
@@ -230,6 +325,9 @@
   function _removeRoot() {
     if (_rootEl) { try { _rootEl.remove(); } catch (e) { } _rootEl = null; }
     _rootRowEls = [];
+    _unbindSavorState();
+    _savorLabelEl = null;
+    _savorStatsEl = null;
   }
 
   function _markActiveRow(rowEl) {

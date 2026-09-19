@@ -23,8 +23,11 @@ import * as crypto from 'crypto';
 import * as https from 'https';
 import { safeStorage } from 'electron';
 import { APP_VERSION } from './version';
-import { getDataDir } from './portable-paths';
+import { getDataDir, getAppRoot } from './portable-paths';
 import { getAuthPhone } from './auth-state';
+import { getComponentBin } from './component-checker';
+import { vigSnapshot, vigSet, winthereExternal } from './vig';
+import { kopeStatsSync, kopeWarmup } from './ipc-kope';
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
 const PING_API_HOST = 'direct-cn.gh555.com';
@@ -46,6 +49,9 @@ let _stopped = false;
 let _retryDelayMs = RETRY_MIN_MS;
 let _lastFailNotifyAt = 0;      // ★ 升级失败即时补发节流（30min）
 let _updHealthCache: Record<string, unknown> | null | undefined; // undefined=未探测
+// ★ 偿还（playing）状态（Savor 移植 2026-09-19）：播放中 → ping 携带 playing=true
+let _isCurrentlyPlaying = false;
+let _lastPlayingPingTime = 0;   // playing ping 5min 防抖（与服务器限速同口径）
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _userDataPath = '';              // ★ portable.userData，启动时注入
 
@@ -232,6 +238,35 @@ function collectUpdHealth(): Record<string, unknown> | null {
   } catch (_) { return null; }
 }
 
+// ── 引擎/组件在线快照（eng_r/eng_p/eng_ff/eng_yt，老项目语义）──────────────
+// 就绪判定 = 二进制在位（与 qz-spawn / component-checker 同源路径，零硬编码）
+function collectEng(): Record<string, number> {
+    const out: Record<string, number> = { eng_r: 0, eng_p: 0, eng_ff: 0, eng_yt: 0 };
+    try {
+        const root = getAppRoot();
+        // eng_r: ghrun（Rust 引擎）——与 qz-spawn resolveGhrunBin 同款三级探测
+        const ext = process.platform === 'win32' ? '.exe' : '';
+        const cands: string[] = [];
+        const envBin = process.env.QQQIDE_QDIR_GHRUN;
+        if (envBin) cands.push(envBin);
+        const qdir = process.env.QQQIDE_QDIR;
+        if (qdir) cands.push(path.join(qdir, 'ghrun' + ext));
+        cands.push(path.join(root, 'engines', 'ghrun' + ext));
+        cands.push(path.join(root, 'resources', 'app', 'engines', 'ghrun' + ext));
+        // ★ mac .app 布局兜底（2026-09-19）: root=Contents/MacOS，engines 实挂 Resources/app/engines
+        try {
+            const ap = require('electron').app.getAppPath();
+            cands.push(path.join(ap, 'engines', 'ghrun' + ext));
+        } catch { /* ignore */ }
+        for (const c of cands) { try { if (fs.existsSync(c)) { out.eng_r = 1; break; } } catch { /* skip */ } }
+        // eng_p / eng_ff / eng_yt: 组件真理源 manifest（component-checker 唯一入口）
+        try { out.eng_p = getComponentBin(root, 'python') ? 1 : 0; } catch { /* ignore */ }
+        try { out.eng_ff = getComponentBin(root, 'ffmpeg') ? 1 : 0; } catch { /* ignore */ }
+        try { out.eng_yt = getComponentBin(root, 'yt-dlp') ? 1 : 0; } catch { /* ignore */ }
+    } catch { /* ignore */ }
+    return out;
+}
+
 // ── 收集设备信息 ────────────────────────────────────────────────────────────
 function collectPingBody(): string {
     const nowSec = Math.floor(Date.now() / 1000);
@@ -255,6 +290,24 @@ function collectPingBody(): string {
         cpu_cores:         os.cpus().length,
         mem_mb:            Math.round(os.totalmem() / (1024 * 1024)),
     };
+
+    // ★ 偿还标记：播放中（Savor 本地曲/电台）→ 服务端记录 last_playing_at / active_playing
+    if (_isCurrentlyPlaying) { body.playing = true; }
+
+    // ★ 引擎/组件在线快照（0/1）
+    try { Object.assign(body, collectEng()); } catch { /* ignore */ }
+
+    // ★ 履历快照（vig）——搭便车上报（老 qqq WqReporter._collectVig 100% 语义）
+    //   card.count = 当前剪贴板卡片总数（kope 库已初始化时动态读回）
+    try {
+        const ks = kopeStatsSync();
+        if (ks && ks.total > 0) { vigSet('card', { count: ks.total }); }
+        const vig: Record<string, any> = vigSnapshot() || {};
+        const wt = winthereExternal();   // window-there 外部计数（3W 保存 / 3X 还原 / 布局数）
+        if (wt) { vig.winthere = wt; }
+        if (Object.keys(vig).length > 0) { body.vig = vig; }
+        pingLog('ping vig=' + (Object.keys(vig).join('+') || 'none') + ' cardN=' + (ks ? ks.total : 'na') + (wt ? ' wt=' + wt.save + '/' + wt.restore : ''));
+    } catch { /* ignore */ }
 
     const uh = collectUpdHealth();
     if (uh) Object.assign(body, uh);
@@ -367,6 +420,9 @@ export function startWqPing(userDataPath?: string): void {
     pingLog('STARTED dev=' + _deviceId.slice(0,8) + ' ph=' + (readDoerID() || 'none'));
     const jitter = PING_JITTER_MIN_MS + Math.random() * (PING_JITTER_MAX_MS - PING_JITTER_MIN_MS);
     _timer = setTimeout(pingCycle, jitter);
+
+    // ★ VIG 预热：立即初始化 kope 库（card.count 首 ping 即可带上——曾延迟 3s 致首 ping 抢跑）
+    try { kopeWarmup(); } catch { /* ignore */ }
 }
 
 /** 升级失败即时补发（auto-updater 调用）: 30min 节流后立即 ping 一次。 */
@@ -379,6 +435,27 @@ export function notifyUpdateFailed(): void {
   _retryDelayMs = RETRY_MIN_MS;
   if (_timer) clearTimeout(_timer);
   _timer = setTimeout(pingCycle, 2_000); // 2s 后发，等状态文件落盘
+}
+
+/** ★ 设置当前是否在播放（Savor）：使后续常规 ping 携带 playing=true。 */
+export function setCurrentlyPlaying(on: boolean): void {
+    _isCurrentlyPlaying = !!on;
+    pingLog('setCurrentlyPlaying=' + _isCurrentlyPlaying);
+}
+
+/** ★ 偿还 ping：播放/循环触发时立即补发一次（带 playing=true），5min 防抖。 */
+export function triggerPlayingPing(): void {
+    if (_stopped || !_deviceId) { return; }
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (nowSec - _lastPlayingPingTime < 300) {
+        pingLog('playing ping debounced (5min)');
+        return;
+    }
+    _lastPlayingPingTime = nowSec;
+    pingLog('playing ping triggered');
+    sendPing().then(res => {
+        pingLog('playing ping result ok=' + res.ok + ' err=' + ((res as any).error || ''));
+    }).catch(() => { /* ignore */ });
 }
 
 /** 登录成功后调用：重置退避 + 立即发 ping（带上 doer_id）。 */

@@ -26,7 +26,14 @@
 //
 // 测试通道（dev aid，普通用户无感知）: {Data}/update-channel.json
 //   { "manifest_url": "http://…/mac.json", "mirror_url": "", "force": false }
-//   ——存在时替代线上清单地址；force=true 时跳过版本比较强制走全链（VM 实测用）。
+//   ——存在时替代线上清单地址（跳过验签）；force=true 时跳过版本比较强制走全链（VM 实测用）。
+//
+// ★ v2 增量下载（2026-09-19）: mac.json 携带单元清单（meta / shell-out / webapp / engines /
+//   base）。变化单元 = 内容寻址 tar（sha 不变 → 跳过下载）；装配 = 拷贝 live 树 + 变化单元
+//   目录级替换（删除语义天然正确）→ 本地签名 → 暂存。base 变化 / 状态缺失 / 任一步失败
+//   → 自动回退全量 tar（增量 = 纯传输优化，正确性零责任）。本地状态 {Data}/units.json，
+//   换装成功后由助手从 units.pending.json 提升；清单版本 == 本地版本时按清单自愈重建。
+//   契约与 gaea/cf/up/mac_units.py 严格对齐（改一处必须改两处）。
 // ============================================================================
 
 import { app, BrowserWindow, ipcMain } from 'electron';
@@ -56,6 +63,14 @@ const LOG_CAP = 256 * 1024;
 const CERT_NAME = 'qqqide Local Sign';
 const KC_PASS = 'qqqide';
 
+// ── v2 增量单元契约（与 gaea/cf/up/mac_units.py 严格同步）──
+const UNIT_NAMES = ['meta', 'shell-out', 'webapp', 'engines'];
+const UNIT_DIRS: { [n: string]: string } = {
+  'shell-out': 'qqqide.app/Contents/Resources/app/shell-out',
+  'webapp': 'qqqide.app/Contents/Resources/app/webapp',
+  'engines': 'qqqide-data/engines',
+};
+
 export interface MacUpdateState {
   phase: 'idle' | 'checking' | 'downloading' | 'staging' | 'ready' | 'applying' | 'updated' | 'rolledback' | 'error' | 'unsupported';
   version?: string;
@@ -66,7 +81,14 @@ export interface MacUpdateState {
   message?: string;
 }
 
-interface ArchEntry { url: string; mirror?: string; sha256: string; size: number; }
+interface UnitEntry { sha256: string; size?: number; url?: string; mirror?: string; }
+
+interface ArchEntry {
+  url: string; mirror?: string; sha256: string; size: number;
+  units?: { [name: string]: UnitEntry };   // v2 增量单元清单（旧清单无此字段 → 全量）
+}
+
+interface LocalUnits { fmt: number; id: string; arch: string; base: string; units: { [n: string]: string }; }
 
 interface MacManifest {
   id: string;
@@ -107,6 +129,7 @@ export function startMacUpdater(): void {
     return;
   }
   handleApplyResult(ctx);                                  // 上次换装结果（updated / rolledback 一次性提示）
+  promotePendingUnits(ctx);                                // v2: 换装成功但助手未提升时的兜底
   const ready = restoreStaged(ctx);                        // 上次会话已暂存 → 直接就绪
   if (!ready && _state.phase !== 'updated' && _state.phase !== 'rolledback') {
     schedule(START_DELAY_MS);
@@ -126,6 +149,8 @@ export function registerMacUpdateIpc(): void {
     if (_busy) return { ok: true, busy: true, state: publicState() };
     const mf = await fetchManifest(_ctx);
     if (!mf) return { ok: false, error: 'fetch' };
+    // v2: 手动检查路径同样自愈单元状态（清单版本==本地版本 → 幂等重建 units.json）
+    healUnitsState(_ctx, mf, process.arch === 'arm64' ? 'arm64' : 'x64');
     if (!testForce() && cmpVersion(mf.id, APP_VERSION) <= 0) {
       return { ok: true, upToDate: true, version: APP_VERSION, server: mf.id };
     }
@@ -215,6 +240,8 @@ async function runOnce(): Promise<void> {
     const entry = mf.archs[arch];
     if (!entry || !entry.url || !entry.sha256) { failSoft(ctx, 'no arch entry (' + arch + ')'); return; }
 
+    healUnitsState(ctx, mf, arch);                           // v2: 清单版本 == 本地版本 → 状态自愈重建
+
     if (!testForce() && cmpVersion(mf.id, APP_VERSION) <= 0) {
       log(ctx, 'update: up-to-date (local=%s server=%s)', APP_VERSION, mf.id);
       setState({ phase: 'idle', version: mf.id });
@@ -230,6 +257,16 @@ async function runOnce(): Promise<void> {
       setState({ phase: 'ready', version: mf.id });
       recordStatus(ctx, 'waiting');
       return;
+    }
+
+    // v2: 增量计划（状态匹配 + base 一致 → 只下变化单元；任一异常回退全量）
+    const stLocal = readLocalUnits(ctx);
+    const plan = planIncremental(mf, arch, entry, stLocal);
+    if (plan) {
+      log(ctx, 'update: incremental begin %s -> v%s (changed: %s, %d bytes)', APP_VERSION, mf.id, plan.changed.join('+'), plan.total);
+      const rc = await runIncremental(ctx, mf, arch, entry, plan);
+      if (rc === 'ok') return;
+      log(ctx, 'update: incremental FAILED -> fallback to full download');
     }
 
     // 磁盘空间快检（tar + 解压 ≈ 2.2 倍）
@@ -276,6 +313,7 @@ async function runOnce(): Promise<void> {
     }
 
     // ⑤ 就绪（等用户点「重启更新」）
+    writeUnitsPending(ctx, mf, arch);                        // v2: 全量路径同样记录单元状态
     writeStaged(ctx, mf.id, arch, entry.sha256);
     setState({ phase: 'ready', version: mf.id });
     recordStatus(ctx, 'waiting');
@@ -379,6 +417,7 @@ function cleanupUpdateDir(ctx: MacCtx, includeTar: boolean): void {
   if (includeTar) {
     try { fs.unlinkSync(path.join(ctx.updateDir, 'new.tar.gz')); } catch (_) { }
     try { fs.unlinkSync(path.join(ctx.updateDir, 'new.meta')); } catch (_) { }
+    try { fs.rmSync(path.join(ctx.updateDir, 'units'), { recursive: true, force: true }); } catch (_) { }
   }
 }
 
@@ -483,7 +522,7 @@ async function downloadTar(ctx: MacCtx, mf: MacManifest, entry: ArchEntry, arch:
 }
 
 // 单次下载（Range 续传 + 90s 无数据看门狗）；返回最终状态
-async function downloadOnce(ctx: MacCtx, url: string, dest: string, expectSize: number): Promise<{ status: number; got: number }> {
+async function downloadOnce(ctx: MacCtx, url: string, dest: string, expectSize: number, onProgress?: (got: number) => void): Promise<{ status: number; got: number }> {
   const existing = safeSize(dest);
   const { res } = await doGet(url, existing > 0 ? existing : null, 5);
   const st = res.statusCode || 0;
@@ -506,7 +545,8 @@ async function downloadOnce(ctx: MacCtx, url: string, dest: string, expectSize: 
       const now = Date.now();
       if (now - _lastProgressAt > 1000 || got >= expectSize) {
         _lastProgressAt = now;
-        setState({ phase: 'downloading', version: _state.version, got, total: expectSize, pct: expectSize ? Math.floor(got / expectSize * 100) : 0 });
+        if (onProgress) { try { onProgress(got); } catch (_) { } }
+        else { setState({ phase: 'downloading', version: _state.version, got, total: expectSize, pct: expectSize ? Math.floor(got / expectSize * 100) : 0 }); }
       }
     });
     res.pipe(out);
@@ -515,6 +555,212 @@ async function downloadOnce(ctx: MacCtx, url: string, dest: string, expectSize: 
     res.on('error', (e: Error) => finish(() => reject(e)));
   });
   return { status: st, got };
+}
+
+// ── v2 增量单元（状态 / 计划 / 下载 / 装配）──────────────────────────────
+//   契约: {Data}/units.json = {fmt,id,arch,base,units:{meta,shell-out,webapp,engines}}
+//   与 gaea/cf/up/mac_units.py 对齐；base/单元 sha 均来自签名清单，客户端不做树哈希。
+
+function unitsStatePath(ctx: MacCtx): string { return path.join(ctx.dataDir, 'units.json'); }
+
+function readLocalUnits(ctx: MacCtx): LocalUnits | null {
+  try {
+    const o = JSON.parse(fs.readFileSync(unitsStatePath(ctx), 'utf8'));
+    if (o && o.fmt === 1 && typeof o.id === 'string' && typeof o.arch === 'string' &&
+        typeof o.base === 'string' && o.units && typeof o.units === 'object') {
+      return o;
+    }
+  } catch (_) { }
+  return null;
+}
+
+function writeJsonAtomic(p: string, obj: any): void {
+  const t = p + '.tmp' + process.pid;
+  fs.writeFileSync(t, JSON.stringify(obj), 'utf8');
+  fs.renameSync(t, p);
+}
+
+function unitsFromManifest(mf: MacManifest, arch: string): LocalUnits | null {
+  try {
+    const us = mf.archs[arch] && mf.archs[arch].units;
+    if (!us || !us['base'] || !us['base'].sha256) return null;
+    const out: LocalUnits = { fmt: 1, id: mf.id, arch, base: us['base'].sha256, units: {} };
+    for (const n of UNIT_NAMES) {
+      if (!us[n] || !us[n].sha256) return null;
+      out.units[n] = us[n].sha256;
+    }
+    return out;
+  } catch (_) { return null; }
+}
+
+// 状态自愈: 清单版本 == 本地运行版本（清单即自身描述）→ 重建本地状态（幂等，免一次全量）
+function healUnitsState(ctx: MacCtx, mf: MacManifest, arch: string): void {
+  try {
+    if (mf.id !== APP_VERSION) return;
+    const want = unitsFromManifest(mf, arch);
+    if (!want) return;
+    const cur = readLocalUnits(ctx);
+    if (cur && cur.id === want.id && cur.arch === arch && cur.base === want.base &&
+        UNIT_NAMES.every(n => cur.units[n] === want.units[n])) return;
+    writeJsonAtomic(unitsStatePath(ctx), want);
+    log(ctx, 'update: units state healed from manifest (v%s, %s)', mf.id, arch);
+  } catch (_) { }
+}
+
+// 换装成功后助手提升 pending；此处为启动兜底（pending.id == 本地版本 → 提升）
+function promotePendingUnits(ctx: MacCtx): void {
+  try {
+    const p = path.join(ctx.dataDir, 'units.pending.json');
+    const o = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (o && o.id === APP_VERSION) {
+      try { fs.renameSync(p, unitsStatePath(ctx)); }
+      catch (_) { try { fs.copyFileSync(p, unitsStatePath(ctx)); fs.unlinkSync(p); } catch (_) { } }
+      log(ctx, 'update: units state promoted (v%s)', o.id);
+    }
+  } catch (_) { }
+}
+
+function writeUnitsPending(ctx: MacCtx, mf: MacManifest, arch: string): void {
+  try {
+    const want = unitsFromManifest(mf, arch);
+    if (!want) return;
+    writeJsonAtomic(path.join(ctx.dataDir, 'units.pending.json'), want);
+  } catch (_) { }
+}
+
+interface IncrementalPlan { changed: string[]; total: number; }
+
+function planIncremental(mf: MacManifest, arch: string, entry: ArchEntry, st: LocalUnits | null): IncrementalPlan | null {
+  try {
+    if (!st || st.fmt !== 1) return null;
+    if (st.id !== APP_VERSION || st.arch !== arch) return null;   // 状态必须描述正在运行的这棵树
+    const us = entry.units;
+    if (!us || !us['base'] || !us['base'].sha256) return null;
+    if (st.base !== us['base'].sha256) return null;               // base 变化 → 全量（正确性优先）
+    const changed: string[] = [];
+    let total = 0;
+    for (const n of UNIT_NAMES) {
+      const u = us[n];
+      if (!u || !u.sha256 || !u.url || !(u.size && u.size > 0)) return null;
+      if (!st.units[n]) return null;
+      if (st.units[n] !== u.sha256) { changed.push(n); total += u.size; }
+    }
+    if (!changed.length) return null;                              // 版本更高却零变化 → 全量保底
+    return { changed, total };
+  } catch (_) { return null; }
+}
+
+async function downloadUnitFile(ctx: MacCtx, name: string, u: UnitEntry, dest: string,
+                               onProg: (got: number) => void): Promise<boolean> {
+  if (!u.size || !u.sha256) return false;
+  if (safeSize(dest) === u.size && await sha256Match(dest, u.sha256)) return true;
+  if (safeSize(dest) > u.size) { try { fs.unlinkSync(dest); } catch (_) { } }
+  const urls: string[] = [u.url!];
+  if (u.mirror) urls.push(u.mirror);
+  for (let round = 0; round < 2; round++) {
+    for (const url of urls) {
+      try {
+        await downloadOnce(ctx, url, dest, u.size, onProg);
+        const now = safeSize(dest);
+        if (now === u.size && await sha256Match(dest, u.sha256)) return true;
+        if (now === u.size) {
+          log(ctx, 'update: unit %s sha256 MISMATCH -> discard & refetch', name);
+          try { fs.unlinkSync(dest); } catch (_) { }
+        }
+      } catch (e: any) {
+        log(ctx, 'update: unit %s err (%s): %s', name, hostOf(url), (e && e.message) || String(e));
+      }
+    }
+  }
+  return safeSize(dest) === u.size && await sha256Match(dest, u.sha256);
+}
+
+// 增量全链: 下载变化单元 → 拷贝 live 树 + 目录级替换装配 → 结构抽检 → 预签名 → 暂存
+// 返回 'ok' = 已暂存就绪 / 'fallback' = 任一环节失败（调用方回退全量）
+async function runIncremental(ctx: MacCtx, mf: MacManifest, arch: string, entry: ArchEntry,
+                              plan: IncrementalPlan): Promise<'ok' | 'fallback'> {
+  const staging = path.join(ctx.updateDir, 'staging');
+  const unitsDir = path.join(ctx.updateDir, 'units');
+  const cleanupStaging = () => { try { fs.rmSync(staging, { recursive: true, force: true }); } catch (_) { } };
+
+  // 0) 磁盘（本地树拷贝 + 单元 + 签名余量）
+  if (!await hasDiskSpace(ctx, entry.size * 3 + 512 * 1024 * 1024)) return 'fallback';
+
+  // 1) 下载变化单元（半截保留续传；目标版本变化 → 丢弃）
+  try {
+    const um = path.join(unitsDir, 'meta.json');
+    let keep = false;
+    try {
+      const o = JSON.parse(fs.readFileSync(um, 'utf8'));
+      keep = !!(o && o.version === mf.id && o.arch === arch);
+    } catch (_) { }
+    if (!keep) { try { fs.rmSync(unitsDir, { recursive: true, force: true }); } catch (_) { } }
+    fs.mkdirSync(unitsDir, { recursive: true });
+    fs.writeFileSync(um, JSON.stringify({ version: mf.id, arch, t: Date.now() }), 'utf8');
+  } catch (_) { return 'fallback'; }
+
+  setState({ phase: 'downloading', version: mf.id, got: 0, total: plan.total, pct: 0 });
+  let doneBytes = 0;
+  for (const n of plan.changed) {
+    const u = entry.units![n];
+    const dest = path.join(unitsDir, n + '.tar.gz');
+    const ok = await downloadUnitFile(ctx, n, u, dest, (got) => {
+      const total = plan.total || 1;
+      const all = doneBytes + got;
+      setState({ phase: 'downloading', version: mf.id, got: all, total: plan.total, pct: Math.floor(all / total * 100) });
+    });
+    if (!ok) { log(ctx, 'update: unit %s download failed', n); return 'fallback'; }
+    doneBytes += u.size || 0;
+    log(ctx, 'update: unit %s OK (%d bytes)', n, u.size || 0);
+  }
+
+  // 2) 装配: live 树拷贝 + 变化单元目录级替换（删除语义 = 整目录替换，天然正确）
+  setState({ phase: 'staging', version: mf.id, step: 'assemble' });
+  try { fs.rmSync(staging, { recursive: true, force: true }); } catch (_) { }
+  fs.mkdirSync(staging, { recursive: true });
+  let r = await spawnCapture('/bin/cp', ['-a', ctx.bundleDir, path.join(staging, 'qqqide.app')],
+    { cwd: ctx.updateDir, timeoutMs: 15 * 60 * 1000 });
+  if (r.code !== 0) { log(ctx, 'update: copy live app FAIL ec=%d %s', r.code, tail(r.out, 300)); cleanupStaging(); return 'fallback'; }
+
+  const changed = new Set(plan.changed);
+  for (const n of ['shell-out', 'webapp', 'engines']) {
+    if (!changed.has(n)) continue;
+    const target = path.join(staging, UNIT_DIRS[n]);
+    try { fs.rmSync(target, { recursive: true, force: true }); } catch (_) { }
+    r = await spawnCapture('/usr/bin/tar', ['-xzf', path.join(unitsDir, n + '.tar.gz'), '-C', staging],
+      { cwd: ctx.updateDir, timeoutMs: 10 * 60 * 1000 });
+    if (r.code !== 0) { log(ctx, 'update: unit extract FAIL (%s) ec=%d %s', n, r.code, tail(r.out, 300)); cleanupStaging(); return 'fallback'; }
+  }
+  if (changed.has('meta')) {
+    r = await spawnCapture('/usr/bin/tar', ['-xzf', path.join(unitsDir, 'meta.tar.gz'), '-C', staging],
+      { cwd: ctx.updateDir, timeoutMs: 5 * 60 * 1000 });
+    if (r.code !== 0) { log(ctx, 'update: meta extract FAIL ec=%d %s', r.code, tail(r.out, 300)); cleanupStaging(); return 'fallback'; }
+  }
+
+  // 3) 结构抽检（半成品绝不进签名/换装）
+  const checks: Array<[string, string]> = [
+    [path.join(staging, 'qqqide.app', 'Contents', 'MacOS'), 'MacOS'],
+    [path.join(staging, 'qqqide.app', 'Contents', 'Info.plist'), 'Info.plist'],
+    [path.join(staging, 'qqqide.app', 'Contents', 'Resources', 'app', 'shell-out', 'main.js'), 'shell-out/main.js'],
+  ];
+  if (changed.has('webapp')) checks.push([path.join(staging, 'qqqide.app', 'Contents', 'Resources', 'app', 'webapp', 'index.html'), 'webapp/index.html']);
+  if (changed.has('engines')) checks.push([path.join(staging, 'qqqide-data', 'engines', 'manifest.json'), 'engines/manifest.json']);
+  for (const [p, label] of checks) {
+    if (!fs.existsSync(p)) { log(ctx, 'update: incremental structure gate FAIL (%s)', label); cleanupStaging(); return 'fallback'; }
+  }
+
+  // 4) 预签名（与全量路径同链）
+  setState({ phase: 'staging', version: mf.id, step: 'sign' });
+  if (!await ensureSigningIdentity(ctx)) { cleanupStaging(); failSoft(ctx, 'signing identity unavailable'); return 'ok'; }
+  if (!await signApp(ctx, path.join(staging, 'qqqide.app'))) { cleanupStaging(); failSoft(ctx, 'codesign failed'); return 'ok'; }
+
+  // 5) 暂存 + 增量状态（换装成功后提升为正式状态）
+  writeUnitsPending(ctx, mf, arch);
+  writeStaged(ctx, mf.id, arch, entry.sha256);
+  setState({ phase: 'ready', version: mf.id });
+  recordStatus(ctx, 'waiting');
+  log(ctx, 'update: staged v%s (incremental %s, ready, waiting user restart)', mf.id, plan.changed.join('+'));
+  return 'ok';
 }
 
 // ── 解压 / 签名 ────────────────────────────────────────────────────────────
@@ -743,7 +989,7 @@ function tail(s: string, n: number): string {
 function helperScript(): string {
   return [
     '#!/bin/bash',
-    '# qqqide macOS 更新助手 v1（「重启更新」或退出即换触发；MODE=restart|quiet）',
+    '# qqqide macOS 更新助手 v2（「重启更新」或退出即换触发；MODE=restart|quiet）',
     '# 等待主程序退出 -> 原子换装(.app + engines) -> 换装前结构门 -> 启动健康检查失败自动回滚',
     'set -u',
     'UPD="$(cd "$(dirname "$0")" && pwd)"',
@@ -850,8 +1096,11 @@ function helperScript(): string {
     'fi',
     'if [ "$OK" = "1" ]; then',
     '  log "update OK -> v$STAGED_VER"',
+    '  if [ -f "$DIR/qqqide-data/Data/units.pending.json" ]; then',
+    '    mv -f "$DIR/qqqide-data/Data/units.pending.json" "$DIR/qqqide-data/Data/units.json" 2>/dev/null && log "units state promoted"',
+    '  fi',
     '  echo "done $STAGED_VER" > "$UPD/apply-result"',
-    '  rm -rf "$UPD/staging" "$UPD/new.tar.gz" "$UPD/new.meta" "$UPD/staged.json" "$UPD/staged.version" 2>/dev/null',
+    '  rm -rf "$UPD/staging" "$UPD/units" "$UPD/new.tar.gz" "$UPD/new.meta" "$UPD/staged.json" "$UPD/staged.version" 2>/dev/null',
     'else',
     '  log "health check failed ($MODE); ROLLING BACK"',
     '  rm -rf "$DIR/qqqide.app.failed" 2>/dev/null',
@@ -863,6 +1112,7 @@ function helperScript(): string {
     '    mv "$DIR/qqqide-data/engines-prev" "$ENG" 2>/dev/null',
     '  fi',
     '  if [ "$MODE" != "quiet" ]; then open "$APP" 2>>"$LOG"; fi',
+    '  rm -f "$DIR/qqqide-data/Data/units.pending.json" 2>/dev/null',
     '  echo "rollback" > "$UPD/apply-result"',
     '  log "ROLLED BACK to previous version"',
     'fi',

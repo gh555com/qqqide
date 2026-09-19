@@ -4,7 +4,7 @@
 // ipc-fs.ts — 文件系统 IPC handlers
 // ============================================================================
 
-import { ipcMain, app } from 'electron';
+import { ipcMain, app, shell as electronShell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
@@ -768,6 +768,13 @@ export function registerFsIpc(cacheStore?: CacheStore): void {
         } catch (e: any) {
             if (e && e.code !== 'ENOENT') throw e;
         }
+        return true;
+    });
+
+    // ★ 删除到回收站（2026-09-19）：roam 'd' 键语义 = 删除到系统回收站（q3 原语义，无确认可还原）。
+    //   Electron shell.trashItem 跨平台（Windows 回收站 / macOS 废纸篓）；失败如实抛错，绝不静默降级为永久删除。
+    ipcMain.handle('qqqide:fs:trash', async (_e, p: string) => {
+        await electronShell.trashItem(p);
         return true;
     });
 

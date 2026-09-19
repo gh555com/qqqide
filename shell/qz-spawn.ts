@@ -244,6 +244,15 @@ function resolveGhrunBin(appRoot?: string): string | null {
             if (fs.existsSync(p)) { _ghrunBinCache = p; return p; }
         }
     }
+    // ★ mac .app 布局兜底（2026-09-19）: getAppRoot()=Contents/MacOS → 上面两候选全落空
+    //   （engines 实挂 Contents/Resources/app/engines，相对符号链接 → qqqide-data/engines）。
+    //   缺此兜底 → mac 上 ghrun 恒 null → 全部命令落 nodeTier（Job Object 内存保护失效）。
+    try {
+        const ap = require('electron').app.getAppPath();
+        const ext = process.platform === 'win32' ? '.exe' : '';
+        const p = path.join(ap, 'engines', 'ghrun' + ext);
+        if (fs.existsSync(p)) { _ghrunBinCache = p; return p; }
+    } catch { /* electron 不可用（dev 早期）忽略 */ }
     _ghrunBinCache = null;
     return null;
 }

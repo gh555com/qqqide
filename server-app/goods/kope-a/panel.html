@@ -684,6 +684,11 @@ body {
         for (var i = 0; i < clipHistory.length; i++) {
             if (clipHistory[i].id === id) {
                 copyToClipboard(clipHistory[i].content);
+                // ★ VIG 履历：点击使用卡片 → card.times+1（老 qqq_copy_total_count 语义）
+                try {
+                    var _vb = getBridge();
+                    if (_vb && _vb.vig && _vb.vig.bump) { _vb.vig.bump('card', { times: 1 }); }
+                } catch (_ve) { }
                 var clicked = clipHistory[i];
                 // Q4: pinned items keep position (order by pinned_at); non-pinned reorder to top
                 if (!clicked.pinned) {

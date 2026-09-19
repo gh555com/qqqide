@@ -118,6 +118,16 @@ else:
     check(False, 'launcher .command present')
 check('README-\u4f7f\u7528\u8bf4\u660e.txt' in nameset, 'README present')
 
+# ── mac 自定义图标（2026-09-19）: 默认 Electron 图标必须已替换 ──
+icns_p = 'qqqide.app/Contents/Resources/electron.icns'
+if icns_p in nameset:
+    _im = tf.getmember(icns_p)
+    _ih = first_bytes(icns_p, 4)
+    check(_im.size > 300000 and _ih == b'icns', 'mac: custom icns applied (%dB)' % _im.size)
+else:
+    check(False, 'mac: electron.icns present')
+check((C + 'Resources/qqqide.icns') in nameset, 'mac: qqqide.icns present')
+
 # ── node_modules runtime deps (shell-out require targets) ──
 check((EP + 'node_modules/sql.js/package.json') in nameset, 'node_modules/sql.js bundled (shell hard dep)')
 check((EP + 'node_modules/sql.js/dist/sql-wasm.js') in nameset, 'sql.js dist/sql-wasm.js present')
@@ -174,6 +184,17 @@ if roamjs in nameset:
           'roam: file icon glyph renderable on mac (no tofu)')
 else:
     check(False, 'webapp/goods/file-explorer/q2-roam.js present')
+# ── roam 'd' 键 → 系统回收站（2026-09-19）：webapp 能力探测 + 壳层 trash IPC ──
+if roamjs in nameset:
+    check('fs.trashItem' in roam_txt and '_roamShellHasTrash' in roam_txt,
+          "roam: 'd' key -> system trash wired (fs.trashItem + capability probe)")
+_tr_mj = EP + 'shell-out/main.js'
+_tr_pre = EP + 'shell-out/preload.js'
+if _tr_mj in nameset and _tr_pre in nameset:
+    check('qqqide:fs:trash' in tf.extractfile(_tr_mj).read().decode('utf-8', 'replace'),
+          'shell: roam trash IPC (qqqide:fs:trash) present')
+    check('trashItem' in tf.extractfile(_tr_pre).read().decode('utf-8', 'replace'),
+          'shell: preload trashItem exposed')
 
 # ── 批次 B 回归断言（2026-09-16：OS 目录 mac 化 / kmd zsh / 剪贴板 / qmd 守卫）──
 mj = EP + 'shell-out/main.js'
@@ -190,6 +211,10 @@ if mj in nameset:
     check('maybeAutoApplyOnQuit' in mj_txt, 'shell: mac updater v1: quit-apply wired')
     check('--update-probe' in mj_txt and 'probe-result' in mj_txt, 'shell: mac updater v1: quiet probe wired')
     check('MODE="${2:-restart}"' in mj_txt, 'shell: mac updater v1: helper MODE arg present')
+    # mac 应用内更新 v2（2026-09-19 增量下载: 单元状态 / 增量装配 / 回退全量）
+    check('units.pending.json' in mj_txt, 'shell: mac updater v2: units pending state present')
+    check('incremental begin' in mj_txt, 'shell: mac updater v2: incremental download wired')
+    check('units state healed' in mj_txt, 'shell: mac updater v2: units state self-heal wired')
 else:
     check(False, 'shell-out/main.js present')
 check((EP + 'webapp/core/update-machine.js') in nameset, 'webapp: update-machine.js present (mac update UI)')
@@ -212,6 +237,23 @@ if qmdjs in nameset:
     check('_isMac' in qj and 'ConPTY' in qj, 'qmd: mac skip guard present')
 else:
     check(False, 'webapp/goods/qmd/qmd.js present')
+
+# ── VIG 履历链 + ghrun mac 兜底（2026-09-19: winthere 埋点 / squad 计数 / ghrun 定位）──
+if mj in nameset:
+    check('winthereExternal' in mj_txt, 'shell: vig winthereExternal (window-there stats readback)')
+    check('vigSquadSummon' in mj_txt, 'shell: vig squad-summon counting wired')
+    _gi = mj_txt.find('resolveGhrunBin')
+    check(_gi >= 0 and 'getAppPath' in mj_txt[_gi:_gi + 1600],
+          'shell: ghrun mac fallback (app.getAppPath in resolver)')
+wts = EP + 'webapp/goods/window-there/window_there_store.py'
+if wts in nameset:
+    wt_txt = tf.extractfile(wts).read().decode('utf-8', 'replace')
+    check("'stats.json'" in wt_txt and 'bump_stat' in wt_txt, 'window-there: VIG stats.json writer present')
+    check("'Application Support'" in wt_txt, 'window-there: mac OS dir branch in store')
+else:
+    check(False, 'webapp/goods/window-there/window_there_store.py present')
+if gui in nameset:
+    check('bump_stat' in gui_txt, 'window-there: restore counting wired (ge_2_ui)')
 
 # ── junk (must be zero) ──
 check(count(QD + 'engines/__pycache__/') == 0, 'no engines/__pycache__')

@@ -2,6 +2,7 @@
 # Path: %USERPROFILE%/AppData/Local/window-there/pz.sq3
 # One truth source across all IDE instances and green packs.
 
+import json
 import os
 import sqlite3
 import sys
@@ -64,6 +65,7 @@ def save_layout(window_info):
         ))
         conn.commit()
         conn.close()
+        bump_stat('save')   # VIG 履历：3W 保存计数
         return ts
     except Exception as e:
         print(f'[window-there] save_layout failed: {e}')
@@ -104,6 +106,7 @@ def delete_layout(key):
         conn.execute('DELETE FROM layouts WHERE ts = ?', (key,))
         conn.commit()
         conn.close()
+        refresh_stats()   # VIG 履历：布局总数刷新（不计数）
         return True
     except Exception as e:
         print(f'[window-there] delete_layout failed: {e}')
@@ -119,6 +122,67 @@ def get_stats():
         return {'total': total}
     except:
         return {'total': 0}
+
+# ── VIG 履历计数（3W 保存 / 3X 还原 / 布局总数）────────────────────────────
+# OS 级 stats.json，window-there 进程为唯一写入者（原子 tmp+rename）；
+# 壳层 wq-ping 每次上报时读取（跨实例、跨绿色包共享，同 card.count 动态回读模式）。
+_stats_path = os.path.join(_get_db_dir(), 'stats.json')
+
+def _read_stats():
+    try:
+        with open(_stats_path, 'r', encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def _write_stats(d):
+    tmp = _stats_path + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(d, f)
+        os.replace(tmp, _stats_path)
+    except Exception as e:
+        print(f'[window-there] stats write failed: {e}')
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+def _sync_layout_count(d):
+    try:
+        conn = _get_conn()
+        c = conn.execute('SELECT COUNT(*) FROM layouts')
+        d['layouts'] = int(c.fetchone()[0])
+        conn.close()
+    except Exception:
+        pass
+
+def bump_stat(key, add=1):
+    """履历计数：save（3W 保存成功）/ restore（3X 还原点击）。写后刷新布局总数。"""
+    try:
+        d = _read_stats()
+        if key:
+            d[key] = int(d.get(key, 0)) + add
+        if not d.get('t0'):
+            d['t0'] = int(time.time())
+        _sync_layout_count(d)
+        _write_stats(d)
+        return d
+    except Exception as e:
+        print(f'[window-there] bump_stat failed: {e}')
+        return None
+
+def refresh_stats():
+    """仅重算布局总数（删除布局后调用），不增计数。"""
+    try:
+        d = _read_stats()
+        if not d.get('t0'):
+            d['t0'] = int(time.time())
+        _sync_layout_count(d)
+        _write_stats(d)
+    except Exception:
+        pass
 
 # Auto-init on import
 init_db()

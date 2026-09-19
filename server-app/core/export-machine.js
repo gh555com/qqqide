@@ -281,6 +281,11 @@
 
   function _finish(r, jobId, io, isDoc, fmtLabel) {
     if (r && r.ok) {
+      // ★ VIG 履历埋点（老 q3 exportDoc_stats / exportZip_stats 语义：成功导出 n+1）
+      try {
+        var _vb = window.qqqideBridge && window.qqqideBridge.vig;
+        if (_vb && _vb.bump) { _vb.bump(isDoc ? 'export_doc' : 'export_zip', { n: 1 }); }
+      } catch (_) { }
       var sizeStr = _fmtBytes(r.size || 0);
       var msg = _T('export.docExported', 'qqq: \u6587\u6863\u5DF2\u5BFC\u51FA ({0}): {1}', { 0: sizeStr, 1: r.path });
       if (!r.hasAnchors) {

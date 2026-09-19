@@ -358,6 +358,7 @@ async function updateDriveDisplay() {
 				bridge.clipboard.writeText(paths.join('\n')).catch(function() {
 					if (navigator.clipboard) navigator.clipboard.writeText(paths.join('\n')).catch(function(){});
 				});
+				_vigBump('roam', { x: 1 });   // VIG：快捷键总次数（老 Ctrl+C 计 x）
 				_playSfx('copy');
 				return;
 			}
@@ -366,6 +367,7 @@ async function updateDriveDisplay() {
 		// Ctrl+A: Select all files
 		if ((e.ctrlKey || e.metaKey) && k === 'a') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			selectAllFiles();
 			return;
 		}
@@ -374,6 +376,7 @@ async function updateDriveDisplay() {
 		// ★ Backspace: 返回上层目录；若从 .lnk 跳转而来则回到来源目录
 		if (k === 'backspace') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			if (lnkJumpFromPath) {
 				var srcPath = lnkJumpFromPath;
 				lnkJumpFromPath = null;
@@ -391,6 +394,7 @@ async function updateDriveDisplay() {
 		// ★ Space key: s request — get sizes for selected items (or all items if none selected)
 		if (k === ' ') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			_doSRequest();
 			return;
 		}
@@ -398,11 +402,13 @@ async function updateDriveDisplay() {
 		//   a → 喂给焦点 AI 面板 · z → 复制路径 · w → 系统打开（多选=全部打开，文件走「起播+入列」管线）· x → kmd · m → CMD · p → PowerShell
 		if (k === 'a') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			if (selectedItem) _feedCurrentToAi(); else _feedFolderToAi();
 			return;
 		}
 		if (k === 'x') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			// ★ 2026-08-25 极简规则：单文件选中 → 文件名预填 kmd 键入行（不带路径，任何类型都填）；
 			//   多选 / 文件夹 / 无选中 → 只开 kmd + cd，不预填
 			//   <= 1 而非 === 1：覆盖 selectedItem 有值但 selectedItems 数组未同步的边缘路径
@@ -413,12 +419,14 @@ async function updateDriveDisplay() {
 		}
 		if (k === 'm') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){});
 			_playSfx('terminal');
 			return;
 		}
 		if (k === 'p') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){});
 			_playSfx('terminal');
 			return;
@@ -426,6 +434,7 @@ async function updateDriveDisplay() {
 		// ★ 无有效选中（含仅 '..'）时 z/w 作用于当前文件夹本身：z → 复制当前文件夹路径 / w → 系统资源管理器打开
 		if (k === 'z' || k === 'w') {
 			e.preventDefault();
+			_vigBump('roam', k === 'w' ? { w: 1, x: 1 } : { x: 1 });   // w=W键打开次数(老 wx) / z=快捷键
 			if (selectedItem && selectedItem.name !== '..') {
 				if (k === 'z') performCopyPathAction();
 				else performOpenAllSelected();
@@ -441,25 +450,34 @@ async function updateDriveDisplay() {
 		var si = selectedItem;
 		if (k === 'q') {
 			e.preventDefault();
+			_vigBump('roam', { q: 1, x: 1 });   // 老 qx：Q键编辑次数 + 快捷键总次数
 			performCodeAction(si);
 		} else if (k === 'd') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			performDeleteAction(si);
 		} else if (k === 'e' || k === 'f2') {
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			if (selectedItems.length > 1) return;
 			performEditAction(si);
 		} else if (e.key === 'Delete' && e.shiftKey) {
 			// Shift+Delete: permanent delete (no recycle bin)
 			e.preventDefault();
+			_vigBump('roam', { x: 1 });
 			var targets = selectedItems.filter(function(s) { return s.name !== '..'; });
 			if (targets.length === 0) return;
 			targets.forEach(function(t) {
 				var el = findItemByPath(t.path);
 				if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
 			});
-			Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
-				.then(function() { if (currentPath) loadFileList(currentPath); });
+			// VIG：永久删除成功数计入 fc（老 recordRoamFileOp(result.deleted,0) 语义）
+			Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).then(function() { return 1; }).catch(function() { return 0; }); }))
+				.then(function(rs) {
+					var dc = 0; for (var i = 0; i < rs.length; i++) { dc += rs[i]; }
+					if (dc > 0) { _vigBump('roam', { fc: dc }); }
+					if (currentPath) loadFileList(currentPath);
+				});
 			cancelSelection();
 			_playSfx('purge');
 		}
@@ -599,6 +617,7 @@ async function doCreateFile() {
 	var fullPath = pathJoin(currentPath, name);
 	var content = _newFileTemplate();
 	bridge.fs.write(fullPath, content).then(function() {
+		_vigBump('roam', { n: 1, f: 1, fc: 1 });   // 老 recordRoamUsage({filesCreated:1})：漫游+新建+文件操作各+1
 		filenameInput.value = '';
 		// Reset char-undo history
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
@@ -622,6 +641,7 @@ function doCreateFolder() {
 	}
 	var fullPath = pathJoin(currentPath, name);
 	bridge.fs.mkdir(fullPath).then(function() {
+		_vigBump('roam', { f: 1, fc: 1 });   // 老 recordRoamFileOp(1,1)：新建文件夹 f+1 fc+1
 		filenameInput.value = '';
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
 		recordDirHistory(currentPath);

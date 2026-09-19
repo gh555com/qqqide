@@ -80,6 +80,8 @@ const QQQ = {
         exists: (p: string) => ipcRenderer.invoke('qqqide:fs:exists', p),
         mkdir: (p: string) => ipcRenderer.invoke('qqqide:fs:mkdir', p),
         remove: (p: string) => ipcRenderer.invoke('qqqide:fs:remove', p),
+        // ★ 删除到回收站（2026-09-19）：roam 'd' 键语义（系统回收站/废纸篓，可还原）
+        trashItem: (p: string) => ipcRenderer.invoke('qqqide:fs:trash', p),
         rename: (oldP: string, newP: string) => ipcRenderer.invoke('qqqide:fs:rename', oldP, newP),
         // ★ 流式复制 + 进度回调。onProgress({copied,total})，返回 Promise<最终落盘路径|boolean>
         //   streamId 可选：多路并发共享同一 streamId → 主进程聚合进度（ioast 任务坞）；
@@ -182,15 +184,30 @@ const QQQ = {
         open: (id: number, file: string) => ipcRenderer.invoke('qqqide:monaco:open', id, file),
         save: (id: number) => ipcRenderer.invoke('qqqide:monaco:save', id),
         dispose: (id: number) => ipcRenderer.invoke('qqqide:monaco:dispose', id),
-    },
-
+    },    // ---- audio (will route to miniaudio_v16.py) ----
+    audio: {
+        play: (file: string, opts?: any) => ipcRenderer.invoke('qqqide:audio:play', file, opts),
+        stop: (scope?: string) => ipcRenderer.invoke('qqqide:audio:stop', scope),
+        invoke: (action: string, params?: any) => ipcRenderer.invoke('qqqide:audio:invoke', action, params),
+        isAlive: () => ipcRenderer.invoke('qqqide:audio:isAlive'),
+        // ★ 引擎主动事件（audio_state_changed / audio_finished，Savor 统计与 UI 同步）
+        onEvent: (cb: (evt: any) => void) => {
+            const handler = (_e: any, evt: any) => { try { cb(evt); } catch { /* ignore */ } };
+            ipcRenderer.on('qqqide:audio:event', handler);
+            return () => ipcRenderer.removeListener('qqqide:audio:event', handler);
+        },
+    },
 
-    // ---- audio (will route to miniaudio_v16.py) ----
-    audio: {
-        play: (file: string, opts?: any) => ipcRenderer.invoke('qqqide:audio:play', file, opts),
-        stop: (scope?: string) => ipcRenderer.invoke('qqqide:audio:stop', scope),
-        invoke: (action: string, params?: any) => ipcRenderer.invoke('qqqide:audio:invoke', action, params),
-        isAlive: () => ipcRenderer.invoke('qqqide:audio:isAlive'),
+    // ---- wq 统计上报（Savor 偿还 ping: playing 标记 + 立即补发） ----
+    wq: {
+        playing: (on: boolean) => ipcRenderer.invoke('qqqide:wq:playing', !!on),
+    },
+
+    // ---- vig 履历埋点（老 q3 _collectVig 语义；壳层采集机 vig.ts 累计，ping 搭便车上报） ----
+    vig: {
+        bump: (mod: string, add: Record<string, number>) => ipcRenderer.invoke('qqqide:vig:bump', mod, add).catch(() => { }),
+        set: (mod: string, patch: Record<string, number>) => ipcRenderer.invoke('qqqide:vig:set', mod, patch).catch(() => { }),
+        snapshot: () => ipcRenderer.invoke('qqqide:vig:snapshot'),
     },
 
     // ---- system shell ----
