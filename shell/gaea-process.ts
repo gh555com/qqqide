@@ -570,6 +570,13 @@ export function startGaeaProcess(
     if (runtime === 'python') {
         exe = getComponentBin(portableRoot, 'python');
         if (!exe) return { ok: false, error: mi('main.gaea.noPython') };
+        // ★ Windows: 优先同级 pythonw.exe —— GUI 子系统永不分配控制台窗口（黑框根治，2026-09-20）。
+        //   不可用 python.exe + windowsHide:true 替代：libuv 对含 fd 继承的 stdio 会跳过 CREATE_NO_WINDOW
+        //   （本 spawn 的 stdout/stderr 重定向到日志 fd），且 windowsHide 附带 SW_HIDE 副作用。
+        if (process.platform === 'win32') {
+            const pyw = path.join(path.dirname(exe), 'pythonw.exe');
+            if (fs.existsSync(pyw)) exe = pyw;
+        }
     } else {
         const binFromComponent = getComponentBin(portableRoot, runtime);
         if (binFromComponent) {
