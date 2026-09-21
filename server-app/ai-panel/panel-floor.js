@@ -660,18 +660,25 @@ async function _restoreAgentFromStore(questId, ag) {
         if (!ag._currentFloorNum && _maxFloorFromData > 0) {
             ag._currentFloorNum = _maxFloorFromData;
         }
-        // ★ 现在 _currentFloorNum 已就绪，从已完成楼层重算基线
-        var _recalcHouses = 0, _recalcWge = 0;
+        // ★ 现在 _currentFloorNum 已就绪，从已完成楼层重算基线（三数同源：houses / tokens / wge 全部从 all.json 实数据累计）
+        //   ★ 2026-09-21 修正：tokens 旧实现「无可靠磁盘源 → 每次重算归零」是错的——houses[].usage 就是可靠磁盘源。
+        //   归零导致每次恢复（重启/重载/切 quest）后 tokens 累计清零 → 明细行只剩最近一段（q263 f224 少算约 20 倍）。
+        var _recalcHouses = 0, _recalcWge = 0, _recalcTokens = 0;
         for (var _rfi2 = 0; _rfi2 < allFloors.length; _rfi2++) {
             var _rfData = allFloors[_rfi2].data;
             if (_rfData && allFloors[_rfi2].floorNum < ag._currentFloorNum) {
                 _recalcHouses += (_rfData.houses ? _rfData.houses.length : 0);
                 _recalcWge += (_rfData.costWge || 0);
+                var _rfHs = _rfData.houses || [];
+                for (var _rhi = 0; _rhi < _rfHs.length; _rhi++) {
+                    var _rhu = _rfHs[_rhi] && _rfHs[_rhi].usage;
+                    if (_rhu) _recalcTokens += (_rhu.prompt_tokens || 0) + (_rhu.completion_tokens || 0);
+                }
             }
         }
         ag._passbyBaseHouses = _recalcHouses;
         ag._passbyBaseWge = _recalcWge;
-        ag._passbyBaseTokens = 0; // tokens 无可靠磁盘源，每次重算时归零
+        ag._passbyBaseTokens = _recalcTokens;
         ag._passbyBaseFloorNum = _recalcHouses > 0 ? (ag._currentFloorNum - 1) : 0;
         // ★ 重建 _floorMeta（未可变楼层元数据）
         // ★ 压缩恢复：用 conversation 实际索引覆盖磁盘旧值（旧 floorStartIdx 在跳过压缩层后偏移）

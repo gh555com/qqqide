@@ -43,6 +43,23 @@ export interface TranscodeOpts {
     extraArgs?: string[];   // appended raw
 }
 
+// ── 悬浮层播放/预览转码兜底（2026-09-21）────────────────────────────────────
+export interface PlayableOpts {
+    src: string;                        // absolute source path
+    kind: 'video' | 'audio' | 'image';  // 请求方语义（决定产物形态）
+    reqId?: string;                     // 进度/取消关联 id（渲染层生成）
+}
+export interface PlayableResult {
+    ok: boolean;
+    path?: string;                      // 浏览器可直接播放/显示的产物路径
+    ext?: string;                       // mp4 | webm | m4a | mp3 | png
+    duration?: number;
+    cached?: boolean;
+    cancelled?: boolean;
+    error?: string;
+    stderr?: string;
+}
+
 export interface MediaResult {
     ok: boolean;
     path?: string;
@@ -404,6 +421,294 @@ export class MediaService {
             return { ok: false, error: 'ffmpeg_failed', stderr: r.stderr.slice(-500), path: dst };
         }
         return { ok: true, path: dst, cached: false };
+    }
+
+    // =========================================================================
+    // playable — 悬浮层播放/预览转码兜底（2026-09-21）
+    //   Chromium 原生解不了的格式（avi/wmv/flv/rmvb/prores-mov/psd/tiff…）→ ffmpeg 转浏览器可播产物：
+    //   ① 视频智能快路径：编码已支持（h264/hevc/av1/vp8/vp9）→ -c copy 重封装（秒级零损失）
+    //   ② 编码不支持 → libx264 重编码（veryfast/crf23/yuv420p + aac）
+    //   ③ 音频：aac/mp3 copy，其余转 aac ④ 图片（psd/tiff）：抽单帧 png
+    //   独立缓存区 {cache}/play（2GB 上限 LRU）+ -progress 文件轮询进度 + 可取消 + broken 熔断
+    // =========================================================================
+
+    private _playInflight = new Map<string, Promise<PlayableResult>>();
+    private _playLive = new Map<string, { kill: () => void }>();
+    private _playCancelled = new Set<string>();
+    private static readonly PLAY_CACHE_MAX = 2 * 1073741824;
+    private static readonly PLAY_CACHE_TARGET = 1536 * 1048576;
+
+    private _playDir(): string {
+        const d = path.join(this.cache.root, 'play');
+        try { fs.mkdirSync(d, { recursive: true }); } catch { /* ignore */ }
+        return d;
+    }
+
+    /** 容量纪律：2GB 上限 → mtime LRU 淘汰到 1.5GB；陈旧 .part/.prog 中间物顺手清 */
+    private _playSweep(): void {
+        try {
+            const d = this._playDir();
+            const now = Date.now();
+            const files: Array<{ p: string; m: number; s: number }> = [];
+            let total = 0;
+            for (const name of fs.readdirSync(d)) {
+                const p = path.join(d, name);
+                try {
+                    const st = fs.statSync(p);
+                    if (!st.isFile()) { continue; }
+                    if (/\.part\./.test(name) || /\.prog$/.test(name)) {
+                        if (now - st.mtimeMs > 10 * 60_000) { fs.rmSync(p, { force: true }); }
+                        continue;
+                    }
+                    files.push({ p, m: st.mtimeMs, s: st.size });
+                    total += st.size;
+                } catch { /* ignore */ }
+            }
+            if (total <= MediaService.PLAY_CACHE_MAX) { return; }
+            files.sort((a, b) => a.m - b.m);
+            for (const f of files) {
+                if (total <= MediaService.PLAY_CACHE_TARGET) { break; }
+                try { fs.rmSync(f.p, { force: true }); total -= f.s; } catch { /* 使用中跳过 */ }
+            }
+        } catch { /* ignore */ }
+    }
+
+    /** ffmpeg -progress 文件解析：末条 out_time_us（us）→ 退 out_time_ms（历史实为 us）/ out_time=HH:MM:SS */
+    private static _parseProgUs(txt: string): number | null {
+        let last: number | null = null; let r: RegExpExecArray | null;
+        const g1 = /out_time_us=(\d+)/g;
+        while ((r = g1.exec(txt))) { last = Number(r[1]); }
+        if (last != null) { return last; }
+        const g2 = /out_time_ms=(\d+)/g;
+        while ((r = g2.exec(txt))) { last = Number(r[1]); }
+        if (last != null) { return last; }
+        const g3 = /out_time=(\d+):(\d+):(\d+\.?\d*)/g; let lastS: number | null = null;
+        while ((r = g3.exec(txt))) { lastS = Number(r[1]) * 3600 + Number(r[2]) * 60 + Number(r[3]); }
+        return lastS != null ? Math.round(lastS * 1e6) : null;
+    }
+
+    /** 产物头校验（防截断/坏产物缓存为「坏命中」——与 webp RIFF 校验同哲学） */
+    private static _isValidPlayableOut(p: string, ext: string): boolean {
+        try {
+            const st = fs.statSync(p);
+            if (st.size <= 32) { return false; }
+            const fd = fs.openSync(p, 'r');
+            const b = Buffer.alloc(16);
+            const n = fs.readSync(fd, b, 0, 16, 0);
+            fs.closeSync(fd);
+            if (n < 8) { return false; }
+            const a4 = (o: number): string => b.toString('ascii', o, o + 4);
+            if (ext === 'mp4' || ext === 'm4a') { return a4(4) === 'ftyp'; }
+            if (ext === 'webm') { return b[0] === 0x1A && b[1] === 0x45 && b[2] === 0xDF && b[3] === 0xA3; }
+            // ★ 魔数逐字节（2026-09-21 修复）：a4() 固定读 4 字符——"PNG"/"ID3" 是 3 字符前缀，
+            //   旧式 a4(1)==='PNG' 实为 "PNG\r"≠"PNG" 恒假 → 合法产物被误删+熔断（psd 打不开实锤；
+            //   mp3 带 ID3v2 头同款误杀）。mp4/webm 比较的是 4 字符字面量，本就正确。
+            if (ext === 'png') { return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47; }
+            if (ext === 'mp3') { return (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xFF && (b[1] & 0xE0) === 0xE0); }
+            return true;
+        } catch { return false; }
+    }
+
+    /** 双流探测（视频+音频编码 / 时长）——ffprobe JSON 优先，ffmpeg -i 解析兜底 */
+    private async _probeStreams(src: string): Promise<{ vcodec: string; acodec: string; duration: number } | null> {
+        this.ensureResolved();
+        if (this._ffprobePath) {
+            const r = await this.qz.spawn({
+                cmd: this._ffprobePath,
+                args: ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', src],
+                timeout: 20_000, stallMs: 10_000, captureOutput: true,
+            });
+            if (r.exitCode === 0 && r.stdout) {
+                try {
+                    const j = JSON.parse(r.stdout);
+                    const streams = (j && j.streams) || [];
+                    const v = streams.find((s: any) => s && s.codec_type === 'video') || {};
+                    const a = streams.find((s: any) => s && s.codec_type === 'audio') || {};
+                    const dur = Number((j.format && j.format.duration) || v.duration || a.duration || 0);
+                    return {
+                        vcodec: String(v.codec_name || '').toLowerCase(),
+                        acodec: String(a.codec_name || '').toLowerCase(),
+                        duration: isFinite(dur) ? dur : 0,
+                    };
+                } catch { /* fall through */ }
+            }
+        }
+        if (this._ffmpegPath) {
+            const r = await this.qz.spawn({
+                cmd: this._ffmpegPath, args: ['-hide_banner', '-i', src],
+                timeout: 20_000, stallMs: 10_000, captureOutput: true,
+            });
+            const txt = r.stderr || '';
+            const mv = txt.match(/Stream #\d+:\d+.*?: Video: ([A-Za-z0-9_]+)/);
+            const ma = txt.match(/Stream #\d+:\d+.*?: Audio: ([A-Za-z0-9_]+)/);
+            if (mv || ma) {
+                const md = txt.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+                return {
+                    vcodec: mv ? mv[1].toLowerCase() : '',
+                    acodec: ma ? ma[1].toLowerCase() : '',
+                    duration: md ? (Number(md[1]) * 3600 + Number(md[2]) * 60 + Number(md[3])) : 0,
+                };
+            }
+        }
+        return null;
+    }
+
+    /** 转码方案决策（快路径 = 同编码 copy 重封装；不可 copy 才重编码） */
+    private _planPlayable(kind: 'video' | 'audio' | 'image', meta: { vcodec: string; acodec: string }): { ext: string; args: string[] } {
+        if (kind === 'image') {
+            return { ext: 'png', args: ['-frames:v', '1', '-c:v', 'png', '-update', '1'] };
+        }
+        const a = meta.acodec, v = meta.vcodec;
+        const aCopyMp4 = (a === 'aac' || a === 'mp3');
+        if (kind === 'audio' || !v) {
+            if (a === 'mp3') { return { ext: 'mp3', args: ['-vn', '-c:a', 'copy'] }; }
+            if (a === 'aac') { return { ext: 'm4a', args: ['-vn', '-c:a', 'copy'] }; }
+            return { ext: 'm4a', args: ['-vn', '-c:a', 'aac', '-b:a', '192k'] };
+        }
+        const aArgs = a ? (aCopyMp4 ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k']) : ['-an'];
+        const mapArgs = ['-map', '0:v:0'].concat(a ? ['-map', '0:a:0'] : []);
+        if (v === 'h264' || v === 'hevc' || v === 'av1') {
+            return { ext: 'mp4', args: mapArgs.concat(['-c:v', 'copy'], aArgs) };
+        }
+        if ((v === 'vp8' || v === 'vp9') && (!a || a === 'opus' || a === 'vorbis')) {
+            return { ext: 'webm', args: mapArgs.concat(['-c:v', 'copy'], a ? ['-c:a', 'copy'] : ['-an']) };
+        }
+        return {
+            ext: 'mp4',
+            args: mapArgs.concat(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'], aArgs),
+        };
+    }
+
+    /** 转码兜底入口：产物就绪返回路径；进度经 onProgress(pct)；reqId 供取消关联 */
+    async playable(opts: PlayableOpts, onProgress?: (pct: number) => void): Promise<PlayableResult> {
+        if (!opts || !opts.src) { return { ok: false, error: 'no_src' }; }
+        if (!fs.existsSync(opts.src)) { return { ok: false, error: 'src_missing' }; }
+        this.ensureResolved();
+        if (!this._ffmpegPath) { return { ok: false, error: 'ffmpeg_not_found' }; }
+
+        const kind: 'video' | 'audio' | 'image' = (opts.kind === 'audio' || opts.kind === 'image') ? opts.kind : 'video';
+        const st = await this._srcStat(opts.src);
+        if (!st) { return { ok: false, error: 'src_missing' }; }
+        if (await this._brokenHit(st)) { return { ok: false, error: 'known_broken' }; }
+
+        // ★ 缓存快路径（2026-09-21，零风险纯收益）：产物名 = stat 指纹（路径|mtime|size）——同 sig 必同源同方案
+        //   命中直返，跳过 ffprobe 进程（~100-300ms/次）；产物落盘均经校验，坏产物从不落盘。
+        //   下方 probe→plan→dst 检查保留为兜底（方案漂移等边界）。
+        const _fastExts: string[] = kind === 'image' ? ['png'] : ['mp4', 'webm', 'm4a', 'mp3'];
+        for (const _fe of _fastExts) {
+            const _fp = path.join(this._playDir(), st.sig + '.' + _fe);
+            if (fs.existsSync(_fp)) {
+                try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
+                try { const now = new Date(); fs.utimesSync(_fp, now, now); } catch { /* ignore */ }
+                return { ok: true, path: _fp, ext: _fe, duration: 0, cached: true };
+            }
+        }
+
+        const meta = await this._probeStreams(opts.src);
+        if (!meta || (!meta.vcodec && !meta.acodec)) { return { ok: false, error: 'probe_failed' }; }
+
+        const plan = this._planPlayable(kind, meta);
+        const dst = path.join(this._playDir(), st.sig + '.' + plan.ext);
+        if (fs.existsSync(dst)) {
+            try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
+            try { const now = new Date(); fs.utimesSync(dst, now, now); } catch { /* ignore */ }
+            return { ok: true, path: dst, ext: plan.ext, duration: meta.duration, cached: true };
+        }
+        const ik = 'play:' + dst;
+        const pending = this._playInflight.get(ik);
+        if (pending) { return await pending; }
+        try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
+        const reqId = opts.reqId || '';
+        const job = this._genPlayable(opts.src, plan, dst, st, meta.duration, reqId, onProgress);
+        this._playInflight.set(ik, job);
+        try { return await job; } finally { this._playInflight.delete(ik); }
+    }
+
+    private async _genPlayable(src: string, plan: { ext: string; args: string[] }, dst: string,
+        st: { sig: string; mtimeMs: number; size: number }, duration: number,
+        reqId: string, onProgress?: (pct: number) => void): Promise<PlayableResult> {
+        const tmp = dst.replace(new RegExp('\\.' + plan.ext + '$'), '.part.' + plan.ext);
+        const prog = dst + '.prog';
+        try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
+        try { if (fs.existsSync(prog)) { fs.rmSync(prog, { force: true }); } } catch { /* ignore */ }
+
+        const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-progress', prog, '-i', src]
+            .concat(plan.args, [tmp]);
+
+        let lastProgAt = Date.now();
+        let lastPct = -1;
+        let stalled = false;
+        const timer = setInterval(() => {
+            if (stalled) { return; }
+            try {
+                if (fs.existsSync(prog)) {
+                    const pst = fs.statSync(prog);
+                    if (pst.mtimeMs > lastProgAt) { lastProgAt = pst.mtimeMs; }
+                    const txt = fs.readFileSync(prog, 'utf8');
+                    const us = MediaService._parseProgUs(txt);
+                    if (us != null && duration > 0.2 && onProgress) {
+                        const pct = Math.max(0, Math.min(99, Math.round((us / 1e6) / duration * 100)));
+                        if (pct !== lastPct) { lastPct = pct; try { onProgress(pct); } catch { /* ignore */ } }
+                    }
+                }
+            } catch { /* ignore */ }
+            // 停滞熔断：progress 文件 3 分钟零推进（正常 ~0.5s 一刷）→ 判真 hang 树杀
+            if (Date.now() - lastProgAt > 180_000) {
+                stalled = true;
+                try { const h = this._playLive.get(reqId); if (h) { h.kill(); } } catch { /* ignore */ }
+            }
+        }, 600);
+        try { if ((timer as any).unref) { (timer as any).unref(); } } catch { /* ignore */ }
+
+        try {
+            const r = await this.qz.spawn({
+                cmd: this._ffmpegPath!,
+                args,
+                timeout: 2 * 3600_000,
+                stallMs: 0,   // 输出静默是常态（-loglevel error）——停滞由 progress 文件轮询看门狗负责
+                captureOutput: true,
+                onProc: reqId ? (h: { pid?: number; kill: () => void }) => { this._playLive.set(reqId, h); } : undefined,
+            });
+            if (reqId) { this._playLive.delete(reqId); }
+            if (reqId && this._playCancelled.has(reqId)) {
+                this._playCancelled.delete(reqId);
+                try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
+                return { ok: false, cancelled: true, error: 'cancelled' };
+            }
+            if (stalled || r.exitCode !== 0 || !fs.existsSync(tmp)) {
+                try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
+                if (!stalled) { await this._brokenMark(st, 'playable_ffmpeg_failed'); }
+                return { ok: false, error: stalled ? 'stalled' : 'ffmpeg_failed', stderr: (r.stderr || '').slice(-400) };
+            }
+            try { if (fs.existsSync(dst)) { fs.rmSync(dst, { force: true }); } } catch { /* ignore */ }
+            try { fs.renameSync(tmp, dst); } catch (e: any) {
+                try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
+                return { ok: false, error: 'rename_failed: ' + (e && e.message) };
+            }
+            if (!MediaService._isValidPlayableOut(dst, plan.ext)) {
+                try { fs.rmSync(dst, { force: true }); } catch { /* ignore */ }
+                await this._brokenMark(st, 'playable_invalid_output');
+                return { ok: false, error: 'invalid_output' };
+            }
+            await this._brokenClear(st.sig);
+            try { onProgress && onProgress(100); } catch { /* ignore */ }
+            setImmediate(() => { try { this._playSweep(); } catch { /* ignore */ } });
+            return { ok: true, path: dst, ext: plan.ext, duration, cached: false };
+        } finally {
+            clearInterval(timer);
+            try { if (fs.existsSync(prog)) { fs.rmSync(prog, { force: true }); } } catch { /* ignore */ }
+            if (reqId) { this._playLive.delete(reqId); this._playCancelled.delete(reqId); }
+        }
+    }
+
+    /** 取消：树杀在飞 ffmpeg + 标记（结果返回 cancelled，不写 broken） */
+    cancelPlayable(reqId: string): boolean {
+        if (!reqId) { return false; }
+        try { this._playCancelled.add(reqId); } catch { /* ignore */ }
+        if (this._playCancelled.size > 500) { this._playCancelled.clear(); this._playCancelled.add(reqId); }
+        const h = this._playLive.get(reqId);
+        if (h) { try { h.kill(); } catch { /* ignore */ } return true; }
+        return false;
     }
 
     // -------------------------------------------------------------------------

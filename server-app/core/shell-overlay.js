@@ -268,6 +268,88 @@ function bootAiOverlay() {
     if (window.qqqideQoast) window.qqqideQoast.show(msg, { type: type || 'info', duration: 2500 });
   }
 
+  // ═══ ★ 转码兜底（2026-09-21）：Chromium 原生解不了的格式（avi/wmv/flv/rmvb/prores/psd…）═══
+  //   壳层 ffmpeg 智能转码（media.playable：同编码 copy 秒级重封装 / 否则 x264）→ 产物回放/回显
+  //   进度 qqqide:media:playable:progress；取消 = media.playableCancel；关闭/切换自动取消在飞任务
+  var _OV_TX_FIRST_EXTS = { '.avi': 1, '.wmv': 1, '.flv': 1, '.rmvb': 1, '.rm': 1, '.mpg': 1, '.mpeg': 1, '.m2ts': 1, '.mts': 1, '.3gp': 1, '.vob': 1, '.asf': 1, '.f4v': 1, '.ogm': 1, '.wma': 1, '.aiff': 1, '.aif': 1, '.ape': 1, '.ac3': 1, '.mka': 1, '.amr': 1, '.au': 1, '.psd': 1, '.tif': 1, '.tiff': 1 };
+  function _ovTxExt(p) {
+    var s = String(p || '').toLowerCase();
+    var i = s.lastIndexOf('.');
+    return i === -1 ? '' : s.substring(i);
+  }
+  var _ovTxReqId = null;
+  var _ovTxUnsub = null;
+  var _ovTxBarEl = null, _ovTxBarText = null;
+  function _ovTxBarShow(show) {
+    if (!_ovTxBarEl) {
+      if (!show) { return; }
+      _ovTxBarEl = document.createElement('div');
+      _ovTxBarEl.style.cssText = 'position:absolute;left:50%;bottom:88px;transform:translateX(-50%);z-index:100002;' +
+        'display:flex;align-items:center;gap:12px;background:rgba(0,0,0,0.78);color:#fff;border-radius:10px;' +
+        'padding:10px 16px;font-size:13px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 4px 24px rgba(0,0,0,0.5);';
+      _ovTxBarText = document.createElement('span');
+      _ovTxBarText.textContent = window._i('shell.overlay.transcoding', '正在转码预览…');
+      var _txCancelBtn = document.createElement('button');
+      _txCancelBtn.textContent = window._i('common.cancel', '取消');
+      _txCancelBtn.setAttribute('data-no-cd', '');
+      _txCancelBtn.style.cssText = 'padding:3px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.35);' +
+        'background:transparent;color:#fff;font-size:12px;cursor:pointer;';
+      _txCancelBtn.addEventListener('click', function () {
+        _ovTxAbort();
+        try { close(); } catch (_) { }
+      });
+      _ovTxBarEl.appendChild(_ovTxBarText);
+      _ovTxBarEl.appendChild(_txCancelBtn);
+      overlay.appendChild(_ovTxBarEl);
+    }
+    _ovTxBarEl.style.display = show ? 'flex' : 'none';
+  }
+  function _ovTxAbort() {
+    if (_ovTxUnsub) { try { _ovTxUnsub(); } catch (_) { } _ovTxUnsub = null; }
+    if (_ovTxReqId && bridge && bridge.media && bridge.media.playableCancel) {
+      try { bridge.media.playableCancel(_ovTxReqId); } catch (_) { }
+    }
+    _ovTxReqId = null;
+    _ovTxBarShow(false);
+  }
+  // 启动转码：成功后回调 onOk(正斜杠产物路径)；失败/取消回调 onFail()
+  function _ovTxRun(filePath, kind, onOk, onFail) {
+    if (!filePath || !bridge || !bridge.media || !bridge.media.playable) {
+      try { onFail(); } catch (_) { }
+      return;
+    }
+    var rid = 'ov-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    _ovTxReqId = rid;
+    _ovTxBarShow(true);
+    if (bridge.media.onPlayableProgress) {
+      try {
+        _ovTxUnsub = bridge.media.onPlayableProgress(function (m) {
+          if (!m || m.reqId !== rid || !_ovTxBarText) { return; }
+          var base = window._i('shell.overlay.transcoding', '正在转码预览…');
+          _ovTxBarText.textContent = (m.pct != null && m.pct >= 0) ? (base + ' ' + m.pct + '%') : base;
+        });
+      } catch (_) { }
+    }
+    bridge.media.playable({ src: filePath, kind: kind, reqId: rid }).then(function (r) {
+      if (_ovTxReqId !== rid) { return; }   // 已被取消/切换（abort 置 null）→ 丢弃结果
+      if (_ovTxUnsub) { try { _ovTxUnsub(); } catch (_) { } _ovTxUnsub = null; }
+      _ovTxReqId = null;
+      _ovTxBarShow(false);
+      if (r && r.ok && r.path) {
+        try { onOk(String(r.path).replace(/\\/g, '/')); } catch (_) { }
+      } else if (r && r.cancelled) {
+        /* 用户取消：静默 */
+      } else {
+        try { onFail(); } catch (_) { }
+      }
+    }).catch(function () {
+      if (_ovTxReqId !== rid) { return; }
+      _ovTxReqId = null;
+      _ovTxBarShow(false);
+      try { onFail(); } catch (_) { }
+    });
+  }
+
   // 内存 — 图片进剪贴板（图像数据），可直接粘贴到聊天/画布
   memBtn.addEventListener('click', function () {
     var src = _currentOverlayImgSrc();
@@ -382,6 +464,7 @@ function bootAiOverlay() {
     _ovLocalPath = null;
     try { _stopRepeat(); } catch (_) { }
     try { _stopMedia(); } catch (_) { }
+    try { _ovTxAbort(); } catch (_) { }
     try { _ovClearHighlights(); } catch (_) { }
     _closeTt.style.display = 'none';
     overlay.style.display = 'none';
@@ -544,6 +627,7 @@ function bootAiOverlay() {
       _ovLocalPath = e.data.localPath || null;
       _stopRepeat();
       _stopMedia();
+      _ovTxAbort();
       overlay.style.display = 'none';
       contentEl.innerHTML = '';
       contentEl.style.overflow = '';
@@ -552,6 +636,25 @@ function bootAiOverlay() {
       // ★ 先让 overlay 可见以取得正确容器尺寸，再加载图片（避免缓存图 onload 同步触发时容器尺寸为 0）
       overlay.style.display = 'block';
       contentEl.style.overflow = 'hidden';
+      // ★ 直转码组（2026-09-21）：psd/tif/tiff = Chromium 永不解码 —— 不白试原生 img，直接进 ffmpeg 转码
+      //   （与媒体组 _OV_TX_FIRST_EXTS 同语义；其余图片失败兜底仍在 img.onerror 保留）
+      var _imgTxEarlyExt = _ovTxExt(_ovLocalPath || '');
+      if (!e.data._tx && _ovLocalPath && (_imgTxEarlyExt === '.psd' || _imgTxEarlyExt === '.tif' || _imgTxEarlyExt === '.tiff')) {
+        _ovTxRun(_ovLocalPath, 'image', function (newPath) {
+          window.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + newPath, localPath: newPath, _tx: 1 }, '*');
+        }, function () {
+          _ovToast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
+          try { close(); } catch (_) { }
+        });
+        dpad.style.display = 'block';
+        copyBtn.style.display = 'none';
+        memBtn.style.display = '';
+        fileBtn.style.display = '';
+        pathBtn.style.display = '';
+        zoomOutBtn.style.display = '';
+        zoomInBtn.style.display = '';
+        return;
+      }
       // ── 边界适配：尝试 2x 放大，但绝不超出内容区可用空间 ──
       var img = new Image();
       img.onload = function () {
@@ -611,8 +714,20 @@ function bootAiOverlay() {
           _origClose();
         };
       };
-      // ★ 加载失败兜底（2026-09-21）：文件缺失/解码失败 → 提示并自动关闭，不留黑屏空壳
+      // ★ 加载失败兜底（2026-09-21）：psd/tiff 等 Chromium 不解的图片 → ffmpeg 抽帧 png 再显；再无救才提示关闭
       img.onerror = function () {
+        var _ipath = _ovLocalPath || _localPathFromSrc(e.data.src);
+        var _iext = _ovTxExt(_ipath || '');
+        if (!e.data._tx && _ipath && (_iext === '.psd' || _iext === '.tif' || _iext === '.tiff')) {
+          _ovTxRun(_ipath, 'image', function (newPath) {
+            // 产物 → 以同一管线重开（_tx:1 防二次转码）
+            window.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + newPath, localPath: newPath, _tx: 1 }, '*');
+          }, function () {
+            _ovToast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
+            try { close(); } catch (_) { }
+          });
+          return;
+        }
         _ovToast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
         try { close(); } catch (_) { }
       };
@@ -634,6 +749,7 @@ function bootAiOverlay() {
         close = _baseClose;
         _stopRepeat();
         _stopMedia();
+        _ovTxAbort();
         overlay.style.display = 'none';
         contentEl.innerHTML = '';
         contentEl.style.overflow = 'hidden';
@@ -755,12 +871,14 @@ function bootAiOverlay() {
 
     // ★ 媒体直开（2026-09-21）：视频/音频 → 内置播放器（原生控件）
     //   实测 Electron 22 全解码: h264/aac/hevc/vp9/opus/flac/wav + mkv/mov 容器可播；关闭/切换/重开必停播
+    //   ★ 转码兜底（2026-09-21 增）：原生解不了的容器/编码（avi/prores-mov/wmv…）→ 壳层 ffmpeg 转码后回放
     if (e.data.action === 'open-video' || e.data.action === 'open-audio') {
       var _isVid = e.data.action === 'open-video';
       close = _baseClose;
       _ovLocalPath = e.data.localPath || null;
       _stopRepeat();
       _stopMedia();
+      _ovTxAbort();
       overlay.style.display = 'none';
       contentEl.innerHTML = '';
       contentEl.style.overflow = 'hidden';
@@ -791,20 +909,54 @@ function bootAiOverlay() {
         _aBox.appendChild(_mEl);
         contentEl.appendChild(_aBox);
       }
-      // ★ 加载失败兜底（格式不受支持/文件损坏）→ 提示并自动关闭，不留黑屏空壳
-      _mEl.onerror = function () {
+      // ★ 失败链（2026-09-21）：原生 error / 8s 静默卡死 → ffmpeg 转码；产物携带 _tx 直载；再无救才提示关闭
+      var _txFile = _ovLocalPath || _localPathFromSrc(e.data.src);
+      var _txKind = _isVid ? 'video' : 'audio';
+      var _txTried = !!e.data._tx;
+      var _metaOk = false;
+      var _fallTimer = 0;
+      var _ovMediaFail = function () {
         _ovToast(window._i('shell.overlay.mediaFailed', '媒体加载失败，可能格式不受支持或文件已损坏'), 'error');
         try { close(); } catch (_) { }
       };
-      // ★ 关闭时停止播放（DOM 移除不保证停播——必须显式 pause+卸载）
+      var _ovMediaTx = function () {
+        if (_txTried || !_txFile) { _ovMediaFail(); return; }
+        _txTried = true;
+        _ovTxRun(_txFile, _txKind, function (newPath) {
+          window.postMessage({ type: 'qqqide-overlay', action: _isVid ? 'open-video' : 'open-audio', src: 'file:///' + newPath, localPath: newPath, _tx: 1 }, '*');
+        }, _ovMediaFail);
+      };
+      _mEl.addEventListener('error', function () { _ovMediaTx(); });
+      _mEl.addEventListener('loadedmetadata', function () {
+        _metaOk = true;
+        if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; }
+      });
+      // ★ 关闭时停止播放（DOM 移除不保证停播——必须显式 pause+卸载）+ 清兜底定时器
       var _mPrevClose = close;
       close = function () {
+        try { if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; } } catch (_) { }
         try { _mEl.pause(); _mEl.removeAttribute('src'); _mEl.load(); } catch (_) { }
         close = _mPrevClose;
         _mPrevClose();
       };
-      _mEl.src = e.data.src;
-      try { var _pp = _mEl.play(); if (_pp && _pp.catch) _pp.catch(function () { }); } catch (_) { }
+      if (e.data._tx) {
+        // 转码产物：直载播放
+        _mEl.src = e.data.src;
+        try { var _ppT = _mEl.play(); if (_ppT && _ppT.catch) _ppT.catch(function () { }); } catch (_) { }
+      } else if (_OV_TX_FIRST_EXTS[_ovTxExt(_txFile || e.data.src)]) {
+        // 已知 Chromium 不解的容器/编码 → 不白试原生，直接转码（黑框 + 状态条进度）
+        _ovMediaTx();
+      } else {
+        _mEl.src = e.data.src;
+        try { var _pp = _mEl.play(); if (_pp && _pp.catch) _pp.catch(function () { }); } catch (_) { }
+        // 静默卡死兜底：8s 无元数据也无 error → 走转码
+        _fallTimer = setTimeout(function () {
+          if (!_metaOk) {
+            try { _mEl.removeAttribute('src'); _mEl.load(); } catch (_) { }
+            _ovMediaTx();
+          }
+        }, 8000);
+      }
       // ★ 媒体模式：自适应无需缩放——藏缩放/D-pad/复制/内存按钮，留文件/路径/关闭
       dpad.style.display = 'none';
       copyBtn.style.display = 'none';

@@ -361,14 +361,15 @@ function isBinaryByName(name) {
 	if (_KNOWN_BINARY_EXTS[ext]) return true;
 	return null;
 }
-// ★ 悬浮预览层可直显图片格式（2026-09-21）——与主窗口 shell-overlay 同口径（Chromium 原生解码）
+// ★ 悬浮预览层可直显图片格式（2026-09-21）——与主窗口 shell-overlay 同口径
+//   原生直显: png/jpg 全家/gif/bmp/webp/ico/svg/avif/apng；psd/tif/tiff = 壳层 ffmpeg 抽帧转码兜底（2026-09-21 增）
 //   含 svg（同时也在文本白名单——Q 键对图片优先走悬浮预览，不进编辑器）
-//   别名全收: jpe/jfif/jif（JPEG 家族）、apng（动图 PNG）
-var _OVERLAY_IMG_EXTS = { '.png':1, '.jpg':1, '.jpeg':1, '.jpe':1, '.jfif':1, '.jif':1, '.gif':1, '.bmp':1, '.webp':1, '.ico':1, '.svg':1, '.avif':1, '.apng':1 };
-// ★ 悬浮层内置播放器格式（2026-09-21 实测 Electron 22 全解码: h264/aac/hevc/vp9/opus/flac/wav + mkv/mov 容器可播）
-//   wmv/avi/flv/rmvb/ts 不解码 → 不进此表（维持错误音效，绝不弹黑屏）
-var _OVERLAY_VIDEO_EXTS = { '.mp4':1, '.m4v':1, '.webm':1, '.mkv':1, '.mov':1, '.ogv':1 };
-var _OVERLAY_AUDIO_EXTS = { '.mp3':1, '.wav':1, '.flac':1, '.m4a':1, '.aac':1, '.ogg':1, '.oga':1, '.opus':1, '.weba':1 };
+var _OVERLAY_IMG_EXTS = { '.png':1, '.jpg':1, '.jpeg':1, '.jpe':1, '.jfif':1, '.jif':1, '.gif':1, '.bmp':1, '.webp':1, '.ico':1, '.svg':1, '.avif':1, '.apng':1, '.psd':1, '.tif':1, '.tiff':1 };
+// ★ 悬浮层内置播放器格式（2026-09-21）——原生组已实测 Electron 22 全解码（h264/aac/hevc/vp9/opus/flac/wav + mkv/mov 容器可播）
+//   转码兜底组（avi/wmv/flv/rmvb/rm/mpg/m2ts/...）= 壳层 ffmpeg 转码后播放（同编码秒级重封装 / 否则重编码）
+//   ★ ts 排除: .ts = TypeScript 文本文件（绝不能被视频分支误吞）
+var _OVERLAY_VIDEO_EXTS = { '.mp4':1, '.m4v':1, '.webm':1, '.mkv':1, '.mov':1, '.ogv':1, '.avi':1, '.wmv':1, '.flv':1, '.rmvb':1, '.rm':1, '.mpg':1, '.mpeg':1, '.m2ts':1, '.mts':1, '.3gp':1, '.vob':1, '.asf':1, '.f4v':1, '.ogm':1 };
+var _OVERLAY_AUDIO_EXTS = { '.mp3':1, '.wav':1, '.flac':1, '.m4a':1, '.aac':1, '.ogg':1, '.oga':1, '.opus':1, '.weba':1, '.wma':1, '.aiff':1, '.aif':1, '.ape':1, '.ac3':1, '.mka':1, '.amr':1, '.au':1 };
 function _overlayExtOf(name) {
 	if (!name) return '';
 	var n = String(name).toLowerCase();
@@ -1426,7 +1427,7 @@ function performCodeAction(item) {
 		return;
 	}
 	// ★ Q 键（视频/音频文件）：悬浮层内置播放器（2026-09-21）——原生控件播放，关闭即停
-	//   视频: mp4·m4v·webm·mkv·mov·ogv / 音频: mp3·wav·flac·m4a·aac·ogg·oga·opus·weba
+	//   原生组（mp4/mkv/mov/mp3...）+ 转码兜底组（avi/wmv/flv/rmvb/wma/ape...）——转码在壳层后台执行，悬浮层显示进度
 	var _oe = _overlayExtOf(item.name);
 	if (_OVERLAY_VIDEO_EXTS[_oe] || _OVERLAY_AUDIO_EXTS[_oe]) {
 		var _mp = String(item.path).replace(/\\/g, '/');

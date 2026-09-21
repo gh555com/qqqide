@@ -483,10 +483,17 @@ const QQQ = {
     media: {
         thumb: (opts: any) => ipcRenderer.invoke('qqqide:media:thumb', opts),
         transcode: (opts: any) => ipcRenderer.invoke('qqqide:media:transcode', opts),
-        probe: (src: string) => ipcRenderer.invoke('qqqide:media:probe', src),
-        ffmpegPath: () => ipcRenderer.invoke('qqqide:media:ffmpegPath'),
+        probe: (src: string) => ipcRenderer.invoke('qqqide:media:probe', src),        ffmpegPath: () => ipcRenderer.invoke('qqqide:media:ffmpegPath'),
         preview: (opts: any) => ipcRenderer.invoke('qqqide:media:preview', opts),
-        textPreview: (opts: any) => ipcRenderer.invoke('qqqide:media:textPreview', opts),
+        textPreview: (opts: any) => ipcRenderer.invoke('qqqide:media:textPreview', opts),
+        // ★ 悬浮层转码兜底（2026-09-21）：avi/psd/prores 等原生不解格式 → ffmpeg 转码可播产物
+        playable: (opts: any) => ipcRenderer.invoke('qqqide:media:playable', opts),
+        playableCancel: (reqId: string) => ipcRenderer.invoke('qqqide:media:playableCancel', reqId),
+        onPlayableProgress: (cb: (m: { reqId: string; pct: number }) => void) => {
+            const handler = (_e: any, m: any) => { try { cb(m); } catch { /* ignore */ } };
+            ipcRenderer.on('qqqide:media:playable:progress', handler);
+            return () => ipcRenderer.removeListener('qqqide:media:playable:progress', handler);
+        },
     },
 
     // ---- key (global shortcut bridge; per-window/iframe handled in renderer) ----

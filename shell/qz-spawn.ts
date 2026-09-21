@@ -168,6 +168,8 @@ export interface SpawnBrief {
     killOnDisconnect?: boolean;// kill child when parent exits (default true)
     shell?: boolean;           // use shell=true (default false; only true when cmd contains spaces and args missing)
     inheritEnv?: boolean;      // merge process.env (default true)
+    /** ★ 外部取消钩子（2026-09-21）：spawn 成功即回调持有 {pid,kill}——长任务（ffmpeg 转码等）可中途树杀 */
+    onProc?: (h: { pid?: number; kill: () => void }) => void;
 }
 
 export interface SpawnResult {
@@ -326,6 +328,11 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
             } catch { /* ignore */ }
         };
 
+        // ★ 外部取消钩子（2026-09-21）：调用方持有 kill 句柄（长任务中途取消 → 树杀）
+        if (brief.onProc) {
+            try { brief.onProc({ pid: proc.pid, kill: killTree }); } catch { /* ignore */ }
+        }
+
         if (capture && proc.stdout) {
             proc.stdout.on('data', (d: Buffer) => { stdoutBuf.push(d); lastIOAt = Date.now(); });
         }
@@ -465,6 +472,24 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
             }
             resolve(r);
         };
+
+        // ★ 外部取消钩子（2026-09-21）：调用方持有 kill 句柄（树杀 ghrun+子进程）
+        if (brief.onProc) {
+            try {
+                brief.onProc({
+                    pid: proc.pid,
+                    kill: () => {
+                        try {
+                            if (process.platform === 'win32') {
+                                cpSpawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true });
+                            } else {
+                                try { process.kill(-proc.pid!, 'SIGKILL'); } catch { proc.kill('SIGKILL'); }
+                            }
+                        } catch { /* ignore */ }
+                    },
+                });
+            } catch { /* ignore */ }
+        }
 
         proc.stdout!.setEncoding('utf8');
         proc.stderr!.setEncoding('utf8');

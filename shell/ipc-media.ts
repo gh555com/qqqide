@@ -54,4 +54,24 @@ export function registerMediaIpc(mediaService: MediaService): void {
             return { ok: false, error: e.message || 'textpreview_exception' };
         }
     });
+
+    // ★ 悬浮层播放/预览转码兜底（2026-09-21）：原生解不了的格式（avi/psd/prores-mov…）
+    //   → ffmpeg 转码可播产物；进度经 qqqide:media:playable:progress 回发（同一 webContents）
+    ipcMain.handle('qqqide:media:playable', async (e, opts: any) => {
+        try {
+            return await mediaService.playable(opts, (pct: number) => {
+                try {
+                    if (!e.sender.isDestroyed()) {
+                        e.sender.send('qqqide:media:playable:progress', { reqId: opts && opts.reqId, pct: pct });
+                    }
+                } catch { /* ignore */ }
+            });
+        } catch (e: any) {
+            return { ok: false, error: e.message || 'playable_exception' };
+        }
+    });
+
+    ipcMain.handle('qqqide:media:playableCancel', async (_e, reqId: string) => {
+        try { return { ok: mediaService.cancelPlayable(reqId) }; } catch { return { ok: false }; }
+    });
 }

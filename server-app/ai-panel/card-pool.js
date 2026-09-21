@@ -279,6 +279,26 @@ var CardPool = (function () {
         };
       }
 
+      // ★ passby 累计真理源（2026-09-21）：已封顶楼层的明细行三数（houses / tokens / wge）一律从 all.json 实数据
+      //   逐步累计重算——禁再直读 all.json 里存储的 passby* 快照（历史 restore 归零/旧 bug 让 tokens 恒少算，
+      //   f182 等旧楼层 houses/wge 也曾偏）。与 _restoreAgentFromStore 的重算口径完全同源。
+      card._passbyCum = {};
+      (function () {
+        var _pfSorted = card.floors.slice().sort(function (a, b) { return (a.floorNum || 0) - (b.floorNum || 0); });
+        var _cH = 0, _cT = 0, _cW = 0;
+        for (var _pf = 0; _pf < _pfSorted.length; _pf++) {
+          var _pfD = _pfSorted[_pf].data || {};
+          var _pfHs = _pfD.houses || [];
+          _cH += _pfHs.length;
+          _cW += (_pfD.costWge || 0);
+          for (var _ph = 0; _ph < _pfHs.length; _ph++) {
+            var _phU = _pfHs[_ph] && _pfHs[_ph].usage;
+            if (_phU) _cT += (_phU.prompt_tokens || 0) + (_phU.completion_tokens || 0);
+          }
+          card._passbyCum[_pfSorted[_pf].floorNum] = { houses: _cH, tokens: _cT, wge: _cW };
+        }
+      })();
+
       // 提取 quest 级 timings（用于停止态时钟渲染）
       var questTimings = (questMeta && questMeta.floorTimings) || [];
 
@@ -872,7 +892,9 @@ var CardPool = (function () {
       aiEl._clockCost.style.display = 'inline';
       aiEl._clockCost._houses = fData.houses || [];
       aiEl._clockCost._floorNum = fNum;
-      aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: fData.passbyHouses || 0, tokens: fData.passbyTokens || 0, wge: fData.passbyWge || 0, time: fData.passbyTime || null, city: fData.passbyCity || '' };
+      // ★ 2026-09-21：三数优先用累计重算表（card._passbyCum，all.json 实数据口径）——存储快照仅兜底
+      var _cumPB = (card._passbyCum && card._passbyCum[fNum]) || null;
+      aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: (_cumPB ? _cumPB.houses : (fData.passbyHouses || 0)), tokens: (_cumPB ? _cumPB.tokens : (fData.passbyTokens || 0)), wge: (_cumPB ? _cumPB.wge : (fData.passbyWge || 0)), time: fData.passbyTime || null, city: fData.passbyCity || '' };
       if (isFree) {
         aiEl._clockCost.style.color = '#859900';
       } else {
