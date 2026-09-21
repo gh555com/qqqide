@@ -723,6 +723,10 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="panel-search.js"></script>
 <script src="panel-input.js"></script>
 <script src="../vendor/katex/katex.min.js"></script>
+<!-- ★ Markdown 渲染机（唯一真理源 core/md-render.js；panel-render.js 于 2026-09-20 抽移出此实现，AI 面板与 md 预览同源共享） -->
+<script src="../core/md-render.js"></script>
+<!-- ★ 本地路径链接机（唯一真理源 core/lpl.js；2026-09-20 抽移出 panel-render.js，AI 面板与 md 预览共享——同名 window.linkifyLocalPaths/probeLocalPathLinks 出口） -->
+<script src="../core/lpl.js"></script>
 <script src="panel-render.js"></script>
 <script src="panel-quest.js"></script>
 <script src="panel-floor.js"></script>

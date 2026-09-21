@@ -4,7 +4,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' data:; script-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline'; img-src 'self' qqqide-asset: qqqide-webapp: data: blob: file:; font-src 'self' qqqide-asset: qqqide-webapp: data:; connect-src 'self' qqqide-asset: qqqide-webapp: http: https: wss:; worker-src 'self' qqqide-asset: qqqide-webapp: blob:; frame-src 'self' qqqide-asset: qqqide-webapp: http: https: data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' data:; script-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline'; img-src 'self' qqqide-asset: qqqide-webapp: data: blob: file:; media-src 'self' qqqide-asset: qqqide-webapp: data: blob: file:; font-src 'self' qqqide-asset: qqqide-webapp: data:; connect-src 'self' qqqide-asset: qqqide-webapp: http: https: wss:; worker-src 'self' qqqide-asset: qqqide-webapp: blob:; frame-src 'self' qqqide-asset: qqqide-webapp: http: https: data:">
 <title>qd (qqqide)</title>
 <!-- ★ console 全量捕获：head第一脚本 → window.top.__qqq_console_lines -->
 <script>
@@ -296,6 +296,8 @@ var _orig={};
 
 <script src="core/editor-breadcrumb.js"></script>
 <script src="core/editor.js"></script>
+<!-- Markdown 实时预览机器（编辑器伴生侧栏视图；渲染机 core/md-render.js 与 AI 面板共享） -->
+<script src="core/md-preview.js"></script>
 <!-- 服务端甲壳元信息（背包估算动态源，goods iframe 经 parent 读取） -->
 <script src="core/guard-meta.js"></script>
 <!-- 服务器下发超链接（客户端可见链接的远程真理源，离线回退内置兜底；控制台 gaea/cf/qqqide/服务器下发超链接.py） -->

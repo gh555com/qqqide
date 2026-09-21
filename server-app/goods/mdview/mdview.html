@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style="height:100%;margin:0;">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>mdview</title>
+<link rel="stylesheet" href="../../vendor/katex/katex.min.css">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   mdview — Markdown 实时预览（编辑器伴生侧栏视图）
+   视觉同源：md 内容规则移植自 AI 面板 .msg-ai（唯一渲染机 core/md-render.js
+   的产物两端一致）；主题走 qqqide-theme-change 标准三路同步（同 dm-ui 范式）。
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --background-color:#fdf6e3;--card-bg:#eee8d5;--text-primary:#656360;--border-color:#d3c6aa;
+  --base03:#002d20;--base02:#07362e;--base01:#777777;--base00:#7a7874;
+  --base0:#7a7874;--base1:#a8a6a2;--base2:#eee8d5;--base3:#fdf6e3;
+  --yellow:#b58900;--orange:#cb4b16;--red:#dc322f;--magenta:#c83070;
+  --violet:#7e6c8e;--blue:#e8a030;--cyan:#2a9a78;--green:#859900;
+}
+[data-theme="dark"] {
+  --background-color:#1e1e1e;--card-bg:#2a2a2a;--text-primary:#dcd8d0;--border-color:#333333;
+  --base03:#fdf6e3;--base02:#eee8d5;--base01:#97978a;--base00:#c8c4b8;
+  --base0:#a8a49c;--base1:#6a6660;--base2:#2a2a2a;--base3:#1e1e1e;
+  --yellow:#d4a017;--orange:#e07020;--red:#ff4444;--magenta:#b85872;
+  --violet:#a08060;--blue:#d4a017;--cyan:#5ab890;--green:#8fbc5a;
+}
+* { box-sizing:border-box;margin:0;padding:0; }
+html,body { height:100%; }
+body {
+  background:var(--background-color); color:var(--text-primary);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",Tahoma,sans-serif;
+  font-size:14px; line-height:1.65;
+  overflow-x:hidden;
+}
+::selection { background:#ffd301; color:#000; }
+[data-theme="dark"] ::selection { background:#6a5a10; color:#f0e8d8; }
+/* 滚动条（项目内嵌弹窗标准 5px 风格） */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:rgba(128,128,128,0.35); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:rgba(128,128,128,0.55); }
+
+/* ═══ md 内容根 ═══ */
+#md-root {
+  max-width:900px; margin:0 auto;
+  padding:20px 24px 80px;
+  word-break:break-word; overflow-x:hidden;
+}
+.msg-ai h1,.msg-ai h2,.msg-ai h3 { margin:16px 0 6px; line-height:1.3; }
+.msg-ai h1 { font-size:1.5em; border-bottom:1px solid var(--border-color); padding-bottom:6px; }
+.msg-ai h2 { font-size:1.25em; border-bottom:1px solid var(--border-color); padding-bottom:4px; }
+.msg-ai h3 { font-size:1.1em; }
+.msg-ai p { margin:8px 0; }
+.msg-ai ul,.msg-ai ol { margin:6px 0 6px 22px; }
+.msg-ai li { margin:3px 0; }
+.msg-ai code { background:var(--card-bg); color:var(--text-primary); padding:1px 4px; border-radius:3px; font-family:ui-monospace,Consolas,monospace; font-size:.9em; border:1px solid var(--border-color); word-break:break-all; overflow-wrap:break-word; }
+.msg-ai table { border-collapse:collapse; width:100%; margin:6px 0; font-size:13px; }
+.msg-ai th,.msg-ai td { border:1px solid var(--border-color); padding:4px 8px; text-align:left; }
+.msg-ai th { background:var(--card-bg); font-weight:600; }
+.msg-ai tr:nth-child(even) { background:var(--background-color); }
+.msg-ai pre { background:var(--card-bg); color:var(--text-primary); padding:8px 10px; border-radius:4px; overflow-x:hidden; margin:6px 0; white-space:pre-wrap; word-break:break-all; border:1px solid var(--border-color); }
+.msg-ai pre code { background:none; padding:0; color:inherit; border:none; }
+.msg-ai blockquote { border-left:3px solid var(--border-color); padding-left:10px; margin:6px 0; opacity:.85; }
+.msg-ai hr { border:none; border-top:1px solid var(--border-color); margin:12px 0; }
+.msg-ai a { color:var(--blue); text-decoration:none; }
+.msg-ai a:hover { text-decoration:underline; }
+.msg-ai img { max-width:100%; height:auto; display:block; }
+/* ═══ 本地路径链接（core/lpl.js 产物；样式与 AI 面板同源——未确认态=纯文本外观零噪，
+   确认存在（.qqq-path-ok）才出现虚线下划线可点；点击 → 主窗口 Roam 定位）═══ */
+a.qqq-path-link { color:inherit; text-decoration:none; cursor:auto; border-radius:2px; }
+a.qqq-path-link:hover { text-decoration:none; }
+a.qqq-path-link.qqq-path-ok { color:inherit; text-decoration:underline dotted; text-underline-offset:2px; cursor:pointer; }
+a.qqq-path-link.qqq-path-ok:hover { text-decoration:underline; background:rgba(181,137,0,0.16); }
+
+/* ═══ table-wrap / View 按钮 / Roam 按钮（渲染器输出结构；样式对齐 AI 面板）═══ */
+.table-wrap { position:relative; overflow-x:auto; margin:8px 0; border:1px solid var(--border-color); border-radius:4px; background:var(--card-bg); }
+.table-wrap:hover .table-view-btn { opacity:1; transition:opacity 0.08s 0s; }
+.table-view-btn { position:absolute; top:4px; right:4px; display:inline-flex; align-items:center; justify-content:center; width:80px; height:40px; font-size:14px; color:#fff; opacity:0; user-select:none; border-radius:6px; background:var(--yellow,#b58900); z-index:5; box-shadow:0 2px 8px rgba(0,0,0,0.3); pointer-events:auto; transition:opacity 0.08s 0s; }
+.table-view-btn:hover { background:var(--orange,#cb4b16); }
+.table-roam-btn { position:absolute; top:4px; left:4px; display:inline-flex; align-items:center; justify-content:center; width:80px; height:40px; font-size:14px; color:#fff; opacity:0; user-select:none; border-radius:6px; background:var(--blue,#268bd2); z-index:5; box-shadow:0 2px 8px rgba(0,0,0,0.3); pointer-events:auto; transition:opacity 0.08s 0s; }
+.table-wrap:hover .table-roam-btn { opacity:1; }
+.table-roam-btn:hover { background:var(--cyan,#2aa198); }
+.img-info { position:absolute; bottom:4px; right:4px; font-size:11px; color:#fff; background:rgba(0,0,0,0.7); padding:2px 8px; border-radius:3px; opacity:0; pointer-events:none; z-index:5; transition:opacity 0.1s; }
+.table-wrap:hover .img-info { opacity:1; }
+.table-wrap.img-wrap { border:none; background:transparent; margin:8px 0; }
+.table-inner { overflow-x:auto; padding:8px 10px; }
+.table-inner table { width:auto; min-width:100%; font-size:13px; }
+.table-inner th,.table-inner td { padding:4px 8px; text-align:left; white-space:nowrap; }
+.table-wrap>pre { border:none; margin:0; border-radius:0; background:transparent; }
+
+/* ═══ 状态条（文件缺失 / 超大文档暂停）+ 刷新 ═══ */
+.md-status { position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:10px; padding:6px 14px; font-size:12px; background:var(--card-bg); color:var(--text-primary); border-bottom:1px solid var(--border-color); }
+.md-status button { font-size:12px; padding:2px 10px; border:1px solid var(--border-color); border-radius:4px; background:var(--background-color); color:var(--text-primary); line-height:1.6; }
+.md-status button:hover { border-color:var(--text-primary); }
+.md-empty { color:var(--base01); font-style:italic; padding:8px 0; }
+.md-render-error { color:var(--red); padding:8px 0; font-size:13px; white-space:pre-wrap; }
+/* 缺图占位（onerror 替换，绝不留裂图/空框） */
+.md-img-missing { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border:1px dashed var(--border-color); border-radius:4px; color:var(--base01); font-size:12px; font-family:ui-monospace,Consolas,monospace; }
+/* 刷新 fab（hover 浮现，低调） */
+#md-refresh-fab { position:fixed; right:12px; top:12px; z-index:60; width:26px; height:26px; border-radius:4px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-primary); font-size:14px; line-height:1; opacity:0; transition:opacity .15s; }
+body:hover #md-refresh-fab { opacity:.45; }
+#md-refresh-fab:hover { opacity:1; }
+</style>
+</head>
+<body>
+
+<div id="md-status" class="md-status" style="display:none">
+  <span id="md-status-text"></span>
+  <button id="md-status-refresh" type="button" data-i18n="mdview.refresh">刷新</button>
+</div>
+
+<button id="md-refresh-fab" type="button" title="刷新" data-i18n-title="mdview.refresh">&#x21BB;</button>
+<div id="md-root" class="msg-ai"></div>
+
+<script src="../../vendor/katex/katex.min.js"></script>
+<script src="../../core/md-render.js"></script>
+<script src="../../core/lpl.js"></script>
+<script src="../../core/i18n.js"></script>
+<script>
+(function () {
+'use strict';
+
+// i18n 小助手：_kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
+var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
+
+// lpl.js（本地路径链接机）i18n 桥：其内部按 window._qq 取词（同 AI 面板入口形状）
+window._qq = _kk;
+
+var $root = document.getElementById('md-root');
+var $status = document.getElementById('md-status');
+var $statusText = document.getElementById('md-status-text');
+var $statusRefresh = document.getElementById('md-status-refresh');
+var $fab = document.getElementById('md-refresh-fab');
+
+var _baseDir = '';        // 文档目录（正斜杠形式）
+var _lastSeq = -1;
+var _lastContent = null;
+var _savedScroll = 0;
+var _lastH = 0;
+
+// ═══ THEME（父窗口直读 + MutationObserver + qqqide-theme-change 广播三路同步；同 dm-ui 标准）═══
+function applyTheme(dark) {
+  if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+}
+function readParentDark() {
+  try {
+    var el = parent.document.documentElement;
+    if (el.getAttribute('data-theme') === 'dark') return true;
+    if (el.classList && el.classList.contains('dark')) return true;
+    return false;
+  } catch (_) { }
+  try {
+    if (parent.qqqideTheme && typeof parent.qqqideTheme.isDark === 'function') return !!parent.qqqideTheme.isDark();
+  } catch (_) { }
+  return null;
+}
+function syncTheme() {
+  var d = readParentDark();
+  if (d !== null) applyTheme(d);
+}
+syncTheme();
+try {
+  new MutationObserver(syncTheme).observe(parent.document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+} catch (_) { }
+window.addEventListener('message', function (e) {
+  var d = e.data || {};
+  if (d.type === 'qqqide-theme-change') {
+    if (typeof d.dark === 'boolean') applyTheme(d.dark);
+    else syncTheme();
+  }
+});
+try { parent.postMessage({ type: 'qqqide-theme-request' }, '*'); } catch (_) { }
+
+// ═══ 滚动记忆（tab 切换 display:none → 视口归零；恢复时还原；尺寸 0 期间的 scroll 事件不覆盖）═══
+window.addEventListener('scroll', function () {
+  if (document.documentElement.clientHeight > 0) {
+    _savedScroll = window.scrollY || document.documentElement.scrollTop || 0;
+  }
+}, { passive: true });
+try {
+  var _ro = new ResizeObserver(function () {
+    var h = document.documentElement.clientHeight;
+    if (h > 0 && _lastH === 0) {
+      try { window.scrollTo(0, _savedScroll); } catch (_) { }
+    }
+    _lastH = h;
+  });
+  _ro.observe(document.documentElement);
+} catch (_) { }
+
+// ═══ 媒体路径解析（唯一入口；相对 → file:///；空格/#/非 ASCII 逐段编码）═══
+function _attr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function _encSeg(s) { try { return encodeURIComponent(s).replace(/%3A/g, ':'); } catch (_) { return s; } }
+function _fileUrl(abs) {
+  var s = String(abs).replace(/\\/g, '/');
+  var parts = s.split('/');
+  for (var i = 0; i < parts.length; i++) parts[i] = _encSeg(parts[i]);
+  return 'file:///' + parts.join('/');
+}
+function _joinPath(baseDir, rel) {
+  var parts = (baseDir ? (baseDir + '/' + rel) : rel).split('/');
+  var out = [];
+  for (var i = 0; i < parts.length; i++) {
+    var seg = parts[i];
+    if (seg === '.' || seg === '') continue;
+    if (seg === '..') { if (out.length > 1) out.pop(); continue; }
+    out.push(seg);
+  }
+  return out.join('/');
+}
+function _toNativePath(p) {
+  var s = String(p);
+  if (navigator.platform && /Win/i.test(navigator.platform) && /^[A-Za-z]:\//.test(s)) return s.replace(/\//g, '\\');
+  return s;
+}
+// 返回 {src, path}：src=可直接加载的 URL；path=本地绝对路径（原生分隔符）或 null
+function _resolveSrc(url) {
+  var u = String(url || '');
+  if (!u) return { src: u, path: null };
+  if (/^(https?:|data:|blob:|qqqide-asset:|qqqide-webapp:)/i.test(u)) return { src: u, path: null };
+  if (/^file:/i.test(u)) {
+    var lp = null;
+    try { lp = _toNativePath(decodeURI(u.replace(/^file:\/\/\//i, ''))); } catch (_) { lp = null; }
+    return { src: u, path: lp };
+  }
+  if (u.charAt(0) === '#') return { src: u, path: null };
+  if (u.charAt(0) === '/' && u.charAt(1) === '/') return { src: 'https:' + u, path: null };   // 协议相对 URL
+  var abs;
+  if (/^[A-Za-z]:[\\/]/.test(u) || /^\\\\/.test(u)) abs = u.replace(/\\/g, '/');      // Windows 绝对路径 / UNC
+  else if (u.charAt(0) === '/') abs = _joinPath(_baseDir, u.slice(1));                // / 开头 → 相对文档目录
+  else abs = _joinPath(_baseDir, u);                                                  // 相对路径
+  return { src: _fileUrl(abs), path: _toNativePath(abs) };
+}
+// img 字符串层重写（插入 DOM 前完成 → 零 404 闪烁）：src 解析 + data-local-path + onerror 占位
+function _rewriteHtml(html) {
+  return html.replace(/<img\s[^>]*>/g, function (tag) {
+    var m = tag.match(/\ssrc="([^"]*)"/);
+    if (!m) return tag;
+    var res = _resolveSrc(m[1]);
+    var clean = tag.replace(/\s*onerror="[^"]*"/g, '');
+    clean = clean.replace(/\ssrc="[^"]*"/, ' src="' + _attr(res.src) + '"');
+    var extra = res.path ? (' data-local-path="' + _attr(res.path) + '"') : '';
+    return clean.replace(/\s*\/?>$/, extra + ' onerror="window.__qqqMdImgFail && window.__qqqMdImgFail(this)">');
+  });
+}
+// 缺图占位（渲染失败兜底：显示 alt/文件名芯片，绝不留裂图或空白框）
+window.__qqqMdImgFail = function (img) {
+  var alt = img.getAttribute('alt') || img.getAttribute('data-local-path') || img.getAttribute('src') || 'image';
+  if (img.parentNode) {
+    var ph = document.createElement('span');
+    ph.className = 'md-img-missing';
+    ph.textContent = '\uD83D\uDDBC ' + alt;
+    ph.title = img.getAttribute('data-local-path') || img.getAttribute('src') || '';
+    img.parentNode.replaceChild(ph, img);
+  }
+};
+
+// ═══ 点击委托（View / Roam / 图片 / 链接；表格与图片走 qqqide-overlay 标准消息 → 主窗口悬浮预览层）═══
+$root.addEventListener('click', function (e) {
+  var t = e.target;
+  if (!t || !t.closest) return;
+  var roamBtn = t.closest('.table-roam-btn');
+  if (roamBtn) {
+    var w0 = roamBtn.closest('.table-wrap');
+    var im0 = w0 ? w0.querySelector(':scope > img') : null;
+    var lp0 = im0 ? im0.getAttribute('data-local-path') : null;
+    if (lp0) parent.postMessage({ type: 'mdview:roam', path: lp0 }, '*');
+    return;
+  }
+  var btn = t.closest('.table-view-btn');
+  if (btn) {
+    var wrap = btn.closest('.table-wrap');
+    if (wrap) {
+      if (wrap.classList.contains('img-wrap')) {
+        var img1 = wrap.querySelector(':scope > img');
+        if (img1 && img1.src) {
+          parent.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: img1.src, localPath: img1.getAttribute('data-local-path') || null }, '*');
+        }
+      } else {
+        var pre = wrap.querySelector(':scope > pre');
+        var inner = wrap.querySelector(':scope > .table-inner');
+        var content = pre ? pre.outerHTML : (inner ? inner.innerHTML : '');
+        if (content) {
+          parent.postMessage({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + content + '</div>' }, '*');
+        }
+      }
+    }
+    return;
+  }
+  if (t.tagName === 'IMG' && t.closest('.img-wrap')) {
+    parent.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: t.src, localPath: t.getAttribute('data-local-path') || null }, '*');
+    return;
+  }
+  var a = t.closest('a');
+  if (a) {
+    var href = a.getAttribute('href') || '';
+    if (!href || href.charAt(0) === '#') return;   // 页内锚点走原生
+    e.preventDefault();
+    if (/^(https?:|mailto:|tel:)/i.test(href)) { parent.postMessage({ type: 'mdview:open-external', url: href }, '*'); return; }
+    if (/^file:/i.test(href)) {
+      try { parent.postMessage({ type: 'mdview:open-file', path: _toNativePath(decodeURI(href.replace(/^file:\/\/\//i, ''))) }, '*'); } catch (_) { }
+      return;
+    }
+    var abs = _joinPath(_baseDir, href.split('#')[0]);
+    if (abs) parent.postMessage({ type: 'mdview:open-file', path: _toNativePath(abs) }, '*');
+  }
+});
+
+// ═══ 渲染主流程 ═══
+function _setStatus(text, showRefresh) {
+  if (!text) { $status.style.display = 'none'; return; }
+  $statusText.textContent = text;
+  $statusRefresh.style.display = showRefresh ? '' : 'none';
+  $status.style.display = 'flex';
+}
+function _fallbackText(content) {
+  var d = document.createElement('pre');
+  d.textContent = content;
+  return d.outerHTML;   // 渲染机缺失时安全转义兜底（浏览器原生转义）
+}
+function render(msg) {
+  if (typeof msg.seq === 'number') {
+    if (msg.seq <= _lastSeq) return;    // latest-wins（防乱序）
+    _lastSeq = msg.seq;
+  }
+  if (msg.status === 'missing') { _setStatus(_kk('mdview.missing', '文件已不存在'), true); return; }
+  if (msg.status === 'too-large') { _setStatus(_kk('mdview.tooLarge', '文件较大，已暂停实时预览'), true); return; }
+  _setStatus('', false);
+  var content = typeof msg.content === 'string' ? msg.content : '';
+  if (content === _lastContent) return;
+  _lastContent = content;
+  var html = '';
+  try {
+    html = (typeof window.renderMarkdown === 'function') ? window.renderMarkdown(content) : _fallbackText(content);
+  } catch (err) {
+    html = '<div class="md-render-error">' + _kk('mdview.renderError', '渲染失败') + ': ' + _attr(String((err && err.message) || err)) + '</div>';
+  }
+  html = _rewriteHtml(html);
+  if (!content.trim()) html = '<div class="md-empty">' + _kk('mdview.empty', '（空文档）') + '</div>';
+  $root.innerHTML = html;
+  // 本地路径链接化 + 存在性探针（core/lpl.js 唯一入口；确认存在才显示为可点链接 → 点击 Roam 定位）
+  try { if (window.linkifyLocalPaths) window.linkifyLocalPaths($root); } catch (_) { }
+  try { if (window.probeLocalPathLinks) window.probeLocalPathLinks($root); } catch (_) { }
+  var y = _savedScroll;
+  requestAnimationFrame(function () { try { window.scrollTo(0, y); } catch (_) { } });
+}
+
+$fab.addEventListener('click', function () { parent.postMessage({ type: 'mdview:request-refresh' }, '*'); });
+$statusRefresh.addEventListener('click', function () { parent.postMessage({ type: 'mdview:request-refresh' }, '*'); });
+
+// ═══ 消息入口（父窗口 → iframe）═══
+window.addEventListener('message', function (e) {
+  var d = e.data;
+  if (!d || typeof d.type !== 'string') return;
+  if (d.type === 'mdview:init') {
+    var fp = String(d.filePath || '').replace(/\\/g, '/');
+    var i = fp.lastIndexOf('/');
+    _baseDir = i >= 0 ? fp.slice(0, i) : '';
+    if (d.fileName) document.title = String(d.fileName);
+    return;
+  }
+  if (d.type === 'mdview:update') { render(d); return; }
+  if (d.type === 'mdview:shown') {
+    requestAnimationFrame(function () { try { window.scrollTo(0, _savedScroll); } catch (_) { } });
+    return;
+  }
+});
+
+// ═══ lpl 链接机配置（唯一入口扩展）：相对路径 → 相对文档目录的绝对路径（主候选）；
+//   原样相对做备候选（主窗口按 AI 视口根逐根解析）。双候选由存在性探针逐一裁决——
+//   命中即链接，双否还原纯文本（零假链接）。allowPosix：文档语境放行正斜杠相对路径。
+window.qqqLpl.config = {
+  allowPosix: true,
+  resolve: function (raw) {
+    var u = String(raw || '');
+    if (/^[A-Za-z]:[\\/]/.test(u) || u.charAt(0) === '/' || u.charAt(0) === '\\') return u;
+    if (!_baseDir) return u;
+    var absMain = _joinPath(_baseDir, u.replace(/\\/g, '/'));
+    if (!absMain || absMain === u) return u;
+    return [absMain, u];
+  }
+};
+
+// ═══ ready 握手（父窗口收到后发 init + flush 首帧内容）═══
+try { parent.postMessage({ type: 'mdview:ready' }, '*'); } catch (_) { }
+})();
+</script>
+</body>
+</html>

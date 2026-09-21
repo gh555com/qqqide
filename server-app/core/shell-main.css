@@ -253,8 +253,11 @@
    Editor Breadcrumb Bar �?独立豆腐块（flex item，占真实高度�?   ============================================================================ */
 [data-qqq-editor-breadcrumb] {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 0 0 auto;
-  padding: 2px 16px; /* 按钮 absolute 悬浮，不预留额外空间 */
+  padding: 2px 6px 2px 16px; /* 右侧 6px：编码徽标/复制按钮入流靠右（旧 absolute 悬浮已并入 flex 编队） */
   outline: none;
   font-size: 12px;
   font-family: ui-monospace, Consolas, Menlo, monospace;
@@ -273,17 +276,13 @@
   cursor: text;
 }
 
-/* 面包屑复制按钮 — hover 时在右侧浮现，垂直居中 */
+/* 面包屑复制按钮 — hover 时浮现（flex 入流 + visibility 占位：hover 零布局抖动） */
 .qqq-breadcrumb-copy-btn {
-  position: absolute;
-  top: 50%;
-  right: 2px;
-  transform: translateY(-50%);
-  z-index: 5;
-  display: none;
+  flex: 0 0 auto;
+  visibility: hidden;
   padding: 0 4px;
   font-size: 11px;
-  line-height: 22px;
+  line-height: 16px;
   border: 1px solid var(--border-color);
   border-radius: 3px;
   background: var(--card-bg);
@@ -292,7 +291,24 @@
 }
 
 [data-qqq-editor-breadcrumb]:hover .qqq-breadcrumb-copy-btn {
-  display: block;
+  visibility: visible;
+}
+
+/* 路径文本列（弹性吸收剩余宽度；编码徽标/复制按钮恒靠右） */
+[data-qqq-editor-breadcrumb] .qqq-breadcrumb-path {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 面包屑编码徽标 — 恒显读占位（默认态静显 / 固定态金色+*；语义源 = tab-manager 编码机器）
+   ★ 字号档：面包屑空间充裕 → 比 tab 徽标大一档（9px → 11px，仍让位于 12px 路径文本）。
+   改字号只动这里——.qqq-enc-chip 基础规则（tab 徽标）不受影响（本选择器特异性 0,2,0 > 0,1,0） */
+[data-qqq-editor-breadcrumb] .qqq-enc-chip {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
 }
 
 .qqq-breadcrumb-copy-btn:hover {

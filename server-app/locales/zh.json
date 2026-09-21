@@ -121,7 +121,9 @@
       "roamNoPath": "该路径无本地文件，无法在 Roam 定位",
       "roamMoved": "路径已不存在（可能被移动/删除）：",
       "roamMoved2": " → 已定位到最近目录 ",
-      "roamNotFound": "未在磁盘上找到："
+      "roamNotFound": "未在磁盘上找到：",
+      "loadFailed": "图片加载失败，无法预览",
+      "mediaFailed": "媒体加载失败，可能格式不受支持或文件已损坏"
     },
     "about": {
       "title": "关于 qqq",
@@ -302,7 +304,6 @@
       "copyRelativePath": "复制相对路径",
       "splitRight": "向右拆分",
       "splitDown": "向下拆分",
-      "encScheme": "编码方案…",
       "encReopen": "按编码重新打开（重读磁盘）",
       "encSaveAs": "将内容另存为（转换编码）",
       "encAuto": "自动检测",
@@ -373,6 +374,14 @@
       "copyImageSuccess": "已复制成功 — 位图二进制",
       "copyImageFailed": "复制失败 — 位图二进制: {0}"
     }
+  },
+  "mdview": {
+    "action": "预览 Markdown",
+    "empty": "（空文档）",
+    "missing": "文件已不存在",
+    "tooLarge": "文件较大，已暂停实时预览",
+    "refresh": "刷新",
+    "renderError": "渲染失败"
   },
   "login": {
     "title": "登录",
@@ -1573,6 +1582,9 @@
     "volume": {
       "label": "音量",
       "desc": "IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。出厂默认 25%。"
+    },
+    "mdviewAuto": {
+      "label": "自动打开 Markdown 预览"
     },
     "shortcut": {
       "label": "自动生成快捷方式"

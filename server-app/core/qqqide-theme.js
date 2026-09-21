@@ -334,6 +334,7 @@
       ROOT.removeAttribute('data-theme');
     }
     _persist();
+    _lsThemeSet();   // localStorage 同步镜像（下次启动秒读防闪烁；2026-09-21）
 
     // 通知 iframe（AI 面板）
     _notifyIframes();
@@ -488,11 +489,81 @@
   });
 
   // ==========================================================================
-  // §7 初始化
+  // §7 初始化 + 首次主题决议（2026-09-21；详铁律 §4.1）
+  //   决议链（唯一入口）：localStorage 同步镜像（秒读，首帧无闪烁）
+  //     → 全局 qqq.theme 库（异步）→ 双通道皆空 = 首启 → 掷骰子（2/3 深色 / 1/3 亮色），掷出即记录。
+  //   项目 only.sq3 的 theme 值仍优先覆盖（syncFromProject 既有语义不变）。
   // ==========================================================================
+  var LS_THEME_KEY = 'qqq.theme.v1';
+
+  function _lsThemeGet() {
+    try {
+      var v = window.localStorage.getItem(LS_THEME_KEY);
+      return (v === 'dark' || v === 'light') ? v : null;
+    } catch (e) { return null; }
+  }
+
+  function _lsThemeSet() {
+    try { window.localStorage.setItem(LS_THEME_KEY, _dark ? 'dark' : 'light'); } catch (e) { }
+  }
+
+  function _waitQgs(maxMs) {
+    if (window.qgs && window.qgs.simple) return Promise.resolve(true);
+    return new Promise(function (res) {
+      var t0 = Date.now();
+      var iv = setInterval(function () {
+        if (window.qgs && window.qgs.simple) { clearInterval(iv); res(true); }
+        else if (Date.now() - t0 > maxMs) { clearInterval(iv); res(false); }
+      }, 25);
+    });
+  }
+
+  function _themeGlobalDb() {
+    try {
+      if (window.qgs && window.qgs.simple) return window.qgs.simple('qqq.theme', { cloud: false });
+    } catch (e) { }
+    return null;
+  }
+
+  function _initThemePreference() {
+    // ① localStorage 同步镜像（跨刷新/跨启动秒读）
+    var ls = _lsThemeGet();
+    if (ls) {
+      var t0 = (ls === 'dark');
+      if (t0 !== _dark) apply(t0);
+      return;
+    }
+    // ② 全局库（异步；句柄未就绪等待 ≤800ms）→ ③ 双通道皆空 = 首启 → 掷骰子
+    _waitQgs(800).then(function (ok) {
+      if (!ok) return;   // qgs 不可用 → 保持出厂默认，不掷（防不可持久化的随机）
+      var h = _themeGlobalDb();
+      if (!h) return;
+      h.get('mode').then(function (v) {
+        if (v === 'dark' || v === 'light') {
+          var t = (v === 'dark');
+          if (t !== _dark) apply(t);
+          return;
+        }
+        _rollFirstTheme(h);
+      }).catch(function () { /* 读失败不掷——宁缺勿闪，下次启动重试 */ });
+    });
+  }
+
+  function _rollFirstTheme(h) {
+    var target = Math.random() < (2 / 3);   // 2/3 深色 / 1/3 亮色
+    apply(target);
+    if (h && h.set) {
+      try {
+        var p = h.set('mode', target ? 'dark' : 'light');
+        if (p && typeof p.catch === 'function') p.catch(function () { });
+      } catch (e) { }
+    }
+  }
+
   function init() {
     _injectCSS(SOLARIZED_DARK, SOLARIZED_LIGHT);
     // 默认亮色；_workspaceRoot 就绪后 _watchRoot 自动读取 only.sq3 覆盖
+    _initThemePreference();
   }
 
   init();

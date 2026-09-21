@@ -361,6 +361,21 @@ function isBinaryByName(name) {
 	if (_KNOWN_BINARY_EXTS[ext]) return true;
 	return null;
 }
+// ★ 悬浮预览层可直显图片格式（2026-09-21）——与主窗口 shell-overlay 同口径（Chromium 原生解码）
+//   含 svg（同时也在文本白名单——Q 键对图片优先走悬浮预览，不进编辑器）
+//   别名全收: jpe/jfif/jif（JPEG 家族）、apng（动图 PNG）
+var _OVERLAY_IMG_EXTS = { '.png':1, '.jpg':1, '.jpeg':1, '.jpe':1, '.jfif':1, '.jif':1, '.gif':1, '.bmp':1, '.webp':1, '.ico':1, '.svg':1, '.avif':1, '.apng':1 };
+// ★ 悬浮层内置播放器格式（2026-09-21 实测 Electron 22 全解码: h264/aac/hevc/vp9/opus/flac/wav + mkv/mov 容器可播）
+//   wmv/avi/flv/rmvb/ts 不解码 → 不进此表（维持错误音效，绝不弹黑屏）
+var _OVERLAY_VIDEO_EXTS = { '.mp4':1, '.m4v':1, '.webm':1, '.mkv':1, '.mov':1, '.ogv':1 };
+var _OVERLAY_AUDIO_EXTS = { '.mp3':1, '.wav':1, '.flac':1, '.m4a':1, '.aac':1, '.ogg':1, '.oga':1, '.opus':1, '.weba':1 };
+function _overlayExtOf(name) {
+	if (!name) return '';
+	var n = String(name).toLowerCase();
+	var dot = n.lastIndexOf('.');
+	return dot === -1 ? '' : n.substring(dot);
+}
+function isOverlayImageByName(name) { return !!_OVERLAY_IMG_EXTS[_overlayExtOf(name)]; }
 // Content-based check: read first 512 bytes, look for null bytes
 async function isBinaryByContent(filePath) {
 	try { var d = await bridge.fs.read(filePath); if (!d) return false;
@@ -1322,18 +1337,30 @@ function _openQqqideWindowForFolder(folderPath) {
 		}
 		// 写入最近文件夹（与菜单 "开新窗口" 下拉共享同一 key）
 		try {
+			// ★ 2026-09-21 统一 bump 入口：优先调主窗口 ai-viewport 中央入口（内存态同步 +
+			//   path 归一化 + local/OS 合并双写一次完成）——旧实现直读直写 state 桥，主窗口
+			//   加号下拉看到的是内存快照，本动作的记录不进下拉；下方直写保留为兜底
+			var _bumped = false;
+			try {
+				var _pv = parent && parent.qqqideViewport;
+				if (_pv && typeof _pv.bumpRecent === 'function') {
+					_pv.bumpRecent(folderPath);
+					_bumped = true;
+				}
+			} catch (_) {}
 			// ★ 2026-08-30 垃圾路径拒绝（与 ai-viewport/menu 同款）
-			var _rp = String(folderPath || '').replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
-			if (_rp.indexOf('/_qqq') === -1 && _rp.indexOf('/_qqqvault') === -1) {
+			var _np = String(folderPath || '').replace(/\\/g, '/').replace(/\/$/, '');
+			var _rp = _np.toLowerCase();
+			if (!_bumped && _rp.indexOf('/_qqq') === -1 && _rp.indexOf('/_qqqvault') === -1) {
 				pb.state.get('qqqide', 'recent_folders').then(function(data) {
 					var list = (data && Array.isArray(data)) ? data.slice(0, 100) : [];
 					var name = folderPath;
 					try {
-						var parts = folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
-						name = parts[parts.length - 1] || folderPath;
+						var parts = _np.split('/').filter(Boolean);
+						name = parts[parts.length - 1] || _np;
 					} catch (_) {}
-					list = list.filter(function(f) { return f.path !== folderPath; });
-					list.unshift({ path: folderPath, name: name, atime: Date.now() });
+					list = list.filter(function(f) { return String(f.path || '').replace(/\\/g, '/').replace(/\/$/, '') !== _np; });
+					list.unshift({ path: _np, name: name, atime: Date.now() });
 					if (list.length > 100) list.length = 100;
 					pb.state.set('qqqide', 'recent_folders', list).catch(function(){});
 					// ★ OS 双写 (2026-08-16): 与 ai-viewport 同款, 跨启动目录共享记忆
@@ -1389,8 +1416,32 @@ function performCodeAction(item) {
 		_playSfx('enter');
 		return;
 	}
-	// Q 键唯一职责：在编辑器中打开文件（文本文件）
-	// 已知二进制文件 → 仅播放错误音效，不打开（不混入 W 键的职责）
+	// ★ Q 键（图片文件）：用 qd 内置悬浮预览层打开（2026-09-21）——一切可直显图片格式（含 SVG）
+	//   主窗口 shell-overlay open-image（file:/// 直载 + localPath，与 AI 面板图片同一台预览机器）
+	if (isOverlayImageByName(item.name)) {
+		var _op = String(item.path).replace(/\\/g, '/');
+		parent.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + _op, localPath: _op }, '*');
+		recordFileHistory(item.path);
+		_playSfx('enter');
+		return;
+	}
+	// ★ Q 键（视频/音频文件）：悬浮层内置播放器（2026-09-21）——原生控件播放，关闭即停
+	//   视频: mp4·m4v·webm·mkv·mov·ogv / 音频: mp3·wav·flac·m4a·aac·ogg·oga·opus·weba
+	var _oe = _overlayExtOf(item.name);
+	if (_OVERLAY_VIDEO_EXTS[_oe] || _OVERLAY_AUDIO_EXTS[_oe]) {
+		var _mp = String(item.path).replace(/\\/g, '/');
+		parent.postMessage({
+			type: 'qqqide-overlay',
+			action: (_OVERLAY_VIDEO_EXTS[_oe] ? 'open-video' : 'open-audio'),
+			src: 'file:///' + _mp,
+			localPath: _mp
+		}, '*');
+		recordFileHistory(item.path);
+		_playSfx('enter');
+		return;
+	}
+	// Q 键（文本文件）：在编辑器中打开
+	// 已知二进制文件（pdf·office·压缩包·tiff·heic·wmv/avi 等不可解码）→ 仅播放错误音效，不打开（不混入 W 键的职责）
 	if (isBinaryByName(item.name) === true) {
 		_playSfx('error');
 		return;

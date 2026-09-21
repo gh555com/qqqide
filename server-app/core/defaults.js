@@ -10,5 +10,6 @@ window.qqqideDefaults = {
     'editor.undoMode': 'char',
     'timeline.trackRunCommand': false,
     'desktop.shortcut': true,
-    'audio.volume': '25'
+    'audio.volume': '25',
+    'mdview.auto': true             // Markdown 自动预览：打开 md 文件自动开侧栏预览（单行设置，2026-09-21 v4 出厂默认开）
 };

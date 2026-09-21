@@ -545,6 +545,9 @@
   }
 
   function _bumpRecent(folderPath) {
+    // ★ 2026-09-21 路径归一化：与 _loadRecents/_mergeRecentsWithOs 存储与比较口径统一
+    //   （旧实现原样存 roam 传来的反斜杠 path → 同一条历史出现双格式重复条目）
+    folderPath = _normPath(folderPath);
     // ★ 2026-08-30 垃圾路径拒绝：quest 楼层目录/_qqqvault 等非项目根不得入历史
     if (!_isValidRecentPath(folderPath)) return;
     var name = basename(folderPath);
@@ -552,7 +555,7 @@
     // ★ 必须先等 load 完成，否则 _saveRecents 会用空数组覆盖 global.sq3
     var ready = _recentsReady || Promise.resolve();
     ready.then(function () {
-      _recentFolders = _recentFolders.filter(function (f) { return f.path !== folderPath; });
+      _recentFolders = _recentFolders.filter(function (f) { return _normPath(f.path) !== folderPath; });
       _recentFolders.unshift({ path: folderPath, name: name, atime: now });
       if (_recentFolders.length > MAX_RECENT) _recentFolders.length = MAX_RECENT;
       _saveRecents();
@@ -1846,11 +1849,68 @@
   }
 
   // ---- recent folders dropdown (hover "+" block) ----
+  // ★ 打开即刷新（2026-09-21）：直读 global + OS 最新数据再渲染——旧实现只读内存快照
+  //   _recentFolders，本窗口之外的任何写入（roam Q 开新窗口 / 其他窗口 bump）都不出现
+  //   （客户实锤「Q 开窗后加号下拉无记录」）。读失败静默回落内存快照。
+  //   写入侧统一入口 = bumpRecent（本文件导出，任何窗口/frame 一律走它）。
+  function _mergeRecentList3(localList, osList) {
+    var map = {};
+    function put(f) {
+      if (!f || !f.path) return;
+      var p = _normPath(f.path);
+      if (!_isValidRecentPath(p)) return;
+      var at = f.atime || 0;
+      var ex = map[p];
+      if (!ex) { map[p] = { path: p, name: f.name || basename(p) || '', atime: at }; }
+      else if (at >= ex.atime) { ex.atime = at; if (f.name) ex.name = f.name; }
+      else if (!ex.name && f.name) { ex.name = f.name; }
+    }
+    (Array.isArray(localList) ? localList : []).forEach(put);
+    (Array.isArray(osList) ? osList : []).forEach(put);
+    (Array.isArray(_recentFolders) ? _recentFolders : []).forEach(put);   // 内存态并入（可能唯一含未落盘 bump 的源）
+    var merged = Object.keys(map).map(function (k) { return map[k]; });
+    merged.sort(function (a, b) { return (b.atime || 0) - (a.atime || 0); });
+    if (merged.length > MAX_RECENT) merged.length = MAX_RECENT;
+    return merged;
+  }
+
+  function _refreshRecentsForDropdown() {
+    // 直读主进程桥（绕 state-sdk 5s 渲染缓存——多窗口/iframe 写入必须即时可见）
+    var pLocal = (bridge && bridge.state && bridge.state.get)
+      ? bridge.state.get('qqqide', RECENT_KEY).catch(function () { return null; })
+      : Promise.resolve(null);
+    var ws = _wsBridge();
+    var pOs = (ws && typeof ws.get === 'function')
+      ? ws.get(WS_RECENT_KEY).catch(function () { return null; })
+      : Promise.resolve(null);
+    return Promise.all([pLocal, pOs]).then(function (rs) {
+      var merged = _mergeRecentList3(rs[0], rs[1]);
+      if (merged.length > 0) { _recentFolders = merged; }
+      return merged;
+    }).catch(function () { return null; });   // 任何异常 → 下拉回落内存快照渲染
+  }
+
   function _showRecentDropdown(blockEl) {
     closeDropdown();
     if (!blockEl.isConnected) return;
     _activeBlockEl = blockEl;
     blockEl.classList.add('aiv-block-active');
+
+    var rect = blockEl.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+
+    // ★ 先刷新后渲染（单次 IPC 往返，肉眼无感）→ 外部写入立即出现在下拉
+    _refreshRecentsForDropdown().then(function () {
+      _renderRecentDropdown(blockEl);
+    }, function () {
+      _renderRecentDropdown(blockEl);
+    });
+  }
+
+  function _renderRecentDropdown(blockEl) {
+    if (!blockEl.isConnected || _activeBlockEl !== blockEl) return;  // 已关闭 / 已切换
+    // 异步重入防御：清掉可能存在的旧 dd（不调 closeDropdown —— 它会清身份 _activeBlockEl）
+    if (activeDropdown) { try { activeDropdown.remove(); } catch (_) { } activeDropdown = null; }
 
     var rect = blockEl.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
@@ -2172,5 +2232,5 @@
     var os = _osBridge();
     if (os) { os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { }); }
   }
-  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots, clearAllProjects };
+  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots, clearAllProjects, bumpRecent: _bumpRecent };
 })();

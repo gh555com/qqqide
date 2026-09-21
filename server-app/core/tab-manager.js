@@ -28,7 +28,8 @@
   const MAX_GROUPS = 3;
 
   // ── ★ 文本编码徽标（2026-09-05 编码闭环 UI）：per-path 证据主进程 file-encoding.ts 持有，
-  //    渲染层仅缓存 {enc,bom,pinned} 展示；徽标点击 / 右键「编码方案…」→ 重解码/另存弹层
+  //    渲染层仅缓存 {enc,bom,pinned} 展示；徽标点击（tab 徽标 / 面包屑恒显徽标）→ 重解码/另存弹层
+  //    ★ 2026-09-20（q318）：tab 右键「编码方案…」行删除——面包屑恒显徽标为唯一恒定入口（自带状态显示）
   const _ENC_UI = [
     { enc: 'utf8', label: 'UTF-8' },
     { enc: 'gbk', label: 'GBK' },
@@ -109,15 +110,20 @@
     btn.appendChild(nameSpan);
 
     // ★ 编码徽标（2026-09-05）：点击 → 编码方案弹层（重新解码 / 另存转换）
-    const encChip = document.createElement('span');
-    encChip.className = 'qqq-enc-chip';
-    encChip.textContent = '';
-    encChip.hidden = true;
-    encChip.addEventListener('click', e => {
-      e.stopPropagation();
-      openEncPopup(encChip, grp, tab);
-    });
-    btn.appendChild(encChip);
+    //   ★ 2026-09-20 修复：只为「文件 tab」建徽标——gaea/custom tab（Roam/search/git/kmd/mdview…）
+    //     无编码语义，且曾因作者样式 display 覆盖 UA [hidden]{display:none} → 空徽标裸奔成
+    //     「关闭按钮左边一个小空横框」，一旦开过编码弹层（样式注入）即全 tab 传染。
+    if (tab.filePath && !tab.custom) {
+      const encChip = document.createElement('span');
+      encChip.className = 'qqq-enc-chip';
+      encChip.hidden = true;
+      encChip.addEventListener('click', e => {
+        e.stopPropagation();
+        openEncPopup(encChip, grp, tab);
+      });
+      btn.appendChild(encChip);
+    }
+
 
     // close button (not on gaea-fixed tabs unless explicitly closable)
     if (tab.closable !== false) {
@@ -429,13 +435,9 @@
       }
     }
 
-    // ★ 2026-09-05: 编码方案入口（utf8 自动态徽标隐藏，右键恒有逃生舱出口）
-    if (tab.filePath && !tab.custom) {
-      addRow(window._i('editor.tabs.encScheme', '编码方案…'), () => {
-        const btn2 = grp.barEl.querySelector('[data-tab-id="' + tab.id + '"]');
-        openEncPopup(btn2 || grp.barEl, grp, tab);
-      });
-    }
+    // ★ 2026-09-20（q318）：本菜单不再设「编码方案…」行——编码入口唯一在面包屑恒显徽标（点击弹层，自带状态显示）
+
+    // ★ 2026-09-20：本菜单不再设「预览 Markdown」行——唯一可见入口 = 编辑器右下角悬浮 👁（后台标签先点亮即得入口；防无锚预览困惑）
 
     // Row 2: close others
     if (grp.tabs.length > 1) {
@@ -492,8 +494,14 @@
     const s = document.createElement('style');
     s.textContent =
       '.qqq-enc-chip{display:inline-block;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;margin:0 2px 0 6px;padding:0 5px;border:1px solid var(--border-color,#93a1a1);border-radius:3px;font-size:9px;line-height:13px;color:var(--text-secondary,#657b83);user-select:none;flex-shrink:0;background:var(--background-color,#fdf6e3)}' +
+      // ★ 2026-09-20：作者样式 display 覆盖 UA [hidden]（origin 优先级）——必须显式兜住，
+      //   否则 hidden=true 的空徽标照样渲染成小空框（关闭按钮左边的幽灵横线）
+      '.qqq-enc-chip[hidden]{display:none!important}' +
       '.qqq-enc-chip.qqq-enc-pinned{color:#b58900;border-color:#b58900;font-weight:700}' +
       '[data-theme="dark"] .qqq-enc-chip.qqq-enc-pinned{color:#d9a020;border-color:#d9a020}' +
+      // ★ 2026-09-20：面包屑恒显档——默认态（utf8 自动）静显：透明边框低调，hover 才浮出边框
+      '.qqq-enc-chip.qqq-enc-auto{opacity:.7;color:var(--text-secondary,#657b83);border-color:transparent;background:transparent;font-weight:400}' +
+      '.qqq-enc-chip.qqq-enc-auto:hover{opacity:1;border-color:var(--border-color,#93a1a1)}' +
       '.qqq-enc-pop{position:fixed;z-index:99999;min-width:200px;max-height:78vh;overflow-y:auto;background:var(--card-bg,#fffdf5);border:1px solid var(--border-color,#93a1a1);border-radius:3px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:4px 0;user-select:none}' +
       '.qqq-enc-pop .enc-cap{display:flex;align-items:center;padding:5px 14px 3px;font-size:10.5px;color:var(--text-secondary,#657b83);letter-spacing:.5px}' +
       '.qqq-enc-pop .enc-row{display:flex;align-items:center;gap:8px;padding:4px 14px;font-size:12px;color:var(--text-primary,#073642);white-space:nowrap}' +
@@ -505,7 +513,28 @@
     document.head.appendChild(s);
   }
 
-  // 按路径刷新所有同文件 tab 的徽标（主进程证据 → chip 展示；utf8 自动态零噪音隐藏）
+  // 统一徽标渲染（tab 徽标 + 面包屑徽标共用同一语义源，禁两套 label/title 逻辑）
+  //   showDefault=false（tab 徽标）：utf8 自动态零噪音隐藏
+  //   showDefault=true （面包屑徽标）：默认态也静显（恒定读占位 + 编码功能可点入口）
+  function _applyEncChip(chip, filePath, info, showDefault) {
+    if (!chip) return;
+    const isDefault = !!(info && info.enc === 'utf8' && !info.pinned && !info.bom);
+    if (!info || !info.enc || (isDefault && !showDefault)) {
+      chip.hidden = true; chip.textContent = ''; chip.removeAttribute('title');
+      chip.classList.remove('qqq-enc-auto'); chip.classList.remove('qqq-enc-pinned');
+      return;
+    }
+    const label = (info.bom && info.enc === 'utf8') ? 'UTF-8 BOM' : _encLabel(info.enc);
+    chip.textContent = info.pinned ? label + ' *' : label;
+    chip.title = info.pinned
+      ? _miT('editor.tabs.encFixedAt', '编码已固定为 {v}（逃生舱）— 点击修改 / 恢复自动', { v: label })
+      : _miT('editor.tabs.encAutoAt', '编码：{v}（自动检测）— 点击可手动指定', { v: label });
+    chip.classList.toggle('qqq-enc-pinned', !!info.pinned);
+    chip.classList.toggle('qqq-enc-auto', isDefault);
+    chip.hidden = false;
+  }
+
+  // 按路径刷新所有同文件 tab 徽标 + 面包屑徽标（主进程证据 → 展示）
   function _renderEncChipsFor(filePath) {
     if (!filePath) return;
     const info = _pathEnc[filePath];
@@ -515,16 +544,15 @@
         if (t.filePath !== filePath) continue;
         const btn = grp.barEl.querySelector('[data-tab-id="' + t.id + '"]');
         if (!btn) continue;
-        const chip = btn.querySelector('.qqq-enc-chip');
-        if (!chip) continue;
-        if (!info || (info.enc === 'utf8' && !info.pinned && !info.bom)) { chip.hidden = true; chip.textContent = ''; continue; }
-        const label = (info.bom && info.enc === 'utf8') ? 'UTF-8 BOM' : _encLabel(info.enc);
-        chip.textContent = info.pinned ? label + ' *' : label;
-        chip.title = info.pinned
-          ? _miT('editor.tabs.encFixedAt', '编码已固定为 {v}（逃生舱）— 点击修改 / 恢复自动', { v: label })
-          : _miT('editor.tabs.encAutoAt', '编码：{v}（自动检测）— 点击可手动指定', { v: label });
-        chip.classList.toggle('qqq-enc-pinned', !!info.pinned);
-        chip.hidden = false;
+        _applyEncChip(btn.querySelector('.qqq-enc-chip'), filePath, info, false);
+      }
+    }
+    // ★ 面包屑徽标（2026-09-20）：恒显档——DOM 扫描 data-enc-path 同文件同步刷新
+    let nodes = null;
+    try { nodes = document.querySelectorAll('[data-qqq-breadcrumb-enc]'); } catch (_) { nodes = null; }
+    if (nodes) {
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].getAttribute('data-enc-path') === filePath) _applyEncChip(nodes[i], filePath, info, true);
       }
     }
   }
@@ -546,6 +574,24 @@
       const inf = await window.qqqideBridge.fs.encoding(filePath);
       setFileEnc(filePath, inf);
     } catch (_) { }
+  }
+
+  // ★ 面包屑恒显徽标：初次渲染入口（后续由 setFileEnc → _renderEncChipsFor 全量刷新覆盖）
+  function renderEncIndicator(el, filePath) {
+    if (!el || !filePath) return;
+    _applyEncChip(el, filePath, _pathEnc[filePath], true);
+  }
+
+  // ★ 面包屑徽标点击入口：按路径打开编码弹层（弹层内部只依赖 filePath；tab 找不到时用合成 tab 兜底）
+  function openEncPopupForPath(anchorEl, filePath) {
+    if (!anchorEl || !filePath) return;
+    let hit = null;
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      for (const t of grp.tabs) { if (t.filePath === filePath) { hit = { grp: grp, tab: t }; break; } }
+      if (hit) break;
+    }
+    openEncPopup(anchorEl, hit ? hit.grp : null, hit ? hit.tab : { filePath: filePath });
   }
 
   // A：重新按编码打开（pin → 主进程重读解码）
@@ -693,9 +739,40 @@
     groups.push(grp);
     reindexGroups();
     // ★ 2026-09-04：组增减后统一按实测宽度水密舱重分配（消除 px/flex 混合态与空缝）
-    if (groups.length >= 2) { _saveGroupRatios(); _onGroupResize(); }
+    // ★ 2026-09-20：新增组宽度语义 = 取自紧邻左组（gaea 让出者自留 35% / 其余对半，详 _ratiosForNewGroup）。
+    //   旧实现直接 _saveGroupRatios() 实测快照：新组此刻 flex '1 1 0'、在已占满容器的
+    //   旧组（0 0 px）之间无处可长，被 min-width 夹在 ~123px → 快照把新组写成 ~8%，
+    //   _onGroupResize 随即忠实执行 →「中间 90% / 右侧预览 10%」事故（q316 实锤）。
+    grp._splitFrom = (groups.length >= 2) ? groups[groups.length - 2] : null;
+    if (groups.length >= 2) { _ratiosForNewGroup(groups.length - 1); _onGroupResize(); }
     rebindAllSashes();
     return grp;
+  }
+
+  // ★ 2026-09-20：新增组的 ratio 意图快照——取自紧邻左组。gaea 常驻组让出时自留 35%、新组得 65%
+  //   （导航面窄 / 内容面宽——角色不对称则分法不对称）；其余让出者对半（VS Code split 同款）。
+  //   基线优先既有 ratio 意图（长度 = 已有组数）；缺失/不符 → 已有组实测宽归一；
+  //   全不可得 → _groupRatios = null（_onGroupResize 回落均分 flex）。新组恒不参与测量。
+  function _ratiosForNewGroup(newIdx) {
+    let base = null;
+    if (_groupRatios && _groupRatios.ratios && _groupRatios.ratios.length === newIdx) {
+      base = _groupRatios.ratios.slice();
+    } else {
+      const ws = []; let total = 0;
+      for (let i = 0; i < newIdx; i++) {
+        const w = groups[i].el.offsetWidth || 0;
+        ws.push(w); total += w;
+      }
+      if (total > 0) base = ws.map(w => w / total);
+    }
+    if (!base) { _groupRatios = null; return; }
+    const nb = newIdx - 1;              // 紧邻左组 = 让出空间者
+    // gaea 常驻组让出：自留 35%（导航窄）；其余让出者：对半（内容面平分）
+    const keep = (groups[nb] && groups[nb].type === 'gaea') ? 0.35 : 0.5;
+    const share = base[nb];
+    base[nb] = share * keep;
+    base.push(share * (1 - keep));      // 新组（恒为最右）
+    _groupRatios = { ratios: base };
   }
 
   function removeGroup(grp) {
@@ -709,14 +786,33 @@
     reindexGroups();
 
     // ★ 2026-09-04：剩余组按实测宽度水密舱重分配（单组回弹 flex 填满；多组等比吃回释放空间，零空缝零跳变）
+    // ★ 2026-09-20：借入组（_splitFrom）关闭 → 份额原路归还来源邻居，开/关严格互逆——
+    //   预览关闭后源组宽度精确还原，其余组全程零变化；来源已亡/错位/ratio 缺失 → 回落等比吃回。
     if (groups.length <= 1) {
       _groupRatios = null;
       groups.forEach(g => { g.el.style.flex = '1 1 0'; });
+    } else if (_absorbRemovedShare(grp, idx)) {
+      _onGroupResize();
     } else {
       _saveGroupRatios();
       _onGroupResize();
     }
     rebindAllSashes();
+  }
+
+  // ★ 2026-09-20：借入组关闭——其 ratio 份额并入来源邻居（其余组零变化）。返回 false = 走等比吃回。
+  function _absorbRemovedShare(grp, idx) {
+    const nb = grp._splitFrom;
+    if (idx <= 0 || !nb) return false;
+    if (groups.indexOf(nb) !== idx - 1) return false;            // 来源已亡/排位不符
+    const r = (_groupRatios && _groupRatios.ratios) || null;
+    if (!r || r.length !== groups.length + 1) return false;      // ratio 意图缺失/长度不符
+    const next = r.slice();
+    const moved = next.splice(idx, 1)[0];
+    if (!isFinite(moved)) return false;
+    next[idx - 1] += moved;
+    _groupRatios = { ratios: next };
+    return true;
   }
 
   // Rebind ALL inter-group sashes（★ 2026-09-04 级联废除）：每条 sash 只绑定紧邻两分组——
@@ -1338,6 +1434,8 @@
 
   // ---- Persistence: editor tabs + gaea tabs + cursor positions → only.sq3 (项目资产) ----
   var _restored = false;
+  // ★ 2026-09-21: 恢复同步派发窗口标志——Markdown 自动预览此窗口内静默（防 Ctrl+R 恢复风暴）
+  var _restoring = false;
   var _persistTimer = null;
   var _restoreRetryTimer = null;
 
@@ -1427,16 +1525,20 @@
       if (Array.isArray(all) && all.length > 0) {
         var pos = await db.get('editor.positions').catch(function () { return null; });
         if (pos && typeof pos === 'object') { window.qqqPendingEditorPositions = pos; }
-        for (var i = 0; i < all.length; i++) {
-          var item = all[i];
-          if (item.path) {
-            // ★ 重建文档级 pin 真理（持久化 preview=false = 已编辑过 → 正体，跨分组一致）
-            if (!item.preview) _pinnedPaths[item.path] = true;
-            document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: item.path, groupIdx: item.groupIdx } }));
-            // ★ 2026-08-17: 恢复后检查文件是否存在（已删除的文件显示灰色+删除线）
-            setTimeout(function(fp) { _checkFileDeleted(fp); }, 500, item.path);
+        // ★ 恢复同步派发窗口静默 Markdown 自动预览（恢复性打开≠用户动作——防恢复风暴开一堆预览）
+        _restoring = true;
+        try {
+          for (var i = 0; i < all.length; i++) {
+            var item = all[i];
+            if (item.path) {
+              // ★ 重建文档级 pin 真理（持久化 preview=false = 已编辑过 → 正体，跨分组一致）
+              if (!item.preview) _pinnedPaths[item.path] = true;
+              document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: item.path, groupIdx: item.groupIdx } }));
+              // ★ 2026-08-17: 恢复后检查文件是否存在（已删除的文件显示灰色+删除线）
+              setTimeout(function(fp) { _checkFileDeleted(fp); }, 500, item.path);
+            }
           }
-        }
+        } finally { _restoring = false; }
         setTimeout(function () { window.qqqPendingEditorPositions = null; }, 4000);
       }
     } catch (e) { /* ignore */ }
@@ -1489,8 +1591,10 @@
   }
 
   function init(host) {
+    _encInjectStyle();   // ★ 编码徽标样式必须早于任何 tab 创建就位（曾懒注入于弹层 → 首次右键前徽标裸文本/空框两种错态）
     hostEl = host;
     hostEl.innerHTML = '';
+
     if (window.ResizeObserver) {
       new ResizeObserver(function() {
         _onGroupResize();
@@ -1514,11 +1618,36 @@
     persistOpenTabs();
   };
 
+  // ★ Markdown 自动预览通知（2026-09-21 v4；设置 mdview.auto，出厂默认开）——
+  //   唯一挂载点 = 三个打开函数统一包装（穷举一切打开路径：树/Roam/navigator/AI 链接/右键分组/预览内链接）；
+  //   语义 = 任何成功「打开」一个 .md → 确保其预览存在（已有则零动作；不管关闭/不接标签切换）；
+  //   _restoring 窗口静默（恢复风暴），其余一切路径均视为用户动作零静默。
+  function _notifyMdOpened(filePath, result) {
+    if (!filePath || !result || _restoring) return;
+    try {
+      var mp = window.qqqMdPreview;
+      if (mp && typeof mp.onFileOpened === 'function') mp.onFileOpened(filePath);
+    } catch (_) { }
+  }
+
   // Hook: save after every tab change
   var _origOpenFile = openFile;
   openFile = function (filePath, opts) {
     const result = _origOpenFile(filePath, opts);
     persistOpenTabs();
+    _notifyMdOpened(filePath, result);
+    return result;
+  };
+  var _origOpenFileR = openFileInRightGroup;
+  openFileInRightGroup = function (filePath, opts) {
+    var result = _origOpenFileR(filePath, opts);
+    _notifyMdOpened(filePath, result);
+    return result;
+  };
+  var _origOpenFileL = openFileInLeftGroup;
+  openFileInLeftGroup = function (filePath, opts) {
+    var result = _origOpenFileL(filePath, opts);
+    _notifyMdOpened(filePath, result);
     return result;
   };
 
@@ -1598,6 +1727,9 @@
     // ★ 2026-09-05 编码徽标 API（shell-rpc / editor 外部重载后调用）
     setFileEnc,
     refreshEncForPath,
+    // ★ 2026-09-20 面包屑编码徽标（恒显读占位；语义/渲染与 tab 徽标同源）
+    renderEncIndicator,
+    openEncPopupForPath,
     persistOpenTabs,
     flushOpenTabs: function () { if (_persistTimer) { clearTimeout(_persistTimer); _doPersistOpenTabs(); } },
   };

@@ -107,6 +107,14 @@
       stops: ['0', '25', '50', '75', '100']
     },
     {
+      key: 'mdview.auto',
+      label: '自动打开 Markdown 预览',
+      labelKey: 'settings.mdviewAuto.label',
+      type: 'bool',
+      tab: 'general',
+      defaultValue: _D['mdview.auto'] !== undefined ? String(_D['mdview.auto']) : 'true'
+    },
+    {
       key: 'desktop.shortcut',
       label: '自动生成快捷方式',
       labelKey: 'settings.shortcut.label',
@@ -648,7 +656,7 @@
     for (var hb = 0; hb < helpBtns.length; hb++) {
       helpBtns[hb].addEventListener('click', function () {
         var _docLang = (window.i18n && window.i18n.getLang) ? window.i18n.getLang() : 'zh';
-        window.open('https://www.gh555.com/gaea/d/qqqide?lang=' + encodeURIComponent(_docLang) + '#docs/qqqide-2', '_blank');
+        window.open('https://www.gh555.com/gaea/d/qqqide?lang=' + encodeURIComponent(_docLang) + '#docs/qqqide-backpack-ops', '_blank');
       });
     }
 

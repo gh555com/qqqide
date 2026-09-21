@@ -259,6 +259,13 @@ function _isValidRecentPath(p) {
 }
 
 function _bumpMenuRecent(folderPath) {
+  // ★ 2026-09-21 统一 bump 入口：优先调本窗口 ai-viewport 中央 bump（内存态 + local + OS
+  //   一次收敛，path 归一化）；旧实现只写盘不动内存 → 加号下拉看不到刚点选的记录
+  if (window.qqqideViewport && typeof window.qqqideViewport.bumpRecent === 'function') {
+    if (!_isValidRecentPath(folderPath)) return;
+    window.qqqideViewport.bumpRecent(folderPath);
+    return;
+  }
   var bridge = window.qqqideBridge;
   if (!bridge || !bridge.state) return;
   if (!_isValidRecentPath(folderPath)) return;

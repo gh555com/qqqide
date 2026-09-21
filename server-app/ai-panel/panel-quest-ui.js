@@ -1011,7 +1011,7 @@ window.addEventListener('resize', function () {
 var _ctxHelpBtn = document.getElementById('ctx-help');
 if (_ctxHelpBtn) {
     _ctxHelpBtn.onclick = function () {
-        window.open('https://www.gh555.com/gaea/d/qqqide#docs/doc-20260809-104155', '_blank');
+        window.open('https://www.gh555.com/gaea/d/qqqide#docs/qqqide-backpack-basics', '_blank');
     };
 }
 

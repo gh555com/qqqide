@@ -682,6 +682,8 @@
       _installGutterClickFix(ed, monaco);
       _addMinimapAction(ed, monaco, null);
       _addFeedToAiAction(ed, monaco, null);
+      // ★ Markdown 预览 action（md-preview.js 提供；右键导航组 + 快捷键 Ctrl+K V）
+      try { window.__qqqMdAttachAction && window.__qqqMdAttachAction(ed, monaco, null); } catch (_) {}
       // 括号匹配（自实现）
       _installBracketMatcher(ed, monaco);
       // 抹除 Change All Occurrences
@@ -1084,6 +1086,8 @@
  
       _applyMinimapPref(ed, monaco, filePath);
       _addFeedToAiAction(ed, monaco, filePath);
+      // ★ Markdown 预览 action（pane 编辑器；同 md-preview.js）
+      try { window.__qqqMdAttachAction && window.__qqqMdAttachAction(ed, monaco, filePath); } catch (_) {}
       // 括号匹配（自实现）
       _installBracketMatcher(ed, monaco);
       // 抹除 Change All Occurrences
@@ -1273,6 +1277,9 @@
       // ★ 初始化完成，解除 _isRefreshing 屏蔽（在 attachQ1v3 之后，防止 viewport 管线触发 model 变更事件导致误报 dirty）
       ed._isRefreshing = false;
       _paneEditors[filePath] = ed;
+      // ★ Markdown 预览联动（2026-09-21）：编辑器挂载完成 → 通知预览机器迟绑定升级（disk → model）。
+      //   自动预览常在 Monaco 挂载前打开（disk 模式先出首帧）；缺此收敛，预览停在磁盘模式、脏缓冲编辑不实时。
+      try { if (window.qqqMdPreview && window.qqqMdPreview.onEditorMounted) window.qqqMdPreview.onEditorMounted(filePath); } catch (_) {}
       // ★ 记录 mtime，用于聚焦时检测外部修改
       try { var _stPane = await bridge.fs.stat(filePath); if (_stPane) _openedMtime[filePath] = { mtimeMs: _stPane.mtimeMs, size: _stPane.size }; } catch (_) {}
       ed.onDidDispose(function () {

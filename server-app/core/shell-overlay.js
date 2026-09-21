@@ -235,10 +235,23 @@ function bootAiOverlay() {
   var fileBtn = tbBtn(window._i('shell.overlay.file', '文件'), window._i('shell.overlay.fileTitle', '复制图片文件，可粘贴到聊天/Roam/资源管理器'));
   var pathBtn = tbBtn(window._i('shell.overlay.path', '路径'), window._i('shell.overlay.pathTitle', '复制图片路径'));
 
-  // 当前 overlay 图片 src（仅图片预览存在 <img>）
+  // 当前 overlay 媒体元素（视频/音频预览存在 <video>/<audio>）
+  function _ovMediaEl() {
+    return contentEl.querySelector('video') || contentEl.querySelector('audio');
+  }
+  // 关闭/切换/重开前停止媒体播放（Element 从 DOM 移除不保证停播——必须显式 pause+卸载，防「关了还在响」）
+  function _stopMedia() {
+    try {
+      var m = _ovMediaEl();
+      if (m) { m.pause(); m.removeAttribute('src'); m.load(); }
+    } catch (_) { }
+  }
+  // 当前 overlay 主体 src（图片优先；媒体兜底——文件/路径按钮对两者通用）
   function _currentOverlayImgSrc() {
     var img = contentEl.querySelector('img');
-    return img ? img.src : null;
+    if (img) return img.src;
+    var m = _ovMediaEl();
+    return m ? m.src : null;
   }
   // src → 本地文件路径：file:/// URL 解码 / 裸盘符路径（A4/徽章/灯箱直传形态）直接收
   function _localPathFromSrc(src) {
@@ -368,6 +381,7 @@ function bootAiOverlay() {
   function close() {
     _ovLocalPath = null;
     try { _stopRepeat(); } catch (_) { }
+    try { _stopMedia(); } catch (_) { }
     try { _ovClearHighlights(); } catch (_) { }
     _closeTt.style.display = 'none';
     overlay.style.display = 'none';
@@ -529,6 +543,7 @@ function bootAiOverlay() {
       close = _baseClose;
       _ovLocalPath = e.data.localPath || null;
       _stopRepeat();
+      _stopMedia();
       overlay.style.display = 'none';
       contentEl.innerHTML = '';
       contentEl.style.overflow = '';
@@ -596,6 +611,11 @@ function bootAiOverlay() {
           _origClose();
         };
       };
+      // ★ 加载失败兜底（2026-09-21）：文件缺失/解码失败 → 提示并自动关闭，不留黑屏空壳
+      img.onerror = function () {
+        _ovToast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
+        try { close(); } catch (_) { }
+      };
       img.src = e.data.src;
       dpad.style.display = 'block';
       // ★ 图片模式：三按钮（内存/文件/路径），复制按钮隐藏
@@ -603,6 +623,8 @@ function bootAiOverlay() {
       memBtn.style.display = '';
       fileBtn.style.display = '';
       pathBtn.style.display = '';
+      zoomOutBtn.style.display = '';
+      zoomInBtn.style.display = '';
     }
 
     if (e.data.action === 'open-table') {
@@ -611,6 +633,7 @@ function bootAiOverlay() {
         // 强制清理上一轮残留状态（含 close 函数恢复）
         close = _baseClose;
         _stopRepeat();
+        _stopMedia();
         overlay.style.display = 'none';
         contentEl.innerHTML = '';
         contentEl.style.overflow = 'hidden';
@@ -719,6 +742,8 @@ function bootAiOverlay() {
         memBtn.style.display = 'none';
         fileBtn.style.display = 'none';
         pathBtn.style.display = 'none';
+        zoomOutBtn.style.display = '';
+        zoomInBtn.style.display = '';
       } catch (_) {
         // 出错时强制复位，避免 overlay 残留 invisible 阻挡 UI
         overlay.style.display = 'none';
@@ -726,6 +751,68 @@ function bootAiOverlay() {
         contentEl.innerHTML = '';
         dpad.style.display = 'none';
       }
+    }
+
+    // ★ 媒体直开（2026-09-21）：视频/音频 → 内置播放器（原生控件）
+    //   实测 Electron 22 全解码: h264/aac/hevc/vp9/opus/flac/wav + mkv/mov 容器可播；关闭/切换/重开必停播
+    if (e.data.action === 'open-video' || e.data.action === 'open-audio') {
+      var _isVid = e.data.action === 'open-video';
+      close = _baseClose;
+      _ovLocalPath = e.data.localPath || null;
+      _stopRepeat();
+      _stopMedia();
+      overlay.style.display = 'none';
+      contentEl.innerHTML = '';
+      contentEl.style.overflow = 'hidden';
+      zoomScale = 1.0;
+      _dragX = 0; _dragY = 0;
+      overlay.style.display = 'block';
+
+      var _mEl = document.createElement(_isVid ? 'video' : 'audio');
+      _mEl.controls = true;
+      _mEl.autoplay = true;
+      _mEl.setAttribute('playsinline', '');
+      if (_isVid) {
+        _mEl.style.cssText = 'max-width:100%; max-height:100%; outline:none; ' +
+          'border-radius:4px; background:#000; box-shadow:0 4px 32px rgba(0,0,0,0.4);';
+        contentEl.appendChild(_mEl);
+      } else {
+        // 音频：轻盒（文件名 + 原生播放条）居中呈现
+        var _aBox = document.createElement('div');
+        _aBox.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:20px; ' +
+          'background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:12px; ' +
+          'padding:34px 44px; max-width:80%;';
+        var _aName = document.createElement('div');
+        var _lp = String(e.data.localPath || '');
+        _aName.textContent = _lp ? _lp.split(/[\\/]/).pop() : '';
+        _aName.style.cssText = 'color:#dcd8d0; font-size:15px; line-height:1.4; word-break:break-all; text-align:center; max-width:480px;';
+        _mEl.style.cssText = 'width:420px; max-width:70vw; outline:none;';
+        _aBox.appendChild(_aName);
+        _aBox.appendChild(_mEl);
+        contentEl.appendChild(_aBox);
+      }
+      // ★ 加载失败兜底（格式不受支持/文件损坏）→ 提示并自动关闭，不留黑屏空壳
+      _mEl.onerror = function () {
+        _ovToast(window._i('shell.overlay.mediaFailed', '媒体加载失败，可能格式不受支持或文件已损坏'), 'error');
+        try { close(); } catch (_) { }
+      };
+      // ★ 关闭时停止播放（DOM 移除不保证停播——必须显式 pause+卸载）
+      var _mPrevClose = close;
+      close = function () {
+        try { _mEl.pause(); _mEl.removeAttribute('src'); _mEl.load(); } catch (_) { }
+        close = _mPrevClose;
+        _mPrevClose();
+      };
+      _mEl.src = e.data.src;
+      try { var _pp = _mEl.play(); if (_pp && _pp.catch) _pp.catch(function () { }); } catch (_) { }
+      // ★ 媒体模式：自适应无需缩放——藏缩放/D-pad/复制/内存按钮，留文件/路径/关闭
+      dpad.style.display = 'none';
+      copyBtn.style.display = 'none';
+      memBtn.style.display = 'none';
+      fileBtn.style.display = '';
+      pathBtn.style.display = '';
+      zoomOutBtn.style.display = 'none';
+      zoomInBtn.style.display = 'none';
     }
 
     // ★ AI 面板图片 hover「Roam」按钮：激活 roam tab + 聚焦 + 跳到目录选中文件

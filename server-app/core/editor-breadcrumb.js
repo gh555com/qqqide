@@ -5,7 +5,8 @@
 //
 // 1. 顶端面包屑：独立 DOM 块，占真实高度，文字可选中/复制，不可编辑
 //    自动换行撑高，下方一切（Monaco / Ctrl+F / 小地图）被其高度挤开
-// 2. 底端悬浮三按钮：undo ↶ / redo ↷ / minimap toggle（在 Monaco 容器内 absolute）
+// 2. 底端悬浮按钮行（Monaco 容器内 absolute 右下角）：md 预览 👁（仅 Markdown 文件）
+//    / undo ↶ / redo ↷ / minimap toggle
 //
 // API: window.qqqEditorBreadcrumb = { create(hostPane, filePath, monacoEditor, monaco) }
 // ============================================================================
@@ -59,9 +60,37 @@
     // ═══ 1. 面包屑豆腐块（独立占高，可选可复制，不可编辑）═══
     var bar = document.createElement('div');
     bar.setAttribute('data-qqq-editor-breadcrumb', '1');
-    bar.textContent = filePath || '';
 
-    // 悬浮复制按钮（hover 面包屑时出现在右侧）
+    // 路径文本（flex 主列：弹性吸收剩余宽度，可选中/复制，自动换行）
+    var pathSpan = document.createElement('span');
+    pathSpan.className = 'qqq-breadcrumb-path';
+    pathSpan.textContent = filePath || '';
+    bar.appendChild(pathSpan);
+
+    // ★ 编码徽标（2026-09-20）：恒定读占位——默认态静显（UTF-8 低调）/ 非默认态标准 / 固定态金色+*
+    //   点击 → 编码方案弹层（tab 右键行已删——本徽标 = 唯一恒定入口）；语义/渲染唯一源 = tab-manager 编码机器
+    var encChip = document.createElement('span');
+    encChip.className = 'qqq-enc-chip qqq-enc-auto';
+    encChip.setAttribute('data-qqq-breadcrumb-enc', '1');
+    encChip.hidden = true;
+    if (filePath) {
+      encChip.setAttribute('data-enc-path', filePath);
+      encChip.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          if (window.qqqTabs && window.qqqTabs.openEncPopupForPath) window.qqqTabs.openEncPopupForPath(encChip, filePath);
+        } catch (_) { }
+      });
+    }
+    bar.appendChild(encChip);
+
+    // 初始渲染：证据已在缓存 → 立即显形；否则等 setFileEnc → _renderEncChipsFor 全量刷新覆盖
+    try {
+      if (filePath && window.qqqTabs && window.qqqTabs.renderEncIndicator) window.qqqTabs.renderEncIndicator(encChip, filePath);
+    } catch (_) { }
+
+    // 悬浮复制按钮（hover 面包屑时出现；visibility 占位零布局抖动）
     var copyBtn = document.createElement('button');
     copyBtn.className = 'qqq-breadcrumb-copy-btn';
     copyBtn.textContent = '📋';
@@ -156,6 +185,21 @@
       btn.addEventListener('mouseleave', stopRepeat);
       btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
       return btn;
+    }
+
+    // ★ Markdown 预览 👁（2026-09-20）：仅 .md/.markdown 文件——唯一可见入口（菜单备选已删：
+    //   一个功能一处；后台标签先点亮即得入口）；判定 qqqMdPreview.isMd + 入口 .open
+    if (filePath && window.qqqMdPreview && window.qqqMdPreview.isMd(filePath)) {
+      var mdBtn = document.createElement('button');
+      mdBtn.className = 'qqq-editor-float-btn';
+      mdBtn.setAttribute('data-no-cd', '');
+      mdBtn.textContent = '\uD83D\uDC41\uFE0F';
+      mdBtn.title = _i('mdview.action', '预览 Markdown');
+      mdBtn.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        try { window.qqqMdPreview.open(filePath); } catch (_) { }
+      });
+      btns.appendChild(mdBtn);
     }
 
     // Undo ↶

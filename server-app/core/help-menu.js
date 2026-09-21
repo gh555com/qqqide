@@ -221,7 +221,7 @@
         { label: _i('help.comments', '评论'), url: PAGE + '#comments' },
         { label: _i('help.changelog', '更新日志'), url: PAGE + '#changelog' },
         { label: _i('help.announcements', '公告'), url: PAGE + '#announcements' },
-        { label: _i('help.docs', '官方文档'), url: PAGE + '#docs/doc-20260727-140345', bold: true },
+        { label: _i('help.docs', '官方文档'), url: PAGE + '#docs/add-project', bold: true },
         { label: _i('help.activity', '活动'), url: PAGE + '#video' }
       ];
     }
