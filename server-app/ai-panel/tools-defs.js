@@ -240,8 +240,8 @@ var TOOL_DEFINITIONS = [
                 properties: {
                     command: { type: 'string', description: 'Command to execute. When ssh is set, write as if running directly on the remote host — do NOT add ssh/quoting wrappers yourself.' },
                     cwd: { type: 'string', description: 'Working directory (optional). When ssh is set, applied on remote host.' },
-                    ssh: { type: 'string', description: 'Optional: SSH destination in user@host or user@host:port format. When set, the command runs on this remote host via SSH with automatic base64 escaping (zero quoting hell). Example: "q@203.0.113.10" or "q@203.0.113.11:2222"' },
-                    sshJump: { type: 'string', description: 'Optional: SSH jump host (ProxyJump) when the target is behind a bastion. Example: "q@203.0.113.10". Only meaningful when ssh is also set.' },
+                    ssh: { type: 'string', description: 'Optional: SSH destination in user@host or user@host:port format. When set, the command runs on this remote host via SSH with automatic base64 escaping (zero quoting hell). Example: "user@server-host" or "user@server-host:port"' },
+                    sshJump: { type: 'string', description: 'Optional: SSH jump host (ProxyJump) when the target is behind a bastion. Example: "user@bastion-host". Only meaningful when ssh is also set.' },
                     reason: { type: 'string', description: 'Optional: briefly explain why dedicated tools (search_text/search_content/find_files) cannot do this job. Used only for audit logging.' }
                 },
                 required: ['command']

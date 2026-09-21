@@ -141,9 +141,6 @@ app.on('certificate-error', (event, _webContents, _url, _error, certificate, cal
     } else if (_url.includes('direct.gh555.com')) {
         event.preventDefault();
         callback(true);
-    } else if (_url.includes('203.0.113.10')) {
-        event.preventDefault();
-        callback(true);
     } else if (_url.includes('gh555.com')) {
         // gh555.com / cnk.gh555.com — Cloudflare 证书，但也可能在 dev 环境
         // 被 sp_tunnel 代理拦截导致 CN 不匹配，统一放行
