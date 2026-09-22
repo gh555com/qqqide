@@ -717,7 +717,8 @@ ${escapedPaths}
 
     // ---- update ----
     // ★ 2026-08-10 重构：热更通道整体删除（版本 = versions.json 清单编号，更新只随 r 整包交换）。
-    //   qqqide:update:* IPC 已全部移除。
+    //   本文件不再注册热更 IPC；现存 update IPC = mac-updater.ts（mac-state/check/apply）
+    //   + update-health.ts（qqqide:update:health 升级健康快照，2026-09-22 设置面板消费）。
 
     // ═══ 编辑器脏快照 — 跨窗口共享（Layer 2: IDE 领域内视觉一致） ═══
     ipcMain.handle('qqqide:dirty:set', (_e, filePath: string, content: string) => {

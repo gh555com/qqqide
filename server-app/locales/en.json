@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "Check for Updates",
-            "updatedTo": "Updated to {version}. Reloading...",
-            "failed": "Update Failed",
-            "failedWith": "Update Failed",
-            "newVersion": "New version {latest} available (current: {current})"
+            "toast": "New version v{version} is ready: Click \"Restart to Update\" to complete now, or exit the app to update automatically.",
+            "apply": "Restart to update",
+            "applying": "Updating; application will restart shortly…",
+            "checking": "Checking for updates...",
+            "downloading": "Downloading new version {pct}%",
+            "staging": "Preparing new version…",
+            "readyBtn": "New version v{version} is ready. Click to update now (exiting the app will also complete the update).",
+            "latest": "Already on the latest version v{version}",
+            "found": "New version v{version} found. Downloading in background...",
+            "busy": "The new version is being downloaded in the background. You will be notified once it's complete.",
+            "done": "Updated to v{version}",
+            "rolledback": "Update incomplete; reverted to previous version",
+            "unavailable": "In-app updates are not supported for the current installation location",
+            "failed": "Update check failed; will retry automatically later"
         },
         "overlay": {
             "copy": "Copy to Clipboard",
@@ -111,7 +121,10 @@
             "roamNoPath": "No local files at this path; cannot locate in Roam",
             "roamMoved": "Path no longer exists (may have been moved or deleted):",
             "roamMoved2": " → Located in recent directory ",
-            "roamNotFound": "Not found on disk:"
+            "roamNotFound": "Not found on disk:",
+            "loadFailed": "Image load failed; preview unavailable",
+            "mediaFailed": "Media loading failed. The format may be unsupported or the file corrupted.",
+            "transcoding": "Transcoding for preview…"
         },
         "about": {
             "title": "About qqq",
@@ -293,7 +306,6 @@
             "copyRelativePath": "Copy Relative Path",
             "splitRight": "Split Right",
             "splitDown": "Split Down",
-            "encScheme": "Encoding Scheme…",
             "encReopen": "Reopen with encoding (reread from disk)",
             "encSaveAs": "Save Content As (Convert Encoding)",
             "encAuto": "Auto-detect",
@@ -364,6 +376,14 @@
             "copyImageSuccess": "Copied successfully — bitmap binary",
             "copyImageFailed": "Copy failed — Bitmap binary: {0}"
         }
+    },
+    "mdview": {
+        "action": "Preview Markdown",
+        "empty": "(Empty document)",
+        "missing": "File no longer exists",
+        "tooLarge": "File is too large; live preview paused",
+        "refresh": "Refresh",
+        "renderError": "Render Failed"
     },
     "login": {
         "title": "Login",
@@ -616,7 +636,9 @@
             "notSent": ". The following content was not sent:",
             "allocShown": "— Unsent content is displayed in the message area above.",
             "stallAbort": "Send stalled (>20 minutes without progress); automatically terminated",
-            "stallAbortQoast": "Send stalled (>20 minutes without progress); automatically terminated. Click the layer's red box \"Resume Task\" to restore."
+            "stallAbortQoast": "Send stalled (>20 minutes without progress); automatically terminated. Click the layer's red box \"Resume Task\" to restore.",
+            "stallAbortTool": "Tool execution stalled (no progress for over 2 hours); automatically terminated",
+            "stallAbortToolQoast": "Tool execution stalled (no progress for over 2 hours) and was automatically terminated. Click the red box on the floor to \"Resume Task\"."
         },
         "needLogin": "Please log in via the menu bar first",
         "errUnknown": "Unknown error",
@@ -691,6 +713,10 @@
             "firstToken": "Waiting for first token output",
             "hangCount": "(Attempt {0})",
             "hangBroken": "Network channel suspected damaged{0}; all routes have been automatically attempted. Layer saved. Recommended: Press Ctrl+R to refresh the window, then click \"Resume Task\"."
+        },
+        "toolWait": {
+            "title": "⏳ Tool executing {0}",
+            "subtitle": "{0} Layer {1} · Long-running task in progress"
         },
         "gw": {
             "hangTimeout": "Connection timed out (automatically tried all routes; conversation preserved. Click \"Resume Task\" to retry).",
@@ -1490,6 +1516,46 @@
         "pendingTip": "This feature is pending migration (placeholder)",
         "bridgeMissing": "qqq: Export service unavailable (instance restart required)"
     },
+    "sync": {
+        "uploadTitle": "Upload to Cloud",
+        "downloadTitle": "Download Cloud Data",
+        "uploadConfirmTitle": "Upload data to cloud",
+        "uploadConfirmMsg": "I confirm:\n1. I am a licensed user;\n2. My clipboard and file history preferences do not contain any sensitive personal information (such as passwords) or any illegal or subversive content.",
+        "uploadConfirmBtn": "Confirm and upload",
+        "pullConfirmTitle": "Merge Data from Cloud",
+        "pullConfirmMsg": "Download cloud data and merge it with local roaming preferences and clipboard history (union merge, no data loss). Continue?",
+        "pullConfirmBtn": "Confirm download",
+        "uploadCancel": "Cancel",
+        "uploading": "Uploading data to cloud...",
+        "pulling": "Fetching data from cloud...",
+        "uploadSuccess": "Uploaded to cloud ({0})",
+        "pullSuccess": "Data merged from cloud; added {1} items ({0})",
+        "uploadFailed": "Upload failed: {0}",
+        "pullFailed": "Restore failed: {0}",
+        "noData": "No data in the cloud yet",
+        "noAuth": "Not logged in. Please log in first.",
+        "errNotPurchased": "User is not a licensed user",
+        "errRateLimit": "Too many requests. Please try again later.",
+        "errQuota": "Data exceeds quota limit",
+        "errNotRegistered": "This phone number is not registered.",
+        "errAuthExpired": "Login expired. Please log in again.",
+        "errNetwork": "Network error; please check your connection",
+        "errServer": "Server error; please try again later",
+        "lok": "Syncing, please wait...",
+        "bridgeMissing": "Cloud sync unavailable (instance restart required)"
+    },
+    "workbench": {
+        "savorTip": "Local Music: {v0} plays, total {v1}\nRadio: {v2} plays, total {v3}\nDaily Average Listening: {v4}",
+        "durHm": "{0} hr {1} min",
+        "durMs": "{0} min {1} sec",
+        "durSs": "{0} sec",
+        "exportDocTip": "Export current document as Word: Images and videos are embedded as images; other attachments generate a list. Saves next to the document by default; save dialog appears only if a file with the same name exists.",
+        "exportZipTip": "Package the current document and all referenced files and directories into a ZIP archive (preserving directory structure, maximum compression). Saves next to the document by default; prompts for save location only if a file with the same name already exists.",
+        "cloudSyncTip": "Cloud Sync: ↑ Upload = Merge with cloud then upload (no data loss on either side); ↓ Download = Merge cloud data into local. Includes editor settings, folder preferences, and clipboard history.",
+        "videoUrlTip": "Pending Video: Enter a video URL to automatically download it to the document directory and insert it into a frame.",
+        "pasteTip": "Pending Paste: One-click paste from clipboard to document (Ctrl+V achieves the same result).",
+        "pureTip": "Pending: Scan document references to clean up orphaned files that are no longer referenced."
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1567,6 +1633,9 @@
             "label": "Volume",
             "desc": "Volume for the IDE window and all goods (independent volume goods bypass this control). Factory default is 25%."
         },
+        "mdviewAuto": {
+            "label": "Auto-open Markdown Preview"
+        },
         "shortcut": {
             "label": "Auto-generate Shortcut"
         },
@@ -1618,6 +1687,48 @@
             "stale": "SW cached old code! Disk={disk} Browser={browser}",
             "fetchFail": "❌ Fetch failed",
             "fetchFailTitle": "Build Stamp Fetch Failed"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "Update Error",
+            "ttDev": "Development instance — updates managed by development workflow",
+            "ttVer": "Current version v{v}",
+            "ttLauncher": "Launcher {l}",
+            "ttOk": "Up to date (checked at {time})",
+            "ttNone": "Updater has not completed the initial check",
+            "ttStaged": "New version v{v} is ready — update will complete automatically after restart",
+            "ttPrep": "Preparing update v{v} in the background",
+            "ttFailed": "Previous update failed",
+            "ttFails": "Failure count: {n}",
+            "ttEvent": "Recent event: {line}",
+            "ttClick": "Click to view core failure records",
+            "diagTitle": "Upgrade diagnostic records",
+            "diagHint": "Below are the trailing fragments of core failure/update logs. Click \"Copy Report\" or \"Generate Report File\" and send to administrators for troubleshooting.",
+            "diagLoad": "Loading…",
+            "diagEmpty": "No log files yet (no records generated)",
+            "diagEmptyLine": "(Empty)",
+            "diagMissing": "File does not exist",
+            "diagCopy": "Copy",
+            "diagReveal": "Reveal",
+            "diagCopyAll": "Copy report",
+            "diagSave": "Generate Report File",
+            "diagOpenDir": "Open log directory",
+            "diagClose": "Close",
+            "diagCopied": "Copied to clipboard",
+            "diagSaved": "Report generated and located at: {p}",
+            "diagNeedRestart": "Requires restarting the qqqide instance to take effect",
+            "diagFail": "Operation Failed",
+            "diagF": {
+                "fails": "Failure Count",
+                "swap": "Update Swap Log",
+                "render": "Renderer Process Crash",
+                "swapready": "Staging ready flag",
+                "recovery": "Crash reconciliation report",
+                "rnext": "Background preparation info",
+                "crash": "Crash network event stream",
+                "status": "Latest update attempt",
+                "state": "State store events"
+            }
         }
     },
     "squad": {

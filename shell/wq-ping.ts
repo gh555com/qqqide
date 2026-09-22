@@ -27,7 +27,10 @@ import { getDataDir, getAppRoot } from './portable-paths';
 import { getAuthPhone } from './auth-state';
 import { getComponentBin } from './component-checker';
 import { vigSnapshot, vigSet, winthereExternal } from './vig';
+import { crashNetSummary } from './crash-net';
 import { kopeStatsSync, kopeWarmup } from './ipc-kope';
+import { getMainLang } from './main-i18n';
+import type { StateStore } from './state-sqlite';
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
 const PING_API_HOST = 'direct-cn.gh555.com';
@@ -54,6 +57,7 @@ let _isCurrentlyPlaying = false;
 let _lastPlayingPingTime = 0;   // playing ping 5min 防抖（与服务器限速同口径）
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _userDataPath = '';              // ★ portable.userData，启动时注入
+let _stateStore: StateStore | null = null; // ★ 全局状态库（main.ts 注入；读 UI 主题镜像）
 
 // ── 磁盘日志（调试用，零依赖，原子 append）──────────────────────────────────
 let _logPath = '';
@@ -267,8 +271,23 @@ function collectEng(): Record<string, number> {
     return out;
 }
 
+// ── UI 主题（global 库 qqq.theme/mode 镜像，qqqide-theme.js 每次 apply 刷新）──
+//   读取可能早于渲染层注册 ns（首启头几秒）→ 失败返回 ''，字段省略零伤害
+async function readUiTheme(): Promise<string> {
+    try {
+        if (!_stateStore) return '';
+        const v = await Promise.race([
+            _stateStore.get('qqq.theme', 'mode'),
+            new Promise((res) => setTimeout(() => res(null), 1500)),
+        ]);
+        if (v === 'dark' || v === true) return 'dark';
+        if (v === 'light' || v === false) return 'light';
+    } catch { /* ignore */ }
+    return '';
+}
+
 // ── 收集设备信息 ────────────────────────────────────────────────────────────
-function collectPingBody(): string {
+async function collectPingBody(): Promise<string> {
     const nowSec = Math.floor(Date.now() / 1000);
     const totalSec = currentTotalSeconds();
 
@@ -291,6 +310,17 @@ function collectPingBody(): string {
         mem_mb:            Math.round(os.totalmem() / (1024 * 1024)),
     };
 
+    // ★ 设备环境上报（2026-09-22 补报）：界面语言 / 时区 / 主题
+    //   （服务端 v16.1.8+ 早已接收落列；qd 行为追踪表「界面语言/时区/主题」三列由此补活）
+    try { body.locale = getMainLang(); } catch { /* ignore */ }
+    try {
+        body.tz_offset = -new Date().getTimezoneOffset();   // 分钟、东八区=480（JS 符号相反取负）
+        const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        if (tzName) body.tz_name = tzName.slice(0, 50);     // IANA 名（服务端上限 50）
+    } catch { /* ignore */ }
+    const uiTheme = await readUiTheme();
+    if (uiTheme) body.ui_theme = uiTheme;
+
     // ★ 偿还标记：播放中（Savor 本地曲/电台）→ 服务端记录 last_playing_at / active_playing
     if (_isCurrentlyPlaying) { body.playing = true; }
 
@@ -305,6 +335,8 @@ function collectPingBody(): string {
         const vig: Record<string, any> = vigSnapshot() || {};
         const wt = winthereExternal();   // window-there 外部计数（3W 保存 / 3X 还原 / 布局数）
         if (wt) { vig.winthere = wt; }
+        const cs = crashNetSummary();    // 稳定性遥测（崩溃摘要：只传计数，永不传内容/堆栈）
+        if (cs) { vig.crash = cs; }
         if (Object.keys(vig).length > 0) { body.vig = vig; }
         pingLog('ping vig=' + (Object.keys(vig).join('+') || 'none') + ' cardN=' + (ks ? ks.total : 'na') + (wt ? ' wt=' + wt.save + '/' + wt.restore : ''));
     } catch { /* ignore */ }
@@ -316,10 +348,10 @@ function collectPingBody(): string {
 }
 
 // ── 发送 ping ───────────────────────────────────────────────────────────────
-function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
+async function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
+    const bodyStr = await collectPingBody();
     return new Promise((resolve) => {
         pingLog('sendPing START host=' + PING_API_HOST);
-        const bodyStr = collectPingBody();
 
         const req = https.request({
             hostname: PING_API_HOST,
@@ -403,6 +435,9 @@ async function pingCycle() {
 }
 
 // ── 公开 API ────────────────────────────────────────────────────────────────
+
+/** ★ 注入全局状态库引用（main.ts 启动时调用；读 qqq.theme/mode 主题镜像用）。 */
+export function setWqPingStateStore(s: StateStore | null): void { _stateStore = s; }
 
 /** 启动统计上报机。调用一次，幂等。
  *  @param userDataPath  portable.userData（与 main.ts AUTH_FILE 同根） */

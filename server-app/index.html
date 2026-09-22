@@ -233,50 +233,12 @@ var _orig={};
 <script src="core/key-hook.js"></script>
 <!-- ts-service: custom TypeScript language service (bypasses broken Monaco TS worker) -->
 <script src="core/ts-service.js"></script>
-<!-- ★ 双通道戳记机器 — __stamp.js 走SW缓存(可能陈旧) + _BUILD_STAMP.json 走直连(永远最新) → 比对=100%确定 -->
+<!-- ★ 构建戳 + 升级健康位机器（2026-09-22）：逻辑迁至 core/update-health.js
+     — __stamp.js 走SW缓存(可能陈旧) + _BUILD_STAMP.json 走直连(永远最新) → 双通道比对；
+     渲染到 #qqq-upd-health（设置面板·重置窗口右侧）：SW 缓存旧 → 红色⚠️ 按「重置窗口」；
+     正常态并入升级健康胶囊（壳层快照 qqqide:update:health：版本/更新状态/失败数/暂存态）+ 悬停明细 -->
 <script src="core/__stamp.js"></script>
-<script>
-// ★ 构建戳双通道比对机器 — SW缓存ID(__stamp.js) vs 磁盘(_BUILD_STAMP.json)
-//   渲染到 #qqq-status-build（设置面板·重置窗口右侧）：旧缓存 → 按「重置窗口」
-//   设置面板每次渲染时由 settings.js 调用 __qqqBuildStampRefresh()
-(function(){
-  var _last = null; // 上次渲染结果缓存，面板重开秒显不闪
-  function _renderTo($el, res) {
-    if (!$el) return;
-    $el.textContent = res.text;
-    $el.style.color = res.color || '';
-    $el.style.fontWeight = res.bold ? 'bold' : '';
-    $el.title = res.title;
-  }
-  function _apply(res) {
-    _last = res;
-    var els = document.querySelectorAll('#qqq-status-build');
-    for (var i = 0; i < els.length; i++) _renderTo(els[i], res);
-  }
-  function _refresh() {
-    var diskId = (window.__QQQ_BUILD_ID || '????');
-    var _t = function (k, fb, p) { try { return (window._i ? window._i(k, fb, p) : fb); } catch (_) { return fb; } };
-    fetch('/qqqide/qqq/_BUILD_STAMP.json?_=' + Date.now(), {cache:'no-cache'})
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(data){
-        if (!data) {
-          _apply({text: _t('settings.stamp.none', '\u274c 无'), color: '#dc322f', title: _t('settings.stamp.readFail', '构建戳读取失败')});
-        } else if (data.buildId === window.__QQQ_BUILD_ID) {
-          _apply({text: '\u2705 ' + data.buildId.slice(0,8), title: _t('settings.stamp.ok', '最新代码 \u2705 buildId={id}', { id: data.buildId })});
-        } else {
-          _apply({text: '\u26a0\ufe0f ' + data.buildId.slice(0,8) + '\u2260' + diskId.slice(0,6), color: '#dc322f', bold: true, title: _t('settings.stamp.stale', 'SW\u7f13\u5b58\u4e86\u65e7\u4ee3\u7801\uff01\u78c1\u76d8={disk} \u6d4f\u89c8\u5668={browser}', { disk: data.buildId, browser: diskId })});
-        }
-      })
-      .catch(function(){
-        _apply({text: _t('settings.stamp.fetchFail', '\u274c fetch失败'), color: '#dc322f', title: _t('settings.stamp.fetchFailTitle', '构建戳 fetch 失败')});
-      });
-  }
-  window.__qqqBuildStampRefresh = function(){
-    if (_last) _apply(_last); // 有缓存先同步渲染，防面板重开闪 'stamp: --'
-    _refresh();
-  };
-})();
-</script>
+<script src="core/update-health.js"></script>
 <!-- wysiwyg core: klipzap → paste-router（落盘/锚点）→ viewport-machine（唯一渲染真相：per-editor 锚点表 + ViewZone 相框） -->
 <script src="core/klipzap.js"></script>
 <script src="core/wq-stats.js"></script>

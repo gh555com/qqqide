@@ -268,7 +268,14 @@ var AgentLoop = (function () {
             case 'http_503': parts.push('服务器返回503(Service Unavailable) — 可能是上游计费/配额耗尽或服务器过载'); break;
             case 'http_504': parts.push('服务器返回504(Gateway Timeout)'); break;
             case 'http_429': parts.push('请求过于频繁(429限流)'); break;
-            case 'http_400': parts.push('AI接口返回400(请求格式错误，可能是孤儿tool消息)'); break;
+            case 'http_400':
+                // ★ 上下文硬墙：上游报文含精确数字 → 显示真因（红框诊断不再误报孤儿 tool）
+                if (this._lastCtxOverflow && this._lastCtxOverflow.msgs) {
+                    parts.push('上下文超出模型窗口(' + Math.round(this._lastCtxOverflow.msgs / 1000) + 'K + ' + Math.round(this._lastCtxOverflow.completion / 1000) + 'K > ' + Math.round((this._lastCtxOverflow.limit || 1048576) / 1000) + 'K tokens)');
+                } else {
+                    parts.push('AI接口返回400(请求格式错误，可能是孤儿tool消息)');
+                }
+                break;
             case 'http_422': parts.push('AI接口返回422(参数错误)'); break;
             case 'http_402': parts.push('ge余额不足(402)'); break;
             case 'fetch_error':
@@ -564,6 +571,9 @@ var AgentLoop = (function () {
         self._sendTerminated = false;  // ★ 终止旗：onError 后强制退出 while
         self._lastGatewayError = 0;   // ★ 每层楼重置：防跨 floor 虚假 auto-repair
         self._lastGatewayMessage = '';  // ★ 每层楼重置：防错误信息跨 floor 污染
+        self._ctxMaxTokensOverride = 0;  // ★ 每层楼重置：上下文硬墙精确修正帽（agent-gateway 硬墙自愈）
+        self._ctxOverflow = null;        // ★ 每层楼重置：上游 400 精确数字暂存（待精确重试）
+        self._lastCtxOverflow = null;    // ★ 每层楼重置：诊断快照
         self._exitReason = '';         // ★ 每层楼重置：防 _buildDiagnosis 误报上楼层原因
         self._floorFatal = false;      // ★ 每层楼重置
         self._noNlRepairDone = false;  // ★ 每层楼重置：NO-NL 自动重排屋（2026-09-08 q242 f158 根治）每层最多一次
@@ -736,6 +746,27 @@ var AgentLoop = (function () {
                             if (self._stopState !== 'sending') break;
                             maxIterations++;
                             self._lastGatewayMessage = '';
+                            continue;
+                        }
+                    }
+                    // ★ 2026-09-22 上下文硬墙自愈（q263 f233 三连 http_400 实锤）：上游 400 且报文
+                    //   含精确数字（_ctxOverflow）→ 精确修正 max_tokens 后原样重试（非破坏：不弹组/
+                    //   不改 messages）。弹组对 context-400 只是杯水车薪（一组仅几百 token，墙差
+                    //   数千~数万）——弹一次顶一间 house，下一 house 立刻再撞墙 → 楼层必死。
+                    if ((self._lastGatewayError === 400 || self._lastGatewayError === 422) && self._ctxOverflow && (opts._ctxCapRetried || 0) < 2) {
+                        var _ov = self._ctxOverflow;
+                        self._ctxOverflow = null;
+                        var _fitMax = Math.max(1024, (_ov.limit || 1048576) - _ov.msgs - 512);
+                        if (_fitMax < _ov.completion) {
+                            opts._ctxCapRetried = (opts._ctxCapRetried || 0) + 1;
+                            self._ctxMaxTokensOverride = _fitMax;
+                            self._lastGatewayError = 0;
+                            self._lastGatewayMessage = '';
+                            self._floorOnErrorCalled = false;
+                            self._sendTerminated = false;
+                            maxIterations++;
+                            self._log('→ ctx-overflow repair: max_tokens ' + _ov.completion + ' → ' + _fitMax + ' (msgs=' + _ov.msgs + ' limit=' + _ov.limit + ') — retry without pop');
+                            if (typeof self._writeFileLog === 'function') self._writeFileLog('→ CTX-REPAIR floor=' + (self._ctx ? self._ctx.totalFloors : '?') + ' house=' + (self._houseIndex || '?') + ' max_tokens ' + _ov.completion + '→' + _fitMax + ' msgs=' + _ov.msgs + ' limit=' + _ov.limit);
                             continue;
                         }
                     }

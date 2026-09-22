@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "Kiểm tra cập nhật",
-            "updatedTo": "Đã cập nhật lên {version}, sắp tải lại...",
-            "failed": "Cập nhật thất bại",
-            "failedWith": "Cập nhật thất bại",
-            "newVersion": "Có phiên bản mới {latest} (hiện tại {current})"
+            "toast": "Phiên bản mới v{version} đã sẵn sàng: Nhấn «Khởi động lại để cập nhật» để hoàn tất ngay, hoặc thoát ứng dụng để tự động cập nhật",
+            "apply": "Khởi động lại để cập nhật",
+            "applying": "Đang cập nhật, ứng dụng sẽ khởi động lại sớm…",
+            "checking": "Đang kiểm tra cập nhật…",
+            "downloading": "Đang tải xuống phiên bản mới {pct}%",
+            "staging": "Đang chuẩn bị phiên bản mới…",
+            "readyBtn": "Phiên bản mới v{version} đã sẵn sàng, nhấn để cập nhật ngay (thoát ứng dụng cũng sẽ tự động hoàn tất)",
+            "latest": "Đã là phiên bản mới nhất v{version}",
+            "found": "Phát hiện phiên bản mới v{version}, đang tải xuống nền…",
+            "busy": "Phiên bản mới đang được tải xuống trong nền, sẽ thông báo khi hoàn tất",
+            "done": "Đã cập nhật lên v{version}",
+            "rolledback": "Cập nhật lần này chưa hoàn tất, đã quay về phiên bản trước",
+            "unavailable": "Vị trí cài đặt hiện tại không hỗ trợ cập nhật trong ứng dụng",
+            "failed": "Cập nhật thất bại"
         },
         "overlay": {
             "copy": "Sao chép vào clipboard",
@@ -111,7 +121,10 @@
             "roamNoPath": "Đường dẫn này không có tệp cục bộ, không thể định vị trong Roam",
             "roamMoved": "Đường dẫn không còn tồn tại (có thể đã bị di chuyển/xóa):",
             "roamMoved2": " → Đã định vị đến thư mục gần nhất ",
-            "roamNotFound": "Không tìm thấy trên ổ đĩa:"
+            "roamNotFound": "Không tìm thấy trên ổ đĩa:",
+            "loadFailed": "Tải ảnh thất bại, không thể xem trước",
+            "mediaFailed": "Tải phương tiện thất bại, có thể do định dạng không được hỗ trợ hoặc tệp bị hỏng",
+            "transcoding": "Đang chuyển mã xem trước…"
         },
         "about": {
             "title": "Giới thiệu về qqq",
@@ -293,7 +306,6 @@
             "copyRelativePath": "Sao chép đường dẫn tương đối",
             "splitRight": "Tách sang phải",
             "splitDown": "Tách xuống dưới",
-            "encScheme": "Phương án mã hóa…",
             "encReopen": "Mở lại theo mã hóa (đọc lại từ đĩa)",
             "encSaveAs": "Lưu nội dung dưới dạng khác (chuyển đổi mã hóa)",
             "encAuto": "Tự động phát hiện",
@@ -364,6 +376,14 @@
             "copyImageSuccess": "Sao chép thành công — dữ liệu nhị phân bitmap",
             "copyImageFailed": "Sao chép thất bại — Nhị phân bitmap: {0}"
         }
+    },
+    "mdview": {
+        "action": "Xem trước Markdown",
+        "empty": "(Tài liệu trống)",
+        "missing": "Tệp không còn tồn tại",
+        "tooLarge": "Tệp quá lớn, đã tạm dừng xem trước thời gian thực",
+        "refresh": "Làm mới",
+        "renderError": "Render thất bại"
     },
     "login": {
         "title": "Đăng nhập",
@@ -616,7 +636,9 @@
             "notSent": ". Nội dung sau chưa được gửi:",
             "allocShown": "——Nội dung chưa gửi đã được hiển thị trong khu vực tin nhắn phía trên",
             "stallAbort": "Gửi bị đình trệ (>20 phút không tiến triển) đã tự động hủy",
-            "stallAbortQoast": "Gửi bị đình trệ (>20 phút không tiến triển) đã tự động hủy, có thể nhấp vào khung đỏ của tầng \"Tiếp tục nhiệm vụ\" để khôi phục"
+            "stallAbortQoast": "Gửi bị đình trệ (>20 phút không tiến triển) đã tự động hủy, có thể nhấp vào khung đỏ của tầng \"Tiếp tục nhiệm vụ\" để khôi phục",
+            "stallAbortTool": "Thực thi công cụ bị treo (không có tiến triển sau hơn 2 giờ) đã tự động dừng",
+            "stallAbortToolQoast": "Công cụ thực thi bị treo (không có tiến triển sau hơn 2 giờ) đã tự động dừng. Nhấp vào khung đỏ ở tầng để «Tiếp tục tác vụ» và khôi phục."
         },
         "needLogin": "Vui lòng nhấp vào Đăng nhập trên thanh menu trước",
         "errUnknown": "Lỗi không xác định",
@@ -691,6 +713,10 @@
             "firstToken": "Đang chờ ký tự đầu tiên xuất hiện",
             "hangCount": "(Lần thứ {0})",
             "hangBroken": "Kênh mạng nghi ngờ bị hỏng{0}, đã tự động thử tất cả các tuyến. Tầng đã được lưu, khuyến nghị nhấn Ctrl+R để làm mới cửa sổ rồi nhấp vào \"Tiếp tục nhiệm vụ\""
+        },
+        "toolWait": {
+            "title": "⏳ Đang thực thi công cụ {0}",
+            "subtitle": "{0} Tầng {1} · Đang thực thi tác vụ dài"
         },
         "gw": {
             "hangTimeout": "Hết thời gian chờ kết nối (đã tự động thử tất cả các tuyến đường, cuộc hội thoại được giữ nguyên, có thể nhấp «Tiếp tục nhiệm vụ» để thử lại)",
@@ -1490,6 +1516,46 @@
         "pendingTip": "Chức năng này đang chờ chuyển đổi (tạm giữ chỗ)",
         "bridgeMissing": "qqq: Dịch vụ xuất không khả dụng (cần khởi động lại instance)"
     },
+    "sync": {
+        "uploadTitle": "Tải lên đám mây",
+        "downloadTitle": "Tải dữ liệu từ đám mây",
+        "uploadConfirmTitle": "Tải dữ liệu lên đám mây",
+        "uploadConfirmMsg": "Tôi xác nhận:\n1. Tôi là người dùng bản chính thức;\n2. Lịch sử clipboard và tùy chọn lưu trữ tệp của tôi không chứa bất kỳ thông tin nhạy cảm cá nhân nào (như mật khẩu) và không bao gồm bất kỳ nội dung vi phạm pháp luật hoặc phản động nào.",
+        "uploadConfirmBtn": "Tôi xác nhận và tải lên",
+        "pullConfirmTitle": "Hợp nhất dữ liệu từ đám mây",
+        "pullConfirmMsg": "Tải xuống dữ liệu từ đám mây sẽ được hợp nhất với tùy chọn đồng bộ hóa cục bộ và lịch sử clipboard (lấy hợp, không mất dữ liệu). Bạn có muốn tiếp tục không?",
+        "pullConfirmBtn": "Xác nhận tải xuống",
+        "uploadCancel": "Hủy bỏ",
+        "uploading": "Đang tải dữ liệu lên đám mây...",
+        "pulling": "Đang kéo dữ liệu từ đám mây...",
+        "uploadSuccess": "Đã tải lên đám mây ({0})",
+        "pullSuccess": "Đã hợp nhất dữ liệu từ đám mây, thêm mới {1} mục ({0})",
+        "uploadFailed": "Tải lên thất bại: {0}",
+        "pullFailed": "Khôi phục thất bại: {0}",
+        "noData": "Hiện chưa có dữ liệu trên đám mây",
+        "noAuth": "Chưa đăng nhập, vui lòng đăng nhập trước",
+        "errNotPurchased": "Người dùng này không phải là người dùng bản quyền",
+        "errRateLimit": "Yêu cầu quá thường xuyên, vui lòng thử lại sau",
+        "errQuota": "Dữ liệu vượt quá giới hạn hạn ngạch",
+        "errNotRegistered": "Số điện thoại này chưa được đăng ký",
+        "errAuthExpired": "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại",
+        "errNetwork": "Lỗi mạng, vui lòng kiểm tra kết nối mạng",
+        "errServer": "Lỗi máy chủ, vui lòng thử lại sau",
+        "lok": "Đang đồng bộ, vui lòng đợi…",
+        "bridgeMissing": "Đồng bộ đám mây không khả dụng (cần khởi động lại instance)"
+    },
+    "workbench": {
+        "savorTip": "Nhạc cục bộ: {v0} lần, tổng cộng {v1}\nRadio: {v2} lần, tổng cộng {v3}\nTrung bình nghe mỗi ngày: {v4}",
+        "durHm": "{0} giờ {1} phút",
+        "durMs": "{0} phút {1} giây",
+        "durSs": "{0} giây",
+        "exportDocTip": "Xuất tài liệu hiện tại sang định dạng Word: Hình ảnh và video được chuyển thành hình ảnh nhúng, các tệp đính kèm khác được tạo danh sách; mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi tệp cùng tên đã tồn tại.",
+        "exportZipTip": "Đóng gói tài liệu hiện tại cùng tất cả các tệp và thư mục được tham chiếu thành file ZIP (giữ nguyên cấu trúc thư mục, nén tối đa); mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi có tệp trùng tên.",
+        "cloudSyncTip": "Đồng bộ đám mây: ↑ Tải lên = Hợp nhất với đám mây rồi tải lên (không mất dữ liệu ở cả hai bên); ↓ Tải xuống = Hợp nhất dữ liệu đám mây vào máy cục bộ. Bao gồm cấu hình trình soạn thảo, tùy chọn cho từng thư mục và lịch sử clipboard.",
+        "videoUrlTip": "Sắp ra mắt: Nhập URL video, tự động tải xuống thư mục tài liệu và chèn vào khung hình.",
+        "pasteTip": "Chờ dán: Dán nội dung clipboard vào tài liệu chỉ với một cú nhấp chuột (hiện tại bạn cũng có thể dùng Ctrl+V để thực hiện thao tác tương tự).",
+        "pureTip": "Sắp ra mắt: Quét các tham chiếu trong tài liệu, dọn dẹp các tệp mồ côi không còn được tham chiếu."
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1567,6 +1633,9 @@
             "label": "Âm lượng",
             "desc": "Âm lượng cho cửa sổ IDE và tất cả goods (âm lượng riêng của goods đi đường vòng, không chịu kiểm soát bởi cài đặt này). Mặc định xuất xưởng là 25%."
         },
+        "mdviewAuto": {
+            "label": "Tự động mở xem trước Markdown"
+        },
         "shortcut": {
             "label": "Tự động tạo lối tắt"
         },
@@ -1618,6 +1687,48 @@
             "stale": "SW đã lưu trữ mã cũ trong bộ nhớ đệm! Đĩa={disk} Trình duyệt={browser}",
             "fetchFail": "❌ Fetch thất bại",
             "fetchFailTitle": "Fetch dấu xây dựng thất bại"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "Cập nhật bất thường",
+            "ttDev": "Phiên bản phát triển — việc cập nhật được quản lý bởi quy trình phát triển",
+            "ttVer": "Phiên bản hiện tại v{v}",
+            "ttLauncher": "Trình khởi chạy {l}",
+            "ttOk": "Đã là phiên bản mới nhất (kiểm tra lúc {time})",
+            "ttNone": "Trình cập nhật chưa hoàn tất lần kiểm tra đầu tiên",
+            "ttStaged": "Phiên bản mới v{v} đã sẵn sàng — khởi động lại để hoàn tất cập nhật tự động",
+            "ttPrep": "Đang chuẩn bị cập nhật v{v} trong nền",
+            "ttFailed": "Lần cập nhật trước đó thất bại",
+            "ttFails": "Số lần thất bại {n}",
+            "ttEvent": "Sự kiện gần đây: {line}",
+            "ttClick": "Nhấn để xem bản ghi lỗi lõi",
+            "diagTitle": "Nhật ký chẩn đoán nâng cấp",
+            "diagHint": "Dưới đây là các đoạn cuối của nhật ký lỗi/cập nhật chính. Nhấp «Sao chép báo cáo» hoặc «Tạo tệp báo cáo» để gửi cho quản trị viên hỗ trợ khắc phục sự cố.",
+            "diagLoad": "Đang đọc…",
+            "diagEmpty": "Chưa có tệp nhật ký (chưa phát sinh bản ghi)",
+            "diagEmptyLine": "(trống)",
+            "diagMissing": "Tệp không tồn tại",
+            "diagCopy": "Sao chép",
+            "diagReveal": "Định vị",
+            "diagCopyAll": "Sao chép báo cáo",
+            "diagSave": "Tạo tệp báo cáo",
+            "diagOpenDir": "Mở thư mục nhật ký",
+            "diagClose": "Đóng",
+            "diagCopied": "Đã sao chép vào clipboard",
+            "diagSaved": "Báo cáo đã được tạo và định vị tại: {p}",
+            "diagNeedRestart": "Cần khởi động lại instance qqqide để sử dụng",
+            "diagFail": "Thao tác thất bại",
+            "diagF": {
+                "swapready": "Cờ sẵn sàng tạm thời",
+                "crash": "Luồng sự kiện mạng khi gặp sự cố",
+                "rnext": "Thông tin chuẩn bị nền",
+                "state": "Sự kiện kho trạng thái",
+                "recovery": "Báo cáo đối chiếu sau sự cố",
+                "swap": "Nhật ký trao đổi cập nhật",
+                "status": "Lần thử cập nhật gần nhất",
+                "render": "Tiến trình render bị sập",
+                "fails": "Số lần thất bại"
+            }
         }
     },
     "squad": {

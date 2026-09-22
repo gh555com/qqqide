@@ -56,7 +56,7 @@ import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broke
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getOsGaeaFullState, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
 import { registerKopeIpc, kopeWarmup } from './ipc-kope';
 import { registerVigIpc } from './ipc-vig';
-import { vigFlush, vigSquadSummon } from './vig';
+import { vigFlush, vigSquadSummon, vigStartFloorsSeed } from './vig';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
 import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
@@ -65,9 +65,10 @@ import { registerKmdIpc } from './ipc-kmd';
 import { registerQmdIpc } from './ipc-qmd';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
-import { startWqPing, stopWqPing, notifyAuthReady, setCurrentlyPlaying, triggerPlayingPing } from './wq-ping';
+import { startWqPing, stopWqPing, notifyAuthReady, setCurrentlyPlaying, triggerPlayingPing, setWqPingStateStore } from './wq-ping';
 import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain';
 import { startAutoUpdater } from './auto-updater';
+import { registerUpdateHealthIpc } from './update-health';
 import { startMacUpdater, registerMacUpdateIpc, maybeAutoApplyOnQuit } from './mac-updater';
 
 // ── 服务 ──
@@ -87,6 +88,7 @@ import { MediaService } from './media-service';
 import { ExportService } from './export-service';
 import { StateStore } from './state-sqlite';
 import { StateCloud } from './state-cloud';
+import { registerUserDataIpc } from './user-data-sync';
 import { Qgf } from './qgf';
 import { DownloadService } from './download-service';
 
@@ -303,7 +305,9 @@ function registerAllIpc(): void {
     registerGitDiffIpc(portable.root, bootConfig);
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
+    registerUserDataIpc();   // 云同步上传/下载（老 qqq AQ 模式：Pull-Merge-Push 零丢失）
     registerMacUpdateIpc();
+    registerUpdateHealthIpc(portable.root);   // 升级健康快照（设置面板「升级健康位」数据源）
     registerAudioIpc(audioEngine, portable.root);
     registerWqPlayingIpc();
     registerVigIpc();
@@ -872,7 +876,10 @@ app.whenReady().then(async () => {
         fs.mkdirSync(path.dirname(bootLogPath), { recursive: true });
         fs.appendFileSync(bootLogPath, new Date().toISOString() + ' [main.ts] calling startWqPing userData=' + portable.userData + '\n');
     } catch (_) { }
+    try { setWqPingStateStore(stateStore); } catch { /* ignore */ }
     startWqPing(portable.userData);
+    // ★ 楼层履历离线播种（2026-09-22）：启动 60s 后扫最近项目 _qqq/quests/*/f* 一次性回填「总楼层」
+    try { vigStartFloorsSeed(stateStore); } catch { /* ignore */ }
 
     // ★ 壳层后台更新器（2026-08-31 架构）: 下载/验签/解压 100% 在 IDE 正常运行期间执行
     //   ——C 启动器不再持有下载线程（启动/退出/第二实例零等待，点击必弹窗）

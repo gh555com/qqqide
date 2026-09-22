@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { ipcMain } from 'electron';
-import { vigBump, vigSet, vigSnapshot, vigFlush } from './vig';
+import { vigBump, vigSet, vigSnapshot, vigFlush, vigFloor } from './vig';
 
 export function registerVigIpc(): void {
     ipcMain.handle('qqqide:vig:bump', (_e, mod: string, add: Record<string, number>) => {
@@ -25,6 +25,18 @@ export function registerVigIpc(): void {
     ipcMain.handle('qqqide:vig:set', (_e, mod: string, patch: Record<string, number>) => {
         try {
             vigSet(String(mod || ''), (patch && typeof patch === 'object') ? patch : {});
+            return { ok: true };
+        } catch { return { ok: false }; }
+    });
+
+    // 楼层履历（2026-09-22）：发送成功分配楼层 → 总楼层 + 等级直方 + 白嫖（免费时段）
+    ipcMain.handle('qqqide:vig:floor', (_e, payload: any) => {
+        try {
+            vigFloor(
+                String((payload && payload.root) || ''),
+                Number((payload && payload.tier) || 0),
+                !!(payload && payload.free),
+            );
             return { ok: true };
         } catch { return { ok: false }; }
     });

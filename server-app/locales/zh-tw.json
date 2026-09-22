@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "檢查更新",
-            "updatedTo": "已更新至 {version}，即將重新載入...",
-            "failed": "更新失敗",
-            "failedWith": "更新失敗",
-            "newVersion": "有新版本 {latest} 可用（目前為 {current}）"
+            "toast": "新版本 v{version} 已就緒：點擊「重新啟動更新」立即完成，或退出應用程式後自動更新",
+            "apply": "重新啟動以更新",
+            "applying": "正在更新，應用程式即將重新啟動…",
+            "checking": "正在檢查更新…",
+            "downloading": "正在下載新版本 {pct}%",
+            "staging": "正在準備新版本…",
+            "readyBtn": "新版 v{version} 已就緒，點擊立即更新（退出應用程式也會自動完成）",
+            "latest": "已是最新版本 v{version}",
+            "found": "發現新版本 v{version}，正在背景下載…",
+            "busy": "新版本正在背景下載，完成後會提示",
+            "done": "已更新至 v{version}",
+            "rolledback": "本次更新未完成，已回滾至上一版本",
+            "unavailable": "目前安裝位置不支援應用程式內更新",
+            "failed": "更新失敗"
         },
         "overlay": {
             "copy": "複製到剪貼簿",
@@ -111,7 +121,10 @@
             "roamNoPath": "該路徑無本機檔案，無法在 Roam 中定位",
             "roamMoved": "路徑已不存在（可能被移動/刪除）：",
             "roamMoved2": " → 已定位到最近目錄 ",
-            "roamNotFound": "未在磁碟上找到："
+            "roamNotFound": "未在磁碟上找到：",
+            "loadFailed": "圖片載入失敗，無法預覽",
+            "mediaFailed": "媒體載入失敗，可能格式不支援或檔案已損毀",
+            "transcoding": "正在轉碼預覽…"
         },
         "about": {
             "title": "關於 qqq",
@@ -293,7 +306,6 @@
             "copyRelativePath": "複製相對路徑",
             "splitRight": "向右分割",
             "splitDown": "向下分割",
-            "encScheme": "編碼方案…",
             "encReopen": "依編碼重新開啟（重新讀取磁碟）",
             "encSaveAs": "將內容另存新檔（轉換編碼）",
             "encAuto": "自動偵測",
@@ -364,6 +376,14 @@
             "copyImageSuccess": "複製成功 — 點陣圖二進位資料",
             "copyImageFailed": "複製失敗 — 位圖二進位: {0}"
         }
+    },
+    "mdview": {
+        "action": "預覽 Markdown",
+        "empty": "（空文件）",
+        "missing": "檔案已不存在",
+        "tooLarge": "檔案較大，已暫停即時預覽",
+        "refresh": "重新整理",
+        "renderError": "渲染失敗"
     },
     "login": {
         "title": "登入",
@@ -616,7 +636,9 @@
             "notSent": "。以下內容未發出：",
             "allocShown": "——未發出的內容已顯示在上方訊息區",
             "stallAbort": "傳送停滯（>20 分鐘無進展）已自動終止",
-            "stallAbortQoast": "發送停滯（>20 分鐘無進展）已自動終止，可點擊樓層紅框「繼續任務」恢復"
+            "stallAbortQoast": "發送停滯（>20 分鐘無進展）已自動終止，可點擊樓層紅框「繼續任務」恢復",
+            "stallAbortTool": "工具執行停滯（超過 2 小時無進展）已自動終止",
+            "stallAbortToolQoast": "工具執行停滯（超過 2 小時無進展）已自動終止，可點擊樓層紅框「繼續任務」恢復"
         },
         "needLogin": "請先在選單列點擊登入",
         "errUnknown": "未知錯誤",
@@ -691,6 +713,10 @@
             "firstToken": "等待首字輸出",
             "hangCount": "（第 {0} 次）",
             "hangBroken": "網路通道疑似損壞{0}，已自動嘗試全部線路。樓層已儲存，建議 Ctrl+R 重新整理視窗後點擊「繼續任務」"
+        },
+        "toolWait": {
+            "title": "⏳ 工具執行中 {0}",
+            "subtitle": "{0} 第 {1} 層 · 長任務執行中"
         },
         "gw": {
             "hangTimeout": "連線逾時（已自動嘗試全部線路，對話完整保留，可點擊「繼續任務」重試）",
@@ -1490,6 +1516,46 @@
         "pendingTip": "此功能待移植（暫留位置）",
         "bridgeMissing": "qqq: 匯出服務無法使用（需重新啟動執行個體）"
     },
+    "sync": {
+        "uploadTitle": "上傳至雲端",
+        "downloadTitle": "下載雲端資料",
+        "uploadConfirmTitle": "上傳資料至雲端",
+        "uploadConfirmMsg": "我確認：\n1、我是正版用戶；\n2、我的剪貼簿、檔案記錄偏好中不包含任何個人敏感資訊（如密碼），且不包含任何違法或反動資訊。",
+        "uploadConfirmBtn": "我確認並上傳",
+        "pullConfirmTitle": "從雲端合併資料",
+        "pullConfirmMsg": "下載雲端資料，將與本機漫遊偏好和剪貼簿歷史合併（取聯集，不遺失），是否繼續？",
+        "pullConfirmBtn": "確認下載",
+        "uploadCancel": "取消",
+        "uploading": "正在上傳資料到雲端...",
+        "pulling": "正在從雲端拉取資料...",
+        "uploadSuccess": "已上傳至雲端 ({0})",
+        "pullSuccess": "已從雲端合併資料，新增 {1} 筆 ({0})",
+        "uploadFailed": "上傳失敗：{0}",
+        "pullFailed": "還原失敗：{0}",
+        "noData": "雲端暫無資料",
+        "noAuth": "目前尚未登入，請先登入",
+        "errNotPurchased": "該使用者非正版使用者",
+        "errRateLimit": "請求過於頻繁，請稍後再試",
+        "errQuota": "資料超出配額限制",
+        "errNotRegistered": "該手機號碼未註冊",
+        "errAuthExpired": "登入已過期，請重新登入",
+        "errNetwork": "網路錯誤，請檢查網路連線",
+        "errServer": "伺服器錯誤，請稍後再試",
+        "lok": "同步中，請稍候…",
+        "bridgeMissing": "雲端同步不可用（需重新啟動執行個體）"
+    },
+    "workbench": {
+        "savorTip": "本機音樂：{v0} 次，共 {v1}\n電台：{v2} 次，共 {v3}\n日均收聽：{v4}",
+        "durHm": "{0} 小時 {1} 分",
+        "durMs": "{0} 分 {1} 秒",
+        "durSs": "{0} 秒",
+        "exportDocTip": "將目前文件匯出為 Word 檔案：圖片與影片轉換為內嵌圖片，其他附件生成清單；預設儲存於文件旁，僅當同名檔案已存在時才彈出儲存對話框。",
+        "exportZipTip": "將目前文件及其引用的所有檔案、目錄打包成 ZIP（保留目錄結構、最高壓縮）；預設儲存於文件旁，僅當同名檔案已存在時才彈出儲存對話框。",
+        "cloudSyncTip": "雲端同步：↑ 上傳 = 先與雲端合併再上傳（雙方資料皆不會遺失）；↓ 下載 = 將雲端資料合併至本機。包含編輯器設定、各資料夾偏好、剪貼簿歷史。",
+        "videoUrlTip": "待開發：輸入影片網址，自動下載至文件目錄並插入相框。",
+        "pasteTip": "待遷移：一鍵將剪貼簿內容貼上到文件（目前使用 Ctrl+V 可完成相同操作）。",
+        "pureTip": "待開發：掃描文件引用，清理不再被引用的孤立檔案。"
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1567,6 +1633,9 @@
             "label": "音量",
             "desc": "IDE 視窗及所有 goods 的音量（獨立音量 goods 走旁路，不受此控制）。出廠預設 25%。"
         },
+        "mdviewAuto": {
+            "label": "自動開啟 Markdown 預覽"
+        },
         "shortcut": {
             "label": "自動產生捷徑"
         },
@@ -1618,6 +1687,48 @@
             "stale": "SW 快取了舊版程式碼！磁碟={disk} 瀏覽器={browser}",
             "fetchFail": "❌ fetch 失敗",
             "fetchFailTitle": "建構戳記 fetch 失敗"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "更新異常",
+            "ttDev": "開發實例 — 更新由開發流程管理",
+            "ttVer": "目前版本 v{v}",
+            "ttLauncher": "啟動器 {l}",
+            "ttOk": "已是最新（檢查於 {time}）",
+            "ttNone": "更新器尚未完成首次檢查",
+            "ttStaged": "新版本 v{v} 已就緒 — 重新啟動後自動完成更新",
+            "ttPrep": "正在背景準備更新 v{v}",
+            "ttFailed": "上次更新失敗",
+            "ttFails": "失敗次數 {n}",
+            "ttEvent": "最近事件：{line}",
+            "ttClick": "點擊查看核心失敗記錄",
+            "diagTitle": "升級診斷記錄",
+            "diagHint": "以下為核心失敗 / 更新紀錄的末尾片段。點選「複製報告」或「產生報告檔案」傳送給管理員即可協助排查。",
+            "diagLoad": "讀取中…",
+            "diagEmpty": "暫無紀錄檔案（尚未產生記錄）",
+            "diagEmptyLine": "（空）",
+            "diagMissing": "檔案不存在",
+            "diagCopy": "複製",
+            "diagReveal": "定位",
+            "diagCopyAll": "複製報告",
+            "diagSave": "產生報告檔案",
+            "diagOpenDir": "開啟記錄檔目錄",
+            "diagClose": "關閉",
+            "diagCopied": "已複製到剪貼簿",
+            "diagSaved": "報告已產生並定位：{p}",
+            "diagNeedRestart": "需重新啟動 qqqide 執行個體後方可使用",
+            "diagFail": "操作失敗",
+            "diagF": {
+                "swapready": "暫存就緒標記",
+                "crash": "崩潰網路事件流",
+                "rnext": "背景準備資訊",
+                "state": "狀態庫事件",
+                "recovery": "崩潰對帳報告",
+                "swap": "更新交換紀錄",
+                "status": "最近更新嘗試",
+                "render": "渲染程序崩潰",
+                "fails": "失敗次數"
+            }
         }
     },
     "squad": {

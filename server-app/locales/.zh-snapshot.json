@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "检查更新",
-            "updatedTo": "已更新到 {version}，即将重载...",
-            "failed": "更新失败",
-            "failedWith": "更新失败",
-            "newVersion": "新版本 {latest} 可用 (当前 {current})"
+            "toast": "新版本 v{version} 已就绪：点「重启更新」立即完成，或退出应用后自动更新",
+            "apply": "重启更新",
+            "applying": "正在更新，应用即将重启…",
+            "checking": "正在检查更新…",
+            "downloading": "正在下载新版本 {pct}%",
+            "staging": "正在准备新版本…",
+            "readyBtn": "新版 v{version} 已就绪，点击立即更新（退出应用也会自动完成）",
+            "latest": "已是最新版本 v{version}",
+            "found": "发现新版本 v{version}，正在后台下载…",
+            "busy": "新版本正在后台下载，完成后会提示",
+            "done": "已更新到 v{version}",
+            "rolledback": "本次更新未完成，已回到上一版本",
+            "unavailable": "当前安装位置不支持应用内更新",
+            "failed": "更新检查失败，稍后自动重试"
         },
         "overlay": {
             "copy": "复制到剪贴板",
@@ -111,7 +121,10 @@
             "roamNoPath": "该路径无本地文件，无法在 Roam 定位",
             "roamMoved": "路径已不存在（可能被移动/删除）：",
             "roamMoved2": " → 已定位到最近目录 ",
-            "roamNotFound": "未在磁盘上找到："
+            "roamNotFound": "未在磁盘上找到：",
+            "loadFailed": "图片加载失败，无法预览",
+            "mediaFailed": "媒体加载失败，可能格式不受支持或文件已损坏",
+            "transcoding": "正在转码预览…"
         },
         "about": {
             "title": "关于 qqq",
@@ -292,7 +305,6 @@
             "copyRelativePath": "复制相对路径",
             "splitRight": "向右拆分",
             "splitDown": "向下拆分",
-            "encScheme": "编码方案…",
             "encReopen": "按编码重新打开（重读磁盘）",
             "encSaveAs": "将内容另存为（转换编码）",
             "encAuto": "自动检测",
@@ -363,6 +375,14 @@
             "copyImageSuccess": "已复制成功 — 位图二进制",
             "copyImageFailed": "复制失败 — 位图二进制: {0}"
         }
+    },
+    "mdview": {
+        "action": "预览 Markdown",
+        "empty": "（空文档）",
+        "missing": "文件已不存在",
+        "tooLarge": "文件较大，已暂停实时预览",
+        "refresh": "刷新",
+        "renderError": "渲染失败"
     },
     "login": {
         "title": "登录",
@@ -615,7 +635,9 @@
             "notSent": "。以下内容未发出：",
             "allocShown": "——未发出的内容已显示在上方消息区",
             "stallAbort": "发送停滞（>20 分钟无进展）已自动终止",
-            "stallAbortQoast": "发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复"
+            "stallAbortQoast": "发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复",
+            "stallAbortTool": "工具执行停滞（超 2 小时无进展）已自动终止",
+            "stallAbortToolQoast": "工具执行停滞（超 2 小时无进展）已自动终止，可点击楼层红框「继续任务」恢复"
         },
         "needLogin": "请先在菜单栏点击登录",
         "errUnknown": "未知错误",
@@ -690,6 +712,10 @@
             "firstToken": "等待首字输出",
             "hangCount": "（第 {0} 次）",
             "hangBroken": "网络通道疑似损坏{0}，已自动尝试全部线路。楼层已保存，建议 Ctrl+R 刷新窗口后点击「继续任务」"
+        },
+        "toolWait": {
+            "title": "⏳ 工具执行中 {0}",
+            "subtitle": "{0} 第 {1} 层 · 长任务执行中"
         },
         "gw": {
             "hangTimeout": "连接超时（已自动尝试全部线路，对话完整保留，可点击「继续任务」重试）",
@@ -1481,6 +1507,46 @@
         "pendingTip": "此功能待移植（先占位）",
         "bridgeMissing": "qqq: 导出服务不可用（需重启实例）"
     },
+    "sync": {
+        "uploadTitle": "上传到云端",
+        "downloadTitle": "下载云端数据",
+        "uploadConfirmTitle": "上传数据到云端",
+        "uploadConfirmMsg": "我确认：\n1、我是正版用户；\n2、我的剪切板、文件记录偏好中不包括任何个人敏感信息（如密码），且不包括任何违法反动信息。",
+        "uploadConfirmBtn": "我确认并上传",
+        "pullConfirmTitle": "从云端合并数据",
+        "pullConfirmMsg": "下载云端数据，将与本地漫游偏好和剪贴板历史合并（取并集，不丢失），是否继续？",
+        "pullConfirmBtn": "确认下载",
+        "uploadCancel": "取消",
+        "uploading": "正在上传数据到云端...",
+        "pulling": "正在从云端拉取数据...",
+        "uploadSuccess": "已上传到云端 ({0})",
+        "pullSuccess": "已从云端合并数据，新增 {1} 条 ({0})",
+        "uploadFailed": "上传失败：{0}",
+        "pullFailed": "恢复失败：{0}",
+        "noData": "云端暂无数据",
+        "noAuth": "当前未登录，请先登录",
+        "errNotPurchased": "该用户非正版用户",
+        "errRateLimit": "请求太频繁，请稍后再试",
+        "errQuota": "数据超出配额限制",
+        "errNotRegistered": "该手机号未注册",
+        "errAuthExpired": "登录已过期，请重新登录",
+        "errNetwork": "网络错误，请检查网络连接",
+        "errServer": "服务端错误，请稍后再试",
+        "lok": "正在同步中，请稍候…",
+        "bridgeMissing": "云同步不可用（需重启实例）"
+    },
+    "workbench": {
+        "savorTip": "本地音乐：{v0} 次，共 {v1}\n电台：{v2} 次，共 {v3}\n日均收听：{v4}",
+        "durHm": "{0} 小时 {1} 分",
+        "durMs": "{0} 分 {1} 秒",
+        "durSs": "{0} 秒",
+        "exportDocTip": "把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
+        "exportZipTip": "把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
+        "cloudSyncTip": "云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含编辑器配置、各文件夹偏好、剪贴板历史。",
+        "videoUrlTip": "待移植：输入视频网址，自动下载到文档目录并插入相框。",
+        "pasteTip": "待移植：一键把剪贴板内容粘贴到文档（目前用 Ctrl+V 可完成同样操作）。",
+        "pureTip": "待移植：扫描文档引用，清理不再被引用的孤儿文件。"
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1558,6 +1624,9 @@
             "label": "音量",
             "desc": "IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。出厂默认 25%。"
         },
+        "mdviewAuto": {
+            "label": "自动打开 Markdown 预览"
+        },
         "shortcut": {
             "label": "自动生成快捷方式"
         },
@@ -1609,6 +1678,46 @@
             "stale": "SW缓存了旧代码！磁盘={disk} 浏览器={browser}",
             "fetchFail": "❌ fetch失败",
             "fetchFailTitle": "构建戳 fetch 失败"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "更新异常",
+            "ttDev": "开发实例 — 更新由开发流程管理",
+            "ttVer": "当前版本 v{v}",
+            "ttLauncher": "启动器 {l}",
+            "ttOk": "已是最新（检查于 {time}）",
+            "ttNone": "更新器尚未完成首次检查",
+            "ttStaged": "新版本 v{v} 已就绪 — 重启后自动完成更新",
+            "ttPrep": "正在后台准备更新 v{v}",
+            "ttFailed": "上次更新失败",
+            "ttFails": "失败计数 {n}",
+            "ttEvent": "最近事件：{line}",
+            "ttClick": "点击查看核心失败记录",
+            "diagTitle": "升级诊断记录",
+            "diagHint": "以下为核心失败 / 更新日志的末尾片段。点「复制报告」或「生成报告文件」发给管理员即可协助排查。",
+            "diagLoad": "读取中…",
+            "diagEmpty": "暂无日志文件（尚未产生记录）",
+            "diagEmptyLine": "（空）",
+            "diagMissing": "文件不存在",
+            "diagCopy": "复制",
+            "diagReveal": "定位",
+            "diagCopyAll": "复制报告",
+            "diagSave": "生成报告文件",
+            "diagOpenDir": "打开日志目录",
+            "diagClose": "关闭",
+            "diagCopied": "已复制到剪贴板",
+            "diagSaved": "报告已生成并定位：{p}",
+            "diagNeedRestart": "需重启 qqqide 实例后可用",
+            "diagFail": "操作失败",
+            "diagF.swap": "更新交换日志",
+            "diagF.status": "最近更新尝试",
+            "diagF.fails": "失败计数",
+            "diagF.swapready": "暂存就绪标记",
+            "diagF.rnext": "后台准备信息",
+            "diagF.state": "状态库事件",
+            "diagF.render": "渲染进程崩溃",
+            "diagF.crash": "崩溃网事件流",
+            "diagF.recovery": "崩溃对账报告"
         }
     },
     "squad": {

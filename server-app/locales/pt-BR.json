@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "Verificar atualizações",
-            "updatedTo": "Atualizado para {version}, recarregando...",
-            "failed": "Falha na atualização",
-            "failedWith": "Falha na atualização",
-            "newVersion": "Nova versão {latest} disponível (atual {current})"
+            "toast": "A nova versão v{version} está pronta: clique em \"Reiniciar para Atualizar\" para concluir imediatamente, ou saia do aplicativo para atualizar automaticamente",
+            "apply": "Reiniciar para atualizar",
+            "applying": "Atualizando. O aplicativo será reiniciado em breve…",
+            "checking": "Verificando atualizações…",
+            "downloading": "Baixando nova versão {pct}%",
+            "staging": "Preparando nova versão…",
+            "readyBtn": "Nova versão v{version} pronta, clique para atualizar agora (também será concluído automaticamente ao sair do aplicativo)",
+            "latest": "Já está na versão mais recente v{version}",
+            "found": "Nova versão v{version} encontrada, baixando em segundo plano…",
+            "busy": "Nova versão sendo baixada em segundo plano. Você será notificado quando concluir.",
+            "done": "Atualizado para v{version}",
+            "rolledback": "Esta atualização não foi concluída, revertendo para a versão anterior",
+            "unavailable": "Atualizações dentro do aplicativo não são suportadas nesta instalação.",
+            "failed": "Falha na atualização"
         },
         "overlay": {
             "copy": "Copiar para a área de transferência",
@@ -111,7 +121,10 @@
             "roamNoPath": "Não há arquivos locais neste caminho, impossível localizar no Roam",
             "roamMoved": "O caminho não existe mais (pode ter sido movido ou excluído):",
             "roamMoved2": " → Localizado no diretório mais recente ",
-            "roamNotFound": "Não encontrado no disco:"
+            "roamNotFound": "Não encontrado no disco:",
+            "loadFailed": "Falha ao carregar imagem. Não é possível visualizar.",
+            "mediaFailed": "Falha ao carregar mídia. O formato pode não ser suportado ou o arquivo está corrompido.",
+            "transcoding": "Transcodificando visualização…"
         },
         "about": {
             "title": "Sobre o qqq",
@@ -293,7 +306,6 @@
             "copyRelativePath": "Copiar caminho relativo",
             "splitRight": "Dividir à direita",
             "splitDown": "Dividir abaixo",
-            "encScheme": "Esquema de codificação...",
             "encReopen": "Reabrir com codificação (reler do disco)",
             "encSaveAs": "Salvar conteúdo como (converter codificação)",
             "encAuto": "Detecção automática",
@@ -364,6 +376,14 @@
             "copyImageSuccess": "Copiado com sucesso — bitmap binário",
             "copyImageFailed": "Falha na cópia — Binário da imagem bitmap: {0}"
         }
+    },
+    "mdview": {
+        "action": "Visualizar Markdown",
+        "empty": "(Documento vazio)",
+        "missing": "Arquivo não existe mais",
+        "tooLarge": "Arquivo grande. A visualização em tempo real foi pausada.",
+        "refresh": "Atualizar",
+        "renderError": "Falha na renderização"
     },
     "login": {
         "title": "Entrar",
@@ -616,7 +636,9 @@
             "notSent": ". O seguinte conteúdo não foi enviado:",
             "allocShown": "——O conteúdo não enviado foi exibido na área de mensagens acima",
             "stallAbort": "Envio travado (>20 minutos sem progresso) foi encerrado automaticamente",
-            "stallAbortQoast": "Envio travado (>20 minutos sem progresso) foi encerrado automaticamente; clique na caixa vermelha do andar \"Continuar tarefa\" para retomar"
+            "stallAbortQoast": "Envio travado (>20 minutos sem progresso) foi encerrado automaticamente; clique na caixa vermelha do andar \"Continuar tarefa\" para retomar",
+            "stallAbortTool": "Execução da ferramenta estagnada (mais de 2 horas sem progresso) foi encerrada automaticamente",
+            "stallAbortToolQoast": "A execução da ferramenta foi interrompida automaticamente devido à inatividade (sem progresso por mais de 2 horas). Clique na caixa vermelha do andar para «Continuar tarefa» e retomar."
         },
         "needLogin": "Por favor, faça login no menu primeiro",
         "errUnknown": "Erro desconhecido",
@@ -691,6 +713,10 @@
             "firstToken": "Aguardando o primeiro caractere",
             "hangCount": "(tentativa {0})",
             "hangBroken": "Canal de rede possivelmente danificado{0}, todas as rotas foram testadas automaticamente. O andar foi salvo; recomenda-se pressionar Ctrl+R para atualizar a janela e clicar em \"Continuar tarefa\""
+        },
+        "toolWait": {
+            "title": "⏳ Ferramenta em execução {0}",
+            "subtitle": "{0} Nível {1} · Tarefa longa em execução"
         },
         "gw": {
             "hangTimeout": "Tempo de conexão esgotado (todas as rotas foram testadas automaticamente, conversa totalmente preservada; clique em \"Continuar tarefa\" para tentar novamente)",
@@ -1490,6 +1516,46 @@
         "pendingTip": "Esta funcionalidade está pendente de migração (placeholder)",
         "bridgeMissing": "qqq: Serviço de exportação indisponível (é necessário reiniciar a instância)"
     },
+    "sync": {
+        "uploadTitle": "Enviar para a nuvem",
+        "downloadTitle": "Baixar dados da nuvem",
+        "uploadConfirmTitle": "Enviar dados para a nuvem",
+        "uploadConfirmMsg": "Eu confirmo:\n1. Sou um usuário com licença original;\n2. Minhas preferências de histórico da área de transferência e registros de arquivos não incluem nenhuma informação pessoal sensível (como senhas), nem qualquer conteúdo ilegal ou subversivo.",
+        "uploadConfirmBtn": "Confirmo e faço upload",
+        "pullConfirmTitle": "Mesclar dados da nuvem",
+        "pullConfirmMsg": "Baixar os dados da nuvem e mesclá-los com as preferências de roaming locais e o histórico da área de transferência (união, sem perda de dados). Deseja continuar?",
+        "pullConfirmBtn": "Confirmar download",
+        "uploadCancel": "Cancelar",
+        "uploading": "Enviando dados para a nuvem...",
+        "pulling": "Baixando dados da nuvem...",
+        "uploadSuccess": "Enviado para a nuvem ({0})",
+        "pullSuccess": "Dados mesclados da nuvem, {1} novos itens adicionados ({0})",
+        "uploadFailed": "Falha no upload: {0}",
+        "pullFailed": "Falha na restauração: {0}",
+        "noData": "Nenhum dado na nuvem no momento",
+        "noAuth": "Não conectado no momento, faça login primeiro",
+        "errNotPurchased": "Este usuário não possui uma licença válida.",
+        "errRateLimit": "Muitas solicitações. Tente novamente mais tarde.",
+        "errQuota": "Dados excederam o limite de cota",
+        "errNotRegistered": "Este número de telefone não está registrado",
+        "errAuthExpired": "Login expirado, faça login novamente",
+        "errNetwork": "Erro de rede. Verifique sua conexão.",
+        "errServer": "Erro no servidor. Tente novamente mais tarde.",
+        "lok": "Sincronizando, aguarde…",
+        "bridgeMissing": "Sincronização em nuvem indisponível (é necessário reiniciar a instância)"
+    },
+    "workbench": {
+        "savorTip": "Música local: {v0} vezes, total {v1}\nRádio: {v2} vezes, total {v3}\nMédia diária de escuta: {v4}",
+        "durHm": "{0} horas {1} minutos",
+        "durMs": "{0} min {1} seg",
+        "durSs": "{0} segundos",
+        "exportDocTip": "Exportar o documento atual como arquivo Word: imagens e vídeos são convertidos em imagens incorporadas, outros anexos geram uma lista; salvo por padrão ao lado do documento, o diálogo de salvar só aparece se já existir um arquivo com o mesmo nome.",
+        "exportZipTip": "Empacota o documento atual e todos os arquivos/diretórios referenciados em um ZIP (mantém a estrutura de diretórios, compressão máxima). Salvo por padrão ao lado do documento; o diálogo de salvar só aparece se já existir um arquivo com o mesmo nome.",
+        "cloudSyncTip": "Sincronização em nuvem: ↑ Enviar = mesclar com a nuvem antes de enviar (nenhum dado é perdido em nenhum lado); ↓ Baixar = mesclar dados da nuvem com os locais. Inclui configurações do editor, preferências de cada pasta e histórico da área de transferência.",
+        "videoUrlTip": "Pendente: insira a URL do vídeo, ele será baixado automaticamente para o diretório do documento e inserido em um quadro.",
+        "pasteTip": "Colar pendente: Cole o conteúdo da área de transferência no documento com um clique (atualmente, Ctrl+V realiza a mesma ação).",
+        "pureTip": "Pendente: escanear referências do documento e limpar arquivos órfãos que não são mais referenciados."
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1567,6 +1633,9 @@
             "label": "Volume",
             "desc": "Volume da janela da IDE e de todos os goods (goods com volume independente são ignorados e não controlados por esta configuração). Padrão de fábrica: 25%."
         },
+        "mdviewAuto": {
+            "label": "Abrir visualização de Markdown automaticamente"
+        },
         "shortcut": {
             "label": "Gerar atalho automaticamente"
         },
@@ -1618,6 +1687,48 @@
             "stale": "O Service Worker armazenou código antigo! Disco={disk} Navegador={browser}",
             "fetchFail": "❌ Falha no fetch",
             "fetchFailTitle": "Falha no fetch do identificador de build"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "Erro na atualização",
+            "ttDev": "Instância de desenvolvimento — atualizações gerenciadas pelo fluxo de desenvolvimento",
+            "ttVer": "Versão atual v{v}",
+            "ttLauncher": "Inicializador {l}",
+            "ttOk": "Já está atualizado (verificado em {time})",
+            "ttNone": "O atualizador ainda não concluiu a primeira verificação",
+            "ttStaged": "Nova versão v{v} pronta — a atualização será concluída automaticamente após reiniciar",
+            "ttPrep": "Preparando atualização v{v} em segundo plano",
+            "ttFailed": "Falha na última atualização",
+            "ttFails": "Contagem de falhas {n}",
+            "ttEvent": "Evento recente: {line}",
+            "ttClick": "Clique para ver registros de falhas principais",
+            "diagTitle": "Registro de diagnóstico de atualização",
+            "diagHint": "Abaixo estão os trechos finais dos logs principais de falhas/atualizações. Clique em «Copiar relatório» ou «Gerar arquivo de relatório» e envie ao administrador para ajudar na solução de problemas.",
+            "diagLoad": "Lendo…",
+            "diagEmpty": "Nenhum log disponível (nenhum registro gerado ainda)",
+            "diagEmptyLine": "(vazio)",
+            "diagMissing": "Arquivo não encontrado",
+            "diagCopy": "Copiar",
+            "diagReveal": "Localizar",
+            "diagCopyAll": "Copiar relatório",
+            "diagSave": "Gerar arquivo de relatório",
+            "diagOpenDir": "Abrir diretório de logs",
+            "diagClose": "Fechar",
+            "diagCopied": "Copiado para a área de transferência",
+            "diagSaved": "Relatório gerado e localizado em: {p}",
+            "diagNeedRestart": "Disponível após reiniciar a instância qqqide",
+            "diagFail": "Operação falhou",
+            "diagF": {
+                "swapready": "Marcador de preparação de swap",
+                "crash": "Fluxo de eventos de falha de rede",
+                "rnext": "Informações de preparação em segundo plano",
+                "state": "Eventos do banco de estado",
+                "recovery": "Relatório de reconciliação de falhas",
+                "swap": "Log de troca de atualização",
+                "status": "Última tentativa de atualização",
+                "render": "Falha no processo de renderização",
+                "fails": "Contagem de falhas"
+            }
         }
     },
     "squad": {

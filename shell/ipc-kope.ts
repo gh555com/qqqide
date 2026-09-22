@@ -224,6 +224,56 @@ export async function kopeWarmup(): Promise<void> {
     try { await _ensureDb(); } catch { /* ignore */ }
 }
 
+// ── 云同步通道 (user-data-sync.ts 消费；剪贴板历史 blob) ──
+//   导出全部行 / 并集导入（content_hash UNIQUE → INSERT OR IGNORE 天然去重零丢失）
+export async function kopeExportRows(): Promise<any[]> {
+    await _ensureDb();
+    _reloadIfChanged();
+    const r = _db.exec(
+        `SELECT content, content_hash, preview, size_bytes, content_type, pinned, pinned_at, created_at, updated_at
+         FROM clipboard_history ORDER BY updated_at ASC`);
+    if (!r.length) return [];
+    const cols = r[0].columns;
+    return r[0].values.map((row: any[]) => {
+        const o: any = {};
+        cols.forEach((c: string, i: number) => { o[c] = row[i]; });
+        return o;
+    });
+}
+
+/** 并集导入：按 content_hash 去重 INSERT OR IGNORE，返回新增条数。 */
+export async function kopeImportRows(rows: any[]): Promise<number> {
+    await _ensureDb();
+    _reloadIfChanged();
+    if (!Array.isArray(rows) || !rows.length) return 0;
+    const before = _memoryRows();
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    for (const row of rows) {
+        if (!row || typeof row.content !== 'string' || typeof row.content_hash !== 'string' || !row.content_hash) continue;
+        const content = row.content;
+        if (typeof content !== 'string' || content.length === 0 || content.length > 4 * 1024 * 1024) continue;  // 单条硬顶 4MB
+        try {
+            _db.run(
+                `INSERT OR IGNORE INTO clipboard_history
+                   (content, content_hash, preview, size_bytes, content_type, pinned, pinned_at, created_at, updated_at)
+                 VALUES (?,?,?,?,?,?,?,?,?)`,
+                [content,
+                 String(row.content_hash).slice(0, 128),
+                 typeof row.preview === 'string' ? row.preview.slice(0, 500) : content.slice(0, 200),
+                 Number(row.size_bytes) || content.length,
+                 typeof row.content_type === 'string' ? row.content_type : 'text',
+                 row.pinned ? 1 : 0,
+                 row.pinned_at || null,
+                 typeof row.created_at === 'string' && row.created_at ? row.created_at : nowStr,
+                 typeof row.updated_at === 'string' && row.updated_at ? row.updated_at : nowStr]);
+        } catch { /* 单条失败跳过，不影响整体 */ }
+    }
+    const after = _memoryRows();
+    const added = Math.max(0, after - before);
+    if (added > 0) _saveDb();
+    return added;
+}
+
 // ── IPC 注册 ──
 export function registerKopeIpc(): void {
     ipcMain.handle('qqqide:kope:getHistory', async (_e, limit: number, offset: number, keyword?: string) => {

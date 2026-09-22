@@ -74,12 +74,64 @@ function _windowsSnap(): any[] {
     } catch { return []; }
 }
 
+// ── 崩溃摘要（跨重启累计；wq-ping 搭便车上报——只传计数，永不传内容/堆栈）──
+
+const _SUM_KINDS: Record<string, string | undefined> = {
+    'uncaught-exception': 'ue',
+    'unhandled-rejection': 'ur',
+    'child-gone': 'cg',
+    'mem-warning': 'mw',
+    'render-gone': 'rg',
+    'abnormal-exit': 'ab',
+};
+
+function _sumPath(): string { return path.join(_dir, 'summary.json'); }
+
+function _sumLoad(): any {
+    try {
+        const d = JSON.parse(fs.readFileSync(_sumPath(), 'utf8'));
+        if (d && typeof d === 'object') {
+            const out: any = { ab: 0, rg: 0, ue: 0, ur: 0, cg: 0, mw: 0, last: '', ts: 0 };
+            for (const k of ['ab', 'rg', 'ue', 'ur', 'cg', 'mw']) {
+                const n = Number(d[k]);
+                if (Number.isFinite(n) && n > 0) out[k] = Math.floor(Math.min(n, 1000000));
+            }
+            if (typeof d.last === 'string') out.last = d.last.slice(0, 40);
+            const ts = Number(d.ts);
+            if (Number.isFinite(ts) && ts > 0) out.ts = Math.floor(ts);
+            return out;
+        }
+    } catch { /* first run */ }
+    return { ab: 0, rg: 0, ue: 0, ur: 0, cg: 0, mw: 0, last: '', ts: 0 };
+}
+
+function _sumBump(kind: string): void {
+    const key = _SUM_KINDS[kind];
+    if (!key) return;
+    const s = _sumLoad();
+    s[key] = Math.min((s[key] || 0) + 1, 1000000);
+    s.last = kind;
+    s.ts = Date.now();
+    _atomicWrite('summary.json', JSON.stringify(s));
+}
+
+/** 崩溃摘要快照（wq-ping 搭便车；n=总事件数；无数据返回 null）。只含计数与最后事件类型，永不传内容。 */
+export function crashNetSummary(): Record<string, number> | null {
+    try {
+        const s = _sumLoad();
+        const n = s.ab + s.rg + s.ue + s.ur + s.cg + s.mw;
+        if (n <= 0) return null;
+        return { n, ab: s.ab, rg: s.rg, ue: s.ue, ur: s.ur, cg: s.cg, mw: s.mw, t: Math.floor((s.ts || 0) / 1000) };
+    } catch { return null; }
+}
+
 // ── 事件流 ──
 
 function _appendEvent(kind: string, data: any): void {
     let line: string;
     try { line = JSON.stringify({ ts: Date.now(), kind, ...data }); } catch { return; }
     _eventsBuf.push(line);
+    if (_SUM_KINDS[kind]) { try { _sumBump(kind); } catch { /* ignore */ } }
     if (_eventsBuf.length >= FLUSH_BATCH) {
         _flushEvents();
     } else if (!_flushTimer) {
@@ -254,6 +306,9 @@ export function crashNetInit(userData: string): void {
         console.log('[crash-net] last exit:', JSON.stringify(report));
     } catch { /* ignore */ }
     _atomicWrite('recovery-report.json', JSON.stringify({ ts: Date.now(), pid: process.pid, report }, null, 1));
+
+    // ★ 异常退出计数（跨重启累计摘要；供 wq-ping 稳定性遥测搭便车）
+    if (report.lastExit === 'abnormal') { try { _sumBump('abnormal-exit'); } catch { /* ignore */ } }
 
     _appendEvent('boot', { pid: process.pid, report });
 

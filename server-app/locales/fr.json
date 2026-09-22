@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "Vérifier les mises à jour",
-            "updatedTo": "Mis à jour vers {version}, rechargement imminent...",
-            "failed": "Échec de la mise à jour",
-            "failedWith": "Échec de la mise à jour",
-            "newVersion": "Nouvelle version {latest} disponible (actuelle {current})"
+            "toast": "La nouvelle version v{version} est prête : cliquez sur « Redémarrer pour mettre à jour » pour finaliser immédiatement, ou quittez l'application pour une mise à jour automatique",
+            "apply": "Redémarrer pour mettre à jour",
+            "applying": "Mise à jour en cours, redémarrage imminent de l'application…",
+            "checking": "Vérification des mises à jour…",
+            "downloading": "Téléchargement de la nouvelle version {pct}%",
+            "staging": "Préparation de la nouvelle version…",
+            "readyBtn": "La nouvelle version v{version} est prête, cliquez pour mettre à jour immédiatement (la mise à jour se fera aussi automatiquement à la fermeture de l'application)",
+            "latest": "Déjà à jour (v{version})",
+            "found": "Nouvelle version v{version} disponible, téléchargement en arrière-plan…",
+            "busy": "La nouvelle version est en cours de téléchargement en arrière-plan. Vous serez notifié une fois le processus terminé.",
+            "done": "Mis à jour vers v{version}",
+            "rolledback": "La mise à jour n'a pas abouti, retour à la version précédente",
+            "unavailable": "La mise à jour intégrée n'est pas prise en charge à cet emplacement d'installation",
+            "failed": "Échec de la vérification des mises à jour, nouvel essai automatique ultérieur"
         },
         "overlay": {
             "copy": "Copier dans le presse-papiers",
@@ -111,7 +121,10 @@
             "roamNoPath": "Aucun fichier local dans ce chemin, impossible de localiser dans Roam",
             "roamMoved": "Le chemin n'existe plus (peut avoir été déplacé ou supprimé) :",
             "roamMoved2": " → Localisé dans le répertoire récent ",
-            "roamNotFound": "Introuvable sur le disque :"
+            "roamNotFound": "Introuvable sur le disque :",
+            "loadFailed": "Échec du chargement de l'image, aperçu impossible",
+            "mediaFailed": "Échec du chargement du média. Le format n'est peut-être pas pris en charge ou le fichier est corrompu.",
+            "transcoding": "Transcodage pour l'aperçu en cours…"
         },
         "about": {
             "title": "À propos de qqq",
@@ -293,7 +306,6 @@
             "copyRelativePath": "Copier le chemin relatif",
             "splitRight": "Fractionner à droite",
             "splitDown": "Fractionner en bas",
-            "encScheme": "Schéma d'encodage…",
             "encReopen": "Rouvrir avec l'encodage (relire depuis le disque)",
             "encSaveAs": "Enregistrer le contenu sous (convertir l'encodage)",
             "encAuto": "Détection automatique",
@@ -364,6 +376,14 @@
             "copyImageSuccess": "Copie réussie — binaire bitmap",
             "copyImageFailed": "Échec de la copie — binaire de l'image bitmap : {0}"
         }
+    },
+    "mdview": {
+        "action": "Aperçu Markdown",
+        "empty": "(Document vide)",
+        "missing": "Le fichier n'existe plus",
+        "tooLarge": "Fichier volumineux, aperçu en temps réel suspendu",
+        "refresh": "Actualiser",
+        "renderError": "Échec du rendu"
     },
     "login": {
         "title": "Connexion",
@@ -616,7 +636,9 @@
             "notSent": ". Le contenu suivant n'a pas été envoyé :",
             "allocShown": "—— Le contenu non envoyé est affiché dans la zone de messages ci-dessus.",
             "stallAbort": "L'envoi bloqué (>20 minutes sans progression) a été automatiquement arrêté",
-            "stallAbortQoast": "L'envoi bloqué (>20 minutes sans progression) a été automatiquement arrêté, vous pouvez cliquer sur le cadre rouge du niveau « Continuer la tâche » pour reprendre"
+            "stallAbortQoast": "L'envoi bloqué (>20 minutes sans progression) a été automatiquement arrêté, vous pouvez cliquer sur le cadre rouge du niveau « Continuer la tâche » pour reprendre",
+            "stallAbortTool": "Exécution de l'outil bloquée (aucune progression depuis plus de 2 heures), arrêt automatique",
+            "stallAbortToolQoast": "L'exécution de l'outil est bloquée (aucune progression depuis plus de 2 heures) et a été automatiquement arrêtée. Vous pouvez cliquer sur le cadre rouge de l'étage pour « Continuer la tâche »."
         },
         "needLogin": "Veuillez d'abord cliquer sur Connexion dans le menu",
         "errUnknown": "Erreur inconnue",
@@ -691,6 +713,10 @@
             "firstToken": "En attente du premier jeton",
             "hangCount": "({0}e tentative)",
             "hangBroken": "Le canal réseau semble endommagé{0}, toutes les lignes ont été automatiquement tentées. Le niveau a été sauvegardé, il est recommandé de rafraîchir la fenêtre avec Ctrl+R puis de cliquer sur « Continuer la tâche »"
+        },
+        "toolWait": {
+            "title": "⏳ Outil en cours d'exécution {0}",
+            "subtitle": "{0} Étage {1} · Tâche longue en cours d'exécution"
         },
         "gw": {
             "hangTimeout": "Délai de connexion dépassé (toutes les lignes ont été essayées automatiquement, la conversation est intacte, cliquez sur « Continuer la tâche » pour réessayer)",
@@ -1490,6 +1516,46 @@
         "pendingTip": "Fonctionnalité en attente de migration (espace réservé)",
         "bridgeMissing": "qqq : Service d'exportation indisponible (redémarrage de l'instance requis)"
     },
+    "sync": {
+        "uploadTitle": "Téléverser vers le cloud",
+        "downloadTitle": "Télécharger les données du cloud",
+        "uploadConfirmTitle": "Télécharger les données vers le cloud",
+        "uploadConfirmMsg": "Je confirme :\n1. Je suis un utilisateur disposant d'une licence valide ;\n2. Mon presse-papiers et mes préférences d'historique de fichiers ne contiennent aucune information personnelle sensible (comme des mots de passe), ni aucun contenu illégal ou subversif.",
+        "uploadConfirmBtn": "Je confirme et je télécharge",
+        "pullConfirmTitle": "Fusionner les données du cloud",
+        "pullConfirmMsg": "Les données du cloud seront fusionnées avec vos préférences de roaming locales et l'historique du presse-papiers (union sans perte de données). Voulez-vous continuer ?",
+        "pullConfirmBtn": "Confirmer le téléchargement",
+        "uploadCancel": "Annuler",
+        "uploading": "Téléchargement des données vers le cloud...",
+        "pulling": "Récupération des données depuis le cloud...",
+        "uploadSuccess": "Téléversé vers le cloud ({0})",
+        "pullSuccess": "Données fusionnées depuis le cloud, {1} nouvel élément(s) ajouté(s) ({0})",
+        "uploadFailed": "Échec du téléchargement : {0}",
+        "pullFailed": "Échec de la restauration : {0}",
+        "noData": "Aucune donnée sur le cloud pour le moment",
+        "noAuth": "Non connecté. Veuillez vous connecter d'abord.",
+        "errNotPurchased": "Cet utilisateur ne dispose pas d'une licence valide",
+        "errRateLimit": "Trop de requêtes, veuillez réessayer plus tard",
+        "errQuota": "Données dépassant la limite du quota",
+        "errNotRegistered": "Ce numéro de téléphone n'est pas inscrit",
+        "errAuthExpired": "Session expirée, veuillez vous reconnecter",
+        "errNetwork": "Erreur réseau, veuillez vérifier votre connexion",
+        "errServer": "Erreur serveur, veuillez réessayer plus tard",
+        "lok": "Synchronisation en cours, veuillez patienter…",
+        "bridgeMissing": "Synchronisation cloud indisponible (redémarrage de l'instance requis)"
+    },
+    "workbench": {
+        "savorTip": "Musique locale : {v0} lectures, total {v1}\nRadio : {v2} écoutes, total {v3}\nMoyenne quotidienne : {v4}",
+        "durHm": "{0} h {1} min",
+        "durMs": "{0} min {1} s",
+        "durSs": "{0} secondes",
+        "exportDocTip": "Exporte le document actuel au format Word : les images et vidéos sont intégrées en tant qu'images, et les autres pièces jointes font l'objet d'une liste. Enregistrement par défaut à côté du document ; la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
+        "exportZipTip": "Empaquete le document actuel ainsi que tous les fichiers et répertoires référencés dans une archive ZIP (en conservant la structure des répertoires, compression maximale) ; enregistrement par défaut à côté du document, la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
+        "cloudSyncTip": "Synchronisation cloud : ↑ Téléverser = fusionne avec le cloud avant le téléversement (aucune donnée perdue des deux côtés) ; ↓ Télécharger = fusionne les données du cloud avec les données locales. Inclut la configuration de l'éditeur, les préférences par dossier et l'historique du presse-papiers.",
+        "videoUrlTip": "En attente : saisissez l'URL de la vidéo pour la télécharger automatiquement dans le dossier du document et l'insérer dans un cadre.",
+        "pasteTip": "En attente : collez le contenu du presse-papiers dans le document en un clic (vous pouvez aussi utiliser Ctrl+V).",
+        "pureTip": "En attente : analyse des références du document pour nettoyer les fichiers orphelins non référencés."
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1567,6 +1633,9 @@
             "label": "Volume",
             "desc": "Volume de la fenêtre IDE et de tous les goods (les goods avec volume indépendant contournent ce réglage). Valeur par défaut usine : 25 %."
         },
+        "mdviewAuto": {
+            "label": "Ouvrir automatiquement l'aperçu Markdown"
+        },
         "shortcut": {
             "label": "Générer automatiquement les raccourcis"
         },
@@ -1618,6 +1687,48 @@
             "stale": "Le SW a mis en cache un ancien code ! Disque={disk} Navigateur={browser}",
             "fetchFail": "❌ Échec du fetch",
             "fetchFailTitle": "Échec du fetch de l'identifiant de build"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "Erreur de mise à jour",
+            "ttDev": "Instance de développement — les mises à jour sont gérées par le processus de développement",
+            "ttVer": "Version actuelle v{v}",
+            "ttLauncher": "Lanceur {l}",
+            "ttOk": "À jour (vérifié le {time})",
+            "ttNone": "Le vérificateur de mises à jour n'a pas encore effectué sa première vérification",
+            "ttStaged": "Nouvelle version v{v} prête — la mise à jour se finalisera automatiquement au redémarrage",
+            "ttPrep": "Préparation de la mise à jour v{v} en arrière-plan",
+            "ttFailed": "Échec de la dernière mise à jour",
+            "ttFails": "Compteur d'échecs {n}",
+            "ttEvent": "Dernier événement : {line}",
+            "ttClick": "Cliquez pour afficher les enregistrements d'échec critiques",
+            "diagTitle": "Journal de diagnostic de mise à niveau",
+            "diagHint": "Voici les derniers extraits des journaux d'échecs critiques ou de mise à jour. Cliquez sur « Copier le rapport » ou « Générer un fichier de rapport » pour les envoyer à l'administrateur afin d'aider au dépannage.",
+            "diagLoad": "Chargement…",
+            "diagEmpty": "Aucun fichier journal pour le moment (aucun enregistrement généré)",
+            "diagEmptyLine": "(Vide)",
+            "diagMissing": "Fichier introuvable",
+            "diagCopy": "Copier",
+            "diagReveal": "Localiser",
+            "diagCopyAll": "Copier le rapport",
+            "diagSave": "Générer un fichier de rapport",
+            "diagOpenDir": "Ouvrir le dossier des journaux",
+            "diagClose": "Fermer",
+            "diagCopied": "Copié dans le presse-papiers",
+            "diagSaved": "Rapport généré et localisé : {p}",
+            "diagNeedRestart": "Un redémarrage de l'instance qqqide est requis pour appliquer les modifications",
+            "diagFail": "Échec de l'opération",
+            "diagF": {
+                "fails": "Nombre d'échecs",
+                "swap": "Journal d'échange de mise à jour",
+                "render": "Plantage du processus de rendu",
+                "swapready": "Marqueur de préparation intermédiaire prêt",
+                "recovery": "Rapport de réconciliation après plantage",
+                "rnext": "Informations de préparation en arrière-plan",
+                "crash": "Flux d'événements réseau lors du plantage",
+                "status": "Dernière tentative de mise à jour",
+                "state": "Événements de la base d'états"
+            }
         }
     },
     "squad": {

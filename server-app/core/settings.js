@@ -391,8 +391,9 @@
     html += '<div style="display:flex; align-items:center; gap:12px;">';
     html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">' + _i('settings.title', '设置') + '</span>';
     html += '<button id="qqq-settings-restart" style="padding:3px 10px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:11px; cursor:default; white-space:nowrap;">' + _i('settings.restart', '重置窗口') + '</button>';
-    // ★ 构建戳（与重置窗口成对）：SW缓存旧代码 → 红色⚠️ → 按「重置窗口」
-    html += '<span id="qqq-status-build" style="font-family:Consolas,monospace;font-size:11px;color:' + textDim + ';">stamp: --</span>';
+    // ★ 升级健康位（2026-09-22）：壳层快照（版本/更新状态/失败数/暂存态）+ 构建戳比对
+    //   → 胶囊 + 悬停明细；SW 缓存旧 → 红色⚠️ 提示按「重置窗口」（core/update-health.js 唯一入口）
+    html += '<span id="qqq-upd-health" style="font-family:Consolas,monospace;font-size:11px;color:' + textDim + ';">···</span>';
     html += '</div>';
     html += '<button id="qqq-settings-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center;">✕</button>';
     html += '</div>';
@@ -683,8 +684,8 @@
       });
     }
 
-    // 构建戳刷新（渲染到标题行·重置窗口右侧，与重置按钮成对）
-    if (window.__qqqBuildStampRefresh) window.__qqqBuildStampRefresh();
+    // 升级健康刷新（渲染到标题行·重置窗口右侧；core/update-health.js 唯一入口）
+    if (window.__qqqUpdHealthRefresh) window.__qqqUpdHealthRefresh();
   }
 
   // ── 打开/关闭 ──

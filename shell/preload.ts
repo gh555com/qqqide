@@ -207,6 +207,7 @@ const QQQ = {
     vig: {
         bump: (mod: string, add: Record<string, number>) => ipcRenderer.invoke('qqqide:vig:bump', mod, add).catch(() => { }),
         set: (mod: string, patch: Record<string, number>) => ipcRenderer.invoke('qqqide:vig:set', mod, patch).catch(() => { }),
+        floor: (payload: { root: string; tier: number; free: boolean }) => ipcRenderer.invoke('qqqide:vig:floor', payload).catch(() => { }),
         snapshot: () => ipcRenderer.invoke('qqqide:vig:snapshot'),
     },
 
@@ -408,9 +409,13 @@ const QQQ = {
                 return () => ipcRenderer.removeListener('qqqide:state:project:changed', handler);
             },
         },
-    },
-
-    // ---- qgf (FS 原子读写真理机) ----
+    },    // ---- userData (云同步上传/下载：老 qqq AQ 模式 100% 移植) ----
+    userData: {
+        push: (labels?: any) => ipcRenderer.invoke('qqqide:userdata:push', labels),
+        pull: (labels?: any) => ipcRenderer.invoke('qqqide:userdata:pull', labels),
+    },
+
+    // ---- qgf (FS 原子读写真理机) ----
     qgf: {
         register: (rootDir: string, ns: string, schema: any) => ipcRenderer.invoke('qqqide:qgf:register', rootDir, ns, schema),
         get: (rootDir: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:qgf:get', rootDir, ns, key),
@@ -532,9 +537,15 @@ const QQQ = {
         },
     },
 
-    // ---- update（mac 应用内更新机制 v0: 检查/下载/暂存/换装，2026-09-18）----
-    //   Windows 无此机制（更新由 C 启动器托管）→ mac-updater 全平台注册，非 mac 返回 unsupported。
+    // ---- update（mac 应用内更新机制 v0: 检查/下载/暂存/换装，2026-09-18；升级健康快照 2026-09-22）----
+    //   Windows 无应用内更新（更新由 C 启动器托管）→ mac-updater 全平台注册，非 mac 返回 unsupported。
+    //   health = 升级健康快照（全平台本地文件只读：版本/更新状态/失败数/暂存态，设置面板消费）。
     update: {
+        health: () => ipcRenderer.invoke('qqqide:update:health'),
+        // ★ 诊断通道（2026-09-22）：核心失败/更新日志本机只读尾段 + 合成报告落盘（零网络零自动外发）
+        diag: () => ipcRenderer.invoke('qqqide:update:diag'),
+        diagFile: (id: string) => ipcRenderer.invoke('qqqide:update:diag:file', id),
+        diagReport: () => ipcRenderer.invoke('qqqide:update:diag:report'),
         macState: () => ipcRenderer.invoke('qqqide:update:mac-state'),
         macCheck: () => ipcRenderer.invoke('qqqide:update:mac-check'),
         macApply: () => ipcRenderer.invoke('qqqide:update:mac-apply'),

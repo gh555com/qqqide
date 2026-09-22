@@ -426,6 +426,30 @@ function _ensureDbWatcher(): void {
     }
 }
 
+// ── 云同步通道 (user-data-sync.ts 消费；云上传/下载按钮) ──
+//   只读全量 + 批量写回（写回后逐 key 广播，与 set IPC 同语义 → UI 实时刷新）
+export async function roamGetAllForSync(): Promise<Record<string, any>> {
+    await _ensureDb();
+    return _getAll();
+}
+
+export async function roamSetManyForSync(entries: Record<string, any>): Promise<void> {
+    await _ensureDb();
+    const keys = Object.keys(entries || {});
+    if (!keys.length) return;
+    for (const k of keys) {
+        if (entries[k] === undefined) continue;
+        _set(k, entries[k]);
+    }
+    BrowserWindow.getAllWindows().forEach(win => {
+        if (win.isDestroyed()) return;
+        for (const k of keys) {
+            if (entries[k] === undefined) continue;
+            try { win.webContents.send('qqqide:roam:changed', { key: k, value: entries[k] }); } catch { /* ignore */ }
+        }
+    });
+}
+
 // ── IPC 注册 ──
 export function registerRoamIpc(): void {
     ipcMain.handle('qqqide:roam:get', async (_e, key: string) => {

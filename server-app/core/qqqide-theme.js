@@ -244,6 +244,15 @@
   function _persist() {
     var db = _onlyDb();
     if (db) db.set('theme', _dark ? 'dark' : 'light').catch(function () { });
+    // ★ 全局镜像同步（2026-09-22）：qqq.theme/mode 随每次 apply 刷新（恒 = 当前实际主题）
+    //   首启掷骰已写；此后手动切换也要跟上——wq-ping 遥测 ui_theme 直读此值（铁律 §4.1）
+    var gh = _themeGlobalDb();
+    if (gh && gh.set) {
+      try {
+        var gp = gh.set('mode', _dark ? 'dark' : 'light');
+        if (gp && typeof gp.catch === 'function') gp.catch(function () { });
+      } catch (e) { }
+    }
   }
 
   // ★ 从 only.sq3 同步主题（项目切换/首次绑定主文件夹时调用）

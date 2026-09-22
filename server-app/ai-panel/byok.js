@@ -470,6 +470,11 @@
         var url = _endpoint(cfg.baseUrl);
         if (!url) return null;
         var outBody = _buildBody(body, opts, cfg);
+        // ★ VIG 履历（2026-09-22）：自带密钥请求计数（直连/平台代理同计；尝试即计）
+        try {
+            var _vbr = (parent && parent.qqqideBridge) || window.qqqideBridge;
+            if (_vbr && _vbr.vig && typeof _vbr.vig.bump === 'function') { _vbr.vig.bump('byok', { n: 1 }); }
+        } catch (_) { }
         var resp;
 
         // ── 平台代理通道（网络通道=平台代理；直连为默认推荐；本地模型强制直连）──

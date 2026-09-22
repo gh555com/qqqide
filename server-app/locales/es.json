@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "Buscar actualizaciones",
-            "updatedTo": "Actualizado a {version}, recargando...",
-            "failed": "Error al actualizar",
-            "failedWith": "Error al actualizar",
-            "newVersion": "Nueva versión {latest} disponible (actual {current})"
+            "toast": "La nueva versión v{version} está lista: haz clic en «Reiniciar para actualizar» para completar inmediatamente, o cierra la aplicación para que se actualice automáticamente.",
+            "apply": "Reiniciar para actualizar",
+            "applying": "Actualizando, la aplicación se reiniciará próximamente…",
+            "checking": "Comprobando actualizaciones…",
+            "downloading": "Descargando nueva versión {pct}%",
+            "staging": "Preparando la nueva versión…",
+            "readyBtn": "La nueva versión v{version} está lista. Haz clic para actualizar inmediatamente (también se completará automáticamente al cerrar la aplicación).",
+            "latest": "Ya está en la última versión v{version}",
+            "found": "Nueva versión v{version} encontrada. Descargando en segundo plano…",
+            "busy": "La nueva versión se está descargando en segundo plano; se le notificará cuando finalice",
+            "done": "Actualizado a v{version}",
+            "rolledback": "Esta actualización no se completó, se ha vuelto a la versión anterior",
+            "unavailable": "La ubicación de instalación actual no admite actualizaciones dentro de la aplicación",
+            "failed": "Falló la comprobación de actualizaciones, se reintentará automáticamente más tarde"
         },
         "overlay": {
             "copy": "Copiar al portapapeles",
@@ -111,7 +121,10 @@
             "roamNoPath": "Esta ruta no tiene archivos locales, no se puede localizar en Roam",
             "roamMoved": "La ruta ya no existe (puede haber sido movida o eliminada):",
             "roamMoved2": " → Localizado en el directorio reciente ",
-            "roamNotFound": "No encontrado en el disco:"
+            "roamNotFound": "No encontrado en el disco:",
+            "loadFailed": "Error al cargar la imagen, no se puede previsualizar",
+            "mediaFailed": "Error al cargar el medio. Es posible que el formato no sea compatible o que el archivo esté dañado.",
+            "transcoding": "Transcodificando para la vista previa…"
         },
         "about": {
             "title": "Acerca de qqq",
@@ -293,7 +306,6 @@
             "copyRelativePath": "Copiar ruta relativa",
             "splitRight": "Dividir a la derecha",
             "splitDown": "Dividir hacia abajo",
-            "encScheme": "Esquema de codificación…",
             "encReopen": "Reabrir con codificación (releer desde disco)",
             "encSaveAs": "Guardar contenido como (convertir codificación)",
             "encAuto": "Detección automática",
@@ -364,6 +376,14 @@
             "copyImageSuccess": "Copiado con éxito — binario de mapa de bits",
             "copyImageFailed": "Error al copiar — Binario de mapa de bits: {0}"
         }
+    },
+    "mdview": {
+        "action": "Vista previa de Markdown",
+        "empty": "(Documento vacío)",
+        "missing": "El archivo ya no existe",
+        "tooLarge": "El archivo es grande, la vista previa en tiempo real se ha pausado",
+        "refresh": "Actualizar",
+        "renderError": "Error de renderizado"
     },
     "login": {
         "title": "Iniciar sesión",
@@ -616,7 +636,9 @@
             "notSent": ". El siguiente contenido no se ha enviado:",
             "allocShown": "——El contenido no enviado se muestra en el área de mensajes superior",
             "stallAbort": "El envío se ha detenido (>20 minutos sin progreso) y se ha terminado automáticamente",
-            "stallAbortQoast": "El envío se ha detenido (>20 minutos sin progreso) y se ha terminado automáticamente; puedes hacer clic en el recuadro rojo del nivel «Continuar tarea» para reanudar"
+            "stallAbortQoast": "El envío se ha detenido (>20 minutos sin progreso) y se ha terminado automáticamente; puedes hacer clic en el recuadro rojo del nivel «Continuar tarea» para reanudar",
+            "stallAbortTool": "La ejecución de la herramienta se ha detenido (sin progreso durante más de 2 horas) y se ha terminado automáticamente",
+            "stallAbortToolQoast": "La ejecución de la herramienta se ha estancado (sin progreso durante más de 2 horas) y se ha terminado automáticamente. Puedes hacer clic en el recuadro rojo del nivel para «Continuar tarea» y reanudar."
         },
         "needLogin": "Por favor, inicia sesión primero desde el menú superior",
         "errUnknown": "Error desconocido",
@@ -691,6 +713,10 @@
             "firstToken": "Esperando la salida del primer carácter",
             "hangCount": "(Intento número {0})",
             "hangBroken": "El canal de red parece estar dañado{0}, se han intentado automáticamente todas las rutas. El nivel se ha guardado; se recomienda actualizar la ventana con Ctrl+R y hacer clic en «Continuar tarea»"
+        },
+        "toolWait": {
+            "title": "⏳ Herramienta en ejecución {0}",
+            "subtitle": "{0} Nivel {1} · Tarea larga en ejecución"
         },
         "gw": {
             "hangTimeout": "Tiempo de conexión agotado (se han intentado automáticamente todas las rutas, la conversación se ha conservado intacta, puede hacer clic en «Continuar tarea» para reintentar)",
@@ -1490,6 +1516,46 @@
         "pendingTip": "Esta función está pendiente de migración (marcador de posición)",
         "bridgeMissing": "qqq: Servicio de exportación no disponible (requiere reiniciar la instancia)"
     },
+    "sync": {
+        "uploadTitle": "Subir a la nube",
+        "downloadTitle": "Descargar datos de la nube",
+        "uploadConfirmTitle": "Subir datos a la nube",
+        "uploadConfirmMsg": "Confirmo que:\n1. Soy un usuario con licencia válida;\n2. Mi portapapeles y las preferencias de registro de archivos no incluyen ninguna información personal sensible (como contraseñas), ni tampoco ningún contenido ilegal o subversivo.",
+        "uploadConfirmBtn": "Confirmo y subo",
+        "pullConfirmTitle": "Combinar datos desde la nube",
+        "pullConfirmMsg": "Al descargar los datos de la nube, se combinarán con las preferencias de roaming locales y el historial del portapapeles (unión, sin pérdida de datos). ¿Deseas continuar?",
+        "pullConfirmBtn": "Confirmar descarga",
+        "uploadCancel": "Cancelar",
+        "uploading": "Subiendo datos a la nube...",
+        "pulling": "Obteniendo datos de la nube...",
+        "uploadSuccess": "Subido a la nube ({0})",
+        "pullSuccess": "Datos fusionados desde la nube, {1} nuevos elementos añadidos ({0})",
+        "uploadFailed": "Error al subir: {0}",
+        "pullFailed": "Restauración fallida: {0}",
+        "noData": "No hay datos en la nube por ahora",
+        "noAuth": "No has iniciado sesión. Por favor, inicia sesión primero.",
+        "errNotPurchased": "Este usuario no tiene una licencia válida",
+        "errRateLimit": "Demasiadas solicitudes. Inténtalo de nuevo más tarde.",
+        "errQuota": "Los datos exceden el límite de cuota",
+        "errNotRegistered": "Este número de teléfono no está registrado.",
+        "errAuthExpired": "La sesión ha expirado. Por favor, vuelve a iniciar sesión.",
+        "errNetwork": "Error de red, por favor verifica tu conexión",
+        "errServer": "Error del servidor, inténtalo de nuevo más tarde",
+        "lok": "Sincronizando, por favor espera…",
+        "bridgeMissing": "La sincronización en la nube no está disponible (requiere reiniciar la instancia)."
+    },
+    "workbench": {
+        "savorTip": "Música local: {v0} veces, total {v1}\nRadio: {v2} veces, total {v3}\nPromedio diario de escucha: {v4}",
+        "durHm": "{0} horas {1} minutos",
+        "durMs": "{0} min {1} seg",
+        "durSs": "{0} segundos",
+        "exportDocTip": "Exporta el documento actual como archivo Word: las imágenes y vídeos se convierten en imágenes incrustadas y se genera una lista para otros adjuntos. Se guarda por defecto junto al documento; el cuadro de diálogo de guardado solo aparece si ya existe un archivo con el mismo nombre.",
+        "exportZipTip": "Empaqueta el documento actual y todos los archivos y directorios referenciados en un ZIP (conservando la estructura de directorios y con máxima compresión); se guarda por defecto junto al documento, mostrando el diálogo de guardado solo si ya existe un archivo con el mismo nombre.",
+        "cloudSyncTip": "Sincronización en la nube: ↑ Subir = Combina con la nube antes de subir (ningún dato se pierde en ninguno de los lados); ↓ Descargar = Combina los datos de la nube con los locales. Incluye configuración del editor, preferencias de cada carpeta e historial del portapapeles.",
+        "videoUrlTip": "Pendiente de pegar: Introduce la URL del vídeo para descargarlo automáticamente en la carpeta del documento e insertarlo en un marco.",
+        "pasteTip": "Pendiente de pegar: Pega el contenido del portapapeles en el documento con un solo clic (actualmente puedes lograr lo mismo con Ctrl+V).",
+        "pureTip": "Pendiente: escanea las referencias del documento para limpiar archivos huérfanos que ya no están siendo utilizados."
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1567,6 +1633,9 @@
             "label": "Volumen",
             "desc": "Volumen de la ventana del IDE y de todos los goods (los goods con volumen independiente usan bypass y no están controlados por este ajuste). El valor predeterminado de fábrica es 25%."
         },
+        "mdviewAuto": {
+            "label": "Abrir automáticamente la vista previa de Markdown"
+        },
         "shortcut": {
             "label": "Generar accesos directos automáticamente"
         },
@@ -1618,6 +1687,48 @@
             "stale": "¡SW almacenó en caché código antiguo! Disco={disk} Navegador={browser}",
             "fetchFail": "❌ Error en fetch",
             "fetchFailTitle": "Error al obtener el ID de compilación"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "Error de actualización",
+            "ttDev": "Instancia de desarrollo — las actualizaciones se gestionan mediante el flujo de desarrollo",
+            "ttVer": "Versión actual v{v}",
+            "ttLauncher": "Lanzador {l}",
+            "ttOk": "Ya estás actualizado (comprobado el {time})",
+            "ttNone": "El actualizador aún no ha completado la primera comprobación",
+            "ttStaged": "La nueva versión v{v} está lista — la actualización se completará automáticamente tras el reinicio",
+            "ttPrep": "Preparando la actualización v{v} en segundo plano",
+            "ttFailed": "La última actualización falló",
+            "ttFails": "Recuento de fallos {n}",
+            "ttEvent": "Evento reciente: {line}",
+            "ttClick": "Haz clic para ver el registro principal de fallos",
+            "diagTitle": "Registro de diagnóstico de actualización",
+            "diagHint": "A continuación se muestran los fragmentos finales de los registros de fallos críticos o de actualización. Haz clic en «Copiar informe» o «Generar archivo de informe» y envíalo al administrador para ayudar en la solución de problemas.",
+            "diagLoad": "Leyendo…",
+            "diagEmpty": "No hay archivos de registro por el momento (aún no se han generado registros)",
+            "diagEmptyLine": "(Vacío)",
+            "diagMissing": "El archivo no existe",
+            "diagCopy": "Copiar",
+            "diagReveal": "Mostrar",
+            "diagCopyAll": "Copiar informe",
+            "diagSave": "Generar archivo de informe",
+            "diagOpenDir": "Abrir directorio de registros",
+            "diagClose": "Cerrar",
+            "diagCopied": "Copiado al portapapeles",
+            "diagSaved": "Informe generado y ubicado en: {p}",
+            "diagNeedRestart": "Es necesario reiniciar la instancia de qqqide para que surta efecto",
+            "diagFail": "Operación fallida",
+            "diagF": {
+                "fails": "Recuento de fallos",
+                "swap": "Registro de intercambio de actualizaciones",
+                "render": "Fallos del proceso de renderizado",
+                "swapready": "Marcador de preparación en espera",
+                "recovery": "Informe de reconciliación de fallos",
+                "rnext": "Información de preparación en segundo plano",
+                "crash": "Flujo de eventos de fallos de red",
+                "status": "Último intento de actualización",
+                "state": "Eventos de la base de datos de estado"
+            }
         }
     },
     "squad": {

@@ -83,10 +83,20 @@
         },
         "update": {
             "check": "Auf Updates prüfen",
-            "updatedTo": "Auf {version} aktualisiert, Neuladen steht bevor...",
-            "failed": "Update fehlgeschlagen",
-            "failedWith": "Update fehlgeschlagen",
-            "newVersion": "Neue Version {latest} verfügbar (aktuell {current})"
+            "toast": "Neue Version v{version} bereit: Klicken Sie auf „Neustart für Update“, um sofort abzuschließen, oder beenden Sie die App, um das Update automatisch durchzuführen",
+            "apply": "Neustart für Update",
+            "applying": "Update läuft, Anwendung wird bald neu gestartet…",
+            "checking": "Suche nach Updates…",
+            "downloading": "Neue Version wird heruntergeladen {pct}%",
+            "staging": "Neue Version wird vorbereitet…",
+            "readyBtn": "Neue Version v{version} bereit, klicken Sie für sofortiges Update (wird auch beim Beenden der App automatisch durchgeführt)",
+            "latest": "Bereits die neueste Version v{version}",
+            "found": "Neue Version v{version} gefunden, wird im Hintergrund heruntergeladen…",
+            "busy": "Die neue Version wird im Hintergrund heruntergeladen. Sie werden nach Abschluss benachrichtigt.",
+            "done": "Auf v{version} aktualisiert",
+            "rolledback": "Update unvollständig, auf vorherige Version zurückgesetzt",
+            "unavailable": "In-App-Updates am aktuellen Installationsort nicht unterstützt",
+            "failed": "Update-Prüfung fehlgeschlagen, automatischer Wiederholungsversuch später"
         },
         "overlay": {
             "copy": "In Zwischenablage kopieren",
@@ -111,7 +121,10 @@
             "roamNoPath": "Keine lokalen Dateien unter diesem Pfad, Lokalisierung in Roam nicht möglich",
             "roamMoved": "Pfad existiert nicht mehr (möglicherweise verschoben/gelöscht):",
             "roamMoved2": " → Zum letzten Verzeichnis navigiert ",
-            "roamNotFound": "Auf dem Laufwerk nicht gefunden:"
+            "roamNotFound": "Auf dem Laufwerk nicht gefunden:",
+            "loadFailed": "Bild konnte nicht geladen werden, Vorschau nicht möglich",
+            "mediaFailed": "Medien konnten nicht geladen werden, möglicherweise wird das Format nicht unterstützt oder die Datei ist beschädigt",
+            "transcoding": "Transkodierung für Vorschau läuft…"
         },
         "about": {
             "title": "Über qqq",
@@ -293,7 +306,6 @@
             "copyRelativePath": "Relativen Pfad kopieren",
             "splitRight": "Nach rechts teilen",
             "splitDown": "Nach unten teilen",
-            "encScheme": "Kodierungsschema…",
             "encReopen": "Mit Kodierung erneut öffnen (von Diskette neu lesen)",
             "encSaveAs": "Inhalt speichern unter (Kodierung konvertieren)",
             "encAuto": "Automatisch erkennen",
@@ -364,6 +376,14 @@
             "copyImageSuccess": "Erfolgreich kopiert — Bitmap-Binärdaten",
             "copyImageFailed": "Kopieren fehlgeschlagen – Bitmap-Binärdaten: {0}"
         }
+    },
+    "mdview": {
+        "action": "Markdown-Vorschau",
+        "empty": "(Leeres Dokument)",
+        "missing": "Datei existiert nicht mehr",
+        "tooLarge": "Datei ist zu groß, Echtzeitvorschau pausiert",
+        "refresh": "Aktualisieren",
+        "renderError": "Rendering fehlgeschlagen"
     },
     "login": {
         "title": "Anmelden",
@@ -616,7 +636,9 @@
             "notSent": ". Der folgende Inhalt wurde nicht gesendet:",
             "allocShown": "—— Nicht gesendeter Inhalt wird oben im Nachrichtenbereich angezeigt",
             "stallAbort": "Sendevorgang aufgrund von Stillstand (>20 Minuten ohne Fortschritt) automatisch abgebrochen",
-            "stallAbortQoast": "Sendevorgang aufgrund von Stillstand (>20 Minuten ohne Fortschritt) automatisch abgebrochen. Klicken Sie auf den roten Rahmen der Ebene „Aufgabe fortsetzen“, um fortzusetzen."
+            "stallAbortQoast": "Sendevorgang aufgrund von Stillstand (>20 Minuten ohne Fortschritt) automatisch abgebrochen. Klicken Sie auf den roten Rahmen der Ebene „Aufgabe fortsetzen“, um fortzusetzen.",
+            "stallAbortTool": "Tool-Ausführung stagniert (keine Fortschritte seit über 2 Stunden), automatisch abgebrochen",
+            "stallAbortToolQoast": "Tool-Ausführung stagniert (keine Fortschritte seit über 2 Stunden) und wurde automatisch abgebrochen. Klicken Sie auf den roten Rahmen der Ebene „Aufgabe fortsetzen“, um fortzufahren."
         },
         "needLogin": "Bitte melden Sie sich zuerst über das Menü an",
         "errUnknown": "Unbekannter Fehler",
@@ -691,6 +713,10 @@
             "firstToken": "Warten auf das erste Ausgabezeichen",
             "hangCount": "({0}. Versuch)",
             "hangBroken": "Netzwerkkanal möglicherweise beschädigt{0}. Alle Leitungen wurden automatisch getestet. Die Ebene wurde gespeichert. Wir empfehlen, das Fenster mit Strg+R zu aktualisieren und dann auf „Aufgabe fortsetzen“ zu klicken."
+        },
+        "toolWait": {
+            "title": "⏳ Tool wird ausgeführt {0}",
+            "subtitle": "{0} Ebene {1} · Langlaufende Aufgabe wird ausgeführt"
         },
         "gw": {
             "hangTimeout": "Verbindungszeitüberschreitung (alle Leitungen wurden automatisch versucht, der Dialog bleibt vollständig erhalten. Klicken Sie auf „Aufgabe fortsetzen“, um es erneut zu versuchen.)",
@@ -1490,6 +1516,46 @@
         "pendingTip": "Diese Funktion steht noch aus (Platzhalter)",
         "bridgeMissing": "qqq: Exportdienst nicht verfügbar (Instanzneustart erforderlich)"
     },
+    "sync": {
+        "uploadTitle": "In die Cloud hochladen",
+        "downloadTitle": "Cloud-Daten herunterladen",
+        "uploadConfirmTitle": "Daten in die Cloud hochladen",
+        "uploadConfirmMsg": "Ich bestätige:\n1. Ich bin ein legitimer Benutzer;\n2. Meine Zwischenablage und Dateiverlaufseinstellungen enthalten keine persönlichen sensiblen Informationen (wie Passwörter) und keine illegalen oder subversiven Inhalte.",
+        "uploadConfirmBtn": "Ich bestätige und lade hoch",
+        "pullConfirmTitle": "Daten aus der Cloud zusammenführen",
+        "pullConfirmMsg": "Cloud-Daten herunterladen und mit lokalen Roaming-Einstellungen sowie der Zwischenablage-Historie zusammenführen (Vereinigungsmenge, keine Datenverluste). Fortfahren?",
+        "pullConfirmBtn": "Download bestätigen",
+        "uploadCancel": "Abbrechen",
+        "uploading": "Daten werden in die Cloud hochgeladen...",
+        "pulling": "Daten werden aus der Cloud abgerufen...",
+        "uploadSuccess": "In die Cloud hochgeladen ({0})",
+        "pullSuccess": "Daten aus der Cloud zusammengeführt, {1} neue Einträge hinzugefügt ({0})",
+        "uploadFailed": "Upload fehlgeschlagen: {0}",
+        "pullFailed": "Wiederherstellung fehlgeschlagen: {0}",
+        "noData": "Derzeit keine Daten in der Cloud",
+        "noAuth": "Derzeit nicht angemeldet, bitte zuerst anmelden",
+        "errNotPurchased": "Dieser Benutzer ist kein legitimer Benutzer",
+        "errRateLimit": "Zu viele Anfragen, bitte später erneut versuchen",
+        "errQuota": "Daten überschreiten das Kontingentlimit",
+        "errNotRegistered": "Diese Telefonnummer ist nicht registriert",
+        "errAuthExpired": "Anmeldung abgelaufen, bitte erneut anmelden",
+        "errNetwork": "Netzwerkfehler, bitte überprüfen Sie Ihre Internetverbindung",
+        "errServer": "Serverfehler, bitte versuchen Sie es später erneut",
+        "lok": "Synchronisierung läuft, bitte warten…",
+        "bridgeMissing": "Cloud-Synchronisierung nicht verfügbar (Neustart der Instanz erforderlich)"
+    },
+    "workbench": {
+        "savorTip": "Lokale Musik: {v0} Mal, insgesamt {v1}\nRadio: {v2} Mal, insgesamt {v3}\nDurchschnittliches tägliches Hören: {v4}",
+        "durHm": "{0} Stunden {1} Minuten",
+        "durMs": "{0} Min {1} Sek",
+        "durSs": "{0} Sekunden",
+        "exportDocTip": "Aktuelles Dokument als Word-Datei exportieren: Bilder und Videos werden als eingebettete Bilder konvertiert, andere Anhänge werden als Liste generiert; standardmäßig neben dem Dokument gespeichert, Speicherdialog erscheint nur, wenn eine gleichnamige Datei bereits existiert.",
+        "exportZipTip": "Packt das aktuelle Dokument und alle referenzierten Dateien und Verzeichnisse in ein ZIP-Archiv (behält Verzeichnisstruktur bei, maximale Komprimierung); standardmäßig neben dem Dokument gespeichert, Speicherdialog erscheint nur, wenn eine gleichnamige Datei bereits existiert.",
+        "cloudSyncTip": "Cloud-Sync: ↑ Hochladen = Erst mit Cloud zusammenführen, dann hochladen (keine Datenverluste auf beiden Seiten); ↓ Herunterladen = Cloud-Daten mit lokalen Daten zusammenführen. Enthält Editor-Einstellungen, Ordnerpräferenzen und Zwischenablage-Historie.",
+        "videoUrlTip": "To-Do: Video-URL eingeben, automatisch in den Dokumentordner herunterladen und in einen Bildrahmen einfügen.",
+        "pasteTip": "To-Do: Inhalt der Zwischenablage mit einem Klick in das Dokument einfügen (derzeit kann derselbe Vorgang mit Ctrl+V durchgeführt werden).",
+        "pureTip": "Ausstehend: Dokumentreferenzen scannen und nicht mehr referenzierte verwaiste Dateien bereinigen."
+    },
     "audio": {
         "sfx": {
             "floor-ok": {
@@ -1567,6 +1633,9 @@
             "label": "Lautstärke",
             "desc": "Lautstärke für das IDE-Fenster und alle Goods. Goods mit eigener Lautstärkeregelung umgehen diese Einstellung. Werkseinstellung: 25 %."
         },
+        "mdviewAuto": {
+            "label": "Markdown-Vorschau automatisch öffnen"
+        },
         "shortcut": {
             "label": "Verknüpfungen automatisch generieren"
         },
@@ -1618,6 +1687,48 @@
             "stale": "SW hat alten Code gecacht! Disk={disk} Browser={browser}",
             "fetchFail": "❌ Fetch fehlgeschlagen",
             "fetchFailTitle": "Build-Stamp Fetch fehlgeschlagen"
+        },
+        "upd": {
+            "dev": "dev",
+            "failedShort": "Update-Fehler",
+            "ttDev": "Entwicklungsinstanz — Updates werden durch Entwicklungsprozess verwaltet",
+            "ttVer": "Aktuelle Version v{v}",
+            "ttLauncher": "Launcher {l}",
+            "ttOk": "Bereits aktuell (geprüft am {time})",
+            "ttNone": "Updater hat erste Prüfung noch nicht abgeschlossen",
+            "ttStaged": "Neue Version v{v} bereit — Update wird nach Neustart automatisch abgeschlossen",
+            "ttPrep": "Update v{v} wird im Hintergrund vorbereitet",
+            "ttFailed": "Letztes Update fehlgeschlagen",
+            "ttFails": "Fehleranzahl {n}",
+            "ttEvent": "Letztes Ereignis: {line}",
+            "ttClick": "Klicken, um Kern-Fehlerprotokolle anzuzeigen",
+            "diagTitle": "Upgrade-Diagnoseprotokoll",
+            "diagHint": "Unten sind die letzten Abschnitte der Kernfehler- und Update-Logs. Klicken Sie auf „Bericht kopieren“ oder „Berichtsdatei generieren“, um diese an den Administrator zu senden und bei der Fehlerbehebung zu helfen.",
+            "diagLoad": "Lädt…",
+            "diagEmpty": "Keine Log-Dateien vorhanden (noch keine Aufzeichnungen erstellt)",
+            "diagEmptyLine": "(Leer)",
+            "diagMissing": "Datei existiert nicht",
+            "diagCopy": "Kopieren",
+            "diagReveal": "Speicherort anzeigen",
+            "diagCopyAll": "Bericht kopieren",
+            "diagSave": "Berichtsdatei generieren",
+            "diagOpenDir": "Log-Verzeichnis öffnen",
+            "diagClose": "Schließen",
+            "diagCopied": "In die Zwischenablage kopiert",
+            "diagSaved": "Bericht generiert und gespeichert unter: {p}",
+            "diagNeedRestart": "Nach einem Neustart der qqqide-Instanz verfügbar",
+            "diagFail": "Vorgang fehlgeschlagen",
+            "diagF": {
+                "fails": "Fehlerzähler",
+                "swap": "Update-Austausch-Log",
+                "render": "Absturz des Render-Prozesses",
+                "swapready": "Staging-Bereitschaftsmarkierung",
+                "recovery": "Absturz-Abgleichsbericht",
+                "rnext": "Hintergrund-Vorbereitungsinformationen",
+                "crash": "Absturz-Netzwerk-Ereignisstrom",
+                "status": "Letzter Update-Versuch",
+                "state": "Statusbibliotheks-Ereignisse"
+            }
         }
     },
     "squad": {

@@ -830,6 +830,8 @@ function bootActivities(boot) {
     var h = d.getUTCHours();
     return (h >= 1 && h < 3) || (h >= 13 && h < 15);
   }
+  // 免费时段判定唯一真理源出口（AI 面板 iframe 白嫖楼层计数直调；改公式只有这里一处）
+  try { window.__qqqIsFreeWindow = isFreeWindow; } catch (e) { }
 
   function nextFreeBoundary(utcMs) {
     var d = new Date(utcMs);

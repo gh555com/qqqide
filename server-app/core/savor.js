@@ -15,7 +15,7 @@
 //   · 展示: 播放中 label = "Savoring..." / "Looping..."；电台在线 label 恒暗金色 (#8b6914)
 //
 // 多窗口: 事件广播全窗口；仅发起窗口记录统计（防跨窗口重复计数），其余窗口仅展示同步。
-// API: window.qqqSavor = { play, stop, getState, formatStats, refreshRadio, onState }
+// API: window.qqqSavor = { play, stop, getState, formatStats, getStats, refreshRadio, syncFromEngine, onState }
 // 消费方: 菜单行2 qqq 下拉（core/qqq-tools.js）。
 // ============================================================================
 
@@ -310,9 +310,10 @@
     if (min > 0) { return min + 'm ' + (sec % 60) + 's'; }
     return sec + 's';
   }
-  function formatStats() {
+  // ★ 原始统计快照（hover 清晰版展示消费——qqq-tools 组装本地语言；2026-09-22 用户定案）
+  function getStats() {
     var s = _stats;
-    if (!s) { return ''; }
+    if (!s) { return null; }
     var count = Number(s.count) || 0;
     var totalMs = Number(s.totalMs) || 0;
     var radioCount = Number(s.radioCount) || 0;
@@ -321,9 +322,14 @@
     var firstUse = Math.min(s.firstUse || Date.now(), s.radioFirstUse || Date.now());
     var days = Math.max(1, Math.ceil((Date.now() - firstUse) / 86400000));
     var avgMs = Math.floor(combined / days);
-    var result = count + ' local, ' + _fmtDuration(totalMs);
-    if (radioCount > 0) { result += '; ' + radioCount + ' radio, ' + _fmtDuration(radioTotalMs); }
-    result += '; avg ' + _fmtDuration(avgMs) + '/d';
+    return { count: count, totalMs: totalMs, radioCount: radioCount, radioTotalMs: radioTotalMs, avgMs: avgMs };
+  }
+  function formatStats() {
+    var g = getStats();
+    if (!g) { return ''; }
+    var result = g.count + ' local, ' + _fmtDuration(g.totalMs);
+    if (g.radioCount > 0) { result += '; ' + g.radioCount + ' radio, ' + _fmtDuration(g.radioTotalMs); }
+    result += '; avg ' + _fmtDuration(g.avgMs) + '/d';
     return result;
   }
 
@@ -380,6 +386,7 @@
     stop: stop,
     getState: getState,
     formatStats: formatStats,
+    getStats: getStats,
     refreshRadio: _refreshRadio,
     syncFromEngine: _syncFromEngine,
     onState: onState

@@ -69,6 +69,127 @@ function _gwStartWaitLoop(ag) {
     _gwWaitTick(ag);
 }
 
+// ═══ 上下文硬墙自愈（2026-09-22 q263 f233 实锤）═══
+// 背景：对话逼近 1M 窗口时请求总额 = prompt + max_tokens(恒 393216) 超窗 → 上游 400 →
+//   楼层必死；恢复楼层携带同一超长对话 → 连环撞墙（f233/f234/f235 三连 http_400）。
+// 三层自愈（均非破坏性：不改 messages / 不弹组 / 不弃历史）：
+//   ① _capMaxTokensForCtx：主动帽——上一请求 usage 精确 prompt 计数 × 字符增长比外推本请求
+//      prompt，max_tokens = min(申请值, 窗口 − 外推 − 安全余量)；正常楼层余量充足时零变化。
+//   ② _sniffCtxOverflow + agent-loop 重试：上游 400 报文自带精确数字（"(M in the messages,
+//      C in the completion)"）→ max_tokens = limit − M − 512 原样重试（精确必过）。
+//   ③ _rsStripClosed：贴墙思考链剥离——默认输出帽首次被挤压（cap 绑定）即武装，把「已闭合
+//      调用链」的 reasoning_content 从发送视图剥离（最后一条 assistant = 在飞链，永远原样
+//      保留——q178 f29 教训）；仅改发送副本零落盘影响；上游若因 reasoning 报错自动熔断。
+//      实证：落盘链（cleanConv/cleanHouses）本就剥离推理，恢复续跑在 Deep+Max 下常年无
+//      400（q263 f238 实锤：463K prompt 装 f233 全部 294 条无推理消息，houses 1→56 零错误）；
+//      差集实测：f233 死亡 prompt 656K − f238 重挂 463K = 193K tokens（= 被剥推理的量级）。
+function _capMaxTokensForCtx(self, apiMessages, reqMaxTokens) {
+    var out = reqMaxTokens;
+    try {
+        var CG = (typeof ContentGateway !== 'undefined') ? ContentGateway : null;
+        if (!CG || !apiMessages || !apiMessages.length) return out;
+        var lim = CG.CTX_MAX_TOKENS || 1048565;
+        var safe = CG.MAX_TOKENS_SAFETY || 10000;
+        var chars = 0;
+        for (var i = 0; i < apiMessages.length; i++) {
+            var m = apiMessages[i];
+            if (!m) continue;
+            if (typeof m.content === 'string') chars += m.content.length;
+            if (m.reasoning_content) chars += m.reasoning_content.length;
+            if (m.tool_calls) { try { chars += JSON.stringify(m.tool_calls).length; } catch (_) { } }
+        }
+        if (chars <= 0) return out;
+        var est = 0;
+        if (self._lastApiPromptTokens > 0 && self._lastApiPromptChars > 0) {
+            // 比率外推：字符增长比 × 上次精确 token 数（token 密度自适应，免固定系数在高密度内容上的低估）
+            est = Math.round(self._lastApiPromptTokens * chars / self._lastApiPromptChars);
+        }
+        var estLocal = Math.ceil(chars / (CG.CHAR_PER_TOKEN || 2.5));
+        if (estLocal > est) est = estLocal;
+        self._lastApiPromptChars = chars;  // 与下一响应 usage 精确值配对（供下轮比率外推）
+        var cap = lim - est - safe;
+        if (cap < 1024) cap = 1024;
+        if (self._ctxMaxTokensOverride > 0 && self._ctxMaxTokensOverride < cap) cap = self._ctxMaxTokensOverride;
+        if (cap < out) {
+            try { self._log('◆ max_tokens cap: ' + out + ' → ' + cap + ' (est prompt ' + est + ' chars ' + chars + ')'); } catch (_) { }
+            return cap;
+        }
+    } catch (_) { }
+    return out;
+}
+
+// 解析上游 400 上下文超限报文的精确数字（上下文硬墙自愈的反馈回路；命中才写 self._ctxOverflow）
+function _sniffCtxOverflow(self, text) {
+    try {
+        if (!text || typeof text !== 'string' || text.indexOf('context length') < 0) return;
+        var m2 = text.match(/you requested (\d+) tokens \((\d+) in the messages, (\d+) in the completion\)/);
+        if (!m2) return;
+        var m1 = text.match(/maximum context length is (\d+) tokens/);
+        var info = {
+            limit: m1 ? parseInt(m1[1], 10) : 1048576,
+            requested: parseInt(m2[1], 10),
+            msgs: parseInt(m2[2], 10),
+            completion: parseInt(m2[3], 10)
+        };
+        self._ctxOverflow = info;       // 待处理：agent-loop 精确修正 max_tokens 后原样重试
+        self._lastCtxOverflow = info;   // 诊断快照（_buildDiagnosis 红框文案）
+        // 用上游精确 msgs 校准本请求 token 计数（下一轮比率外推立即精确）
+        try { self._lastApiPromptTokens = info.msgs; } catch (_) { }
+        try { self._log('⚠ ctx-overflow captured: msgs=' + info.msgs + ' completion=' + info.completion + ' limit=' + info.limit); } catch (_) { }
+    } catch (_) { }
+}
+
+// 贴墙思考链剥离（③）：发送视图剥离已闭合调用链的 reasoning_content——保留最后一条 assistant
+//   （在飞链：缺 reasoning 有 400 前科 q178 f29，永远不动）；仅副本、不落盘（落盘链本就剥离）。
+function _rsStripClosed(self, apiMessages) {
+    try {
+        var lastA = -1;
+        for (var i = 0; i < apiMessages.length; i++) {
+            var m = apiMessages[i];
+            if (m && m.role === 'assistant') lastA = i;
+        }
+        if (lastA < 0) return apiMessages;
+        var n = 0, chars = 0, changed = false;
+        var out = new Array(apiMessages.length);
+        for (var j = 0; j < apiMessages.length; j++) {
+            var mm = apiMessages[j];
+            if (mm && mm.role === 'assistant' && j !== lastA && typeof mm.reasoning_content === 'string' && mm.reasoning_content.length > 0) {
+                var c = Object.assign({}, mm);
+                delete c.reasoning_content;   // ★ 绝不原地改——conversation 共享引用，原件保持原样
+                out[j] = c;
+                n++; chars += mm.reasoning_content.length; changed = true;
+            } else {
+                out[j] = mm;
+            }
+        }
+        if (changed) {
+            try {
+                self._log('✂ reasoning-strip: ' + n + ' closed-chain msgs, ' + Math.round(chars / 1000) + 'K chars off send view (last assistant kept)');
+                if (typeof self._writeFileLog === 'function') self._writeFileLog('✂ reasoning-strip floor=' + ((self._ctx && self._ctx.totalFloors) || '?') + ' msgs=' + n + ' chars=' + chars);
+            } catch (_) { }
+        }
+        return out;
+    } catch (_) { return apiMessages; }
+}
+
+// 贴墙判定 + 楼层级粘性：cap 首次绑定（默认输出帽被挤压）即武装；本楼层此后恒剥（发送前缀
+//   稳定，防每 house 翻转致缓存反复失效）；新楼层重新决议；_rsPoison 熔断后永不剥。
+function _rsEngage(self, effMax, reqMax) {
+    try {
+        if (self._rsPoison) return false;
+        var fl = (self._ctx && self._ctx.totalFloors) || 0;
+        if (self._rsStrip && self._rsFloor === fl) return true;
+        if (self._rsStrip && self._rsFloor !== fl) self._rsStrip = false;   // 新楼层重新决议
+        if (effMax < reqMax) {
+            self._rsStrip = true;
+            self._rsFloor = fl;
+            try { self._log('◆ reasoning-strip armed: cap ' + effMax + ' < req ' + reqMax + ' (floor ' + fl + ')'); } catch (_) { }
+            return true;
+        }
+    } catch (_) { }
+    return false;
+}
+
 // ---- 网关调用 ----
 AgentLoop.prototype._callGateway = async function (messages, opts) {
 
@@ -170,10 +291,17 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
     } else if (_lh && _lh.type === 'guide_ack') {
         houseHint = '引导确认';
     }
-    // ★ 压缩守护（代替旧动态帽）：while 循环中每间 house 前检查，超 900k 则阻塞压缩
-    //   此处不再缩 max_tokens — 由压缩保证 prompt 不超限
+    // ★ max_tokens 动态帽（2026-09-22 1M 硬墙修复，详文件头「上下文硬墙自愈」）：申请值恒
+    //   393216 → prompt > 655K（= 窗口 − 393216）时请求总额必超窗 → 上游 400 → 楼层必死；
+    //   现按精确外推收帽（余量充足时零变化），漏网者由 400 精确修正回路（agent-loop）兜底。
     var _reqMaxTokens = tier.maxTokens || ContentGateway.MAX_RESPONSE_TOKENS;
-    var _effectiveMaxTokens = _reqMaxTokens;
+    var _effectiveMaxTokens = _capMaxTokensForCtx(self, apiMessages, _reqMaxTokens);
+    // ★ 2026-09-22: 贴墙思考链剥离（硬墙自愈 ③）——cap 首绑即武装；剥离后重算帽（思考腾出的
+    //   空间直接还给输出预算）。仅动发送副本：conversation / 落盘 / 恢复链路零影响。
+    if (_rsEngage(self, _effectiveMaxTokens, _reqMaxTokens)) {
+        apiMessages = _rsStripClosed(self, apiMessages);
+        _effectiveMaxTokens = _capMaxTokensForCtx(self, apiMessages, _reqMaxTokens);
+    }
     var body = {
         messages: apiMessages,
         stream: true,
@@ -342,6 +470,13 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     }
                 } catch (_) { }
                 var text = await resp.text();
+                _sniffCtxOverflow(self, text);  // ★ 上下文超限精确数字捕获（HTTP 400 直返路径）
+                // ★ reasoning-strip 熔断（防御性）：strip 后上游若仍抱怨 reasoning（落盘剥离链路
+                //   已在 Deep+Max 下野生验证，理论不该发生）→ 本 quest 永久停剥，防连撞
+                if (self._rsStrip && text && text.indexOf('reasoning') >= 0) {
+                    self._rsPoison = true;
+                    try { self._log('⚠ reasoning-strip poison: upstream error mentions reasoning — strip disabled for this quest'); } catch (_) { }
+                }
                 // ★ 从 Go 服务器 JSON 响应体提取人类可读消息（计费/配额等）— 优先，所有错误处理共享
                 var _serverMsg = '';
                 try {
@@ -614,6 +749,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 return null;
             }
             var msg = err.message || '';
+            _sniffCtxOverflow(self, msg);  // ★ 上下文超限精确数字捕获（硬墙自愈反馈回路）
+            if (self._rsStrip && msg && msg.indexOf('reasoning') >= 0) { self._rsPoison = true; try { self._log('⚠ reasoning-strip poison (fetch): ' + String(msg).slice(0, 160)); } catch (_) { } }
 
             // ★ AI 上游错误（400/422）：请求体/上下文有问题，重试/切线路均无效 → 直接返回 null
             if (self._lastGatewayError === 400 || self._lastGatewayError === 422) {

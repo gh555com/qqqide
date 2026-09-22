@@ -549,6 +549,25 @@ async function _executeSend(intent) {
             //   gaea q145 f2/f4 事故；探号零写入，失败 counter 不前进，下次发送重用同号）。
             //   commit 失败（sq3 写异常）→ 下次探号磁盘碰撞跳过，永不产生重复目录。
             try { await questStore.commitFloorNum(qid, floorNum); } catch (_) { }
+            // ★ VIG 楼层履历（2026-09-22）：总楼层 + 等级直方 + 白嫖（免费时段）→ 壳层采集机
+            //   （回填播种由壳层离线完成；此处只计正向增量。root=主项目路径，壳层归一化为计数键）
+            try {
+                if (_ensured) {
+                    var _vbr = (window.parent && window.parent.qqqideBridge) || window.qqqideBridge;
+                    if (_vbr && _vbr.vig && typeof _vbr.vig.floor === 'function') {
+                        var _vtier = _isCompress ? 4 : (typeof selectedTier === 'number' ? selectedTier : 0);
+                        var _vui = Math.ceil(_vtier / 2);
+                        if (!(_vui >= 1 && _vui <= 3)) _vui = 0;
+                        var _vfree = false;
+                        try {
+                            if (window.parent && typeof window.parent.__qqqIsFreeWindow === 'function') {
+                                _vfree = !!window.parent.__qqqIsFreeWindow(Date.now());
+                            }
+                        } catch (_) { }
+                        _vbr.vig.floor({ root: String(root2 || ''), tier: _vui, free: _vfree });
+                    }
+                }
+            } catch (_) { }
             if (_ensured && _ensured.fDir && _images && _images.length > 0) {
                 var _bridge2 = window.parent && window.parent.qqqideBridge;
                 if (_bridge2 && _bridge2.fs) {
