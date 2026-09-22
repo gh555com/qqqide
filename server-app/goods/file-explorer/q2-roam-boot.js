@@ -359,6 +359,7 @@
 
 	await loadDrives();
 	renderQqiqSection();
+	initQqPanes();
 	renderPinnedDirs();
 	initQqFilter();
 	navigateTo(root);

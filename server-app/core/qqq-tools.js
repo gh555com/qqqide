@@ -6,18 +6,17 @@
 // 结构（2026-09-22 工作台改版：由「文本下拉列表」升级为「卡片式操作面板」）:
 //   ┌───────────────────────────────────────────────────────┐
 //   │  [♾][■] Savor moments for yourself                    │  ← 老 q3 savorCard 100%
-//   │         1 local, 2s; 3 radio, 15m 6s; avg 3m 47s/d    │     （统计行 = 唯一保留的副行）
 //   │  [✎ export doc]        [🗜 export Zip]                │
 //   │  [ .doc ][ .docx ]                                    │
 //   │  [↑][↓] Cloud Sync                                    │  ← 老 qqq AQ 云同步 100%
 //   │  [▶ Video Url] [✎ Paste] [✦ Pure]                     │  ← 占位（待移植）
 //   └───────────────────────────────────────────────────────┘
 //   2026-09-22 二次改版: 移除 SOUND/EXPORT/DATA/SOON 分割行——纯卡片连续流。
-//   2026-09-22 三次改版（用户定案）: 标题行 "qqq workbench" 删除 + 副行小字全删
-//   （Savor 统计行 = 例外·核心信息直显）；主文字随按钮垂直居中 + 卡片纵向空间回收
-//   （6px 紧凑内边距，"更扁 = 看上去更宽"）；被删小字的说明职责全部转 hover tooltip：
-//   本地语言（i18n workbench.* 段）+ 详细（到底是干什么的）；Savor 的 hover = 清晰版统计
-//   （本地语言、无多余解释——用户定案「不解释，直接放核心信息」）。
+//   2026-09-22 三次改版（用户定案）: 标题行 "qqq workbench" 删除 + 副行小字全删；
+//   主文字随按钮垂直居中 + 卡片纵向空间回收（6px 紧凑内边距，"更扁 = 看上去更宽"）；
+//   被删小字的说明职责全部转 hover tooltip：本地语言（i18n workbench.* 段）+ 详细。
+//   2026-09-22 四次微调（用户定案）: Savor 卡内统计行删除（副行归零 → 主文字真垂直居中）；
+//   统计恒归 hover（本地语言清晰版、悬停即时刷新；「不解释，直接放核心信息」）；面板总宽 -20%（438→350px）。
 //
 // 设计决策（国际化）:
 //   · 面板文案全英文（菜单固有标签白名单——与老 q3 侧边按钮组一致）+ Consolas 等宽字体
@@ -43,7 +42,9 @@
   'use strict';
 
   var HOVER_CLOSE_DELAY = 250;
-  var PANEL_W = 416;
+  // 面板内容宽；content-box → 总宽 = 内容宽 + 22px（内边距 20 + 边框 2）。
+  // 2026-09-22 用户定案整面板 -20%：438 → ~350px（PANEL_W 328 + 22）。
+  var PANEL_W = 328;
 
   var _btnEl = null;
   var _rootEl = null;
@@ -52,7 +53,6 @@
   // Savor 卡片引用
   var _savorCardEl = null;
   var _savorLabelEl = null;
-  var _savorStatsEl = null;
   var _savorUnsub = null;
   // Cloud Sync 卡片引用
   var _syncUpEl = null;
@@ -106,7 +106,6 @@
       '.qqq-tools-card-body { flex: 1 1 auto; min-width: 0; }',
       '.qqq-tools-card-head { display: flex; align-items: center; gap: 6px; }',
       '.qqq-tools-card-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
-      '.qqq-tools-card-sub { margin-top: 3px; font-size: 10px; opacity: .5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.qqq-tools-ico-svg { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: 0 0 auto; opacity: .85; }',
       '.qqq-tools-ico-svg svg { display: block; }',
       '.qqq-tools-btns { display: flex; gap: 4px; flex-shrink: 0; }',
@@ -253,15 +252,8 @@
     try { stt = s.getState ? s.getState() : {}; } catch (e) { }
     _savorLabelEl.textContent = stt.playing ? (stt.isLoop ? 'Looping...' : 'Savoring...') : 'Savor moments for yourself';
     try { _savorLabelEl.style.color = stt.radioLive ? '#8b6914' : ''; } catch (e) { }
-    if (_savorStatsEl) {
-      var txt = '';
-      try { txt = s.formatStats ? s.formatStats() : ''; } catch (e) { txt = ''; }
-      _savorStatsEl.textContent = txt;
-      try { _savorStatsEl.style.display = txt ? '' : 'none'; } catch (e) { }
-      var tip = _savorTipText(s);
-      _savorStatsEl.title = tip;
-      if (_savorCardEl) { _savorCardEl.title = tip; }
-    }
+    // 统计恒归 hover（卡内零副行——主文字真垂直居中；2026-09-22 用户定案）
+    if (_savorCardEl) { _savorCardEl.title = _savorTipText(s); }
   }
   function _bindSavorState() {
     _unbindSavorState();
@@ -460,6 +452,7 @@
     var c = document.createElement('div');
     c.className = 'qqq-tools-card wide qqq-tools-flex';
     c.addEventListener('click', function (e) { e.stopPropagation(); _savorPlay('normal'); });
+    c.addEventListener('mouseenter', function () { _refreshSavorRow(); });   // 悬停即时刷新统计 tooltip
     var grp = document.createElement('div');
     grp.className = 'qqq-tools-btns';
     var bLoop = _miniBtn('icon-loop', 'Infinite Loop');
@@ -473,15 +466,11 @@
     var t = document.createElement('div');
     t.className = 'qqq-tools-card-title';
     t.textContent = 'Savor moments for yourself';
-    var s = document.createElement('div');
-    s.className = 'qqq-tools-card-sub';
     body.appendChild(t);
-    body.appendChild(s);
     c.appendChild(grp);
     c.appendChild(body);
     _savorCardEl = c;
     _savorLabelEl = t;
-    _savorStatsEl = s;
     _bindSavorState();
     _refreshSavorRow();
     return c;
@@ -616,7 +605,6 @@
     _unbindSavorState();
     _savorCardEl = null;
     _savorLabelEl = null;
-    _savorStatsEl = null;
     _syncUpEl = null;
     _syncDownEl = null;
   }

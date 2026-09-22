@@ -4,22 +4,19 @@
 // first-run.js — 首次启动专家确认弹窗（唯一入口）
 //
 // 语义: 绿色包/程序数据（Data/alphal/global.sq3）首次启动弹一次——
-//   声明行: 我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件
-//   链接行: 「借由 Roam 你可以快速操作文件，包括删除」→ QQQLinks 服务器下发链接（离线兜底）
+//   声明行: 我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件（弹窗唯一内容——主题 = 指令危害认知，勿加无关行）
 //   同意并继续 → 双通道写标记（2026-09-08 双修：真实机器实锤「同意已落盘、重启后标记消失」→ sq3 文件级回滚）
 //     ① qgs.simple('qqq.settings').setNow 写 firstRun.expertAgreed —— setNow 立即落盘（旧 fire-and-forget set：退出竞态/强杀即丢）
 //     ② localStorage qqq.firstRun.expertAgreed.v1 —— sq3 的损坏恢复链（主→.prev→.bak）与整库回滚不碰它，双通道互相兜底
 //   判定三态: 任一通道有 → 不弹（仅 sq3 缺失时后台 setNow 回写自愈）；两通道都无 → 弹；库暂不可用 → 1s/3s/8s 退避重试，仍不可用放弃（弹了同意也存不进，纯噪音）
 //   退出      → bridge.app.quitAll()（不写标记，下次启动再弹）
 // 持久化入口: qgs.simple('qqq.settings', {cloud:false}) = 程序级 global.sq3（§8.1 六入口之一）+ localStorage 兜底
-// 依赖: core/qqq-links.js（先加载）
 // ============================================================================
 
 ; (function () {
     'use strict';
 
     if (parent !== window) return;          // 仅主窗口
-    if (!window.QQQLinks) return;           // 链接机器缺失 → 不弹（防御）
 
     var KEY = 'firstRun.expertAgreed';
     var LS_KEY = 'qqq.firstRun.expertAgreed.v1';   // 兜底通道 ②（localStorage，独立于 sq3 恢复链）
@@ -114,14 +111,6 @@
         try { window.close(); } catch (e) { /* browser-mode */ }
     }
 
-    function _linkUrl() {
-        try {
-            var u = window.QQQLinks.url('roam_delete_video');
-            if (u) return u;
-        } catch (e) { /* fallthrough */ }
-        return 'https://www.bilibili.com/video/BV1PD826SEMT';
-    }
-
     function _dismiss() {
         if (_overlay && _overlay.parentNode) {
             _overlay.parentNode.removeChild(_overlay);
@@ -156,17 +145,6 @@
         p.textContent = '我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件';
         p.style.cssText = 'margin:0;font-size:15px;font-weight:600;';
         panel.appendChild(p);
-
-        // ── Roam 提示行 = 超链接（服务器下发，离线回退 B 站视频）──
-        var a = document.createElement('a');
-        a.setAttribute('data-i18n', 'firstRun.roamHint');
-        a.textContent = '借由 Roam 你可以快速操作文件，包括删除';
-        a.href = _linkUrl();
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.style.cssText = 'display:inline-block;margin-top:14px;' +
-            'color:var(--primary-color);text-decoration:underline;word-break:break-all;';
-        panel.appendChild(a);
 
         // ── 按钮行 ──
         var row = document.createElement('div');

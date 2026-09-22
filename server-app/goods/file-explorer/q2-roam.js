@@ -658,9 +658,19 @@ async function resolveLnkTarget(lnkPath) {
 }
 
 // ---- qqiq & pinnedDirs (client-side, persisted via store) ----
-var QQ_IQ_DISPLAY = 33;   // 默认显示条数
-var QQ_IQ_MAX = 400;       // 数据库保存上限（find 从这 400 条里搜）
+// ★ 2026-09-22 qq 区双区（上=文件夹区 / find 框=分界 / 下=文件区）：
+//   默认按实测区高精确填空（fit = ⌊区高 ÷ 实测行高⌋，多一行也不给 → 不出现滚动条）；
+//   滚轮秘籍 = 区内下滚到底 → 该区续加一批（QQ_WHEEL_STEP），封顶 QQ_WHEEL_MAX/区；
+//   数据库保存 QQ_IQ_MAX 条，超出显示上限的老条目靠 find 框筛出（检索池 = 全库文件）。
+var QQ_IQ_MAX = 400;       // 数据库保存上限（find 检索池 = 这 400 条）
+var QQ_WHEEL_STEP = 10;    // 滚轮秘籍：每次扩载条数
+var QQ_WHEEL_MAX = 100;    // 滚轮秘籍：每区显示上限
 var QQ_PIN_MAX = 6;
+
+var _qqFilterText = '';                    // find 框文本（只作用于文件区）
+var _qqShown = { dirs: 0, files: 0 };      // 显示条数（0=按 fit 自动；滚轮扩载后为绝对值，只增不减）
+var _qqExpandTs = { dirs: 0, files: 0 };   // 扩载冷却时间戳（防触控板惯性连环扩载）
+var _qqPanesReady = false;
 
 function _qqiqKey(p) { return _normPath(p); }
 
@@ -730,30 +740,191 @@ function movePinnedDir(dirPath, direction) {
 	_pinnedSave(); renderPinnedDirs();
 }
 
-function renderQqiqSection() {
-	var driveList = document.getElementById('driveList');
-	// Remove old
-	var oldDiv = driveList.querySelector('.divider'); if (oldDiv) oldDiv.remove();
-	var oldFc = driveList.querySelector('.qq-filter-container'); if (oldFc) oldFc.remove();
-	var oldSec = driveList.querySelector('.qq-iq-section'); if (oldSec) oldSec.remove();
-	if (_qqiq.length === 0) return;
-	// Divider
-	var divEl = document.createElement('div'); divEl.className = 'divider'; driveList.appendChild(divEl);
-	// ★ 筛选框永远显示
-	var fc = document.createElement('div');
-	fc.className = 'qq-filter-container';
-	fc.innerHTML = '<input type="text" class="qq-filter-input" id="qqFilterInput" placeholder="find" spellcheck="false"><div id="qqFilterHistoryDropdown" class="history-dropdown"></div>';
-	driveList.appendChild(fc);
-	// ★ 渲染全部条目（上限 QQ_IQ_MAX），超出 QQ_IQ_DISPLAY 的初始隐藏
-	//    筛选时由 applyqqiqFilter 在 DOM 内原地 show/hide，不重建键入框
-	var sec = document.createElement('div'); sec.className = 'qq-iq-section';
-	var total = Math.min(_qqiq.length, QQ_IQ_MAX);
-	for (var i = 0; i < total; i++) {
-		var itemEl = buildQqiqItem(_qqiq[i]);
-		if (i >= QQ_IQ_DISPLAY) itemEl.style.display = 'none';
-		sec.appendChild(itemEl);
+function _qqPaneEl(kind) { return document.getElementById(kind === 'dirs' ? 'qqDirsPane' : 'qqFilesPane'); }
+function _qqBarEl(kind) { return document.getElementById(kind === 'dirs' ? 'qqDirsScrollbar' : 'qqFilesScrollbar'); }
+function _qqThumbEl(kind) { return document.getElementById(kind === 'dirs' ? 'qqDirsThumb' : 'qqFilesThumb'); }
+
+// 分区数据源（保序：最近使用在前；dirs=非 file，files=file）
+function _qqSource(kind) {
+	return _qqiq.filter(function(item) { return (item.type === 'file') === (kind === 'files'); });
+}
+
+// 实测几何：pane 与条目同用 getBoundingClientRect（zoom 下同一坐标系，比值恒准，不混用 clientHeight）
+function _qqGeo(pane) {
+	var items = pane.querySelectorAll('.qq-item');
+	var rowH = 0;
+	for (var i = 0; i < items.length; i++) {
+		if (items[i].style.display === 'none') continue;
+		var h = items[i].getBoundingClientRect().height;
+		if (h > 0) { rowH = h; break; }
 	}
-	driveList.appendChild(sec);
+	if (rowH <= 0 && items.length) {
+		// 全部被隐藏（过滤清空后重填、首次建 DOM）→ 临时显形量一次（量完原样还原）
+		var probe = items[0], prev = probe.style.display;
+		probe.style.display = '';
+		rowH = probe.getBoundingClientRect().height;
+		probe.style.display = prev;
+	}
+	return { h: pane.getBoundingClientRect().height, rowH: rowH };
+}
+
+// 默认填空条数 = ⌊区高 ÷ 实测行高⌋
+function _qqFit(kind) {
+	var pane = _qqPaneEl(kind);
+	if (!pane) return 0;
+	var g = _qqGeo(pane);
+	if (g.h < 8 || g.rowH <= 0) return 0;
+	return Math.max(1, Math.floor(g.h / g.rowH));
+}
+
+// 显示条数上限 = max(fit, 滚轮扩载绝对值)，封顶 QQ_WHEEL_MAX
+function _qqLimit(kind, fit) {
+	return Math.min(Math.max(fit, _qqShown[kind] || 0), QQ_WHEEL_MAX);
+}
+
+// 应用可见性：过滤命中 + 显示条数 → display（不重建 DOM，保留滚动位置）
+function _qqApplyVisible(kind) {
+	var pane = _qqPaneEl(kind);
+	if (!pane) return;
+	var g = _qqGeo(pane);
+	if (g.h < 8) return;   // 未布局/窗口隐藏（tab 切走）→ 交给 ResizeObserver 重算
+	var items = pane.querySelectorAll('.qq-item');
+	if (!items.length) { _qqUpdateThumb(kind); return; }
+	if (g.rowH <= 0) return;
+	var limit = _qqLimit(kind, Math.max(1, Math.floor(g.h / g.rowH)));
+	var shown = 0;
+	for (var i = 0; i < items.length; i++) {
+		var el = items[i];
+		var vis = (el.getAttribute('data-qq-match') !== '0') && (shown < limit);
+		if (vis) shown++;
+		var want = vis ? '' : 'none';
+		if (el.style.display !== want) el.style.display = want;
+	}
+	_qqUpdateThumb(kind);
+}
+
+// 无轨极细滚动块（仅溢出时浮现 → 滚轮扩载后自然出现）；几何与 kope-a 一致
+function _qqUpdateThumb(kind) {
+	var pane = _qqPaneEl(kind), bar = _qqBarEl(kind), thumb = _qqThumbEl(kind);
+	if (!pane || !bar || !thumb) return;
+	var ch = pane.clientHeight, sh = pane.scrollHeight, st = pane.scrollTop;
+	if (ch > 0 && sh > ch + 1) {
+		bar.style.display = 'block';
+		var barH = bar.clientHeight || ch;
+		var th = Math.min(barH, Math.max(24, (ch / sh) * barH));
+		thumb.style.height = th + 'px';
+		thumb.style.top = ((sh - ch) > 0 ? (st / (sh - ch)) * (barH - th) : 0) + 'px';
+	} else {
+		bar.style.display = 'none';
+	}
+}
+
+function renderQqPane(kind) {
+	var pane = _qqPaneEl(kind);
+	if (!pane) return;
+	var src = _qqSource(kind);
+	var cap = (kind === 'dirs') ? QQ_WHEEL_MAX : QQ_IQ_MAX;   // 文件夹区最大可见 = 扩载上限，多余条目无展示路径
+	var frag = document.createDocumentFragment();
+	var n = Math.min(src.length, cap);
+	for (var i = 0; i < n; i++) {
+		var el = buildQqiqItem(src[i]);
+		el.setAttribute('data-qq-match', '1');
+		frag.appendChild(el);
+	}
+	pane.innerHTML = '';
+	pane.appendChild(frag);
+	if (kind === 'files') _qqMarkFileMatches();   // 重建后重放 find 过滤
+	pane.scrollTop = 0;
+	_qqApplyVisible(kind);
+}
+
+function renderQqiqSection() {
+	renderQqPane('dirs');
+	renderQqPane('files');
+}
+
+// find 过滤只作用于文件区（上区零反应）；检索池 = 全库文件（含超出滚轮上限的老条目）
+function _qqMarkFileMatches() {
+	var pane = _qqPaneEl('files');
+	if (!pane) return;
+	var items = pane.querySelectorAll('.qq-item');
+	if (!items.length) return;
+	var kw = (_qqFilterText || '').trim().toLowerCase();
+	var terms = kw ? kw.split(/\s+/).filter(Boolean) : [];
+	for (var i = 0; i < items.length; i++) {
+		var it = items[i];
+		if (!terms.length) { it.setAttribute('data-qq-match', '1'); continue; }
+		var hay = ((it.getAttribute('data-fullpath') || '') + ' ' + (it.textContent || '')).toLowerCase();
+		var ok = true;
+		for (var t = 0; t < terms.length; t++) { if (hay.indexOf(terms[t]) === -1) { ok = false; break; } }
+		it.setAttribute('data-qq-match', ok ? '1' : '0');
+	}
+}
+
+// ★ 滚轮秘籍：区内下滚到底 → 该区续加一批；扩载后内容溢出 → 极细滚动块浮现
+function _qqOnWheel(e, kind) {
+	var pane = _qqPaneEl(kind);
+	if (!pane || e.deltaY <= 0 || e.ctrlKey) return;
+	var over = pane.scrollHeight - pane.clientHeight;
+	if (over > 1 && pane.scrollTop < over - 1) return;   // 还能滚 → 原生滚动
+	var items = pane.querySelectorAll('.qq-item');
+	var matched = 0;
+	for (var i = 0; i < items.length; i++) { if (items[i].getAttribute('data-qq-match') !== '0') matched++; }
+	if (!matched) return;
+	var fit = _qqFit(kind);
+	if (fit <= 0) return;
+	var cur = _qqLimit(kind, fit);
+	if (cur >= Math.min(matched, QQ_WHEEL_MAX)) return;   // 本区已到顶 → 无可加载
+	var now = Date.now();
+	if (now - (_qqExpandTs[kind] || 0) < 260) { e.preventDefault(); return; }   // 冷却：吞掉惯性余量
+	_qqShown[kind] = Math.min(cur + QQ_WHEEL_STEP, QQ_WHEEL_MAX);
+	_qqExpandTs[kind] = now;
+	e.preventDefault();
+	_qqApplyVisible(kind);
+}
+
+// 滚动块拖拽（kope-a 同款；rect 与 deltaY 同坐标系 → zoom 无关）
+function _qqBindThumbDrag(pane, thumb) {
+	var dragging = false, startY = 0, startST = 0;
+	thumb.addEventListener('mousedown', function(e) {
+		if (pane.scrollHeight <= pane.clientHeight + 1) return;
+		dragging = true; startY = e.clientY; startST = pane.scrollTop;
+		thumb.classList.add('drag-active');
+		e.preventDefault(); e.stopPropagation();
+		function onMove(ev) {
+			if (!dragging) return;
+			var trackH = pane.getBoundingClientRect().height;
+			var thH = thumb.getBoundingClientRect().height;
+			var sh = pane.scrollHeight, ch = pane.clientHeight;
+			if (trackH - thH <= 0 || sh <= ch) return;
+			pane.scrollTop = startST + ((ev.clientY - startY) / (trackH - thH)) * (sh - ch);
+		}
+		function onUp() {
+			dragging = false; thumb.classList.remove('drag-active');
+			document.removeEventListener('mousemove', onMove);
+			document.removeEventListener('mouseup', onUp);
+		}
+		document.addEventListener('mousemove', onMove);
+		document.addEventListener('mouseup', onUp);
+	});
+}
+
+// 一次性初始化两区（scroll → 滚动块跟随；wheel → 秘籍扩载；ResizeObserver → 区高变化重算填空）
+function initQqPanes() {
+	if (_qqPanesReady) return;
+	_qqPanesReady = true;
+	['dirs', 'files'].forEach(function(kind) {
+		var pane = _qqPaneEl(kind), thumb = _qqThumbEl(kind);
+		if (!pane) return;
+		pane.addEventListener('scroll', function() { _qqUpdateThumb(kind); }, { passive: true });
+		pane.addEventListener('wheel', function(e) { _qqOnWheel(e, kind); }, { passive: false });
+		if (thumb) _qqBindThumbDrag(pane, thumb);
+		try {
+			if (window.ResizeObserver) new ResizeObserver(function() { _qqApplyVisible(kind); }).observe(pane);
+		} catch (_) {}
+	});
+	_qqApplyVisible('dirs');
+	_qqApplyVisible('files');
 }
 
 function _escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -799,30 +970,16 @@ function buildQqiqItem(item) {
 	return el;
 }
 
-// ★ qq 筛选器：原地过滤 DOM（不重建，不破坏键入框焦点）；AND 多词模糊匹配
+// ★ find 框：只作用于文件区；检索池 = 全库文件；命中同样按 fit 填充 + 滚轮扩载
+//   原地改 data-qq-match + display（不重建 DOM → 不破坏键入框焦点）
 function applyqqiqFilter(keyword) {
-	var section = document.querySelector('.qq-iq-section');
-	if (!section) return;
-	var kw = (keyword || '').trim().toLowerCase();
-	var terms = kw ? kw.split(/\s+/).filter(Boolean) : [];
-	var items = section.querySelectorAll('.qq-item');
-	for (var i = 0; i < items.length; i++) {
-		var item = items[i];
-		if (terms.length === 0) {
-			// 无筛选：前 QQ_IQ_DISPLAY 显示，其余隐藏
-			item.style.display = (i < QQ_IQ_DISPLAY) ? '' : 'none';
-			continue;
-		}
-		// AND 多词模糊匹配：在 data-fullpath + textContent 中搜索
-		var fullpath = (item.getAttribute('data-fullpath') || '').toLowerCase();
-		var text = (item.textContent || '').toLowerCase();
-		var hay = fullpath + ' ' + text;
-		var match = true;
-		for (var t = 0; t < terms.length; t++) {
-			if (hay.indexOf(terms[t]) === -1) { match = false; break; }
-		}
-		item.style.display = match ? '' : 'none';
-	}
+	_qqFilterText = keyword || '';
+	var pane = _qqPaneEl('files');
+	if (!pane) return;
+	_qqMarkFileMatches();
+	_qqShown.files = 0;      // 新检索 → 回到默认填空
+	pane.scrollTop = 0;
+	_qqApplyVisible('files');
 }
 
 // ---- 下拉框工具函数 ----

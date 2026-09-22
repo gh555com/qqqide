@@ -53,7 +53,16 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .nav-item { appearance: none; -webkit-appearance: none; padding: 8px 4px;   /* 左移 6px 贴边 */ border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma; font-size: 13px; }
 .nav-item:hover { background-color: var(--bg-highlight); }
 .nav-item.active { background-color: var(--base1); color: var(--base3); }
-.qq-iq-section { padding: 0; margin: 0; border: none; overflow-y: scroll; flex: 1; min-height: 0; scrollbar-width: none; }
+/* ★ qq 区双区（2026-09-22）：上=文件夹区 / find 框=分界 / 下=文件区；默认精确填空，零溢出零滚动条 */
+.drive-list { display: flex; flex-direction: column; flex-shrink: 0; max-height: 45%; overflow-y: auto; overflow-x: hidden; }
+.qq-split { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.qq-pane-wrap { position: relative; flex: 1 1 50%; min-height: 0; overflow: hidden; }
+.qq-pane { position: absolute; left: 0; right: 0; top: 0; bottom: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.qq-scrollbar { display: none; position: absolute; right: 0; top: 0; width: 7px; height: 100%; z-index: 20; pointer-events: none; }
+/* 无轨极细滚动块（kope-a 同款几何：6px 宽 right:-4px → 实露 2px，hover/拖拽 3px）；黑白配色、颜色偏淡 */
+.qq-thumb { position: absolute; right: -4px; width: 6px; background: #000 !important; border-radius: 3px; opacity: 0.35; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease; }
+[data-theme="dark"] .qq-thumb { background: #fff !important; }
+.qq-thumb:hover, .qq-thumb.drag-active { width: 8px; right: -5px; opacity: 0.68; }
 .qq-item { padding: 3px 4px;    /* 左移 6px 贴边 */ color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; width: 100%; box-sizing: border-box; display: flex; align-items: center; }
 .qq-item .qq-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qq-dir { padding: 0; position: relative; }
@@ -147,7 +156,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .path-tooltip { display: none; position: fixed; z-index: 99999; background-color: #eee8d5; color: #7a7874; border: 1px solid #a8a6a2; border-radius: 3px; padding: 4px 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18); pointer-events: none; }
 [data-theme="dark"] .path-tooltip { background-color: #4a4540; color: #eee8d5; border-color: #6a6660; }
 .dropdown-item-tooltip { position: fixed; pointer-events: none; background: var(--tooltip-bg); color: var(--tooltip-text); padding: 4px 10px; border-radius: 4px; font-family: Tahoma, sans-serif; font-size: 13px; z-index: 99999; display: none; box-shadow: 0 1px 2px rgba(0,0,0,0.4); white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border-strong); max-width: calc(100vw - 20px); }
-.qq-filter-container { padding: 2px 4px; position: relative; }
+.qq-filter-container { padding: 2px 4px; position: relative; flex-shrink: 0; border-top: 1px solid var(--border-color); }
 .qq-filter-input { width: 100%; padding: 1px 4px; border: 1px solid var(--border-strong); border-radius: 3px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma; font-size: 13px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
 .qq-filter-input::placeholder { color: var(--text-dim); font-style: italic; }
 .qq-filter-input:focus { border-color: var(--gold-accent); box-shadow: 0 0 0 1px var(--gold-accent); }
@@ -160,7 +169,22 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 <body>
 <div class="container">
 	<div class="sidebar" id="sidebar">
-		<div class="qq-iq-section" id="driveList"></div>
+		<div class="drive-list" id="driveList"></div>
+		<div class="divider"></div>
+		<div class="qq-split" id="qqSplit">
+			<div class="qq-pane-wrap">
+				<div class="qq-pane" id="qqDirsPane"></div>
+				<div class="qq-scrollbar" id="qqDirsScrollbar"><div class="qq-thumb" id="qqDirsThumb"></div></div>
+			</div>
+			<div class="qq-filter-container" id="qqFilterRow">
+				<input type="text" class="qq-filter-input" id="qqFilterInput" placeholder="find" spellcheck="false">
+				<div id="qqFilterHistoryDropdown" class="history-dropdown"></div>
+			</div>
+			<div class="qq-pane-wrap">
+				<div class="qq-pane" id="qqFilesPane"></div>
+				<div class="qq-scrollbar" id="qqFilesScrollbar"><div class="qq-thumb" id="qqFilesThumb"></div></div>
+			</div>
+		</div>
 	</div>
 	<div class="sidebar-resizer" id="sidebarResizer"></div>
 	<div class="ky-content" id="kyContent">

@@ -15,7 +15,7 @@
 //   · 展示: 播放中 label = "Savoring..." / "Looping..."；电台在线 label 恒暗金色 (#8b6914)
 //
 // 多窗口: 事件广播全窗口；仅发起窗口记录统计（防跨窗口重复计数），其余窗口仅展示同步。
-// API: window.qqqSavor = { play, stop, getState, formatStats, getStats, refreshRadio, syncFromEngine, onState }
+// API: window.qqqSavor = { play, stop, getState, getStats, refreshRadio, syncFromEngine, onState }
 // 消费方: 菜单行2 qqq 下拉（core/qqq-tools.js）。
 // ============================================================================
 
@@ -301,15 +301,6 @@
     }).catch(function () { });
   }
 
-  // ── 展示（老 _formatSavorStats 逐字）──
-  function _fmtDuration(ms) {
-    var sec = Math.floor((ms || 0) / 1000);
-    var min = Math.floor(sec / 60);
-    var hr = Math.floor(min / 60);
-    if (hr > 0) { return hr + 'h ' + (min % 60) + 'm'; }
-    if (min > 0) { return min + 'm ' + (sec % 60) + 's'; }
-    return sec + 's';
-  }
   // ★ 原始统计快照（hover 清晰版展示消费——qqq-tools 组装本地语言；2026-09-22 用户定案）
   function getStats() {
     var s = _stats;
@@ -324,15 +315,6 @@
     var avgMs = Math.floor(combined / days);
     return { count: count, totalMs: totalMs, radioCount: radioCount, radioTotalMs: radioTotalMs, avgMs: avgMs };
   }
-  function formatStats() {
-    var g = getStats();
-    if (!g) { return ''; }
-    var result = g.count + ' local, ' + _fmtDuration(g.totalMs);
-    if (g.radioCount > 0) { result += '; ' + g.radioCount + ' radio, ' + _fmtDuration(g.radioTotalMs); }
-    result += '; avg ' + _fmtDuration(g.avgMs) + '/d';
-    return result;
-  }
-
   // ── 订阅（qqq-tools 下拉打开时刷新）──
   function _emit() {
     for (var i = 0; i < _listeners.length; i++) {
@@ -385,7 +367,6 @@
     play: play,
     stop: stop,
     getState: getState,
-    formatStats: formatStats,
     getStats: getStats,
     refreshRadio: _refreshRadio,
     syncFromEngine: _syncFromEngine,

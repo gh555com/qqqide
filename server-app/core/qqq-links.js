@@ -18,13 +18,10 @@
         'https://www.gh555.com/static/qqqide/client-links.json'
     ];
 
-    // ★ 客户端兜底表 — 双写同步点 A
+    // ★ 客户端兜底表 — 双写同步点 A（当前零 key——服务器下发即真理；新增 key 时两处必改）
     // 新增/修改 key 必须同步:
     //   gaea/cf/qqqide/服务器下发超链接.py  DEFAULT_LINKS（运维控制台出厂兜底值）
-    var FALLBACK_LINKS = {
-        // 首次启动弹窗「借由 Roam 你可以快速操作文件，包括删除」跳转的教学视频
-        'roam_delete_video': 'https://www.bilibili.com/video/BV1PD826SEMT'
-    };
+    var FALLBACK_LINKS = {};
 
     var _links = null;   // 服务器拉取成功后的 {key: url}（部分配置 = 服务器真理，缺失 key 自动回退兜底）
     var _loading = false;

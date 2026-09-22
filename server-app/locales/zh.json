@@ -1436,7 +1436,6 @@
   },
   "firstRun": {
     "expert": "我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件",
-    "roamHint": "借由 Roam 你可以快速操作文件，包括删除",
     "agree": "同意并继续",
     "exit": "退出",
     "saveFailed": "保存失败，请重试"

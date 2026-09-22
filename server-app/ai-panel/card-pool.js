@@ -312,6 +312,25 @@ var CardPool = (function () {
         }
       }
 
+      // ★ 内存瘦身（2026-09-22）：只保留最近 _floorCap() 层的完整数据（DOM 渲染唯一所需）。
+      //   更早楼层常驻 conversation（工具结果全量）/ lastUserInput / images（base64 缩略图）/
+      //   _streamingText 纯属浪费——实测 q263（250 层 49.2MB）删四字段后仅剩 4.1MB（-92%）。
+      //   安全前提（已审计）：card.floors 的消费者仅本文件——_buildFloorDOM 只渲染最近 cap 层；
+      //   扩 cap / 跨面板 floor-completed / refreshCard 等需要旧楼层完整数据的路径一律磁盘全量重载。
+      //   其余轻量字段（houses / costWge / allTxtPath / clockTiming …）原样保留供 passby 累计。
+      try {
+        var _keepFrom = Math.max(0, card.totalFloors - _floorCap());
+        for (var _slimI = 0; _slimI < _keepFrom; _slimI++) {
+          var _slimFe = card.floors[_slimI];
+          if (!_slimFe || !_slimFe.data || _slimFe.data._slimmed) continue;
+          delete _slimFe.data.conversation;
+          delete _slimFe.data.lastUserInput;
+          delete _slimFe.data.images;
+          delete _slimFe.data._streamingText;
+          _slimFe.data._slimmed = true;
+        }
+      } catch (_eSlim) { }
+
       // [silent] loaded card
     } catch (e) {
       console.error('[card-pool] loadCardData FAILED for ' + card.id + ':', e && (e.message || e));
