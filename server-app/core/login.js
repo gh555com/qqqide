@@ -595,6 +595,9 @@
   var _ldrCache = null;  // { all_time: { data, seasonId, ts }, last_season: { data, seasonId, ts } }
   var _ldrFetching = false;
 
+  // ★ 历史赛季：官网赛季页（历史快照回看入口）
+  var LDR_HISTORY_URL = 'https://www.gh555.com/gaea/d/qqqide#season';
+
   function _getCurrentSeasonId() {
     var d = new Date();
     // ISO week: Mon=1 ... Sun=7
@@ -821,7 +824,8 @@
       rise: '<b style="color:#b58900;">' + baseRise + 'ge</b>',
       proj: '<b style="color:#b58900;">' + projected + 'ge</b>'
     })
-      + '<span id="qqq-ldr-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;margin-left:8px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;pointer-events:auto;top:-1px;">?</span>';
+      + '<span id="qqq-ldr-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;margin-left:8px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;pointer-events:auto;top:-1px;">?</span>'
+      + '<a id="qqq-ldr-history" href="' + LDR_HISTORY_URL + '" style="margin-left:160px;font-size:12.5px;color:var(--blue,#268bd2);text-decoration:none;white-space:nowrap;vertical-align:middle;position:relative;top:-1px;">' + _i18('login.lbr.history', '历史赛季') + '</a>';
 
     // ★ 绑定 help tooltip
     var $help = document.getElementById('qqq-ldr-help');
@@ -829,6 +833,23 @@
       $help.addEventListener('mouseenter', _ldrHelpShow);
       $help.addEventListener('mousemove', _ldrHelpShow);
       $help.addEventListener('mouseleave', _ldrHelpHide);
+    }
+
+    // ★ 历史赛季外链：官网赛季页（header innerHTML 每次重建 → 重新绑定；文案随每次打开当前语言）
+    var $hist = document.getElementById('qqq-ldr-history');
+    if ($hist) {
+      $hist.addEventListener('mouseenter', function () { $hist.style.textDecoration = 'underline'; });
+      $hist.addEventListener('mouseleave', function () { $hist.style.textDecoration = 'none'; });
+      $hist.addEventListener('click', function (e) {
+        e.preventDefault();
+        try {
+          if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+            window.qqqideBridge.shell.openExternal(LDR_HISTORY_URL);
+          } else {
+            window.open(LDR_HISTORY_URL, '_blank');
+          }
+        } catch (err) { /* ignore */ }
+      });
     }
   }
 
@@ -931,9 +952,8 @@
     _$ldrPanel.className = 'qqq-ldr-panel';
     _$ldrPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:1120px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';';
     _$ldrPanel.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid ' + border + ';">' +
+      '<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid ' + border + ';">' +
       '<span id="qqq-ldr-header-text" style="font-size:13px;color:' + titleClr + ';"></span>' +
-      '<button id="qqq-ldr-close" style="width:22px;height:22px;border:1px solid ' + border + ';border-radius:3px;background:transparent;color:' + titleClr + ';font-size:13px;line-height:20px;text-align:center;cursor:pointer;">✕</button>' +
       '</div>' +
       '<div style="display:flex;min-height:300px;">' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
@@ -956,7 +976,6 @@
       '</div>';
     _$ldrOverlay.appendChild(_$ldrPanel);
     document.body.appendChild(_$ldrOverlay);
-    document.getElementById('qqq-ldr-close').addEventListener('click', _ldrClose);
   }
 
   // ── 登录流程（外部浏览器主通道 + OS协议回调 + 主进程轮询兜底）──

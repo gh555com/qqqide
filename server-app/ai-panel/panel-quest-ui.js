@@ -953,7 +953,7 @@ if (_ctxPerqCheck) {
         if (this.checked) {
             // 无覆盖 → 复制全局当前档作为初始独立值（立即生效）
             if (!_ctxPerqCurrent()) {
-                var g = 'medium';
+                var g = 'full';
                 try {
                     if (parent.window.qqqSettings && parent.window.qqqSettings.get) {
                         var v = parent.window.qqqSettings.get('ai.compressLevel');

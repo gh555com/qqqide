@@ -125,7 +125,12 @@ def action_disk_free_batch(params):
             drives = ["/"]
 
     for drive in drives:
-        letter = drive.upper().replace(":", "").replace("\\", "").replace("/", "") or "X"
+        # ★ mac 适配（2026-09-23）：POSIX 根盘 '/' 剥斜杠后为空 → 键名必须原样保留
+        #   （roam 前端按 '/' 查找）；Windows 保持 strip 后单字母键（C:\ → C）。
+        if _IS_WINDOWS:
+            letter = drive.upper().replace(":", "").replace("\\", "").replace("/", "") or "X"
+        else:
+            letter = drive or "/"
         info = _get_disk_free(drive)
         if info.get("success"):
             result[letter] = {"free": info["free"], "total": info["total"]}

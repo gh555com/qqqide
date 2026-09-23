@@ -5,7 +5,7 @@
 //   SETTINGS_DEF 在 settings.js 里自动引用这里的值
 window.qqqideDefaults = {
     'ai.defaultTier': 3,
-    'ai.compressLevel': 'medium',   // 上下文背包自动压缩三档（off/medium/full，唯一档位设置，2026-08-23 定案）
+    'ai.compressLevel': 'full',     // 上下文背包自动压缩三档（off/medium/full，唯一档位设置）；绿色包出厂默认 = 全托管（2026-09-23 q326 定案）
     'ai.floorCap': '16',            // AI 面板单 quest 最多显示已封顶楼层数（16/32/64，32/64=激活用户功能；64 档 2026-09-06）
     'editor.undoMode': 'char',
     'timeline.trackRunCommand': false,

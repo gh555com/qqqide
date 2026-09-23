@@ -109,7 +109,18 @@ export function isPathAllowed(abs: string): boolean {
 export function registerAssetProtocol(portableRoot: string): void {
     // ★ packaged 模式下 monaco/ts/shell 在 resources/app/ 下，不在 portableRoot (gh555.com/) 下
     const resApp = path.join(portableRoot, 'resources', 'app');
-    const appAssetsRoot = fs.existsSync(resApp) ? resApp : portableRoot;
+    let appAssetsRoot = fs.existsSync(resApp) ? resApp : portableRoot;
+    // ★ mac .app 布局（2026-09-23）：portableRoot(=Contents/MacOS) 拼不出 resources/app——
+    //   实挂 Contents/Resources/app（app.getAppPath()）→ monaco/shell-out 全落空（编辑器加载失败）。
+    //   以 node_modules/monaco-editor 存在性为判据，dev/win 零影响。
+    if (!fs.existsSync(path.join(appAssetsRoot, 'node_modules', 'monaco-editor'))) {
+        try {
+            const ap = require('electron').app.getAppPath();
+            if (ap && fs.existsSync(path.join(ap, 'node_modules', 'monaco-editor'))) {
+                appAssetsRoot = ap;
+            }
+        } catch { /* ignore */ }
+    }
     const roots: Record<string, string> = {
         monaco: path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'min'),
         'monaco-maps': path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'min-maps'),
@@ -175,6 +186,12 @@ function resolveKpBridge(portableRoot: string): { script: string; python: string
         path.join(portableRoot, 'engines', 'kp_bridge.py'),
         path.join(portableRoot, 'resources', 'app', 'engines', 'kp_bridge.py'),
     ];
+    // ★ mac .app 布局（2026-09-23）：portableRoot(=Contents/MacOS) 拼不出 engines
+    //   （实挂 Contents/Resources/app/engines，符号链接→qqqide-data/engines）→ resourcesPath 兜底。
+    try {
+        const rp = (process as any).resourcesPath;
+        if (rp) candidates.push(path.join(rp, 'app', 'engines', 'kp_bridge.py'));
+    } catch { /* ignore */ }
     for (const p of candidates) {
         if (fs.existsSync(p)) {
             // ★ 解释器统一阶梯（唯一机器 resolvePythonPath）：内置 python → 注册表 QQQIDE_PYTHON_DIR → PATH。

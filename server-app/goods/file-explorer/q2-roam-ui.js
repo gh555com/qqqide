@@ -82,6 +82,9 @@ filterInput.addEventListener('keydown', function(e) {
 });
 
 // ---- Sidebar drives ----
+// ★ mac 适配（2026-09-23）：POSIX 根盘（'/'）标签 / Desktop 路径拼接 / 回收站命名分平台。
+//   _ROAM_IS_MAC 由 q2-roam.js 全局提供；防御性兜底以 navigator.platform 复判。
+var _RUI_MAC = (typeof _ROAM_IS_MAC !== 'undefined') ? _ROAM_IS_MAC : /Mac/i.test(String(navigator.platform || '') + ' ' + String(navigator.userAgent || ''));
 var _driveList = [];
 var _drivePollingTimer = null;
 
@@ -93,7 +96,7 @@ async function loadDrives() {
 	} catch(e) {
 		_driveList = [];
 	}
-	if (_driveList.length === 0) _driveList = ['C:\\'];
+	if (_driveList.length === 0) _driveList = [_RUI_MAC ? '/' : 'C:\\'];
 
 	// Create drive buttons
 	for (var i = 0; i < _driveList.length; i++) {
@@ -102,7 +105,7 @@ async function loadDrives() {
 			var btn = document.createElement('button');
 			btn.className = 'nav-item';
 			btn.id = 'drive-' + letter + '-btn';
-			btn.textContent = letter + ':\\ ';
+			btn.textContent = _RUI_MAC ? (d + ' ') : (letter + ':\\ ');
 			btn.addEventListener('click', function() { navigateTo(d); });
 			driveList.appendChild(btn);
 		})(_driveList[i]);
@@ -115,8 +118,8 @@ async function loadDrives() {
 	deskBtn.textContent = 'Desktop';
 	deskBtn.addEventListener('click', function() {
 		rpc('boot.getInfo').then(function(info) {
-			var home = (info && info.homedir) || 'C:\\Users\\Default';
-			navigateTo(home + '\\Desktop');
+			var home = (info && info.homedir) || (_RUI_MAC ? '/Users/Default' : 'C:\\Users\\Default');
+			navigateTo(_RUI_MAC ? (home + '/Desktop') : (home + '\\Desktop'));
 		}).catch(function() {});
 	});
 	driveList.appendChild(deskBtn);
@@ -125,7 +128,7 @@ async function loadDrives() {
 	var recycleBtn = document.createElement('button');
 	recycleBtn.className = 'nav-item';
 	recycleBtn.id = 'drive-RECYCLE-btn';
-	recycleBtn.textContent = 'Recycle Bin';
+	recycleBtn.textContent = _RUI_MAC ? 'Trash' : 'Recycle Bin';
 	recycleBtn.addEventListener('click', function() {
 		bridge.shell.openRecycleBin().catch(function(){});
 	});
@@ -149,7 +152,7 @@ async function updateDriveDisplay() {
 			var btn = document.getElementById('drive-' + letter + '-btn');
 			if (!btn) continue;
 			var data = info[letter];
-			if (!data) { btn.textContent = letter + ':\  '; continue; }
+			if (!data) { btn.textContent = _RUI_MAC ? (_driveList[i] + ' ') : (letter + ':\  '); continue; }
 			var freeBytes = data.free || 0;
 			var totalBytes = data.total || 0;
 			var freeGB = freeBytes / (1024*1024*1024);
@@ -157,7 +160,7 @@ async function updateDriveDisplay() {
 			var isLow = (totalBytes > 0 && freeBytes / totalBytes < 0.01) || (freeBytes < 2147483648);
 			// ★ q3 原版: 正常整数, 红色才显示两位小数, 无 'GB' 后缀, 两个空格
 			var gbText = isLow ? freeGB.toFixed(2) : Math.floor(freeGB).toString();
-			btn.textContent = letter + ':\  ' + gbText;
+			btn.textContent = _RUI_MAC ? (_driveList[i] + '  ' + gbText) : (letter + ':\  ' + gbText);
 			btn.style.color = isLow ? 'rgb(248,48,0)' : '';
 		}
 		// Desktop used (GB, 对齐 q3)
@@ -172,7 +175,7 @@ async function updateDriveDisplay() {
 		if (recycleBtn && info['RECYCLE'] && info['RECYCLE'].used > 0) {
 			var rGB = (info['RECYCLE'].used || 0) / (1024*1024*1024);
 			var rgbText = rGB < 0.01 ? '0' : (rGB >= 1 ? Math.floor(rGB).toString() : rGB.toFixed(2));
-			recycleBtn.textContent = 'Recycle Bin ' + rgbText;
+			recycleBtn.textContent = (_RUI_MAC ? 'Trash ' : 'Recycle Bin ') + rgbText;
 		}
 	} catch(e) { console.warn('[q2-roam] updateDriveDisplay:', e); }
 }

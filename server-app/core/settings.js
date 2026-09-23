@@ -73,11 +73,11 @@
       key: 'ai.compressLevel',
       label: '自动压缩 上下文背包',
       labelKey: 'settings.compress.label',
-      desc: '默认值为中等',
+      desc: '默认值为全托管',
       descKey: 'settings.compress.desc',
       type: 'slider-stepped',
       tab: 'general',
-      defaultValue: _D['ai.compressLevel'] || 'medium',
+      defaultValue: _D['ai.compressLevel'] || 'full',
       showLabel: true,
       stopsLabels: ['关闭', '中等', '全托管'],
       stopsLabelKeys: ['settings.compress.off', 'settings.compress.medium', 'settings.compress.full'],
@@ -297,7 +297,10 @@
     var h = '<div style="margin-top:10px; padding:10px 12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg + ';">';
     h += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">';
     h += '<span style="font-size:12px; font-weight:bold; color:' + text + ';">' + _i('settings.sfxTitle', '音效开关') + '</span>';
-    h += '<span style="font-size:10px; color:' + textDim + ';">' + _i('settings.sfxSubtitle', '默认全部启用 · 即时生效') + '</span>';
+    h += '<span style="display:flex; align-items:center; gap:12px;">';
+    h += '<a href="javascript:void(0)" class="qqq-sfx-all" style="font-size:11px; color:' + accent + '; text-decoration:underline;">' + _i('settings.sfxAll', 'All') + '</a>';
+    h += '<a href="javascript:void(0)" class="qqq-sfx-none" style="font-size:11px; color:' + accent + '; text-decoration:underline;">' + _i('settings.sfxNone', 'None') + '</a>';
+    h += '</span>';
     h += '</div>';
     for (var i = 0; i < scenes.length; i++) {
       var sc = scenes[i];
@@ -312,6 +315,20 @@
     }
     h += '</div>';
     return h;
+  }
+
+  // ── ★ 音效开关 All / None 批量（子卡片右上角超链接按钮，2026-09-23）──
+  //   点击 = 全部选中 / 全部不选 + 即时生效（qgs 一次写 + 闸门一次推）；只原地刷勾选框，不整面板重渲染（防拉杆跳动）
+  function _sfxApplyAll(on) {
+    var q = window.qqqAudio;
+    if (q && q.sfxSetAll) {
+      q.sfxSetAll(on);
+    } else if (q && q.sfxSet && q.sfxScenes) {
+      var scenes = q.sfxScenes();
+      for (var i = 0; i < scenes.length; i++) q.sfxSet(scenes[i].key, on);
+    }
+    var boxes = _$panel ? _$panel.querySelectorAll('.qqq-sfx-check') : [];
+    for (var j = 0; j < boxes.length; j++) boxes[j].checked = on;
   }
 
   // ── ★ 显示楼层 32/64 = 激活（VIP）功能选值守卫（2026-09-05；64 档 2026-09-06）──
@@ -651,6 +668,11 @@
         if (window.qqqAudio && window.qqqAudio.sfxSet) window.qqqAudio.sfxSet(k, this.checked);
       });
     }
+    // ★ All / None 超链接按钮（子卡片右上角）：一键全选 / 全不选（即时生效）
+    var $sfxAll = _$panel.querySelector('.qqq-sfx-all');
+    if ($sfxAll) $sfxAll.addEventListener('click', function (e) { e.preventDefault(); _sfxApplyAll(true); });
+    var $sfxNone = _$panel.querySelector('.qqq-sfx-none');
+    if ($sfxNone) $sfxNone.addEventListener('click', function (e) { e.preventDefault(); _sfxApplyAll(false); });
 
     // 绑定自动压缩帮助问号（跳转上下文背包文档，无 hover 提示）
     var helpBtns = _$panel.querySelectorAll('.qqq-compress-help');

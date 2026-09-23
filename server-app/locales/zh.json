@@ -446,7 +446,8 @@
       "settling": "结算处理中……",
       "err": "加载失败",
       "load": "加载中...",
-      "header": "我上周最终等级: {last}，本周基座升高: {rise}。 预计下周基座将升高: {proj}"
+      "header": "我上周最终等级: {last}，本周基座升高: {rise}。 预计下周基座将升高: {proj}",
+      "history": "历史赛季"
     }
   },
   "ai": {
@@ -1549,28 +1550,28 @@
   "audio": {
     "sfx": {
       "floor-ok": {
-        "label": "楼层正常完成音",
+        "label": "楼层正常建完音",
         "desc": "每层楼正常建完那一下"
       },
       "floor-bad": {
         "label": "楼层异常结束音",
-        "desc": "异常/停止/停滞收尾"
+        "desc": "异常/停滞收尾"
       },
       "muyu": {
         "label": "木鱼·免费时段报喜",
         "desc": "每次进入免费时段瞬间"
       },
       "roam": {
-        "label": "文件操作音",
-        "desc": "Roam 进入/删除/清空/固定/取消固定 + 终端"
+        "label": "Roam文件操作",
+        "desc": "进入/删除/清空/固定/取消固定 + 终端"
       },
       "bullet": {
-        "label": "子弹问答枪声",
-        "desc": "AI 回答后子弹按钮"
+        "label": "子弹按钮枪声",
+        "desc": "射出子弹文本"
       },
       "lv": {
-        "label": "等级升级音",
-        "desc": "等级条升段与里程碑"
+        "label": "赛季等级升级音",
+        "desc": "lv升级"
       },
       "summon": {
         "label": "窗口召回音",
@@ -1589,7 +1590,8 @@
     "off": "已关闭",
     "needActivation": "该功能需先激活",
     "sfxTitle": "音效开关",
-    "sfxSubtitle": "默认全部启用 · 即时生效",
+    "sfxAll": "All",
+    "sfxNone": "None",
     "sfxTooltip": "逐个音效开关",
     "undoMode": {
       "label": "编辑器撤销模式",
@@ -1611,7 +1613,7 @@
     },
     "compress": {
       "label": "自动压缩 上下文背包",
-      "desc": "默认值为中等",
+      "desc": "默认值为全托管",
       "off": "关闭",
       "medium": "中等",
       "full": "全托管"

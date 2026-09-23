@@ -50,7 +50,7 @@
         if (v === 'off' || v === 'medium' || v === 'full') return v;
       }
     } catch (_) { }
-    return 'medium'; // 出厂默认中间档（2026-08-23 用户定案）
+    return 'full'; // 出厂默认全托管档（2026-09-23 q326 定案）
   }
 
   // ── 纯函数（唯一实现）──

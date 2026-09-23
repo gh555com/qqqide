@@ -31,12 +31,12 @@
   // match 串 = 播放点调用主进程时携带的原始 file 参数子串（yz: 前缀恒定），禁裸文件名
   //   防误伤（如 '4.mp3' 会命中任何 xxx4.mp3；'yz:4.mp3' 精确）。
   var SFX_SCENES = [
-    { key: 'floor-ok',  label: '楼层正常完成音', lk: 'audio.sfx.floor-ok.label',  dk: 'audio.sfx.floor-ok.desc',  file: 'ok endfloor',    match: ['ok endfloor.mp3'],  desc: '每层楼正常建完那一下' },
-    { key: 'floor-bad', label: '楼层异常结束音', lk: 'audio.sfx.floor-bad.label', dk: 'audio.sfx.floor-bad.desc', file: 'bad endfloor',   match: ['bad endfloor.mp3'], desc: '异常/停止/停滞收尾' },
+    { key: 'floor-ok',  label: '楼层正常建完音', lk: 'audio.sfx.floor-ok.label',  dk: 'audio.sfx.floor-ok.desc',  file: 'ok endfloor',    match: ['ok endfloor.mp3'],  desc: '每层楼正常建完那一下' },
+    { key: 'floor-bad', label: '楼层异常结束音', lk: 'audio.sfx.floor-bad.label', dk: 'audio.sfx.floor-bad.desc', file: 'bad endfloor',   match: ['bad endfloor.mp3'], desc: '异常/停滞收尾' },
     { key: 'muyu',      label: '木鱼·免费时段报喜', lk: 'audio.sfx.muyu.label',   dk: 'audio.sfx.muyu.desc',      file: 'muyu',       match: ['muyu.mp3'],         desc: '每次进入免费时段瞬间' },
-    { key: 'roam',      label: '文件操作音',     lk: 'audio.sfx.roam.label',      dk: 'audio.sfx.roam.desc',      file: 'a2 4 rou1 a1 kj2 zs861', match: ['yz:a2.mp3', 'yz:4.mp3', 'yz:rou1.mp3', 'yz:a1.mp3', 'yz:kj2.mp3', 'yz:zs861.mp3'], desc: 'Roam 进入/删除/清空/固定/取消固定 + 终端' },
-    { key: 'bullet',    label: '子弹问答枪声',   lk: 'audio.sfx.bullet.label',    dk: 'audio.sfx.bullet.desc',    file: 'bullet 组',      match: ['bullet/'],          desc: 'AI 回答后子弹按钮' },
-    { key: 'lv',        label: '等级升级音',     lk: 'audio.sfx.lv.label',        dk: 'audio.sfx.lv.desc',        file: 'lv-up',          match: ['lv-up'],            desc: '等级条升段与里程碑' },
+    { key: 'roam',      label: 'Roam文件操作',     lk: 'audio.sfx.roam.label',      dk: 'audio.sfx.roam.desc',      file: 'Roam', match: ['yz:a2.mp3', 'yz:4.mp3', 'yz:rou1.mp3', 'yz:a1.mp3', 'yz:kj2.mp3', 'yz:zs861.mp3'], desc: '进入/删除/清空/固定/取消固定 + 终端' },
+    { key: 'bullet',    label: '子弹按钮枪声',   lk: 'audio.sfx.bullet.label',    dk: 'audio.sfx.bullet.desc',    file: 'bullet组',      match: ['bullet/'],          desc: '射出子弹文本' },
+    { key: 'lv',        label: '赛季等级升级音',     lk: 'audio.sfx.lv.label',        dk: 'audio.sfx.lv.desc',        file: 'lv-up',          match: ['lv-up'],            desc: 'lv升级' },
     { key: 'summon',    label: '窗口召回音',     lk: 'audio.sfx.summon.label',    dk: 'audio.sfx.summon.desc',    file: 'kj3',            match: ['kj3.mp3'],          desc: '编队热键召回窗口成功' }
   ];
   var _sfxState = {};   // sceneKey → 'true' | 'false'（缺省 = 启用）
@@ -62,6 +62,13 @@
   }
   function _sfxSet(key, on) {
     _sfxState[key] = on ? 'true' : 'false';
+    var h = _sfxQgs();
+    if (h) { try { h.set('audio.sfx', JSON.stringify(_sfxState)); } catch (_) { } }
+    _syncSfxToMain();
+  }
+  // ★ 全选 / 全不选（设置面板音效卡右上角 All / None 按钮，2026-09-23）——qgs 一次写 + 闸门一次推
+  function _sfxSetAll(on) {
+    for (var i = 0; i < SFX_SCENES.length; i++) _sfxState[SFX_SCENES[i].key] = on ? 'true' : 'false';
     var h = _sfxQgs();
     if (h) { try { h.set('audio.sfx', JSON.stringify(_sfxState)); } catch (_) { } }
     _syncSfxToMain();
@@ -125,7 +132,8 @@
     // ── 音效开关（1 by 1 卡片消费）──
     sfxScenes: function () { return SFX_SCENES; },
     sfxOn: _sfxOn,
-    sfxSet: _sfxSet
+    sfxSet: _sfxSet,
+    sfxSetAll: _sfxSetAll
   };
 
   // ★ 启动即拉取用户设置并推送主进程闸门（抢在任何播放前）；qgs 未就绪自动重试
