@@ -28,34 +28,174 @@
   let activeSubmenus = [];   // all open submenu elements
 
   // ── git 未提交计数 badge ──
+  // ★ 轮询机器（2026-09-24 重写）: 全渲染层唯一周期性 git 重活 —— 大仓库下必须
+  //   「少磨盘 + 不在用户能感觉到的时刻磨」。四原则:
+  //   ① 就绪门控——启动恢复全部完成后才武装（壳层揭幕信号 qqq-ui-ready；
+  //      空白窗用 core 就绪 +15s 兜底），首轮再静置 8s
+  //   ② 可见门控——窗口隐藏或失焦 → 暂停；回到前台/可见 → 立即补一轮（所见即最新）
+  //   ③ 耗时自适应——间隔 = clamp(15s, 最慢单仓库耗时×10, 120s)；单飞（上轮未完不排下轮）
+  //   ④ 硬错误退避——spawn 级失败（git 缺失/被杀）60s→×2→10min 封顶；任何成功清零
+  //   副产物: 单仓库连续慢 ≥2 轮 → 一次性提示开启 untracked cache（2~10× 提速，
+  //   仅用户点击才写仓库配置；先 --test-untracked-cache 探测支持性）
   var _gitBadgeCache = {};       // path → { count, error }
   var _gitBadgeEls = {};         // path → badge DOM element (direct reference)
-  var _gitBadgeTimer = null;
-  var _gitBadgePollMs = 15000;
+  var _gitPoll = {
+    gateStarted: false, armed: false, timer: null, running: false,
+    bin: null,                 // git 路径（会话级缓存；硬错误时清空重解析）
+    lastDur: 0,                // 上轮最慢单仓库耗时 ms（自适应间隔依据）
+    failBackoff: 0,            // 硬错误退避 ms（0 = 正常）
+    focused: true,
+    slowHits: {},              // path → 连续慢轮数
+    ucAsked: {},               // path → 1（本会话已提示/已处理）
+    rounds: 0, errors: 0       // 诊断（window.qqqGitPoll.stats()）
+  };
+  var _GIT_POLL_MIN_MS = 15000, _GIT_POLL_MAX_MS = 120000;
+  var _GIT_SLOW_MS = 1500, _GIT_SLOW_RESET_MS = 1200, _GIT_UC_HITS = 2;
 
-  function _pollGitBadges() {
-    if (!projects.length) return;
-    var idx = 0;
-    function next() {
-      if (idx >= projects.length) return;
-      var p = projects[idx++];
-      _checkOneGitBadge(p).finally(next);
-    }
-    next();
+  function _gitPollPaused() {
+    return document.hidden || !_gitPoll.focused;
   }
 
+  function _gitPollDelay() {
+    if (_gitPoll.failBackoff > 0) return _gitPoll.failBackoff;
+    var d = _GIT_POLL_MIN_MS;
+    if (_gitPoll.lastDur > _GIT_SLOW_RESET_MS) {
+      d = Math.max(d, Math.min(_gitPoll.lastDur * 10, _GIT_POLL_MAX_MS));
+    }
+    return d;
+  }
+
+  function _gitPollSchedule() {
+    if (_gitPoll.timer) { clearTimeout(_gitPoll.timer); _gitPoll.timer = null; }
+    if (!_gitPoll.armed) return;
+    _gitPoll.timer = setTimeout(_gitPollRound, _gitPollDelay());
+  }
+
+  function _gitPollKick() {
+    // 回到前台/可见 → 立即补一轮（300ms 让位当前帧；清旧定时器防双发）
+    if (!_gitPoll.armed || _gitPoll.running || _gitPollPaused()) return;
+    if (_gitPoll.timer) { clearTimeout(_gitPoll.timer); _gitPoll.timer = null; }
+    _gitPoll.timer = setTimeout(_gitPollRound, 300);
+  }
+
+  function _gitPollRound() {
+    if (!_gitPoll.armed || _gitPoll.running) return;
+    if (!projects.length) { _gitPollSchedule(); return; }
+    if (_gitPollPaused()) {
+      // 暂停期不跑；恢复路径 = visibilitychange / focus → kick；60s 兜底重查防失联
+      if (_gitPoll.timer) clearTimeout(_gitPoll.timer);
+      _gitPoll.timer = setTimeout(_gitPollRound, 60000);
+      return;
+    }
+    _gitPoll.running = true;
+    var t0 = performance.now();
+    var maxOne = 0, hardErr = false;
+    var idx = 0;
+    (function next() {
+      if (idx >= projects.length) return Promise.resolve();
+      var p = projects[idx++];
+      var pt0 = performance.now();
+      return Promise.resolve(_checkOneGitBadge(p)).then(function (res) {
+        var pd = performance.now() - pt0;
+        if (pd > maxOne) maxOne = pd;
+        if (res === 'hard') hardErr = true;
+        _gitSlowTrack(p.path, pd);
+        return next();
+      });
+    })().catch(function () { }).then(function () {
+      _gitPoll.running = false;
+      _gitPoll.rounds++;
+      _gitPoll.lastDur = maxOne;
+      if (hardErr) {
+        _gitPoll.errors++;
+        _gitPoll.failBackoff = _gitPoll.failBackoff ? Math.min(_gitPoll.failBackoff * 2, 600000) : 60000;
+      } else {
+        _gitPoll.failBackoff = 0;
+      }
+      _gitPollSchedule();
+    });
+  }
+
+  function _gitSlowTrack(path, pd) {
+    if (pd > _GIT_SLOW_MS) {
+      var n = (_gitPoll.slowHits[path] || 0) + 1;
+      _gitPoll.slowHits[path] = n;
+      if (n >= _GIT_UC_HITS) _gitUcHint(path, pd);
+    } else if (pd < _GIT_SLOW_RESET_MS) {
+      _gitPoll.slowHits[path] = 0;
+    }
+  }
+
+  // ★ 大仓库提速提示（2026-09-24）: untracked cache = git 官方针对「大工作区 +
+  //   大量未跟踪文件」的索引缓存（2~10×）。每仓库每会话至多提示一次；
+  //   一切仓库配置写入仅发生在用户点击后（零静默写盘）。
+  function _gitUcHint(path, pd) {
+    if (_gitPoll.ucAsked[path]) return;
+    _gitPoll.ucAsked[path] = 1;
+    var name = String(path).split(/[\\/]/).filter(Boolean).pop() || path;
+    var sec = (pd / 1000).toFixed(1);
+    (async function () {
+      try {
+        var cfg = await bridge.qz.spawn({
+          cmd: _gitPoll.bin || 'git',
+          args: ['-C', path, 'config', '--get', 'core.untrackedCache'],
+          timeout: 8000
+        });
+        // 已开过 → 静默（慢是别的原因，别再打扰）
+        if (cfg && cfg.exitCode === 0 && String(cfg.stdout || '').trim() === 'true') return;
+      } catch (_) { }
+      if (!window.qqqideQoast) return;
+      try {
+        window.qqqideQoast.show(
+          window._i('gitPoll.ucHint',
+            '⚠️ 大仓库 {name} 的 git 状态扫描较慢（{sec}s/次）——开启 untracked cache 可提速 2~10 倍',
+            { name: name, sec: sec }),
+          {
+            duration: 0, type: 'warning',
+            action: {
+              label: window._i('gitPoll.ucEnable', '开启'),
+              onClick: function () { _gitUcEnable(path, name); }
+            }
+          });
+      } catch (_) { }
+    })();
+  }
+
+  async function _gitUcEnable(path, name) {
+    var gitBin = _gitPoll.bin || 'git';
+    function _toast(msg, type, dur) {
+      try { window.qqqideQoast.show(msg, { duration: dur || 9000, type: type || 'info' }); } catch (_) { }
+    }
+    function _fail() { _toast(window._i('gitPoll.ucFail', '该仓库不支持 untracked cache（可能非本地磁盘），未做任何修改'), 'warning', 0); }
+    try {
+      var t = await bridge.qz.spawn({ cmd: gitBin, args: ['-C', path, 'update-index', '--test-untracked-cache'], timeout: 20000 });
+      if (!t || t.exitCode !== 0) { _fail(); return; }
+      var e1 = await bridge.qz.spawn({ cmd: gitBin, args: ['-C', path, 'update-index', '--untracked-cache'], timeout: 20000 });
+      if (!e1 || e1.exitCode !== 0) { _fail(); return; }
+      try { await bridge.qz.spawn({ cmd: gitBin, args: ['-C', path, 'config', 'core.untrackedCache', 'true'], timeout: 8000 }); } catch (_) { }
+      _gitPoll.slowHits[path] = 0;
+      _gitPoll.lastDur = 0;   // 下一轮立即重测真实耗时
+      _toast(window._i('gitPoll.ucDone', '✓ 已为 {name} 开启 untracked cache，下次扫描起生效', { name: name }), 'info', 9000);
+    } catch (e) { _fail(); }
+  }
+
+  // 返回: 'ok' = 成功 / 'soft' = git 跑了但非零退出（如非仓库——正常稳态，不进退避） /
+  //       'hard' = spawn 级失败（git 缺失/被杀——进退避 + 下轮重解析路径）
   async function _checkOneGitBadge(proj) {
     try {
-      var gitBin = 'git';
-      if (bridge.components && bridge.components.getBin) {
-        try { var bin = await bridge.components.getBin('git'); if (bin) gitBin = bin; } catch(_) {}
+      if (!_gitPoll.bin) {
+        var gitBin = 'git';
+        if (bridge.components && bridge.components.getBin) {
+          try { var bin = await bridge.components.getBin('git'); if (bin) gitBin = bin; } catch (_) { }
+        }
+        _gitPoll.bin = gitBin;   // 会话级缓存: 每轮每仓库 2 次 IPC → 全程 2 次
       }
       var r = await bridge.qz.spawn({
-        cmd: gitBin,
+        cmd: _gitPoll.bin,
         args: ['-C', proj.path, 'status', '--porcelain'],
-        timeout: 8000
+        timeout: 20000   // 8s→20s: 大仓库给它跑完的机会（超时不再常态误判）
       });
-      if (r.exitCode !== 0) { _gitBadgeCache[proj.path] = { error: true }; return; }
+      if (!r || r.exitCode !== 0) { _gitBadgeCache[proj.path] = { error: true }; return 'soft'; }
       var count = (r.stdout || '').split('\n').filter(Boolean).length;
       _gitBadgeCache[proj.path] = { count: count, error: false };
       _updateBadgeDOM(proj.path, count);
@@ -64,9 +204,12 @@
         window.dispatchEvent(new CustomEvent('qqq:git-dirty', {
           detail: { path: proj.path, porcelain: r.stdout || '', count: count }
         }));
-      } catch (_) {}
+      } catch (_) { }
+      return 'ok';
     } catch (e) {
+      _gitPoll.bin = null;   // 可能 git 尚未就绪（组件安装中）/被拦 → 下轮重解析
       _gitBadgeCache[proj.path] = { error: true };
+      return 'hard';
     }
   }
 
@@ -84,11 +227,45 @@
     _scheduleFit(); // ★ badge 宽度变化影响预算 → 重算
   }
 
-  function _startGitBadgePolling() {
-    if (_gitBadgeTimer) return;
-    _pollGitBadges();
-    _gitBadgeTimer = setInterval(_pollGitBadges, _gitBadgePollMs);
+  function _armGitPoll() {
+    if (_gitPoll.armed) return;
+    _gitPoll.armed = true;
+    if (_gitPoll.timer) clearTimeout(_gitPoll.timer);
+    _gitPoll.timer = setTimeout(_gitPollRound, 8000);   // 亮相后再静置 8s（恢复尾巴让路）
   }
+
+  function _startGitBadgePolling() {
+    if (_gitPoll.gateStarted) return;
+    _gitPoll.gateStarted = true;
+    // ② 可见门控接线
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) _gitPollKick(); });
+    window.addEventListener('focus', function () { _gitPoll.focused = true; _gitPollKick(); });
+    window.addEventListener('blur', function () { _gitPoll.focused = false; });
+    // ① 就绪门控: 壳层揭幕信号（qqq-ui-ready，shell.js 在启动面板撤除时派发）→ 武装
+    if (window.__qqqUiShown) { _armGitPoll(); return; }
+    window.addEventListener('qqq-ui-ready', _armGitPoll, { once: true });
+    // 兜底: 无 AI 面板信号的窗口（空白窗/降级路径）→ core 就绪 15s 后武装；
+    // 极限兜底 90s（任何异常都绝不永久失联）
+    var _t0 = Date.now();
+    var iv = setInterval(function () {
+      if (_gitPoll.armed) { clearInterval(iv); return; }
+      if (window.__qqqCoreReady) { clearInterval(iv); setTimeout(_armGitPoll, 15000); }
+      else if (Date.now() - _t0 > 90000) { clearInterval(iv); _armGitPoll(); }
+    }, 3000);
+  }
+
+  // 诊断入口（DevTools）: 轮数 / 最近耗时 / 退避 / 慢仓库名单
+  window.qqqGitPoll = {
+    stats: function () {
+      return {
+        armed: _gitPoll.armed, running: _gitPoll.running, rounds: _gitPoll.rounds,
+        errors: _gitPoll.errors, lastDurMs: Math.round(_gitPoll.lastDur),
+        backoffMs: _gitPoll.failBackoff, slowHits: _gitPoll.slowHits,
+        projects: projects.map(function (p) { return p.path; })
+      };
+    },
+    kick: _gitPollKick
+  };
 
   // ---- module-level state (dropdown stays forever until explicit dismiss) ----
   let _activeBlockEl = null;

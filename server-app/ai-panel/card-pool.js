@@ -480,6 +480,85 @@ var CardPool = (function () {
     wrap.insertBefore(b, wrap.firstChild);
   }
 
+  // ★ 图片底部三按钮 mem/file/path（2026-09-24 用户定案；纯英文零 i18n）——
+  //   与悬浮预览层（shell-overlay）三按钮同款复制功能，位置 = 图片底部正中（大小分辨率左侧）：
+  //   mem=复制图像进剪贴板（可粘贴）· file=复制文件本体（CF_HDROP）· path=复制路径
+  function _ensureImgActBar(wrap, img) {
+    if (!img || !img.src) return;
+    if (wrap.querySelector(':scope > .img-act-bar')) return;
+    var bar = document.createElement('span');
+    bar.className = 'img-act-bar';
+    var acts = [
+      ['mem', 'Copy to memory (paste anywhere)'],
+      ['file', 'Copy file (paste to chat / Roam / Explorer)'],
+      ['path', 'Copy path']
+    ];
+    for (var _ai = 0; _ai < acts.length; _ai++) {
+      var _ab = document.createElement('span');
+      _ab.className = 'img-act-btn';
+      _ab.textContent = acts[_ai][0];
+      _ab.title = acts[_ai][1];
+      _ab.setAttribute('data-act', acts[_ai][0]);
+      bar.appendChild(_ab);
+    }
+    wrap.appendChild(bar);
+  }
+
+  // img → 本地文件路径：dataset.localPath 优先（恢复渲染回填），file:/// URL 解码兜底
+  function _imgActLocalPath(img) {
+    if (!img) return null;
+    if (img.dataset && img.dataset.localPath) return img.dataset.localPath;
+    var src = img.src || '';
+    if (/^file:\/\//i.test(src)) {
+      var p = src.replace(/^file:\/\/\//i, '');
+      try { p = decodeURIComponent(p); } catch (_) { }
+      return p;
+    }
+    return null;
+  }
+
+  function _imgActToast(msg, type) {
+    try {
+      if (window.parent && window.parent.qqqideQoast) {
+        window.parent.qqqideQoast.show(msg, { type: type || 'info', duration: 2500 });
+      }
+    } catch (_) { }
+  }
+
+  // 三动作执行（桥 = parent.qqqideBridge.clipboard.*，与悬浮预览层同源）
+  function _imgActDo(act, img) {
+    var b = null;
+    try { b = (window.parent && window.parent.qqqideBridge) || null; } catch (_) { }
+    var p = _imgActLocalPath(img);
+    var src = (img && img.src) || '';
+    if (act === 'mem') {
+      var payload = p ? { path: p } : (/^data:/i.test(src) ? { dataUrl: src } : null);
+      if (!payload || !b || !b.clipboard || !b.clipboard.writeImage) { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+      b.clipboard.writeImage(payload).then(function (ok) {
+        _imgActToast(ok ? _qq('shell.overlay.memOk', '图片已进入内存，可直接粘贴') : _qq('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+      }).catch(function () { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
+      return;
+    }
+    if (!p) {
+      var _noMsg = (/^data:/i.test(src) ? _qq('shell.overlay.noLocalPath', '该图片无本地路径') : _qq('shell.overlay.noLocalFile', '该图片无本地文件，无法复制文件'));
+      _imgActToast(_noMsg, 'info');
+      return;
+    }
+    if (act === 'file') {
+      if (!b || !b.clipboard || !b.clipboard.writeFiles) { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+      b.clipboard.writeFiles([p]).then(function (ok) {
+        _imgActToast(ok ? _qq('shell.overlay.fileOk', '文件已复制，可直接粘贴') : _qq('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+      }).catch(function () { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
+      return;
+    }
+    if (act === 'path') {
+      if (!b || !b.clipboard || !b.clipboard.writeText) { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+      b.clipboard.writeText(p).then(function () {
+        _imgActToast(_qq('shell.overlay.copied', '已复制'), 'success');
+      }).catch(function () { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
+    }
+  }
+
   function _populateImgInfos(container) {
     if (!container || !container.querySelectorAll) return;
     var wraps = container.querySelectorAll('.table-wrap');
@@ -488,6 +567,7 @@ var CardPool = (function () {
       var _inf = wraps[_wi].querySelector(':scope > .img-info');
       if (_img && _inf) _fillImgInfo(_img, _inf);
       _ensureRoamBtn(wraps[_wi], _img);
+      _ensureImgActBar(wraps[_wi], _img);
     }
   }
 
@@ -765,6 +845,13 @@ var CardPool = (function () {
         }
         return;
       }
+      var _actBtn = e.target.closest('.img-act-btn');
+      if (_actBtn) {
+        var _wrapA = _actBtn.closest('.table-wrap');
+        var _imgA = _wrapA ? _wrapA.querySelector(':scope > img') : null;
+        if (_imgA) _imgActDo(_actBtn.getAttribute('data-act'), _imgA);
+        return;
+      }
       var btn = e.target.closest('.table-view-btn');
       if (btn) {
         var wrap = btn.closest('.table-wrap');
@@ -1016,6 +1103,13 @@ var CardPool = (function () {
         if (_imgR2 && _imgR2.src && typeof _postToHost === 'function') {
           _postToHost({ type: 'qqqide-overlay', action: 'reveal-in-roam', src: _imgR2.src });
         }
+        return;
+      }
+      var _actBtn2 = e.target.closest('.img-act-btn');
+      if (_actBtn2) {
+        var _wrapA2 = _actBtn2.closest('.table-wrap');
+        var _imgA2 = _wrapA2 ? _wrapA2.querySelector(':scope > img') : null;
+        if (_imgA2) _imgActDo(_actBtn2.getAttribute('data-act'), _imgA2);
         return;
       }
       var btn = e.target.closest('.table-view-btn');

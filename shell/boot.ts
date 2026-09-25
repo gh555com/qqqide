@@ -10,7 +10,7 @@ import * as os from 'os';
 import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 import { APP_VERSION, readManifestId } from './version';
 import { getDataDir } from './portable-paths';
 import { mi, miDict } from './main-i18n';
@@ -23,19 +23,120 @@ export function isBootCompleted(): boolean { return bootCompleted; }
 // Boot file log — 启动日志落地到 cache/boot.log，诊断连接失败
 // ----------------------------------------------------------------------------
 let _bootLogPath: string | null = null;
+
+// ★ boot.log 轮转（2026-09-24）: 单文件 ≤1MB，超限滚为 .old（单代）——曾无上限 append
+//   （客户实例 129MB 实锤）。每 500 行抽检一次 stat（微秒级），initBootLog 强制查一次。
+const BOOT_LOG_MAX_BYTES = 1024 * 1024;
+let _bootLogLines = 0;
+function _rotateBootLogIfBig(force?: boolean) {
+    if (!_bootLogPath) { return; }
+    if (!force && (_bootLogLines % 500) !== 0) { return; }
+    try {
+        if (fs.statSync(_bootLogPath).size > BOOT_LOG_MAX_BYTES) {
+            try { fs.unlinkSync(_bootLogPath + '.old'); } catch (_) { }
+            try { fs.renameSync(_bootLogPath, _bootLogPath + '.old'); } catch (_) { }
+        }
+    } catch (_) { /* 文件不存在等 — 忽略 */ }
+}
 function bootLog(msg: string) {
     if (!_bootLogPath) { return; }
     const ts = new Date().toISOString();
     try {
+        _bootLogLines++;
+        _rotateBootLogIfBig();
         fs.appendFileSync(_bootLogPath, `[${ts}] ${msg}\n`);
     } catch (_) { }
 }
 function initBootLog(logsDir: string) {
     try { fs.mkdirSync(logsDir, { recursive: true }); } catch (_) { }
     _bootLogPath = path.join(logsDir, 'boot.log');
+    _rotateBootLogIfBig(true);
     bootLog('=== qqqide boot start ===');
     bootLog('version: ' + APP_VERSION);
     bootLog('platform: ' + os.platform() + ' ' + os.release());
+}
+
+// ----------------------------------------------------------------------------
+// UI 就绪事件 / 旧槽异步清理（2026-09-24 启动减负 + 揭幕门控配套）
+// ----------------------------------------------------------------------------
+// ★ 就绪门控：boot 面板的撤除时机 = 渲染层「UI 就绪」信号（正常 3~10s；异常 20s
+//   JS 兜底 / 25s 壳层超时）——窗口可见的瞬间即已可交互，结构性消灭「进去就点
+//   聊天框被 init 长任务卡住」。
+//   信号链: webapp 渲染层（主窗口 core 完成 + 中面板 AI 恢复完成）
+//           → postMessage → shell.js 转发 → preload qqqide:renderer-ready → 此处。
+let _uiReadyFired = false;
+const _uiReadyWaiters: Array<() => void> = [];
+let _uiReadyWatchdog: NodeJS.Timeout | null = null;
+
+/** 注册 UI 就绪回调（已就绪 → 立即执行）。供启动减负任务挂载（组件自检/旧槽清理）。 */
+export function onUiReady(cb: () => void): void {
+    if (_uiReadyFired) { try { cb(); } catch (_) { } return; }
+    _uiReadyWaiters.push(cb);
+    if (!_uiReadyWatchdog) {
+        // 绝对兜底: 45s 内即便 boot 流程异变（fallback/超时/信号丢失），后台任务照常启动
+        _uiReadyWatchdog = setTimeout(() => _fireUiReady('watchdog-45s'), 45000);
+        try { (_uiReadyWatchdog as any).unref && (_uiReadyWatchdog as any).unref(); } catch (_) { }
+    }
+}
+function _fireUiReady(reason: string): void {
+    if (_uiReadyFired) { return; }
+    _uiReadyFired = true;
+    if (_uiReadyWatchdog) { clearTimeout(_uiReadyWatchdog); _uiReadyWatchdog = null; }
+    bootLog('ui-ready: ' + reason);
+    const waiters = _uiReadyWaiters.splice(0);
+    for (const cb of waiters) {
+        try { cb(); } catch (e: any) { bootLog('ui-ready cb error: ' + ((e && e.message) || e)); }
+    }
+}
+
+/** 旧槽异步清理（2026-09-24 删除挪后）: 交换产生的 gh555.com-old* 由启动器交换期
+ *  同步删改为壳层就绪后 3s 后台删（1.4GB+/2.7 万文件，曾占交换 4~60s）；
+ *  .keep-old-slot / .pending-reboot 存在时绝不删（对齐 C 端 pin 语义）；含 Data
+ *  的槽永不删（数据救援）。失败留给启动器 cleanupRootJunk 24h 宽限外兜底。 */
+export function scheduleOldSlotCleanup(portableRoot: string): void {
+    onUiReady(() => {
+        setTimeout(() => { _cleanOldSlots(portableRoot).catch(() => { }); }, 3000);
+    });
+}
+function _oldSlotPath(exeDir: string, idx: number): string {
+    return idx === 0 ? path.join(exeDir, 'gh555.com-old') : path.join(exeDir, 'gh555.com-old-' + idx);
+}
+async function _cleanOldSlots(portableRoot: string): Promise<void> {
+    try {
+        const exeDir = path.dirname(portableRoot);
+        if (!exeDir || exeDir === '.' || !fs.existsSync(exeDir)) { return; }
+        const markPath = path.join(exeDir, '.old-slot-last');
+        if (fs.existsSync(path.join(exeDir, '.keep-old-slot')) || fs.existsSync(path.join(exeDir, '.pending-reboot'))) {
+            bootLog('old-slot cleanup: skipped (pinned / pending-reboot)');
+            return;
+        }
+        let removed = 0;
+        for (let i = 0; i < 100; i++) {
+            const p = _oldSlotPath(exeDir, i);
+            if (!fs.existsSync(p)) { continue; }
+            // 含 Data 的槽 = 数据救援场景，永不删（对齐 C: 含 Data 槽永不删）
+            if (fs.existsSync(path.join(p, 'Data'))) {
+                bootLog('old-slot cleanup: keep (contains Data): ' + p);
+                continue;
+            }
+            try {
+                await fs.promises.rm(p, { recursive: true, force: true, maxRetries: 2 });
+                removed++;
+            } catch (_) { /* 被锁 → 留给启动器 cleanupRootJunk 兜底 */ }
+        }
+        if (removed > 0) { bootLog('old-slot cleanup: removed ' + removed + ' slot(s)'); }
+        // 标记收尾: 标记指向的槽已不在（本次已删/曾删成功）→ 清标记，启动器兜底即可全速
+        try {
+            if (fs.existsSync(markPath)) {
+                const keepName = (fs.readFileSync(markPath, 'utf8') || '').trim();
+                if (!keepName || !fs.existsSync(path.join(exeDir, keepName))) {
+                    try { fs.unlinkSync(markPath); } catch (_) { }
+                }
+            }
+        } catch (_) { }
+    } catch (e: any) {
+        bootLog('old-slot cleanup error: ' + ((e && e.message) || e));
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -121,20 +222,7 @@ function writeBootStatus(portableRoot: string, line: string): void {
 export const WEBAPP_PROTOCOL = 'qqqide-webapp';
 let _webappProtocolRegistered = false;
 
-/** Copy directory contents (not the dir itself) from src to dest, overwriting. */
-function _copyDirContentsSync(src: string, dest: string): void {
-    try { fs.mkdirSync(dest, { recursive: true }); } catch { }
-    const entries = fs.readdirSync(src, { withFileTypes: true });
-    for (const entry of entries) {
-        const srcPath = path.join(src, entry.name);
-        const destPath = path.join(dest, entry.name);
-        if (entry.isDirectory()) {
-            _copyDirContentsSync(srcPath, destPath);
-        } else {
-            fs.copyFileSync(srcPath, destPath);
-        }
-    }
-}
+
 
 /**
  * 确保本地 webapp 副本存在（r 内 resources/app/webapp 首次复制到 Data/webapp）。
@@ -143,14 +231,79 @@ function _copyDirContentsSync(src: string, dest: string): void {
  *   Data/webapp 仅是只读运行副本（goods u 管线仍可增量写 Data/webapp/goods）。
  * ★ 2026-08-10 补漏（载荷更新失效）：交换时旧 Data 整体备份恢复 → Data/webapp 恒为旧版；
  *   热更通道删除后无任何机制刷新该运行副本 → 自动更新后 UI/功能永不变化。
- *   现加版本戳校验：戳 = versions.json 清单 id（.qqq-webapp-version），不一致 → 清旧重拷
+ *   现加版本戳校验：戳 = versions.json 清单 id（.qqq-webapp-version），不一致 → 增量同步
+ *   （★ 2026-09-24：原「rm 全量重拷」535 文件在慢机+杀软下拖十几秒、阻塞启动序列；
+ *   改逐文件 mtime+size 快比对（异则 sha256 裁决，见 _syncTreeIncremental），失败自动回退全量清拷）
  *   （★ 2026-08-21 修正：不再保留 goods/——u 管线 2026-08-10 已整体删除，goods 无独立
  *   更新通道，旧保留逻辑致 Data/webapp/goods 永留首建版本：客户 0.3.24 菜单行2 仍显示
  *   Search Git Kmd inbox / 上下文背包旧 UI 实锤；goods 状态全在 OS 级 sq3/.gaea-state.json/
  *   userData localStorage，目录内零用户数据 → 全量重拷安全），重拷源优先 resources/app/server-app
  *   （webapp 单元增量更新的目标），webapp bundle 仅兜底（bundle 不随增量刷新）。
  */
-export function ensureLocalWebapp(portableRoot: string): string | null {
+/** 增量同步（2026-09-24）: source 与 dest 逐文件比对，只拷内容变化者。
+ *  比对三级: size+ms 级 mtime（快路径——本函数拷出的文件恒同步源 mtime）→ 回落
+ *  size+sha256（历史副本首次）。拷贝后 utimes 校正 dest mtime → 下次升级恒走快路径。
+ *  dest 多余文件/目录删除（恢复「干净副本」语义，排除版本戳自身）。返回统计。 */
+async function _syncTreeIncremental(src: string, dest: string): Promise<{ copied: number; skipped: number; removed: number }> {
+    const crypto = require('crypto') as typeof import('crypto');
+    let copied = 0, skipped = 0, removed = 0;
+    const _hash = async (p: string): Promise<string> =>
+        crypto.createHash('sha256').update(await fs.promises.readFile(p)).digest('hex');
+    async function walk(s: string, d: string): Promise<void> {
+        await fs.promises.mkdir(d, { recursive: true });
+        const entries = await fs.promises.readdir(s, { withFileTypes: true });
+        const srcNames = new Set(entries.map(e => e.name));
+        for (const ent of entries) {
+            const sp = path.join(s, ent.name);
+            const dp = path.join(d, ent.name);
+            if (ent.isDirectory()) { await walk(sp, dp); continue; }
+            let need = true;
+            let ss: fs.Stats | null = null;
+            try {
+                ss = await fs.promises.stat(sp);
+                const ds = await fs.promises.stat(dp);
+                if (ss.size === ds.size) {
+                    // ★ mtime 快路径（2026-09-24）: 本函数拷出的文件已同步源 mtime →
+                    //   size+mtime 全同即免读内容（535 文件全读 sha256 → 毫秒级）；
+                    //   历史副本（cpSync 无 mtime 语义）自动回落 sha256 一次并校正。
+                    if (Math.abs(ss.mtimeMs - ds.mtimeMs) < 2) {
+                        need = false;
+                    } else {
+                        const sh = await _hash(sp);
+                        const dh = await _hash(dp);
+                        if (sh === dh) {
+                            need = false;
+                            try { await fs.promises.utimes(dp, ss.atime, ss.mtime); } catch (_) { }
+                        }
+                    }
+                }
+            } catch (_) { need = true; }
+            if (need) {
+                await fs.promises.copyFile(sp, dp);
+                if (ss) { try { await fs.promises.utimes(dp, ss.atime, ss.mtime); } catch (_) { } }
+                copied++;
+            } else { skipped++; }
+        }
+        // dest 多余文件/目录清理（src 无）——排除版本戳自身（由调用方在收尾写）
+        let dents: fs.Dirent[] = [];
+        try { dents = await fs.promises.readdir(d, { withFileTypes: true }); } catch (_) { }
+        for (const ent of dents) {
+            if (srcNames.has(ent.name) || ent.name === '.qqq-webapp-version') { continue; }
+            try { await fs.promises.rm(path.join(d, ent.name), { recursive: true, force: true }); removed++; } catch (_) { }
+        }
+    }
+    await walk(src, dest);
+    return { copied, skipped, removed };
+}
+
+/**
+ * 确保本地 webapp 副本存在（r 内 resources/app/server-app 复制到 Data/webapp）。
+ * ★ 2026-09-24 增量改造：戳不一致不再「rm 全量重拷」→ 逐文件 mtime+size 增量同步
+ *   （异则 sha256 裁决；常态升级只变几十个文件），失败自动回退全量清拷；语义不变（只读运行副本、
+ *   零用户数据、干净副本无残留）。异步化后启动序列 await（webapp 先就位再 spawn
+ *   组件的时序契约保持），但不再阻塞事件循环。
+ */
+export async function ensureLocalWebapp(portableRoot: string): Promise<string | null> {
     const localDir = path.join(getDataDir(), 'webapp');
     const manifestId = readManifestId(portableRoot);
     const stampPath = path.join(localDir, '.qqq-webapp-version');
@@ -164,16 +317,6 @@ export function ensureLocalWebapp(portableRoot: string): string | null {
         return localDir;
     }
 
-    // 戳缺失/不一致 → 清理旧副本全量重拷（含 goods，2026-08-21 起不再保留），失败则降级合并覆盖
-    if (haveLocal) {
-        try {
-            fs.rmSync(localDir, { recursive: true, force: true });
-            bootLog('webapp: stale copy (stamp=' + (stamp || '(none)') + ') removed for manifest ' + manifestId);
-        } catch (e: any) {
-            bootLog('webapp: stale-copy cleanup failed — ' + (e.message || e) + ' (fallback: merge copy)');
-        }
-    }
-
     // Copy from package — server-app 优先（webapp 单元增量目标），webapp bundle 兜底
     const candidates: string[] = [
         path.join(portableRoot, 'resources', 'app', 'server-app'),
@@ -181,17 +324,36 @@ export function ensureLocalWebapp(portableRoot: string): string | null {
         path.join(__dirname, 'webapp'),
         path.join(__dirname, '..', 'webapp'),
     ];
-    for (const src of candidates) {
-        if (fs.existsSync(path.join(src, 'index.html'))) {
-            try {
-                fs.cpSync(src, localDir, { recursive: true });
-                try { fs.writeFileSync(stampPath, manifestId); } catch (_) { }
-                bootLog('webapp: copied from package → ' + localDir);
-                return localDir;
-            } catch (e: any) {
-                bootLog('webapp: copy failed — ' + (e.message || e));
-            }
+    const webappSrc = candidates.find(c => fs.existsSync(path.join(c, 'index.html')));
+    if (!webappSrc) { return null; }
+
+    if (haveLocal && stamp !== manifestId) {
+        // ★ 增量路径（戳不匹配 = 升级后首启，常态只变几十个文件）
+        try {
+            const t0 = Date.now();
+            const st = await _syncTreeIncremental(webappSrc, localDir);
+            fs.writeFileSync(stampPath, manifestId);
+            bootLog('webapp: incremental sync (stamp=' + (stamp || '(none)') + ' → ' + manifestId
+                + ') copied=' + st.copied + ' skipped=' + st.skipped + ' removed=' + st.removed
+                + ' in ' + (Date.now() - t0) + 'ms');
+            return localDir;
+        } catch (e: any) {
+            bootLog('webapp: incremental sync failed — ' + (e.message || e) + ' (fallback: full recopy)');
+            try { fs.rmSync(localDir, { recursive: true, force: true }); } catch (_) { }
         }
+    } else if (haveLocal) {
+        // 副本残缺（戳一致但 index.html 缺失等）→ 全量清拷
+        try { fs.rmSync(localDir, { recursive: true, force: true }); } catch (_) { }
+    }
+
+    // 全量清拷（首装 / 增量失败回退）
+    try {
+        fs.cpSync(webappSrc, localDir, { recursive: true });
+        try { fs.writeFileSync(stampPath, manifestId); } catch (_) { }
+        bootLog('webapp: copied from package → ' + localDir);
+        return localDir;
+    } catch (e: any) {
+        bootLog('webapp: copy failed — ' + (e.message || e));
     }
     return null;
 }
@@ -291,6 +453,10 @@ export async function loadRemoteWithCacheGuard(
         let pendingReqs = 0;
         let doneReqs = 0;
         let domReadyFired = false;
+        // ★ 请求级日志降级（2026-09-24 修）: boot 收敛后停写「每请求一行」——曾「保留
+        //   webRequest 观测动态加载」致整个会话每请求一次 appendFileSync（客户实例
+        //   boot.log 129MB 的持续写入源）；收敛后仅 SLOW（>1.5s）/ERR 保留（诊断价值）。
+        let _reqLogVerbose = true;
         const session = wc.session;
         const reqStartTimes = new Map<string, number>();
         let cooldownTimer: NodeJS.Timeout | null = null;
@@ -308,8 +474,10 @@ export async function loadRemoteWithCacheGuard(
             pendingReqs++;
             // 冷却期被打断 → 重置计时器
             if (cooldownTimer) { clearTimeout(cooldownTimer); cooldownTimer = null; }
-            const shortUrl = details.url?.slice(0, 100);
-            bootLog('webReq: +' + pendingReqs + ' ' + details.resourceType + ' ' + shortUrl);
+            if (_reqLogVerbose) {
+                const shortUrl = details.url?.slice(0, 100);
+                bootLog('webReq: +' + pendingReqs + ' ' + details.resourceType + ' ' + shortUrl);
+            }
             cb({});
         };
         const onReqDone = (details: any) => {
@@ -321,7 +489,7 @@ export async function loadRemoteWithCacheGuard(
             reqStartTimes.delete(details.url);
             if (elapsed > 1500) {
                 bootLog('webReq: SLOW ' + elapsed + 'ms ' + details.resourceType + ' ' + details.url?.slice(0, 80));
-            } else {
+            } else if (_reqLogVerbose) {
                 bootLog('webReq: ✓' + elapsed + 'ms ' + details.resourceType + ' ' + details.url?.slice(0, 80));
             }
             tryCooldown();
@@ -336,6 +504,9 @@ export async function loadRemoteWithCacheGuard(
             tryCooldown();
         };
         const tryCooldown = () => {
+            // ★ 收敛后不再空转（2026-09-24 修）: 收敛后每波请求完成都会反复触发
+            //   「cooldown started/expired」两条日志 + 4s 定时器循环（轮询场景每 ~20s 一轮）
+            if (readyShown) { return; }
             if (pendingReqs === 0 && doneReqs > 0 && !cooldownTimer) {
                 bootLog('webReq: cooldown started — pending=0 done=' + doneReqs + ' wait=' + COOLDOWN_MS + 'ms');
                 cooldownTimer = setTimeout(() => {
@@ -415,10 +586,48 @@ export async function loadRemoteWithCacheGuard(
                 tryCooldown();
             }
         };
+        // ★ 揭幕门控（2026-09-24）: 撤启动面板的时机 = 渲染层「UI 就绪」信号——
+        //   窗口亮相的瞬间即已可交互（根治「进去就点聊天框被 init 长任务卡十来秒」）。
+        //   任何路径都会撤面板: 信号 / 25s 超时 / 渲染进程崩溃（绝不永久卡启动画面）。
         let readyShown = false;     // onAllReady 防重入
+        let _revealed = false;
+        let _revealTimer: NodeJS.Timeout | null = null;
+        let _rendererReadyHeard = false;
+        let _bootReady = false;
+        const _revealNow = (reason: string) => {
+            if (_revealed) { return; }
+            _revealed = true;
+            if (_revealTimer) { clearTimeout(_revealTimer); _revealTimer = null; }
+            try { ipcMain.removeListener('qqqide:renderer-ready', _onRendererReady); } catch (_) { }
+            try { wc.removeListener('render-process-gone', _onRenderGone); } catch (_) { }
+            bootLog('reveal: ' + reason + ' — boot panel removed');
+            removeLoadingPanel();
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (!mainWindow.isVisible()) { mainWindow.show(); }
+                try { mainWindow.focus(); } catch (_) { }
+            }
+            _fireUiReady(reason);
+        };
+        const _onRendererReady = (e: any) => {
+            try {
+                if (e && e.sender && e.sender.id === wc.id) {
+                    _rendererReadyHeard = true;
+                    if (_bootReady) { _revealNow('renderer-ready'); }
+                }
+            } catch (_) { }
+        };
+        const _onRenderGone = () => { _revealNow('render-gone'); };
+        const armRevealGate = () => {
+            try { ipcMain.on('qqqide:renderer-ready', _onRendererReady); } catch (_) { }
+            try { wc.on('render-process-gone', _onRenderGone); } catch (_) { }
+            if (_rendererReadyHeard) { _revealNow('renderer-ready-early'); return; }
+            _revealTimer = setTimeout(() => _revealNow('timeout-25s'), 25000);
+            bootLog('reveal gate armed (timeout 25s, waiting renderer-ready)');
+        };
         const onAllReady = () => {
             if (readyShown) { return; }
             readyShown = true;
+            _reqLogVerbose = false;   // ★ 收敛后停逐请求日志（SLOW/ERR 仍记）
             // ★ 最终清理：移除所有后续事件监听
             if (progressTickId) { clearInterval(progressTickId); progressTickId = null; }
             if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; }
@@ -435,15 +644,17 @@ export async function loadRemoteWithCacheGuard(
             writeLoadingStatus('ready');
             // ★ 重要：resolve Promise，否则 30s 超时会把 fallback 盖到 IDE 上
             finish(true, 'live');
+            _bootReady = true;
             setTimeout(() => {
-                removeLoadingPanel();
-                // ★ 显示 Electron 窗口 — 此前一直隐藏，launcher 用小窗口展示进度
+                // ★ 显示 Electron 窗口 — 此前一直隐藏，launcher 用小窗口展示进度；
+                //   窗口出现后 boot 面板继续覆盖（100% 正在启动 IDE…），等渲染层就绪再揭幕
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.show();
                     mainWindow.focus();
                 }
-                bootLog('remote: panel removed, IDE shown');
+                bootLog('remote: window shown (boot panel remains until renderer-ready)');
             }, 400);  // 短暂延迟让用户看到 100%
+            armRevealGate();
         };
 
         // ── cleanup & finish ──
@@ -595,14 +806,17 @@ export async function loadRemoteWithCacheGuard(
 /**
  * Compute the effective base URL for loading the webapp.
  * Priority: local webapp bundle (qqqide-webapp://) > remote URL.
+ * ★ 2026-09-24: ensureLocalWebapp 已改 async 增量同步——本函数不再自行触发拷贝，
+ *   只同步探测已就位的运行副本（启动序在其之前 await ensureLocalWebapp）；
+ *   副本缺失 → 回退远程 URL，与旧行为一致。
  */
 export function getWebappBaseUrl(portableRoot: string, bootConfig: BootConfig, isDev: boolean): string {
     if (isDev) {
         return 'http://127.0.0.1:8090/qqqide/';
     }
-    const webappDir = ensureLocalWebapp(portableRoot);
-    if (webappDir) {
-        registerWebappProtocol(webappDir);
+    const localDir = path.join(getDataDir(), 'webapp');
+    if (fs.existsSync(path.join(localDir, 'index.html'))) {
+        registerWebappProtocol(localDir);
         return WEBAPP_PROTOCOL + '://app/qqqide/index.html';
     }
     return bootConfig.url;

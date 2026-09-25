@@ -30,7 +30,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 
 // ── 子模块 ──
-import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, ensureLocalWebapp, BootMode, BootConfig } from './boot';
+import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, ensureLocalWebapp, onUiReady, scheduleOldSlotCleanup, BootMode, BootConfig } from './boot';
 import { initMainI18n, refreshMainI18nLang, mi } from './main-i18n';
 import { APP_VERSION, checkForcedUpdate } from './version';
 import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen, setPackRoot, packWsKey } from './window-manager';
@@ -587,15 +587,25 @@ app.whenReady().then(async () => {
     // Security hardening
     hardenSession();
 
-    // ★ 组件自检: 缺了 rank0 组件自动后台下载（不阻塞启动）
-    checkRank0Components(portable.root);
+    // ★ 组件自检（2026-09-24 启动减负）: 缺了 rank0 组件自动后台下载。原实现直接跑在
+    //   启动关键路径上（python smoke/self_heal 同步 spawn + git 全树遍历与新用户首交互
+    //   抢主线程）→ 挪到「UI 就绪」（渲染层可交互，正常 3~10s / 兜底 45s）后 1.5s 开跑；
+    //   内部已缓存化+异步化（_dirSizeMB 24h TTL / _cmdOkAsync）→ 常规会话近零成本。
+    onUiReady(() => {
+        setTimeout(() => { try { checkRank0Components(portable.root); } catch { /* ignore */ } }, 1500);
+        // 旧槽异步清理: 交换后 gh555.com-old* 由启动器交换期同步删改为壳层就绪后台删
+        scheduleOldSlotCleanup(portable.root);
+    });
 
     // ★ 时序修复（2026-09-16）：webapp 运行副本先就位，再 spawn 任何 stdio 组件与 process goods——
     //   原时序 goods 自启早于副本刷新（升级首启 +28s 实锤）→ goods 跑旧代码（旧 OS 目录/旧锁路径）；
     //   且副本拷贝阻塞主线程数十秒 → py-broker ready 握手被误判超时（假超时重启实锤）。
     //   ensureLocalWebapp 幂等（戳一致零拷贝）；dev 模式跳过（懒拷贝走 dev server）。
     if (!isDevFlag) {
-        try { ensureLocalWebapp(portable.root); } catch { /* 失败不阻塞启动 */ }
+        // ★ 2026-09-24: ensureLocalWebapp 改 async 增量同步（戳不匹配时逐文件比对），
+        //   await 保持「副本先就位再 spawn 组件」时序契约（goods 跑旧代码事故），
+        //   但不再阻塞主进程事件循环。
+        try { await ensureLocalWebapp(portable.root); } catch { /* 失败不阻塞启动 */ }
     }
 
     // ★ Python broker: 仅当已安装时启动（未安装则下次启动自动下载后再启）

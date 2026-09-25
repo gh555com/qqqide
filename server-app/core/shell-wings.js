@@ -51,6 +51,9 @@ function bootBulbs() {
     if (typeof right === 'boolean') _shellBulbState.right = right;
     if (_shellBulbState.left) d1.classList.add('on'); else d1.classList.remove('on');
     if (_shellBulbState.right) d2.classList.add('on'); else d2.classList.remove('on');
+    // ★ 懒加载（2026-09-24）: 恢复为开的翼按需建 iframe
+    if (_shellBulbState.left) _ensureWingFrame('left');
+    if (_shellBulbState.right) _ensureWingFrame('right');
     _applyWings();
     try { if (bridge && bridge.window && bridge.window.setWingState) bridge.window.setWingState(_shellBulbState.left, _shellBulbState.right); } catch (_) { }
   }
@@ -110,13 +113,14 @@ function bootBulbs() {
   var _wl = document.getElementById('qqq-wing-left');
   var _wr = document.getElementById('qqq-wing-right');
 
-  // ★ 预初始化：启动时即创建全部三个面板的 iframe（中面板在 bootAiZone 已建）
-  //    翼板 iframe 在 width:0 容器内静默加载，首开时零等待
-  function _preinitWings() {
-    if (_wl && !_wl.querySelector('iframe') && window.qqqidePanel) {
+  // ★ 翼板 iframe 懒加载（2026-09-24）: 启动不再预建（两份 AI 面板 iframe 初始化与中
+  //   面板恢复抢同一渲染主线程 → 拖慢就绪）；首次开翼 / 恢复为开时按需建（幂等），
+  //   首开发生在遮罩下（「重绘中」），体验持平。
+  function _ensureWingFrame(side) {
+    if (side === 'left' && _wl && !_wl.querySelector('iframe') && window.qqqidePanel) {
       window.qqqidePanel.build(_wl, 0);
     }
-    if (_wr && !_wr.querySelector('iframe') && window.qqqidePanel) {
+    if (side === 'right' && _wr && !_wr.querySelector('iframe') && window.qqqidePanel) {
       window.qqqidePanel.build(_wr, 2);
     }
   }
@@ -182,6 +186,10 @@ function bootBulbs() {
     if (index === 0) _shellBulbState.left = !_shellBulbState.left;
     else _shellBulbState.right = !_shellBulbState.right;
 
+    // ★ 懒加载（2026-09-24）: 开翼时按需建 iframe（遮罩下进行，首开零突兀）
+    if (index === 0 && _shellBulbState.left) _ensureWingFrame('left');
+    if (index === 1 && _shellBulbState.right) _ensureWingFrame('right');
+
     // 关闭 AI 视口下拉（防止 fixed 定位漂移到 0,0）
     if (window.qqqideViewport && window.qqqideViewport.closeDropdown) {
       window.qqqideViewport.closeDropdown();
@@ -227,8 +235,8 @@ function bootBulbs() {
   if (_shellBulbState.left) d1.classList.add('on');
   if (_shellBulbState.right) d2.classList.add('on');
   _applyWings();
-  // 预初始化左右翼 iframe（width:0 容器内静默加载）
-  _preinitWings();
+  // ★ 翼板 iframe 懒加载（2026-09-24）: 预初始化整体废除（见 _ensureWingFrame），
+  //   启动期零 iframe 成本 → 中面板恢复不被抢主线程
 
   // ★ 启动时翼状态由主进程 restoreWindowBounds 统一推送（含最小尺寸），此处不 init ——
   //   避免默认 {false,false} 先于真实恢复写入 OS 记忆（覆盖已保存的翼开状态）

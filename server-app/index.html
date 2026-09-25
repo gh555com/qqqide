@@ -254,7 +254,7 @@ var _orig={};
 <script src="core/viewport-machine.js"></script>
 <!-- codelens 按钮机器（老 q3 FileCodeLensProvider 移植；编辑单才适配器在 editor.js 就绪后 install） -->
 <script src="core/qqq-codelens.js"></script>
-<!-- TEMP DIAG (2026-09-14, 用完即删): dev 运行态取证 → {项目}/tmp/cl-diag-*.json -->
+<!-- TEMP DIAG (2026-09-14, 用完即删): dev 运行态取证 → {项目}/_qqq/tmp/cl-diag-*.json -->
 
 <script src="core/editor-breadcrumb.js"></script>
 <script src="core/editor.js"></script>
@@ -274,6 +274,8 @@ var _orig={};
 <script src="core/ai-viewport.js?v=2"></script>
 <!-- 协助密钥脱敏（订阅 ai-viewport 的 qqq:git-dirty 事件，懒惰脱敏） -->
 <script src="core/secret-guard.js"></script>
+<!-- gitignore 保障机器（git 仓库首次可见 → _qqq/ _qqqvault/ 忽略缺失 → qoast 一键补全；2026-09-24） -->
+<script src="core/ensure-gitignore.js"></script>
 <!-- paste-image goods 已删除（2026-08-02）：paste-router + viewport-machine 相框管线完全替代 -->
 
 <script src="goods/navigator/navigator.js"></script>

@@ -23,13 +23,26 @@ OS = platform.system()
 LOG_FILE = None  # 由外部通过 --log-file 参数或环境变量设置
 
 
+_LOG_MAX_BYTES = 1024 * 1024  # ★ 单文件上限（2026-09-24 轮转：曾无上限 append，客户实例 28MB）
+_snap_log_n = 0  # ★ mem-snapshot 日志降频计数器（2026-09-24：每 12 次快照 ≈1 分钟记一行）
+
+
 def _log(msg: str):
-    """写入日志文件"""
+    """写入日志文件（超 1MB 滚为 .old 单代覆盖）"""
     global LOG_FILE
     if not LOG_FILE:
         return
     try:
         ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        try:
+            if os.path.getsize(LOG_FILE) > _LOG_MAX_BYTES:
+                try:
+                    os.remove(LOG_FILE + ".old")
+                except OSError:
+                    pass
+                os.replace(LOG_FILE, LOG_FILE + ".old")
+        except OSError:
+            pass
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"{ts} {msg}\n")
     except Exception:
@@ -154,7 +167,12 @@ def _win_mem_snapshot(root_pid: int):
     except Exception:
         nwin = 0
     total_mb = round(total / 1048576)
-    _log(f"mem-snapshot: root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
+    # ★ 降频（2026-09-24）: mem-meter 每 5s 一快照，曾每次全量写日志（28MB 主源之一）→
+    #   每 12 次（≈1 分钟）记一行；失败/异常路径日志不降频。
+    global _snap_log_n
+    _snap_log_n += 1
+    if _snap_log_n % 12 == 1:
+        _log(f"mem-snapshot: root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
     return {'totalMB': total_mb, 'nodes': len(rows), 'ncpu': os.cpu_count() or 0,
             'rows': rows, 'nwin': nwin}
 
@@ -298,7 +316,10 @@ def _mac_mem_snapshot(root_pid: int):
     except Exception:
         nwin = 0
     total_mb = round(total / 1048576)
-    _log(f"mem-snapshot(mac): root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
+    global _snap_log_n   # ★ 降频（2026-09-24，同 Win 版）：每 12 次快照记一行
+    _snap_log_n += 1
+    if _snap_log_n % 12 == 1:
+        _log(f"mem-snapshot(mac): root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
     return {'totalMB': total_mb, 'nodes': len(rows), 'ncpu': os.cpu_count() or 0,
             'rows': rows, 'nwin': nwin}
 

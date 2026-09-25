@@ -8,11 +8,13 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
-const QQQ = {
-    // ---- app info ----
-    app: {
-        root: () => ipcRenderer.invoke('qqqide:app:root'),
-        quitAll: () => ipcRenderer.invoke('qqqide:app:quitAll'),
+const QQQ = {    // ---- app info ----
+    app: {
+        root: () => ipcRenderer.invoke('qqqide:app:root'),
+        quitAll: () => ipcRenderer.invoke('qqqide:app:quitAll'),
+        // ★ 就绪门控（2026-09-24）: 渲染层 UI 就绪信号（主窗口 core + 中面板恢复完成）
+        //   → boot.ts 撤启动面板（窗口亮相即已可交互）；渲染层经 shell.js 转发调用。
+        uiReady: () => ipcRenderer.send('qqqide:renderer-ready'),
     },
 
     // ---- component binaries ----

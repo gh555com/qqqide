@@ -27,7 +27,15 @@ function bootstrapLog(msg) {
         var logDir = path.join(rootDir, 'Data', 'Logs');
         fs.mkdirSync(logDir, { recursive: true });
         var ts = new Date().toISOString();
-        fs.appendFileSync(path.join(logDir, 'bootstrap.log'), '[' + ts + '] ' + msg + '\n');
+        var logFile = path.join(logDir, 'bootstrap.log');
+        // ★ 轮转（2026-09-24）: 单文件 ≤256KB，超限滚为 .old（单代）——曾无上限 append
+        try {
+            if (fs.statSync(logFile).size > 256 * 1024) {
+                try { fs.unlinkSync(logFile + '.old'); } catch (e1) { }
+                try { fs.renameSync(logFile, logFile + '.old'); } catch (e2) { }
+            }
+        } catch (e0) { /* 文件不存在 */ }
+        fs.appendFileSync(logFile, '[' + ts + '] ' + msg + '\n');
     } catch (e) {
         // bootstrap must never fail — swallow all errors
     }

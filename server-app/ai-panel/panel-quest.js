@@ -1,7 +1,20 @@
-// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
-
-'use strict';
-
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.'use strict';
+
+// ★ 就绪门控信号（2026-09-24）: 「主窗口 core 完成 + 中面板恢复完成」= 壳层撤启动面板的
+//   唯一信号（用户可交互的瞬间 = IDE 亮相的瞬间，消灭「进去就点聊天框被长任务卡」）。
+//   链路: 此处 postMessage → 主窗口 shell.js 校验转发 → preload qqqide:renderer-ready。
+//   仅中面板（panel 1）；20s 兜底（正常 3~10s；异常路径也保证信号必达，壳层 25s 超时垫底）。
+var _uiReadySignaled = false;
+function _signalUiReady() {
+    if (_uiReadySignaled) return;
+    var pid = null;
+    try { pid = _panelId; } catch (_) { pid = null; }
+    if (pid !== 1) return;
+    _uiReadySignaled = true;
+    try { if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'qqq-ai-ready', panel: 1 }, '*'); } catch (_) { }
+}
+setTimeout(_signalUiReady, 20000);
+
 async function _handleSyncMessage(msg) {
     if (!msg || msg.windowId === _windowId) return;
     // focus-request：焦点跳转
@@ -518,12 +531,12 @@ async function _initWorkspace(root) {
 
     if (typeof loadQqqideProjectRules === 'function') {
         loadQqqideProjectRules(questStore.getProjectRoot());
-    }
-    if (typeof buildQqqideVisionContext === 'function') {
-        buildQqqideVisionContext();
-    }
-
-    // [silent] workspace bound
+    }    if (typeof buildQqqideVisionContext === 'function') {
+        buildQqqideVisionContext();
+    }
+
+    // [silent] workspace bound
+    _signalUiReady();   // ★ 就绪门控（2026-09-24）: 中面板全量恢复完成 → 通知壳层揭幕
 }
 
 // ★ bindMainProject 并发锁：防 boot IIFE 与 postMessage 回调同时进入
@@ -571,12 +584,11 @@ async function bindMainProject() {
             }
             if (_bpRetry < 15) await new Promise(function (r) { setTimeout(r, 500); });
         }
-        if (!root && _lastMain) root = _lastMain;  // 兜底：视口始终未稳定 → 用最后一次采样
-
-        if (!root) {
-            // [silent] bindMainProject: no main project after retries, wait for viewport-changed message
-            _bindLock = null;
-            return;
+        if (!root && _lastMain) root = _lastMain;  // 兜底：视口始终未稳定 → 用最后一次采样        if (!root) {
+            // [silent] bindMainProject: no main project after retries, wait for viewport-changed message
+            _bindLock = null;
+            _signalUiReady();   // ★ 无主项目：草稿态界面已可用 → 发就绪信号（2026-09-24）
+            return;
         }
 
         await _initWorkspace(root);

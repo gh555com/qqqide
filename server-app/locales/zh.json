@@ -1435,6 +1435,18 @@
     "ignoredUntracked": "已忽略并取消跟踪",
     "addedGitignore": "已加入 .gitignore"
   },
+  "gitignoreEnsure": {
+    "msg": "⚠️ 本项目 .gitignore 未忽略 {list} —— qd 工作目录（含 AI 临时文件）可能被 git 提交",
+    "btnFix": "补全 .gitignore",
+    "done": "✓ 已补全 .gitignore：{list}",
+    "fail": "补全 .gitignore 失败：{err}"
+  },
+  "gitPoll": {
+    "ucHint": "⚠️ 大仓库 {name} 的 git 状态扫描较慢（{sec}s/次）——开启 untracked cache 可提速 2~10 倍",
+    "ucEnable": "开启",
+    "ucDone": "✓ 已为 {name} 开启 untracked cache，下次扫描起生效",
+    "ucFail": "该仓库不支持 untracked cache（可能非本地磁盘），未做任何修改"
+  },
   "firstRun": {
     "expert": "我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件",
     "agree": "同意并继续",

@@ -660,6 +660,29 @@ function fillBootInfo(boot) {
 }
 
 // ---- Main ----
+// ★ 就绪门控接线（2026-09-24）: 中面板 AI iframe 全恢复完成 → postMessage('qqq-ai-ready')
+//   → 此处转发壳层揭幕（bridge.app.uiReady，preload 新增）。core 未就绪时挂起、main()
+//   尾部补发；壳层 25s 超时兜底（旧壳层无此 IPC = send 静默丢弃，无害）。
+var _uiReadySent = false;
+function _sendUiReady() {
+  if (_uiReadySent) return;
+  _uiReadySent = true;
+  // ★ 渲染层内部广播（2026-09-24）: 后台重活机器（ai-viewport git 轮询等）以
+  //   __qqqUiShown / 'qqq-ui-ready' 为武装信号——重活一律等揭幕后才开跑
+  try { window.__qqqUiShown = true; window.dispatchEvent(new CustomEvent('qqq-ui-ready')); } catch (_) { }
+  try { if (_shBridge && _shBridge.app && _shBridge.app.uiReady) _shBridge.app.uiReady(); } catch (_) { }
+}
+window.addEventListener('message', function (e) {
+  var d = e.data;
+  if (!d || d.type !== 'qqq-ai-ready' || d.panel !== 1) return;
+  try {
+    var af = document.getElementById('qqq-ai-zone');
+    af = af && af.querySelector('iframe');
+    if (af && e.source && e.source !== af.contentWindow) return;
+  } catch (_) { }
+  if (window.__qqqCoreReady) _sendUiReady();
+  else window.__qqqAiReadyPending = true;
+});
 async function main() {
   var bridge = _shBridge;
   await loadState();
@@ -744,6 +767,10 @@ async function main() {
     hideOutput: hideOutput,
     getState: function () { return _shLayoutState; },
   };
+
+  // ★ core 就绪（2026-09-24）: 全部 boot 完成；中面板若已先就绪 → 补发 UI-ready 信号
+  window.__qqqCoreReady = true;
+  if (window.__qqqAiReadyPending) _sendUiReady();
 
   // [silent] qqqide ready
 }

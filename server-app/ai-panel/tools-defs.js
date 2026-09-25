@@ -219,7 +219,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'create_file',
-            description: 'Create a new file with given content. Auto-creates parent directories. Fails if file already exists (use edit_file to modify). Single IPC. TEMP FILES MUST GO TO {project_root}/tmp/.',
+            description: 'Create a new file with given content. Auto-creates parent directories. Fails if file already exists (use edit_file to modify). Single IPC. TEMP FILES MUST GO TO {project_root}/_qqq/tmp/.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -311,7 +311,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'write_file',
-            description: 'Overwrite an existing file with new content. Creates parent directories if needed. Unlike edit_file, this replaces the ENTIRE file content. TEMP FILES MUST GO TO {project_root}/tmp/.',
+            description: 'Overwrite an existing file with new content. Creates parent directories if needed. Unlike edit_file, this replaces the ENTIRE file content. TEMP FILES MUST GO TO {project_root}/_qqq/tmp/.',
             parameters: {
                 type: 'object',
                 properties: {

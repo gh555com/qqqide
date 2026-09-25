@@ -68,7 +68,16 @@ function pingLog(msg: string): void {
         try { fs.mkdirSync(path.dirname(_logPath), { recursive: true }); } catch (_) { }
     }
     const line = new Date().toISOString() + ' ' + msg + '\n';
-    try { fs.appendFileSync(_logPath, line); } catch (_) { }
+    try {
+        // ★ 轮转（2026-09-24）: 单文件 ≤512KB，超限滚为 .old（单代）
+        try {
+            if (fs.statSync(_logPath).size > 512 * 1024) {
+                try { fs.unlinkSync(_logPath + '.old'); } catch (_) { }
+                try { fs.renameSync(_logPath, _logPath + '.old'); } catch (_) { }
+            }
+        } catch (_) { /* 文件不存在 */ }
+        fs.appendFileSync(_logPath, line);
+    } catch (_) { }
 }
 
 // ── 持久化路径 ──────────────────────────────────────────────────────────────

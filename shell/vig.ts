@@ -25,6 +25,7 @@
 // ============================================================================
 
 import * as fs from 'fs';
+import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { getDataDir, getOsBaseDir } from './portable-paths';
 
@@ -326,30 +327,31 @@ export function vigFloor(root: string, tier: number, free: boolean): void {
 }
 
 /** 扫描单个项目的楼层数（quests 下各 quest 的 f* 目录 + .trash 归档 quest 的 f* 目录）。
- *  返回 null = 非 qqqide 项目（无 _qqq/quests）或不可读。 */
-function _scanFloorCount(root: string): number | null {
+ *  返回 null = 非 qqqide 项目（无 _qqq/quests）或不可读。
+ *  ★ 全异步（fs.promises，2026-09-24）: 启动播种不阻塞主进程事件循环（大目录零卡顿）。 */
+async function _scanFloorCount(root: string): Promise<number | null> {
   const qdir = path.join(root, '_qqq', 'quests');
-  try { if (!fs.statSync(qdir).isDirectory()) return null; } catch { return null; }
+  try { if (!(await fsp.stat(qdir)).isDirectory()) return null; } catch { return null; }
   let total = 0;
-  const countQuest = (qpath: string): void => {
+  const countQuest = async (qpath: string): Promise<void> => {
     try {
-      for (const e of fs.readdirSync(qpath, { withFileTypes: true })) {
+      for (const e of await fsp.readdir(qpath, { withFileTypes: true })) {
         if (e.isDirectory() && /^f\d/.test(e.name)) total++;
       }
     } catch { /* ignore */ }
   };
   try {
-    for (const e of fs.readdirSync(qdir, { withFileTypes: true })) {
+    for (const e of await fsp.readdir(qdir, { withFileTypes: true })) {
       if (!e.isDirectory()) continue;
       if (e.name === '.trash') {
         const tdir = path.join(qdir, '.trash');
         try {
-          for (const q of fs.readdirSync(tdir, { withFileTypes: true })) {
-            if (q.isDirectory()) countQuest(path.join(tdir, q.name));
+          for (const q of await fsp.readdir(tdir, { withFileTypes: true })) {
+            if (q.isDirectory()) await countQuest(path.join(tdir, q.name));
           }
         } catch { /* ignore */ }
       } else {
-        countQuest(path.join(qdir, e.name));
+        await countQuest(path.join(qdir, e.name));
       }
     }
   } catch { return null; }
@@ -383,9 +385,9 @@ export function vigStartFloorsSeed(store: any, delayMs = 60000): void {
         if (!key || bag.s.indexOf(key) >= 0) continue;
         if (bag.s.length >= FLOORS_MAX_ROOTS) break;
         let exists = false;
-        try { exists = fs.statSync(root).isDirectory(); } catch { exists = false; }
+        try { exists = (await fsp.stat(root)).isDirectory(); } catch { exists = false; }
         if (!exists) { bag.s.push(key); dirty = true; continue; }   // 死路径：标记防每次启动重扫
-        const cnt = _scanFloorCount(root);
+        const cnt = await _scanFloorCount(root);
         if (cnt === null) continue;   // 非 qqqide 项目：不标记（零成本 stat，换项目后不再扫）
         bag.s.push(key);
         bag.m[key] = Math.max(Number(bag.m[key]) || 0, cnt);

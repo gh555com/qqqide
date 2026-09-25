@@ -456,6 +456,13 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
         const reason = (details && details.reason) || 'unknown';
         try {
             fs.mkdirSync(path.dirname(_crashLogPath), { recursive: true });
+            // ★ 轮转（2026-09-24）: 单文件 ≤256KB，超限滚为 .old（单代）——崩溃循环不再无限涨
+            try {
+                if (fs.statSync(_crashLogPath).size > 256 * 1024) {
+                    try { fs.unlinkSync(_crashLogPath + '.old'); } catch (_) { }
+                    try { fs.renameSync(_crashLogPath, _crashLogPath + '.old'); } catch (_) { }
+                }
+            } catch (_) { /* 文件不存在 */ }
             fs.appendFileSync(_crashLogPath,
                 new Date().toISOString() + ' reason=' + reason +
                 ' exitCode=' + ((details && details.exitCode) || 0) +

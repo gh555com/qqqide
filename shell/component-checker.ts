@@ -8,7 +8,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { spawnSync, execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { getDataDir } from './portable-paths';
 
 // ── 类型 ──
@@ -71,15 +71,16 @@ function _writeJson(filePath: string, obj: any): void {
     try { fs.renameSync(tmp, filePath); } catch { try { fs.unlinkSync(tmp); } catch {} }
 }
 
-function _cmdOk(binPath: string, args: string[]): boolean {
-    try {
-        const r = spawnSync(binPath, args, {
-            encoding: 'utf8',
-            timeout: 15000,
-            windowsHide: true,
-        });
-        return r.status === 0;
-    } catch { return false; }
+/** 异步命令探测（2026-09-24 启动减负）: spawnSync → spawn——组件验证不再阻塞主进程
+ *  事件循环（python smoke/self_heal 慢机单次 1~3s，曾在 UI 就绪后与新交互抢帧）。 */
+function _cmdOkAsync(binPath: string, args: string[]): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+        try {
+            const child = spawn(binPath, args, { timeout: 15000, windowsHide: true, stdio: 'ignore' });
+            child.on('error', () => resolve(false));
+            child.on('close', (code: number | null) => resolve(code === 0));
+        } catch { resolve(false); }
+    });
 }
 
 // ── engines 根目录解析（packaged 模式下 engines 在 resources/app/ 下，dev 模式下在项目根） ──
@@ -255,6 +256,7 @@ export function checkRank0Components(portableRoot: string): void {
 
     const engRoot = _enginesRoot(portableRoot);
     const versPath = path.join(engRoot, 'engines', '.versions.json');
+    _dirSizeCachePath = path.join(engRoot, 'engines', '.dirsize-cache.json');
     const versions = _readJson<VersionsFile>(versPath, {});
 
     _checkAll(portableRoot, manifest, versions, versPath).then(() => {
@@ -283,10 +285,16 @@ async function _checkAll(
         if (!def) { console.log('[components] ' + name + ': not in manifest'); continue; }
         // bundled: 绿色包自带。若本地不存在 → fall through 到下载逻辑（旧客户端升级场景）
         if (def.bundled) {
-            const ok = def.kind === 'files'
-                ? _filesOk(_componentDir(portableRoot, def) || '', def)
-                : ((_binPath(portableRoot, def) || '') !== '' && fs.existsSync(_binPath(portableRoot, def)!)
-                    && (_effMinMB(def) === undefined || _dirSizeMB(_componentDir(portableRoot, def) || '') >= _effMinMB(def)!));
+            let ok: boolean;
+            if (def.kind === 'files') {
+                ok = _filesOk(_componentDir(portableRoot, def) || '', def);
+            } else {
+                const bp = _binPath(portableRoot, def);
+                ok = !!bp && fs.existsSync(bp);
+                if (ok && _effMinMB(def) !== undefined) {
+                    ok = (await _dirSizeMB(_componentDir(portableRoot, def) || '', name + '@' + def.version)) >= _effMinMB(def)!;
+                }
+            }
             if (ok) continue;
             console.log('[components] ' + name + ': bundled but missing on disk, downloading...');
         }
@@ -316,7 +324,7 @@ async function _checkRank1BgDownload(
         // Already present and verified → skip
         const bp = _binPath(portableRoot, def);
         const verifyArgs = def.verify_args || ['--version'];
-        if (bp && fs.existsSync(bp) && _cmdOk(bp, verifyArgs)) {
+        if (bp && fs.existsSync(bp) && (await _cmdOkAsync(bp, verifyArgs))) {
             // Update version record
             const effectiveInstallTo = def._platform_subdir ? (def.install_to + '/' + pk) : def.install_to;
             versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };
@@ -330,7 +338,7 @@ async function _checkRank1BgDownload(
             _writeJson(versPath, versions);
             // 重新验证 — 防止假成功（_ensureOne 内部冷却跳过/下载失败会被吞掉）
             const bp2 = _binPath(portableRoot, def);
-            if (bp2 && fs.existsSync(bp2) && _cmdOk(bp2, verifyArgs)) {
+            if (bp2 && fs.existsSync(bp2) && (await _cmdOkAsync(bp2, verifyArgs))) {
                 console.log('[components] ' + name + ': bg_download complete ✓');
             } else {
                 console.log('[components] ' + name + ': bg_download FAILED — binary still missing');
@@ -346,7 +354,7 @@ async function _checkRank1BgDownload(
 interface VerifyResult { status: 'ok' | 'degraded' | 'broken'; detail: string; }
 
 /** 校验单个组件完整性。两级: ① self_heal(能自愈吗?) → ok/degraded ② smoke(能跑吗?) → broken */
-function _verifyComponent(portableRoot: string, name: string, def: ComponentDef): VerifyResult {
+async function _verifyComponent(portableRoot: string, name: string, def: ComponentDef): Promise<VerifyResult> {
     if (def.kind === 'files') {
         const dir = _componentDir(portableRoot, def);
         if (!dir || !_filesOk(dir, def)) return { status: 'broken', detail: 'files missing' };
@@ -357,11 +365,11 @@ function _verifyComponent(portableRoot: string, name: string, def: ComponentDef)
 
     const verify = (def as any).verify;
     const smokeArgs = verify?.smoke || def.verify_args;
-    if (!_cmdOk(bp, smokeArgs)) return { status: 'broken', detail: 'smoke test failed' };
+    if (!(await _cmdOkAsync(bp, smokeArgs))) return { status: 'broken', detail: 'smoke test failed' };
 
     // self_heal: 若定义了 → 必须通过。未定义 → smoke 即充分（单二进制组件）。
     const selfHealArgs = verify?.self_heal;
-    if (selfHealArgs && !_cmdOk(bp, selfHealArgs)) {
+    if (selfHealArgs && !(await _cmdOkAsync(bp, selfHealArgs))) {
         return { status: 'degraded', detail: 'self-heal failed — binary runs but cannot self-repair' };
     }
     return { status: 'ok', detail: '' };
@@ -379,7 +387,7 @@ async function _verifyAllBundled(
         const def = manifest.components[name];
         if (!def?.bundled) continue;
 
-        const r = _verifyComponent(portableRoot, name, def);
+        const r = await _verifyComponent(portableRoot, name, def);
         if (r.status === 'ok') continue;
 
         console.log(`[components] ${name}: INTEGRITY ${r.status.toUpperCase()} — ${r.detail}`);
@@ -404,7 +412,7 @@ async function _verifyAllBundled(
             await _ensureOne(portableRoot, name, def, pk, versions, manifest, versPath);
             _writeJson(versPath, versions);
             // 重新验证 — 防止假成功（_ensureOne 内部冷却跳过/下载失败会被吞掉）
-            const r2 = _verifyComponent(portableRoot, name, def);
+            const r2 = await _verifyComponent(portableRoot, name, def);
             if (r2.status === 'ok') {
                 console.log(`[components] ${name}: CDN recovery ✓`);
             } else {
@@ -426,12 +434,12 @@ async function _tryRepairDegraded(portableRoot: string, name: string, def: Compo
             await _bootstrapPip(targetDir);
             // 重检 self_heal
             const verify = (def as any).verify;
-            if (verify?.self_heal && _cmdOk(bp, verify.self_heal)) return true;
+            if (verify?.self_heal && (await _cmdOkAsync(bp, verify.self_heal))) return true;
         } catch { /* fall through */ }
         // pip 修复失败 → 尝试 .pyd 补全
         try { await _ensureCorePyds(targetDir); await _bootstrapPip(targetDir); } catch {}
         const verify = (def as any).verify;
-        return !!(verify?.self_heal && _cmdOk(bp, verify.self_heal));
+        return !!(verify?.self_heal && (await _cmdOkAsync(bp, verify.self_heal)));
     }
     // 其他组件暂无特定修复逻辑
     return false;
@@ -462,8 +470,11 @@ async function _ensureOne(
     const verifyArgs = def.verify_args || ['--version'];
 
     // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
-    if (isFiles ? _filesOk(finalDir, def) : (fs.existsSync(binPath) && _cmdOk(binPath, verifyArgs)
-        && (_effMinMB(def) === undefined || _dirSizeMB(finalDir) >= _effMinMB(def)!))) {
+    let installedOk = isFiles ? _filesOk(finalDir, def) : (fs.existsSync(binPath) && (await _cmdOkAsync(binPath, verifyArgs)));
+    if (installedOk && !isFiles && _effMinMB(def) !== undefined) {
+        installedOk = (await _dirSizeMB(finalDir, name + '@' + def.version)) >= _effMinMB(def)!;
+    }
+    if (installedOk) {
         const old = versions[name];
 
         // 版本升级 → 删除旧版，触发重新下载
@@ -489,7 +500,7 @@ async function _ensureOne(
     if (oldRec && oldRec.install_to !== effectiveInstallTo && oldRec.install_to) {
         const oldDir = path.join(enginesDir, oldRec.install_to);
         const oldBin = path.join(oldDir, binRel);
-        if (fs.existsSync(oldBin) && _cmdOk(oldBin, verifyArgs)) {
+        if (fs.existsSync(oldBin) && (await _cmdOkAsync(oldBin, verifyArgs))) {
             _migrateDir(enginesDir, oldRec.install_to, effectiveInstallTo, name);
             versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };
             return;
@@ -613,8 +624,11 @@ async function _downloadAndInstall(
 
     // min_size_mb 完整性断言（2026-08-11 防半成品: SFX 解压被锁/中断残留残缺目录 → 骗过 bundled 检查 → 每启动重下重装循环 + 闪 SFX 窗口）
     const minMB = _effMinMB(def);
-    if (minMB && _dirSizeMB(targetDir) < minMB) {
-        throw new Error('Extract incomplete: ' + _dirSizeMB(targetDir).toFixed(0) + 'MB < required ' + minMB + 'MB');
+    if (minMB) {
+        const gotMB = await _dirSizeMB(targetDir);
+        if (gotMB < minMB) {
+            throw new Error('Extract incomplete: ' + gotMB.toFixed(0) + 'MB < required ' + minMB + 'MB');
+        }
     }
 
     // Python 特殊处理（解压后、验证前）
@@ -644,7 +658,7 @@ async function _downloadAndInstall(
         if (!fs.existsSync(binPath)) throw new Error('Binary not found after extract: ' + binPath);
         // ★ unix 解压可能丢可执行位（zip 无 unix 属性 / tar 权限丢失）→ chmod 后再验（防 EACCES 假"Verification failed"）
         if (process.platform !== 'win32') { try { fs.chmodSync(binPath, 0o755); } catch { /* ignore */ } }
-        if (!_cmdOk(binPath, verifyArgs)) throw new Error('Verification failed');
+        if (!(await _cmdOkAsync(binPath, verifyArgs))) throw new Error('Verification failed');
     }
 
     } catch (e) {
@@ -831,19 +845,57 @@ function _migrateDir(enginesDir: string, oldSub: string, newSub: string, name: s
     }
 }
 
-function _dirSizeMB(dir: string): number {
+// ── 目录体积缓存（2026-09-24 启动减负 + 异步分片）──
+// git（2.7 万文件）全树遍历曾每次启动同步跑；现: 内存 + 磁盘缓存（.dirsize-cache.json），
+// key = name@version（版本升级天然失效），TTL 24h；扫描走 fs.promises，256/批 + 每批
+// setImmediate 让路（慢机首日 cache miss 不再吞 1~3s 同步阻塞主进程）。解压后断言恒真算。
+const _DIRSIZE_TTL_MS = 24 * 3600 * 1000;
+let _dirSizeMemo: Record<string, { mb: number; ts: number }> | null = null;
+let _dirSizeCachePath = '';
+function _dirSizeCacheGet(key: string): number | null {
+    if (!_dirSizeCachePath) return null;
+    if (_dirSizeMemo === null) { _dirSizeMemo = _readJson(_dirSizeCachePath, {}); }
+    const rec = _dirSizeMemo[key];
+    if (rec && typeof rec.mb === 'number' && (Date.now() - rec.ts) < _DIRSIZE_TTL_MS) return rec.mb;
+    return null;
+}
+function _dirSizeCacheSet(key: string, mb: number): void {
+    if (!_dirSizeCachePath) return;
+    if (_dirSizeMemo === null) { _dirSizeMemo = _readJson(_dirSizeCachePath, {}); }
+    _dirSizeMemo[key] = { mb, ts: Date.now() };
+    _writeJson(_dirSizeCachePath, _dirSizeMemo);
+}
+async function _dirSizeMB(dir: string, cacheKey?: string): Promise<number> {
+    if (cacheKey) { const hit = _dirSizeCacheGet(cacheKey); if (hit !== null) return hit; }
     let total = 0;
+    const stack: string[] = [dir];
+    let batch: Array<Promise<void>> = [];
+    const flush = async () => {
+        if (!batch.length) return;
+        const b = batch; batch = [];
+        await Promise.all(b);
+        await new Promise<void>(r => setImmediate(r));   // 分片让路：事件循环不被连续吞
+    };
     try {
-        const walk = (d: string) => {
-            for (const f of fs.readdirSync(d)) {
-                const p = path.join(d, f);
-                const st = fs.statSync(p);
-                if (st.isDirectory()) walk(p); else total += st.size;
+        while (stack.length) {
+            const round = stack.splice(0, stack.length);   // 本层全部目录
+            for (const d of round) {
+                let ents: fs.Dirent[];
+                try { ents = await fs.promises.readdir(d, { withFileTypes: true }); } catch { continue; }
+                for (const e of ents) {
+                    const p = path.join(d, e.name);
+                    batch.push(fs.promises.stat(p).then(st => {
+                        if (st.isDirectory()) { stack.push(p); } else { total += st.size; }
+                    }).catch(() => { }));
+                    if (batch.length >= 256) { await flush(); }
+                }
             }
-        };
-        walk(dir);
+            await flush();   // 保证本层 then 全部生效（下一层目录已入 stack）→ 继续
+        }
     } catch { }
-    return total / 1024 / 1024;
+    const mb = total / 1024 / 1024;
+    if (cacheKey) { _dirSizeCacheSet(cacheKey, mb); }
+    return mb;
 }
 
 function _safeRmDir(dir: string): void {
