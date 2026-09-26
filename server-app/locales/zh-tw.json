@@ -124,7 +124,29 @@
             "roamNotFound": "未在磁碟上找到：",
             "loadFailed": "圖片載入失敗，無法預覽",
             "mediaFailed": "媒體載入失敗，可能格式不支援或檔案已損毀",
-            "transcoding": "正在轉碼預覽…"
+            "transcoding": "正在轉碼預覽…",
+            "mplay": "播放",
+            "mpause": "暫停",
+            "mmute": "靜音",
+            "munmute": "取消靜音",
+            "mvolume": "音量",
+            "mspeed": "倍速播放（點擊循環切換）",
+            "mspeedCustom": "自訂倍數",
+            "mspeedOk": "確認",
+            "mfsFail": "全螢幕失敗",
+            "mloop": "循環播放（快捷鍵 L）",
+            "mpip": "子母畫面",
+            "mfs": "全螢幕（快捷鍵 F）",
+            "mstep": "逐幀步進（快捷鍵 . 前進 / , 後退）",
+            "mab": "A-B 循環（快捷鍵 A）",
+            "mabA": "標記 B 點（A: {t}，快捷鍵 A）",
+            "mabAB": "清除 A-B 循環（{a} → {b}，快捷鍵 A）",
+            "mabSetA": "已標記 A 點：{t}",
+            "mabSetB": "A-B 循環已開啟：{a} → {b}",
+            "mabClear": "已清除 A-B 循環",
+            "mshot": "單幀截圖（快捷鍵 S）",
+            "mshotSaved": "已儲存截圖：{name}",
+            "mshotFail": "截圖失敗"
         },
         "about": {
             "title": "關於 qqq",
@@ -447,7 +469,8 @@
             "settling": "結算處理中……",
             "err": "載入失敗",
             "load": "載入中...",
-            "header": "我上週最終等級: {last}，本週基座升高: {rise}。 預計下週基座將升高: {proj}"
+            "header": "我上週最終等級: {last}，本週基座升高: {rise}。 預計下週基座將升高: {proj}",
+            "history": "歷史賽季"
         }
     },
     "ai": {
@@ -635,6 +658,7 @@
             "sendFailPrefix": "傳送失敗（樓層建立異常）：{0}",
             "notSent": "。以下內容未發出：",
             "allocShown": "——未發出的內容已顯示在上方訊息區",
+            "allocRequeued": "——排隊訊息已保留在佇列中，可重試",
             "stallAbort": "傳送停滯（>20 分鐘無進展）已自動終止",
             "stallAbortQoast": "發送停滯（>20 分鐘無進展）已自動終止，可點擊樓層紅框「繼續任務」恢復",
             "stallAbortTool": "工具執行停滯（超過 2 小時無進展）已自動終止",
@@ -1416,6 +1440,7 @@
             "popWindow": "📅 免費時段：(UTC) 週日全天 + 每日 01:00-03:00 / 13:00-15:00",
             "popWindowLocal": "📅 ({tz}) 週日全天 + 每日{span}",
             "histTitle": "前 8 次免費窗口：{used} / {budget}",
+            "histUsed": "已用 {v}",
             "popBonus": "季節加成 +{v} ge",
             "popLogin": "登入後查看隨機獲取的免費餘額",
             "popLoading": "隨機免費餘額載入中…",
@@ -1443,12 +1468,27 @@
         "ignoredUntracked": "已忽略並取消追蹤",
         "addedGitignore": "已加入 .gitignore"
     },
+    "gitignoreEnsure": {
+        "msg": "⚠️ 本專案 .gitignore 未忽略 {list} —— qd 工作目錄（含 AI 暫存檔案）可能被 git 提交",
+        "btnFix": "補全 .gitignore",
+        "done": "✓ 已補全 .gitignore：{list}",
+        "fail": "補全 .gitignore 失敗：{err}"
+    },
+    "gitPoll": {
+        "ucHint": "⚠️ 大型儲存庫 {name} 的 git 狀態掃描較慢（{sec}s/次）——開啟 untracked cache 可提速 2~10 倍",
+        "ucEnable": "開啟",
+        "ucDone": "✓ 已為 {name} 開啟 untracked cache，下次掃描時生效",
+        "ucFail": "該儲存庫不支援 untracked cache（可能非本機磁碟），未進行任何修改"
+    },
     "firstRun": {
         "expert": "我是專家，我懂得每個指令的危害，我不使用 qqqide 刪除檔案",
-        "roamHint": "透過 Roam 你可以快速操作檔案，包括刪除",
         "agree": "同意並繼續",
         "exit": "離開",
-        "saveFailed": "儲存失敗，請重試"
+        "saveFailed": "儲存失敗，請重試",
+        "intro1": "你可以把 qd 當做一個遊戲來慢慢品味，注意，這是一個原創遊戲，而不是一個換皮遊戲。如果你喜歡換皮遊戲，現在就可以放心地離開。",
+        "introLink": "利用 Roam 跳出專案資料夾的限制",
+        "intro2": "另一方面，我希望你從上方的 help 按鈕中找到社群連結，我們能確保你的任何一個微小問題，都有專人為你一對一解答",
+        "introOk": "那很好"
     },
     "notice": {
         "title": "通知",
@@ -1559,28 +1599,28 @@
     "audio": {
         "sfx": {
             "floor-ok": {
-                "label": "樓層正常完成音效",
+                "label": "樓層正常建造完成音效",
                 "desc": "每層樓正常建置完成時的音效"
             },
             "floor-bad": {
                 "label": "樓層異常結束音",
-                "desc": "異常/停止/停滯結束時的音效"
+                "desc": "異常/停滯收尾"
             },
             "muyu": {
                 "label": "木魚·免費時段報喜",
                 "desc": "每次進入免費時段瞬間"
             },
             "roam": {
-                "label": "檔案操作音效",
-                "desc": "Roam 進入/刪除/清空/固定/取消固定 + 終端機"
+                "label": "Roam 檔案操作",
+                "desc": "進入/刪除/清空/固定/取消固定 + 終端機"
             },
             "bullet": {
-                "label": "子彈問答槍聲",
-                "desc": "AI 回答後的子彈按鈕音效"
+                "label": "子彈按鈕槍聲",
+                "desc": "射出子彈文字"
             },
             "lv": {
-                "label": "等級升級音效",
-                "desc": "等級條升段與里程碑"
+                "label": "賽季等級升級音效",
+                "desc": "等級升級"
             },
             "summon": {
                 "label": "視窗召回音效",
@@ -1599,7 +1639,8 @@
         "off": "已關閉",
         "needActivation": "該功能需先啟用",
         "sfxTitle": "音效開關",
-        "sfxSubtitle": "預設全部啟用 · 即時生效",
+        "sfxAll": "全部",
+        "sfxNone": "無",
         "sfxTooltip": "個別音效開關",
         "undoMode": {
             "label": "編輯器復原模式",
@@ -1621,7 +1662,7 @@
         },
         "compress": {
             "label": "自動壓縮 上下文背包",
-            "desc": "預設值為中等",
+            "desc": "預設值為全自動管理",
             "off": "關閉",
             "medium": "中等",
             "full": "全託管"
@@ -1631,7 +1672,7 @@
         },
         "volume": {
             "label": "音量",
-            "desc": "IDE 視窗及所有 goods 的音量（獨立音量 goods 走旁路，不受此控制）。出廠預設 25%。"
+            "desc": "IDE 視窗及所有 goods 的音量（獨立音量 goods 採旁路處理，不受此控制）。"
         },
         "mdviewAuto": {
             "label": "自動開啟 Markdown 預覽"
@@ -1646,6 +1687,24 @@
         "secret": {
             "label": "協助金鑰脫敏",
             "desc": "發現專案有未提交的變更時，自動識別並抹除其中的金鑰（API Key/密碼/Token 等）。無法自動確認的會彈出視窗請你協同處理。"
+        },
+        "pyInterp": {
+            "btn": "設為系統 Python 直譯器",
+            "busyChecking": "檢查中…",
+            "busyApplying": "設定中…",
+            "confirmTitle": "將覆蓋目前的系統直譯器",
+            "confirmOk": "確認",
+            "confirmCancel": "取消",
+            "ok": "✅ 已設定：雙擊 .py 將由內建 Python 執行",
+            "okRefresh": "✅ 已重新整理：內建 Python 已接管 .py",
+            "fail": "❌ 設定失敗：",
+            "errNoPython": "內建 Python 尚未就緒",
+            "errDenied": "權限被拒絕（可能被安全軟體攔截）",
+            "errVerify": "寫入未生效",
+            "errUac": "已取消（未授權）",
+            "errBridge": "需重新啟動此視窗後方可使用",
+            "errBusy": "處理中，請稍候",
+            "errGeneric": "未知錯誤"
         },
         "tier": {
             "title": "AI 等級說明",

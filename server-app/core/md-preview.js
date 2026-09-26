@@ -362,9 +362,8 @@
                 keybindings: [monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV)],
                 precondition: 'editorLangId == markdown',
                 run: function () {
-                    var fp = filePath;
-                    if (!fp && window.qqqEditor && window.qqqEditor.currentFile) fp = window.qqqEditor.currentFile();
-                    if (fp && _isMd(fp)) open(fp);
+                    // filePath 恒由 attach 时注入（pane 编辑器路径）
+                    if (filePath && _isMd(filePath)) open(filePath);
                 },
             });
         } catch (_) { }
@@ -376,6 +375,5 @@
         onFileOpened: onFileOpened,
         onEditorMounted: onEditorMounted,
         isMd: _isMd,
-        _views: _views,
     };
 })();

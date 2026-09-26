@@ -185,13 +185,14 @@ function _buildBillingTable(houses, passby) {
         // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字
         var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : 0);
         // ★ AI Lv（2026-09-17）：BYOK 行显 'Z'——自带密钥通道下平台档位对请求零参与，
-        //   与 aq 楼层标签 / 费用后缀 ' BYOK' 三处同源；平台行照旧提取档位数字
+        //   与 aq 楼层标签 / 费用后缀 ' BYOK' 三处同源；平台行提取 wire 档位并映射三键显示（⌈n/2⌉）
         var aiLv = '?';
         if (h.byok) {
             aiLv = 'Z';
         } else if (h.tier) {
             var parsed = parseInt(h.tier, 10);
-            if (!isNaN(parsed)) aiLv = String(parsed);
+            // ★ 三键档位（2026-09-26）：显示恒 ⌈wire/2⌉（1..3）——与 aq 标签同一映射（_tierUiOf）
+            if (!isNaN(parsed)) aiLv = String((typeof _tierUiOf === 'function') ? _tierUiOf(parsed) : parsed);
         }
         // 时间消耗：ms → 四舍五入到整数 s
         var ms = h.ms || 0;
@@ -473,14 +474,83 @@ var _questDropTimer = null;
 var _questSearchText = '';
 var _questDropLimit = 20;
 var _questSearchFocused = false;  // ★ 搜索框焦点追踪
+var _questDropPinned = false;     // ★ 点击钉住（2026-09-26）：单击豆腐块区 = 打开且永不自动关闭，收起仅认显式手势
 function closeQuestDrop() {
+    clearTimeout(_questDropTimer);
     if (_questDrop) { _questDrop.remove(); _questDrop = null; }
     if (_q2Shimmer) { _q2Shimmer.remove(); _q2Shimmer = null; }
     _questSearchText = '';
     _questDropLimit = 20;
     _questSearchFocused = false;
+    _questDropPinned = false;
     var bar = document.getElementById('quest-bar');
     if (bar) bar.classList.remove('quest-expanded');
+}
+// ★ 悬浮守卫 v2（2026-09-26 F4）：双诉求并治——① 一楼问题：光标豆腐块→列表迁移途中不误关
+//   ② 离开意图：离开区域 / 离开整个面板 / 区域外点按 / 窗口失焦 → 尽快收（不无限续期）。
+//   实探 = 纯几何（豆腐块矩形 ∪ 下拉矩形 ∪ 生长走廊），替掉 elementFromPoint 陈旧坐标
+//   （旧法指针离面板后坐标冻结在边缘，恒判「在区域内」→ 无限续期，表现为「半天不隐藏」）。
+var _q2LastMX = -1, _q2LastMY = -1;
+var _q2PtrOutDoc = false;    // ★ 指针已离开整个面板（跨 iframe 边界）——明确离开意图
+document.addEventListener('mousemove', function (e) {
+    _q2LastMX = e.clientX; _q2LastMY = e.clientY;
+    _q2PtrOutDoc = false;
+}, { passive: true });
+document.documentElement.addEventListener('mouseleave', function () {
+    _q2PtrOutDoc = true;
+    // ★ 指针离开整个面板 → 离开意图，走 160ms 实探倒计时（overshoot 快回可自愈；钉住态不收）
+    if (_questDrop) _q2ArmClose();
+});
+document.documentElement.addEventListener('mouseenter', function () {
+    _q2PtrOutDoc = false;
+});
+function _q2InRect(x, y, r, tol) {
+    return !!(r && x >= r.left - tol && x <= r.right + tol && y >= r.top - tol && y <= r.bottom + tol);
+}
+function _q2PointerInsideZone() {
+    if (_q2LastMX < 0) return false;
+    try {
+        var tol = 6;
+        var bar = document.getElementById('quest-bar');
+        var br = bar ? bar.getBoundingClientRect() : null;
+        if (_q2InRect(_q2LastMX, _q2LastMY, br, tol)) return true;
+        if (_questDrop) {
+            var dr = _questDrop.getBoundingClientRect();
+            if (_q2InRect(_q2LastMX, _q2LastMY, dr, tol)) return true;
+            // 豆腐块底 → 列表顶 的走廊（列表生长间隙）——横向取两矩形交集
+            if (br && _q2LastMY >= br.bottom - tol && _q2LastMY <= dr.top + tol) {
+                if (_q2LastMX >= Math.max(br.left, dr.left) - tol && _q2LastMX <= Math.min(br.right, dr.right) + tol) return true;
+            }
+        }
+    } catch (_) { }
+    return false;
+}
+var _q2SearchLastAct = 0;    // ★ 搜索框最近活动（focus/input）——打字保护限时 6s，防永久续期
+function _q2ArmClose() {
+    if (_questDropPinned) return;                       // ★ 钉住态：永不进入自动关闭倒计时
+    clearTimeout(_questDropTimer);
+    _questDropTimer = setTimeout(function tick() {
+        if (!_questDrop) return;                        // 已关闭（点击/切换）→ 停止续期
+        if (_questDropPinned) return;                   // ★ 钉住态兜底：ticking 中也不关
+        if (_q2PtrOutDoc) { closeQuestDrop(); return; } // ★ 指针在面板外 → 立即收，不续期
+        if (_q2PointerInsideZone()) {                   // 指针仍在区域/走廊（迁移 / 列表生长）→ 续期
+            _questDropTimer = setTimeout(tick, 200);
+            return;
+        }
+        if (_questSearchFocused && (Date.now() - _q2SearchLastAct) < 6000) {
+            _questDropTimer = setTimeout(tick, 200);    // 打字保护：6s 内有过聚焦/键入才续期
+            return;
+        }
+        if (_questDrop._pending && (Date.now() - (_questDrop._openTs || 0)) < 2500) {
+            _questDropTimer = setTimeout(tick, 200);    // 冷索引体部在飞：限时续期（防异常卡死永不隐藏）
+            return;
+        }
+        closeQuestDrop();
+    }, 160);
+}
+// ★ 下拉已开 → 原地刷新（跨面板同步事件禁止关闭下拉——用户正 hover 时会被「面板自己消失」击中）
+function refreshQuestDropIfOpen() {
+    if (_questDrop) renderQuestDrop();
 }
 function _matchQuest(query, title) {
     if (!query) return true;
@@ -500,10 +570,31 @@ function _matchQuest(query, title) {
     }
     return true;
 }
+// ★ 同步快取（2026-09-26）：同窗口共享 quest 索引非空 → 同步出列表，下拉一开即全高。
+//   消灭「异步生长期内下拉只有头行 → 光标划出短框被判离开 → 自动关闭」竞态。
+//   与 questStore.list() 恒等：list = ensureIndex + idx.slice().sort（同比较器）。
+function _q2QuickList() {
+    try {
+        var arr = window.parent && window.parent.__qqq_questIndex;
+        if (Array.isArray(arr) && arr.length > 0) {
+            return arr.slice().sort(function (a, b) {
+                var ta = a.lastActiveAt || 0, tb = b.lastActiveAt || 0;
+                if (ta !== tb) return tb - ta;
+                return (b.numericId || 0) - (a.numericId || 0);
+            });
+        }
+    } catch (_) { }
+    return null;
+}
 async function renderQuestDrop() {
     if (!_questDrop) return;
-    var allQuests = await questStore.list();
-    if (!_questDrop) return;
+    var dropEl = _questDrop;
+    var allQuests = _q2QuickList();
+    if (!allQuests) {
+        dropEl._pending = true;   // ★ 冷索引：体部在飞期间禁止自动关闭（_q2ArmClose 会续期）
+        try { allQuests = await questStore.list(); } finally { dropEl._pending = false; }
+    }
+    if (!_questDrop || _questDrop !== dropEl) return;   // 已关闭/已换新 → 本次渲染作废
     var query = _questSearchText;
     var filtered = query
         ? allQuests.filter(function (q) {
@@ -580,6 +671,7 @@ async function openQuestDrop() {
     var bar = document.getElementById('quest-bar');
     var drop = document.createElement('div');
     drop.className = 'quest-drop show';
+    drop._openTs = Date.now();   // ★ 关闭倒计时续期上限基准（冷索引 pending 限时保护）
     var head = document.createElement('div');
     head.className = 'quest-drop-head';
     var addBtn = document.createElement('div');
@@ -594,17 +686,19 @@ async function openQuestDrop() {
     search.value = _questSearchText;
     search.oninput = function () {
         _questSearchText = search.value;
+        _q2SearchLastAct = Date.now();   // ★ 打字保护刷新
         renderQuestDrop();
     };
     // ★ 搜索框获得焦点 → 阻止鼠标移出自动关闭
     search.addEventListener('focus', function () {
         _questSearchFocused = true;
+        _q2SearchLastAct = Date.now();   // ★ 打字保护起算
     });
     search.addEventListener('blur', function () {
         _questSearchFocused = false;
-        // 延迟关闭：允许 click 先落到下拉列表项上
+        // 延迟关闭：允许 click 先落到下拉列表项上（钉住态禁关——失焦不再构成关闭理由）
         setTimeout(function () {
-            if (!_questSearchFocused && _questDrop) {
+            if (!_questSearchFocused && _questDrop && !_questDropPinned) {
                 closeQuestDrop();
             }
         }, 150);
@@ -615,12 +709,7 @@ async function openQuestDrop() {
     _questDrop = drop;
     // ★ 展开统一虚线框
     bar.classList.add('quest-expanded');
-    drop.addEventListener('mouseenter', function () { clearTimeout(_questDropTimer); });
-    drop.addEventListener('mouseleave', function () {
-        // 搜索框有焦点 → 不自动关闭
-        if (_questSearchFocused) return;
-        _questDropTimer = setTimeout(closeQuestDrop, 120);
-    });
+    // ★ 悬浮进/出与关闭倒计时统一挂 #quest-bar 容器（豆腐块+下拉同为其后代）——见文件底部 IIFE，此处不再重复绑定
     drop.addEventListener('click', function (e) { e.stopPropagation(); });
     drop.addEventListener('wheel', function (e) {
         if (_questDropLimit >= 60) return;
@@ -637,6 +726,7 @@ async function openQuestDrop() {
         }
     });
     await renderQuestDrop();
+    if (!_questDrop || _questDrop !== drop) return;   // ★ 已被关闭/新开取代 → 本次收尾作废（防重复流光层）
     // ★ 悬浮层流光：覆盖整个虚线框区域（豆腐块+下拉可视区）
     if (_q2Shimmer) { _q2Shimmer.remove(); _q2Shimmer = null; }
     var sOverlay = document.createElement('div');
@@ -896,16 +986,43 @@ function _tofuCancelEdit() {
 }
 // hover \u5c55\u5f00/\u6536\u8d77 + \u7F16\u8F91\u7B14\u7ED1\u5B9A
 (function () {
+    // ★ 悬浮区 = 整个 #quest-bar（2026-09-26）：豆腐块与下拉都是它的后代——在两者之间移动
+    //   永不触发 mouseleave；只有真正离开整个区域才进入关闭倒计时（旧 tofu 级 leave 在
+    //   「光标划过豆腐块下缘、还没进入列表」时就会误关）。
+    var bar = document.getElementById('quest-bar');
     var tofu = document.getElementById('quest-tofu');
     var pen = document.getElementById('quest-tofu-pen');
     var editEl = document.getElementById('quest-tofu-edit');
+    if (bar) {
+        bar.addEventListener('mouseenter', function () {
+            clearTimeout(_questDropTimer);
+            if (!_questDrop) openQuestDrop();
+        });
+        bar.addEventListener('mouseleave', function () {
+            _q2ArmClose();
+        });
+        // ★ 点击钉住（2026-09-26）：单击豆腐块区（改名笔/内联编辑框/下拉体除外）= 打开并钉住——
+        //   钉住后一切自动关闭失效（mouseleave 倒计时/搜索框失焦/异步同步事件）；
+        //   收起只认显式手势：本区再点 / 选条目 / 点加号 / Esc。
+        //   ★ 钉住态点区域外不收（2026-09-26 用户定案）——留白可截图/长时间浏览；
+        //     悬停态点区域外立即收（见文件底部 mousedown 捕捉处理器）。
+        //   悬停已开时首击 = 钉住（绝不误关）；已钉住时再点 = 收起。
+        bar.addEventListener('click', function (e) {
+            var t = e.target;
+            if (t && t.closest && (t.closest('.quest-tofu-pen') || t.closest('.quest-tofu-edit') || t.closest('.quest-drop'))) return;
+            e.stopPropagation();
+            clearTimeout(_questDropTimer);
+            if (_questDropPinned) { closeQuestDrop(); return; }
+            // openQuestDrop 内部先 closeQuestDrop（复位 flag）→ pin 必须后置
+            if (!_questDrop) openQuestDrop();
+            _questDropPinned = true;
+        });
+    }
+    // 豆腐块兜底补开：指针从未离开 bar（如列表项点击关闭后仍停在豆腐块上）→ 再进豆腐块即重开
     if (tofu) {
         tofu.addEventListener('mouseenter', function () {
             clearTimeout(_questDropTimer);
             if (!_questDrop) openQuestDrop();
-        });
-        tofu.addEventListener('mouseleave', function () {
-            _questDropTimer = setTimeout(closeQuestDrop, 120);
         });
     }
     if (pen) {
@@ -927,10 +1044,23 @@ function _tofuCancelEdit() {
     }
 })();
 
-document.addEventListener('click', function () {
-    // 搜索框有焦点 → 不关闭（由 blur 延迟处理）
-    if (_questSearchFocused) return;
+// ★ 区域外点按（mousedown 捕捉相位，先于一切子处理器）= 显式离开手势：悬停态立即收，不等任何计时器。
+//   根治「外面单击了外面区域，下拉还不隐藏」（旧 click 关闭被「搜索框焦点」早退吞掉）；
+//   区域 = #quest-bar 整棵（豆腐块+下拉+流光层）；钉住态不适用（2026-09-26 用户定案：留白可截图）。
+document.addEventListener('mousedown', function (e) {
+    if (!_questDrop || _questDropPinned) return;
+    var bar = document.getElementById('quest-bar');
+    if (bar && e.target && bar.contains(e.target)) return;
     closeQuestDrop();
+}, true);
+
+// ★ Esc = 显式收起（2026-09-26）：钉住态与悬停态通用；无下拉时不拦截
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && _questDrop) closeQuestDrop();
+});
+// ★ 窗口失焦（alt-tab / 切外部应用）= 离开意图：悬停态立即收（钉住态不收）
+window.addEventListener('blur', function () {
+    if (_questDrop && !_questDropPinned) closeQuestDrop();
 });
 
 async function renderTabs() { await updateQuestTofu(); }

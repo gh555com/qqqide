@@ -124,7 +124,29 @@
             "roamNotFound": "Not found on disk:",
             "loadFailed": "Image load failed; preview unavailable",
             "mediaFailed": "Media loading failed. The format may be unsupported or the file corrupted.",
-            "transcoding": "Transcoding for preview…"
+            "transcoding": "Transcoding for preview…",
+            "mplay": "Play",
+            "mpause": "Pause",
+            "mmute": "Mute",
+            "munmute": "Unmute",
+            "mvolume": "Volume",
+            "mspeed": "Playback speed (Click to select)",
+            "mspeedCustom": "Custom speed",
+            "mspeedOk": "Confirm",
+            "mfsFail": "Failed to enter full screen",
+            "mloop": "Loop (Shortcut: L)",
+            "mpip": "Picture-in-Picture",
+            "mfs": "Fullscreen (Shortcut: F)",
+            "mstep": "Frame-by-frame step (Shortcut: . forward / , backward)",
+            "mab": "A-B Loop (Shortcut: A)",
+            "mabA": "Mark Point B (A: {t}, Shortcut: A)",
+            "mabAB": "Clear A-B Loop ({a} → {b}, Shortcut: A)",
+            "mabSetA": "Point A Marked: {t}",
+            "mabSetB": "A-B Loop Enabled: {a} → {b}",
+            "mabClear": "A-B Loop Cleared",
+            "mshot": "Single Frame Screenshot (Shortcut: S)",
+            "mshotSaved": "Screenshot Saved: {name}",
+            "mshotFail": "Screenshot Failed"
         },
         "about": {
             "title": "About qqq",
@@ -447,7 +469,8 @@
             "settling": "Processing settlement...",
             "err": "Failed to load",
             "load": "Loading...",
-            "header": "My final level last week: {last}, this week's base increase: {rise}. Estimated base increase for next week: {proj}"
+            "header": "My final level last week: {last}, this week's base increase: {rise}. Estimated base increase for next week: {proj}",
+            "history": "Season History"
         }
     },
     "ai": {
@@ -635,6 +658,7 @@
             "sendFailPrefix": "Send failed (floor creation error): {0}",
             "notSent": ". The following content was not sent:",
             "allocShown": "— Unsent content is displayed in the message area above.",
+            "allocRequeued": "-- Queued message retained in queue, retry available",
             "stallAbort": "Send stalled (>20 minutes without progress); automatically terminated",
             "stallAbortQoast": "Send stalled (>20 minutes without progress); automatically terminated. Click the layer's red box \"Resume Task\" to restore.",
             "stallAbortTool": "Tool execution stalled (no progress for over 2 hours); automatically terminated",
@@ -1416,6 +1440,7 @@
             "popWindow": "📅 Free Hours: (UTC) All day Sunday + Daily 01:00-03:00 / 13:00-15:00",
             "popWindowLocal": "📅 ({tz}) All day Sunday + Daily {span}",
             "histTitle": "First 8 free windows: {used} / {budget}",
+            "histUsed": "Used {v}",
             "popBonus": "Seasonal bonus +{v} ge",
             "popLogin": "Log in to check your random free balance drop",
             "popLoading": "Loading random free balance…",
@@ -1443,12 +1468,27 @@
         "ignoredUntracked": "Ignored and untracked",
         "addedGitignore": "Added to .gitignore"
     },
+    "gitignoreEnsure": {
+        "msg": "⚠️ The project's .gitignore does not ignore {list} — qd working directory (including AI temporary files) may be committed to git",
+        "btnFix": "Update .gitignore",
+        "done": "✓ .gitignore updated: {list}",
+        "fail": "Failed to update .gitignore: {err}"
+    },
+    "gitPoll": {
+        "ucHint": "⚠️ Git status scanning is slow for large repository {name} ({sec}s/scan) — enabling untracked cache can improve speed by 2~10x",
+        "ucEnable": "Enable",
+        "ucDone": "✓ Untracked cache enabled for {name}; takes effect from the next scan",
+        "ucFail": "This repository does not support untracked cache (possibly not on a local disk); no changes made"
+    },
     "firstRun": {
         "expert": "I am an expert. I understand the risks of every command. I do not use qqqide to delete files.",
-        "roamHint": "With Roam, you can quickly manage files, including deletion",
         "agree": "Agree and Continue",
         "exit": "Exit",
-        "saveFailed": "Save failed, please try again"
+        "saveFailed": "Save failed, please try again",
+        "intro1": "You can treat qd as a game to savor slowly. Note that it is an original game, not a reskin. If you prefer reskins, feel free to leave now.",
+        "introLink": "Use Roam to break out of project folder restrictions",
+        "intro2": "On another note, we hope you find the community link via the Help button above. We ensure that any minor issue you encounter will be answered by a dedicated specialist.",
+        "introOk": "That's great"
     },
     "notice": {
         "title": "Notifications",
@@ -1559,28 +1599,28 @@
     "audio": {
         "sfx": {
             "floor-ok": {
-                "label": "Normal Floor Completion Sound",
+                "label": "Floor successfully built sound",
                 "desc": "Sound played when a floor is successfully completed"
             },
             "floor-bad": {
                 "label": "Floor Abnormal Termination Sound",
-                "desc": "Error/Stop/Stall completion sound"
+                "desc": "Abnormal/Stalled completion"
             },
             "muyu": {
                 "label": "Wooden Fish · Free Period Notification",
                 "desc": "Plays instantly upon entering a free slot"
             },
             "roam": {
-                "label": "File Operation Sounds",
-                "desc": "Roam enter/delete/clear/pin/unpin + terminal"
+                "label": "Roam file operations",
+                "desc": "Enter/Delete/Clear/Pin/Unpin + Terminal"
             },
             "bullet": {
-                "label": "Bullet Q&A Gunshot",
-                "desc": "Bullet button after AI response"
+                "label": "Gunshot sound for bullet button",
+                "desc": "Bullet text fired"
             },
             "lv": {
-                "label": "Level Up Sound",
-                "desc": "Level bar tier-ups and milestones"
+                "label": "Season level up sound",
+                "desc": "Level up"
             },
             "summon": {
                 "label": "Window Recall Sound",
@@ -1599,7 +1639,8 @@
         "off": "Off",
         "needActivation": "Activation required for this feature",
         "sfxTitle": "Sound Effects",
-        "sfxSubtitle": "All enabled by default · Takes effect immediately",
+        "sfxAll": "All",
+        "sfxNone": "None",
         "sfxTooltip": "Toggle sound effects individually",
         "undoMode": {
             "label": "Editor Undo Mode",
@@ -1621,7 +1662,7 @@
         },
         "compress": {
             "label": "Auto-compress Context Backpack",
-            "desc": "Default is Medium",
+            "desc": "Default is fully managed",
             "off": "Off",
             "medium": "Medium",
             "full": "Fully Managed"
@@ -1631,7 +1672,7 @@
         },
         "volume": {
             "label": "Volume",
-            "desc": "Volume for the IDE window and all goods (independent volume goods bypass this control). Factory default is 25%."
+            "desc": "Volume for IDE windows and all goods (Goods with independent volume bypass this control)."
         },
         "mdviewAuto": {
             "label": "Auto-open Markdown Preview"
@@ -1646,6 +1687,24 @@
         "secret": {
             "label": "Assist with Key Masking",
             "desc": "Automatically identifies and removes secrets (API Keys/passwords/tokens, etc.) when uncommitted changes are detected in the project. Cases that cannot be automatically confirmed will prompt a dialog for your assistance."
+        },
+        "pyInterp": {
+            "btn": "Set as System Python Interpreter",
+            "busyChecking": "Checking…",
+            "busyApplying": "Applying settings…",
+            "confirmTitle": "This will overwrite the current system interpreter",
+            "confirmOk": "Confirm",
+            "confirmCancel": "Cancel",
+            "ok": "✅ Set: Double-clicking .py files will run with built-in Python",
+            "okRefresh": "✅ Refreshed: Built-in Python has taken over .py files",
+            "fail": "❌ Setup failed:",
+            "errNoPython": "Built-in Python is not ready",
+            "errDenied": "Permission denied (possibly blocked by security software)",
+            "errVerify": "Write did not take effect",
+            "errUac": "Canceled (Unauthorized)",
+            "errBridge": "Requires restarting this window to take effect",
+            "errBusy": "Processing, please wait",
+            "errGeneric": "Unknown error"
         },
         "tier": {
             "title": "AI Level Explanation",

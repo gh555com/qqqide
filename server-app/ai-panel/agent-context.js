@@ -152,6 +152,24 @@
             }
             return '?';
         },
+        sys_python: function(args, result) {
+            if (typeof result === 'string') {
+                var pm = result.match(/mode=(\w+)/);
+                if (pm) return pm[1];
+                if (result.indexOf('result=ok') >= 0) return '✓';
+                if (result.indexOf('Error') >= 0) return '✗';
+            }
+            return '?';
+        },
+        sys_node: function(args, result) {
+            if (typeof result === 'string') {
+                var pm = result.match(/mode=(\w+)/);
+                if (pm) return pm[1];
+                if (result.indexOf('result=ok') >= 0) return '✓';
+                if (result.indexOf('Error') >= 0) return '✗';
+            }
+            return '?';
+        },
     };
 
     // ═══ 快照工具 ═══
@@ -306,7 +324,7 @@
 
         // ★ _extractToolDisplay — extract the most informative arg for biscuit head line
         //   Gentle tools: per-tool caps. Absolute box tools: unified ABS_HEAD_CAP=80 (single truth).
-        //   Covers all 20 tools. Falls back to path/image for unknown tools.
+        //   Covers all 21 tools. Falls back to path/image for unknown tools.
         function _extractToolDisplay(tc) {
             try {
                 var ABS_HEAD_CAP = 80; // ★ Single source of truth — absolute box header truncation
@@ -341,7 +359,7 @@
                     return '';
                 }
                 switch (name) {
-                    // ── Gentle box (15 tools) ──
+                    // ── Gentle box (16 tools) ──
                     case 'read_file':       return (_shortPath(obj.path) || null) + _shaTag(obj);
                     case 'edit_file':       return _shortPath(obj.path) || null;
                     case 'write_file':      return _shortPath(obj.path) || null;
@@ -357,6 +375,8 @@
                     case 'find_files':      return _trunc(obj.pattern || '', 80);
                     case 'fetch_webpage':   return _trunc(obj.url || '', 100);
                     case 'search_web':      return '"' + _trunc(obj.query || '', 110) + '"';
+                    case 'sys_python':      return obj.action || 'check';
+                    case 'sys_node':        return obj.action || 'check';
                     // ── Absolute box (5 tools, ABS_HEAD_CAP unified) ──
                     case 'run_command':     return _truncCmd(obj.command || '', ABS_HEAD_CAP);
                     case 'generate_image':  return _trunc(obj.prompt || '', ABS_HEAD_CAP) || (obj.images && obj.images[0] ? _shortPath(obj.images[0]) : null);

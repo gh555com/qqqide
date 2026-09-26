@@ -27,29 +27,28 @@ async function _handleSyncMessage(msg) {
         return;
     }
     // quest 列表变更
-    if (msg.type === 'quest-created' || msg.type === 'quest-deleted' || msg.type === 'quest-renamed') {
-        await questStore.invalidateIndex();  // ★ await：等 in-flight load 完成后再 null，防 updateQuestTofu 读到旧缓存
-        await updateQuestTofu();
-        if (typeof closeQuestDrop === 'function') closeQuestDrop();  // ★ 关闭旧下拉，确保下次 hover 全新渲染含新 quest
+    if (msg.type === 'quest-created' || msg.type === 'quest-deleted' || msg.type === 'quest-renamed') {        await questStore.invalidateIndex();  // ★ await：等 in-flight load 完成后再 null，防 updateQuestTofu 读到旧缓存
+        await updateQuestTofu();
+        // ★ 已开则原地刷新（2026-09-26）：禁止 closeQuestDrop——本 handler 经 await 后到达这里，
+        //   用户此刻可能已在 hover 新开的下拉，迟到关闭 =「面板自己消失」
+        if (typeof refreshQuestDropIfOpen === 'function') refreshQuestDropIfOpen();
         return;
     }
     // ★ 彗星电子钟：跨面板建楼状态同步 — 必须在 _isDraft 检查之前
     //   否则 draft 面板的广播全被拦截，永远收不到其他面板的建楼通知
     if (msg.type === 'building-changed') {
         (window.__qqq_localBuildingQuests = window.__qqq_localBuildingQuests || {})[msg.questId] = !!msg.building;
-        if (typeof updateQuestTofu === 'function') updateQuestTofu();
-        if (typeof _updateQuestClock === 'function') _updateQuestClock();
-        // ★ 关闭已打开的下拉 → 下次 hover 全新渲染（含新的建楼状态）
-        if (typeof closeQuestDrop === 'function') closeQuestDrop();
+        if (typeof updateQuestTofu === 'function') updateQuestTofu();        if (typeof _updateQuestClock === 'function') _updateQuestClock();
+        // ★ 已开则原地刷新（含新建楼状态/下拉行时钟）——禁止关闭：用户正 hover 会被当场击中
+        if (typeof refreshQuestDropIfOpen === 'function') refreshQuestDropIfOpen();
         // ★ 建楼结束后检查是否还有活跃建楼 quest，没有则停止彗星电子钟定时器
         if (!msg.building && typeof _maybeStopCometClockTimer === 'function') _maybeStopCometClockTimer();
         return;
-    }
-    // ★ 豆沙包：草稿状态同步 — 来自其他面板的 draft-changed 广播
-    if (msg.type === 'draft-changed') {
-        // 关闭已打开的下拉 → 下次 hover 全新渲染（含新豆沙包状态）
-        if (typeof closeQuestDrop === 'function') closeQuestDrop();
-        return;
+    }    // ★ 豆沙包：草稿状态同步 — 来自其他面板的 draft-changed 广播
+    if (msg.type === 'draft-changed') {
+        // ★ 已开则原地刷新（含新豆沙包状态）——禁止关闭
+        if (typeof refreshQuestDropIfOpen === 'function') refreshQuestDropIfOpen();
+        return;
     }
     if (_isDraft(questActiveId)) return;
     // [silent] sync recv

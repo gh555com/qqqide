@@ -240,11 +240,13 @@ async function executeTool(name, args, ownerAgent) {
         case 'fetch_webpage': _result = executeFetchWebpage(args, ownerAgent); break;
         case 'get_diagnostics': _result = executeGetDiagnostics(args); break;
         case 'write_file': _result = executeWriteFile(args); break;
-        case 'generate_image': _result = executeGenerateImage(args); break;
-        case 'analyze_image': _result = executeAnalyzeImage(args); break;
+        case 'generate_image': _result = executeGenerateImage(args, ownerAgent); break;
+        case 'analyze_image': _result = executeAnalyzeImage(args, ownerAgent); break;
         case 'search_smart': _result = executeSearchSmart(args); break;
-        case 'remove_background': _result = executeRemoveBackground(args); break;
+        case 'remove_background': _result = executeRemoveBackground(args, ownerAgent); break;
         case 'search_web': _result = executeSearchWeb(args, ownerAgent); break;
+        case 'sys_python': _result = executeSysPython(args); break;
+        case 'sys_node': _result = executeSysNode(args); break;
         case 'timeline_versions': _result = executeTimelineVersions(args); break;
         case 'revert_file': _result = executeRevertFile(args); break;
         case 'diff_versions': _result = executeDiffVersions(args); break;
@@ -860,7 +862,8 @@ async function executeFetchWebpage(args, ownerAgent) {
                 if (ag && ag._token) token = ag._token;
             } catch (_) {}
             if (token) {
-                var data = await AiGateway.fetchWebpage(args.url, { token: token });
+                var _fid = (typeof _resolveFloorId === 'function') ? _resolveFloorId(ownerAgent) : ((ownerAgent && ownerAgent._floorId) || '');
+                var data = await AiGateway.fetchWebpage(args.url, { token: token, floorId: _fid });
                 if (data && data.ok && data.text) {
                     // ★ 计费
                     if (data.ge_cost && typeof _addToolWgeCost === 'function') {

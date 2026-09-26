@@ -124,7 +124,29 @@
             "roamNotFound": "未在磁盘上找到：",
             "loadFailed": "图片加载失败，无法预览",
             "mediaFailed": "媒体加载失败，可能格式不受支持或文件已损坏",
-            "transcoding": "正在转码预览…"
+            "transcoding": "正在转码预览…",
+            "mplay": "播放",
+            "mpause": "暂停",
+            "mmute": "静音",
+            "munmute": "取消静音",
+            "mvolume": "音量",
+            "mspeed": "倍速播放（点击选择）",
+            "mspeedCustom": "自定义倍数",
+            "mspeedOk": "确认",
+            "mfsFail": "全屏失败",
+            "mloop": "循环播放（快捷键 L）",
+            "mpip": "画中画",
+            "mfs": "全屏（快捷键 F）",
+            "mstep": "逐帧步进（快捷键 . 前进 / , 后退）",
+            "mab": "A-B 循环（快捷键 A）",
+            "mabA": "标 B 点（A: {t}，快捷键 A）",
+            "mabAB": "清除 A-B 循环（{a} → {b}，快捷键 A）",
+            "mabSetA": "已标记 A 点：{t}",
+            "mabSetB": "A-B 循环已开启：{a} → {b}",
+            "mabClear": "已清除 A-B 循环",
+            "mshot": "单帧截图（快捷键 S）",
+            "mshotSaved": "已保存截图：{name}",
+            "mshotFail": "截图失败"
         },
         "about": {
             "title": "关于 qqq",
@@ -446,7 +468,8 @@
             "settling": "结算处理中……",
             "err": "加载失败",
             "load": "加载中...",
-            "header": "我上周最终等级: {last}，本周基座升高: {rise}。 预计下周基座将升高: {proj}"
+            "header": "我上周最终等级: {last}，本周基座升高: {rise}。 预计下周基座将升高: {proj}",
+            "history": "历史赛季"
         }
     },
     "ai": {
@@ -634,6 +657,7 @@
             "sendFailPrefix": "发送失败（楼层创建异常）：{0}",
             "notSent": "。以下内容未发出：",
             "allocShown": "——未发出的内容已显示在上方消息区",
+            "allocRequeued": "——排队消息已保留在队列中，可重试",
             "stallAbort": "发送停滞（>20 分钟无进展）已自动终止",
             "stallAbortQoast": "发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复",
             "stallAbortTool": "工具执行停滞（超 2 小时无进展）已自动终止",
@@ -1407,6 +1431,7 @@
             "popWindow": "📅 免费时段：(UTC) 周日全天+每日01:00-03:00/13:00-15:00",
             "popWindowLocal": "📅 ({tz}) 周日全天+每日{span}",
             "histTitle": "前 8 次免费窗口：{used} / {budget}",
+            "histUsed": "已用 {v}",
             "popBonus": "季节加成 +{v} ge",
             "popLogin": "登录后查看随机捞到滴免费余额",
             "popLoading": "随机免费余额加载中…",
@@ -1434,12 +1459,27 @@
         "ignoredUntracked": "已忽略并取消跟踪",
         "addedGitignore": "已加入 .gitignore"
     },
+    "gitignoreEnsure": {
+        "msg": "⚠️ 本项目 .gitignore 未忽略 {list} —— qd 工作目录（含 AI 临时文件）可能被 git 提交",
+        "btnFix": "补全 .gitignore",
+        "done": "✓ 已补全 .gitignore：{list}",
+        "fail": "补全 .gitignore 失败：{err}"
+    },
+    "gitPoll": {
+        "ucHint": "⚠️ 大仓库 {name} 的 git 状态扫描较慢（{sec}s/次）——开启 untracked cache 可提速 2~10 倍",
+        "ucEnable": "开启",
+        "ucDone": "✓ 已为 {name} 开启 untracked cache，下次扫描起生效",
+        "ucFail": "该仓库不支持 untracked cache（可能非本地磁盘），未做任何修改"
+    },
     "firstRun": {
         "expert": "我是专家，我懂得每一个指令滴危害，我不用 qqqide 删除文件",
-        "roamHint": "借由 Roam 你可以快速操作文件，包括删除",
         "agree": "同意并继续",
         "exit": "退出",
-        "saveFailed": "保存失败，请重试"
+        "saveFailed": "保存失败，请重试",
+        "intro1": "你可以把 qd 当做一个游戏来慢慢地品味，注意，是一个原创游戏，而不是一个换皮游戏，如果你喜欢换皮游戏，现在就可以放心地离开。",
+        "introLink": "利用 Roam 跳出项目文件夹滴限制",
+        "intro2": "另一方面，我希望你从上方滴 help 按钮中找到社区滴链接，我们能确保你滴任何一个微小滴问题，都能有专人为你一对一滴解答",
+        "introOk": "那很好"
     },
     "notice": {
         "title": "通知",
@@ -1550,28 +1590,28 @@
     "audio": {
         "sfx": {
             "floor-ok": {
-                "label": "楼层正常完成音",
+                "label": "楼层正常建完音",
                 "desc": "每层楼正常建完那一下"
             },
             "floor-bad": {
                 "label": "楼层异常结束音",
-                "desc": "异常/停止/停滞收尾"
+                "desc": "异常/停滞收尾"
             },
             "muyu": {
                 "label": "木鱼·免费时段报喜",
                 "desc": "每次进入免费时段瞬间"
             },
             "roam": {
-                "label": "文件操作音",
-                "desc": "Roam 进入/删除/清空/固定/取消固定 + 终端"
+                "label": "Roam文件操作",
+                "desc": "进入/删除/清空/固定/取消固定 + 终端"
             },
             "bullet": {
-                "label": "子弹问答枪声",
-                "desc": "AI 回答后子弹按钮"
+                "label": "子弹按钮枪声",
+                "desc": "射出子弹文本"
             },
             "lv": {
-                "label": "等级升级音",
-                "desc": "等级条升段与里程碑"
+                "label": "赛季等级升级音",
+                "desc": "lv升级"
             },
             "summon": {
                 "label": "窗口召回音",
@@ -1590,7 +1630,8 @@
         "off": "已关闭",
         "needActivation": "该功能需先激活",
         "sfxTitle": "音效开关",
-        "sfxSubtitle": "默认全部启用 · 即时生效",
+        "sfxAll": "All",
+        "sfxNone": "None",
         "sfxTooltip": "逐个音效开关",
         "undoMode": {
             "label": "编辑器撤销模式",
@@ -1612,7 +1653,7 @@
         },
         "compress": {
             "label": "自动压缩 上下文背包",
-            "desc": "默认值为中等",
+            "desc": "默认值为全托管",
             "off": "关闭",
             "medium": "中等",
             "full": "全托管"
@@ -1622,7 +1663,7 @@
         },
         "volume": {
             "label": "音量",
-            "desc": "IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。出厂默认 25%。"
+            "desc": "IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。"
         },
         "mdviewAuto": {
             "label": "自动打开 Markdown 预览"
@@ -1637,6 +1678,24 @@
         "secret": {
             "label": "协助密钥脱敏",
             "desc": "发现项目有未提交更改时，自动识别并抹除其中的密钥（API Key/密码/Token 等）。无法自动确认的会弹窗请你协同处理。"
+        },
+        "pyInterp": {
+            "btn": "做系统 Python 解释器",
+            "busyChecking": "正在检查…",
+            "busyApplying": "正在设置…",
+            "confirmTitle": "将覆盖当前系统解释器",
+            "confirmOk": "确认",
+            "confirmCancel": "取消",
+            "ok": "✅ 已设置：双击 .py 由内置 Python 运行",
+            "okRefresh": "✅ 已刷新：内置 Python 已接管 .py",
+            "fail": "❌ 设置失败：",
+            "errNoPython": "内置 Python 未就绪",
+            "errDenied": "权限被拒绝（可能被安全软件拦截）",
+            "errVerify": "写入未生效",
+            "errUac": "已取消（未授权）",
+            "errBridge": "需重启本窗口后可用",
+            "errBusy": "正在处理中，请稍候",
+            "errGeneric": "未知错误"
         },
         "tier": {
             "title": "AI 等级说明",

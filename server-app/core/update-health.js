@@ -17,6 +17,8 @@
 //     生成报告文件（Data/diag/update-diag-*.txt 自动定位）+ 打开日志目录。
 //     零网络零自动外发——是否发给管理员 100% 由用户决定。
 //   旧壳层（无 update.health/diag）→ 退回纯构建戳显示；点击提示「需重启实例」。
+//   ★ 面板样式（2026-09-26）：panel 挂 class 'qqq-diag-panel' → 挂入 shell-base.css「内嵌弹窗统一块」——
+//     qd 无轨滚动条 + 面板内文字可选中复制 + 传统淡橙拖选色 var(--selection-bg)（铁律 §4.1，缺挂=返工）。
 //
 //   性能: 壳层 JSON 读 mtime 缓存；本层 paint 差异跳过（无变化零 DOM 写）；
 //         构建戳比对 30s 节拍（health 15s）；面板关闭定时器自清；查看器零轮询。
@@ -368,6 +370,7 @@
     var ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:100050;display:flex;align-items:center;justify-content:center;';
     var panel = document.createElement('div');
+    panel.className = 'qqq-diag-panel';   // ★ 统一块钩子（滚动条/可选中/拖选色——shell-base.css，铁律 §4.1）
     panel.style.cssText = 'width:780px;max-width:92vw;max-height:84vh;overflow-y:auto;background:' + th.bg + ';color:' + th.text + ';border:1px solid ' + th.border + ';border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);font-size:13px;';
     ov.appendChild(panel);
 
@@ -377,15 +380,12 @@
     var head = document.createElement('div');
     head.style.cssText = 'position:sticky;top:0;background:' + th.bg + ';padding:12px 16px 10px;border-bottom:1px solid ' + th.border + ';z-index:2;';
     var ttl = document.createElement('div');
-    ttl.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
+    ttl.style.cssText = 'display:flex;align-items:center;';
     var t1 = document.createElement('span');
     t1.style.cssText = 'font-size:14px;font-weight:bold;';
     t1.textContent = t('settings.upd.diagTitle', '升级诊断记录');
-    var x = document.createElement('button');
-    x.style.cssText = 'width:24px;height:24px;flex:0 0 auto;border:1px solid ' + th.border + ';border-radius:3px;background:transparent;color:' + th.dim + ';font-size:13px;line-height:20px;';
-    x.textContent = '\u2715';
-    x.addEventListener('click', _closeViewer);
-    ttl.appendChild(t1); ttl.appendChild(x);
+    // 关闭仅：点面板外阴影 / Esc / 底部「关闭」（铁律 §4.1——内置面板不设 ✕）
+    ttl.appendChild(t1);
     var hint = document.createElement('div');
     hint.style.cssText = 'margin-top:6px;font-size:11px;line-height:1.7;color:' + th.dim + ';';
     hint.textContent = t('settings.upd.diagHint', '以下为核心失败 / 更新日志的末尾片段。点「复制报告」或「生成报告文件」发给管理员即可协助排查。');

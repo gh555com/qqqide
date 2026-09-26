@@ -706,14 +706,27 @@ body {
   display: none;
 }
 
-/* ── 内嵌弹窗统一滚动条 — 100% 等同 a 窗口（.tier-popup-panel，settings.js 基准）──
-   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI悬浮预览/开新窗口下拉（语言下拉不滚动，不列） */
+/* ── 内嵌弹窗统一滚动条 — qd 现代无轨样式（5px、轨道透明、thumb rgba(128,128,128,.35) 圆角；基准 .tier-popup-panel/本块）──
+   ★ 铁律 §4.1：一切内置面板必须挂入本块——漏挂 = 原生滚动条（违反即返工）；含 descendant 式（覆盖面板内嵌滚动区）。
+   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板（语言下拉不滚动，不列）
+   ★ 单源：面板滚动条/拖选样式只认本块——组件内自注入迁入并删源（shell-overlay / tier-popup 已迁） */
 .qqq-settings-panel::-webkit-scrollbar,
 .qqq-ldr-panel::-webkit-scrollbar,
 .qqq-onl-panel::-webkit-scrollbar,
 .qqq-act-modal::-webkit-scrollbar,
+.qqq-act-modal2::-webkit-scrollbar,
+.tier-popup-panel::-webkit-scrollbar,
 .qqq-menubar-recent-dropdown::-webkit-scrollbar,
-#qqqide-overlay-content::-webkit-scrollbar {
+#qqq-ai-overlay-content::-webkit-scrollbar,
+#qqq-ai-overlay-content ::-webkit-scrollbar,
+.qqq-diag-panel::-webkit-scrollbar,
+.qqq-diag-panel ::-webkit-scrollbar,
+.qqq-notice-body::-webkit-scrollbar,
+.qqq-tools-menu::-webkit-scrollbar,
+.qqq-help-menu::-webkit-scrollbar,
+.qqq-help-sub::-webkit-scrollbar,
+.qqq-sg-panel::-webkit-scrollbar,
+.qqq-sg-body::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
@@ -721,16 +734,38 @@ body {
 .qqq-ldr-panel::-webkit-scrollbar-track,
 .qqq-onl-panel::-webkit-scrollbar-track,
 .qqq-act-modal::-webkit-scrollbar-track,
+.qqq-act-modal2::-webkit-scrollbar-track,
+.tier-popup-panel::-webkit-scrollbar-track,
 .qqq-menubar-recent-dropdown::-webkit-scrollbar-track,
-#qqqide-overlay-content::-webkit-scrollbar-track {
+#qqq-ai-overlay-content::-webkit-scrollbar-track,
+#qqq-ai-overlay-content ::-webkit-scrollbar-track,
+.qqq-diag-panel::-webkit-scrollbar-track,
+.qqq-diag-panel ::-webkit-scrollbar-track,
+.qqq-notice-body::-webkit-scrollbar-track,
+.qqq-tools-menu::-webkit-scrollbar-track,
+.qqq-help-menu::-webkit-scrollbar-track,
+.qqq-help-sub::-webkit-scrollbar-track,
+.qqq-sg-panel::-webkit-scrollbar-track,
+.qqq-sg-body::-webkit-scrollbar-track {
   background: transparent;
 }
 .qqq-settings-panel::-webkit-scrollbar-thumb,
 .qqq-ldr-panel::-webkit-scrollbar-thumb,
 .qqq-onl-panel::-webkit-scrollbar-thumb,
 .qqq-act-modal::-webkit-scrollbar-thumb,
+.qqq-act-modal2::-webkit-scrollbar-thumb,
+.tier-popup-panel::-webkit-scrollbar-thumb,
 .qqq-menubar-recent-dropdown::-webkit-scrollbar-thumb,
-#qqqide-overlay-content::-webkit-scrollbar-thumb {
+#qqq-ai-overlay-content::-webkit-scrollbar-thumb,
+#qqq-ai-overlay-content ::-webkit-scrollbar-thumb,
+.qqq-diag-panel::-webkit-scrollbar-thumb,
+.qqq-diag-panel ::-webkit-scrollbar-thumb,
+.qqq-notice-body::-webkit-scrollbar-thumb,
+.qqq-tools-menu::-webkit-scrollbar-thumb,
+.qqq-help-menu::-webkit-scrollbar-thumb,
+.qqq-help-sub::-webkit-scrollbar-thumb,
+.qqq-sg-panel::-webkit-scrollbar-thumb,
+.qqq-sg-body::-webkit-scrollbar-thumb {
   background: rgba(128, 128, 128, 0.35);
   border-radius: 3px;
 }
@@ -738,17 +773,76 @@ body {
 .qqq-ldr-panel::-webkit-scrollbar-thumb:hover,
 .qqq-onl-panel::-webkit-scrollbar-thumb:hover,
 .qqq-act-modal::-webkit-scrollbar-thumb:hover,
+.qqq-act-modal2::-webkit-scrollbar-thumb:hover,
+.tier-popup-panel::-webkit-scrollbar-thumb:hover,
 .qqq-menubar-recent-dropdown::-webkit-scrollbar-thumb:hover,
-#qqqide-overlay-content::-webkit-scrollbar-thumb:hover {
+#qqq-ai-overlay-content::-webkit-scrollbar-thumb:hover,
+#qqq-ai-overlay-content ::-webkit-scrollbar-thumb:hover,
+.qqq-diag-panel::-webkit-scrollbar-thumb:hover,
+.qqq-diag-panel ::-webkit-scrollbar-thumb:hover,
+.qqq-notice-body::-webkit-scrollbar-thumb:hover,
+.qqq-tools-menu::-webkit-scrollbar-thumb:hover,
+.qqq-help-menu::-webkit-scrollbar-thumb:hover,
+.qqq-help-sub::-webkit-scrollbar-thumb:hover,
+.qqq-sg-panel::-webkit-scrollbar-thumb:hover,
+.qqq-sg-body::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.55);
 }
 .qqq-settings-panel::-webkit-scrollbar-corner,
 .qqq-ldr-panel::-webkit-scrollbar-corner,
 .qqq-onl-panel::-webkit-scrollbar-corner,
 .qqq-act-modal::-webkit-scrollbar-corner,
+.qqq-act-modal2::-webkit-scrollbar-corner,
+.tier-popup-panel::-webkit-scrollbar-corner,
 .qqq-menubar-recent-dropdown::-webkit-scrollbar-corner,
-#qqqide-overlay-content::-webkit-scrollbar-corner {
+#qqq-ai-overlay-content::-webkit-scrollbar-corner,
+#qqq-ai-overlay-content ::-webkit-scrollbar-corner,
+.qqq-diag-panel::-webkit-scrollbar-corner,
+.qqq-diag-panel ::-webkit-scrollbar-corner,
+.qqq-notice-body::-webkit-scrollbar-corner,
+.qqq-tools-menu::-webkit-scrollbar-corner,
+.qqq-help-menu::-webkit-scrollbar-corner,
+.qqq-help-sub::-webkit-scrollbar-corner,
+.qqq-sg-panel::-webkit-scrollbar-corner,
+.qqq-sg-body::-webkit-scrollbar-corner {
   background: transparent;
+}
+/* 悬浮预览层直系 div 滚动条隐藏（外层为主体滚动区；原 shell-overlay.js 自注入迁入） */
+#qqq-ai-overlay-content>div::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── 内嵌弹窗统一拖选 + 文字可选中复制（★ 铁律 §4.1）──
+   ① 一切内置面板文字可选中复制（显式覆盖 body 全局 user-select:none）
+   ② 拖选色恒 = 传统淡橙 var(--selection-bg)/var(--selection-text)（唯一源 core/qqqide-theme.js）——禁浏览器默认蓝、禁自造色
+   ③ 新增面板：带唯一 class → 同时挂入本块与上方滚动条块（双块缺一不可） */
+.qqq-settings-panel,
+.qqq-ldr-panel,
+.qqq-onl-panel,
+.qqq-act-modal,
+.qqq-act-modal2,
+.tier-popup-panel,
+.qqq-diag-panel,
+.qqq-notice-panel,
+.qqq-notice-modal,
+.qqq-sg-panel {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.qqq-settings-panel::selection, .qqq-settings-panel ::selection,
+.qqq-ldr-panel::selection, .qqq-ldr-panel ::selection,
+.qqq-onl-panel::selection, .qqq-onl-panel ::selection,
+.qqq-act-modal::selection, .qqq-act-modal ::selection,
+.qqq-act-modal2::selection, .qqq-act-modal2 ::selection,
+.qqq-menubar-recent-dropdown::selection, .qqq-menubar-recent-dropdown ::selection,
+.tier-popup-panel::selection, .tier-popup-panel ::selection,
+.qqq-diag-panel::selection, .qqq-diag-panel ::selection,
+.qqq-notice-panel::selection, .qqq-notice-panel ::selection,
+.qqq-notice-modal::selection, .qqq-notice-modal ::selection,
+.qqq-sg-panel::selection, .qqq-sg-panel ::selection,
+#qqq-ai-overlay-content::selection, #qqq-ai-overlay-content ::selection {
+  background: var(--selection-bg, #e8a090);
+  color: var(--selection-text, #000000);
 }
 
 /* ── 在线用户弹窗（shell-statusbar.js 动态创建，2026-09-03 暗色配色修复）──

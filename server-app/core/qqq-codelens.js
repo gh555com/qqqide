@@ -44,10 +44,11 @@
   }
   function _takeover() { return _pref('takeOverCodelensStyle', true) !== false; }
 
-  // ═══ i18n（键唯一真理源 locales/zh.json → editor.codelens.*；其他语言 ky.py 自动翻译）═══
+  // ═══ i18n（键唯一真理源 locales/zh.json；其他语言 ky.py 自动翻译）═══
+//   调用点恒传完整键字面量（editor.codelens.*）——审计 ⑦ 零动态拼接（铁律 §4.4）
   function _t(key, fallback, a0, a1) {
     var s = fallback;
-    try { if (window._i) s = window._i('editor.codelens.' + key, fallback); } catch (e) { /* */ }
+    try { if (window._i) s = window._i(key, fallback); } catch (e) { /* */ }
     if (a0 !== undefined) s = String(s).replace('{0}', String(a0));
     if (a1 !== undefined) s = String(s).replace('{1}', String(a1));
     return s;
@@ -180,12 +181,12 @@
           entries.sort(function (a, b) { return b[1] - a[1]; });
           for (var i = 0; i < entries.length; i++) {
             totalFiles += entries[i][1];
-            parts.push(entries[i][1] + '★ ' + (entries[i][0] || _t('noExtension', '无后缀')));
+            parts.push(entries[i][1] + '★ ' + (entries[i][0] || _t('editor.codelens.noExtension', '无后缀')));
           }
           var summary;
-          if (parts.length > 0) summary = _t('filesCountWithBreakdown', '{0}个文件：{1}', totalFiles, parts.join(';  '));
-          else if ((r.file_count_root || 0) > 0) summary = _t('filesCount', '{0}个文件', r.file_count_root);
-          else summary = _t('emptyFolder', '空文件夹');
+          if (parts.length > 0) summary = _t('editor.codelens.filesCountWithBreakdown', '{0}个文件：{1}', totalFiles, parts.join(';  '));
+          else if ((r.file_count_root || 0) > 0) summary = _t('editor.codelens.filesCount', '{0}个文件', r.file_count_root);
+          else summary = _t('editor.codelens.emptyFolder', '空文件夹');
           rec.data = { size: r.total_size || 0, summary: summary };
           rec.ts = Date.now();
         }
@@ -308,15 +309,15 @@
     }
 
     var line = ent.line;
-    var tooltip = _t('created', '创建') + ': ' + _fmtDate(st.birthtimeMs) +
-      '\n' + _t('modified', '修改') + ': ' + _fmtDate(st.mtimeMs);
+    var tooltip = _t('editor.codelens.created', '创建') + ': ' + _fmtDate(st.birthtimeMs) +
+      '\n' + _t('editor.codelens.modified', '修改') + ': ' + _fmtDate(st.mtimeMs);
 
     // ── level 7：左排按钮（老顺序：open folder / rename / c1 / c2 / [c3]）──
     if (level === '7') {
       var dir = _dirname(path);
       var fsum = _folderGet(dir);
       var fSizeStr = fsum ? formatBytes(fsum.size) : '●';
-      var folderTip = fsum ? fsum.summary : _t('calculatingFolderSize', '正在计算文件夹大小...');
+      var folderTip = fsum ? fsum.summary : _t('editor.codelens.calculatingFolderSize', '正在计算文件夹大小...');
       out.push(_lens(line, '✎( ' + fSizeStr + ') 🗀qqq', folderTip, 'qqqide.codelens.reveal', [path]));
       out.push(_lens(line, '✎rename', '', 'qqqide.codelens.rename', [{ path: path, fileName: fileName }]));
       out.push(_lens(line, '✎c1', path, 'qqqide.codelens.copyPath', [path]));
@@ -344,11 +345,11 @@
           var fit = fr.fitIntoBox(info.width, info.height, cfg.width, cfg.height, _pref('enlargeSmallImages', false) === true);
           titleSuffix = '   (' + Math.round(fit.scale * 100) + '%)  ' + info.width + 'x' + info.height;
         }
-        if (info.codec) tooltip += '\n' + _t('codec', '编码') + ': ' + info.codec;
+        if (info.codec) tooltip += '\n' + _t('editor.codelens.codec', '编码') + ': ' + info.codec;
         var arStr = aspectRatioString(info.width, info.height);
-        if (arStr) tooltip += '\n' + _t('aspectRatio', '宽高比') + ': ' + arStr;
+        if (arStr) tooltip += '\n' + _t('editor.codelens.aspectRatio', '宽高比') + ': ' + arStr;
         if ((kind === 'video' || ext === '.gif') && info.duration > 0.1) {
-          tooltip += '\n⌛' + _t('originalDuration', '原始时长') + ': ' + formatDuration(info.duration);
+          tooltip += '\n⌛' + _t('editor.codelens.originalDuration', '原始时长') + ': ' + formatDuration(info.duration);
         }
       }
     } else if (isText) {
@@ -362,7 +363,7 @@
 
     // ── qode（仅文本文件 + level 7：在右分组打开并进入编辑状态）──
     if (level === '7' && isText) {
-      out.push(_lens(line, '✎qode', _t('openRight', '在右边分组打开文件并进入编辑状态'),
+      out.push(_lens(line, '✎qode', _t('editor.codelens.openRight', '在右边分组打开文件并进入编辑状态'),
         'qqqide.codelens.qode', [path]));
     }
   }
@@ -434,9 +435,9 @@
     var p;
     try { p = bridge.clipboard.writeText(String(path)); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function () {
-      _toast(_t('copyPathSuccess', '已复制成功 — 纯文本路径'), 'success');
+      _toast(_t('editor.codelens.copyPathSuccess', '已复制成功 — 纯文本路径'), 'success');
     }).catch(function (e) {
-      _toast(_t('copyPathFailed', '复制失败 — 纯文本路径: {0}', (e && e.message) || 'clipboard'), 'error');
+      _toast(_t('editor.codelens.copyPathFailed', '复制失败 — 纯文本路径: {0}', (e && e.message) || 'clipboard'), 'error');
     });
   }
 
@@ -445,10 +446,10 @@
     var p;
     try { p = bridge.clipboard.writeFiles([String(path)]); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function (ok) {
-      if (ok) _toast(_t('copyFileSuccess', '已复制成功 — 文件'), 'success');
-      else _toast(_t('copyFileFailed', '复制失败 — 文件: {0}', 'writeFiles'), 'error');
+      if (ok) _toast(_t('editor.codelens.copyFileSuccess', '已复制成功 — 文件'), 'success');
+      else _toast(_t('editor.codelens.copyFileFailed', '复制失败 — 文件: {0}', 'writeFiles'), 'error');
     }).catch(function (e) {
-      _toast(_t('copyFileFailed', '复制失败 — 文件: {0}', (e && e.message) || 'error'), 'error');
+      _toast(_t('editor.codelens.copyFileFailed', '复制失败 — 文件: {0}', (e && e.message) || 'error'), 'error');
     });
   }
 
@@ -457,10 +458,10 @@
     var p;
     try { p = bridge.clipboard.writeImage({ path: String(path) }); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function (ok) {
-      if (ok) _toast(_t('copyImageSuccess', '已复制成功 — 位图二进制'), 'success');
-      else _toast(_t('copyImageFailed', '复制失败 — 位图二进制: {0}', 'unsupported format'), 'error');
+      if (ok) _toast(_t('editor.codelens.copyImageSuccess', '已复制成功 — 位图二进制'), 'success');
+      else _toast(_t('editor.codelens.copyImageFailed', '复制失败 — 位图二进制: {0}', 'unsupported format'), 'error');
     }).catch(function (e) {
-      _toast(_t('copyImageFailed', '复制失败 — 位图二进制: {0}', (e && e.message) || 'error'), 'error');
+      _toast(_t('editor.codelens.copyImageFailed', '复制失败 — 位图二进制: {0}', (e && e.message) || 'error'), 'error');
     });
   }
 
@@ -548,7 +549,7 @@
 
     var title = document.createElement('div');
     title.className = 'qqq-cl-title';
-    title.textContent = _t('rename', '重命名');
+    title.textContent = _t('editor.codelens.rename', '重命名');
 
     var input = document.createElement('input');
     input.className = 'qqq-cl-input';
@@ -582,7 +583,7 @@
     function submit() {
       if (busy) return;
       var v = String(input.value || '').trim();
-      if (!v) { err.textContent = _t('fileNameEmpty', '文件名不能为空'); return; }
+      if (!v) { err.textContent = _t('editor.codelens.fileNameEmpty', '文件名不能为空'); return; }
       if (v === cur) { _closeRenameModal(); return; }
       var newAbs = _joinPath(_dirname(path), v);
       err.textContent = '';
@@ -591,15 +592,15 @@
         bridge.fs.rename(path, newAbs).then(function () {
           _closeRenameModal();
           _applyRenameToDoc(path, cur, v, newAbs);
-          _toast(_t('renameSuccess', '重命名成功: {0}', v), 'success');
+          _toast(_t('editor.codelens.renameSuccess', '重命名成功: {0}', v), 'success');
         }).catch(function (e) {
           busy = false;
-          err.textContent = _t('renameFailed', '重命名失败: {0}', (e && e.message) || 'rename failed');
+          err.textContent = _t('editor.codelens.renameFailed', '重命名失败: {0}', (e && e.message) || 'rename failed');
         });
       };
       try {
         bridge.fs.exists(newAbs).then(function (exists) {
-          if (exists) { busy = false; err.textContent = _t('targetFileExists', '目标文件已存在'); return; }
+          if (exists) { busy = false; err.textContent = _t('editor.codelens.targetFileExists', '目标文件已存在'); return; }
           doRename();
         }).catch(function () { doRename(); });
       } catch (e) { doRename(); }

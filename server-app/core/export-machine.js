@@ -65,7 +65,7 @@
     try { var b = _b(); if (b && b.shell && b.shell.showItemInFolder) { b.shell.showItemInFolder(p); } } catch (_) { }
   }
 
-  // ── 活动编辑器（焦点优先 → 主编辑器 → 任一带文件编辑器）──
+  // ── 活动编辑器（焦点优先 → 任一带文件编辑器）──
   function _activeEditor() {
     var monaco = window.monaco;
     var eds = [];
@@ -73,12 +73,6 @@
     for (var i = 0; i < eds.length; i++) {
       try { if (eds[i].hasTextFocus && eds[i].hasTextFocus()) { return eds[i]; } } catch (_) { }
     }
-    try {
-      if (window.qqqEditor && window.qqqEditor.currentFile && window.qqqEditor.getEditorForFile) {
-        var cf = window.qqqEditor.currentFile();
-        if (cf) { var e0 = window.qqqEditor.getEditorForFile(cf); if (e0) { return e0; } }
-      }
-    } catch (_) { }
     for (var j = 0; j < eds.length; j++) {
       try { if (eds[j]._qqqFilePath && eds[j].getModel && eds[j].getModel() && !eds[j].getModel().isDisposed()) { return eds[j]; } } catch (_) { }
     }

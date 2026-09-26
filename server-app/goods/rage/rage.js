@@ -6,7 +6,7 @@
 // rage = q3 移植集合。包含:
 //   - A 区面板: 剪切板历史 + 船长卡片 (q4)
 //   - X 区 tab: roam 资源管理器 (q2)
-//   - 后台服务已迁移至 core/ (paste-router / anchor-map / content-widget / frame-renderer)
+//   - 后台服务已迁移至 core/ (klipzap / paste-router / viewport-machine / frame-renderer)
 // ============================================================================
 (function () {
   'use strict';
@@ -48,7 +48,7 @@
         },
       },
 
-      // 后台服务已全量迁移至 core/ (paste-router / anchor-map / content-widget / frame-renderer)
+      // 后台服务已全量迁移至 core/ (klipzap / paste-router / viewport-machine / frame-renderer)
       services: {},
 
       // ---- 全局命令 ----

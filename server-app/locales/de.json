@@ -124,7 +124,29 @@
             "roamNotFound": "Auf dem Laufwerk nicht gefunden:",
             "loadFailed": "Bild konnte nicht geladen werden, Vorschau nicht möglich",
             "mediaFailed": "Medien konnten nicht geladen werden, möglicherweise wird das Format nicht unterstützt oder die Datei ist beschädigt",
-            "transcoding": "Transkodierung für Vorschau läuft…"
+            "transcoding": "Transkodierung für Vorschau läuft…",
+            "mplay": "Wiedergeben",
+            "mpause": "Pause",
+            "mmute": "Stummschalten",
+            "munmute": "Stummschaltung aufheben",
+            "mvolume": "Lautstärke",
+            "mspeed": "Wiedergabegeschwindigkeit (zum Auswählen klicken)",
+            "mspeedCustom": "Benutzerdefinierter Faktor",
+            "mspeedOk": "Bestätigen",
+            "mfsFail": "Vollbildmodus fehlgeschlagen",
+            "mloop": "Wiederholen (Tastenkürzel L)",
+            "mpip": "Bild-in-Bild",
+            "mfs": "Vollbild (Tastenkürzel F)",
+            "mstep": "Einzelbildschritt (Tastenkürzel . vorwärts / , rückwärts)",
+            "mab": "A-B-Schleife (Tastenkürzel A)",
+            "mabA": "Punkt B setzen (A: {t}, Tastenkürzel A)",
+            "mabAB": "A-B-Schleife löschen ({a} → {b}, Tastenkürzel A)",
+            "mabSetA": "Punkt A markiert: {t}",
+            "mabSetB": "A-B-Schleife aktiviert: {a} → {b}",
+            "mabClear": "A-B-Schleife gelöscht",
+            "mshot": "Einzelbild-Screenshot (Tastenkürzel S)",
+            "mshotSaved": "Screenshot gespeichert: {name}",
+            "mshotFail": "Screenshot fehlgeschlagen"
         },
         "about": {
             "title": "Über qqq",
@@ -447,7 +469,8 @@
             "settling": "Abrechnung wird verarbeitet……",
             "err": "Laden fehlgeschlagen",
             "load": "Wird geladen...",
-            "header": "Mein finales Level letzte Woche: {last}, Anstieg der Basis diese Woche: {rise}. Voraussichtlicher Anstieg der Basis nächste Woche: {proj}"
+            "header": "Mein finales Level letzte Woche: {last}, Anstieg der Basis diese Woche: {rise}. Voraussichtlicher Anstieg der Basis nächste Woche: {proj}",
+            "history": "Saisonverlauf"
         }
     },
     "ai": {
@@ -635,6 +658,7 @@
             "sendFailPrefix": "Senden fehlgeschlagen (Fehler beim Erstellen des Threads): {0}",
             "notSent": ". Der folgende Inhalt wurde nicht gesendet:",
             "allocShown": "—— Nicht gesendeter Inhalt wird oben im Nachrichtenbereich angezeigt",
+            "allocRequeued": "—— Warteschlangennachricht wurde in der Warteschlange behalten und kann erneut versucht werden",
             "stallAbort": "Sendevorgang aufgrund von Stillstand (>20 Minuten ohne Fortschritt) automatisch abgebrochen",
             "stallAbortQoast": "Sendevorgang aufgrund von Stillstand (>20 Minuten ohne Fortschritt) automatisch abgebrochen. Klicken Sie auf den roten Rahmen der Ebene „Aufgabe fortsetzen“, um fortzusetzen.",
             "stallAbortTool": "Tool-Ausführung stagniert (keine Fortschritte seit über 2 Stunden), automatisch abgebrochen",
@@ -1416,6 +1440,7 @@
             "popWindow": "📅 Kostenlose Zeiten: (UTC) Sonntag ganztägig + täglich 01:00-03:00/13:00-15:00",
             "popWindowLocal": "📅 ({tz}) Sonntag ganztägig + täglich {span}",
             "histTitle": "Erste 8 kostenlose Fenster: {used} / {budget}",
+            "histUsed": "{v} verwendet",
             "popBonus": "Saisonbonus +{v} ge",
             "popLogin": "Melden Sie sich an, um zufälliges kostenloses Guthaben zu erhalten",
             "popLoading": "Zufälliges kostenloses Guthaben wird geladen…",
@@ -1443,12 +1468,27 @@
         "ignoredUntracked": "Ignoriert und Tracking aufgehoben",
         "addedGitignore": "Zu .gitignore hinzugefügt"
     },
+    "gitignoreEnsure": {
+        "msg": "⚠️ Die .gitignore-Datei dieses Projekts ignoriert {list} nicht – das qd-Arbeitsverzeichnis (einschließlich temporärer AI-Dateien) könnte in Git committet werden",
+        "btnFix": ".gitignore vervollständigen",
+        "done": "✓ .gitignore vervollständigt: {list}",
+        "fail": "Vervollständigung von .gitignore fehlgeschlagen: {err}"
+    },
+    "gitPoll": {
+        "ucHint": "⚠️ Das Scannen des Git-Status für große Repositories wie {name} ist langsam ({sec}s pro Durchgang) – das Aktivieren des Untracked-Caches kann die Geschwindigkeit um das 2- bis 10-Fache steigern",
+        "ucEnable": "Aktivieren",
+        "ucDone": "✓ Untracked-Cache für {name} aktiviert, wirksam ab dem nächsten Scan",
+        "ucFail": "Dieses Repository unterstützt keinen Untracked-Cache (möglicherweise kein lokales Laufwerk), keine Änderungen vorgenommen"
+    },
     "firstRun": {
         "expert": "Ich bin ein Experte, ich kenne die Gefahren jedes Befehls, ich lösche keine Dateien mit qqqide",
-        "roamHint": "Mit Roam können Sie Dateien schnell bearbeiten, einschließlich Löschen",
         "agree": "Zustimmen und fortfahren",
         "exit": "Beenden",
-        "saveFailed": "Speichern fehlgeschlagen, bitte erneut versuchen"
+        "saveFailed": "Speichern fehlgeschlagen, bitte erneut versuchen",
+        "intro1": "Du kannst qd als ein Spiel betrachten und es in Ruhe genießen. Beachte, dass es sich um ein originales Spiel handelt und nicht um ein nachgemachtes. Wenn du nachgemachte Spiele bevorzugst, kannst du jetzt gerne gehen.",
+        "introLink": "Mit Roam die Beschränkung des Projektordners umgehen",
+        "intro2": "Andererseits hoffe ich, dass du über die Hilfe-Schaltfläche oben den Link zur Community findest. Wir stellen sicher, dass jedes noch so kleine Problem von einem Experten persönlich für dich beantwortet wird.",
+        "introOk": "Das ist gut"
     },
     "notice": {
         "title": "Benachrichtigung",
@@ -1559,28 +1599,28 @@
     "audio": {
         "sfx": {
             "floor-ok": {
-                "label": "Sound bei normalem Abschluss der Ebene",
+                "label": "Sound für erfolgreichen Etagenabschluss",
                 "desc": "Ton bei erfolgreichem Abschluss jeder Etage"
             },
             "floor-bad": {
                 "label": "Sound bei abnormalem Etagen-Ende",
-                "desc": "Abschluss bei Fehler/Stopp/Stillstand"
+                "desc": "Abschluss bei Anomalie/Stillstand"
             },
             "muyu": {
                 "label": "Holzfisch · Glückwunsch für kostenlose Zeiträume",
                 "desc": "Bei jedem Eintritt in ein kostenloses Zeitfenster"
             },
             "roam": {
-                "label": "Geräusche bei Dateioperationen",
-                "desc": "Roam: Betreten/Löschen/Leeren/Fixieren/Entfixieren + Terminal"
+                "label": "Roam-Dateioperationen",
+                "desc": "Betreten/Löschen/Leeren/Fixieren/Fixierung aufheben + Terminal"
             },
             "bullet": {
-                "label": "Kugel-Frage-Antwort-Gewehrschuss",
-                "desc": "Schaltfläche nach AI-Antwort"
+                "label": "Pistolenschuss-Geräusch bei Klick",
+                "desc": "Text für abgeschossene Kugel"
             },
             "lv": {
-                "label": "Level-Up-Sound",
-                "desc": "Level-Leiste: Stufenaufstieg und Meilensteine"
+                "label": "Sound für Saison-Level-Up",
+                "desc": "Level-Up"
             },
             "summon": {
                 "label": "Fenster-Rückruf-Sound",
@@ -1599,7 +1639,8 @@
         "off": "Deaktiviert",
         "needActivation": "Diese Funktion erfordert zuerst eine Aktivierung",
         "sfxTitle": "Soundeffekte ein/aus",
-        "sfxSubtitle": "Standardmäßig alle aktiviert · Sofort wirksam",
+        "sfxAll": "Alle",
+        "sfxNone": "Keine",
         "sfxTooltip": "Soundeffekte einzeln ein-/ausschalten",
         "undoMode": {
             "label": "Rückgängig-Modus im Editor",
@@ -1621,7 +1662,7 @@
         },
         "compress": {
             "label": "Kontext-Rucksack automatisch komprimieren",
-            "desc": "Standardwert ist Mittel",
+            "desc": "Standardwert ist vollständig verwaltet",
             "off": "Aus",
             "medium": "Mittel",
             "full": "Vollständig verwaltet"
@@ -1631,7 +1672,7 @@
         },
         "volume": {
             "label": "Lautstärke",
-            "desc": "Lautstärke für das IDE-Fenster und alle Goods. Goods mit eigener Lautstärkeregelung umgehen diese Einstellung. Werkseinstellung: 25 %."
+            "desc": "Lautstärke für IDE-Fenster und alle Goods (Goods mit eigener Lautstärkeregelung werden umgangen und nicht hiervon beeinflusst)."
         },
         "mdviewAuto": {
             "label": "Markdown-Vorschau automatisch öffnen"
@@ -1646,6 +1687,24 @@
         "secret": {
             "label": "Hilfs-Schlüssel anonymisieren",
             "desc": "Wenn ungespeicherte Änderungen im Projekt erkannt werden, werden darin enthaltene Geheimnisse (API-Schlüssel, Passwörter, Tokens usw.) automatisch identifiziert und entfernt. Fälle, die nicht automatisch bestätigt werden können, lösen ein Popup-Fenster zur manuellen Bearbeitung aus."
+        },
+        "pyInterp": {
+            "btn": "Als systemweiten Python-Interpreter festlegen",
+            "busyChecking": "Überprüfung läuft…",
+            "busyApplying": "Einstellungen werden angewendet…",
+            "confirmTitle": "Der aktuelle Systeminterpreter wird überschrieben",
+            "confirmOk": "Bestätigen",
+            "confirmCancel": "Abbrechen",
+            "ok": "✅ Eingestellt: .py-Dateien werden mit integriertem Python ausgeführt",
+            "okRefresh": "✅ Aktualisiert: Integriertes Python hat .py-Dateien übernommen",
+            "fail": "❌ Einstellung fehlgeschlagen:",
+            "errNoPython": "Integriertes Python ist nicht bereit",
+            "errDenied": "Zugriff verweigert (möglicherweise durch Sicherheitssoftware blockiert)",
+            "errVerify": "Schreibvorgang nicht wirksam",
+            "errUac": "Abgebrochen (nicht autorisiert)",
+            "errBridge": "Fenster muss neu gestartet werden, damit die Änderung wirksam wird",
+            "errBusy": "Verarbeitung läuft, bitte warten",
+            "errGeneric": "Unbekannter Fehler"
         },
         "tier": {
             "title": "Erklärung der AI-Level",

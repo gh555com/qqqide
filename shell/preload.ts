@@ -587,6 +587,13 @@ const QQQ = {    // ---- app info ----
         syncShortcut: (enabled: boolean) => ipcRenderer.invoke('qqqide:desktop:sync-shortcut', enabled),
     },
 
+    // ---- sysPy (系统解释器：.py/.js 关联 → 内置 Python/Node，一次性写入只管当；target 缺省 = python) ----
+    sysPy: {
+        check: (target?: string) => ipcRenderer.invoke('qqqide:syspy:check', target),
+        apply: (target?: string) => ipcRenderer.invoke('qqqide:syspy:apply', target),
+        remove: (target?: string) => ipcRenderer.invoke('qqqide:syspy:remove', target),
+    },
+
     // ---- kope (剪贴板历史, sql.js 直接读写 kope.sq3) ----
     kope: {
         getHistory: (limit?: number, offset?: number, keyword?: string) => ipcRenderer.invoke('qqqide:kope:getHistory', limit, offset, keyword),

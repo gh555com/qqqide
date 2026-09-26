@@ -1349,7 +1349,9 @@ window.addEventListener('message', async function (e) {
                         beforeChars: beforeChars, afterChars: afterChars, status: 'floor-starting'
                     });
                     try {
-                        var _savedInput = typeof $input !== 'undefined' ? $input.value : '';
+                        // ★ 2026-09-26 删除「结束后回填编辑框」：提权楼层（compress）为机器类型，
+                        //   _executeSend 的编辑框清理只针对 normal → 回填是死代码；而提取楼层可跑数十秒
+                        //   → 期间用户新键入的草稿会在结束时被旧快照覆盖（且本流程可为非活跃 quest 触发）
                         var _bulletRef = 'Extract a list of key project facts from the conversation history below (aim for 30-40 facts, one per line starting with "- ", extract facts only — do not invent anything, reply directly without calling any tool):\n\n📎"' + _bulletPath + '"';
                         // ★ 2026-08-10 增量提取：已有 fx 清单 → 覆盖为增量提示词，只提取新增/变化
                         //   （q147 F96/F97 实锤：原料块零重叠但事实必然重复——A 行跨楼层复用 + AI 无 fx 视野）
@@ -1398,7 +1400,7 @@ window.addEventListener('message', async function (e) {
                                 return;
                             }
                         }
-                        if (typeof $input !== 'undefined') { $input.value = _savedInput; }
+                        // ★ 2026-09-26：不回填编辑框（理由见上文）——仅回报成功
                         _respond({
                             type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: true,
                             beforeChars: beforeChars, afterChars: afterChars, status: 'done'

@@ -9,7 +9,7 @@
 //
 // ★ 目录记忆（2026-09-14 第二轮）：上次保存目录存程序级 global.sq3
 //   （ns=qqq.download，key=lastDir，cloud:false 设备本地，不云同步）。
-//   非 ask 且记忆目录存在 → 静默直存（零对话框；重名由主进程自动 name (1).ext 绝不覆盖），
+//   非 ask 且记忆目录存在 → 静默直存（零对话框；重名由主进程自动 name_1.ext 绝不覆盖——Roam 风格），
 //   完成 qoast 报最终文件名 + 「📂 Roam 定位」（shell-overlay 定位引擎，点击直达 Roam 选中文件）；
 //   静默失败（目录失效等）→ 自动回退保存对话框。首次下载无记忆 → 弹框，选过一次后不再每次问。
 // ★ opts.onDone({ok, path, name} | {ok:false, error|cancelled|external})：完成回调（2026-09-14）——
@@ -131,7 +131,7 @@
         }
         if (fin) { try { fin({ ok: false, error: entry.error, cancelled: entry.error === 'cancelled' }); } catch (_) {} }
       } else {
-        // 终稿文件名取实际落盘名（静默直存重名时 = name (1).ext，与用户看到的磁盘一致）
+        // 终稿文件名取实际落盘名（静默直存重名时 = name_1.ext，与用户看到的磁盘一致）
         var finalName = t.name;
         if (entry.filePath) { var bn = _baseOf(entry.filePath); if (bn) { finalName = bn; } }
         if (io) io.done(t.taskId, { summary: _T('shell.dl.saved', '已保存：') + (entry.filePath || t.name) });

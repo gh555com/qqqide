@@ -613,7 +613,7 @@
             '#byok-panel button.bk-btn:hover{background:var(--base3)}',
             '#byok-panel button.bk-btn:disabled{opacity:0.5;cursor:default}',
             '#byok-panel .bk-hint{margin-top:10px;color:var(--base01);font-size:11.5px;line-height:1.55}',
-            '#byok-panel .bk-title{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;margin-bottom:4px}',
+            '#byok-panel .bk-title{display:flex;align-items:center;font-size:14px;font-weight:700;margin-bottom:4px}',
             '#byok-panel .bk-test-status{font-size:12px;word-break:break-all}'
         ].join('');
         document.head.appendChild(s);
@@ -642,8 +642,7 @@
         var p = document.createElement('div');
         p.id = 'byok-panel';
         p.innerHTML =
-            '<div class="bk-title"><span>' + _t('ai.byok.title', '自带 API Key') + '</span>' +
-            '<button class="bk-btn" id="byok-close">✕</button></div>' +
+            '<div class="bk-title"><span>' + _t('ai.byok.title', '自带 API Key') + '</span></div>' +
             '<div class="bk-hint" style="margin-top:2px">' + _t('ai.byok.subtitle', '配置你自己的 AI 服务端点，对话请求直连你的服务商') + '</div>' +
             '<div class="bk-row"><label class="bk-chk"><input type="checkbox" id="byok-enable"><span>' +
             _t('ai.byok.enable', '启用（对话走你的 Key，不计 ge 费用）') + '</span></label></div>' +
@@ -685,7 +684,7 @@
                 if (e.key === 'Escape' && _overlay && _overlay.style.display !== 'none') _closePopup();
             });
         }
-        $('byok-close').onclick = _closePopup;
+        // 关闭仅：点遮罩外 / Esc（铁律 §4.1——内置面板不设 ✕）
         $('byok-eye').onclick = function () {
             var k = $('byok-key');
             k.type = (k.type === 'password') ? 'text' : 'password';

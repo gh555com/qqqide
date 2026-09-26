@@ -953,8 +953,10 @@ function buildQqiqItem(item) {
 		el.appendChild(text);
 		el.addEventListener('click', function() {
 			_vigBump('roam', { k: 1 });
-			parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
-			recordFileHistory(item.path);
+			// ★ 2026-09-26: 融入 Q 键打开逻辑（唯一路由 = performCodeAction）——图片/视频/音频 → 悬浮预览层
+			//   （psd/avi 等转码兜底）；文本 → 编辑器；其余二进制 → 错误音效。
+			//   旧实现恒发 qqq-file-open → mp3 等被编辑器二进制门槛拦截（「二进制文件，无法在编辑器中打开」）。
+			performCodeAction({ name: fileName, type: 'file', path: item.path });
 		});
 	} else {
 		var text2 = document.createElement('span');
@@ -1564,9 +1566,42 @@ function _openQqqideWindowForFolder(folderPath) {
 	}
 }
 
-function performCodeAction(item) {
+// ★ Q 键多选媒体（2026-09-26 q319）：选中 ≥2 个「与列表序第一个媒体同类」的文件 → 悬浮层播放列表
+//   起播 = 列表序第一个（用户定案）；队列保序；忽略项（非媒体/另一媒体类型）>0 时 toast 报数；返回 true = 已消费
+function _qBatchMediaPlaylist() {
+	if (typeof selectedItems === 'undefined' || !selectedItems || selectedItems.length < 2) return false;
+	var sel = selectedItems.filter(function(s) { return s && s.type === 'file' && s.name && s.name !== '..'; });
+	if (sel.length < 2) return false;
+	var kind = null, list = [], ignored = 0;
+	sel.forEach(function(s) {
+		var ext = _overlayExtOf(s.name);
+		var k = _OVERLAY_VIDEO_EXTS[ext] ? 'video' : (_OVERLAY_AUDIO_EXTS[ext] ? 'audio' : null);
+		if (!k) { ignored++; return; }
+		if (!kind) kind = k;
+		if (k !== kind) { ignored++; return; }
+		var p = String(s.path).replace(/\\/g, '/');
+		list.push({ src: 'file:///' + p, localPath: p, name: s.name, path: s.path });
+	});
+	if (!kind || list.length < 2) return false;
+	parent.postMessage({ type: 'qqqide-overlay', action: (kind === 'video' ? 'open-video' : 'open-audio'),
+		src: list[0].src, localPath: list[0].localPath, list: list, index: 0 }, '*');
+	recordFileHistory(list[0].path);
+	_playSfx('enter');
+	if (ignored > 0) {
+		try {
+			if (parent && parent.qqqideQoast) {
+				parent.qqqideQoast.show(_kk('goods.roam.qBatchIgnore', 'Q 播放列表：已加入 {0} 个 · 忽略 {1} 个（类型不同）', list.length, ignored), { duration: 4000, type: 'info' });
+			}
+		} catch (_) {}
+	}
+	return true;
+}
+
+function performCodeAction(item, opts) {
 	if (!item) return;
 	if (item.name === '..') return;
+	// ★ Q 键/右键菜单多选媒体（2026-09-26 q319）：选中 ≥2 个同类媒体 → 悬浮层播放列表（起播 = 列表序第一个）
+	if (opts && opts.batch && item.type !== 'folder' && _qBatchMediaPlaylist()) return;
 	if (item.type === 'folder') {
 		// Q 键唯一职责（文件夹）：开新 qqqide 窗口，以该文件夹为主文件夹
 		// ?restore=1&folder= → ai-viewport restore 模式自动恢复该工作空间（含辅文件夹阵营）

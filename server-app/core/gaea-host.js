@@ -103,10 +103,7 @@
 
     const pending = _pendingShow.splice(0);
     pending.forEach(id => show(id));
-    // ★ 确保 roam tab 在 gaea 分组中存在（rage 已完成注册）
-    if (window.qqqTabs && window.qqqTabs.ensureRoamTab) {
-      window.qqqTabs.ensureRoamTab();
-    }
+    // （roam tab 由 tab-manager 自管：init 硬创建 + 关闭/ResizeObserver 自愈——此处无需兜底）
   }
 
   // ---- Tab bar (renders into menu row 2 toolbar) ----

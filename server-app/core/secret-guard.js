@@ -582,6 +582,7 @@
     _panelOv.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9998;';
     _panelOv.addEventListener('click', function (e) { if (e.target === _panelOv) _closePanel(); });
     _panelEl = document.createElement('div');
+    _panelEl.className = 'qqq-sg-panel';   // ★ 统一块钩子（滚动条/可选中/拖选色——shell-base.css，铁律 §4.1）
     _panelEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;max-width:92vw;max-height:82vh;overflow-y:auto;z-index:9999;padding:0;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);';
     _panelOv.appendChild(_panelEl);
     document.body.appendChild(_panelOv);
@@ -606,16 +607,12 @@
     _panelEl.innerHTML = '';
 
     var hd = document.createElement('div');
-    hd.style.cssText = 'padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;';
+    hd.style.cssText = 'padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;';
     var title = document.createElement('span');
     title.style.cssText = 'font-size:15px;font-weight:bold;color:var(--text-primary);';
     title.textContent = _t('secretGuard.panelTitle', '密钥脱敏 · 协同处理');
     hd.appendChild(title);
-    var closeBtn = document.createElement('button');
-    closeBtn.textContent = '\u2715';
-    closeBtn.style.cssText = 'width:24px;height:24px;border:1px solid var(--border-color);border-radius:3px;background:transparent;color:var(--text-secondary);font-size:14px;line-height:22px;text-align:center;';
-    closeBtn.onclick = _closePanel;
-    hd.appendChild(closeBtn);
+    // 关闭仅：点面板外阴影 / Esc（铁律 §4.1——内置面板不设 ✕）
     _panelEl.appendChild(hd);
 
     var desc = document.createElement('div');
@@ -624,6 +621,7 @@
     _panelEl.appendChild(desc);
 
     var body = document.createElement('div');
+    body.className = 'qqq-sg-body';   // ★ 统一块钩子（shell-base.css 内嵌弹窗统一块）
     body.style.cssText = 'padding:12px 20px;max-height:46vh;overflow-y:auto;';
     for (var i = 0; i < list.length; i++) {
       var item = list[i];

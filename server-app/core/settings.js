@@ -70,6 +70,14 @@
       ]
     },
     {
+      key: 'sys.interp',
+      label: '系统解释器',
+      labelKey: 'settings.sysInterp.label',
+      type: 'interp',
+      tab: 'general',
+      defaultValue: ''
+    },
+    {
       key: 'ai.compressLevel',
       label: '自动压缩 上下文背包',
       labelKey: 'settings.compress.label',
@@ -362,6 +370,221 @@
     });
   }
 
+  // ── ★ 系统解释器（.py/.js 关联 → 绿色包内置 Python/Node；唯一后端 shell/ipc-syspy.ts）──
+  //   语义（2026-09-26）：一次性写入只管当——HKCU PATH + Classes 关联 + UserChoice hash 强写；
+  //   系统已有其他解释器 → 先弹「将覆盖当前系统解释器」二确认；已是我们的 → 选中态（右下角圆勾徽章）
+  //   → 再点 = 必出「取消作为系统 xx 解释器」确认 → 解除 = 纯清空一锤子买卖（不还原旧值，白板化）。
+  function _interpSetState(t, busy, phase, kind, msg) {
+    var st = _interpState[t];
+    if (!st) return;
+    st.busy = !!busy;
+    st.phase = phase || 'idle';
+    st.kind = kind || '';
+    st.msg = msg || '';
+    if (_$panel && _$overlay && _$overlay.style.display !== 'none') _renderPanel();
+  }
+
+  function _pyQoast(msg, type) {
+    try {
+      if (window.qqqideQoast && window.qqqideQoast.show) window.qqqideQoast.show(msg, { type: type || 'info', duration: 9000 });
+    } catch (e) { /* ignore */ }
+  }
+
+  function _interpErrText(t, code) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    var map = {
+      'no-python': [pfx + 'errNoPython', '内置 Python 未就绪'],
+      'no-node': [pfx + 'errNoNode', '内置 Node 未就绪'],
+      'denied': [pfx + 'errDenied', '权限被拒绝（可能被安全软件拦截）'],
+      'verify-failed': [pfx + 'errVerify', '写入未生效'],
+      'uac-cancelled': [pfx + 'errUac', '已取消（未授权）'],
+      'busy': [pfx + 'errBusy', '正在处理中，请稍候'],
+      'unsupported': [pfx + 'errGeneric', '当前系统不支持'],
+      'timeout': [pfx + 'errGeneric', '操作超时'],
+      'spawn-failed': [pfx + 'errGeneric', '无法启动系统组件'],
+      'check-failed': [pfx + 'errGeneric', '检查失败'],
+      'ps-init-failed': [pfx + 'errGeneric', '系统组件初始化失败']
+    };
+    if (t === 'node' && code === 'no-python') code = 'no-node';
+    var hit = map[code] || [pfx + 'errGeneric', '未知错误'];
+    return _i(hit[0], hit[1]);
+  }
+
+  // ★ 串行操作链：静默探测（打开面板复查徽章真值）与点击流共用——绝不并发撞壳层 _inFlight
+  var _interpOpChain = Promise.resolve();
+
+  function _interpProbeOne(t) {
+    var st = _interpState[t];
+    var bridge = null;
+    try { bridge = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { /* ignore */ }
+    if (!bridge || !bridge.check || !st || st.busy) return Promise.resolve();
+    return bridge.check(t).then(function (res) {
+      if (res && res.ok && !st.busy) {
+        var next = res.mode || '';
+        if (st.mode !== next) {
+          st.mode = next;
+          if (_$panel && _$overlay && _$overlay.style.display !== 'none') _renderPanel();
+        }
+      }
+    }, function () { /* silent */ });
+  }
+
+  function _interpSilentProbe() {
+    _interpOpChain = _interpOpChain
+      .then(function () { return _interpProbeOne('python'); }, function () { return _interpProbeOne('python'); })
+      .then(function () { return _interpProbeOne('node'); }, function () { return _interpProbeOne('node'); });
+  }
+
+  function _onInterpClick(t) {
+    var st = _interpState[t];
+    if (!st || st.busy) return;
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    var bridge = null;
+    try { bridge = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { /* ignore */ }
+    if (!bridge || !bridge.check) {
+      _interpSetState(t, false, 'idle', 'fail', _i(pfx + 'errBridge', '需重启本窗口后可用'));
+      return;
+    }
+    _interpSetState(t, true, 'checking', '', '');
+    _interpOpChain = _interpOpChain
+      .then(function () { return _interpClickFlow(bridge, t); }, function () { return _interpClickFlow(bridge, t); });
+  }
+
+  function _interpClickFlow(bridge, t) {
+    var st = _interpState[t];
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    return bridge.check(t).then(function (res) {
+      if (!res || !res.ok) { _interpSetState(t, false, 'idle', 'fail', _interpErrText(t, res && res.code)); return; }
+      if (res.mode) st.mode = res.mode;
+      if (res.mode === 'unsupported') { _interpSetState(t, false, 'idle', 'fail', _interpErrText(t, 'unsupported')); return; }
+      // 已是我们的（选中态）→ 解除流程：必出「取消作为系统 xx 解释器」确认 → 纯清空
+      if (res.mode === 'ours') {
+        _interpAsk(t, 'remove').then(function (go) {
+          if (!go) { _interpSetState(t, false, 'idle', '', ''); return; }
+          if (!bridge.remove) { _interpSetState(t, false, 'idle', 'fail', _i(pfx + 'errBridge', '需重启本窗口后可用')); return; }
+          _interpRemove(bridge, t);
+        });
+        return;
+      }
+      if (!res.exeOk) { _interpSetState(t, false, 'idle', 'fail', _i(pfx + (t === 'node' ? 'errNoNode' : 'errNoPython'), t === 'node' ? '内置 Node 未就绪' : '内置 Python 未就绪')); return; }
+      // 系统已有其他解释器（已设过 PATH / 已能双击打开）→ 二次确认「将覆盖」；否则直接干
+      if (res.mode === 'other') {
+        _interpAsk(t, 'override').then(function (go) {
+          if (!go) { _interpSetState(t, false, 'idle', '', ''); return; }
+          _interpApply(bridge, t, res.mode);
+        });
+      } else {
+        _interpApply(bridge, t, res.mode);
+      }
+    }, function () { _interpSetState(t, false, 'idle', 'fail', _i(pfx + 'errGeneric', '未知错误')); });
+  }
+
+  function _interpRemove(bridge, t) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    _interpSetState(t, true, 'removing', '', '');
+    bridge.remove(t).then(function (res) {
+      if (res && res.ok) {
+        _interpState[t].mode = '';
+        var okMsg = _i(pfx + 'okRemove', (t === 'node') ? '✅ 已解除：内置 Node 不再作为系统解释器' : '✅ 已解除：内置 Python 不再作为系统解释器');
+        _interpSetState(t, false, 'idle', 'ok', okMsg);
+        _pyQoast(okMsg, 'success');
+        _interpSilentProbe();   // 真值复查（徽章/状态随真值收敛）
+      } else {
+        var failMsg = _i(pfx + 'failRemove', '❌ 解除失败：') + _interpErrText(t, res && res.code);
+        _interpSetState(t, false, 'idle', 'fail', failMsg);
+        _pyQoast(failMsg, 'error');
+      }
+    }, function () {
+      var failMsg = _i(pfx + 'failRemove', '❌ 解除失败：') + _i(pfx + 'errGeneric', '未知错误');
+      _interpSetState(t, false, 'idle', 'fail', failMsg);
+      _pyQoast(failMsg, 'error');
+    });
+  }
+
+  function _interpApply(bridge, t, mode) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    var isNode = (t === 'node');
+    _interpSetState(t, true, 'applying', '', '');
+    bridge.apply(t).then(function (res) {
+      if (res && res.ok) {
+        _interpState[t].mode = 'ours';
+        var okMsg = (mode === 'ours')
+          ? _i(pfx + 'okRefresh', isNode ? '✅ 已刷新：内置 Node 已接管 .js' : '✅ 已刷新：内置 Python 已接管 .py')
+          : _i(pfx + 'ok', isNode ? '✅ 已设置：双击 .js 由内置 Node 运行' : '✅ 已设置：双击 .py 由内置 Python 运行');
+        _interpSetState(t, false, 'idle', 'ok', okMsg);
+        _pyQoast(okMsg, 'success');
+        _interpSilentProbe();   // 真值复查（徽章随真值收敛）
+      } else {
+        var failMsg = _i(pfx + 'fail', '❌ 设置失败：') + _interpErrText(t, res && res.code);
+        _interpSetState(t, false, 'idle', 'fail', failMsg);
+        _pyQoast(failMsg, 'error');
+      }
+    }, function () {
+      var failMsg = _i(pfx + 'fail', '❌ 设置失败：') + _i(pfx + 'errGeneric', '未知错误');
+      _interpSetState(t, false, 'idle', 'fail', failMsg);
+      _pyQoast(failMsg, 'error');
+    });
+  }
+
+  // 内置确认弹框（first-run 同款：CSS 变量自适应 / 主操作左 / Esc=取消 / 语言切换实时刷新 / 防重入）
+  //   titleText 缺省 = 「将覆盖当前系统解释器」；解除场景传「取消作为系统 xx 解释器」
+  function _interpConfirm(titleText) {
+    return new Promise(function (resolve) {
+      if (_pyConfirmOv) { resolve(false); return; }
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:1000001;display:flex;align-items:center;justify-content:center;';
+      var panel = document.createElement('div');
+      panel.style.cssText = 'width:420px;max-width:92vw;box-sizing:border-box;background:var(--background-color);color:var(--text-primary);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,0.5);padding:26px 28px 20px;font-size:14px;line-height:1.7;';
+      var h = document.createElement('div');
+      h.style.cssText = 'font-size:15px;font-weight:600;margin:0 0 4px;text-align:center;white-space:pre-line;';
+      var btnOk = document.createElement('button');
+      btnOk.type = 'button';
+      btnOk.style.cssText = 'padding:7px 20px;border:1px solid var(--border-strong);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:13px;';
+      var btnCancel = document.createElement('button');
+      btnCancel.type = 'button';
+      btnCancel.style.cssText = btnOk.style.cssText;
+      function _fill() {
+        h.textContent = titleText || _i('settings.sysInterp.confirmTitle', '将覆盖当前系统解释器');
+        btnOk.textContent = _i('settings.sysInterp.confirmOk', '确认');
+        btnCancel.textContent = _i('settings.sysInterp.confirmCancel', '取消');
+      }
+      _fill();
+      function _close(result) {
+        document.removeEventListener('keydown', _onKey, true);
+        window.removeEventListener('qqq-lang-change', _fill);
+        if (_pyConfirmOv && _pyConfirmOv.parentNode) { try { _pyConfirmOv.parentNode.removeChild(_pyConfirmOv); } catch (e) { /* ignore */ } }
+        _pyConfirmOv = null;
+        resolve(result);
+      }
+      var _onKey = function (e) { if (e && e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); _close(false); } };
+      btnOk.addEventListener('click', function (e) { e.stopPropagation(); _close(true); });
+      btnCancel.addEventListener('click', function (e) { e.stopPropagation(); _close(false); });
+      document.addEventListener('keydown', _onKey, true);
+      window.addEventListener('qqq-lang-change', _fill);
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:44px;';   // 用户定案：消息与按钮间两换行（≈2 行高）
+      row.appendChild(btnOk);      // 布局与 first-run 一致：主操作在左
+      row.appendChild(btnCancel);
+      panel.appendChild(h);
+      panel.appendChild(row);
+      ov.appendChild(panel);
+      document.body.appendChild(ov);
+      _pyConfirmOv = ov;
+    });
+  }
+
+  // ★ 确认框出口（AI 工具链 sys_python / sys_node 复用——与按钮同一弹框）：kind='override'（将覆盖）/ 'remove'（取消作为系统 xx 解释器）
+  function _interpAsk(t, kind) {
+    var pfx = 'settings.' + (t === 'node' ? 'nodeInterp.' : 'pyInterp.');
+    if (kind === 'remove') {
+      return _interpConfirm(_i(pfx + 'confirmRemove', (t === 'node') ? '取消作为系统 Node 解释器' : '取消作为系统 Python 解释器'));
+    }
+    return _interpConfirm();
+  }
+  try { window.qqqSysInterpConfirm = _interpConfirm; } catch (_) { /* ignore */ }
+  try { window.qqqSysPyConfirm = _interpConfirm; } catch (_) { /* ignore */ }
+  try { window.qqqSysInterpAsk = _interpAsk; } catch (_) { /* ignore */ }
+
   // ── 创建设置面板 DOM ──
   function _ensurePanel() {
     if (_$overlay) return;
@@ -388,6 +611,12 @@
   var _sfxOpen = false;       // ★ 音效开关子卡片展开态（音量卡片的 1 by 1）
   var _floorCapHintOn = false;    // ★ 显示楼层 32/64（激活功能）未激活红字提示态（2026-09-05；64 档 2026-09-06）
   var _floorCapHintTimer = null;
+  // ★ 系统解释器状态（python/node 双目标；跨重渲染保留，唯一后端 shell/ipc-syspy.ts）
+  var _interpState = {
+    python: { busy: false, phase: 'idle', kind: '', msg: '', mode: '' },
+    node: { busy: false, phase: 'idle', kind: '', msg: '', mode: '' }
+  };
+  var _pyConfirmOv = null;
 
   function _renderPanel() {
     if (!_$panel) return;
@@ -404,7 +633,7 @@
 
     var html = '';
     // 标题行
-    html += '<div style="padding:16px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center; justify-content:space-between;">';
+    html += '<div style="padding:16px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center;">';
     html += '<div style="display:flex; align-items:center; gap:12px;">';
     html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">' + _i('settings.title', '设置') + '</span>';
     html += '<button id="qqq-settings-restart" style="padding:3px 10px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:11px; cursor:default; white-space:nowrap;">' + _i('settings.restart', '重置窗口') + '</button>';
@@ -412,7 +641,6 @@
     //   → 胶囊 + 悬停明细；SW 缓存旧 → 红色⚠️ 提示按「重置窗口」（core/update-health.js 唯一入口）
     html += '<span id="qqq-upd-health" style="font-family:Consolas,monospace;font-size:11px;color:' + textDim + ';">···</span>';
     html += '</div>';
-    html += '<button id="qqq-settings-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center;">✕</button>';
     html += '</div>';
 
     // ★ 标签栏
@@ -438,14 +666,16 @@
     for (var i = 0; i < tabDefs.length; i++) {
       var def = tabDefs[i];
       var currentVal = get(def.key, def.defaultValue);
-      html += '<div class="qqq-setting-item" style="margin-bottom:16px; padding:12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg2 + ';">';
+      // ★ 系统解释器行（2026-09-26 用户定案）：零文字/零卡片框——纯左右两个大彩按钮
+      var _isInterpRow = (def.type === 'interp');
+      html += '<div class="qqq-setting-item" style="margin-bottom:16px;' + (_isInterpRow ? '' : ' padding:12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg2 + ';') + '">';
       if (def.key === 'ai.compressLevel') {
         // ★ 标题行右侧问号按钮（外观照搬 ctx-panel #ctx-help），点击跳转上下文背包文档
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
         html += '<span style="font-size:13px;font-weight:bold;color:' + text + ';">' + _i(def.labelKey, def.label) + '</span>';
         html += '<button class="qqq-compress-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;background:transparent;color:var(--text-primary,#eee);line-height:1;">?</button>';
         html += '</div>';
-      } else if (def.key !== 'audio.volume') {
+      } else if (def.key !== 'audio.volume' && def.type !== 'interp') {
         // 音量卡片的标题行由下方 flex 分支渲染（右侧挂 1 by 1 按钮）
         html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + _i(def.labelKey, def.label) + '</div>';
       }
@@ -457,7 +687,7 @@
         html += '</div>';
       }
       // ★ 无 desc 项不渲染描述行（防 undefined）
-      if (def.desc) html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + _i(def.descKey, def.desc) + '</div>';
+      if (def.desc && def.type !== 'interp') html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + _i(def.descKey, def.desc) + '</div>';
 
       if (def.type === 'slider-stepped') {
         var stops = def.stops || ['0', '25', '50', '75', '100'];
@@ -516,6 +746,7 @@
       } else if (def.type === 'radio') {
         // ★ 默认 AI 等级：3 个水平格子（显示 1/2/3 = 线上值 1/3/5；旧存量 2/4/6 自动换算到同组）
         if (def.key === 'ai.defaultTier') {
+          // ★ 三格三选一（满行；系统解释器按钮已移至独立行——2026-09-26）
           html += '<div style="display:flex; gap:6px;">';
           var _tierRep = function (v) { var n = parseInt(v, 10); if (!(n >= 1)) return ''; return String(Math.ceil(n / 2) * 2 - 1); };
           for (var j = 0; j < def.options.length; j++) {
@@ -542,6 +773,40 @@
             html += '</label>';
           }
         }
+      } else if (def.type === 'interp') {
+        // ★ 系统解释器行（2026-09-26 用户定案 v4）：零文字/零卡片框——左右两个大按钮；
+        //   标准描边按钮样式（1px 边 + 3px 小圆角 + 透明底，同面板 restart/1by1 按钮语言）；
+        //   颜色差异：Node=绿（冻结）/ Python=红；选中态（已接管）→ 右下角圆勾徽章；无渐变/无投影
+        html += '<div style="display:flex; align-items:stretch; gap:14px;">';
+        var _interpCols = [['node', 'qqq-sysnode-btn'], ['python', 'qqq-syspy-btn']];
+        var _interpSkins = [
+          { c: green, hov: isDark ? '#8fbc5a1e' : '#8599001e' },
+          { c: red,   hov: isDark ? '#ff44441e' : '#dc322f1e' }
+        ];
+        for (var _ic = 0; _ic < _interpCols.length; _ic++) {
+          var _t = _interpCols[_ic][0];
+          var _st = _interpState[_t];
+          var _pfx = 'settings.' + (_t === 'node' ? 'nodeInterp.' : 'pyInterp.');
+          var _skin = _interpSkins[_ic];
+          var _busyKey = (_st.phase === 'checking') ? 'busyChecking' : (_st.phase === 'removing' ? 'busyRemoving' : 'busyApplying');
+          var _busyFb = (_st.phase === 'checking') ? '正在检查…' : (_st.phase === 'removing' ? '正在解除…' : '正在设置…');
+          var _btnText = _st.busy
+            ? _i(_pfx + _busyKey, _busyFb)
+            : _i(_pfx + 'btn', _t === 'node' ? '做系统 Node 解释器' : '做系统 Python 解释器');
+          html += '<div style="flex:1 1 0; min-width:0; display:flex; flex-direction:column; gap:6px;">';
+          html += '<button id="' + _interpCols[_ic][1] + '" ' + (_st.busy ? 'disabled ' : '') + 'style="width:100%; box-sizing:border-box; min-height:58px; padding:10px 12px; position:relative; display:flex; align-items:center; justify-content:center; border:1px solid ' + _skin.c + '; border-radius:3px; background:transparent; color:' + _skin.c + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;' + (_st.busy ? ' opacity:0.55;' : '') + '"' + (_st.busy ? '' : ' onmouseover="this.style.background=&quot;' + _skin.hov + '&quot;" onmouseout="this.style.background=&quot;transparent&quot;"') + '>';
+          html += _btnText;
+          // ★ 选中态徽章（用户定案）：内置解释器接管中 → 右下角圆+大勾
+          if (_st.mode === 'ours') {
+            html += '<span aria-hidden="true" style="position:absolute; right:6px; bottom:6px; width:22px; height:22px; border-radius:50%; background:' + _skin.c + '; color:#fff; font-size:15px; line-height:22px; text-align:center; font-weight:bold; pointer-events:none;">✓</span>';
+          }
+          html += '</button>';
+          if (_st.msg) {
+            html += '<div style="font-size:11px; line-height:1.35; word-break:break-word; text-align:center; color:' + (_st.kind === 'ok' ? green : (_st.kind === 'fail' ? red : textDim)) + ';">' + _st.msg + '</div>';
+          }
+          html += '</div>';
+        }
+        html += '</div>';
       } else if (def.type === 'number') {
         // 数字键入（范围 100-1000，单位 k）
         var numId = 'qqq-setting-' + def.key.replace(/\./g, '-');
@@ -565,11 +830,7 @@
     _$panel.style.backgroundColor = bg;
     _$panel.style.color = text;
 
-    // 绑定关闭按钮
-    var $close = document.getElementById('qqq-settings-close');
-    if ($close) {
-      $close.addEventListener('click', close);
-    }
+    // 关闭仅：点面板外阴影 / Esc（铁律 §4.1——内置面板不设 ✕）
 
     // 绑定重置窗口按钮（等价 Ctrl+Shift+R）
     var $restart = document.getElementById('qqq-settings-restart');
@@ -656,6 +917,12 @@
       })(sliderTracks[st]);
     }
 
+    // ★ 系统解释器按钮（.py/.js 关联 → 内置解释器，唯一后端 shell/ipc-syspy.ts；独立行：左 node 右 Python）
+    var $sysnodeBtn = document.getElementById('qqq-sysnode-btn');
+    if ($sysnodeBtn) $sysnodeBtn.addEventListener('click', function () { _onInterpClick('node'); });
+    var $syspyBtn = document.getElementById('qqq-syspy-btn');
+    if ($syspyBtn) $syspyBtn.addEventListener('click', function () { _onInterpClick('python'); });
+
     // ★ 绑定 1 by 1 音效开关（按钮开合 + 勾选框即时生效，不整面板重渲染防拉杆跳动）
     var $sfx1x1 = document.getElementById('qqq-sfx-1x1');
     if ($sfx1x1) {
@@ -717,6 +984,7 @@
     if (_$overlay) _$overlay.style.display = '';
     // Esc 关闭
     document.addEventListener('keydown', _onEsc);
+    _interpSilentProbe();   // ★ 打开即静默复查（纯读）——「已接管」徽章与真值对齐
   }
 
   function close() {
@@ -796,15 +1064,7 @@
     _tierPanel.className = 'tier-popup-panel';
     _tierOverlay.appendChild(_tierPanel);
     document.body.appendChild(_tierOverlay);
-    // 自定义现代化无轨滚动块（窄 5px、轨道透明）+ 文字可选中复制（全局 user-select:none 需显式覆盖）
-    var _tierStyle = document.createElement('style');
-    _tierStyle.textContent = '.tier-popup-panel{user-select:text;-webkit-user-select:text;}' +
-      '.tier-popup-panel::-webkit-scrollbar{width:5px;height:5px;}' +
-      '.tier-popup-panel::-webkit-scrollbar-track{background:transparent;}' +
-      '.tier-popup-panel::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.35);border-radius:3px;}' +
-      '.tier-popup-panel::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.55);}' +
-      '.tier-popup-panel::-webkit-scrollbar-corner{background:transparent;}';
-    document.head.appendChild(_tierStyle);
+    // 滚动条 / 文字可选中 / 拖选色统一由 shell-base.css「内嵌弹窗统一块」提供（铁律 §4.1——禁面板自注入）
   }
 
   window.openTierPopup = function() {
@@ -840,13 +1100,12 @@
     var red = isDark ? '#ff4444' : '#dc322f';
 
     var _w = _tierExpanded ? '1040px' : '520px';
-    _tierPanel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:' + _w + '; max-width:92vw; max-height:82vh; overflow-y:auto; z-index:9999; padding:0; border-radius:6px; box-shadow:0 8px 32px rgba(0,0,0,0.35); background:' + bg + '; user-select:text; -webkit-user-select:text;';
+    _tierPanel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:' + _w + '; max-width:92vw; max-height:82vh; overflow-y:auto; z-index:9999; padding:0; border-radius:6px; box-shadow:0 8px 32px rgba(0,0,0,0.35); background:' + bg + ';';
 
     var html = '';
     // 标题行
-    html += '<div style="padding:14px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center; justify-content:space-between;">';
+    html += '<div style="padding:14px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center;">';
     html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">' + _i('settings.tier.title', 'AI 等级说明') + '</span>';
-    html += '<button id="tier-popup-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center; cursor:pointer;">✕</button>';
     html += '</div>';
 
     html += '<div style="padding:16px 20px; font-size:13px; line-height:1.9; color:' + text + ';">';
@@ -895,9 +1154,7 @@
     _tierPanel.innerHTML = html;
     _tierPanel.style.backgroundColor = bg;
 
-    // 绑定事件
-    var $close = document.getElementById('tier-popup-close');
-    if ($close) $close.addEventListener('click', _closeTierPopup);
+    // 绑定事件（关闭仅：点面板外阴影 / Esc，铁律 §4.1）
     if (!_tierExpanded) {
       var link = document.getElementById('tier-reason-link');
       if (link) link.addEventListener('click', _expandTierPopup);

@@ -16,7 +16,7 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 		if (item.name === '..' && (action === 'rename' || action === 'delete' || action === 'ai')) return;
 		switch (action) {
 			case 'ai': _feedCurrentToAi(); break;
-			case 'code': performCodeAction(item); break;
+			case 'code': performCodeAction(item, { batch: true }); break;
 			case 'open': if (selectedItems.length > 1) performOpenAllSelected(); else performOpenAction(item); break;
 			case 'delete': performDeleteAction(item); break;
 			case 'rename': performEditAction(item); break;
@@ -454,7 +454,7 @@ async function updateDriveDisplay() {
 		if (k === 'q') {
 			e.preventDefault();
 			_vigBump('roam', { q: 1, x: 1 });   // 老 qx：Q键编辑次数 + 快捷键总次数
-			performCodeAction(si);
+			performCodeAction(si, { batch: true });
 		} else if (k === 'd') {
 			e.preventDefault();
 			_vigBump('roam', { x: 1 });

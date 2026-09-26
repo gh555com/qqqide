@@ -124,7 +124,29 @@
             "roamNotFound": "Introuvable sur le disque :",
             "loadFailed": "Échec du chargement de l'image, aperçu impossible",
             "mediaFailed": "Échec du chargement du média. Le format n'est peut-être pas pris en charge ou le fichier est corrompu.",
-            "transcoding": "Transcodage pour l'aperçu en cours…"
+            "transcoding": "Transcodage pour l'aperçu en cours…",
+            "mplay": "Lire",
+            "mpause": "Pause",
+            "mmute": "Couper le son",
+            "munmute": "Rétablir le son",
+            "mvolume": "Volume",
+            "mspeed": "Vitesse de lecture (cliquer pour sélectionner)",
+            "mspeedCustom": "Vitesse personnalisée",
+            "mspeedOk": "Confirmer",
+            "mfsFail": "Échec du passage en plein écran",
+            "mloop": "Lecture en boucle (raccourci L)",
+            "mpip": "Picture-in-Picture",
+            "mfs": "Plein écran (raccourci F)",
+            "mstep": "Avance image par image (raccourci . pour avancer / , pour reculer)",
+            "mab": "Boucle A-B (raccourci A)",
+            "mabA": "Marquer le point B (A : {t}, raccourci A)",
+            "mabAB": "Effacer la boucle A-B ({a} → {b}, raccourci A)",
+            "mabSetA": "Point A marqué : {t}",
+            "mabSetB": "Boucle A-B activée : {a} → {b}",
+            "mabClear": "Boucle A-B effacée",
+            "mshot": "Capture d'image unique (raccourci S)",
+            "mshotSaved": "Capture d'écran enregistrée : {name}",
+            "mshotFail": "Échec de la capture d'écran"
         },
         "about": {
             "title": "À propos de qqq",
@@ -447,7 +469,8 @@
             "settling": "Traitement du règlement en cours……",
             "err": "Échec du chargement",
             "load": "Chargement...",
-            "header": "Mon niveau final la semaine dernière : {last}, augmentation de la base cette semaine : {rise}. Augmentation prévue de la base la semaine prochaine : {proj}"
+            "header": "Mon niveau final la semaine dernière : {last}, augmentation de la base cette semaine : {rise}. Augmentation prévue de la base la semaine prochaine : {proj}",
+            "history": "Saisons précédentes"
         }
     },
     "ai": {
@@ -635,6 +658,7 @@
             "sendFailPrefix": "Échec de l'envoi (erreur lors de la création du fil) : {0}",
             "notSent": ". Le contenu suivant n'a pas été envoyé :",
             "allocShown": "—— Le contenu non envoyé est affiché dans la zone de messages ci-dessus.",
+            "allocRequeued": "—— Le message en file d'attente a été conservé et peut être réessayé",
             "stallAbort": "L'envoi bloqué (>20 minutes sans progression) a été automatiquement arrêté",
             "stallAbortQoast": "L'envoi bloqué (>20 minutes sans progression) a été automatiquement arrêté, vous pouvez cliquer sur le cadre rouge du niveau « Continuer la tâche » pour reprendre",
             "stallAbortTool": "Exécution de l'outil bloquée (aucune progression depuis plus de 2 heures), arrêt automatique",
@@ -1416,6 +1440,7 @@
             "popWindow": "📅 Période gratuite : (UTC) Dimanche toute la journée + quotidiennement de 01:00 à 03:00 / 13:00 à 15:00",
             "popWindowLocal": "📅 ({tz}) Dimanche toute la journée + quotidiennement {span}",
             "histTitle": "8 premières fenêtres gratuites : {used} / {budget}",
+            "histUsed": "{v} utilisé(s)",
             "popBonus": "Bonus saisonnier +{v} ge",
             "popLogin": "Connectez-vous pour voir le solde gratuit aléatoire récupéré",
             "popLoading": "Chargement du solde gratuit aléatoire…",
@@ -1443,12 +1468,27 @@
         "ignoredUntracked": "Ignoré et suivi annulé",
         "addedGitignore": "Ajouté à .gitignore"
     },
+    "gitignoreEnsure": {
+        "msg": "⚠️ Le fichier .gitignore de ce projet n'ignore pas {list} — le répertoire de travail qd (y compris les fichiers temporaires IA) risque d'être commité dans git",
+        "btnFix": "Compléter le .gitignore",
+        "done": "✓ .gitignore complété : {list}",
+        "fail": "Échec de la complétion du .gitignore : {err}"
+    },
+    "gitPoll": {
+        "ucHint": "⚠️ L'analyse du statut git du grand dépôt {name} est lente ({sec}s/fois) — l'activation du cache non suivi peut accélérer le processus de 2 à 10 fois",
+        "ucEnable": "Activer",
+        "ucDone": "✓ Cache non suivi activé pour {name}, effectif dès la prochaine analyse",
+        "ucFail": "Ce dépôt ne prend pas en charge le cache non suivi (peut-être pas sur un disque local), aucune modification n'a été effectuée"
+    },
     "firstRun": {
         "expert": "Je suis un expert, je connais les risques de chaque commande, je n'utilise pas qqqide pour supprimer des fichiers",
-        "roamHint": "Avec Roam, vous pouvez manipuler rapidement les fichiers, y compris la suppression",
         "agree": "Accepter et continuer",
         "exit": "Quitter",
-        "saveFailed": "Échec de l'enregistrement, veuillez réessayer"
+        "saveFailed": "Échec de l'enregistrement, veuillez réessayer",
+        "intro1": "Vous pouvez considérer qd comme un jeu à savourer lentement. Attention, il s'agit d'un jeu original, et non d'un jeu copié. Si vous aimez les jeux copiés, vous pouvez partir dès maintenant.",
+        "introLink": "Utiliser Roam pour sortir des limites du dossier de projet",
+        "intro2": "D'autre part, j'espère que vous trouverez le lien vers la communauté via le bouton d'aide ci-dessus. Nous garantissons qu'une personne dédiée répondra individuellement à chacune de vos questions, même les plus minimes.",
+        "introOk": "C'est très bien"
     },
     "notice": {
         "title": "Notifications",
@@ -1559,28 +1599,28 @@
     "audio": {
         "sfx": {
             "floor-ok": {
-                "label": "Son de fin normale d'étage",
+                "label": "Son de construction d'étage réussie",
                 "desc": "Son de confirmation à la fin normale de chaque étage"
             },
             "floor-bad": {
                 "label": "Son de fin anormale d'étage",
-                "desc": "Fin anormale/arrêt/stagnation"
+                "desc": "Fin anormale/bloquée"
             },
             "muyu": {
                 "label": "Muyu · Annonce des périodes gratuites",
                 "desc": "À chaque entrée instantanée dans un créneau gratuit"
             },
             "roam": {
-                "label": "Sons des opérations sur les fichiers",
-                "desc": "Roam entrée/suppression/vidage/épinglage/désépinglage + terminal"
+                "label": "Opérations sur les fichiers Roam",
+                "desc": "Entrer/Supprimer/Vider/Fixer/Détacher + Terminal"
             },
             "bullet": {
-                "label": "Tir du pistolet Q&R",
-                "desc": "Bouton balle après la réponse de l'IA"
+                "label": "Bruit de pistolet du bouton balle",
+                "desc": "Texte de tir de balle"
             },
             "lv": {
-                "label": "Son de montée de niveau",
-                "desc": "Progression de niveau et jalons"
+                "label": "Son de montée de niveau de saison",
+                "desc": "Montée de niveau lv"
             },
             "summon": {
                 "label": "Son de rappel de fenêtre",
@@ -1599,7 +1639,8 @@
         "off": "Désactivé",
         "needActivation": "Cette fonctionnalité nécessite une activation préalable",
         "sfxTitle": "Activer/Désactiver les effets sonores",
-        "sfxSubtitle": "Tous activés par défaut · Prise d'effet immédiate",
+        "sfxAll": "Tous",
+        "sfxNone": "Aucun",
         "sfxTooltip": "Activer/désactiver les effets sonores individuels",
         "undoMode": {
             "label": "Mode d'annulation de l'éditeur",
@@ -1621,7 +1662,7 @@
         },
         "compress": {
             "label": "Compression auto du sac à dos de contexte",
-            "desc": "La valeur par défaut est Moyenne",
+            "desc": "La valeur par défaut est entièrement gérée",
             "off": "Désactivé",
             "medium": "Moyen",
             "full": "Gestion entièrement automatisée"
@@ -1631,7 +1672,7 @@
         },
         "volume": {
             "label": "Volume",
-            "desc": "Volume de la fenêtre IDE et de tous les goods (les goods avec volume indépendant contournent ce réglage). Valeur par défaut usine : 25 %."
+            "desc": "Volume de la fenêtre IDE et de tous les goods (les goods avec volume indépendant contournent ce réglage)."
         },
         "mdviewAuto": {
             "label": "Ouvrir automatiquement l'aperçu Markdown"
@@ -1646,6 +1687,24 @@
         "secret": {
             "label": "Masquage des clés secrètes",
             "desc": "Lorsque des modifications non validées sont détectées dans le projet, les clés secrètes (clés API, mots de passe, jetons, etc.) sont automatiquement identifiées et masquées. Une fenêtre contextuelle vous demandera une intervention manuelle si la confirmation automatique échoue."
+        },
+        "pyInterp": {
+            "btn": "Définir comme interpréteur Python système",
+            "busyChecking": "Vérification en cours…",
+            "busyApplying": "Configuration en cours…",
+            "confirmTitle": "Cela remplacera l'interpréteur système actuel",
+            "confirmOk": "Confirmer",
+            "confirmCancel": "Annuler",
+            "ok": "✅ Configuré : Les fichiers .py s'ouvrent avec le Python intégré lors d'un double-clic",
+            "okRefresh": "✅ Actualisé : Le Python intégré gère désormais les fichiers .py",
+            "fail": "❌ Échec de la configuration :",
+            "errNoPython": "Le Python intégré n'est pas prêt",
+            "errDenied": "Permission refusée (peut être bloqué par un logiciel de sécurité)",
+            "errVerify": "L'écriture n'a pas pris effet",
+            "errUac": "Annulé (non autorisé)",
+            "errBridge": "Nécessite un redémarrage de cette fenêtre pour prendre effet",
+            "errBusy": "Traitement en cours, veuillez patienter",
+            "errGeneric": "Erreur inconnue"
         },
         "tier": {
             "title": "Explication des niveaux IA",

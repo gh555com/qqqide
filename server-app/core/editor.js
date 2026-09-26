@@ -3,13 +3,10 @@
 // ============================================================================
 // editor.js - Monaco editor wrapper for qqq-shell v2
 //
-// Loads monaco-editor from qqqide-asset://monaco/vs/loader.js (provided by shell)
-// and exposes window.qqqEditor:
-//   open(file)   - load a file into the active editor
-//   save()       - save current editor content via window.qqqideBridge.fs.write
-//   getValue()   - current text
-//
-// In browser dev (no shell), exposes a textarea fallback.
+// Loads monaco-editor from qqqide-asset://monaco/vs/loader.js (provided by shell).
+// 唯一编辑器创建路径 = openInPane(host, filePath, content, opts)（X 区 tab 分组 per-pane 实例）；
+// window.qqqEditor 的 pane 查找 / 生命周期 / 脏状态 / 编码簿记 API 见文件尾导出块。
+// （主编辑器时代遗留 build/open/save/textarea 回落已整体退役——勿再引入第二编辑器路径。）
 // ============================================================================
 
 (function () {
@@ -132,37 +129,8 @@
     });
   }
 
-  let editor = null;             // monaco editor instance
-  let currentFile = null;        // current open file path
-  let dirty = false;             // unsaved changes flag
-  let mountEl = null;            // <div> we mount into
-  // LSP-related variables and functions removed (all external LSP disabled)
 
 
-  // ---------------- Fallback (no monaco available) ----------------
-  function buildFallback(host) {
-    host.innerHTML = '';
-    const ta = document.createElement('textarea');
-    ta.style.cssText = 'width:100%; height:100%; box-sizing:border-box; border:0; outline:0; padding:12px; font-family:ui-monospace,Consolas,Menlo,monospace; font-size:13px; resize:none; background:var(--background-color); color:var(--text-primary);';
-    host.appendChild(ta);
-    ta.addEventListener('input', () => { dirty = true; });
-    return {
-      isFallback: true,
-      setValue(v, _lang) { ta.value = v == null ? '' : String(v); dirty = false; },
-      getValue() { return ta.value; },
-      focus() { ta.focus(); },
-      insertAtCursor(text) {
-        const start = ta.selectionStart || 0;
-        const end = ta.selectionEnd || 0;
-        ta.value = ta.value.slice(0, start) + String(text) + ta.value.slice(end);
-        const np = start + String(text).length;
-        ta.selectionStart = ta.selectionEnd = np;
-        ta.focus();
-        dirty = true;
-      },
-      dispose() { /* nothing */ },
-    };
-  }
 
   // ---------------- Monaco loader ----------------
   var _monacoLoadPromise = null;
@@ -201,9 +169,7 @@
           require(['vs/editor/editor.main'], () => {
             var monaco = window.monaco;
 
-            // ── Bootstrap custom TS/JS IntelliSense (fallback, optional) ──
-            // Disabled for now — using Monaco's built-in TS with plain-path URIs.
-            // bootCustomTsService(monaco); // LSP OFF
+
 
             // ═══ LSP OFF: disable all Monaco built-in worker diagnostics ═══
             // TS/JS: no semantic/syntax validation, no completions, no hover
@@ -237,12 +203,7 @@
     });
   }
 
-  // ── Custom TS/JS providers (replaces Monaco's broken built-in TS worker) ──
-  var _tsBootDone = false;
 
-  function bootCustomTsService(monaco) {
-    // LSP OFF — not called
-  }
 
   // ── 撤销模式：按设置决定是否挂载逐字回退 ──
   var _undoModeUnsub = null;
@@ -580,7 +541,6 @@
         try { newState = !ed.getOption(monaco.editor.EditorOption.minimap).enabled; } catch (_) { }
         ed.updateOptions({ minimap: { enabled: newState } });
         var fp = filePath;
-        if (!fp && typeof currentFile !== 'undefined') fp = currentFile;
         if (fp) _saveMinimapPref(fp, newState);
         _addMinimapAction(ed, monaco, fp);
       }
@@ -631,7 +591,6 @@
       contextMenuOrder: 1.6,
       run: function () {
         var fp = filePath;
-        if (!fp && typeof currentFile !== 'undefined') fp = currentFile;
         if (!fp) return;
         var lineRange = null;
         try {
@@ -652,213 +611,27 @@
     _feedToAiActions.set(ed, { disposable: disposable, filePath: filePath, monaco: monaco });
   }
 
-  // ---------------- Editor build ----------------
-  async function build(host) {
-    mountEl = host;
-    try {
-      const monaco = await loadMonaco();
-      // 注册唯一真理配色机器的 Monaco 主题
-      if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
 
-      // ★ codelens 按钮机器（老 q3 FileCodeLensProvider 移植；等级/样式由 qqq-prefs 驱动）
-      if (window.qqqCodelens && window.qqqCodelens.install) {
-        try { window.qqqCodelens.install(monaco); } catch (_) { }
-      }
 
-      // configureMonacoTypescript(monaco); // LSP OFF
 
-      const theme = (window.qqqideTheme && window.qqqideTheme.getMonacoTheme()) || 'vs';
-      const ed = monaco.editor.create(host, Object.assign({
-        value: '',
-        language: 'plaintext',
-        theme: theme,
-      }, _makeEditorBaseOptions()));
-      _monacoRef = monaco;
-      _editorRef = ed;
-      ed._isRefreshing = true;
-      // 唯一真理逐字回退机器：按设置决定是否挂载
-      _applyUndoMode(ed, monaco);
-      // 行号右侧空气墙点击 → 光标跳到第一列
-      _installGutterClickFix(ed, monaco);
-      _addMinimapAction(ed, monaco, null);
-      _addFeedToAiAction(ed, monaco, null);
-      // ★ Markdown 预览 action（md-preview.js 提供；右键导航组 + 快捷键 Ctrl+K V）
-      try { window.__qqqMdAttachAction && window.__qqqMdAttachAction(ed, monaco, null); } catch (_) {}
-      // 括号匹配（自实现）
-      _installBracketMatcher(ed, monaco);
-      // 抹除 Change All Occurrences
-      try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) {}
-      // ── 面包屑导航条（空编辑器：仅工具按钮）──
-      if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
-        window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
-      }
-      // 主题切换时同步 Monaco（全局注册一次）
-      hookThemeSync(monaco);
 
-      // Ctrl+S
-      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save());
-      ed.onDidChangeModelContent(function (e) {
-        if (ed._isRefreshing || _globalRefreshLock) return;
-        dirty = true;
-        if (currentFile) {
-          document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: true } }));
-          _pushDirtyDebounced(currentFile, ed.getValue());
-        }
-      });
-      // Auto-save on blur
-      ed.onDidBlurEditorWidget(() => {
-        if (dirty && currentFile) {
-          save().then(ok => {
-            if (ok && currentFile) {
-              document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: false } }));
-            }
-          });
-        }
-      });
-      // q1 v3: 中心视口管线
-      attachQ1v3(ed, monaco, null);
-      ed._isRefreshing = false;
-      // Wire LSP diagnostics and hover — LSP OFF
-      // wireLspDiagnostics(); // LSP OFF
-      // wireLspHover(); // LSP OFF
-      // 编辑器销毁时清理（中心管线 disposed + char-undo + actions）
-      ed.onDidDispose(function () {
-        if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
-        // ★ 中心管线 disposed（仅做簿记清理，不再调 changeViewZones）
-        if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
-          try { window.qqqViewportMachine.transition('disposed', ed); } catch (_) {}
-        }
-        var ma = _minimapActions.get(ed);
-        if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
-        var fa = _feedToAiActions.get(ed);
-        if (fa) { try { fa.disposable.dispose(); } catch (_) { } _feedToAiActions.delete(ed); }
-        var idx = _allMonacoEditors.indexOf(ed);
-        if (idx >= 0) _allMonacoEditors.splice(idx, 1);
-      });
-      editor = {
-        isFallback: false,
-        setValue(v, lang) {
-          const model = ed.getModel();
-          var vStr = v == null ? '' : String(v);
-          // ★ #1 大文件：先 plaintext 设置内容，延迟上色
-          var _defer = _shouldDeferColoring(vStr, lang);
-          if (model && lang && !_defer) { monaco.editor.setModelLanguage(model, lang); }
-          if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-          // ★ 打开文件跳过撤销记录（避免 Ctrl+Z 回到空文件 + 撤销栈存冗余副本）
-          if (model && !model.isDisposed()) {
-            model.applyEdits([{ range: model.getFullModelRange(), text: vStr, forceMoveMarkers: true }]);
-          } else {
-            ed.setValue(vStr);
-          }
-          dirty = false;
-          if (_defer && model && lang) {
-            var _m = model, _l = lang, _mon = monaco;
-            setTimeout(function () {
-              try { _mon.editor.setModelLanguage(_m, _l); } catch (_) {}
-            }, 1300);
-          }
-        },
-        getValue() { return ed.getValue(); },
-        focus() { ed.focus(); },
-        insertAtCursor(text) {
-          const sel = ed.getSelection();
-          ed.executeEdits('paste-insert', [{ range: sel, text: String(text), forceMoveMarkers: true }]);
-          ed.focus();
-        },
-        dispose() { ed.dispose(); },
-      };
-      return editor;
-    } catch (e) {
-      console.warn('[editor] monaco unavailable, using textarea fallback:', e && e.message);
-      editor = buildFallback(host);
-      return editor;
-    }
-  }
 
-  // ---------------- Public API ----------------
-  async function open(file) {
-    if (!editor) { console.warn('[editor] not built yet'); return; }
-    if (dirty && currentFile && !confirm('Unsaved changes will be lost. Continue?')) { return; }
-    try {
-      var isBin = await isBinaryFileAsync(file);
-      if (isBin) {
-        if (window.qqqideQoast) window.qqqideQoast.show(String.fromCharCode(10060, 32, 20108, 36827, 21046, 25991, 20214, 65292, 26080, 27861, 22312, 32534, 36753, 22120, 20013, 25171, 24320), { duration: 4000 });
-        return;
-      }
-      const text = await bridge.fs.read(file);
-      if (_editorRef) _editorRef._isRefreshing = true;
-      currentFile = file;
-      editor.setValue(text, langOf(file));
-      // ★ 中心管线：更新主编辑器 filePath，触发锚点重扫
-      if (window.qqqViewportMachine && window.qqqViewportMachine.transition && _editorRef) {
-        try { window.qqqViewportMachine.transition('created', _editorRef, file); } catch (_) {}
-      }
-      if (_editorRef) _editorRef._isRefreshing = false;
-      dirty = false;
-      // ★ 同步清除 tab 脏标记（setValue 可能已触发 dirty:true 事件，强制复位）
-      document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: file, dirty: false } }));
-      lspLang = null; // LSP OFF
-      _applyMinimapPref(_editorRef, _monacoRef, file);
-      // ★ 记录 mtime，用于聚焦时检测外部修改
-      try { var _stOpen = await bridge.fs.stat(file); if (_stOpen) _openedMtime[file] = { mtimeMs: _stOpen.mtimeMs, size: _stOpen.size }; } catch (_) {}
-    } catch (e) {
-      console.error('[editor] open failed:', e);
-      editor.setValue('// failed to open: ' + (e && e.message), 'plaintext');
-    }
-  }
 
-  // ---- Timeline 快照：编辑器保存触发（冷却+去重已移至主进程 ipc-timeline.ts 真理机） ----
 
-  async function save() {
-    if (!editor || !currentFile) { return false; }
-    const v = editor.getValue();
-    try {
-      await _captureExternalBefore(currentFile);
-      await bridge.fs.write(currentFile, v);
-      dirty = false;
-      _maybeRecordTimeline(currentFile, v);
-      _removeDirty(currentFile);
-      // ★ 同步清除 tab 脏标记（与 _markClean 对齐）
-      document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: false } }));
-      // ★ 2026-08-17: 保存成功（写盘）→ 文件肯定存在，清除已删除状态
-      if (window.qqqTabs && window.qqqTabs.setTabDeleted) {
-        window.qqqTabs.setTabDeleted(currentFile, false);
-      }
-      // ★ 更新 mtime
-      try { var _stSave = await bridge.fs.stat(currentFile); if (_stSave) _openedMtime[currentFile] = { mtimeMs: _stSave.mtimeMs, size: _stSave.size }; } catch (_) {}
-      return true;
-    } catch (e) {
-      console.error('[editor] save failed:', e);
-      return false;
-    }
-  }
-
-  async function _maybeRecordTimeline(filePath, content) {
-    if (!bridge || !bridge.timeline) return;
-    var projectRoot = '';
-    try {
-      if (bridge.sync && bridge.sync.getProjectPath) {
-        projectRoot = await bridge.sync.getProjectPath();
-      }
-    } catch (_) { }
-    if (!projectRoot) return;
-    try {
-      await bridge.timeline.record({
-        projectRoot: projectRoot,
-        filePath: filePath,
-        content: content,
-        source: 'editx'
-      });
-    } catch (_) { }
-  }
-
-  // ★ 品牌位文字显示已退役（2026-09-18 用户定案：菜单行2 最左改纯图形按钮，不放任何文字）
-  //   文件/脏标记由 X 区标签页承担；updateTitle 函数及全部调用已删除
 
   let _monacoRef = null;   // raw monaco namespace
-  let _editorRef = null;   // raw monaco IStandaloneCodeEditor
-  let _paneFiles = {};      // editor dom node → filePath (reverse lookup for dispose cleanup)
+  let _editorRef = null;   // 首个创建的 pane 编辑器（getEditorInstance 兜底实例）
+  let _activePaneEd = null; // ★ 活跃编辑器 = 最后聚焦/最近激活的 pane 实例（查找框定位等消费）
   let _paneEditors = {};    // filePath → editor instance (for live refresh)
+  // ★ 2026-09-26：同一路径的编辑器存活集合（split view 下 1 路径可有多台）——「还有没有人在世」
+  //   的唯一真相源。旧实现只比对单槽 _paneEditors[filePath]（= 最后挂载那台）：关掉先挂载的即误判
+  //   「无人在世」→ 清掉共享 dirty/mtime（星号在、auto-save 哑）；关掉后挂载的那台单槽被删 →
+  //   getEditorForFile 恒 null（md 预览退磁盘模式/跳转失效）而另一台明明还活着。
+  let _paneEdSets = {};     // filePath → Set<editor>
+  // ★ 2026-09-26 路径归一：全系统混用 \\ 与 / 两种写法（Roam 历史 / 加号下拉 / AI 链接 / timeline 回跳），
+  //   编辑器簿记键与 dirty 事件载荷统一正斜杠形式（与 timeline / dirty 主进程存储 / 加号下拉口径一致），
+  //   否则同一文件两种写法 = 两份簿记（dirty 星号/预览斜体/删除标记各算各的）。
+  function _normFP(p) { return String(p == null ? '' : p).replace(/\\/g, '/'); }
    let _jumpLineStyleInjected = false;
   var _openedMtime = {};    // filePath → {mtimeMs, size} — track when we last loaded/saved
   var _paneDirtyMap = {};   // filePath → boolean — per-pane dirty state
@@ -1010,6 +783,7 @@
 
   // ---- openInPane: create a Monaco editor inside a tab pane for a specific file ----
   async function openInPane(host, filePath, content, opts) {
+    filePath = _normFP(filePath);   // ★ 2026-09-26 路径归一：簿记键/事件载荷/timeline 全走正斜杠（唯一口径）
     try {
       const monaco = await loadMonaco();
       if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
@@ -1018,7 +792,6 @@
       if (window.qqqCodelens && window.qqqCodelens.install) {
         try { window.qqqCodelens.install(monaco); } catch (_) { }
       }
-      // configureMonacoTypescript(monaco); // LSP OFF
       var lang = langOf(filePath);
       var isBin = await isBinaryFileAsync(filePath);
       if (isBin) {
@@ -1066,10 +839,12 @@
       //   applyEdits 或后续 setup 触发 _markDirty → 打开即带星号。
       ed._isRefreshing = true;
 
-      // Set as primary editor if first one
+      // 首个创建的编辑器 = 兜底实例（getEditorInstance 回落）
       if (!_monacoRef) _monacoRef = monaco;
       if (!_editorRef) _editorRef = ed;
-      // ★ 标记文件路径（供 anchor-map 等子系统使用 — URI 在 Windows 上可能丢盘符）
+      // ★ 聚焦即活跃（getEditorInstance 消费——查找框定位不再开在错误编辑器）
+      try { ed.onDidFocusEditorWidget(function () { _activePaneEd = ed; }); } catch (_) {}
+      // ★ 标记文件路径（viewport-machine / export / codelens 等按 ed._qqqFilePath 消费 — URI 在 Windows 上可能丢盘符）
       try { ed._qqqFilePath = filePath; } catch (_) {}
       try { host._qqqFilePath = filePath; } catch (_) {}
       // ★ pane 绑定编辑器实例：tab 关闭/预览复用按 pane 精确找到本格编辑器（split view 同路径多编辑器）
@@ -1272,11 +1047,13 @@
         }
       });
 
-      // q1 v2: anchor-map + p      // q1 v3: 中心视口管线
+      // 中心视口管线（锚点/相框唯一渲染真相 = viewport-machine）
       attachQ1v3(ed, monaco, filePath);
       // ★ 初始化完成，解除 _isRefreshing 屏蔽（在 attachQ1v3 之后，防止 viewport 管线触发 model 变更事件导致误报 dirty）
       ed._isRefreshing = false;
+      _activePaneEd = ed;   // 新建即视为活跃（后续聚焦/激活继续更新）
       _paneEditors[filePath] = ed;
+      try { (_paneEdSets[filePath] = _paneEdSets[filePath] || new Set()).add(ed); } catch (_) { }
       // ★ Markdown 预览联动（2026-09-21）：编辑器挂载完成 → 通知预览机器迟绑定升级（disk → model）。
       //   自动预览常在 Monaco 挂载前打开（disk 模式先出首帧）；缺此收敛，预览停在磁盘模式、脏缓冲编辑不实时。
       try { if (window.qqqMdPreview && window.qqqMdPreview.onEditorMounted) window.qqqMdPreview.onEditorMounted(filePath); } catch (_) {}
@@ -1284,11 +1061,16 @@
       try { var _stPane = await bridge.fs.stat(filePath); if (_stPane) _openedMtime[filePath] = { mtimeMs: _stPane.mtimeMs, size: _stPane.size }; } catch (_) {}
       ed.onDidDispose(function () {
         // ★ split view：同路径另一编辑器仍存活 → 保留共享 dirty/mtime 状态（防保存后星号残留）
-        var _stillOpen = !!(_paneEditors[filePath] && _paneEditors[filePath] !== ed);
-        // ★ 条件删除：只删自己的槽位——旧实现无条件 delete，ed1 dispose 会把
-        //   同路径存活 ed2 的引用一起删掉（后续 getEditorForFile/resumePaneLayout 全部失效）
-        if (_paneEditors[filePath] === ed) delete _paneEditors[filePath];
-        delete _paneFiles[host];
+        //   ★ 2026-09-26 修正：存活判定改问「幸存集合」（旧单槽比对在关掉后挂载那台时会误判无人在世）
+        var _set = _paneEdSets[filePath];
+        if (_set) { _set.delete(ed); if (_set.size === 0) delete _paneEdSets[filePath]; }
+        var _stillOpen = !!(_set && _set.size > 0);
+        // ★ 条件删除 + 重指向：槽位属于自己 → 交给幸存编辑器（getEditorForFile/refreshLiveContent 消费）
+        if (_paneEditors[filePath] === ed) {
+          if (_set && _set.size > 0) { try { _paneEditors[filePath] = _set.values().next().value; } catch (_) { delete _paneEditors[filePath]; } }
+          else delete _paneEditors[filePath];
+        }
+        if (_activePaneEd === ed) _activePaneEd = null;
         if (!_stillOpen) delete _openedMtime[filePath];
         if (!_stillOpen) delete _paneDirtyMap[filePath];
         // ★ model 引用计数归零 → 真正 dispose（防提前销毁 split view 共享 model）
@@ -1343,7 +1125,7 @@
 
   // ---- refreshLiveContent: update an already-open pane editor with new content (for live chat.txt) ----
   function refreshLiveContent(filePath, content) {
-    var ed = _paneEditors[filePath];
+    var ed = _paneEditors[_normFP(filePath)];   // ★ 路径归一：roam 等 iframe 送来的路径可能是反斜杠写法
     if (!ed) return false;
     try {
       ed._isRefreshing = true;
@@ -1383,6 +1165,7 @@
 
   // 焦点/tab切换：拉脏快照（Layer 2）+ 检测外部修改（stat mtime）
   async function _checkDirtyAndRefreshPane(filePath, ed) {
+    filePath = _normFP(filePath);   // ★ 路径归一：_openedMtime / dirty 快照键必须与挂载口径一致
     if (!filePath || !isElectron || !bridge || !ed) return;
     // 用户正在此编辑器里编辑 → 不覆盖
     try { if (ed.hasTextFocus()) return; } catch (_) {}
@@ -1425,7 +1208,7 @@
       var prev = _openedMtime[filePath];
       if (!prev || (prev.mtimeMs === st.mtimeMs && prev.size === st.size)) return;
       // 外部修改了！
-      var isDirty = (filePath === currentFile) ? dirty : !!_paneDirtyMap[filePath];
+      var isDirty = !!_paneDirtyMap[filePath];
       if (!isDirty) {
         // 编辑器干净 → 静默重载磁盘最新版
         var diskContent = await bridge.fs.read(filePath);
@@ -1465,10 +1248,6 @@
       var ed = _paneEditors[fp];
       if (ed) _checkDirtyAndRefreshPane(fp, ed);
     }
-    // 主编辑器
-    if (currentFile && _editorRef) {
-      _checkDirtyAndRefreshPane(currentFile, _editorRef);
-    }
   }
 
   if (isElectron) {
@@ -1498,30 +1277,28 @@
     } catch (_) {}
   }
 
-  // ★ pane 精确取编辑器：paneEl 内挂载实例优先（split view 同路径多编辑器），路径兜底
+  // ★ pane 精确取编辑器：paneEl 内挂载实例优先（split view 同路径多编辑器）。
+  //   ★ 2026-09-26 修正：给了 paneEl 就只认「本格挂着的那台」——本格没有（尚未挂载/已销毁/读失败）
+  //   → 返回 null。旧实现回落单槽 _paneEditors[filePath]（= 最后挂载那台，很可能在另一个分组）：
+  //   关 A 组标签却把 B 组编辑器 dispose / 挂起（错杀），或把 B 组编辑器当本格 suspend/resume（视口错乱）。
   function _edForPane(filePath, paneEl) {
-    var ed = null;
     if (paneEl && paneEl.querySelector) {
       try {
         var _mount = paneEl.querySelector('[data-editor-mount]');
-        if (_mount && _mount._qqqEd) ed = _mount._qqqEd;
-      } catch (_) {}
+        if (_mount && _mount._qqqEd) return _mount._qqqEd;
+      } catch (_) { }
+      return null;   // 本格无编辑器 → 无本格可操作对象（绝不跨 pane 顶替）
     }
-    if (!ed) ed = _paneEditors[filePath];
-    return ed || null;
+    return _paneEditors[_normFP(filePath)] || null;   // 未给 pane → 单槽兜底
   }
 
   window.qqqEditor = {
-    build,
-    open,
-    save,
     openInPane,
-    getValue() { return editor ? editor.getValue() : ''; },
-    isDirty() { return dirty; },
     // ★ 路径级脏查询（tab-manager 预览复用/状态同步用，唯一真理 = _paneDirtyMap）
-    isPathDirty: function (filePath) { return !!_paneDirtyMap[filePath]; },
-    // ★ 2026-09-05 另存转换后簿记（编码菜单 B 区）：清脏 + 刷新 mtime 快照 + 主编辑器标题
+    isPathDirty: function (filePath) { return !!_paneDirtyMap[_normFP(filePath)]; },
+    // ★ 2026-09-05 另存转换后簿记（编码菜单 B 区）：清脏 + 刷新 mtime 快照
     noteSaved: async function (filePath) {
+      filePath = _normFP(filePath);   // ★ 路径归一
       if (!filePath) return;
       try {
         var _sn2 = await bridge.fs.stat(filePath);
@@ -1531,17 +1308,14 @@
         _paneDirtyMap[filePath] = false;
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
       }
-      if (currentFile === filePath) { dirty = false; }
     },
-    currentFile() { return currentFile; },
-    insertAtCursor(text) { if (editor && editor.insertAtCursor) { editor.insertAtCursor(text); } },
     getMonaco() { return _monacoRef; },
-    getEditorInstance() { return _editorRef; },
-    // ★ 按文件路径取编辑器实例（搜索跳转/位置还原用）：面板编辑器优先，主编辑器兜底
+    // ★ 活跃编辑器（最后聚焦/最近激活的 pane 实例；兜底首个创建的）——查找框定位等消费
+    getEditorInstance() { return _activePaneEd || _editorRef; },
+    // ★ 按文件路径取编辑器实例（搜索跳转/位置还原用）：pane 编辑器优先
     getEditorForFile(filePath) {
-      var ed = _paneEditors[filePath];
-      if (!ed && _editorRef && currentFile === filePath) ed = _editorRef;
-      return ed || null;
+      filePath = _normFP(filePath);   // ★ 路径归一（外部调用方路径写法不定）
+      return _paneEditors[filePath] || null;
     },
     refreshLiveContent,
     isBinaryFile,
@@ -1549,6 +1323,7 @@
     saveMinimapPref: _saveMinimapPref,
     // ★ Tab 切换优化：暂停/恢复 Monaco automaticLayout（避免隐藏编辑器做无意义 layout）
     suspendPaneLayout: function(filePath, paneEl) {
+      filePath = _normFP(filePath);   // ★ 路径归一（视口机/事件载荷同口径）
       var ed = _edForPane(filePath, paneEl);
       if (ed) {
         try { ed.updateOptions({ automaticLayout: false }); } catch (_) {}
@@ -1558,8 +1333,10 @@
       }
     },
     resumePaneLayout: function(filePath, paneEl) {
+      filePath = _normFP(filePath);   // ★ 路径归一
       var ed = _edForPane(filePath, paneEl);
       if (ed) {
+        _activePaneEd = ed;   // 激活即活跃（tab 切换 → 查找框定位跟随）
         try {
           ed.layout();
           ed.updateOptions({ automaticLayout: true });
@@ -1588,16 +1365,6 @@
     // ★ 窗口快照：获取所有打开 editor 的光标位置
     getAllEditorPositions() {
       var positions = {};
-      // 主编辑器
-      if (_editorRef && currentFile) {
-        try {
-          var m = _editorRef.getModel();
-          if (m && !m.isDisposed()) {
-            var p = _editorRef.getPosition();
-            if (p) positions[currentFile] = { lineNumber: p.lineNumber, column: p.column };
-          }
-        } catch (_) {}
-      }
       // 面板编辑器（split groups）
       var fpKeys = Object.keys(_paneEditors);
       for (var i = 0; i < fpKeys.length; i++) {
@@ -1611,17 +1378,6 @@
         } catch (_) {}
       }
       return positions;
-    },
-    // ★ 窗口快照：还原指定文件的光标位置
-    setEditorPosition(filePath, pos) {
-      var ed = _paneEditors[filePath];
-      if (!ed && _editorRef && currentFile === filePath) ed = _editorRef;
-      if (!ed) return false;
-      try {
-        ed.setPosition(pos);
-        ed.revealPositionInCenter(pos);
-        return true;
-      } catch (_) { return false; }
     },
   };
 })();

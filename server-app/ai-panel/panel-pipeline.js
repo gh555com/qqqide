@@ -224,6 +224,8 @@ async function _executeSend(intent) {
                     ? images.map(function (_im) { return { id: _im.id, base64: _im.base64, dataUrl: _im.dataUrl }; })
                     : [],
                 selectedTier: (typeof tierIndex === 'number') ? tierIndex : selectedTier,
+                // ★ 2026-09-26：BYOK 通道快照随行归队（徽章 Z 不丢——与入队快照同语义）
+                byok: (function () { try { return !!(window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()); } catch (_) { return false; } })(),
                 ts: Date.now()
             });
             if (typeof renderQueueStrip === 'function') renderQueueStrip();
@@ -253,13 +255,19 @@ async function _executeSend(intent) {
         }
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.taskInterrupted', '该任务已中断，请点击楼层红框「继续任务」恢复'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
         return;
-    }
-    if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') return;
-    if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
-    // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
-    if (!_isLoggedIn()) {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
-        return;
+    }
+    // ★ 2026-09-26：出队必达或必还——补全遗漏闸门（契约原文「任何闸门拦截都必须把消息归还队首」）：
+    //   此前这些闸门直接 return → 队列直通消息已 shift 出队 → 静默蒸发（用户无任何恢复途径）
+    if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') {
+        if (intent.fromQueue) _requeueFromQueue();
+        return;
+    }
+    if (!_hasMainProject()) { if (intent.fromQueue) _requeueFromQueue(); _triggerSelectMainProject(); return; }
+    // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
+    if (!_isLoggedIn()) {
+        if (intent.fromQueue) _requeueFromQueue();
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
+        return;
     }
 
     // ★ 所有闸门已过 → 链执行器已置 _chainBusy（_enqueueSend），直接进入发送
@@ -386,6 +394,7 @@ async function _executeSend(intent) {
             if (_isCompress) {
                 try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.onlyfactsBusy', 'only facts：该任务正在其他面板处理，请切换到对应面板或稍后再试'), { type: 'warning', duration: 5000 }); } catch (_e8) { }
             }
+            if (intent.fromQueue) _requeueFromQueue();  // ★ 2026-09-26: 出队必达或必还（补全遗漏闸门）
             _setPanelFocus(false);
             _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
             agent.setStopState('idle');
@@ -400,12 +409,17 @@ async function _executeSend(intent) {
     }
     updateQueueBtn();
 
-    // ★ 内容验证（显式传入，不读 $input）
-    var text = (content || '').trim();
-    if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); return; }
+    // ★ 内容验证（显式传入，不读 $input）    var text = (content || '').trim();
+    if (!text && (!images || images.length === 0)) { if (intent.fromQueue) _requeueFromQueue(); agent.setStopState('idle'); updateQueueBtn(); return; }
     // ★ 2026-08-17 F51: compress 楼层不受面板 streaming 拦截（目标 agent 已由上方解析，
     //   streaming proxy = 目标 agent 的 _streaming；双保险豁免机器触发的压缩楼层）
-    if (streaming && !_isCompress) { agent.setStopState('idle'); updateQueueBtn(); return; }
+    if (streaming && !_isCompress) { if (intent.fromQueue) _requeueFromQueue(); agent.setStopState('idle'); updateQueueBtn(); return; }
+    // ★ 2026-09-26：记录本层原始用户消息——0-house「继续任务」（_retrySameFloor）靠它重发。
+    //   过去仅磁盘恢复路径（panel-floor B3 僵尸检测）赋值 → 活会话里恒 undefined →
+    //   0-house 点「继续任务」静默失效（还白扣重试次数，3 次后永久封顶）。
+    //   normal＝用户消息（含队列直通）；recovery / compress 机器楼层不覆写
+    //   （与 _lastUserInput 同规制——保留「原始用户问题」语义）。
+    if (sendType === 'normal') { agent._lastUserMsg = content || ''; }
 
     // ── 构建 userContent（含附件） ──
     var userContent = text;
@@ -477,8 +491,16 @@ async function _executeSend(intent) {
         }
         if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
     }
-    // ★ 图片源：队列直通消息用 intent.images，手动发送用编辑框 pendingImages（2026-08-20）
-    var _srcImgs = (intent.images && intent.images.length > 0) ? intent.images : (pendingImages || []);
+    // ★ 图片源（2026-08-20；2026-09-26 修复「队列消息偷走编辑框草稿图片」）：
+    //   编辑框草稿（pendingImages）仅属于「手动发送」= normal 类型且非队列直通。
+    //   ① 队列直通（fromQueue）恒用 intent.images 快照——无图 = 无图。旧实现的空回落
+    //      `(pendingImages || [])` 会在队列消息无图时偷走编辑框里正在编辑的图片（图片被写进
+    //      该楼层 + 发往 AI，而 fromQueue 不清理编辑框 → 同一张图双发）
+    //   ② recovery / compress(only facts) 机器楼层同样绝不携带用户草稿图
+    var _useDraftImgs = (sendType === 'normal') && !intent.fromQueue;
+    var _srcImgs = (intent.images && intent.images.length > 0)
+        ? intent.images
+        : (_useDraftImgs ? (pendingImages || []) : []);
     if (_srcImgs.length > 0 && userMsgEl) {
         var imgRow = document.createElement('div');
         imgRow.style.cssText = 'margin-top:6px;';
@@ -495,8 +517,13 @@ async function _executeSend(intent) {
             badge.onclick = function () {
                 // ★ 发送时图片已写盘楼层目录（img_N.png）→ 动态解析本地路径传给 overlay
                 //   （dataUrl 缩略图场景文件/路径按钮依赖；解析失败回退纯 dataUrl）
+                // ★ 2026-09-26 双修：① 楼层号读 imgRow.dataset.fn（楼层分配后回填的真实号）——
+                //   旧实现点击时读「当前楼层」→ 点旧楼层图片会解析到新楼层目录（路径不存在）
+                //   ② img.fileName 由写盘循环同步回本闭包对象（_images 与 _srcImgs 是两套对象，
+                //   旧实现恒读不到 fileName → 文件/路径按钮 localPath 恒 null）
+                var _fLv = parseInt((imgRow && imgRow.dataset.fn) || '', 10) || (agent._currentFloorNum || agent._ctx.totalFloors || 0);
                 if (img.fileName && window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
-                    window.questStore.resolveFloorDir(qid, (agent._currentFloorNum || agent._ctx.totalFloors)).then(function (_fDir) {
+                    window.questStore.resolveFloorDir(qid, _fLv).then(function (_fDir) {
                         openLightbox(img.dataUrl, img.base64, _fDir ? _fDir + img.fileName : null);
                     }).catch(function () { openLightbox(img.dataUrl, img.base64); });
                 } else {
@@ -580,8 +607,12 @@ async function _executeSend(intent) {
                             } else {
                                 var _b64Only = _pimg.base64 || _pimg.dataUrl.split(',')[1] || '';
                                 await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _b64Only);
-                            }
-                            _pimg.fileName = _fileName;
+                            }                            _pimg.fileName = _fileName;
+                            // ★ 2026-09-26：fileName 同步回渲染闭包引用的同一对象——_images 是 _srcImgs 的
+                            //   map 副本，两套对象；旧实现只写 _images → badge 闭包读 _srcImgs 的
+                            //   img.fileName 恒空 → overlay「文件/路径」按钮的 localPath 恒 null。
+                            //   仅补空值（不覆盖既有），队列快照对象是丢弃品 / 编辑框对象随即被清，无副作用
+                            if (_srcImgs && _srcImgs[_imi] && !_srcImgs[_imi].fileName) _srcImgs[_imi].fileName = _fileName;
                         } catch (_imgSaveErr) { console.warn('[img-save] failed:', _imgSaveErr); }
                     }
                 }
@@ -607,8 +638,9 @@ async function _executeSend(intent) {
             agent._passbyBaseWge = (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0);
             agent._passbyBaseTokens = (agent._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(agent) : 0);
             agent._passbyBaseFloorNum = _oldFloorNum2;
-        }
-        agent._currentFloorNum = floorNum;
+        }        agent._currentFloorNum = floorNum;
+        // ★ 2026-09-26：图片 badge 楼层号回填（闭包点击时读 dataset.fn 取真实楼层——防解析到新楼层目录）
+        try { if (imgRow) imgRow.dataset.fn = String(floorNum); } catch (_) { }
         agent._houses = [];
         agent._a4Snapshots = {};
         agent._lastAutoSaveLen = 0;
@@ -647,7 +679,14 @@ async function _executeSend(intent) {
         try { updateQueueBtn(); } catch (_) { }
         var _lostText = intent.content || '';
         var _qoastTail = '';
-        if (_lostText) {
+        // ★ 2026-09-26 草稿安全：编辑框回填仅限「用户手动发送」= normal 且非队列直通。
+        //   ① 队列消息分配失败 → 直接归队（与闸门拦截同语义：回队列条可见可编辑，绝不写编辑框）
+        //   ② 机器楼层（recovery / compress only facts）→ 内容属机器（恢复前缀/提取提示词），
+        //      绝不进编辑框、也不投错误气泡（调用方各自负责报错：压缩侧恢复饼干、恢复侧回链）
+        if (_lostText && intent.fromQueue) {
+            _requeueFromQueue();
+            _qoastTail = _qq('ai.pipeline.allocRequeued', '——排队消息已保留在队列中，可重试');
+        } else if (_lostText && sendType === 'normal') {
             try {
                 if (typeof $input !== 'undefined' && $input && $input.value === '') {
                     // 编辑框空 → 恢复原文（用户无新键入，零覆盖风险）

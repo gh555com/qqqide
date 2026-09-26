@@ -472,7 +472,7 @@ function _addEffectCost(effectType, geCost, billingRequestId) {
     } catch (_) { }
 }
 
-async function executeGenerateImage(args) {
+async function executeGenerateImage(args, ownerAgent) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
@@ -526,6 +526,7 @@ async function executeGenerateImage(args) {
             size: args.size,
             n: args.n,
             images: imagesBase64.length > 0 ? imagesBase64 : undefined,
+            floorId: _resolveFloorId(ownerAgent),
             token: token
         });
         if (submitResult && submitResult.error) {
@@ -748,7 +749,7 @@ function _normalizeLocateBoxes(boxes) {
     return out.length > 0 ? out : null;
 }
 
-async function executeAnalyzeImage(args) {
+async function executeAnalyzeImage(args, ownerAgent) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
@@ -792,6 +793,7 @@ async function executeAnalyzeImage(args) {
         var submitResult = await AiGateway.visionSubmit(b64, token, {
             prompt: question,
             summary: (action === 'ask' ? question : question.slice(0, 60)),
+            floorId: _resolveFloorId(ownerAgent),
         });
         if (!submitResult) {
             return 'Image analysis failed: could not create task';
@@ -850,6 +852,17 @@ function _getAuthToken() {
     return '';
 }
 
+// ★ 多源取 floor_id（ownerAgent 优先；_activeAgent / agentPool 兜底——防间 house 切换丢失）
+function _resolveFloorId(ownerAgent) {
+    try { if (ownerAgent && ownerAgent._floorId) return ownerAgent._floorId; } catch (_) { }
+    try { var _a = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_a && _a._floorId) return _a._floorId; } catch (_) { }
+    try {
+        var _p = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null;
+        if (_p) { for (var _k in _p) { var _ag = _p[_k]; if (_ag && _ag._floorId) return _ag._floorId; } }
+    } catch (_) { }
+    return '';
+}
+
 // ★ 读图片 → base64（bridge.fs.readBase64 走主进程 1 IPC，绕过 ghrun 64KB 硬截断）
 async function _readImageBase64(bridge, image) {
     try {
@@ -887,7 +900,7 @@ function _binaryToBase64(bytes) {
     return chars.join('');
 }
 
-async function executeRemoveBackground(args) {
+async function executeRemoveBackground(args, ownerAgent) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
@@ -904,8 +917,7 @@ async function executeRemoveBackground(args) {
         if (!b64) return 'Error: could not read image: ' + image;
 
         // 2. 调用 Go API（★ 经 AiGateway 双线路 failover）
-        var floorId = '';
-        try { var _ag10 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag10 && _ag10._floorId) floorId = _ag10._floorId; } catch (_) { }
+        var floorId = _resolveFloorId(ownerAgent);
         var segResult = null;
         if (typeof AiGateway !== 'undefined' && typeof AiGateway.segmentSubmit === 'function') {
             segResult = await AiGateway.segmentSubmit({ image: b64, quality: quality, token: token, floorId: floorId });
@@ -914,7 +926,7 @@ async function executeRemoveBackground(args) {
             var resp = await fetch('https://direct-cn.gh555.com/api/v3/ai/segment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ image: b64, quality: quality })
+                body: JSON.stringify({ image: b64, quality: quality, floor_id: floorId })
             });
             var data = await resp.json();
             segResult = { ok: data.ok, image_url: data.image_url, width: data.width, height: data.height, model: data.model, ge_cost: data.ge_cost || 0, error: data.error || data.code };
@@ -1056,7 +1068,7 @@ async function executeSearchWeb(args, ownerAgent) {
         if (typeof AiGateway === 'undefined' || !AiGateway.searchWeb) {
             return 'Error: AiGateway not available';
         }
-        var data = await AiGateway.searchWeb(query, { token: token, maxResults: args.maxResults || 20 });
+        var data = await AiGateway.searchWeb(query, { token: token, maxResults: args.maxResults || 20, floorId: _resolveFloorId(ownerAgent) });
         if (!data || data.length === 0) {
             return 'Search returned no results.';
         }
@@ -1082,6 +1094,209 @@ async function executeSearchWeb(args, ownerAgent) {
     } catch (err) {
         return 'Error searching web: ' + (err.message || err);
     }
+}
+
+// ═══ sys_python — 系统 Python 解释器（.py 双击关联 → 绿色包内置 Python） ═══
+//   唯一后端 = bridge.sysPy（壳层 shell/ipc-syspy.ts）。
+//   check 只读；apply 系统级写入——检测到其他解释器时复用设置面板同一确认弹框
+//   （window.qqqSysPyConfirm，主窗口），用户确认后才执行（与按钮语义一致）。
+async function executeSysPython(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+    var sysPy = bridge.sysPy;
+    if (!sysPy || !sysPy.check) {
+        return 'Error: sys_python is not available on this client build (bridge missing). It ships with newer qqqide versions; on recent versions the same capability is the Settings panel button "Set as System Python Interpreter".';
+    }
+    function _codeText(code) {
+        var map = {
+            'no-python': 'built-in Python is not present in this installation',
+            'denied': 'permission denied (security software may be blocking)',
+            'verify-failed': 'the write did not take effect',
+            'uac-cancelled': 'system authorization was cancelled by the user',
+            'busy': 'another sys_python operation is in progress — retry in a moment',
+            'unsupported': 'this operating system is not supported',
+            'timeout': 'operation timed out',
+            'spawn-failed': 'failed to launch a system component',
+            'check-failed': 'state check failed',
+            'remove-failed': 'the cleanup did not complete',
+            'ps-init-failed': 'system component failed to initialize'
+        };
+        return map[code] || ('unknown error (' + code + ')');
+    }
+    var action = String((args && args.action) || 'check').toLowerCase();
+
+    var st = null;
+    try { st = await sysPy.check(); }
+    catch (e) { return 'Error: sys_python check failed: ' + ((e && e.message) || e); }
+    if (!st || !st.ok) return 'Error: sys_python check failed — ' + _codeText(st && st.code);
+    if (st.mode === 'unsupported') return 'sys_python: mode=unsupported — this OS is not supported yet.';
+
+    if (action === 'check') {
+        var lines = [];
+        lines.push('sys_python state: mode=' + st.mode);
+        if (st.mode === 'ours') lines.push('- .py double-click already runs the qqqide built-in Python');
+        else if (st.mode === 'other') lines.push('- another interpreter is currently registered for .py files');
+        else lines.push('- no system .py interpreter is set up yet');
+        if (st.aq) lines.push('- current target: ' + st.aq);
+        lines.push('- built-in Python: ' + (st.exeOk ? 'present' : 'MISSING'));
+        if (st.mode === 'ours') lines.push('- the "remove" action can uninstall it (clean back to a blank state; a confirmation dialog appears first)');
+        else lines.push('- the "apply" action can set it up (a confirmation dialog appears first when another interpreter exists)');
+        return lines.join('\n');
+    }
+
+    if (action === 'apply') {
+        if (!st.exeOk) return 'Error: the built-in Python is not present in this installation — cannot set it up (component missing).';
+        if (st.mode === 'other') {
+            var confirmFn = null;
+            try { confirmFn = (window.parent && typeof window.parent.qqqSysPyConfirm === 'function') ? window.parent.qqqSysPyConfirm : null; } catch (_) { /* ignore */ }
+            if (!confirmFn) return 'Error: the confirmation dialog is unavailable (window out of sync). Ask the user to use the Settings panel button "Set as System Python Interpreter" instead, or restart the window.';
+            var go = false;
+            try { go = await confirmFn(); } catch (_) { go = false; }
+            if (!go) return 'User declined the overwrite confirmation — nothing was changed.';
+        }
+        var res = null;
+        try { res = await sysPy.apply(); }
+        catch (e2) { return 'Error: sys_python setup failed: ' + ((e2 && e2.message) || e2); }
+        if (res && res.ok) {
+            var out = 'sys_python apply: result=ok';
+            out += '\n- .py double-click now runs the qqqide built-in Python (output window stays open after the run)';
+            out += '\n- `python` in newly opened terminals resolves to the built-in Python';
+            if (st.mode === 'other') out += '\n- the previous interpreter was replaced (original values backed up to Data/alphal/syspy-backup.json)';
+            out += '\n- one-time setup: if the installation is moved later, run apply once more to refresh';
+            return out;
+        }
+        return 'Error: sys_python setup failed — ' + _codeText(res && res.code);
+    }
+
+    if (action === 'remove') {
+        if (!sysPy.remove) return 'Error: sys_python remove is not available on this client build (shell out of date). Ask the user to use the Settings panel button instead, or restart the window.';
+        if (st.mode !== 'ours') return 'sys_python remove: nothing to clean up — the built-in Python is not the current system interpreter (mode=' + st.mode + ').';
+        var askFn = null;
+        try {
+            if (window.parent && typeof window.parent.qqqSysInterpAsk === 'function') askFn = function () { return window.parent.qqqSysInterpAsk('python', 'remove'); };
+            else if (window.parent && typeof window.parent.qqqSysPyConfirm === 'function') askFn = window.parent.qqqSysPyConfirm;
+        } catch (_) { /* ignore */ }
+        if (!askFn) return 'Error: the confirmation dialog is unavailable (window out of sync). Ask the user to use the Settings panel button "Set as System Python Interpreter" instead, or restart the window.';
+        var goR = false;
+        try { goR = await askFn(); } catch (_) { goR = false; }
+        if (!goR) return 'User declined the uninstall confirmation — nothing was changed.';
+        var resR = null;
+        try { resR = await sysPy.remove('python'); }
+        catch (eR) { return 'Error: sys_python remove failed: ' + ((eR && eR.message) || eR); }
+        if (resR && resR.ok) {
+            var outR = 'sys_python remove: result=ok';
+            outR += '\n- the qqqide entries were cleared back to a blank state (no previous interpreter is restored)';
+            outR += '\n- double-clicking .py no longer runs the built-in Python';
+            outR += '\n- run apply again if the user wants to set it up once more';
+            return outR;
+        }
+        return 'Error: sys_python remove failed — ' + _codeText(resR && resR.code);
+    }
+
+    return 'Error: unknown action "' + action + '" — use "check", "apply" or "remove".';
+}
+
+// ═══ sys_node — 系统 Node 解释器（.js 双击关联 → 内置 Node 门面，与 IDE 同源引擎） ═══
+//   唯一后端 = bridge.sysPy（壳层 shell/ipc-syspy.ts，target='node'）。
+//   check 只读；apply 系统级写入——检测到其他处理器时复用设置面板同一确认弹框
+//   （window.qqqSysInterpConfirm / 旧出口 qqqSysPyConfirm，主窗口）。
+async function executeSysNode(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+    var sysPy = bridge.sysPy;
+    if (!sysPy || !sysPy.check) {
+        return 'Error: sys_node is not available on this client build (bridge missing). It ships with newer qqqide versions; on recent versions the same capability is the Settings panel button "Set as System Node Interpreter".';
+    }
+    function _codeText(code) {
+        var map = {
+            'no-node': 'built-in Node is not present in this installation',
+            'denied': 'permission denied (security software may be blocking)',
+            'verify-failed': 'the write did not take effect',
+            'uac-cancelled': 'system authorization was cancelled by the user',
+            'busy': 'another sys_node operation is in progress — retry in a moment',
+            'unsupported': 'this operating system is not supported',
+            'timeout': 'operation timed out',
+            'spawn-failed': 'failed to launch a system component',
+            'check-failed': 'state check failed',
+            'remove-failed': 'the cleanup did not complete',
+            'ps-init-failed': 'system component failed to initialize'
+        };
+        return map[code] || ('unknown error (' + code + ')');
+    }
+    var action = String((args && args.action) || 'check').toLowerCase();
+
+    var st = null;
+    try { st = await sysPy.check('node'); }
+    catch (e) { return 'Error: sys_node check failed: ' + ((e && e.message) || e); }
+    if (!st || !st.ok) return 'Error: sys_node check failed — ' + _codeText(st && st.code);
+    if (st.mode === 'unsupported') return 'sys_node: mode=unsupported — this OS is not supported yet.';
+
+    if (action === 'check') {
+        var lines = [];
+        lines.push('sys_node state: mode=' + st.mode);
+        if (st.mode === 'ours') lines.push('- .js double-click already runs the qqqide built-in Node');
+        else if (st.mode === 'other') lines.push('- another handler is currently registered for .js files');
+        else lines.push('- no system .js handler is set up yet');
+        if (st.aq) lines.push('- current target: ' + st.aq);
+        lines.push('- built-in Node: ' + (st.exeOk ? 'present' : 'MISSING'));
+        if (st.mode === 'ours') lines.push('- the "remove" action can uninstall it (clean back to a blank state; a confirmation dialog appears first)');
+        else lines.push('- the "apply" action can set it up (a confirmation dialog appears first when another handler exists)');
+        return lines.join('\n');
+    }
+
+    if (action === 'apply') {
+        if (!st.exeOk) return 'Error: the built-in Node is not present in this installation — cannot set it up (component missing).';
+        if (st.mode === 'other') {
+            var confirmFn = null;
+            try {
+                if (window.parent && typeof window.parent.qqqSysInterpConfirm === 'function') confirmFn = window.parent.qqqSysInterpConfirm;
+                else if (window.parent && typeof window.parent.qqqSysPyConfirm === 'function') confirmFn = window.parent.qqqSysPyConfirm;
+            } catch (_) { /* ignore */ }
+            if (!confirmFn) return 'Error: the confirmation dialog is unavailable (window out of sync). Ask the user to use the Settings panel button "Set as System Node Interpreter" instead, or restart the window.';
+            var go = false;
+            try { go = await confirmFn(); } catch (_) { go = false; }
+            if (!go) return 'User declined the overwrite confirmation — nothing was changed.';
+        }
+        var res = null;
+        try { res = await sysPy.apply('node'); }
+        catch (e2) { return 'Error: sys_node setup failed: ' + ((e2 && e2.message) || e2); }
+        if (res && res.ok) {
+            var out = 'sys_node apply: result=ok';
+            out += '\n- .js double-click now runs the qqqide built-in Node (same engine as the IDE; the output window stays open after the run)';
+            out += '\n- `node` in newly opened terminals resolves to the built-in Node';
+            if (st.mode === 'other') out += '\n- the previous handler was replaced (original values backed up to Data/alphal/sysnode-backup.json)';
+            out += '\n- one-time setup: if the installation is moved later, run apply once more to refresh';
+            return out;
+        }
+        return 'Error: sys_node setup failed — ' + _codeText(res && res.code);
+    }
+
+    if (action === 'remove') {
+        if (!sysPy.remove) return 'Error: sys_node remove is not available on this client build (shell out of date). Ask the user to use the Settings panel button instead, or restart the window.';
+        if (st.mode !== 'ours') return 'sys_node remove: nothing to clean up — the built-in Node is not the current system interpreter (mode=' + st.mode + ').';
+        var askFn = null;
+        try {
+            if (window.parent && typeof window.parent.qqqSysInterpAsk === 'function') askFn = function () { return window.parent.qqqSysInterpAsk('node', 'remove'); };
+            else if (window.parent && typeof window.parent.qqqSysInterpConfirm === 'function') askFn = window.parent.qqqSysInterpConfirm;
+        } catch (_) { /* ignore */ }
+        if (!askFn) return 'Error: the confirmation dialog is unavailable (window out of sync). Ask the user to use the Settings panel button "Set as System Node Interpreter" instead, or restart the window.';
+        var goR = false;
+        try { goR = await askFn(); } catch (_) { goR = false; }
+        if (!goR) return 'User declined the uninstall confirmation — nothing was changed.';
+        var resR = null;
+        try { resR = await sysPy.remove('node'); }
+        catch (eR) { return 'Error: sys_node remove failed: ' + ((eR && eR.message) || eR); }
+        if (resR && resR.ok) {
+            var outR = 'sys_node remove: result=ok';
+            outR += '\n- the qqqide entries were cleared back to a blank state (no previous handler is restored)';
+            outR += '\n- double-clicking .js no longer runs the built-in Node';
+            outR += '\n- run apply again if the user wants to set it up once more';
+            return outR;
+        }
+        return 'Error: sys_node remove failed — ' + _codeText(resR && resR.code);
+    }
+
+    return 'Error: unknown action "' + action + '" — use "check", "apply" or "remove".';
 }
 
 // ============================================================

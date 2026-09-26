@@ -434,6 +434,34 @@ var TOOL_DEFINITIONS = [
                 required: ['path', 'from_seq']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'sys_python',
+            description: 'Check, set up, or remove the system Python interpreter (one-time setup, no maintenance). "check" = read the current state (mode: ours = qqqide built-in Python is the .py interpreter / other / none, plus the current target). "apply" = make the built-in Python the system interpreter — double-clicking any .py runs it with the built-in Python (output window stays open after the run), and `python` in newly opened terminals resolves to it; when another interpreter is already configured a confirmation dialog appears first (a system authorization prompt may also appear). "remove" = uninstall (only when mode=ours): clears the qqqide entries so the system goes back to a blank state — a plain cleanup, it does NOT restore any previous interpreter; a confirmation dialog appears first. Only call apply/remove when the user asks for it or confirms after your suggestion. If the installation is moved later, run apply once more to refresh. Windows and macOS.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    action: { type: 'string', enum: ['check', 'apply', 'remove'], description: 'check = read current state; apply = set the built-in Python as the system interpreter (user confirmation may be required); remove = uninstall and clean the system back to a blank state (only when the built-in Python is currently active; user confirmation may be required)' }
+                },
+                required: ['action']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'sys_node',
+            description: 'Check, set up, or remove the system Node interpreter (one-time setup, no maintenance). "check" = read the current state (mode: ours = qqqide built-in Node is the .js interpreter / other / none, plus the current target). "apply" = make the built-in Node (the same engine the IDE runs on) the system interpreter — double-clicking any .js runs it with the built-in Node (Windows shows a cmd window with the output that stays open after the run), and `node` in newly opened terminals resolves to it; when another handler is already configured a confirmation dialog appears first. "remove" = uninstall (only when mode=ours): clears the qqqide entries so the system goes back to a blank state — a plain cleanup, it does NOT restore any previous handler; a confirmation dialog appears first. Only call apply/remove when the user asks for it or confirms after your suggestion. If the installation is moved later, run apply once more to refresh. Windows and macOS.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    action: { type: 'string', enum: ['check', 'apply', 'remove'], description: 'check = read current state; apply = set the built-in Node as the system interpreter (user confirmation may be required); remove = uninstall and clean the system back to a blank state (only when the built-in Node is currently active; user confirmation may be required)' }
+                },
+                required: ['action']
+            }
+        }
     }
 ];
 
@@ -449,7 +477,9 @@ var TOOL_CATEGORY = {
     revert_file: 'WRITE',
     diff_versions: 'READ',
     run_command: 'EFFECT',
-    generate_image: 'EFFECT', analyze_image: 'EFFECT', remove_background: 'EFFECT', search_web: 'EFFECT'
+    generate_image: 'EFFECT', analyze_image: 'EFFECT', remove_background: 'EFFECT', search_web: 'EFFECT',
+    sys_python: 'EFFECT',
+    sys_node: 'EFFECT'
 };
 
 // ---- getTools 兜底 ----

@@ -413,8 +413,9 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     }
     _recoveryText += (typeof _i === 'function') ? _i('ai.recoverSuffix', '｜请基于完整对话上下文继续完成原始任务。') : '｜请基于完整对话上下文继续完成原始任务。';
 
-    var _savedInput = $input.value;
-
+    // ★ 2026-09-26 删除「恢复后回填编辑框」：_executeSend 的编辑框清理只针对 normal 类型
+    //   （recovery 不清）→ 该回填是死代码；且恢复楼层可跑数分钟——期间用户新键入的草稿
+    //   （或切换 quest 后的新草稿）会在恢复结束时被旧快照覆盖（草稿丢失/跨 quest 串写）
     agent._isRecovery = true;
     agent._inRecoverySend = false;
     agent._recoveryInProgress = false;
@@ -437,7 +438,7 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     } finally {
         agent._inRecoverySend = false;
         agent._deferRenderUntilHouse1 = false;  // ★ V7 fix: 防极端异常路径残留
-        $input.value = _savedInput;
+        // ★ 2026-09-26：不回填编辑框（理由见函数上方注释）——仅同步 UI 状态
         if (typeof saveQuestUIState === 'function') saveQuestUIState(questId);
     }
 }
@@ -490,8 +491,17 @@ async function _retrySameFloor(questId, agent, linkEl) {
     }
 
     // 5. 用原消息走 _executeSend（forceFloorNum 跳过 nextFloorNum，复用旧楼层 DOM）
-    var _userContent2 = agent._lastUserMsg || '';
-    if (!_userContent2) {
+    // ★ 2026-09-26 内容源双阶：_lastUserMsg（发送时记录，panel-pipeline）→ _lastUserInput.text
+    //   （agent.send 内记录）——旧实现只有 _lastUserMsg，而它过去仅由「磁盘恢复路径」赋值
+    //   → 活会话里恒 undefined → 0-house「继续任务」点击静默失效（三次烧尽重试计数后红框永久封顶）
+    var _lu = agent._lastUserInput || null;
+    var _userContent2 = agent._lastUserMsg || ((_lu && _lu.text) || '');
+    // 原始图片随行重建（仅文本一致或纯图片消息才附——保守防错带他层图片）
+    var _origImgs = null;
+    if (_lu && _lu.images && _lu.images.length > 0 && (!_lu.text || _lu.text === _userContent2)) {
+        _origImgs = _lu.images.map(function (_im) { return { id: _im.id, base64: _im.base64, dataUrl: _im.dataUrl, fileName: _im.fileName || '' }; });
+    }
+    if (!_userContent2 && !_origImgs) {
         _finishRecovery(linkEl, agent, false);
         return;
     }
@@ -500,13 +510,12 @@ async function _retrySameFloor(questId, agent, linkEl) {
     agent._inRecoverySend = false;
     agent._recoveryInProgress = false;
 
-    var _savedInput2 = $input ? $input.value : '';
-
     try {
         var _intent = _buildSendIntent(questId, _userContent2, {
             type: 'recovery',
             isRecovery: true,
             forceFloorNum: _originFloor,  // ★ 同层重试：跳过 nextFloorNum
+            images: _origImgs,            // ★ 2026-09-26: 原消息自带图片随行（intent.images 恒优先于草稿）
         });
         await _executeSend(_intent);
         if (agent._stopState === 'fatal') {
@@ -521,7 +530,7 @@ async function _retrySameFloor(questId, agent, linkEl) {
     } finally {
         agent._inRecoverySend = false;
         agent._deferRenderUntilHouse1 = false;
-        if ($input && _savedInput2 !== undefined) $input.value = _savedInput2;
+        // ★ 2026-09-26：不回填编辑框（同 N-house 路径——防覆盖用户恢复期间新键入的草稿）
         if (typeof saveQuestUIState === 'function') saveQuestUIState(questId);
     }
 }
@@ -707,23 +716,49 @@ document.addEventListener('qqq-ai-attach', function (e) {
 });
 
 // \u2550\u2550\u2550 \u9762\u677f\u5feb\u6377\u952e \u2550\u2550\u2550
-document.addEventListener('keydown', function (e) {
-    if (!_panelFocused) return;
-    if (document.activeElement === $input || document.activeElement.closest('#input-area')) return;
-    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-    var key = e.key;
-    if (key === '1') {
-        e.preventDefault();
+// ★ 自持按住连发引擎（2026-09-26）：滚屏/跳楼层不依赖 OS 键盘自动重复——
+//   Win 筛选键（连按右 Shift 8 秒误开）/ 重复率设置差异下，按住可能只发一次 keydown
+//   （Win11 实测「按住只滚一次」= 零重复事件）。统一改由 JS 定时器连发：
+//   首步 keydown 即刻执行，_HOLD_DELAY 后进入连发，步进 _HOLD_MS。
+//   ★ 防叠加双保险（OS 重复开着的机器也绝不加速）：① e.repeat 一律忽略 ② _physHeld 物理按住板——
+//   同键第二次 keydown（无论 OS 是否补发 repeat 标记）只能靠 keyup/blur 解锁：既不触发动作、也不重启计时。
+//   步进 50ms 比 OS 默认重复间隔（~31ms）更长——最多持平偏慢，绝不更快。
+//   Win7-11 行为恒定，与 OS 重复设置解耦。同时只允许一个连发键（对齐 OS「仅最后按下键连发」语义）。
+var _HOLD_KEYS = { '1': 1, '2': 1, 'q': 1, 'w': 1 };
+var _holdKey = null;
+var _physHeld = Object.create(null);   // 物理按住板: keydown 首入 / keyup 出 / blur·隐藏 全清
+var _holdTo = 0, _holdIv = 0;
+var _HOLD_DELAY = 360;
+var _HOLD_MS = 50;
+function _stopKeyHold() {
+    if (_holdTo) { clearTimeout(_holdTo); _holdTo = 0; }
+    if (_holdIv) { clearInterval(_holdIv); _holdIv = 0; }
+    _holdKey = null;
+}
+// ★ 失焦/隐藏 = 按住板全清（键态不可知 → 宁停勿粘）
+function _clearKeyHold() {
+    _physHeld = Object.create(null);
+    _stopKeyHold();
+}
+function _startKeyHold(key) {
+    _stopKeyHold();
+    _holdKey = key;
+    _holdTo = setTimeout(function () {
+        _holdTo = 0;
+        if (_holdKey !== key) return;
+        _holdIv = setInterval(function () {
+            if (_holdKey !== key) { _stopKeyHold(); return; }
+            _panelKeyAction(key);
+        }, _HOLD_MS);
+    }, _HOLD_DELAY);
+}
+function _panelKeyAction(key) {
+    if (key === '1' || key === '2') {
         // ★ 用户主动上滚 → 立即停自动跟滚
-        if (cardPool) { var _c1 = cardPool.getActive(); if (_c1) _c1._userScrolledUp = true; }
-        $messages.scrollBy({ top: -$messages.clientHeight * 0.175, behavior: 'smooth' });
-        _showFloorIndicatorBriefly();
-    } else if (key === '2') {
-        e.preventDefault();
-        $messages.scrollBy({ top: $messages.clientHeight * 0.175, behavior: 'smooth' });;
+        if (key === '1' && cardPool) { var _c1 = cardPool.getActive(); if (_c1) _c1._userScrolledUp = true; }
+        $messages.scrollBy({ top: (key === '1' ? -1 : 1) * $messages.clientHeight * 0.175, behavior: 'smooth' });
         _showFloorIndicatorBriefly();
     } else if (key === 'q' || key === 'w') {
-        e.preventDefault();
         // ★ q 键往上跳 → 立即停自动跟滚；w 键往下跳 → 交给 scroll 事件检测底部
         if (key === 'q' && cardPool) { var _cq = cardPool.getActive(); if (_cq) _cq._userScrolledUp = true; }
         var card = cardPool ? cardPool.getActive() : null;
@@ -753,7 +788,29 @@ document.addEventListener('keydown', function (e) {
         }
         _showFloorIndicatorBriefly();
     }
+}
+document.addEventListener('keydown', function (e) {
+    if (!_panelFocused) return;
+    if (document.activeElement === $input || document.activeElement.closest('#input-area')) return;
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+    var key = e.key;
+    if (!_HOLD_KEYS[key]) return;
+    e.preventDefault();
+    // ★ 防叠加双保险：e.repeat + 物理按住板——重复 keydown 绝不动作、绝不重启计时
+    if (e.repeat || _physHeld[key]) return;
+    _physHeld[key] = true;
+    _panelKeyAction(key);
+    _startKeyHold(key);
 });
+// ★ 松开/失焦/隐藏 = 停发（防连发粘键）
+document.addEventListener('keyup', function (e) {
+    var kk = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+    if (typeof e.key === 'string') delete _physHeld[e.key];
+    if (kk) delete _physHeld[kk];
+    if (_holdKey && kk === _holdKey) _stopKeyHold();
+});
+window.addEventListener('blur', _clearKeyHold);
+document.addEventListener('visibilitychange', function () { if (document.hidden) _clearKeyHold(); });
 
 // \u2550\u2550\u2550 \u81ea\u52a8\u8ddf\u7126 \u2550\u2550\u2550
 $input.addEventListener('focus', function () {

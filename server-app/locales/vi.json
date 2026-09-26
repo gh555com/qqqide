@@ -124,7 +124,29 @@
             "roamNotFound": "Không tìm thấy trên ổ đĩa:",
             "loadFailed": "Tải ảnh thất bại, không thể xem trước",
             "mediaFailed": "Tải phương tiện thất bại, có thể do định dạng không được hỗ trợ hoặc tệp bị hỏng",
-            "transcoding": "Đang chuyển mã xem trước…"
+            "transcoding": "Đang chuyển mã xem trước…",
+            "mplay": "Phát",
+            "mpause": "Tạm dừng",
+            "mmute": "Tắt tiếng",
+            "munmute": "Bật tiếng",
+            "mvolume": "Âm lượng",
+            "mspeed": "Tốc độ phát (nhấp để chuyển đổi vòng lặp)",
+            "mspeedCustom": "Tùy chỉnh tốc độ",
+            "mspeedOk": "Xác nhận",
+            "mfsFail": "Lỗi toàn màn hình",
+            "mloop": "Phát lặp lại (phím tắt L)",
+            "mpip": "Chế độ hình trong hình",
+            "mfs": "Toàn màn hình (phím tắt F)",
+            "mstep": "Bước từng khung hình (phím tắt . tiến / , lùi)",
+            "mab": "Vòng lặp A-B (phím tắt A)",
+            "mabA": "Đánh dấu điểm B (A: {t}, phím tắt A)",
+            "mabAB": "Xóa vòng lặp A-B ({a} → {b}, phím tắt A)",
+            "mabSetA": "Đã đánh dấu điểm A: {t}",
+            "mabSetB": "Vòng lặp A-B đã bật: {a} → {b}",
+            "mabClear": "Đã xóa vòng lặp A-B",
+            "mshot": "Chụp một khung hình (phím tắt S)",
+            "mshotSaved": "Đã lưu ảnh chụp màn hình: {name}",
+            "mshotFail": "Chụp màn hình thất bại"
         },
         "about": {
             "title": "Giới thiệu về qqq",
@@ -447,7 +469,8 @@
             "settling": "Đang xử lý quyết toán……",
             "err": "Tải thất bại",
             "load": "Đang tải...",
-            "header": "Cấp độ cuối cùng của tôi tuần trước: {last}, cơ sở tuần này tăng: {rise}. Dự kiến cơ sở tuần sau sẽ tăng: {proj}"
+            "header": "Cấp độ cuối cùng của tôi tuần trước: {last}, cơ sở tuần này tăng: {rise}. Dự kiến cơ sở tuần sau sẽ tăng: {proj}",
+            "history": "Mùa giải trước"
         }
     },
     "ai": {
@@ -635,6 +658,7 @@
             "sendFailPrefix": "Gửi thất bại (lỗi tạo tầng): {0}",
             "notSent": ". Nội dung sau chưa được gửi:",
             "allocShown": "——Nội dung chưa gửi đã được hiển thị trong khu vực tin nhắn phía trên",
+            "allocRequeued": "—— Tin nhắn xếp hàng đã được giữ lại trong hàng đợi, có thể thử lại",
             "stallAbort": "Gửi bị đình trệ (>20 phút không tiến triển) đã tự động hủy",
             "stallAbortQoast": "Gửi bị đình trệ (>20 phút không tiến triển) đã tự động hủy, có thể nhấp vào khung đỏ của tầng \"Tiếp tục nhiệm vụ\" để khôi phục",
             "stallAbortTool": "Thực thi công cụ bị treo (không có tiến triển sau hơn 2 giờ) đã tự động dừng",
@@ -1416,6 +1440,7 @@
             "popWindow": "📅 Khung giờ miễn phí: (UTC) Cả ngày Chủ Nhật + 01:00-03:00/13:00-15:00 hàng ngày",
             "popWindowLocal": "📅 ({tz}) Cả ngày Chủ Nhật + mỗi ngày {span}",
             "histTitle": "8 lượt cửa sổ miễn phí trước đó: {used} / {budget}",
+            "histUsed": "Đã dùng {v}",
             "popBonus": "Thưởng theo mùa +{v} ge",
             "popLogin": "Đăng nhập để xem số dư miễn phí ngẫu nhiên",
             "popLoading": "Đang tải số dư miễn phí ngẫu nhiên…",
@@ -1443,12 +1468,27 @@
         "ignoredUntracked": "Đã bỏ qua và hủy theo dõi",
         "addedGitignore": "Đã thêm vào .gitignore"
     },
+    "gitignoreEnsure": {
+        "msg": "⚠️ .gitignore của dự án này không bỏ qua {list} — thư mục làm việc qd (bao gồm các tệp tạm thời AI) có thể được git commit",
+        "btnFix": "Bổ sung .gitignore",
+        "done": "✓ Đã bổ sung .gitignore: {list}",
+        "fail": "Bổ sung .gitignore thất bại: {err}"
+    },
+    "gitPoll": {
+        "ucHint": "⚠️ Quét trạng thái git của kho lưu trữ lớn {name} chậm ({sec}s/lần) — bật bộ nhớ cache untracked có thể tăng tốc gấp 2~10 lần",
+        "ucEnable": "Bật",
+        "ucDone": "✓ Đã bật bộ nhớ cache untracked cho {name}, có hiệu lực từ lần quét tiếp theo",
+        "ucFail": "Kho lưu trữ này không hỗ trợ bộ nhớ cache untracked (có thể không phải ổ đĩa cục bộ), không thực hiện thay đổi nào"
+    },
     "firstRun": {
         "expert": "Tôi là chuyên gia, tôi hiểu rõ tác hại của mọi lệnh, tôi không dùng qqqide để xóa tệp",
-        "roamHint": "Với Roam, bạn có thể thao tác tệp nhanh chóng, bao gồm cả việc xóa",
         "agree": "Đồng ý và tiếp tục",
         "exit": "Thoát",
-        "saveFailed": "Lưu thất bại, vui lòng thử lại"
+        "saveFailed": "Lưu thất bại, vui lòng thử lại",
+        "intro1": "Bạn có thể coi qd như một trò chơi để thưởng thức từ từ, lưu ý rằng đây là một trò chơi nguyên bản, chứ không phải một trò chơi đổi vỏ. Nếu bạn thích trò chơi đổi vỏ, bây giờ bạn có thể yên tâm rời đi.",
+        "introLink": "Sử dụng Roam để vượt ra khỏi giới hạn của thư mục dự án",
+        "intro2": "Mặt khác, tôi hy vọng bạn tìm thấy liên kết cộng đồng từ nút help ở phía trên, chúng tôi đảm bảo rằng bất kỳ vấn đề nhỏ nào của bạn đều sẽ có người chuyên trách giải đáp từng câu hỏi một.",
+        "introOk": "Vậy thì tốt"
     },
     "notice": {
         "title": "Thông báo",
@@ -1559,28 +1599,28 @@
     "audio": {
         "sfx": {
             "floor-ok": {
-                "label": "Âm thanh hoàn thành tầng bình thường",
+                "label": "Âm thanh khi xây dựng tầng hoàn tất bình thường",
                 "desc": "Khoảnh khắc xây xong mỗi tầng"
             },
             "floor-bad": {
                 "label": "Âm thanh kết thúc tầng bất thường",
-                "desc": "Kết thúc khi gặp lỗi/dừng/ngưng trệ"
+                "desc": "Kết thúc bất thường/dừng"
             },
             "muyu": {
                 "label": "Mõ cá·Báo tin vui khung giờ miễn phí",
                 "desc": "Ngay khi bước vào khung giờ miễn phí"
             },
             "roam": {
-                "label": "Âm thanh thao tác tệp",
-                "desc": "Roam vào/xóa/làm trống/cố định/bỏ cố định + terminal"
+                "label": "Thao tác tệp Roam",
+                "desc": "Vào/xóa/làm trống/cố định/bỏ cố định + terminal"
             },
             "bullet": {
-                "label": "Tiếng súng đạn hỏi đáp",
-                "desc": "Nút đạn sau khi AI trả lời"
+                "label": "Tiếng súng nút đạn",
+                "desc": "Văn bản bắn đạn"
             },
             "lv": {
-                "label": "Âm thanh nâng cấp cấp độ",
-                "desc": "Thanh cấp độ tăng hạng và cột mốc"
+                "label": "Âm thanh nâng cấp cấp độ mùa giải",
+                "desc": "Nâng cấp lv"
             },
             "summon": {
                 "label": "Âm thanh triệu hồi cửa sổ",
@@ -1599,7 +1639,8 @@
         "off": "Đã tắt",
         "needActivation": "Tính năng này cần được kích hoạt trước",
         "sfxTitle": "Bật/tắt hiệu ứng âm thanh",
-        "sfxSubtitle": "Mặc định bật tất cả · Có hiệu lực ngay",
+        "sfxAll": "Tất cả",
+        "sfxNone": "Không có",
         "sfxTooltip": "Bật/tắt hiệu ứng âm thanh riêng lẻ",
         "undoMode": {
             "label": "Chế độ hoàn tác trong trình soạn thảo",
@@ -1621,7 +1662,7 @@
         },
         "compress": {
             "label": "Tự động nén Balo ngữ cảnh",
-            "desc": "Giá trị mặc định là trung bình",
+            "desc": "Giá trị mặc định là quản lý hoàn toàn tự động",
             "off": "Tắt",
             "medium": "Trung bình",
             "full": "Quản lý hoàn toàn"
@@ -1631,7 +1672,7 @@
         },
         "volume": {
             "label": "Âm lượng",
-            "desc": "Âm lượng cho cửa sổ IDE và tất cả goods (âm lượng riêng của goods đi đường vòng, không chịu kiểm soát bởi cài đặt này). Mặc định xuất xưởng là 25%."
+            "desc": "Âm lượng cho cửa sổ IDE và tất cả goods (âm lượng riêng của goods đi đường bypass, không chịu sự kiểm soát này)."
         },
         "mdviewAuto": {
             "label": "Tự động mở xem trước Markdown"
@@ -1646,6 +1687,24 @@
         "secret": {
             "label": "Hỗ trợ ẩn khóa bí mật",
             "desc": "Tự động phát hiện và xóa các khóa bí mật (API Key/mật khẩu/Token, v.v.) khi phát hiện dự án có thay đổi chưa được commit. Những trường hợp không thể tự động xác nhận sẽ hiển thị hộp thoại để bạn xử lý cùng."
+        },
+        "pyInterp": {
+            "btn": "Đặt làm trình thông dịch Python hệ thống",
+            "busyChecking": "Đang kiểm tra…",
+            "busyApplying": "Đang thiết lập…",
+            "confirmTitle": "Sẽ ghi đè lên trình thông dịch hệ thống hiện tại",
+            "confirmOk": "Xác nhận",
+            "confirmCancel": "Hủy",
+            "ok": "✅ Đã thiết lập: Nhấp đúp vào .py sẽ chạy bằng Python tích hợp",
+            "okRefresh": "✅ Đã làm mới: Python tích hợp đã tiếp quản .py",
+            "fail": "❌ Thiết lập thất bại:",
+            "errNoPython": "Python tích hợp chưa sẵn sàng",
+            "errDenied": "Quyền bị từ chối (có thể bị phần mềm bảo mật chặn)",
+            "errVerify": "Ghi không có hiệu lực",
+            "errUac": "Đã hủy (chưa được cấp quyền)",
+            "errBridge": "Cần khởi động lại cửa sổ này để sử dụng",
+            "errBusy": "Đang xử lý, vui lòng đợi",
+            "errGeneric": "Lỗi không xác định"
         },
         "tier": {
             "title": "Giải thích cấp độ AI",

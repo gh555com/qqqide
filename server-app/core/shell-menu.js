@@ -1515,22 +1515,13 @@ function _showGoodsSettings(goodsId) {
   // ── 标题行 ──
   var titleRow = document.createElement('div');
   titleRow.style.cssText =
-    'display:flex; align-items:center; margin-bottom:16px; gap:8px;';
+    'display:flex; align-items:center; margin-bottom:16px;';
 
   var titleText = document.createElement('span');
   titleText.textContent = (goodsId === 'kope-a') ? window._i('shell.gs.titleKopea', 'kope-a 设置') : window._i('shell.gs.titleWinThere', 'window there 设置');
-  titleText.style.cssText = 'font-weight:700; font-size:15px; flex:1;';
+  titleText.style.cssText = 'font-weight:700; font-size:15px;';
   titleRow.appendChild(titleText);
-
-  var closeBtn = document.createElement('span');
-  closeBtn.textContent = '\u2715';  // ✕
-  closeBtn.style.cssText =
-    'cursor:default; font-size:16px; color:var(--text-muted); opacity:0.6; ' +
-    'padding:2px 6px; border-radius:3px;';
-  closeBtn.addEventListener('mouseenter', function () { closeBtn.style.opacity = '1'; closeBtn.style.background = 'var(--background-color)'; });
-  closeBtn.addEventListener('mouseleave', function () { closeBtn.style.opacity = '0.6'; closeBtn.style.background = ''; });
-  closeBtn.addEventListener('click', function (e) { e.stopPropagation(); _closeGoodsSettings(); });
-  titleRow.appendChild(closeBtn);
+  // 关闭仅：点遮罩外 / Esc（铁律 §4.1——内置面板不设 ✕）
   modal.appendChild(titleRow);
 
   // ── 介绍文字 ──

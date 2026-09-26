@@ -396,7 +396,7 @@ ${escapedPaths}
     // ---- download（用户可见下载：保存对话框/静默直存 + DownloadService 流式落盘/进度/取消）----
     // ★ 2026-09-14：DownloadService 与 preload bridge.download 早已存在，但 IPC 层从未注册（桥悬空）——此处补全。
     // ★ 2026-09-14 v2（目录记忆）：saveAs!==false → 弹保存对话框（defaultPath=dir，记住上次目录）；
-    //   saveAs:false + dir 存在 → 静默直存（重名自动「name (1).ext」绝不覆盖——覆盖仅限对话框路径=用户已确认）；
+    //   saveAs:false + dir 存在 → 静默直存（重名自动「name_1.ext」绝不覆盖——2026-09-26 起 Roam 风格末尾下划线；覆盖仅限对话框路径=用户已确认）；
     //   返回值带 dir/fileName（最终落盘）供渲染层记忆上次目录（download-machine.js qqq.download.lastDir）。
     ipcMain.handle('qqqide:download:start', async (e, opts: any) => {
         try {
@@ -432,7 +432,7 @@ ${escapedPaths}
                 const ext = dot > 0 ? fileName.slice(dot) : '';
                 let i = 1;
                 let fp = path.join(dir, base + ext);
-                while (fs.existsSync(fp)) { fp = path.join(dir, base + ' (' + (i++) + ')' + ext); }
+                while (fs.existsSync(fp)) { fp = path.join(dir, base + '_' + (i++) + ext); }
                 fileName = path.basename(fp);
             }
             const entry = downloadService.start({ url, dir, fileName: fileName || undefined, sha256: o.sha256, headers: o.headers });

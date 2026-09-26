@@ -124,7 +124,29 @@
             "roamNotFound": "No encontrado en el disco:",
             "loadFailed": "Error al cargar la imagen, no se puede previsualizar",
             "mediaFailed": "Error al cargar el medio. Es posible que el formato no sea compatible o que el archivo esté dañado.",
-            "transcoding": "Transcodificando para la vista previa…"
+            "transcoding": "Transcodificando para la vista previa…",
+            "mplay": "Reproducir",
+            "mpause": "Pausar",
+            "mmute": "Silenciar",
+            "munmute": "Activar sonido",
+            "mvolume": "Volumen",
+            "mspeed": "Velocidad de reproducción (haz clic para seleccionar)",
+            "mspeedCustom": "Velocidad personalizada",
+            "mspeedOk": "Confirmar",
+            "mfsFail": "Error al entrar en pantalla completa",
+            "mloop": "Reproducción en bucle (atajo L)",
+            "mpip": "Imagen en imagen",
+            "mfs": "Pantalla completa (atajo F)",
+            "mstep": "Avance cuadro a cuadro (atajo: . adelante / , atrás)",
+            "mab": "Bucle A-B (atajo A)",
+            "mabA": "Marcar punto B (A: {t}, atajo A)",
+            "mabAB": "Eliminar bucle A-B ({a} → {b}, atajo A)",
+            "mabSetA": "Punto A marcado: {t}",
+            "mabSetB": "Bucle A-B activado: {a} → {b}",
+            "mabClear": "Bucle A-B eliminado",
+            "mshot": "Captura de un fotograma (atajo S)",
+            "mshotSaved": "Captura guardada: {name}",
+            "mshotFail": "Error al capturar pantalla"
         },
         "about": {
             "title": "Acerca de qqq",
@@ -447,7 +469,8 @@
             "settling": "Procesando liquidación...",
             "err": "Error al cargar",
             "load": "Cargando...",
-            "header": "Mi nivel final la semana pasada: {last}, aumento de base esta semana: {rise}. Se prevé que la base de la próxima semana aumente: {proj}"
+            "header": "Mi nivel final la semana pasada: {last}, aumento de base esta semana: {rise}. Se prevé que la base de la próxima semana aumente: {proj}",
+            "history": "Temporadas anteriores"
         }
     },
     "ai": {
@@ -635,6 +658,7 @@
             "sendFailPrefix": "Error al enviar (excepción al crear el hilo): {0}",
             "notSent": ". El siguiente contenido no se ha enviado:",
             "allocShown": "——El contenido no enviado se muestra en el área de mensajes superior",
+            "allocRequeued": "—— El mensaje en cola se ha mantenido en la lista, puede reintentarse",
             "stallAbort": "El envío se ha detenido (>20 minutos sin progreso) y se ha terminado automáticamente",
             "stallAbortQoast": "El envío se ha detenido (>20 minutos sin progreso) y se ha terminado automáticamente; puedes hacer clic en el recuadro rojo del nivel «Continuar tarea» para reanudar",
             "stallAbortTool": "La ejecución de la herramienta se ha detenido (sin progreso durante más de 2 horas) y se ha terminado automáticamente",
@@ -1416,6 +1440,7 @@
             "popWindow": "📅 Horario gratuito: (UTC) Todo el domingo + diariamente 01:00-03:00/13:00-15:00",
             "popWindowLocal": "📅 ({tz}) Domingo todo el día + diario {span}",
             "histTitle": "Primeras 8 ventanas gratuitas: {used} / {budget}",
+            "histUsed": "{v} utilizado(s)",
             "popBonus": "Bonificación de temporada +{v} ge",
             "popLogin": "Inicia sesión para ver tu saldo gratuito aleatorio",
             "popLoading": "Cargando saldo gratuito aleatorio…",
@@ -1443,12 +1468,27 @@
         "ignoredUntracked": "Ignorado y dejado de seguir",
         "addedGitignore": "Añadido a .gitignore"
     },
+    "gitignoreEnsure": {
+        "msg": "⚠️ El archivo .gitignore de este proyecto no ignora {list} — el directorio de trabajo qd (incluidos archivos temporales de IA) podría ser enviado a git",
+        "btnFix": "Completar .gitignore",
+        "done": "✓ .gitignore completado: {list}",
+        "fail": "Error al completar .gitignore: {err}"
+    },
+    "gitPoll": {
+        "ucHint": "⚠️ El escaneo de estado git del repositorio grande {name} es lento ({sec}s/vez); activar la caché de archivos no rastreados puede acelerarlo entre 2 y 10 veces",
+        "ucEnable": "Activar",
+        "ucDone": "✓ Se ha habilitado la caché de archivos no rastreados para {name}. Entrará en vigor en el próximo escaneo.",
+        "ucFail": "Este repositorio no admite caché de archivos no rastreados (posiblemente no sea un disco local), no se realizaron cambios"
+    },
     "firstRun": {
         "expert": "Soy un experto, conozco los riesgos de cada comando, no uso qqqide para eliminar archivos",
-        "roamHint": "Con Roam puedes operar archivos rápidamente, incluyendo eliminarlos",
         "agree": "Aceptar y continuar",
         "exit": "Salir",
-        "saveFailed": "Error al guardar, inténtalo de nuevo"
+        "saveFailed": "Error al guardar, inténtalo de nuevo",
+        "intro1": "Puedes tratar qd como un juego para saborearlo poco a poco. Ten en cuenta que es un juego original, no una copia superficial. Si te gustan los juegos copiados, puedes irte ahora mismo.",
+        "introLink": "Usar Roam para salir de las limitaciones de la carpeta del proyecto",
+        "intro2": "Por otro lado, espero que encuentres el enlace a la comunidad desde el botón de ayuda superior. Podemos asegurarnos de que cualquier pequeña duda que tengas sea respondida personalmente por un especialista.",
+        "introOk": "Estupendo"
     },
     "notice": {
         "title": "Notificaciones",
@@ -1559,28 +1599,28 @@
     "audio": {
         "sfx": {
             "floor-ok": {
-                "label": "Sonido de finalización normal de capa",
+                "label": "Sonido de construcción correcta de piso",
                 "desc": "Sonido al completar correctamente cada piso"
             },
             "floor-bad": {
                 "label": "Sonido de finalización anómala del piso",
-                "desc": "Finalización por error/detención/estancamiento"
+                "desc": "Finalización anormal/estancada"
             },
             "muyu": {
                 "label": "Pez de madera · Notificación de periodo gratuito",
                 "desc": "Al entrar instantáneamente en un periodo gratuito"
             },
             "roam": {
-                "label": "Sonido de operación de archivos",
-                "desc": "Roam: entrar/eliminar/vaciar/fijar/desfijar + terminal"
+                "label": "Operaciones de archivo Roam",
+                "desc": "Entrar/Eliminar/Vaciar/Fijar/Desfijar + Terminal"
             },
             "bullet": {
-                "label": "Disparo de la pistola de preguntas y respuestas",
-                "desc": "Botón de bala tras la respuesta de la IA"
+                "label": "Sonido de disparo del botón de bala",
+                "desc": "Texto de disparo de bala"
             },
             "lv": {
-                "label": "Sonido de subida de nivel",
-                "desc": "Progreso de nivel e hitos"
+                "label": "Sonido de subida de nivel de temporada",
+                "desc": "Subida de nivel lv"
             },
             "summon": {
                 "label": "Sonido de llamada de ventana",
@@ -1599,7 +1639,8 @@
         "off": "Desactivado",
         "needActivation": "Esta función requiere activación previa",
         "sfxTitle": "Interruptor de efectos de sonido",
-        "sfxSubtitle": "Todos activados por defecto · Efecto inmediato",
+        "sfxAll": "Todos",
+        "sfxNone": "Ninguno",
         "sfxTooltip": "Interruptor de efectos de sonido individuales",
         "undoMode": {
             "label": "Modo de deshacer del editor",
@@ -1621,7 +1662,7 @@
         },
         "compress": {
             "label": "Comprimir automáticamente la mochila de contexto",
-            "desc": "El valor predeterminado es medio",
+            "desc": "El valor predeterminado es gestión total",
             "off": "Desactivado",
             "medium": "Medio",
             "full": "Gestión completa"
@@ -1631,7 +1672,7 @@
         },
         "volume": {
             "label": "Volumen",
-            "desc": "Volumen de la ventana del IDE y de todos los goods (los goods con volumen independiente usan bypass y no están controlados por este ajuste). El valor predeterminado de fábrica es 25%."
+            "desc": "Volumen de la ventana IDE y de todos los goods (los goods con volumen independiente usan bypass y no están controlados por esto)."
         },
         "mdviewAuto": {
             "label": "Abrir automáticamente la vista previa de Markdown"
@@ -1646,6 +1687,24 @@
         "secret": {
             "label": "Ayudar a ofuscar claves secretas",
             "desc": "Cuando se detectan cambios no confirmados en el proyecto, identifica y elimina automáticamente las claves secretas (API Key, contraseñas, Tokens, etc.). Si no se puede confirmar automáticamente, aparecerá una ventana emergente para solicitar tu colaboración."
+        },
+        "pyInterp": {
+            "btn": "Establecer como intérprete Python del sistema",
+            "busyChecking": "Comprobando…",
+            "busyApplying": "Configurando…",
+            "confirmTitle": "Sobrescribirá el intérprete actual del sistema",
+            "confirmOk": "Confirmar",
+            "confirmCancel": "Cancelar",
+            "ok": "✅ Configurado: doble clic en .py se ejecutará con Python integrado",
+            "okRefresh": "✅ Actualizado: Python integrado ha tomado el control de .py",
+            "fail": "❌ Error al configurar:",
+            "errNoPython": "Python integrado no está listo",
+            "errDenied": "Permiso denegado (posiblemente bloqueado por software de seguridad)",
+            "errVerify": "La escritura no surtió efecto",
+            "errUac": "Cancelado (no autorizado)",
+            "errBridge": "Requiere reiniciar esta ventana para estar disponible",
+            "errBusy": "Procesando, por favor espere",
+            "errGeneric": "Error desconocido"
         },
         "tier": {
             "title": "Descripción de niveles de IA",

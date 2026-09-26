@@ -8,15 +8,10 @@
 //   Group 1 (file): appears when a file is opened, disappears when empty
 //   Group 2 (file): appears on split-right, disappears when empty
 //
-// API: window.qqqTabs = {
-//   init(hostEl),
-//   addGaeaTab(id, title, renderFn),
-//   openFile(filePath, content, lang),
-//   splitRight(),
-//   closeTab(groupIdx, tabId),
-//   showOutput(), hideOutput(),
-//   getGroups(), getActiveGroup(),
-// }
+// API: window.qqqTabs —— 完整导出清单见文件尾 window.qqqTabs 块；常用:
+//   init(hostEl) · addGaeaTab(id,title,renderFn,opts) · openFile(filePath,opts)
+//   openFileInRightGroup / openFileInLeftGroup / openFileCustomTab(id,title,build,opts)
+//   splitRight() · closeTab(groupIdx,tabId) · activateTab(grp,tabId) · getGroups() · getGaeaGroup()
 // ============================================================================
 (function () {
   'use strict';
@@ -53,6 +48,13 @@
   let _resizeTimer = null;
   var _pinnedPaths = {};    // ★ 文档级 pin 真理（2026-08-16）：filePath → true = 已编辑过 → 正体（全分组一致）；未编辑 → 斜体预览
   var _deletedPaths = {};    // ★ 文件已删除缓存（2026-08-17）：filePath → true = 磁盘文件已删除，tab 显示灰色+删除线
+
+  // ★ 2026-09-26 路径归一（唯一口径 = 正斜杠）：同一文件在系统里混用 \\ 与 / 两种写法
+  //   （Roam 历史目录 / 加号下拉 / AI 面板链接 / timeline 回跳 / md 预览链接各有各的写法），
+  //   旧实现 tab.filePath 直接拿原样字符串做严格相等 → 同一文件能开出两个 tab；
+  //   _pinnedPaths/_deletedPaths/_pathEnc 也各存两份 → 星号/斜体/删除线状态分裂（同步不一致）。
+  //   入口一次归一，全链路（对比/簿记/事件/持久化）同键。timeline / dirty 主进程存储 / 加号下拉早已此口径。
+  function _fp(p) { return String(p == null ? '' : p).replace(/\\/g, '/'); }
 
   // ---- DOM builders ----
   function createGroupEl(type) {
@@ -130,7 +132,9 @@
       const closeBtn = document.createElement('button');
       closeBtn.className = 'qqq-tab-close';
       closeBtn.textContent = '\u00D7';
-      closeBtn.title = 'Close';
+      // ★ 2026-09-26: 硬编码英文 → i18n（data-i18n-title 保证切语言时同步刷新）
+      closeBtn.setAttribute('data-i18n-title', 'editor.tabs.close');
+      closeBtn.title = window._i ? window._i('editor.tabs.close', '关闭标签') : '关闭标签';
       closeBtn.addEventListener('click', e => {
         e.stopPropagation();
         closeTabById(grp, tab.id);
@@ -165,6 +169,7 @@
 
   // ---- Tab deleted state (file removed from disk) ----
   function _setTabDeleted(filePath, deleted) {
+    filePath = _fp(filePath);   // ★ 路径归一（2026-09-26）
     _deletedPaths[filePath] = !!deleted;
     // Update all tabs with this filePath
     for (const grp of groups) {
@@ -185,9 +190,13 @@
   }
 
   async function _checkFileDeleted(filePath) {
-    if (!filePath || !window.bridge || !window.bridge.fs || !window.bridge.fs.stat) return;
+    // ★ 2026-09-26 纠错：桥全局名从未存在（preload 只暴露 qqqideBridge）——window.bridge 恒 undefined
+    //   → 本检查自引入起一直早退 = 激活时「已删除」检测静默失效（editor.js 聚焦路径独撑）
+    filePath = _fp(filePath);   // ★ 路径归一
+    var _b = window.qqqideBridge;
+    if (!filePath || !_b || !_b.fs || !_b.fs.stat) return;
     try {
-      var st = await window.bridge.fs.stat(filePath);
+      var st = await _b.fs.stat(filePath);
       var exists = !!(st && st.isFile);
       // Read current deleted state from any tab with this filePath
       var currentDeleted = false;
@@ -200,6 +209,21 @@
         _setTabDeleted(filePath, !exists);
       }
     } catch (_) { /* stat error (network issue) — don't change state */ }
+  }
+
+  // ★ 2026-09-26：文档级真理释放（pin/deleted/enc）——「最后一个同路径 tab 消失」唯一入口。
+  //   两条消失路径必须同语义：①关闭（closeTabById）②预览位换文件（replaceFileInTab / 左/右组预览复用）。
+  //   漏释放的后果：全部关干净后重开同一文件仍显示正体（pin 残留）/ 编码证据与删除标记张冠李戴。
+  function _releaseDocStateIfLast(filePath) {
+    filePath = _fp(filePath);   // ★ 路径归一
+    if (!filePath) return;
+    for (var _g of groups) {
+      if (_g.type !== 'file') continue;
+      if (_g.tabs.some(function (t) { return t.filePath === filePath; })) return;
+    }
+    delete _pinnedPaths[filePath];
+    delete _deletedPaths[filePath];
+    delete _pathEnc[filePath];
   }
 
   // ---- Activate tab ----
@@ -276,25 +300,14 @@
     }
     if (pane && pane.parentNode) pane.remove();
 
-    // fire cleanup
-    if (tab.onClose) tab.onClose(tab);
+    // fire cleanup（★ 2026-09-26 守卫：onClose 抛错会中断其后的 splice → DOM 已删/账本残留的幽灵 tab）
+    if (tab.onClose) { try { tab.onClose(tab); } catch (_) { } }
 
     grp.tabs.splice(idx, 1);
 
     // ★ 2026-08-21: 关闭最后一个同路径 tab → 释放文档级真理（pin/dirty/deleted）
     //   否则全部关闭后重开同一文件仍显示正体（_pinnedPaths 残留）——预期是斜体预览
-    if (tab.filePath) {
-      var _stillAny = false;
-      for (var _g of groups) {
-        if (_g.type !== 'file') continue;
-        if (_g.tabs.some(function (t) { return t.filePath === tab.filePath; })) { _stillAny = true; break; }
-      }
-      if (!_stillAny) {
-        delete _pinnedPaths[tab.filePath];
-        delete _deletedPaths[tab.filePath];
-        delete _pathEnc[tab.filePath]; // 编码证据随最后同路径 tab 释放
-      }
-    }
+    if (tab.filePath) _releaseDocStateIfLast(tab.filePath);
 
     if (grp.tabs.length === 0 && grp.type === 'file') {
       // remove entire file group
@@ -322,15 +335,6 @@
   }
 
   // ---- Tab dirty state (asterisk) ----
-  function findFileTabByFilePath(filePath) {
-    for (const grp of groups) {
-      if (grp.type !== 'file') continue;
-      const t = grp.tabs.find(t => t.filePath === filePath);
-      if (t) return { grp, tab: t };
-    }
-    return null;
-  }
-
   function updateTabBtnTitle(tab) {
     // find all tab buttons for this tab across all groups (same filePath)
     for (const grp of groups) {
@@ -356,6 +360,7 @@
   //   ★ 2026-08-16 定案：dirty 与 preview/pin 同为文档级真理（路径级）——
   //     一个文档无论在哪个分组，斜体(预览)/正体(已编辑)/星号(脏) 必须 100% 一致（用户明确要求）。
   function _setTabState(filePath, patch) {
+    filePath = _fp(filePath);   // ★ 路径归一
     // 更新 tab 对象（全量广播所有分组同文件 tab）
     for (const grp of groups) {
       if (grp.type !== 'file') continue;
@@ -376,6 +381,7 @@
   }
 
   function setTabDirty(filePath, dirty) {
+    filePath = _fp(filePath);   // ★ 路径归一
     var patch = { dirty: dirty };
     // 首次编辑 → 文档级 pin（全部分组同文件 tab 一并正体；保存后不复位斜体，VS Code 同款）
     if (dirty) { _pinnedPaths[filePath] = true; patch.preview = false; }
@@ -450,6 +456,12 @@
     }
 
     document.body.appendChild(pop);
+    // ★ 2026-09-26: 视口钳制——右下缘右键菜单不再被窗口裁切
+    try {
+      var _mw = pop.offsetWidth || 150, _mh = pop.offsetHeight || 96;
+      if (e.clientX + _mw > window.innerWidth - 4) pop.style.left = Math.max(4, window.innerWidth - _mw - 4) + 'px';
+      if (e.clientY + _mh > window.innerHeight - 4) pop.style.top = Math.max(4, window.innerHeight - _mh - 4) + 'px';
+    } catch (_) { }
     _activeTabMenu = pop;
 
     // global click to close
@@ -536,6 +548,7 @@
 
   // 按路径刷新所有同文件 tab 徽标 + 面包屑徽标（主进程证据 → 展示）
   function _renderEncChipsFor(filePath) {
+    filePath = _fp(filePath);   // ★ 路径归一
     if (!filePath) return;
     const info = _pathEnc[filePath];
     for (const grp of groups) {
@@ -552,13 +565,14 @@
     try { nodes = document.querySelectorAll('[data-qqq-breadcrumb-enc]'); } catch (_) { nodes = null; }
     if (nodes) {
       for (let i = 0; i < nodes.length; i++) {
-        if (nodes[i].getAttribute('data-enc-path') === filePath) _applyEncChip(nodes[i], filePath, info, true);
+        if (_fp(nodes[i].getAttribute('data-enc-path')) === filePath) _applyEncChip(nodes[i], filePath, info, true);
       }
     }
   }
 
   // 渲染层证据入口：文件 read 成功后调用（数据来自主进程 qqqide:fs:encoding）
   function setFileEnc(filePath, info) {
+    filePath = _fp(filePath);   // ★ 路径归一
     if (!filePath) return;
     if (info && info.enc) _pathEnc[filePath] = { enc: info.enc, bom: !!info.bom, pinned: info.pinned || null };
     else delete _pathEnc[filePath];
@@ -569,6 +583,7 @@
 
   // 主动向主进程拉一次最新证据（文件外部重载后调用）
   async function refreshEncForPath(filePath) {
+    filePath = _fp(filePath);   // ★ 路径归一
     if (!filePath || !window.qqqideBridge || !window.qqqideBridge.fs || !window.qqqideBridge.fs.encoding) return;
     try {
       const inf = await window.qqqideBridge.fs.encoding(filePath);
@@ -578,12 +593,14 @@
 
   // ★ 面包屑恒显徽标：初次渲染入口（后续由 setFileEnc → _renderEncChipsFor 全量刷新覆盖）
   function renderEncIndicator(el, filePath) {
+    filePath = _fp(filePath);   // ★ 路径归一
     if (!el || !filePath) return;
     _applyEncChip(el, filePath, _pathEnc[filePath], true);
   }
 
   // ★ 面包屑徽标点击入口：按路径打开编码弹层（弹层内部只依赖 filePath；tab 找不到时用合成 tab 兜底）
   function openEncPopupForPath(anchorEl, filePath) {
+    filePath = _fp(filePath);   // ★ 路径归一
     if (!anchorEl || !filePath) return;
     let hit = null;
     for (const grp of groups) {
@@ -596,6 +613,7 @@
 
   // A：重新按编码打开（pin → 主进程重读解码）
   async function applyReopenEnc(filePath, encOrNull) {
+    filePath = _fp(filePath);   // ★ 路径归一
     const b = window.qqqideBridge;
     if (!b || !b.fs) return;
     try {
@@ -612,6 +630,7 @@
 
   // B：另存为（当前编辑器内容按所选编码写盘 = 转换；主进程清固定）
   async function applySaveAsEnc(filePath, enc) {
+    filePath = _fp(filePath);   // ★ 路径归一
     const b = window.qqqideBridge;
     if (!b || !b.fs) return;
     let ed = null;
@@ -743,7 +762,6 @@
     //   旧实现直接 _saveGroupRatios() 实测快照：新组此刻 flex '1 1 0'、在已占满容器的
     //   旧组（0 0 px）之间无处可长，被 min-width 夹在 ~123px → 快照把新组写成 ~8%，
     //   _onGroupResize 随即忠实执行 →「中间 90% / 右侧预览 10%」事故（q316 实锤）。
-    grp._splitFrom = (groups.length >= 2) ? groups[groups.length - 2] : null;
     if (groups.length >= 2) { _ratiosForNewGroup(groups.length - 1); _onGroupResize(); }
     rebindAllSashes();
     return grp;
@@ -779,6 +797,9 @@
     const idx = groups.indexOf(grp);
     if (idx < 0) return;
 
+    // ★ 2026-09-26：释放 sash 宽度（_absorbRemovedShare px 稳定化用）——必须先于 DOM 移除测量
+    const freedSashW = grp._sashEl ? grp._sashEl.offsetWidth : 0;
+
     // remove sash
     if (grp._sashEl) { grp._sashEl.remove(); grp._sashEl = null; }
     grp.el.remove();
@@ -786,12 +807,12 @@
     reindexGroups();
 
     // ★ 2026-09-04：剩余组按实测宽度水密舱重分配（单组回弹 flex 填满；多组等比吃回释放空间，零空缝零跳变）
-    // ★ 2026-09-20：借入组（_splitFrom）关闭 → 份额原路归还来源邻居，开/关严格互逆——
-    //   预览关闭后源组宽度精确还原，其余组全程零变化；来源已亡/错位/ratio 缺失 → 回落等比吃回。
+    // ★ 2026-09-26：关闭组份额并入右邻（右邻=新中间组向左扩张；其左全部分组与 q 分割线零位移）；
+    //   无右邻（最右组关闭）→ 并入左邻（= 其创建来源，开/关互逆）；ratio 缺失 → 回落等比吃回。
     if (groups.length <= 1) {
       _groupRatios = null;
       groups.forEach(g => { g.el.style.flex = '1 1 0'; });
-    } else if (_absorbRemovedShare(grp, idx)) {
+    } else if (_absorbRemovedShare(idx, freedSashW)) {
       _onGroupResize();
     } else {
       _saveGroupRatios();
@@ -800,17 +821,43 @@
     rebindAllSashes();
   }
 
-  // ★ 2026-09-20：借入组关闭——其 ratio 份额并入来源邻居（其余组零变化）。返回 false = 走等比吃回。
-  function _absorbRemovedShare(grp, idx) {
-    const nb = grp._splitFrom;
-    if (idx <= 0 || !nb) return false;
-    if (groups.indexOf(nb) !== idx - 1) return false;            // 来源已亡/排位不符
+  // ★ 2026-09-26 重定义：关闭组份额并入右邻（原 idx+1，splice 后位于 idx）——右邻成为新中间组、
+  //   向左扩张吸收腾出的中区；其左的一切分组 px 零位移（q = 左分组右缘恒不动）。
+  //   无右邻（最右组关闭）→ 并入左邻（= 其创建来源，开/关严格互逆）。返回 false = ratio 缺失走等比吃回。
+  //   ★ px 稳定化：释放 sash 使 availW 变大，若按原 ratio 重算非吸收组，整体随 availW 膨胀位移
+  //   （q 线 +~2px「轻微移动」）；非吸收组 ratio×f（f = 移除前/后可用宽比）→ _onGroupResize 的 px 目标
+  //   与移除前恒等；吸收组取补集（吸收移除宽 + 释放 sash）。测量退化 → 原样并入 moved。
+  function _absorbRemovedShare(idx, freedSashW) {
     const r = (_groupRatios && _groupRatios.ratios) || null;
     if (!r || r.length !== groups.length + 1) return false;      // ratio 意图缺失/长度不符
-    const next = r.slice();
+    let next = r.slice();
     const moved = next.splice(idx, 1)[0];
     if (!isFinite(moved)) return false;
-    next[idx - 1] += moved;
+    const ai = (idx < groups.length) ? idx : (idx - 1);          // 吸收组：右邻优先，否则左邻
+    if (ai < 0 || ai >= next.length) return false;
+    let stabilized = false;
+    if (hostEl) {
+      let sashW2 = 0;
+      for (let i = 1; i < groups.length; i++) {
+        const s = groups[i]._sashEl;
+        if (s) sashW2 += s.offsetWidth;
+      }
+      const availW2 = hostEl.offsetWidth - sashW2;               // 移除后可用宽
+      const availW1 = availW2 - (freedSashW || 0);               // 移除前可用宽
+      if (availW1 > 0 && availW2 > 0) {
+        const f = availW1 / availW2;
+        const scaled = next.slice();
+        let sum = 0;
+        for (let i = 0; i < scaled.length; i++) {
+          if (i === ai) continue;
+          scaled[i] = scaled[i] * f;
+          sum += scaled[i];
+        }
+        const absR = 1 - sum;
+        if (isFinite(absR) && absR >= 0) { scaled[ai] = absR; next = scaled; stabilized = true; }
+      }
+    }
+    if (!stabilized) next[ai] += moved;
     _groupRatios = { ratios: next };
     return true;
   }
@@ -989,6 +1036,7 @@
 
   // ---- Public: replace preview tab content (switches file in-place) ----
   function replaceFileInTab(grp, tab, filePath, opts) {
+    filePath = _fp(filePath);   // ★ 路径归一（2026-09-26：tab.filePath 全层唯一口径）
     const fileName = filePath.split(/[/\\]/).pop() || filePath;
 
     // ★ 先销毁旧编辑器再清空 pane——innerHTML='' 直接杀 DOM 会让 Monaco widget 变孤儿
@@ -1005,6 +1053,10 @@
     // Update tab identity
     tab.filePath = filePath;
     tab.title = fileName;
+    // ★ 2026-09-26：预览位换文件必须重置「已删除」标记（旧文件残留 → 新 tab 误显灰+删除线，
+    //   且 _checkFileDeleted 比对基准被污染 → 永不纠正）+ 旧路径文档级真理释放（与关闭同语义）
+    tab.deleted = !!_deletedPaths[filePath];
+    if (_oldPath && _oldPath !== filePath) _releaseDocStateIfLast(_oldPath);
     // ★ dirty 从编辑器真理读：_paneDirtyMap 残留 true（同文件另一格编辑器未保存）时
     //   新预览 tab 必须如实显示星号，不能硬编码 false（旧实现 → 编辑时 _markDirty 不触发 → 星号永不出现）
     tab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
@@ -1013,8 +1065,6 @@
 
     // ★ 中心机器：统一设置 tab 状态并刷新标题（dirty+preview 全量广播——文档状态跨分组 100% 一致）
     _setTabState(filePath, { dirty: tab.dirty, preview: tab.preview });
-    const btn = grp.barEl.querySelector(`[data-tab-id="${tab.id}"]`);
-    if (btn) btn.dataset.filePath = filePath;
 
     activateTab(grp, tab.id);
 
@@ -1033,6 +1083,7 @@
 
   // ---- Public: open file in file group ----
   function openFile(filePath, opts) {
+    filePath = _fp(filePath);   // ★ 路径归一
     const fileName = filePath.split(/[/\\]/).pop() || filePath;
 
     // find existing tab with same path (in any file group)
@@ -1074,7 +1125,6 @@
     };
 
     const btn = createTabBtn(tab, fileGrp);
-    btn.dataset.filePath = filePath;
     fileGrp.barEl.appendChild(btn);
 
     const pane = createTabPane(tab);
@@ -1104,6 +1154,7 @@
 
   // ---- Public: open file in right-most (3rd) group ----
   function openFileInRightGroup(filePath) {
+    filePath = _fp(filePath);   // ★ 路径归一
     const fileName = filePath.split(/[/\\]/).pop() || filePath;
     const fileGroups = groups.filter(g => g.type === 'file');
 
@@ -1141,13 +1192,14 @@
       if (previewTab.paneEl) previewTab.paneEl.innerHTML = '';
       previewTab.filePath = filePath;
       previewTab.title = fileName;
+      // ★ 2026-09-26: 换文件重置 deleted + 旧路径文档级真理释放（同 replaceFileInTab）
+      previewTab.deleted = !!_deletedPaths[filePath];
+      if (_oldPathR && _oldPathR !== filePath) _releaseDocStateIfLast(_oldPathR);
       // ★ dirty 从编辑器真理读（同 replaceFileInTab）
       previewTab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
       // ★ 文档级真理：已编辑过 → 正体（全组一致）；从未编辑 → 斜体预览
       previewTab.preview = !_pinnedPaths[filePath];
       _setTabState(filePath, { dirty: previewTab.dirty, preview: previewTab.preview });
-      const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
-      if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);
       document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: previewTab.paneEl } }));
       persistOpenTabs();
@@ -1157,7 +1209,6 @@
     const tabId = _nextTabId++;
     const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: !_pinnedPaths[filePath], dirty: !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath)) };
     const btn = createTabBtn(tab, targetGrp);
-    btn.dataset.filePath = filePath;
     targetGrp.barEl.appendChild(btn);
     const pane = createTabPane(tab);
     targetGrp.contentEl.appendChild(pane);
@@ -1169,7 +1220,7 @@
     return tab;
   }
 
-  // ★ 在活跃 editor 中触发查找
+  // ★ 在活跃 editor 中触发查找（活跃 = 最后聚焦/最近激活的 pane 实例，editor.js 维护）
   function _triggerEditorFind(searchText) {
     if (!searchText) return;
     var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
@@ -1228,9 +1279,8 @@
       var line = _paneOpts.line, col = _paneOpts.col || 1, search = _paneOpts.search || '';
       window._nextPaneOpts = null;
       setTimeout(function () {
-        // ★ 取目标文件对应的编辑器（面板编辑器优先）——getEditorInstance 只返回全局首个编辑器，
-        //   文件已打开时会对错误的编辑器 setPosition → 跳转失效（用户需关闭标签重开才生效）
-        var ed = window.qqqEditor && (window.qqqEditor.getEditorForFile ? window.qqqEditor.getEditorForFile(filePath) : window.qqqEditor.getEditorInstance());
+        // ★ 取目标文件对应的编辑器（pane 编辑器优先——split view 每格独立实例）
+        var ed = window.qqqEditor && window.qqqEditor.getEditorForFile(filePath);
         if (!ed || !ed.getModel) return;
         var model = ed.getModel();
         if (!model) return;
@@ -1282,6 +1332,7 @@
 
   // ---- Public: open file in left (first) file group ----
   function openFileInLeftGroup(filePath) {
+    filePath = _fp(filePath);   // ★ 路径归一
     const fileName = filePath.split(/[/\\]/).pop() || filePath;
     const fileGroups = groups.filter(g => g.type === 'file');
     if (fileGroups.length === 0) return openFile(filePath);
@@ -1301,13 +1352,14 @@
       if (previewTab.paneEl) previewTab.paneEl.innerHTML = '';
       previewTab.filePath = filePath;
       previewTab.title = fileName;
+      // ★ 2026-09-26: 换文件重置 deleted + 旧路径文档级真理释放（同 replaceFileInTab）
+      previewTab.deleted = !!_deletedPaths[filePath];
+      if (_oldPathL && _oldPathL !== filePath) _releaseDocStateIfLast(_oldPathL);
       // ★ dirty 从编辑器真理读（同 replaceFileInTab）
       previewTab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
       // ★ 文档级真理：已编辑过 → 正体（全组一致）；从未编辑 → 斜体预览
       previewTab.preview = !_pinnedPaths[filePath];
       _setTabState(filePath, { dirty: previewTab.dirty, preview: previewTab.preview });
-      const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
-      if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);
       document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: previewTab.paneEl } }));
       persistOpenTabs();
@@ -1317,7 +1369,6 @@
     const tabId = _nextTabId++;
     const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: !_pinnedPaths[filePath], dirty: !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath)) };
     const btn = createTabBtn(tab, targetGrp);
-    btn.dataset.filePath = filePath;
     targetGrp.barEl.appendChild(btn);
     const pane = createTabPane(tab);
     targetGrp.contentEl.appendChild(pane);
@@ -1434,6 +1485,7 @@
 
   // ---- Persistence: editor tabs + gaea tabs + cursor positions → only.sq3 (项目资产) ----
   var _restored = false;
+  var _hadTabs = false;   // ★ 2026-09-26: 本会话是否开过文件 tab（空列表写盘守卫——防 fresh/空窗误清既有持久化）
   // ★ 2026-09-21: 恢复同步派发窗口标志——Markdown 自动预览此窗口内静默（防 Ctrl+R 恢复风暴）
   var _restoring = false;
   var _persistTimer = null;
@@ -1485,7 +1537,10 @@
       var pos = window.qqqEditor.getAllEditorPositions();
       db.set('editor.positions', Object.keys(pos).length > 0 ? pos : null).catch(function () { });
     }
-    if (all.length > 0) {
+    // ★ 2026-09-26: 空列表也写——「全部关闭」是显式意图；旧实现只在非空时写 → 关完标签后磁盘残留
+    //   旧列表 → 重启把用户已关掉的标签全量复活。空写仅限本会话开过文件（_hadTabs）。
+    if (all.length > 0) _hadTabs = true;
+    if (all.length > 0 || _hadTabs) {
       db.set('editor.tabs', all).catch(function () { });
     }
     // ★ gaea 分组活跃 tab
@@ -1531,11 +1586,12 @@
           for (var i = 0; i < all.length; i++) {
             var item = all[i];
             if (item.path) {
+              var _rp = _fp(item.path);   // ★ 路径归一（旧版本可能持久化过反斜杠写法）
               // ★ 重建文档级 pin 真理（持久化 preview=false = 已编辑过 → 正体，跨分组一致）
-              if (!item.preview) _pinnedPaths[item.path] = true;
-              document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: item.path, groupIdx: item.groupIdx } }));
+              if (!item.preview) _pinnedPaths[_rp] = true;
+              document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: _rp, groupIdx: item.groupIdx } }));
               // ★ 2026-08-17: 恢复后检查文件是否存在（已删除的文件显示灰色+删除线）
-              setTimeout(function(fp) { _checkFileDeleted(fp); }, 500, item.path);
+              setTimeout(function(fp) { _checkFileDeleted(fp); }, 500, _rp);
             }
           }
         } finally { _restoring = false; }
@@ -1623,6 +1679,7 @@
   //   语义 = 任何成功「打开」一个 .md → 确保其预览存在（已有则零动作；不管关闭/不接标签切换）；
   //   _restoring 窗口静默（恢复风暴），其余一切路径均视为用户动作零静默。
   function _notifyMdOpened(filePath, result) {
+    filePath = _fp(filePath);   // ★ 路径归一（md 预览内部另有 _norm，双保险）
     if (!filePath || !result || _restoring) return;
     try {
       var mp = window.qqqMdPreview;
@@ -1659,7 +1716,6 @@
 
   // ---- Public: getters ----
   function getGroups() { return groups.slice(); }
-  function getActiveGroup() { return groups[groups.length - 1] || null; }
   function getGaeaGroup() { return groups.find(g => g.type === 'gaea') || null; }
 
   // ---- Rename custom/file tab（kmd 命名：实时同步 + 边界守卫） ----
@@ -1719,18 +1775,16 @@
     closeTab,
     activateTab,
     getGroups,
-    getActiveGroup,
     getGaeaGroup,
     renameGaeaTab,
     setTabDirty,
     setTabDeleted: _setTabDeleted,
-    // ★ 2026-09-05 编码徽标 API（shell-rpc / editor 外部重载后调用）
-    setFileEnc,
+    // ★ 编码徽标外部刷新入口（shell-rpc / editor 外部重载后调用）
     refreshEncForPath,
     // ★ 2026-09-20 面包屑编码徽标（恒显读占位；语义/渲染与 tab 徽标同源）
     renderEncIndicator,
     openEncPopupForPath,
-    persistOpenTabs,
-    flushOpenTabs: function () { if (_persistTimer) { clearTimeout(_persistTimer); _doPersistOpenTabs(); } },
+    // 退出落盘专用：清在飞防抖并立即落盘（实现恒走 _doPersist——历史上曾调用未定义函数打断资产落盘）
+    flushOpenTabs: function () { if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; _doPersist(); } },
   };
 })();

@@ -15,7 +15,7 @@
   const Q = globalThis.qoods;
 
   const MAX_RECENT = 50;
-  var _recentCache = []; // sync cache, lazy-loaded from only.sq3
+  var _recentCache = []; // sync cache —— OS 级 ai.sq3 主通道（旧 only.sq3 仅迁移/无 OS 桥时读）
   var _recentLoaded = false;
 
   function _navFolderFromUrl() {
@@ -35,6 +35,19 @@
 
   var RECENT_KEY = 'navigator.recent';
 
+  // ★ 2026-09-26: 路径归一（正斜杠唯一口径，与 tab/编辑器/timeline 同尺度）——同一文件混用 \\ 与 / 两种
+  //   写法曾各存一条（Ctrl+P 列表双条目 + 打开时可能开双 tab）；归一即去重，历史双格式条目顺手清掉。
+  function _normP(p) { return String(p == null ? '' : p).replace(/\\/g, '/'); }
+  function _dedupList(arr) {
+    var out = [], seen = {};
+    (arr || []).forEach(function (x) {
+      var k = _normP(x);
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push(k);
+    });
+    return out;
+  }
+
   // ★ OS 级持久化桥 (ai.sq3) — 主通道
   function _osBridge() {
     try {
@@ -50,7 +63,12 @@
     if (os) {
       try {
         var v = await os.get(RECENT_KEY);
-        if (Array.isArray(v)) { _recentCache = v; _recentLoaded = true; return; }
+        if (Array.isArray(v)) {
+          _recentCache = _dedupList(v);
+          _recentLoaded = true;
+          if (_recentCache.length !== v.length) os.set(RECENT_KEY, _recentCache).catch(function () { });   // 历史双格式条目回写收敛
+          return;
+        }
       } catch (_) { }
       // ★ 迁移：OS 无数据 → 读旧 only.sq3 → 写入 OS → 删旧 key
       var db = _onlyDb();
@@ -58,7 +76,7 @@
         try {
           var old = await db.get(RECENT_KEY);
           if (Array.isArray(old) && old.length) {
-            _recentCache = old;
+            _recentCache = _dedupList(old);
             os.set(RECENT_KEY, old).catch(function () { });
             if (db.del) { try { await db.del(RECENT_KEY); } catch (_) { } }
           }
@@ -72,7 +90,7 @@
     if (!db) { _recentLoaded = true; return; }
     try {
       var v2 = await db.get(RECENT_KEY);
-      if (Array.isArray(v2)) _recentCache = v2;
+      if (Array.isArray(v2)) _recentCache = _dedupList(v2);
     } catch (_) { }
     _recentLoaded = true;
   })();
@@ -99,8 +117,9 @@
 
   function pushRecent(p) {
     if (!p) return;
-    var list = _recentCache.filter(function (x) { return x !== p; });
-    list.unshift(p);
+    var key = _normP(p);   // ★ 归一存储（与列表内既有条目同尺度比较，双格式互去重）
+    var list = _recentCache.filter(function (x) { return _normP(x) !== key; });
+    list.unshift(key);
     if (list.length > MAX_RECENT) list.length = MAX_RECENT;
     _saveRecent(list);
   }
@@ -204,7 +223,8 @@
   function hide() { if (overlay) { overlay.style.display = 'none'; } }
 
   function open(p) {
-    if (window.qqqEditor && window.qqqEditor.open) { window.qqqEditor.open(p); }
+    // ★ 唯一打开路径 = X 区分组 tab 机器（主编辑器时代 qqqEditor.open 已随遗留子系统整体删除）
+    if (window.qqqTabs && window.qqqTabs.openFile) { window.qqqTabs.openFile(p); }
   }
 
   // global hotkey: Ctrl+P (block default print dialog)

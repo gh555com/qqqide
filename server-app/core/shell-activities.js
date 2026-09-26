@@ -70,6 +70,11 @@ function bootActivities(boot) {
     try { return window._i ? window._i(key, fb) : fb; } catch (e) { return fb; }
   }
 
+  // 轻量 HTML 转义（tip innerHTML 富文本专用；内容均为自产文本/数字）
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   // 带 {param} 插值的翻译（_i 不处理插值，需直调 i18n.t）
   function tp(key, params, fb) {
     try {
@@ -205,16 +210,31 @@ function bootActivities(boot) {
   }
 
   // ── 自定义即时 hover 文字框 ───────────────────────────────────────────────
-  function showTip(e, text) {
+  function showTip(e, text, html) {
     if (!_tipEl) {
       _tipEl = document.createElement('div');
       _tipEl.className = 'qqq-act-tip';
       document.body.appendChild(_tipEl);
     }
-    _tipEl.textContent = text;
-    _tipEl.style.left = (e.clientX - _tipEl.offsetWidth / 2) + 'px';
-    _tipEl.style.top = (e.clientY - _tipEl.offsetHeight - 8) + 'px';
-    _tipEl.style.display = '';
+    // ★ v944: 第三参 html 可选——富内容（「已用 xx」仅 xx 数字加粗）走 innerHTML；其余调用方照旧纯文本
+    //   mousemove 高频重入 → 内容签名去重，同内容零 DOM 重写
+    var sig = (html != null) ? 'h' + html : 't' + text;
+    if (_tipEl.__qqqSig !== sig) {
+      if (html != null) _tipEl.innerHTML = html; else _tipEl.textContent = text;
+      _tipEl.__qqqSig = sig;
+    }
+    // ★ 必须先显形再量尺寸：样式表 .qqq-act-tip 基础样式是 display:none，旧代码 style.display='' 清内联后回落 none
+    //   → 提示框永远不可见（「hover 没反应」实锤根因，同 v810 BYOK 弹窗 display 陷阱）；显形后 offsetWidth 才量得到真值
+    _tipEl.style.display = 'block';
+    var w = _tipEl.offsetWidth, h = _tipEl.offsetHeight;
+    var x = e.clientX - w / 2;
+    var y = e.clientY - h - 24; // v944: 上移量 10→24（在当前基础上垂直远离光标 14px，用户定案）
+    // 边缘钳制：水平不出窗；上方空间不足 → 翻到光标下方
+    var vw = window.innerWidth, vh = window.innerHeight;
+    x = Math.max(8, Math.min(vw - w - 8, x));
+    if (y < 8) y = Math.min(vh - h - 8, e.clientY + 16);
+    _tipEl.style.left = Math.round(x) + 'px';
+    _tipEl.style.top = Math.round(y) + 'px';
   }
 
   function hideTip() { if (_tipEl) _tipEl.style.display = 'none'; }
@@ -343,15 +363,15 @@ function bootActivities(boot) {
       '.qqq-act-modal2 p{margin:0 0 18px;font-size:13.5px;line-height:1.8;color:#c8c8d8;word-break:break-all;}' +
       '.qqq-act-modal2 button{padding:9px 34px;border:none;border-radius:9px;font-size:14px;font-weight:700;color:#fff;' +
       'background:linear-gradient(90deg,#059669,#0d9488);}' +
-      // 卡片选中色：默认浏览器蓝 → 淡红（2026-08-24，用户不喜欢蓝色）
-      '.qqq-act-modal ::selection,.qqq-act-modal2 ::selection{background:#d9645c;color:#fff;}' +
-      '.qqq-act-modal ::-moz-selection,.qqq-act-modal2 ::-moz-selection{background:#d9645c;color:#fff;}';
+      // 卡片选中色：统一走 shell-base.css「内嵌弹窗统一块」——传统淡橙 var(--selection-bg)/--selection-text（铁律 §4.1，禁自造色）
+      '';
     document.head.appendChild(st);
   }
 
   function closeOverlay() {
     if (_overlay) { _overlay.remove(); _overlay = null; }
     document.removeEventListener('keydown', escHandler);
+    hideTip(); // ★ 悬停中关闭弹窗时元素被移除 → mouseleave 不触发 → 防 tip 残留在屏幕上
   }
 
   function escHandler(e) { if (e.key === 'Escape') closeOverlay(); }
@@ -967,16 +987,6 @@ function bootActivities(boot) {
       : tp('act.vibe.popNext', { time: fmtHMS(st.remaining) }, '⏳ 距离下次免费 ' + fmtHMS(st.remaining));
   }
 
-  function vibeTipText() {
-    var st = vibeState(vibeUtcNow());
-    var b = vibeBudget();
-    if (st.free) {
-      var ge = b.valid ? fmt(b.rem) + '/' + fmt(b.bud) : '--';
-      return tp('act.vibe.tipFree', { time: fmtHMS(st.remaining), ge: ge }, '💎 免费中 · 免费将结束 ' + fmtHMS(st.remaining) + ' · 余额 ' + ge + ' ge');
-    }
-    return tp('act.vibe.tipNext', { time: fmtHMS(st.remaining) }, '🤍 距离下次免费 ' + fmtHMS(st.remaining));
-  }
-
   // 弹窗入口：先强制拉最新数据（含前8次窗口历史）再渲染，失败用已有缓存兜底
   function openVibePopup() {
     fetchVibeBudget(true).then(function () {
@@ -986,9 +996,29 @@ function bootActivities(boot) {
     });
   }
 
+  // 免费窗口 ID（free_YYYY-MM-DDTHH，UTC）→ 本地起止时间标签（hover 提示第一行）
+  //   v944 定案：全天 24h（周日 T00）→ 波浪号 + 两端完整「YYYY-MM-DD HH:MM ~ YYYY-MM-DD HH:MM」
+  //             每日 2h（T01/T13）→ 无波浪号旧式「YYYY-MM-DD HH:MM-HH:MM」（跨本地日 → 尾部补全日期防误读）
+  //   解析失败/旧服务端无该字段 → 返回 ''（调用方回退仅显示已用额度）
+  function vibeWinLabel(winId) {
+    var m = /^free_(\d{4})-(\d{2})-(\d{2})T(\d{2})$/.exec(String(winId || ''));
+    if (!m) return '';
+    var startMs = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], 0, 0);
+    var durH = (+m[4] === 0) ? 24 : 2; // T00 = 周日 24h 窗口；T01/T13 = 每日 2h 窗口
+    function p2(n) { return n < 10 ? '0' + n : '' + n; }
+    function hm(x) { return p2(x.getHours()) + ':' + p2(x.getMinutes()); }
+    function dt(x) { return x.getFullYear() + '-' + p2(x.getMonth() + 1) + '-' + p2(x.getDate()) + ' ' + hm(x); }
+    var s = new Date(startMs), e = new Date(startMs + durH * 3600000);
+    if (durH === 24) return dt(s) + ' ~ ' + dt(e); // 全天：波浪号 + 两端完整日期时间
+    var sameDay = s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth() && s.getDate() === e.getDate();
+    return sameDay ? dt(s) + '-' + hm(e) : dt(s) + '-' + dt(e);
+  }
+
   // 「前8次免费窗口」区域 v4：单行圆角矩形充能框 + 标题行总统计（已用合计 / 额度合计，如 31.8 / 61.3）
   //   每框 54×28：内部仅数字 = 该窗口摇出额度；背景填充百分比 = 充能（剩余比例，满=没用过）
-  //   hover → 瞬间弹出框只显示该窗口实际已用额度（data-used 供事件绑定）
+  //   hover → 瞬间弹出自定义框：第一行 = 该窗口的本地日期时段（哪一天/哪个时段），第二行 = 实际已用额度
+  //   ★ 已用 0 → 第二行整行不显示，只留时间行（v6 用户定案）；无窗口 ID 且已用 0 → 保留已用行兜底（防空白框）
+  //   （data-win = 窗口 ID，data-used = 已用额度，供事件绑定）
   function vibeHistoryHtml() {
     var d = _vibeFree;
     if (!d || !Array.isArray(d.history) || !d.history.length) return '';
@@ -1003,7 +1033,8 @@ function bootActivities(boot) {
       sumBud += bud; sumCon += con;
       var pct = Math.max(0, Math.min(100, rem / bud * 100));
       // ★ v7: 参照 ctx-btn 双层 background——item 内联 CSS 变量 --pct，上层硬切点遮罩 + 下层全宽固定渐变，颜色恒定不随填充长度压缩
-      items.push('<div class="qqq-vibe-hist-item" style="--pct:' + pct + '%" data-used="' + fmt1(con) + '">' +
+      items.push('<div class="qqq-vibe-hist-item" style="--pct:' + pct + '%" data-used="' + fmt1(con) + '"' +
+        ' data-win="' + String(h.window_id || '').replace(/[^0-9A-Za-z_-]/g, '') + '">' +
         '<span class="qqq-vibe-hist-num">' + fmt1(bud) + '</span></div>');
     });
     if (!items.length) return '';
@@ -1053,11 +1084,24 @@ function bootActivities(boot) {
 
     openOverlay(html);
 
-    // ★ 历史充能框 hover：瞬间弹出框只显示该窗口实际已用额度（只显示数字，如 6.4）
+    // ★ 历史充能框 hover —— 第一行 = 该免费窗口的本地起止时间（全天=波浪号式 / 2h=无波浪号旧式）
+    //   第二行 = 该窗口实际已用额度（v944: 正文常规字重，仅「已用 xx」的 xx 数字加粗）
+    //   ★ 已用 0 → 该行整行不渲染，只显示时间行；窗口 ID 缺失/解析失败 → 回退仅显示已用额度
     Array.prototype.forEach.call(_overlay.querySelectorAll('.qqq-vibe-hist-item'), function (el) {
       var used = el.getAttribute('data-used') || '';
-      el.addEventListener('mouseenter', function (e) { showTip(e, used); });
-      el.addEventListener('mousemove', function (e) { showTip(e, used); });
+      var lbl = vibeWinLabel(el.getAttribute('data-win'));
+      // 富文本：仅数字加粗——翻译模板里 {v} 唯一，转义后替换为 <b>xx</b>（兜底：译文缺 {v} 时末尾补数字）
+      var usedHtml = escHtml(t('act.vibe.histUsed', '已用 {v}'));
+      usedHtml = usedHtml.indexOf('{v}') >= 0
+        ? usedHtml.replace('{v}', '<b>' + escHtml(used) + '</b>')
+        : usedHtml + ' <b>' + escHtml(used) + '</b>';
+      // ★ 已用 0 → 整行不显示（仅时间行）；无时间行可显示时保留已用行兜底（防空框）
+      var usedZero = parseFloat(used) === 0;
+      var hideUsedLine = usedZero && !!lbl;
+      var tip = hideUsedLine ? lbl : (lbl ? lbl + '\n' : '') + tp('act.vibe.histUsed', { v: used }, '已用 ' + used);
+      var tipHtml = hideUsedLine ? escHtml(lbl) : (lbl ? escHtml(lbl) + '\n' : '') + usedHtml;
+      el.addEventListener('mouseenter', function (e) { showTip(e, tip, tipHtml); });
+      el.addEventListener('mousemove', function (e) { showTip(e, tip, tipHtml); });
       el.addEventListener('mouseleave', hideTip);
     });
 
@@ -1089,28 +1133,16 @@ function bootActivities(boot) {
   }
 
   // ── 事件绑定 ──────────────────────────────────────────────────────────────
-  $cool.addEventListener('mouseenter', function (e) { showTip(e, t('act.cool.tip', '清爽从2026')); });
-  $cool.addEventListener('mousemove', function (e) { showTip(e, t('act.cool.tip', '清爽从2026')); });
-  $cool.addEventListener('mouseleave', hideTip);
   $cool.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openCoolPopup(); });
 
-  $ge50.addEventListener('mouseenter', function (e) { showTip(e, t('act.ge50.tip', '总消费满 50 ge · 选一笔赞助领双倍 ge')); });
-  $ge50.addEventListener('mousemove', function (e) { showTip(e, t('act.ge50.tip', '总消费满 50 ge · 选一笔赞助领双倍 ge')); });
-  $ge50.addEventListener('mouseleave', hideTip);
   $ge50.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openGe50Popup(); });
 
   // 美丽滴眼睛
   if ($eye) {
-    $eye.addEventListener('mouseenter', function (e) { showTip(e, t('act.eye.tip', '美丽滴眼睛 · qqqide 真实用户福利')); });
-    $eye.addEventListener('mousemove', function (e) { showTip(e, t('act.eye.tip', '美丽滴眼睛 · qqqide 真实用户福利')); });
-    $eye.addEventListener('mouseleave', hideTip);
     $eye.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openEyePopup(); });
   }
 
   if ($vibe) {
-    $vibe.addEventListener('mouseenter', function (e) { showTip(e, vibeTipText()); });
-    $vibe.addEventListener('mousemove', function (e) { showTip(e, vibeTipText()); });
-    $vibe.addEventListener('mouseleave', hideTip);
     $vibe.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openVibePopup(); });
     fetchVibeBudget();
     setInterval(fetchVibeBudget, 30000);

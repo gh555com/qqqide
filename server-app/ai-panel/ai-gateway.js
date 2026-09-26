@@ -428,6 +428,8 @@
             if (opts.images && Array.isArray(opts.images) && opts.images.length > 0) {
                 reqBody.images = opts.images;
             }
+            // ★ 楼层计费聚合 key（账本 ref）
+            if (opts.floorId) reqBody.floor_id = opts.floorId;
             var resp = await _postJsonWithFailover(_URLS.imageGenPrimary, _URLS.imageGenFallback, reqBody, token);
             if (!resp) return null;
             if (!resp.ok) {
@@ -523,7 +525,7 @@
                 var resp = await _fetchWithFailover(_URLS.searchPrimary, _URLS.searchFallback, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify({ query: query, maxResults: opts.maxResults || 20 }),
+                    body: JSON.stringify({ query: query, maxResults: opts.maxResults || 20, floor_id: opts.floorId || '' }),
                 }, 30000);
 
                 if (!resp || !resp.ok) {

@@ -100,7 +100,7 @@
 		await _copyPathsToCurrentDir(filePaths);
 	}
 
-	// ★ 2026-08-24: q3 getUniquePath 语义——目标已存在（含同目录粘贴 src===dest）→ 追加 " (n)" 改名。
+	// ★ 2026-08-24: q3 getUniquePath 语义——目标已存在（含同目录粘贴 src===dest）→ 追加 "_n" 改名（2026-09-26 注释校正：实现即 _n，注释文字曾遗留旧式）。
 	//   防覆盖同名文件 + 防同目录粘贴 createReadStream+createWriteStream 同一路径截断源文件。
 	async function _uniqueDestPath(dest) {
 		try {

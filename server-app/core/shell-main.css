@@ -738,13 +738,14 @@
   z-index: 99999;
   padding: 5px 12px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400; /* v944: 正文常规字重（不再整体加粗）——仅「已用 xx」的数字走 <b> 加粗 */
   color: #fff;
   background: rgba(0, 0, 0, .85);
   border: 1px solid #555;
   border-radius: 4px;
   pointer-events: none;
-  white-space: nowrap;
+  /* pre：保留 \n 换行（vibe 历史框双行提示），且不自动折行 */
+  white-space: pre;
   display: none;
   forced-color-adjust: none;
 }
