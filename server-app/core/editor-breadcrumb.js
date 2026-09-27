@@ -3,8 +3,10 @@
 // ============================================================================
 // editor-breadcrumb.js — 极简面包屑（独立豆腐块）+ 悬浮按钮行
 //
-// 1. 顶端面包屑：独立 DOM 块，占真实高度，文字可选中/复制，不可编辑
-//    自动换行撑高，下方一切（Monaco / Ctrl+F / 小地图）被其高度挤开
+// 1. 顶端面包屑：独立 DOM 块（2026-09-27——真·单列内联流：flex 三列整体废除，三个部件同处一条文字流）
+//    串行编队：路径文本 → 编码按钮 → 复制按钮 → Roam 按钮（2026-09-27 回中间位 + 末尾 Roam 定位）；路径吃满整行宽度折行（换行次数最少 = 上下空间最省）
+//    路径恒完整显示（绝不省略号——放不下时自然折行）
+//    文字可选中/复制，不可编辑；下方一切（Monaco / Ctrl+F / 小地图）被其高度挤开
 // 2. 底端悬浮按钮行（Monaco 容器内 absolute 右下角）：md 预览 👁（仅 Markdown 文件）
 //    / undo ↶ / redo ↷ / minimap toggle
 //
@@ -61,14 +63,15 @@
     var bar = document.createElement('div');
     bar.setAttribute('data-qqq-editor-breadcrumb', '1');
 
-    // 路径文本（flex 主列：弹性吸收剩余宽度，可选中/复制，自动换行）
+    // 路径文本（2026-09-27 行序 = 路径 → 编码按钮 → 复制（编码按钮回中间位）；单列内联流里吃满整行宽度，可选中/复制；恒完整显示——超长自然折行，绝不省略号/截断）
     var pathSpan = document.createElement('span');
     pathSpan.className = 'qqq-breadcrumb-path';
     pathSpan.textContent = filePath || '';
     bar.appendChild(pathSpan);
 
-    // ★ 编码徽标（2026-09-20）：恒定读占位——默认态静显（UTF-8 低调）/ 非默认态标准 / 固定态金色+*
+    // ★ 编码徽标（恒醒态，紧随路径文本）：直接呈现 hover 外观（全不透明+可见边框）/ 非默认态标准 / 固定态金色+*
     //   点击 → 编码方案弹层（tab 右键行已删——本徽标 = 唯一恒定入口）；语义/渲染唯一源 = tab-manager 编码机器
+    //   恒显保障（2026-09-27）：证据未到显示默认态占位；renderEncIndicator 创建即主动拉一次证据 → 到达即校正真值
     var encChip = document.createElement('span');
     encChip.className = 'qqq-enc-chip qqq-enc-auto';
     encChip.setAttribute('data-qqq-breadcrumb-enc', '1');
@@ -85,12 +88,12 @@
     }
     bar.appendChild(encChip);
 
-    // 初始渲染：证据已在缓存 → 立即显形；否则等 setFileEnc → _renderEncChipsFor 全量刷新覆盖
+    // 初始渲染：证据已在缓存 → 立即显形；否则默认态占位（恒显不空窗）；内部主动拉证据，到达即校正
     try {
       if (filePath && window.qqqTabs && window.qqqTabs.renderEncIndicator) window.qqqTabs.renderEncIndicator(encChip, filePath);
     } catch (_) { }
 
-    // 悬浮复制按钮（hover 面包屑时出现；visibility 占位零布局抖动）
+    // 复制按钮 — 恒显内联（2026-09-27：外观 = 旧 hover 态；不再等光标 hover、不再占右侧独立列——紧随编码按钮）
     var copyBtn = document.createElement('button');
     copyBtn.className = 'qqq-breadcrumb-copy-btn';
     copyBtn.textContent = '📋';
@@ -117,6 +120,31 @@
       }
     });
     bar.appendChild(copyBtn);
+
+    // Roam 按钮 — 恒显内联（2026-09-27）：点击 = 在 Roam 中定位该文件（定位机器唯一入口 = shell-overlay __qqq_roamRevealPath——
+    //   与 codelens 🗀qqq 同源零第二实现：命中 revealFile 选中+滚动（Roam 未开则召回/加开 tab）/ 缺失自动爬升最近祖先 + qoast 裁决）
+    var roamBtn = document.createElement('button');
+    roamBtn.className = 'qqq-breadcrumb-roam-btn';
+    roamBtn.textContent = 'Roam';
+    roamBtn.title = _i('editor.roamLocate', '在 Roam 中定位该文件');
+    roamBtn.setAttribute('data-no-cd', '');
+    roamBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var p = filePath || '';
+      if (!p) return;
+      try {
+        if (typeof window.__qqq_roamRevealPath === 'function') { window.__qqq_roamRevealPath(p); return; }
+      } catch (_) { }
+      // 兜底（shell-overlay 未加载）：系统资源管理器定位（与 codelens 同款兜底链）
+      try {
+        var b = window.qqqideBridge;
+        if (b && b.shell && b.shell.showItemInFolder) { b.shell.showItemInFolder(p); return; }
+        var dir = p.replace(/[\\/][^\\/]*$/, '');
+        if (b && b.shell && b.shell.openPath && dir && dir !== p) { b.shell.openPath(dir); }
+      } catch (_) { }
+    });
+    bar.appendChild(roamBtn);
 
     // 修复：body 级 user-select:none 导致 Chromium 不触发 copy 事件。
     // ★ 根因：bar tabindex=-1 不会被点击聚焦，keydown 永远到不了 bar。

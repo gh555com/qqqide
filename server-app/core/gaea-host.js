@@ -110,9 +110,9 @@
   // ★ 菜单行2 仅 search / git 按钮（均无 A 区面板，点不切换 A 区）
   function renderTabBar() {
     if (!_tabBarEl) return;
-    // ★ 2026-08-18: 重建前清理 kmd 按钮残留 tooltip（hover 中切换 goods 会销毁按钮，tip 不残留）
-    var _ktipOld = document.querySelector('.qqq-roam-tip[data-owner="kmd-btn"]');
-    if (_ktipOld) _ktipOld.remove();
+    // ★ 2026-08-18 / 2026-09-27: 重建前清理 kmd·qmd 按钮残留 tooltip（hover 中切换 goods 会销毁按钮，tip 不残留）
+    var _ktipOlds = document.querySelectorAll('.qqq-roam-tip[data-owner="kmd-btn"], .qqq-roam-tip[data-owner="qmd-btn"]');
+    for (var _to = 0; _to < _ktipOlds.length; _to++) _ktipOlds[_to].remove();
     _tabBarEl.innerHTML = '';
     var toolbarIds = ['search', 'git', 'kmd', 'qmd', 'dsecret']; // qmd 2026-09-08 ConPTY 真终端（Win10 1809+）
     for (var ti = 0; ti < toolbarIds.length; ti++) {
@@ -133,29 +133,35 @@
       (function (gid) {
         btn.addEventListener('click', function () { open(gid); });
       })(id);
-      // ★ 2026-08-18: kmd 按钮 hover 召回提示（同 Roam 标签 .qqq-roam-tip 大字号风格）
-      if (id === 'kmd') {
-        btn.removeAttribute('title'); // 原生延迟 tooltip 会与自定义 tip 叠加，去掉
-        var _ktip = null;
-        function _showKmdTip() {
-          if (!_ktip) {
-            _ktip = document.createElement('div');
-            _ktip.className = 'qqq-roam-tip';
-            _ktip.dataset.owner = 'kmd-btn';
-            _ktip.textContent = (window._i ? window._i('shell.goods.kmdXTip', '按 x 键打开一个新 kmd') : '按 x 键打开一个新 kmd');
-            document.body.appendChild(_ktip);
+      // ★ 2026-08-18 / 2026-09-27: kmd·qmd 按钮 hover 召回提示（x 键双语义：短按→kmd / 长按→qmd）
+      //   长文分多行（.qqq-tip-multi）+ 更大字号；同 Roam 标签 .qqq-roam-tip 体系
+      if (id === 'kmd' || id === 'qmd') {
+        (function (gid, btnEl, tipKey, tipFb) {
+          btnEl.removeAttribute('title'); // 原生延迟 tooltip 会与自定义 tip 叠加，去掉
+          var tip = null;
+          function showTip() {
+            if (!tip) {
+              tip = document.createElement('div');
+              tip.className = 'qqq-roam-tip qqq-tip-multi';
+              tip.dataset.owner = gid + '-btn';
+              tip.textContent = window._i ? window._i(tipKey, tipFb) : tipFb;
+              document.body.appendChild(tip);
+            }
+            var r = btnEl.getBoundingClientRect();
+            tip.style.display = 'block';
+            tip.style.left = Math.max(4, Math.min(r.left, window.innerWidth - tip.offsetWidth - 4)) + 'px';
+            var below = r.bottom + 8;
+            tip.style.top = (below + tip.offsetHeight > window.innerHeight - 4 && r.top - tip.offsetHeight - 8 > 0)
+              ? (r.top - tip.offsetHeight - 8) + 'px'
+              : below + 'px';
           }
-          var r = btn.getBoundingClientRect();
-          _ktip.style.display = 'block';
-          _ktip.style.left = Math.max(4, Math.min(r.left, window.innerWidth - _ktip.offsetWidth - 4)) + 'px';
-          var below = r.bottom + 8;
-          _ktip.style.top = (below + _ktip.offsetHeight > window.innerHeight - 4 && r.top - _ktip.offsetHeight - 8 > 0)
-            ? (r.top - _ktip.offsetHeight - 8) + 'px'
-            : below + 'px';
-        }
-        function _hideKmdTip() { if (_ktip) _ktip.style.display = 'none'; }
-        btn.addEventListener('mouseenter', _showKmdTip);
-        btn.addEventListener('mouseleave', _hideKmdTip);
+          function hideTip() { if (tip) tip.style.display = 'none'; }
+          btnEl.addEventListener('mouseenter', showTip);
+          btnEl.addEventListener('mouseleave', hideTip);
+        })(id, btn, id === 'kmd' ? 'shell.goods.kmdXTip' : 'shell.goods.qmdXTip',
+          id === 'kmd'
+            ? '短按 x 键打开一个新 kmd，按之前可选中 Roam 文件或文件夹，以带上该文件或文件夹路径。'
+            : '长按 x 键打开一个新 qmd，按之前可选中 Roam 文件或文件夹，以带上该文件或文件夹路径。');
       }
       _tabBarEl.appendChild(btn);
     }

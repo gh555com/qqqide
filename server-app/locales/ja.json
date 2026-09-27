@@ -288,12 +288,6 @@
             "cannotStart": "ダウンロードを開始できません：",
             "cannotStartBare": "ダウンロードを開始できません"
         },
-        "prog": {
-            "copyingN": "{n} 個のファイルをコピー中…",
-            "done": "完了",
-            "cancelled": "キャンセル済み",
-            "fail": "失敗"
-        },
         "exit": {
             "confirm": "終了してもよろしいですか？",
             "ok": "終了を確認"

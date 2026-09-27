@@ -7,9 +7,11 @@
 //
 // ffmpeg resolution order:
 //   1. process.env.QQQ_FFMPEG  (explicit override)
-//   2. $QQQIDE_QDIR/components/ffmpeg/ffmpeg(.exe)
-//   3. <appRoot>/engines/ffmpeg/ffmpeg(.exe)
-//   4. system PATH (qz.which('ffmpeg'))
+//   2. getComponentBin(appRoot, 'ffmpeg')  — manifest 中央机器，双布局自动解析
+//      (dev {root}/engines ｜ 绿色包 {root}/resources/app/engines + 平台子目录)
+//   3. $QQQIDE_QDIR/components/ffmpeg/ffmpeg(.exe)
+//   4. 手拼双布局兜底（dev + resources/app 两套 engines 根）
+//   5. system PATH (qz.which('ffmpeg'))
 //
 // ffprobe is resolved analogously; falls back to `ffmpeg -i` parsing if absent.
 //
@@ -23,6 +25,7 @@ import { QzSpawn } from './qz-spawn';
 import { CacheStore } from './cache-store';
 import { HashService } from './hash-service';
 import { vigBump } from './vig';
+import { getComponentBin } from './component-checker';
 
 export interface ThumbOpts {
     src: string;            // absolute source path
@@ -252,6 +255,55 @@ export class MediaService {
         try { if (this._brokenTimer && this._brokenTimer.unref) { this._brokenTimer.unref(); } } catch { /* ignore */ }
     }
 
+    // ── 状态栏 wq 卡片：缓存占用统计（2026-09-27）────────────────────────────
+    //   媒体缓存 = 命中索引（预览/文本胶片 entries）size 累加，上限 CACHE_MAX_SIZE 40MB；
+    //   转码缓存 = play 目录扫描（排除 .part/.prog 中间物），上限 PLAY_CACHE_MAX 2GB。
+    //   纯只读轻量（卡片打开时调用，零生成/零淘汰副作用）。
+    async cacheStats(): Promise<{
+        ok: boolean;
+        mediaBytes: number; mediaCount: number; mediaMax: number; mediaTarget: number;
+        hit: number; miss: number; broken: number;
+        playBytes: number; playCount: number; playMax: number;
+        error?: string;
+    }> {
+        try {
+            await this._loadIdx();
+            const idx = this._idx!;
+            let mediaBytes = 0, mediaCount = 0;
+            for (const e of Object.values(idx.entries)) {
+                mediaBytes += Number(e && e.size) || 0;
+                mediaCount++;
+            }
+            await this._loadBroken();
+            let playBytes = 0, playCount = 0;
+            try {
+                const d = this._playDir();
+                for (const name of fs.readdirSync(d)) {
+                    if (/\.part\./.test(name) || /\.prog$/.test(name)) { continue; }
+                    try {
+                        const st = fs.statSync(path.join(d, name));
+                        if (st.isFile()) { playBytes += st.size; playCount++; }
+                    } catch { /* ignore */ }
+                }
+            } catch { /* ignore */ }
+            return {
+                ok: true,
+                mediaBytes, mediaCount, mediaMax: MediaService.CACHE_MAX_SIZE, mediaTarget: MediaService.CACHE_TARGET_SIZE,
+                hit: idx.stats.hit || 0, miss: idx.stats.miss || 0,
+                broken: this._broken ? this._broken.size : 0,
+                playBytes, playCount, playMax: MediaService.PLAY_CACHE_MAX,
+            };
+        } catch (e: any) {
+            return {
+                ok: false,
+                mediaBytes: 0, mediaCount: 0, mediaMax: MediaService.CACHE_MAX_SIZE, mediaTarget: MediaService.CACHE_TARGET_SIZE,
+                hit: 0, miss: 0, broken: 0,
+                playBytes: 0, playCount: 0, playMax: MediaService.PLAY_CACHE_MAX,
+                error: e?.message || 'cachestats_exception',
+            };
+        }
+    }
+
     /** 缓存命中收尾：hit 统计 + atime + dur 解析（索引优先，免读盘） */
     private async _onHit(cacheKey: string, dst: string): Promise<{ dur: number }> {
         await this._loadIdx();
@@ -284,19 +336,29 @@ export class MediaService {
         const envKey = name === 'ffmpeg' ? 'QQQ_FFMPEG' : 'QQQ_FFPROBE';
         const overrideEnv = process.env[envKey];
         if (overrideEnv && fs.existsSync(overrideEnv)) { return overrideEnv; }
+        // ★ 中央机器（component-checker，manifest 驱动）——自动解析双布局：
+        //   dev {root}/engines ｜ 绿色包 {root}/resources/app/engines（含平台子目录）。
+        //   旧实现手拼 {appRoot}/engines/... → 绿色包恒 null → 媒体帧/文本胶片全降级图标帧（2026-09-27 事故）。
+        try {
+            const bin = getComponentBin(this.appRoot, name);
+            if (bin) { return bin; }
+        } catch { /* manifest 不可读 → 走手拼兜底 */ }
         const qdir = process.env.QQQIDE_QDIR;
         const tries: string[] = [];
         if (qdir) { tries.push(path.join(qdir, 'components', name, name + ext)); }
-        // Platform-specific subdirectory: engines/{name}/{platform}/{name}.exe
-        // ffprobe split from ffmpeg (rank1 bg_download) — resides in engines/ffprobe/
-        tries.push(path.join(this.appRoot, 'engines', name, this._platformKey(), name + ext));
-        // Legacy: ffprobe used to live in engines/ffmpeg/ (pre-split)
-        if (name === 'ffprobe') {
-            tries.push(path.join(this.appRoot, 'engines', 'ffmpeg', this._platformKey(), name + ext));
-            tries.push(path.join(this.appRoot, 'engines', 'ffmpeg', name + ext));
+        // 双布局手拼兜底（镜像 qz-spawn resolveGhrunBin）: dev 与绿色包 resources/app 两套 engines 根
+        const roots = [this.appRoot, path.join(this.appRoot, 'resources', 'app')];
+        for (const root of roots) {
+            // Platform-specific subdirectory: engines/{name}/{platform}/{name}.exe
+            tries.push(path.join(root, 'engines', name, this._platformKey(), name + ext));
+            // Legacy: ffprobe used to live in engines/ffmpeg/ (pre-split)
+            if (name === 'ffprobe') {
+                tries.push(path.join(root, 'engines', 'ffmpeg', this._platformKey(), name + ext));
+                tries.push(path.join(root, 'engines', 'ffmpeg', name + ext));
+            }
+            // Flat layout (legacy)
+            tries.push(path.join(root, 'engines', name + ext));
         }
-        // Flat layout (legacy)
-        tries.push(path.join(this.appRoot, 'engines', name + ext));
         for (const p of tries) {
             try { if (fs.existsSync(p)) { return p; } } catch { /* skip */ }
         }
@@ -304,9 +366,11 @@ export class MediaService {
     }
 
     private ensureResolved(): void {
-        if (this._resolved) { return; }
-        this._ffmpegPath = this.resolveBin('ffmpeg');
-        this._ffprobePath = this.resolveBin('ffprobe');
+        // 正结果一次锁定；负结果下次调用重试——ffprobe 是 rank1 后台组件，
+        //   首启未装时若不重试将整会话恒 null（bg_download 完成后无法自愈）。
+        if (this._resolved && this._ffmpegPath && this._ffprobePath) { return; }
+        if (!this._ffmpegPath) { this._ffmpegPath = this.resolveBin('ffmpeg'); }
+        if (!this._ffprobePath) { this._ffprobePath = this.resolveBin('ffprobe'); }
         this._resolved = true;
     }
 

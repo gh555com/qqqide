@@ -520,6 +520,8 @@
         range: new _monaco.Range(line, col, line, col + len),
         text: token,
       }]);
+      // ★ 2026-09-27 撤回保障：程序化写入必须可 Ctrl+Z（变更事件可能被抑制窗口吞掉 → 快照丢失）
+      try { if (window.qqqCharUndo && window.qqqCharUndo.mark) window.qqqCharUndo.mark(ed); } catch (_) { }
       try {
         window.qqqViewportMachine.registerPastedAnchor(ed, line, col, {
           path: newAbs, fileName: newName, sha256: ent.sha256, rawLen: token.length,

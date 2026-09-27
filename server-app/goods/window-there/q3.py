@@ -5,6 +5,7 @@
 # (R23 修复): 设置 setQuitOnLastWindowClosed(False) 防止自动退出
 # (R22 修复): 导入 signal 和 QTimer 以修复 Ctrl+C
 # (R21 修复): 使用 pyqtSignal 替换 QTimer.singleShot 来实现线程安全
+# (R28 改档): Windows 触发源改 GetAsyncKeyState 轮询（pynput WH_KEYBOARD_LL 钩子在部分 Win10/11 会随前台状态静默失聪，桌面焦点下 3W/3X 全灭即此病）；mac/Linux 保留 pynput
 
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
@@ -117,8 +118,49 @@ def on_key_release(key):
         else:
             print(f"R24 pynput 钩子错误: {e}")
 
+# ★ (R28) Windows 触发源: GetAsyncKeyState 轮询 —— WH_KEYBOARD_LL 钩子在部分 Win10/11
+#   机器上会随前台状态静默失聪（回调不再被调用，无错误无通知，按键却正常送达前台程序；
+#   桌面焦点下 3W/3X/3Shift 全灭即此病）。轮询物理键态与焦点无关，Windows 弃钩子；
+#   mac/Linux 保留 pynput 监听（其事件 tap 机制不受此影响）。
+_POLL_VK_KINDS = {0x57: 'w', 0x58: 'x', 0xA0: 'shift_l', 0xA1: 'shift_r'}
+_POLL_TICK_S = 0.02
+
+
+def _poll_key_loop():
+    import ctypes
+    user32 = ctypes.windll.user32
+    prev = {}
+    err_n = 0
+    while True:
+        try:
+            for vk, kind in _POLL_VK_KINDS.items():
+                down = bool(user32.GetAsyncKeyState(vk) & 0x8000)
+                if down != prev.get(vk, False):
+                    prev[vk] = down
+                    if not down:  # 本程序按释放计数（与 pynput on_release 语义一致）
+                        if kind == 'w':
+                            on_key_release(keyboard.KeyCode.from_char('w'))
+                        elif kind == 'x':
+                            on_key_release(keyboard.KeyCode.from_char('x'))
+                        elif kind == 'shift_l':
+                            on_key_release(keyboard.Key.shift_l)
+                        else:
+                            on_key_release(keyboard.Key.shift_r)
+        except Exception as e:
+            err_n += 1
+            if err_n <= 3:  # ★ 前 3 次落日志（键态读取若持续失败，现场要能看出来）
+                print(f"R28: 按键轮询错误 #{err_n}: {e}")
+        time.sleep(_POLL_TICK_S)
+
+
 def start_key_listener():
     global g_listener_thread
+    if sys.platform == 'win32':
+        print("R28: Windows 使用 GetAsyncKeyState 轮询触发源（规避 WH_KEYBOARD_LL 静默失聪）...")
+        g_listener_thread = threading.Thread(target=_poll_key_loop, daemon=True)
+        g_listener_thread.start()
+        print("R28: 按键轮询器已在后台线程启动。")
+        return
     print("R24: 正在启动 pynput 键盘监听器...")
 
     def listener_loop():

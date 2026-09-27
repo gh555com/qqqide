@@ -43,6 +43,7 @@ import { registerSearchIpc } from './ipc-search';
 import { registerEditIpc } from './ipc-edit';
 import { registerMiscIpc } from './ipc-misc';
 import { registerMediaIpc } from './ipc-media';
+import { registerPlayerIpc } from './ipc-player';
 import { registerExportIpc } from './ipc-export';
 import { registerTimelineIpc } from './ipc-timeline';
 import { registerGitDiffIpc } from './ipc-git-diff';
@@ -82,7 +83,6 @@ import { registerSecureIpc } from './ipc-secure';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
 import { QzSpawn, registerQzSpawnIpc } from './qz-spawn';
-// import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { CacheStore } from './cache-store';
 import { HashService } from './hash-service';
 import { MediaService } from './media-service';
@@ -216,8 +216,6 @@ const audioEngine = new AudioEngine(portable.root);
 app.on('before-quit', () => { try { audioEngine.stop(); } catch { /* ignore */ } try { maybeAutoApplyOnQuit(); } catch { /* ignore */ } });
 const monacoHost = new MonacoHost();
 const qzSpawn = new QzSpawn(portable.root);
-// const lspBridge = new LspBridge(portable.root); // LSP OFF — 2026-06-23
-const lspBridge: any = null;
 const cacheStore = new CacheStore(portable.cache);
 const hashService = new HashService(cacheStore);
 const mediaService = new MediaService(portable.root, qzSpawn, cacheStore, hashService);
@@ -298,8 +296,8 @@ function registerAllIpc(): void {
     );
     registerMiscIpc(
         portable.root, portable.cache, APP_VERSION, isDevFlag,
-        lspBridge, downloadService, stateStore,
-        () => mainWindow, bootConfig,  // lspBridge=null (LSP OFF)
+        downloadService, stateStore,
+        () => mainWindow, bootConfig,
         hashService, cacheStore
     );
     registerTimelineIpc(portable.root, bootConfig);
@@ -323,6 +321,7 @@ function registerAllIpc(): void {
     registerQmdIpc(portable.root);
     registerGaeaProcessIpc();
     registerMediaIpc(mediaService);
+    registerPlayerIpc(portable.root, bootConfig.url, APP_VERSION);   // 独立悬浮播放器窗（2026-09-26 q319 v4）
     registerExportIpc(exportService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
@@ -673,7 +672,7 @@ app.whenReady().then(async () => {
     // Create main windowdow
     mainWindow = createWindow(
         portable.root, portable.cache, APP_VERSION,
-        lspBridge, downloadService, stateStore
+        downloadService, stateStore
     );
 
     // ★ Gaea process 状态变更 → 推送给渲染层（事件驱动，非轮询）
@@ -805,7 +804,7 @@ app.whenReady().then(async () => {
                     // 已在其他窗口打开 → 跳过
                     if (_projectWindowMap.has(normalized)) continue;
 
-                    const newWin = createWindow(portable.root, portable.cache, APP_VERSION, lspBridge, downloadService, stateStore);
+                    const newWin = createWindow(portable.root, portable.cache, APP_VERSION, downloadService, stateStore);
                     // ★ 项目锁仲裁：被其他实例占用 → 不还原该窗口（destroy 未加载窗口，零副作用）
                     const claimRes = claimProject(newWin.id, normalized);
                     if (!claimRes.ok) {
@@ -909,7 +908,7 @@ app.whenReady().then(async () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             mainWindow = createWindow(
                 portable.root, portable.cache, APP_VERSION,
-                lspBridge, downloadService, stateStore
+                downloadService, stateStore
             );
             bootSequence(
                 mainWindow, bootConfig, portable.root, portable.cache,

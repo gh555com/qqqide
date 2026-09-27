@@ -5,7 +5,7 @@
 常驻子进程。stdin 读 JSON 行命令，stdout 返回 JSON 行响应。
 职责:
   1. DevTools 窗口改名 (Win: ctypes / Mac: osascript / Linux: wmctrl)
-  2. ★ 窗口编队热键 (Win/mac, pynput 全局钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+  2. ★ 窗口编队热键 (Win: GetAsyncKeyState 轮询 / mac: pynput 钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
      Truth: %LOCALAPPDATA%/qqqide/squads.json (Electron 主进程唯一写入者, 本进程只读)
      → 召回结果以 {type:"event", event:"summon"} 主动上报主进程 (播放音效反馈)
 日志: 写入 {appRoot}/Data/Logs/_py_broker.log
@@ -438,7 +438,7 @@ def _linux_rename_devtools(new_title: str) -> dict:
 
 
 # =============================================================================
-#  ★ 窗口编队热键 (pynput) — Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+#  ★ 窗口编队热键 — Space + {1,2,q,w,a,s,z,x} 召回编队窗口（Windows: GetAsyncKeyState 轮询 / mac: pynput 钩子）
 #   Truth: %LOCALAPPDATA%/qqqide/squads.json (Electron 主进程唯一写入者, 本进程只读)
 # =============================================================================
 _SQUAD_ORDER = ["1", "2", "q", "w", "a", "s", "z", "x"]
@@ -612,10 +612,12 @@ def _squad_summon(slot):
     """召回 slot 对应编队窗口 → {ok, folder, already}"""
     reg = _load_squad_registry()
     if not reg:
+        _log(f"[Squad] summon {slot} miss (no registry)")
         return {"ok": False}
     slots = reg.get("slots") or {}
     entry = slots.get(slot)
     if not entry:
+        _log(f"[Squad] summon {slot} miss (slot empty)")
         return {"ok": False}
     if OS == "Darwin":
         return _mac_squad_summon(slot, entry)
@@ -638,19 +640,66 @@ def _squad_summon(slot):
     import ctypes
     user32 = ctypes.windll.user32
     if user32.GetForegroundWindow() == hwnd:
+        _log(f"[Squad] summon {slot} already-foreground")
         return {"ok": False, "folder": folder, "already": True}
     _activate_window(hwnd)
     _log(f"[Squad] summon {slot} hwnd={hwnd} folder={folder}")
     return {"ok": True, "folder": folder, "title": title}
 
 
-def _hotkey_on_press(key):
-    """全局按键回调 — 归一化 + TTL 防幽灵触发 + 防抖"""
+# ★ Windows 触发源改档（2026-09-26）：WH_KEYBOARD_LL 钩子在部分 Win10/11 机器上会随
+#   前台状态静默失聪——回调不再被调用，无错误、无通知、GetLastError 无话可说，按键却正常
+#   送达前台程序（社区多起实证；该失聪按前台状态确定性复现）。桌面焦点下 Space+编队召回
+#   全灭即此病。根治 = Windows 弃钩子，改用 GetAsyncKeyState 物理键态轮询（与焦点无关）；
+#   mac/Linux 保留 pynput。轮询线程只跑状态机，召回工作移交独立线程（绝不阻塞检测节拍）。
+_POLL_VK_MAP = {
+    0x20: "special:space",
+    0x31: "char:1", 0x32: "char:2", 0x51: "char:q", 0x57: "char:w",
+    0x41: "char:a", 0x53: "char:s", 0x5A: "char:z", 0x58: "char:x",
+}
+_POLL_TICK_S = 0.02
+
+
+def _poll_hotkey_loop():
+    """Windows: GetAsyncKeyState 轮询状态机 — 键态跃迁合成为 press/release 事件"""
+    import ctypes
+    user32 = ctypes.windll.user32
+    prev = {}
+    err_n = 0
+    while True:
+        try:
+            for vk, norm in _POLL_VK_MAP.items():
+                down = bool(user32.GetAsyncKeyState(vk) & 0x8000)
+                if down != prev.get(vk, False):
+                    prev[vk] = down
+                    if down:
+                        _hotkey_note_press(norm)
+                    else:
+                        _hotkey_note_release(norm)
+        except Exception:
+            err_n += 1
+            if err_n <= 3:  # ★ 前 3 次落日志（键态读取若持续失败，现场要能从日志看出来）
+                _log("[Squad] poller error #%d: %s" % (err_n, traceback.format_exc().splitlines()[-1]))
+        time.sleep(_POLL_TICK_S)
+
+
+def _fire_squad_summon(ch):
+    """独立线程执行召回 + 事件上报（文件读/窗口激活/写 stdout 一律不出现在检测线程）"""
+    _log(f"[Squad] hotkey fired: space+{ch}")  # ★ 现场取证: 触发已到达（与召回结果行分离）
+    r = _squad_summon(ch)
+    try:
+        sys.stdout.write(json.dumps({"type": "event", "event": "summon", "squad": ch, "ok": r.get("ok", False), "folder": r.get("folder", "")}, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
+def _hotkey_note_press(norm):
+    """按下入账 + Space+编队键触发（pynput / 轮询双源共用同一状态机）"""
     global _HOTKEY_PRESSED_KEYS, _HOTKEY_LAST_TRIGGER
-    if not _HOTKEY_ENABLED or not _HAS_PYNPUT:
+    if not _HOTKEY_ENABLED:
         return
     now = time.time() * 1000
-    norm = _normalize_key(key)
     with _HOTKEY_LOCK:
         _HOTKEY_PRESSED_KEYS[norm] = now
         stale_cutoff = now - _HOTKEY_KEY_TTL_MS
@@ -670,21 +719,26 @@ def _hotkey_on_press(key):
             _HOTKEY_LAST_TRIGGER = now
             _HOTKEY_PRESSED_KEYS.pop("special:space", None)
             _HOTKEY_PRESSED_KEYS.pop("char:" + ch, None)
-            r = _squad_summon(ch)
-            try:
-                sys.stdout.write(json.dumps({"type": "event", "event": "summon", "squad": ch, "ok": r.get("ok", False), "folder": r.get("folder", "")}, ensure_ascii=False) + "\n")
-                sys.stdout.flush()
-            except Exception:
-                pass
+            threading.Thread(target=_fire_squad_summon, args=(ch,), daemon=True).start()
             return
+
+
+def _hotkey_note_release(norm):
+    with _HOTKEY_LOCK:
+        _HOTKEY_PRESSED_KEYS.pop(norm, None)
+
+
+def _hotkey_on_press(key):
+    """pynput 回调（mac/Linux）"""
+    if not _HAS_PYNPUT:
+        return
+    _hotkey_note_press(_normalize_key(key))
 
 
 def _hotkey_on_release(key):
     if not _HAS_PYNPUT:
         return
-    norm = _normalize_key(key)
-    with _HOTKEY_LOCK:
-        _HOTKEY_PRESSED_KEYS.pop(norm, None)
+    _hotkey_note_release(_normalize_key(key))
 
 
 # ★ 跨进程互斥（2026-08-10 F15 缺口1）: 热键 = OS 直达的全局监听，dev + 绿色包同跑时
@@ -742,7 +796,7 @@ def _hotkey_guard_loop():
     global _HOTKEY_MUTEX_ACQUIRED
     while True:
         time.sleep(5)
-        if _HOTKEY_MUTEX_ACQUIRED or not _HAS_PYNPUT:
+        if _HOTKEY_MUTEX_ACQUIRED or (OS != "Windows" and not _HAS_PYNPUT):
             continue
         if _try_acquire_hotkey_mutex():
             _log("[Squad] mutex acquired after holder exit, taking over listener")
@@ -754,6 +808,14 @@ def _hotkey_guard_loop():
 
 def _start_hotkey_listener():
     global _HOTKEY_LISTENER, _HOTKEY_LISTENING
+    if OS == "Windows":
+        # ★ Windows 唯一触发源 = GetAsyncKeyState 轮询（钩子静默失聪弃用，见上方改档注释）
+        if _HOTKEY_LISTENING:
+            return {"status": "already_running"}
+        threading.Thread(target=_poll_hotkey_loop, daemon=True).start()
+        _HOTKEY_LISTENING = True
+        _log("[Squad] hotkey poller started (GetAsyncKeyState %dms)" % int(_POLL_TICK_S * 1000))
+        return {"status": "started"}
     if not _HAS_PYNPUT:
         _log("[Squad] pynput not available, hotkeys disabled")
         return {"status": "error", "error": "pynput not installed"}

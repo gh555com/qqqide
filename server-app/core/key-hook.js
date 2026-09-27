@@ -196,6 +196,14 @@
   // iframe scope: parent receives qqq-key message from iframe adapter
   function onMessage(ev) {
     if (!ev.data || ev.data.type !== 'qqq-key') return;
+    // ★ 2026-09-27: x 抬起转发（up:true）→ 派发 qqq-key-up DOM 事件，交给 shell.js x 键呈递机器
+    //   （短按 <600ms 抬起 → kmd；长按超时 → qmd）。只认 X，其余按键抬起不透传。
+    if (ev.data.up) {
+      if (normalizeAccel(ev.data.accel || '') === 'X') {
+        try { document.dispatchEvent(new CustomEvent('qqq-key-up', { detail: { accel: 'X' } })); } catch (_) { }
+      }
+      return;
+    }
     const accel = normalizeAccel(ev.data.accel || '');
     const scope = ev.data.scope || 'iframe:unknown';
     if (!accel) return;

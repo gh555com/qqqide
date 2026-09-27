@@ -349,9 +349,15 @@ body {
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (editing) return;
+    if (e.repeat) return; // ★ 2026-09-27: 按住自动重复不转发（x 短按/长按由父窗口机器 600ms 计时，重复会破坏判定）
     var accel = e.key === 'F2' ? 'F2' : (e.key === 'Tab' ? 'Tab' : 'X');
     try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
     e.preventDefault();
+  }, true);
+  // ★ 2026-09-27: x 抬起转发 → 父窗口 x 键呈递机器（600ms 内抬起=短按→kmd；超时=长按→qmd）
+  document.addEventListener('keyup', function (e) {
+    if (e.key !== 'x' && e.key !== 'X') return;
+    try { parent.postMessage({ type: 'qqq-key', accel: 'X', scope: 'window', up: true }, '*'); } catch (_) {}
   }, true);
 })();
 </script>

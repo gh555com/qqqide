@@ -108,12 +108,26 @@ function _refindCurrent(content: string, ed: { find: string }, skipRawBytes?: bo
     return null;
 }
 
+// ★ 2026-09-27：还原优先写「编辑前原始字节」（byte-perfect）——防 FFFD 等不可表示字符在还原重编码
+//   时被静默写成 '?'（唯一真损伤路径）；原始字节由 edit_file/write_file 从解码证据携带（decodeFile().raw），
+//   拿不到时回落文本回填（encodeTextSync）/删除新建文件。
+function _restoreOriginal(filePath: string, originalContent: string | null, enc: any, bom: boolean, origBytes?: Buffer | null): void {
+    if (origBytes && origBytes.length > 0) {
+        try { fs.writeFileSync(filePath, origBytes); return; } catch (_) { /* 降级文本回填 */ }
+    }
+    if (originalContent !== null) {
+        try { fs.writeFileSync(filePath, encodeTextSync(enc, bom, originalContent)); } catch (_) {}
+    } else {
+        try { fs.unlinkSync(filePath); } catch (_) {}
+    }
+}
+
 // ── 自动语法门（§59，2026-07-14 落地）────────────────────────
 // 每次 edit/create/write 后自动跑语法检查。不通过→拒绝提交+还原文件。
 // ★ 使用 vm.Script 同进程解析（零 spawn，秒级完成，无 Electron 二进制兼容问题）。
 //   vm.Script 与 node --check 用同一 V8 解析器，等效。
 //   ES module 文件（.mjs/.cjs）跳过 vm.Script，改为 try/catch new Function 降级检查。
-function checkSyntaxSync(filePath: string, originalContent: string | null, matchCtx?: string, encHint?: { enc: string; bom: boolean } | null): string | null {
+function checkSyntaxSync(filePath: string, originalContent: string | null, matchCtx?: string, encHint?: { enc: string; bom: boolean } | null, origBytes?: Buffer | null): string | null {
     const ext = path.extname(filePath).toLowerCase();
     // ★ 编码机器：还原/校验一律按原文件编码编解码（utf8 直读会把 GBK 源码当乱码校验）
     const _enc = (encHint && encHint.enc) ? (encHint.enc as any) : 'utf8';
@@ -125,11 +139,7 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
             new vm.Script(content, { filename: filePath });
         } catch (syntaxErr: any) {
             const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 250);
-            if (originalContent !== null) {
-                try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
-            } else {
-                try { fs.unlinkSync(filePath); } catch (_) {}
-            }
+            _restoreOriginal(filePath, originalContent, _enc, _bom, origBytes);
             let hint = matchCtx ? ' (' + matchCtx + ')' : '';
             return 'Error: your edit produced invalid JS syntax — ' + msg + hint + '. File reverted unchanged. ⚠ Your find string likely matched at the WRONG location. Re-read the file, then use a LONGER / more unique find string (add surrounding context lines).';
         }
@@ -139,11 +149,7 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
             new Function(content);
         } catch (syntaxErr: any) {
             const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 250);
-            if (originalContent !== null) {
-                try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
-            } else {
-                try { fs.unlinkSync(filePath); } catch (_) {}
-            }
+            _restoreOriginal(filePath, originalContent, _enc, _bom, origBytes);
             return 'Error: your edit produced invalid ES module syntax — ' + msg + '. File reverted unchanged. Re-read the file and use a more precise find string.';
         }
     } else if (ext === '.json') {
@@ -152,11 +158,7 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
             JSON.parse(jsonContent);
         } catch (jsonErr: any) {
             const msg = (jsonErr.message || String(jsonErr)).replace(/\n/g, ' ').substring(0, 250);
-            if (originalContent !== null) {
-                try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
-            } else {
-                try { fs.unlinkSync(filePath); } catch (_) {}
-            }
+            _restoreOriginal(filePath, originalContent, _enc, _bom, origBytes);
             return 'Error: your edit produced invalid JSON — ' + msg + '. File reverted unchanged. Check bracket/brace balance in your replace text.';
         }
     } else if (ext === '.css' || ext === '.html' || ext === '.htm') {
@@ -166,11 +168,7 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
             const structContent = decodeFileSync(filePath);
             const structErr = checkStructureText(ext, structContent);
             if (structErr) {
-                if (originalContent !== null) {
-                    try { fs.writeFileSync(filePath, encodeTextSync(_enc, _bom, originalContent)); } catch (_) {}
-                } else {
-                    try { fs.unlinkSync(filePath); } catch (_) {}
-                }
+                _restoreOriginal(filePath, originalContent, _enc, _bom, origBytes);
                 let hint = matchCtx ? ' (' + matchCtx + ')' : '';
                 return 'Error: your edit produced invalid structure — ' + structErr + ' File reverted unchanged.' + hint;
             }
@@ -201,6 +199,7 @@ export function registerEditIpc(): void {
                 const dec0 = await decodeFile(args.path);
                 const originalContent = dec0.text;
                 const origEnc = dec0.info;
+                const origBytes = dec0.raw; // ★ 编辑前原始字节（语法门还原用——byte-perfect）
                 const rawSafe = dec0.info.enc === 'utf8'; // 非 utf8：字节偏移不可信 → 禁 L5
                 let content = originalContent;
                 const matchPlan: Array<{ edit: any; match: { start: number; end: number; matchLevel: number }; index: number }> = [];
@@ -438,7 +437,7 @@ export function registerEditIpc(): void {
                 await encodeFile(args.path, content);
                 // ★ 自动语法门（§59）: JS/JSON 语法不过→还原+报错
                 const syntaxCtx = multiWarn || (results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1 || r.indexOf('L5') !== -1) ? 'whitespace-tolerant matching used — higher mismatch risk' : '');
-                const syntaxErr = checkSyntaxSync(args.path, originalContent, syntaxCtx || undefined, origEnc);
+                const syntaxErr = checkSyntaxSync(args.path, originalContent, syntaxCtx || undefined, origEnc, origBytes);
                 if (syntaxErr) return syntaxErr;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1 || r.indexOf('L5') !== -1)
@@ -500,16 +499,18 @@ export function registerEditIpc(): void {
                 // ★ 捕获原始内容（语法检查失败还原用）——编码机器解码（不存在 = 新文件）
                 let origContent: string | null = null;
                 let origEncW: { enc: string; bom: boolean } | null = null;
+                let origBytesW: Buffer | null = null;
                 try {
                     const decW = await decodeFile(args.path);
                     origContent = decW.text;
                     origEncW = decW.info;
+                    origBytesW = decW.raw; // ★ 编辑前原始字节（语法门还原用——byte-perfect）
                 } catch (_) {}
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 // ★ 编码机器写回：存在 → 原编码保持；新建 → UTF-8
                 await encodeFile(args.path, args.content);
                 // ★ 自动语法门
-                const syntaxErr3 = checkSyntaxSync(args.path, origContent, undefined, origEncW);
+                const syntaxErr3 = checkSyntaxSync(args.path, origContent, undefined, origEncW, origBytesW);
                 if (syntaxErr3) return syntaxErr3;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 return `File written: ${args.path} (${args.content.length} chars)`;

@@ -288,12 +288,6 @@
             "cannotStart": "無法開始下載：",
             "cannotStartBare": "無法開始下載"
         },
-        "prog": {
-            "copyingN": "正在複製 {n} 個檔案…",
-            "done": "完成",
-            "cancelled": "已取消",
-            "fail": "失敗"
-        },
         "exit": {
             "confirm": "確認退出？",
             "ok": "確認退出"

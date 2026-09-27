@@ -103,10 +103,13 @@ function bootRoamKeyFallback() {
       p = p.parentElement;
     }
     if (editing) return; // 编辑态不抢键
-    // ★ 2026-08-18: x 键兜底直连——非编辑态打开一个新 kmd（key-hook 配置链再坏也不静默）
+    // ★ 2026-08-18 / 2026-09-27: x 键兜底直连——非编辑态交给 x 键呈递机器
+    //   （短按 <600ms 抬起 → kmd；长按 ≥600ms → qmd；key-hook 配置链再坏也不静默）
     if (e.key === 'x') {
+      if (e.repeat) { e.preventDefault(); e.stopPropagation(); return; } // 按住自动重复：忽略（计时只认第一次按下）
       console.log('[shell] kmd-key fallback: x');
-      if (window.__qqqKmdOpen) { try { window.__qqqKmdOpen(null); } catch (_ke) { } }
+      if (window.__qqqXPress && window.__qqqXPress.down) { window.__qqqXPress.down(null); }
+      else if (window.__qqqKmdOpen) { try { window.__qqqKmdOpen(null); } catch (_ke) { } }
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -122,6 +125,50 @@ function bootRoamKeyFallback() {
     e.preventDefault();
     e.stopPropagation();
   }, true);
+}
+
+// ★ 2026-09-27 x 键呈递机器（用户定案）: 600ms 阈值 ——
+//   短按（600ms 内抬起）→ kmd；长按（600ms 未抬起）→ qmd —— 并"帮用户抬起 x 键"：
+//   本次按键被消费（重复键忽略、抬起绝不补开 kmd）；若焦点已切给新终端，残留 x 自动
+//   重复由 qmd-ui 守卫吞（liftKey='x'，见 goods/qmd/qmd-ui.html）。
+//   三源汇入（全部 dedup，重复只补路径不重置计时）:
+//     ①主窗口 key-hook 路径: key-bindings x → shell-menu 'window.activateKmd' → down(path)
+//     ②主窗口兜底键链: 本文件 bootRoamKeyFallback → down(null)
+//     ③各 goods iframe 转发: keydown→qqq-key(down) / keyup→qqq-key{up:true}→key-hook
+//       派发 qqq-key-up DOM 事件 → up()
+//   ★ Roam iframe 内同款机器在 goods/file-explorer/q2-roam-ui.js（自带选区路径/文件名）——改阈值两处必须同改。
+function bootXKeyMachine() {
+  var HOLD_MS = 600;
+  var st = { armed: false, longFired: false, path: null, timer: null };
+  function down(path) {
+    if (st.armed) { if (path && !st.path) st.path = path; return; } // 重复按下：只补路径，不重置计时
+    st.armed = true; st.longFired = false; st.path = path || null;
+    st.timer = setTimeout(function () {
+      st.timer = null;
+      if (!st.armed) return;
+      st.longFired = true; // 抬起不再补开 kmd
+      var p = st.path; st.path = null;
+      if (window.__qqqQmdOpen) { try { window.__qqqQmdOpen(p); } catch (_e) { } } // 长按 → qmd
+    }, HOLD_MS);
+  }
+  function up() {
+    if (!st.armed) return;
+    var wasLong = st.longFired;
+    if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+    st.armed = false; st.longFired = false;
+    var p = st.path; st.path = null;
+    if (!wasLong && window.__qqqKmdOpen) { try { window.__qqqKmdOpen(p); } catch (_e) { } } // 短按 → kmd
+  }
+  function cancel() {
+    if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+    st.armed = false; st.longFired = false; st.path = null;
+  }
+  window.__qqqXPress = { down: down, up: up, cancel: cancel };
+  document.addEventListener('keyup', function (e) {
+    if (e.key === 'x' || e.key === 'X') up(); // 主窗口抬起
+  }, true);
+  document.addEventListener('qqq-key-up', function () { up(); }); // iframe 抬起（key-hook 转发）
+  window.addEventListener('blur', cancel); // 焦点丢失（alt-tab 等）：静默取消，不误开任何终端
 }
 
 // ---- CSS variable helpers ----
@@ -759,6 +806,9 @@ async function main() {
   //    与 key-hook 配置链双保险：key-hook 成功则 stopPropagation 已拦（不重复），
   //    key-hook 任何一环失败（fetch/init/when）则由本监听兜底，保证功能永不静默失效
   bootRoamKeyFallback();
+
+  // ★ 2026-09-27: x 键呈递机器（短按→kmd / 长按→qmd，600ms）——见函数头注释
+  bootXKeyMachine();
 
   // Expose layout API for sash persistence
   window.qqqLayout = {

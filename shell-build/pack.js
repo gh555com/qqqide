@@ -742,6 +742,24 @@ function buildUnits(unpacked, rFile) {
       fs.copyFileSync(u.src, dstRoot);
     } else {
       copyTreeExcluding(u.src, dstRoot, u.exclude);
+      // ★ engines/node 门面例外同步（2026-09-26）：引擎树整体不参与增量（防覆盖组件升级
+      //   静默回退），但 Node 门面是壳层配套静态资产、不由 component-checker 管理——
+      //   不随 app 单元下发则存量增量用户永远缺失（0.3.398 实证：「内置 Node 未就绪」）。
+      //   仅同步 node/ 目录；node-target.txt 运行时痕迹排除（开发机 Electron 路径禁入包）。
+      if (u.name === 'app') {
+        const ndSrc = path.join(appDir, 'engines', 'node');
+        if (fs.existsSync(ndSrc)) {
+          const ndDst = path.join(dstRoot, 'engines', 'node');
+          fs.mkdirSync(ndDst, { recursive: true });
+          let ndN = 0;
+          for (const f of fs.readdirSync(ndSrc)) {
+            if (f === 'node-target.txt') continue;
+            fs.cpSync(path.join(ndSrc, f), path.join(ndDst, f));
+            ndN++;
+          }
+          if (ndN) console.log('[pack] unit app: + engines/node facade (' + ndN + ' files)');
+        }
+      }
     }
     const arc = path.join(unitDir, u.name + '.7z');
     const r = cp.spawnSync(sz7, ['a', '-t7z', '-mx=9', '-md=64m', '-mmt=on', arc, '.'],
@@ -1110,6 +1128,19 @@ function pruneEngines(unpacked) {
   }
   if (stripped > 0) {
     console.log('[pack] pruned non-target engines (' + Math.round(stripped / 1024 / 1024) + 'MB)');
+  }
+
+  // ── ⑥ Node facade guard (2026-09-26): engines/node = 壳层「系统 Node 解释器」配套静态资产。
+  //   ① 运行时痕迹 node-target.txt（壳层 apply 写入的运行中 Electron 路径）禁入任何发布包——
+  //      dev 树残留曾随 r 出厂（0.3.398 事故：开发机路径泄漏 + 客户端无用双份）。
+  //   ② 门面本体必须存在，缺失拒包（防打包机 dev 树不完整时静默出残缺包 →
+  //      客户端「做系统 Node 解释器」报「内置 Node 未就绪」；重建见 launcher/node-facade.c）。
+  const ndDir = path.join(engDir, 'node');
+  const ndTrace = path.join(ndDir, 'node-target.txt');
+  if (fs.existsSync(ndTrace)) { fs.rmSync(ndTrace); console.log('[pack] pruned engines/node/node-target.txt (runtime trace)'); }
+  const ndBin = path.join(ndDir, target.startsWith('win-') ? 'node.exe' : 'node');
+  if (!fs.existsSync(ndBin)) {
+    throw new Error('[pack] FATAL: ' + ndBin + ' missing — Node facade is a required engine-side static asset. Rebuild (see launcher/node-facade.c header): gcc -O2 -s -static -finput-charset=UTF-8 -fwide-exec-charset=UTF-16LE -o engines/node/node.exe launcher/node-facade.c -luser32');
   }
 }
 

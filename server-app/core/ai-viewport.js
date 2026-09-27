@@ -1206,22 +1206,27 @@
     // ★ 关闭遮罩 + 恢复 iframe 点击（两种下拉共用）
     _aivRemoveBackdrop();
     _setAiIframesPointerEvents('');
+    _ddContourWatch();  // ★ 集合描边：下拉已关 → 清轮廓层
   }
 
   // ---- 透明遮罩：铺满菜单栏以下区域，拦截点击关闭下拉 ----
+  // ★ 菜单行1 不铺遮罩（2026-09-27 用户定案）：行1 属 app-region:drag 拖窗区，系统把
+  //   mousedown 当标题栏拖动吞掉（DOM 收不到点击）→ 行内空白/控件点不掉下拉。
+  //   打开期间由 html.aiv-dd-open 让行1+容器临时 no-drag（shell-main.css），
+  //   行1 的点击收口统一走 build() 里的 document 级 mousedown（见 _isOutsideDropdown）。
   var _aivBackdrop = null;
   function _aivEnsureBackdrop() {
     if (_aivBackdrop) return;
+    document.documentElement.classList.add('aiv-dd-open');
     _aivBackdrop = document.createElement('div');
     _aivBackdrop.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:99998; background:transparent;';
     _aivBackdrop.style.top = (container ? container.getBoundingClientRect().bottom : 32) + 'px';
-    _aivBackdrop.addEventListener('mousedown', function (e) {
-      if (e.button !== 0) return;
-      closeDropdown();
-    });
+    // ★ 任何键均关闭（用户定案：无论左键右键，点击列表外都关）
+    _aivBackdrop.addEventListener('mousedown', function () { closeDropdown(); });
     document.body.appendChild(_aivBackdrop);
   }
   function _aivRemoveBackdrop() {
+    document.documentElement.classList.remove('aiv-dd-open');
     if (_aivBackdrop) { _aivBackdrop.remove(); _aivBackdrop = null; }
   }
 
@@ -1231,6 +1236,122 @@
       try { s.remove(); } catch (_) { }
     });
     activeSubmenus = [];
+    _ddContourWatch();
+  }
+
+  // ---- ★ 集合描边（2026-09-27 用户定案 v3）：整片下拉 = 激活豆腐块 + 全部列 的并集，
+  //   只画最外圈一条轮廓；凡会被画两次的线段（豆腐块底边↔列顶边贴合段、相邻列贴边缝）
+  //   整段不画——列自身边界恒透明（shell-main.css 暗主题），唯一绘制者 = 本段落层。
+  //   几何不变量（改 showDropdown/openSubmenu 定位公式必须同步复核）：
+  //     ① dd.left === 激活块 rect.left，dd.top === 激活块 rect.bottom
+  //     ② 各子菜单列 top/height 与 dd 同源（rootTop/maxH）、水平贴边 gap=0 → 并集 ≡ 包围盒
+  var _ddContourHost = null;
+  var _ddContourRaf = 0;
+  var _ddContourRO = null;
+  var _ddContourBound = false;
+
+  function _ddContourSeg(x, y, w, h, css) {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:absolute; left:' + x + 'px; top:' + y + 'px; width:' + w + 'px; height:' + h + 'px; ' + css;
+    _ddContourHost.appendChild(d);
+  }
+
+  function _ddContourPaint() {
+    // 列包围盒（不变量② → 并集即包围盒）
+    var L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+    var cols = [activeDropdown].concat(activeSubmenus);
+    for (var i = 0; i < cols.length; i++) {
+      var c = cols[i];
+      if (!c || !c.isConnected) continue;
+      var r = c.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      if (r.left < L) L = r.left;
+      if (r.top < T) T = r.top;
+      if (r.right > R) R = r.right;
+      if (r.bottom > B) B = r.bottom;
+    }
+    if (!isFinite(L)) return;
+    L = Math.round(L); T = Math.round(T); R = Math.round(R); B = Math.round(B);
+    if (R - L < 2 || B - T < 2) return;
+
+    // 与激活豆腐块相贴的顶边区间 [JS,JE] = 内部缝（不画；左跳子菜单可能让列伸到块左侧，段外照常画）
+    var JS = null, JE = null;
+    if (_activeBlockEl && _activeBlockEl.isConnected) {
+      var br = _activeBlockEl.getBoundingClientRect();
+      if (br.width > 0 || br.height > 0) {
+        JS = Math.max(L, Math.round(br.left));
+        JE = Math.min(R, Math.round(br.right));
+        if (JE - JS < 1) { JS = null; JE = null; }
+      }
+    }
+
+    var GOLD = 'var(--primary-color)';
+    var HALO = 'rgba(0,0,0,0.9)';
+    // 黑晕圈（外圈 1px 垫底；贴块区间让位——块自身边框无晕圈）
+    if (JS === null) {
+      _ddContourSeg(L - 1, T - 1, R - L + 2, 0, 'border-top:1px solid ' + HALO + ';');
+    } else {
+      if (JS - L >= 2) _ddContourSeg(L - 1, T - 1, JS - L + 1, 0, 'border-top:1px solid ' + HALO + ';');
+      if (R - JE >= 2) _ddContourSeg(JE, T - 1, R - JE + 1, 0, 'border-top:1px solid ' + HALO + ';');
+    }
+    _ddContourSeg(R, T, 0, B - T + 1, 'border-left:1px solid ' + HALO + ';');
+    _ddContourSeg(L - 1, B, R - L + 2, 0, 'border-top:1px solid ' + HALO + ';');
+    _ddContourSeg(L - 1, T, 0, B - T, 'border-left:1px solid ' + HALO + ';');
+    // 金虚线（轮廓本体；顶边 -1px 咬合块右边框末像素，转角不断线）
+    if (JS === null) {
+      _ddContourSeg(L, T, R - L, 0, 'border-top:1px dashed ' + GOLD + ';');
+    } else {
+      if (JS - L >= 2) _ddContourSeg(L, T, JS - L, 0, 'border-top:1px dashed ' + GOLD + ';');
+      if (R - JE >= 2) _ddContourSeg(JE - 1, T, R - JE + 1, 0, 'border-top:1px dashed ' + GOLD + ';');
+    }
+    _ddContourSeg(L, T, 0, B - T, 'border-left:1px dashed ' + GOLD + ';');
+    _ddContourSeg(R - 1, T, 0, B - T, 'border-left:1px dashed ' + GOLD + ';');
+    _ddContourSeg(L, B - 1, R - L, 0, 'border-top:1px dashed ' + GOLD + ';');
+  }
+
+  function _renderDdContour() {
+    _ddContourRaf = 0;
+    if (!_ddContourHost) {
+      _ddContourHost = document.createElement('div');
+      _ddContourHost.style.cssText = 'position:fixed; left:0; top:0; width:0; height:0; z-index:100002; pointer-events:none;';
+      document.body.appendChild(_ddContourHost);
+    }
+    _ddContourHost.textContent = '';
+    document.documentElement.classList.remove('aiv-contour-fail');
+    if (document.documentElement.getAttribute('data-theme') !== 'dark') return;  // 浅色主题：列自带边框照旧
+    if (!activeDropdown || !activeDropdown.isConnected) return;
+    try {
+      _ddContourPaint();
+    } catch (_) {
+      // 兜底：段落层画不出来 → 撤掉半截段落 + 回 CSS 恢复列自带金虚线边框（绝不留无边界整片）
+      _ddContourHost.textContent = '';
+      document.documentElement.classList.add('aiv-contour-fail');
+    }
+  }
+
+  function _scheduleDdContour() {
+    if (_ddContourRaf) return;
+    _ddContourRaf = requestAnimationFrame(_renderDdContour);
+  }
+
+  function _ddContourWatch() {
+    if (!_ddContourBound) {
+      _ddContourBound = true;
+      window.addEventListener('resize', _scheduleDdContour);
+      // 主题切换（暗↔浅）→ 轮廓层开关
+      try {
+        new MutationObserver(_scheduleDdContour).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      } catch (_) { }
+    }
+    if (typeof ResizeObserver === 'function') {
+      if (!_ddContourRO) _ddContourRO = new ResizeObserver(_scheduleDdContour);
+      _ddContourRO.disconnect();
+      if (activeDropdown && activeDropdown.isConnected) _ddContourRO.observe(activeDropdown);
+      for (var i = 0; i < activeSubmenus.length; i++) {
+        if (activeSubmenus[i] && activeSubmenus[i].isConnected) _ddContourRO.observe(activeSubmenus[i]);
+      }
+    }
+    _renderDdContour();
   }
 
   // ★ 飞块动画：左键点击后，小矩形从点击位置飞到目标 AI 面板底部键入区
@@ -1305,6 +1426,7 @@
     const idx = activeSubmenus.indexOf(sub);
     if (idx !== -1) activeSubmenus.splice(idx, 1);
     try { sub.remove(); } catch (_) { }
+    _ddContourWatch();  // ★ 集合描边：列移除 → 重算外轮廓
   }
 
   // ---- attach to AI: 路由到当前焦点面板（金色 q2 的面板）----
@@ -1513,6 +1635,7 @@
     _stampDepth(dd, 1);
     document.body.appendChild(dd);
     activeDropdown = dd;
+    _ddContourWatch();  // ★ 集合描边：新列加入 → 重算外轮廓
     // ★ 遮罩 + 冻结 iframe（点击外部关闭）
     _aivEnsureBackdrop();
     _setAiIframesPointerEvents('none');
@@ -1883,6 +2006,7 @@
     _stampDepth(sub, sub._depth);
     document.body.appendChild(sub);
     activeSubmenus.push(sub);
+    _ddContourWatch();  // ★ 集合描边：新列加入 → 重算外轮廓
 
     // ★ 记录展开链到根下拉（用于关闭时快照）
     if (activeDropdown) {
@@ -2154,6 +2278,7 @@
 
     document.body.appendChild(dd);
     activeDropdown = dd;
+    _ddContourWatch();  // ★ 集合描边：新列加入 → 重算外轮廓
     // ★ 遮罩 + 冻结 iframe（点击外部关闭）
     _aivEnsureBackdrop();
     _setAiIframesPointerEvents('none');
@@ -2302,6 +2427,15 @@
       closeDropdown();
       document.querySelectorAll('.aiv-block-active').forEach(function (el) { el.classList.remove('aiv-block-active'); });
     }
+    // ★ 点击列表外任何区域关闭（2026-09-27 用户定案）——遮罩只铺菜单行1 以下；行1 自身
+    //   （菜单栏/拖窗空隙/豆腐块右侧空白/缩放·语言·主题·窗口按钮…）没有遮罩，必须在此收口。
+    //   任何键（左/中/右）落在列表外一律关闭；'.aiv-block' 豆腐块除外（左键=切自己的列表、
+    //   右键=开搜索标签，语义不属「点外部」）。行1 拖窗区靠 html.aiv-dd-open 让出拖拽权才收得到事件。
+    document.addEventListener('mousedown', function (e) {
+      if (!activeDropdown) return;
+      var t = e.target;
+      if (t && t.closest && _isOutsideDropdown(t)) _dismissDropdown();
+    }, true);
     // ★ 遮罩已内置到 showDropdown / _showRecentDropdown / closeDropdown（模块级）
     //    此处不再 monkey-patch，保持单一真理源
     window.qqqideViewport.closeDropdown = closeDropdown;

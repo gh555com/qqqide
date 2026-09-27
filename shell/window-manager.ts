@@ -13,9 +13,7 @@ import { renameDevToolsViaBroker } from './py-broker';
 import { claimSquad, releaseSquad, broadcastSquadState } from './squad-manager';
 import { releaseProject } from './project-lock';
 import { getDataDir } from './portable-paths';
-import { SimpleWebSocket } from './cdp-sniffer';
-import { crashNetLog, crashNetSnapshot } from './crash-net';
-// import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
+import { SimpleWebSocket } from './cdp-sniffer';import { crashNetLog, crashNetSnapshot } from './crash-net';
 import { DownloadService } from './download-service';
 import { StateStore } from './state-sqlite';
 import { wsStateGetKey, wsStateSetKey } from './ipc-ws-state';
@@ -341,10 +339,7 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
 
 // ---- createWindow ----export function createWindow(
     portableRoot: string,
-    portableCache: string,
-    appVersion: string,
-    // lspBridge: LspBridge,  // LSP OFF — 2026-06-23
-    lspBridge: any,
+    portableCache: string,    appVersion: string,
     downloadService: DownloadService,
     stateStore: StateStore,): BrowserWindow {
     // ★ 窗口记忆分槽: 启动目录即实例身份 (多实例互踩修复 2026-08-29)

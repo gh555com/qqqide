@@ -288,12 +288,6 @@
             "cannotStart": "No se puede iniciar la descarga:",
             "cannotStartBare": "No se puede iniciar la descarga"
         },
-        "prog": {
-            "copyingN": "Copiando {n} archivos…",
-            "done": "Completado",
-            "cancelled": "Cancelado",
-            "fail": "Fallido"
-        },
         "exit": {
             "confirm": "¿Confirmar salida?",
             "ok": "Confirmar salida"

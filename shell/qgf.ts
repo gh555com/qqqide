@@ -3,7 +3,7 @@
 // ============================================================================
 // qgf.ts — FS 原子读写真理机器
 //
-// 从旧 state-store.ts (836行) 提取核心 — 去掉了七层架构：
+// 从旧 FS 手写店提取核心（state-store.ts，2026-09-27 已删）— 去掉了七层架构：
 //   ✗ registry.json (持久化 schema)  → schemas 仅内存
 //   ✗ .meta.json (sha256/ts/deviceId) → 无元数据文件
 //   ✗ deviceId 追踪                   → 不需要
@@ -179,6 +179,8 @@ export class Qgf extends EventEmitter {
     private corruptDir: string;
 
     private outboxSeq = 0;
+    // ★ outbox 去重索引（2026-09-27）：fullKey → 最新 seq（同 state-sqlite.ts——防 append-only 无界积压）
+    private outboxIndex: Map<string, string> = new Map();
     private lastSyncAt?: number;
 
     private schemas: Map<string, NsSchema> = new Map();
@@ -208,6 +210,7 @@ export class Qgf extends EventEmitter {
             try { fs.mkdirSync(d, { recursive: true }); } catch { /* ignore */ }
         }
         this._restoreOutboxSeq();
+        this._compactOutbox();
     }
 
     private _restoreOutboxSeq(): void {
@@ -217,6 +220,33 @@ export class Qgf extends EventEmitter {
                 if (m) { const n = parseInt(m[1], 10); if (n > this.outboxSeq) this.outboxSeq = n; }
             }
         } catch { /* ignore */ }
+    }
+
+    /** ★ outbox 去重压缩（2026-09-27）：同一 ns/key 只保留最新 seq 一条（同 state-sqlite.ts）。 */
+    private _compactOutbox(): void {
+        try {
+            const files = fs.readdirSync(this.outboxDir).filter(f => /^\d+\.json$/.test(f));
+            const best = new Map<string, { seq: string; file: string }>();
+            let removed = 0;
+            for (const f of files) {
+                let j: any = null;
+                try { j = JSON.parse(fs.readFileSync(path.join(this.outboxDir, f), 'utf8')); } catch { continue; }
+                if (!j || !j.ns || !j.key) { continue; }
+                const fk = j.ns + '/' + j.key;
+                const seq = f.replace(/\.json$/, '');
+                const cur = best.get(fk);
+                if (!cur) { best.set(fk, { seq, file: f }); continue; }
+                if (seq > cur.seq) {
+                    try { fs.unlinkSync(path.join(this.outboxDir, cur.file)); removed++; } catch { /* ignore */ }
+                    best.set(fk, { seq, file: f });
+                } else {
+                    try { fs.unlinkSync(path.join(this.outboxDir, f)); removed++; } catch { /* ignore */ }
+                }
+            }
+            this.outboxIndex.clear();
+            for (const [fk, v] of best) { this.outboxIndex.set(fk, v.seq); }
+            if (removed > 0) { console.log('[qgf] outbox compacted: -' + removed + ' (kept ' + best.size + ')'); }
+        } catch (e) { console.warn('[qgf] _compactOutbox failed:', e); }
     }
 
     // ----- introspection ------------------------------------------------------
@@ -689,7 +719,12 @@ export class Qgf extends EventEmitter {
             const seq = String(this.outboxSeq).padStart(12, '0');
             const f = path.join(this.outboxDir, seq + '.json');
             const payload = { seq, ns, key, ts: nowMs(), deleted, value: deleted ? null : value };
+            // ★ 去重（2026-09-27）：同 ns/key 只保留最新一条
+            const fk = ns + '/' + key;
+            const oldSeq = this.outboxIndex.get(fk);
             atomicWriteSync(f, JSON.stringify(payload));
+            this.outboxIndex.set(fk, seq);
+            if (oldSeq && oldSeq !== seq) { try { fs.unlinkSync(path.join(this.outboxDir, oldSeq + '.json')); } catch { /* ignore */ } }
         } catch (e) { console.warn('[qgf] _queueOutbox failed:', e); }
     }
 
@@ -704,7 +739,9 @@ export class Qgf extends EventEmitter {
 
     dropOutbox(seq: string): boolean {
         const f = path.join(this.outboxDir, seq + '.json');
-        try { fs.unlinkSync(f); return true; } catch { return false; }
+        try { fs.unlinkSync(f); } catch { return false; }
+        for (const [fk, s] of this.outboxIndex) { if (s === seq) { this.outboxIndex.delete(fk); break; } }
+        return true;
     }
 
     // ----- onChange convenience -----------------------------------------------

@@ -165,7 +165,8 @@ var _orig={};
           <a class="qqq-sponsor-link" id="qqq-sponsor-link" href="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">知佳</a>
         </span>
         <span class="qqq-spacer"></span>
-        <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" data-i18n-title="shell.wq.tipShort" title="wq 前摇统计">wq: --</span>
+        <!-- ★ wq 探针（所见即所得粘贴探针 + 缓存读数，2026-09-27 改版）：固定宽按钮（迷你柱状图 + 均值）hover 弹卡片——宽度恒定不吞食状态区；渲染 = core/wq-stats.js -->
+        <span class="qqq-status-item qqq-wq-btn" id="qqq-status-wq" aria-label="wq"></span>
         <!-- ★ 总在线时间（累计陪伴小时）：服务器 wq.doer_state.companion_seconds 权威值，客户端零记录直接打印 -->
         <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace;font-size:11px;">--</span>
         <!-- ★ 启动包监控 a 区域（2026-08-30 合并定案）：内存图标 + 内存占用 + CPU 占用（CPU 图标已移除），hover/点击弹合并卡片（MEM+CPU 双段 + 共用进程列表），一包多窗口恒同值 -->
@@ -232,8 +233,6 @@ var _orig={};
 <script src="ai-panel/ai-panel.js"></script>
 <!-- key-hook MUST load before editor.js / shell.js so they can register handlers -->
 <script src="core/key-hook.js"></script>
-<!-- ts-service: custom TypeScript language service (bypasses broken Monaco TS worker) -->
-<script src="core/ts-service.js"></script>
 <!-- ★ 构建戳 + 升级健康位机器（2026-09-22）：逻辑迁至 core/update-health.js
      — __stamp.js 走SW缓存(可能陈旧) + _BUILD_STAMP.json 走直连(永远最新) → 双通道比对；
      渲染到 #qqq-upd-health（设置面板·重置窗口右侧）：SW 缓存旧 → 红色⚠️ 按「重置窗口」；
@@ -243,12 +242,8 @@ var _orig={};
 <!-- wysiwyg core: klipzap → paste-router（落盘/锚点）→ viewport-machine（唯一渲染真相：per-editor 锚点表 + ViewZone 相框） -->
 <script src="core/klipzap.js"></script>
 <script src="core/wq-stats.js"></script>
-<script src="core/transaction-manager.js"></script>
-<script src="core/batch-ops.js"></script>
-<script src="core/progress-service.js"></script>
 <!-- 用户偏好机器（q3 老项目 23 项移植；本地永不保存，未激活=默认模板） -->
 <script src="core/qqq-prefs.js"></script>
-<script src="core/thumbnail-cache.js"></script>
 <script src="core/frame-renderer.js"></script>
 <script src="core/paste-router.js"></script>
 <script src="core/drop-overlay.js"></script>
@@ -292,7 +287,11 @@ var _orig={};
 <script src="core/shell-lang.js"></script>
 <script src="core/shell-menu.js"></script>
 <script src="core/shell-wings.js"></script>
+<!-- ★ 共享媒体引擎（2026-09-26 q319 v4）：悬浮层 + 独立播放器窗双宿主同源——必须先于 shell-overlay 加载 -->
+<script src="core/media-engine.js"></script>
 <script src="core/shell-overlay.js"></script>
+<!-- ★ 窗内播放器卡（2026-09-26 q319 v5，B 方案）：主窗口悬浮播放器卡——引擎第三宿主（逐实例 host） -->
+<script src="core/player-card.js"></script>
 <script src="core/shell-statusbar.js"></script>
 <!-- MEM 24H 曲线 hover 面板（数据源 mem-meter 主进程真理机器广播；须在 statusbar 后加载） -->
 <script src="core/shell-mem-hover.js"></script>

@@ -288,12 +288,6 @@
             "cannotStart": "Cannot start download:",
             "cannotStartBare": "Unable to start download"
         },
-        "prog": {
-            "copyingN": "Copying {n} files…",
-            "done": "Done",
-            "cancelled": "Cancelled",
-            "fail": "Failed"
-        },
         "exit": {
             "confirm": "Confirm exit?",
             "ok": "Confirm Exit"

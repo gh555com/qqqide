@@ -493,6 +493,8 @@ const QQQ = {    // ---- app info ----
         probe: (src: string) => ipcRenderer.invoke('qqqide:media:probe', src),        ffmpegPath: () => ipcRenderer.invoke('qqqide:media:ffmpegPath'),
         preview: (opts: any) => ipcRenderer.invoke('qqqide:media:preview', opts),
         textPreview: (opts: any) => ipcRenderer.invoke('qqqide:media:textPreview', opts),
+        // ★ 状态栏 wq 卡片：缓存占用读数（媒体缓存 40MB / 转码缓存 2GB；只读）
+        cacheStats: () => ipcRenderer.invoke('qqqide:media:cacheStats'),
         // ★ 悬浮层转码兜底（2026-09-21）：avi/psd/prores 等原生不解格式 → ffmpeg 转码可播产物
         playable: (opts: any) => ipcRenderer.invoke('qqqide:media:playable', opts),
         playableCancel: (reqId: string) => ipcRenderer.invoke('qqqide:media:playableCancel', reqId),
@@ -685,6 +687,7 @@ const QQQ = {    // ---- app info ----
     kmd: {
         spawn: (id: string, shellType: string, cwd: string) => ipcRenderer.invoke('qqqide:kmd:spawn', { id, shellType, cwd }),
         write: (id: string, text: string) => ipcRenderer.invoke('qqqide:kmd:write', id, text),
+        interrupt: (id: string) => ipcRenderer.invoke('qqqide:kmd:interrupt', id),
         kill: (id: string, opts?: any) => ipcRenderer.invoke('qqqide:kmd:kill', id, opts),
         list: () => ipcRenderer.invoke('qqqide:kmd:list'),
         onOutput: (cb: (msg: { id: string; stream: string; data: string }) => void) => {
@@ -710,6 +713,7 @@ const QQQ = {    // ---- app info ----
         write: (id: string, text: string) => ipcRenderer.invoke('qqqide:qmd:write', id, text),
         resize: (id: string, cols: number, rows: number) => ipcRenderer.invoke('qqqide:qmd:resize', id, cols, rows),
         kill: (id: string, opts?: any) => ipcRenderer.invoke('qqqide:qmd:kill', id, opts),
+interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
         list: () => ipcRenderer.invoke('qqqide:qmd:list'),
         onReady: (cb: (msg: { id: string; pid: string }) => void) => {
             const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[qmd.onReady]', err); } };
@@ -774,6 +778,40 @@ const QQQ = {    // ---- app info ----
         decrypt: (b64: string) => ipcRenderer.invoke('qqqide:secure:decrypt', b64),
     },
 
+    // ---- player（独立悬浮播放器窗，2026-09-26 q319 v4）----
+    //   悬浮层 ↗ 弹出 / Roam ➕ 加入 / 工作台 Player 行共用；状态 OS 级 player-state.json 持久化
+    player: {
+        open: () => ipcRenderer.invoke('qqqide:player:open'),
+        getState: () => ipcRenderer.invoke('qqqide:player:getState'),
+        setState: (s: any) => ipcRenderer.invoke('qqqide:player:setState', s),
+        popOut: (s: any) => ipcRenderer.invoke('qqqide:player:popOut', s),
+        add: (paths: string[]) => ipcRenderer.invoke('qqqide:player:add', paths),
+        claim: (from: string) => ipcRenderer.send('qqqide:player:claim', from),
+        reveal: (p: string) => ipcRenderer.invoke('qqqide:player:reveal', p),
+        close: () => ipcRenderer.invoke('qqqide:player:close'),
+        returnOverlay: (s: any) => ipcRenderer.invoke('qqqide:player:returnOverlay', s),
+        onClaim: (cb: (from: string) => void) => {
+            const handler = (_e: any, from: string) => { try { cb(from); } catch (err) { console.warn('[player.onClaim]', err); } };
+            ipcRenderer.on('qqqide:player:claim', handler);
+            return () => ipcRenderer.removeListener('qqqide:player:claim', handler);
+        },
+        onHandoff: (cb: (h: any) => void) => {
+            const handler = (_e: any, h: any) => { try { cb(h); } catch (err) { console.warn('[player.onHandoff]', err); } };
+            ipcRenderer.on('qqqide:player:handoff', handler);
+            return () => ipcRenderer.removeListener('qqqide:player:handoff', handler);
+        },
+        onQueue: (cb: (q: any) => void) => {
+            const handler = (_e: any, q: any) => { try { cb(q); } catch (err) { console.warn('[player.onQueue]', err); } };
+            ipcRenderer.on('qqqide:player:queue', handler);
+            return () => ipcRenderer.removeListener('qqqide:player:queue', handler);
+        },
+        // ★ v6：播放器窗 ↙「退回悬浮层」→ 主窗口开悬浮层（列表+进度+模式回灌），本窗自关
+        onReturn: (cb: (h: any) => void) => {
+            const handler = (_e: any, h: any) => { try { cb(h); } catch (err) { console.warn('[player.onReturn]', err); } };
+            ipcRenderer.on('qqqide:player:return', handler);
+            return () => ipcRenderer.removeListener('qqqide:player:return', handler);
+        },
+    },
 
 };
 

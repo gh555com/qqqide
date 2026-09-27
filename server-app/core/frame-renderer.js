@@ -21,7 +21,7 @@
 // 预览失败时原地降级为图标帧并调 _requestResize（老语义：ffmpeg 解析不了 → 图标框）。
 //
 // 暴露: window.qqqFrameRenderer
-// 依赖: qqqPrefs / qqqThumbnailCache / bridge.fs / bridge.media
+// 依赖: qqqPrefs / bridge.fs / bridge.media
 // ============================================================================
 
 (function () {

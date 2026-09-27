@@ -812,10 +812,28 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     }
     var killHoverTimer = null;
 
-    // 菜单 Ctrl+C：明确向当前 shell 发送中断字节；键盘 Ctrl+C 的复制语义不受影响
+    // 菜单 Ctrl+C（2026-09-27 真中断）：行模式 \x03 字节无效（管道里=普通字节，实测变乱码命令垃圾行）→
+    // 走壳层进程树中断 qqqide:kmd:interrupt：杀掉当前前台命令子树，会话本尊存活、滚动区保留。
+    // 键盘 Ctrl+C 的复制语义不受影响；旧壳层无 interrupt（需重启实例）→ 显式提示不静默。
     function sendInterrupt() {
         if (!bridge || !bridge.kmd || !sessionId || !running) return;
-        bridge.kmd.write(sessionId, '\x03').catch(function (err) {
+        if (typeof bridge.kmd.interrupt !== 'function') {
+            appendLine('err', _kk('goods.kmd.intRestart', '── Ctrl+C · 壳层升级需重启实例生效 ──'));
+            return;
+        }
+        bridge.kmd.interrupt(sessionId).then(function (r) {
+            if (!r || !r.ok) {
+                appendLine('err', _kk('goods.kmd.ctrlCFail', '[Ctrl+C 发送失败] {0}', (r && r.error) || 'unknown'));
+                return;
+            }
+            if (r.killed > 0) {
+                appendLine('dim', _kk('goods.kmd.intDone', '── Ctrl+C · 已终止 {0} 个进程 ──', String(r.killed)));
+            } else if (r.killed === 0) {
+                appendLine('dim', _kk('goods.kmd.intIdle', '── Ctrl+C · 无运行中的命令 ──'));
+            } else {
+                appendLine('dim', _kk('goods.kmd.intSig', '── Ctrl+C · 已发送中断信号 ──'));
+            }
+        }).catch(function (err) {
             appendLine('err', _kk('goods.kmd.ctrlCFail', '[Ctrl+C 发送失败] {0}', String(err && err.message || err)));
         });
     }
@@ -1153,11 +1171,17 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
     var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (editing) return;
-    // F2/Tab → 召回 roam；x → 打开一个新 kmd 并继承当前会话 cwd（2026-08-18）
+    // F2/Tab → 召回 roam；x → 短按开新 kmd（继承当前会话 cwd）/ 长按开 qmd（2026-08-18 / 2026-09-27）
+    if (e.repeat) return; // ★ 2026-09-27: 按住自动重复不转发（x 短按/长按由父窗口机器 600ms 计时，重复会破坏判定）
     var accel = e.key === 'F2' ? 'F2' : (e.key === 'Tab' ? 'Tab' : 'X');
     var path = e.key === 'x' && typeof window.__kmdCwdGet === 'function' ? (window.__kmdCwdGet() || '') : undefined;
     try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window', path: path }, '*'); } catch (_) {}
     e.preventDefault();
+  }, true);
+  // ★ 2026-09-27: x 抬起转发 → 父窗口 x 键呈递机器（600ms 内抬起=短按→kmd；超时=长按→qmd）
+  document.addEventListener('keyup', function (e) {
+    if (e.key !== 'x' && e.key !== 'X') return;
+    try { parent.postMessage({ type: 'qqq-key', accel: 'X', scope: 'window', up: true }, '*'); } catch (_) {}
   }, true);
 })();
 </script>

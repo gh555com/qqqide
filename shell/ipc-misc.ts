@@ -15,10 +15,9 @@ import { mi } from './main-i18n';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
 import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState, beginQuitAllBatch, recordWindowOpen } from './window-manager';
 import { StateStore } from './state-sqlite';
-// import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
-import { renameDevToolsViaBroker, isPyBrokerReady } from './py-broker';
+import { renameDevToolsViaBroker, isPyBrokerReady, resolvePythonPath } from './py-broker';
 import { _consoleBuffer } from './window-manager';
 import { refreshWindowEntry } from './squad-manager';
 import { claimProject } from './project-lock';
@@ -35,8 +34,6 @@ export function registerMiscIpc(
     portableCache: string,
     appVersion: string,
     isDevFlag: boolean,
-    // lspBridge: LspBridge,  // LSP OFF — 2026-06-23
-    lspBridge: any,
     downloadService: DownloadService,
     stateStore: StateStore,
     getMainWindow: () => any,
@@ -190,21 +187,80 @@ if ($list -and $list.Count -gt 0) {
         }
     });
 
-    // writeFiles — CF_HDROP via PowerShell (仅 Windows)
+    // writeFiles — 剪贴板「文件列表」写入（Win=CF_HDROP / mac=NSPasteboard）
+    // ★ 2026-09-27 竞态根治（q292 实测定案）: 原实现仅 PowerShell —— 冷启动实测 3.1~3.2s；
+    //   Roam Ctrl+C 是先写「文本路径」（瞬时）再走本机（慢）→ 3 秒窗口内粘贴只拿到文本路径
+    //   （用户实测「一会儿好一会儿不行」：秒粘=纯文本 / 等到落地=相框）。
+    //   现快路径 = 内置 Python ctypes 原子写（win-pasteboard.py：CF_HDROP + FileNameW +
+    //   FileName，实测 ~120ms，快 25 倍）；PowerShell 降为兜底（附重试防剪贴板被短暂占用）。
     ipcMain.handle('qqqide:clipboard:writeFiles', async (_e, paths: string[]) => {
-        if (process.platform !== 'win32') return false;
         if (!paths || paths.length === 0) return false;
+        const list = paths.filter((p): p is string => typeof p === 'string' && p.length > 0);
+        if (list.length === 0) return false;
+
+        // ⓪ mac: pyobjc 助手写 NSPasteboard（writeObjects NSURL + 经典 NSFilenamesPboardType 追加）
+        //   对位物 = Win 的 CF_HDROP；py 不可用/失败 → 返回 false（渲染层回退文本路径，零回归）
+        if (process.platform === 'darwin') {
+            try {
+                const py = resolvePythonPath(portableRoot);
+                const script = path.join(__dirname, 'mac-pasteboard.py');
+                const b64 = Buffer.from(JSON.stringify(list), 'utf8').toString('base64');
+                if (py && fs.existsSync(script) && b64.length < 24000) {
+                    const rc = await new Promise<number>((resolve) => {
+                        let done = false;
+                        const finish = (code: number) => { if (!done) { done = true; resolve(code); } };
+                        try {
+                            const child = cp.spawn(py, [script, 'setfiles', b64], { windowsHide: true, stdio: 'ignore' });
+                            const timer = setTimeout(() => { try { child.kill(); } catch { /* */ } finish(-2); }, 8000);
+                            child.on('exit', (code: number | null) => { clearTimeout(timer); finish(code == null ? -1 : code); });
+                            child.on('error', () => { clearTimeout(timer); finish(-1); });
+                        } catch { finish(-1); }
+                    });
+                    if (rc === 0) return true;
+                    console.warn('[klipzap] writeFiles(mac) rc=' + rc);
+                }
+            } catch (e) { console.warn('[klipzap] writeFiles(mac) error:', e); }
+            return false;
+        }
+        if (process.platform !== 'win32') return false;
+
+        // ① 快路径: 内置 Python ctypes（零依赖，冷启动 ~百毫秒；base64 JSON 传参零转义死角）
         try {
-            const escapedPaths = paths.map(p => `$col.Add('${p.replace(/'/g, "''")}')`).join('\n');
+            const py = resolvePythonPath(portableRoot);
+            const script = path.join(__dirname, 'win-pasteboard.py');
+            const b64 = Buffer.from(JSON.stringify(list), 'utf8').toString('base64');
+            if (py && fs.existsSync(script) && b64.length < 24000) {
+                const rc = await new Promise<number>((resolve) => {
+                    let done = false;
+                    const finish = (code: number) => { if (!done) { done = true; resolve(code); } };
+                    try {
+                        const child = cp.spawn(py, [script, 'setfiles', b64], { windowsHide: true, stdio: 'ignore' });
+                        const timer = setTimeout(() => { try { child.kill(); } catch { /* */ } finish(-2); }, 8000);
+                        child.on('exit', (code: number | null) => { clearTimeout(timer); finish(code == null ? -1 : code); });
+                        child.on('error', () => { clearTimeout(timer); finish(-1); });
+                    } catch { finish(-1); }
+                });
+                if (rc === 0) return true;
+                console.warn('[klipzap] writeFiles fast path rc=' + rc + ' → PowerShell fallback');
+            }
+        } catch (e) { console.warn('[klipzap] writeFiles fast path error:', e); }
+
+        // ② 兜底: PowerShell（冷启动 1.5~3s；SetFileDropList 附重试防剪贴板被短暂占用）
+        try {
+            const escapedPaths = list.map(p => `$col.Add('${p.replace(/'/g, "''")}')`).join('\n');
             const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
 $col = New-Object System.Collections.Specialized.StringCollection
 ${escapedPaths}
-[System.Windows.Forms.Clipboard]::SetFileDropList($col)
+$ok = $false
+for ($i = 0; $i -lt 10; $i++) {
+    try { [System.Windows.Forms.Clipboard]::SetFileDropList($col); $ok = $true; break } catch { Start-Sleep -Milliseconds 80 }
+}
+if (-not $ok) { throw 'SetFileDropList failed' }
 `.trim();
             await new Promise<void>((resolve, reject) => {
                 cp.execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
-                    timeout: 5000,
+                    timeout: 8000,
                     windowsHide: true,
                 }, (err) => {
                     if (err) { reject(err); return; }
@@ -551,7 +607,7 @@ ${escapedPaths}
                 _windowProjectMap.delete(existingWinId);
             }
         }
-        const newWin = createWindow(portableRoot, portableCache, appVersion, lspBridge, downloadService, stateStore);
+        const newWin = createWindow(portableRoot, portableCache, appVersion, downloadService, stateStore);
         // 绑定主文件夹
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');

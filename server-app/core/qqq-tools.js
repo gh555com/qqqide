@@ -539,6 +539,47 @@
     return c;
   }
 
+  // ★ 播放器双入口（2026-09-26 q319 v5 用户定案）：[↗] 独立悬浮播放器窗（A）/ [⧈] 窗内播放器卡（B）——二选一使用，共用同一播放会话
+  var _PL_SVG_WIN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>';
+  var _PL_SVG_CARD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H5V8h14v10z"/></svg>';
+  function _buildPlayerCard() {
+    var c = document.createElement('div');
+    c.className = 'qqq-tools-card wide qqq-tools-flex';
+    c.title = _i('workbench.playerTip', '播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出。');
+    var grp = document.createElement('div');
+    grp.className = 'qqq-tools-btns';
+    var bWin = _syncBtn(_PL_SVG_WIN, _i('workbench.playerWinTip', '独立悬浮播放器窗：置顶小窗——切到别的程序也看得见（↗）'));
+    var bCard = _syncBtn(_PL_SVG_CARD, _i('workbench.playerCardTip', '窗内播放器：悬浮在 qqqide 窗口里的播放器卡——跟随本窗口（⧈）'));
+    bWin.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _closeAll();
+      try {
+        var b = window.qqqideBridge;
+        if (b && b.player && b.player.open) { b.player.open(); }
+        else { _qoast(_i('workbench.playerNeedRestart', '悬浮播放器需要重启实例后可用'), { type: 'info', duration: 4000 }); }
+      } catch (err) { }
+    });
+    bCard.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _closeAll();
+      try {
+        if (window.qqqPlayerCard) { window.qqqPlayerCard.open(); }
+        else { _qoast(_i('workbench.playerNeedRestart', '悬浮播放器需要重启实例后可用'), { type: 'info', duration: 4000 }); }
+      } catch (err) { }
+    });
+    grp.appendChild(bWin);
+    grp.appendChild(bCard);
+    var body = document.createElement('div');
+    body.className = 'qqq-tools-card-body';
+    var t = document.createElement('div');
+    t.className = 'qqq-tools-card-title';
+    t.textContent = 'Player';
+    body.appendChild(t);
+    c.appendChild(grp);
+    c.appendChild(body);
+    return c;
+  }
+
   function _buildSoonRow() {
     var row = document.createElement('div');
     row.className = 'qqq-tools-soon';
@@ -572,6 +613,7 @@
     grid.appendChild(_buildDocCard());
     grid.appendChild(_buildZipCard());
     grid.appendChild(_buildCloudCard());
+    grid.appendChild(_buildPlayerCard());
     grid.appendChild(_buildSoonRow());
 
     root.appendChild(grid);

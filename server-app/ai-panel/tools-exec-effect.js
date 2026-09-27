@@ -1148,7 +1148,11 @@ async function executeSysPython(args) {
         if (!st.exeOk) return 'Error: the built-in Python is not present in this installation — cannot set it up (component missing).';
         if (st.mode === 'other') {
             var confirmFn = null;
-            try { confirmFn = (window.parent && typeof window.parent.qqqSysPyConfirm === 'function') ? window.parent.qqqSysPyConfirm : null; } catch (_) { /* ignore */ }
+            try {
+                // 2026-09-26：优先走统一出口 qqqSysInterpAsk（标题行「你选择了「做系统 Python 解释器」」+ 正文「将覆盖当前系统解释器」）；旧壳层回退裸确认框
+                if (window.parent && typeof window.parent.qqqSysInterpAsk === 'function') confirmFn = function () { return window.parent.qqqSysInterpAsk('python', 'override'); };
+                else if (window.parent && typeof window.parent.qqqSysPyConfirm === 'function') confirmFn = window.parent.qqqSysPyConfirm;
+            } catch (_) { /* ignore */ }
             if (!confirmFn) return 'Error: the confirmation dialog is unavailable (window out of sync). Ask the user to use the Settings panel button "Set as System Python Interpreter" instead, or restart the window.';
             var go = false;
             try { go = await confirmFn(); } catch (_) { go = false; }
@@ -1249,7 +1253,9 @@ async function executeSysNode(args) {
         if (st.mode === 'other') {
             var confirmFn = null;
             try {
-                if (window.parent && typeof window.parent.qqqSysInterpConfirm === 'function') confirmFn = window.parent.qqqSysInterpConfirm;
+                // 2026-09-26：优先走统一出口 qqqSysInterpAsk（标题行「你选择了「做系统 Node 解释器」」+ 正文「将覆盖当前系统解释器」）；旧壳层回退裸确认框
+                if (window.parent && typeof window.parent.qqqSysInterpAsk === 'function') confirmFn = function () { return window.parent.qqqSysInterpAsk('node', 'override'); };
+                else if (window.parent && typeof window.parent.qqqSysInterpConfirm === 'function') confirmFn = window.parent.qqqSysInterpConfirm;
                 else if (window.parent && typeof window.parent.qqqSysPyConfirm === 'function') confirmFn = window.parent.qqqSysPyConfirm;
             } catch (_) { /* ignore */ }
             if (!confirmFn) return 'Error: the confirmation dialog is unavailable (window out of sync). Ask the user to use the Settings panel button "Set as System Node Interpreter" instead, or restart the window.';

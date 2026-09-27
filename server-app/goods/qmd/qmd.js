@@ -16,6 +16,10 @@
 //   事件转发（主进程 → iframe）: qmd:session-ready / qmd:out / qmd:exit / qmd:restarted
 //   ★ 键入输出不走 parent 中转：iframe 直连 parent.qqqideBridge.qmd
 //     （spawn/write/resize/kill 直调主进程，kmd-ui 同款模式）
+// ★ 2026-09-27 x 键长按召回（与 kmd 的 qqq-roam-open-kmd 对称）：
+//   Roam/全局长按 x（600ms）→ {type:'qqq-roam-open-qmd', path, fileName} 或 window.__qqqQmdOpen(path)
+//   → 打开【新】qmd 并定位到该目录；单文件选中 → fileName 会话就绪后预填键入区（不回车）；
+//   liftKey='x' → qmd-ui 吞掉残留 x 自动重复（"帮用户抬起 x 键"）。
 // ============================================================================
 (function () {
     'use strict';
@@ -33,13 +37,20 @@
         // ★ 2026-09-16 mac: ConPTY 为 Windows OS API —— mac 不注册 qmd（终端用 kmd 行模式）
         var _isMac = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
         if (_isMac) {
-            console.log('[qmd] ConPTY 仅 Windows 支持 —— 跳过注册（mac 请用 kmd）');
+            // ★ 2026-09-27 x 长按优雅退化：mac 无 ConPTY —— 仍须响应召回协议（否则长按 x 成死键）→ 回退 kmd
+            window.__qqqQmdOpen = function (path) { try { if (window.__qqqKmdOpen) window.__qqqKmdOpen(path); } catch (_) { } return false; };
+            window.addEventListener('message', function (e) {
+                var d = e.data; if (!d || d.type !== 'qqq-roam-open-qmd') return;
+                try { if (window.__qqqKmdOpen) window.__qqqKmdOpen(d.path || null); } catch (_) { }
+            });
+            console.log('[qmd] ConPTY 仅 Windows 支持 —— 跳过注册（mac 请用 kmd；x 长按召回已退化到 kmd）');
             return;
         }
         var bridge = window.qqqideBridge;
         var iframes = {}; // sessionId → iframe.contentWindow
         var _tabs = {};   // sessionId → tab（右键再开用）
         var _qmdSeq = 0;  // qmd tab 自增序号
+        var _pendingQmd = null; // 一次性启动 {cwd, fileName, liftKey}（roam 长按 x / 全局长按召回指定）
 
         // ── IPC → iframe 转发（单例注册，跨 tab 复用） ──
         var offReady = null, offOut = null, offExit = null, offRest = null;
@@ -66,6 +77,30 @@
             });
         }
 
+        // ── ★ 2026-09-27 x 长按召回（与 kmd 的 qqq-roam-open-kmd 对称）：开放新 qmd 并定位 ──
+        //   liftKey='x'：长按来自"按住 x 未抬起"，qmd-ui 需吞掉残留的 x 自动重复（"帮用户抬起 x 键"）
+        function _playQmdSfx() {
+            try {
+                if (typeof _playRoamSfx === 'function') { _playRoamSfx('terminal'); return; }
+                if (bridge && bridge.audio) { bridge.audio.play('yz:zs861.mp3').catch(function () { }); }
+            } catch (_) { }
+        }
+        function _openNewQmd(path, fileName, liftKey) {
+            _pendingQmd = { cwd: path || null, fileName: fileName || null, liftKey: liftKey || null };
+            var ok = false;
+            try { ok = openQmdTab(); } catch (_) { }
+            if (!ok) _pendingQmd = null;
+            if (ok) _playQmdSfx();
+            return ok;
+        }
+        // 全局入口（shell-menu x 键呈递机器长按分支 / shell.js 兜底同款）
+        window.__qqqQmdOpen = function (path, fileName) { return _openNewQmd(path, fileName, 'x'); };
+        window.addEventListener('message', function (e) {
+            var d = e.data;
+            if (!d || d.type !== 'qqq-roam-open-qmd') return;
+            _openNewQmd(d.path || null, d.fileName || null, 'x');
+        });
+
         // ── 打开 qmd：X 区 file 分组 custom tab（同 kmd 模式） ──
         function openQmdTab(side) {
             if (!window.qqqTabs || !window.qqqTabs.openFileCustomTab) return false;
@@ -85,7 +120,11 @@
                 pane.appendChild(iframe);
 
                 var sid = 'qmd-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
-                var root = window._workspaceRoot || '';
+                // ★ 2026-09-27 roam 长按 x / 全局召回指定目录优先（一次性消费，工具栏打开仍回工作空间根）
+                var root = (_pendingQmd && _pendingQmd.cwd) || window._workspaceRoot || '';
+                var qmdFile = _pendingQmd ? _pendingQmd.fileName : null; // 单文件选中 → 会话就绪后预填键入区
+                var qmdLift = _pendingQmd ? _pendingQmd.liftKey : null;  // 'x' → qmd-ui 吞残留 x 重复（帮用户抬起）
+                _pendingQmd = null;
                 if (!root && window.parent && window.parent._workspaceRoot) root = window.parent._workspaceRoot;
 
                 // tab 可见性 → xterm 聚焦（切回 tab 可直接打字）
@@ -106,6 +145,8 @@
                             type: 'qmd:init', sessionId: sid, cwd: root,
                             shellType: 'cmd', cols: 120, rows: 30, active: !!tab.active,
                             title: tab.title, // 命名键入框初始值（kmd F77 同款链路）
+                            fileName: qmdFile || undefined, // 单文件选中 → 预填键入区（会话就绪后写入，不回车）
+                            liftKey: qmdLift || undefined,  // 'x' → 吞掉残留 x 自动重复（帮用户抬起 x 键）
                         }, '*');
                     } catch (_) { }
                 };

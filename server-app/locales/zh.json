@@ -159,7 +159,20 @@
       "mshotFail": "截图失败",
       "mplUp": "上移",
       "mplDown": "下移",
-      "mplDel": "从播放列表移除"
+      "mplDel": "从播放列表移除",
+      "mpopout": "弹出独立播放器",
+      "mpopin": "在窗内打开播放器",
+      "mdockside": "切换列表位置（左 / 右）"
+    },
+    "player": {
+      "title": "播放器",
+      "needRestart": "播放器需要重启实例后可用",
+      "added": "已加入播放列表：{n} 个",
+      "addedIgnored": "已加入播放列表：{n} 个 · 忽略 {m} 个",
+      "addNone": "没有可加入的媒体文件",
+      "empty": "播放列表为空 — 在 Roam 中选中媒体右键「加入播放列表」，或从悬浮层 ↗ 弹出",
+      "returnOv": "退回悬浮层",
+      "returnFail": "未找到主窗口，无法退回悬浮层"
     },
     "about": {
       "title": "关于 qqq",
@@ -301,22 +314,26 @@
       "cannotStart": "无法开始下载：",
       "cannotStartBare": "无法开始下载"
     },
-    "prog": {
-      "copyingN": "正在复制 {n} 个文件…",
-      "done": "完成",
-      "cancelled": "已取消",
-      "fail": "失败"
-    },
     "exit": {
       "confirm": "确认退出？",
       "ok": "确认退出"
     },
     "wq": {
-      "tip": "wq 前摇统计：粘贴探针执行时间\n点击重置",
-      "tipShort": "wq 前摇统计"
+      "title": "wq 探针",
+      "empty": "暂无记录",
+      "probeMeta": "最大 {max} ms · 共 {n} 次",
+      "recent": "最近 {list}",
+      "cacheMedia": "媒体缓存",
+      "cachePlay": "转码缓存",
+      "cacheMeta": "{n} 项 · 命中 {p}%",
+      "cacheMetaNoHit": "{n} 项",
+      "cacheBroken": "熔断 {n}",
+      "reset": "重置",
+      "resetDone": "wq 统计已重置"
     },
     "goods": {
-      "kmdXTip": "按 x 键打开一个新 kmd"
+      "kmdXTip": "短按 x 键打开一个新 kmd，按之前可选中 Roam 文件或文件夹，以带上该文件或文件夹路径。",
+      "qmdXTip": "长按 x 键打开一个新 qmd，按之前可选中 Roam 文件或文件夹，以带上该文件或文件夹路径。"
     },
     "aZone": {
       "nullTip": "收起 A 区 / 点击还原"
@@ -328,6 +345,7 @@
   },
   "editor": {
     "copyPath": "复制路径",
+    "roamLocate": "在 Roam 中定位该文件",
     "minimap": "小地图",
     "tabs": {
       "close": "关闭标签",
@@ -346,7 +364,12 @@
       "encAutoReset": "自动检测（清除固定）",
       "encAutoCur": "自动检测",
       "encFixedAt": "编码已固定为 {v}（逃生舱）— 点击修改 / 恢复自动",
-      "encAutoAt": "编码：{v}（自动检测）— 点击可手动指定",
+      "encAutoAt": "编码：{v} — {src}；点击可手动指定",
+      "encSrcBom": "依据 BOM 声明",
+      "encSrcUtf8": "严格 UTF-8 解码通过",
+      "encSrcGbk": "GBK 回退推测（乱码请点此改）",
+      "saveAsUtf8": "另存为 UTF-8",
+      "encMenu": "编码菜单",
       "readFail": "读取失败：文件不存在或不可读",
       "redecoded": "已按 {v} 重新解码",
       "switchFail": "切换解码失败：",
@@ -877,7 +900,11 @@
       "switched": "── 已切换 {0} ──",
       "switchFail": "[切换失败] {0}",
       "switchErr": "[切换异常] {0}",
-      "ctrlCFail": "[Ctrl+C 发送失败] {0}"
+      "ctrlCFail": "[Ctrl+C 发送失败] {0}",
+      "intDone": "── Ctrl+C · 已终止 {0} 个进程 ──",
+      "intIdle": "── Ctrl+C · 无运行中的命令 ──",
+      "intSig": "── Ctrl+C · 已发送中断信号 ──",
+      "intRestart": "── Ctrl+C · 壳层升级需重启实例生效 ──"
     },
     "git": {
       "refresh": "刷新",
@@ -1115,14 +1142,23 @@
       "unknownErr": "未知错误"
     },
     "qmd": {
-      "sessionOps": "会话操作",
-      "killHint": "Terminate 强杀整个进程树并原地重启；Restart 正常重启会话",
+      "sessionOps": "终端操作",
+      "killHint": "Interrupt 只停当前命令（保留会话与滚动）；Restart 杀树后原地重开会话；Terminate 仅终止（标签与滚动保留，可再 Restart）",
       "startFail": "[启动失败] {0}",
       "startFailTerm": "[qmd] 会话启动失败: {0}",
       "startErr": "[启动异常]",
       "exited": "已退出{0}",
       "exitedTerm": "── 会话已退出{0} ──",
-      "restarted": "● 已重启"
+      "restarted": "● 已重启",
+      "noSel": "无选中文本 · 先拖选再复制",
+      "intRestart": "── Interrupt · 壳层升级需重启实例生效 ──",
+      "intDone": "── Interrupt · 已终止 {0} 个进程 ──",
+      "intIdle": "── Interrupt · 无运行中的命令 ──",
+      "intSig": "── Interrupt · 已发送中断信号 ──",
+      "intFail": "[Interrupt 失败] {0}",
+      "terminated": "已终止 · 可 Restart 重启",
+      "termLine": "── 会话已终止（Restart 可重启）──",
+      "deadHint": "已处于终止态 · Restart 可重启"
     },
     "dsecret": {
       "targetProject": "目标项目",
@@ -1173,6 +1209,8 @@
     },
     "roam": {
       "qBatchIgnore": "Q 播放列表：已加入 {0} 个 · 忽略 {1} 个（类型不同）",
+      "mplAdd": "加入播放列表",
+      "mplNone": "没有可加入播放列表的媒体文件",
       "szSize": "sz区显示: 文件大小",
       "szCtime": "sz区显示: 创建时间",
       "szMtime": "sz区显示: 修改时间",
@@ -1597,6 +1635,10 @@
     "exportDocTip": "把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
     "exportZipTip": "把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
     "cloudSyncTip": "云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含编辑器配置、各文件夹偏好、剪贴板历史。",
+    "playerTip": "播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出。",
+    "playerWinTip": "独立悬浮播放器窗：置顶小窗——切到别的程序也看得见（↗）",
+    "playerCardTip": "窗内播放器：悬浮在 qqqide 窗口里的播放器卡——跟随本窗口（⧈）",
+    "playerNeedRestart": "悬浮播放器需要重启实例后可用",
     "videoUrlTip": "待移植：输入视频网址，自动下载到文档目录并插入相框。",
     "pasteTip": "待移植：一键把剪贴板内容粘贴到文档（目前用 Ctrl+V 可完成同样操作）。",
     "pureTip": "待移植：扫描文档引用，清理不再被引用的孤儿文件。"
@@ -1698,6 +1740,8 @@
       "busyChecking": "正在检查…",
       "busyApplying": "正在设置…",
       "busyRemoving": "正在解除…",
+      "confirmPick": "你选择了「做系统 Python 解释器」",
+      "confirmRemovePick": "你选择了「取消作为系统 Python 解释器」",
       "confirmTitle": "将覆盖当前系统解释器",
       "confirmRemove": "取消作为系统 Python 解释器",
       "confirmOk": "确认",
@@ -1705,14 +1749,15 @@
       "ok": "✅ 已设置：双击 .py 由内置 Python 运行",
       "okRefresh": "✅ 已刷新：内置 Python 已接管 .py",
       "okRemove": "✅ 已解除：内置 Python 不再作为系统解释器",
-      "fail": "❌ 设置失败：",
-      "failRemove": "❌ 解除失败：",
+      "fail": "❌ Python 设置失败：",
+      "failRemove": "❌ Python 解除失败：",
       "errNoPython": "内置 Python 未就绪",
       "errDenied": "权限被拒绝（可能被安全软件拦截）",
       "errVerify": "写入未生效",
       "errUac": "已取消（未授权）",
-      "errBridge": "需重启本窗口后可用",
+      "errBridge": "需重启本窗口后可用（Python）",
       "errBusy": "正在处理中，请稍候",
+      "errRemove": "解除未完成",
       "errGeneric": "未知错误"
     },
     "sysInterp": {
@@ -1727,18 +1772,21 @@
       "busyChecking": "正在检查…",
       "busyApplying": "正在设置…",
       "busyRemoving": "正在解除…",
+      "confirmPick": "你选择了「做系统 Node 解释器」",
+      "confirmRemovePick": "你选择了「取消作为系统 Node 解释器」",
       "confirmRemove": "取消作为系统 Node 解释器",
       "ok": "✅ 已设置：双击 .js 由内置 Node 运行",
       "okRefresh": "✅ 已刷新：内置 Node 已接管 .js",
       "okRemove": "✅ 已解除：内置 Node 不再作为系统解释器",
-      "fail": "❌ 设置失败：",
-      "failRemove": "❌ 解除失败：",
+      "fail": "❌ Node 设置失败：",
+      "failRemove": "❌ Node 解除失败：",
       "errNoNode": "内置 Node 未就绪",
       "errDenied": "权限被拒绝（可能被安全软件拦截）",
       "errVerify": "写入未生效",
       "errUac": "已取消（未授权）",
-      "errBridge": "需重启本窗口后可用",
+      "errBridge": "需重启本窗口后可用（Node）",
       "errBusy": "正在处理中，请稍候",
+      "errRemove": "解除未完成",
       "errGeneric": "未知错误"
     },
     "tier": {
@@ -1886,7 +1934,8 @@
       "exit": "退出"
     },
     "enc": {
-      "saveRejected": "保存被拒：字符 \"{ch}\"（{cp}）无法用 {enc} 编码表示，内容未写入。可：① 删除该字符后重存；② 在标签页编码菜单选「另存为 UTF-8/GB18030」（全字符编码，永不丢失）。"
+      "saveRejected": "保存被拒：字符 \"{ch}\"（{cp}）无法用 {enc} 编码表示，内容未写入。可：① 删除该字符后重存；② 点顶部路径旁的编码徽标，选「另存为 UTF-8/GB18030」（全字符编码，永不丢失）。",
+      "saveRejectedDecode": "保存被拒：文件含 {n} 处无法解码的字符（显示为 \uFFFD，并非你输入的内容）——{enc} 装不下它们，直接保存会把它们改写成别的字符。可：① 点顶部路径旁的编码徽标换一种编码重新打开；② 或「另存为 UTF-8」把当前内容原样转存。"
     },
     "search": {
       "rgMissing": "ripgrep 未安装。运行: python op/components.py ensure ripgrep",

@@ -74,6 +74,15 @@ async function build() {
     console.log('[esbuild] copied mac-pasteboard.py ->', OUT);
   }
 
+  // Copy win-pasteboard.py (Windows clipboard file-list writer, not bundled —
+  //   klipzap writeFiles 快路径：ctypes 原子写 CF_HDROP+FileNameW+FileName)
+  var winPasteSrc = path.join(SRC, 'win-pasteboard.py');
+  var winPasteDst = path.join(OUT, 'win-pasteboard.py');
+  if (fs.existsSync(winPasteSrc)) {
+    fs.copyFileSync(winPasteSrc, winPasteDst);
+    console.log('[esbuild] copied win-pasteboard.py ->', OUT);
+  }
+
   // Copy qmd-pty.py (ConPTY bridge for goods qmd, not bundled)
   var qmdPtySrc = path.join(SRC, 'qmd-pty.py');
   var qmdPtyDst = path.join(OUT, 'qmd-pty.py');

@@ -56,6 +56,7 @@
       '  background:var(--card-bg); color:var(--text-primary); font-size:14px;',
       '}',
       '.qqoast-body .qqoast-action button:hover { background:var(--border-color); }',
+      '.qqoast-body .qqoast-action button + button { margin-left:8px; }',
       '.qqoast-close { cursor:pointer; opacity:.4; font-size:20px; line-height:1; flex-shrink:0; padding:2px; user-select:none; }',
       '.qqoast-close:hover { opacity:1; }',
       '.qqoast-copy { cursor:pointer; opacity:.3; font-size:13px; line-height:1; flex-shrink:0; padding:2px 4px; user-select:none; }',
@@ -97,17 +98,24 @@
       msgSpan.textContent = message;
       body.appendChild(msgSpan);
 
-      if (action && action.label) {
+      // ★ 2026-09-27：actions 数组（多按钮并排）；opts.action 单按钮为兼容保留
+      var actionList = [];
+      if (opts.actions && opts.actions.length) actionList = opts.actions;
+      else if (action && action.label) actionList = [action];
+      if (actionList.length) {
         var actionDiv = document.createElement('div');
         actionDiv.className = 'qqoast-action';
-        var btn = document.createElement('button');
-        btn.textContent = action.label;
-        btn.addEventListener('click', function () {
-          if (typeof action.onClick === 'function') action.onClick();
-          qoaster.dismiss();
+        actionList.forEach(function (a) {
+          if (!a || !a.label) return;
+          var btn = document.createElement('button');
+          btn.textContent = a.label;
+          btn.addEventListener('click', function () {
+            if (typeof a.onClick === 'function') a.onClick();
+            qoaster.dismiss();
+          });
+          actionDiv.appendChild(btn);
         });
-        actionDiv.appendChild(btn);
-        body.appendChild(actionDiv);
+        if (actionDiv.childNodes.length) body.appendChild(actionDiv);
       }
 
       var closeBtn = document.createElement('span');

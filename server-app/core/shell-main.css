@@ -149,6 +149,16 @@
   display: none;
 }
 
+/* ★ 2026-09-27: kmd/qmd 按钮提示（短按/长按说明）— 长文分多行 + 更大字号 */
+.qqq-roam-tip.qqq-tip-multi {
+  white-space: normal;
+  max-width: 380px;
+  font-size: 18px;
+  line-height: 1.55;
+  letter-spacing: 0.2px;
+  text-align: left;
+}
+
 .qqq-tab-close {
   display: inline-flex;
   align-items: center;
@@ -253,11 +263,9 @@
    Editor Breadcrumb Bar �?独立豆腐块（flex item，占真实高度�?   ============================================================================ */
 [data-qqq-editor-breadcrumb] {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: block; /* ★ 真·单列内联流（2026-09-27）：flex 三列废除——编码/路径/复制三部件同处一条文字流，路径吃满整行宽度折行 */
   flex: 0 0 auto;
-  padding: 2px 6px 2px 16px; /* 右侧 6px：编码徽标/复制按钮入流靠右（旧 absolute 悬浮已并入 flex 编队） */
+  padding: 2px 6px 2px 16px; /* 单列串行编队：路径文本 → 编码按钮 → 复制按钮（2026-09-27 编码按钮回中间位） */
   outline: none;
   font-size: 12px;
   font-family: ui-monospace, Consolas, Menlo, monospace;
@@ -265,9 +273,8 @@
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
   border-left: 3px solid #888;
-  white-space: normal;
-  word-break: break-all;
-  overflow-wrap: anywhere;
+  white-space: normal;  /* 单行优先（2026-09-27）：放得下恒单行；放不下完整折行——绝不省略号/截断 */
+  overflow: hidden;
   line-height: 1.4;
   min-height: 18px;
   /* 可选中/复制，不可编�?*/
@@ -276,44 +283,44 @@
   cursor: text;
 }
 
-/* 面包屑复制按钮 — hover 时浮现（flex 入流 + visibility 占位：hover 零布局抖动） */
-.qqq-breadcrumb-copy-btn {
-  flex: 0 0 auto;
-  visibility: hidden;
+/* 面包屑复制按钮 / Roam 定位按钮 — 恒显（2026-09-27）：直接呈现旧 hover 外观（金边+主文字色），不再等光标 hover 才浮现 */
+.qqq-breadcrumb-copy-btn,
+.qqq-breadcrumb-roam-btn {
+  display: inline-block;
+  margin-left: 6px; /* 单列内联流（2026-09-27）：紧随前一部件（编码→复制→Roam），不再占右侧独立列 */
   padding: 0 4px;
   font-size: 11px;
   line-height: 16px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--yellow);
   border-radius: 3px;
   background: var(--card-bg);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   white-space: nowrap;
+  font-family: inherit; /* Roam 文字按钮与面包屑文字流同字体（📋 emoji 不受影响） */
 }
 
-[data-qqq-editor-breadcrumb]:hover .qqq-breadcrumb-copy-btn {
-  visibility: visible;
-}
-
-/* 路径文本列（弹性吸收剩余宽度；编码徽标/复制按钮恒靠右） */
+/* 路径文本 — 单列内联流（2026-09-27）：吃满整行宽度折行（不再被两侧列挤压，换行次数最少）；恒完整显示——绝不省略号/截断 */
 [data-qqq-editor-breadcrumb] .qqq-breadcrumb-path {
-  flex: 1 1 auto;
-  min-width: 0;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
-/* 面包屑编码徽标 — 恒显读占位（默认态静显 / 固定态金色+*；语义源 = tab-manager 编码机器）
+/* 面包屑编码徽标 — 恒醒恒显（默认态直接呈现 hover 外观 / 固定态金色+*；证据未到显示默认态占位，到达即校正；语义源 = tab-manager 编码机器）
    ★ 字号档：面包屑空间充裕 → 比 tab 徽标大一档（9px → 11px，仍让位于 12px 路径文本）。
    改字号只动这里——.qqq-enc-chip 基础规则（tab 徽标）不受影响（本选择器特异性 0,2,0 > 0,1,0） */
 [data-qqq-editor-breadcrumb] .qqq-enc-chip {
-  flex: 0 0 auto;
-  margin: 0;
+  display: inline-block;
+  margin: 0 0 0 6px; /* 单列内联流（2026-09-27）：紧随路径文本（行序 路径→编码→复制）——不再占独立列；右侧间距由复制按钮 margin-left 提供 */
   font-size: 11px;
   line-height: 16px;
   padding: 0 6px;
 }
 
-.qqq-breadcrumb-copy-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--yellow);
+/* ★ 恒醒态（2026-09-27）：默认态（utf8 自动）不再静显——直接呈现 hover 外观（全不透明+可见边框） */
+[data-qqq-editor-breadcrumb] .qqq-enc-chip.qqq-enc-auto {
+  opacity: 1;
+  border-color: var(--border-color);
 }
 
 [data-qqq-editor-breadcrumb]::selection,
@@ -465,6 +472,36 @@
   margin-right: 16px;
 }
 
+/* ── wq 探针按钮（2026-09-27 改版定案）：固定宽 64px（迷你柱状图 + 均值）——任何语言/任何
+      数字恒固定宽度，永不吞食状态区；hover 弹卡片（详下方 .qqq-wq-hover 块）。
+      旧「wq: xx.xms avg (n) [..]」变宽文本行已废除 ── */
+.qqq-wq-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 64px;
+  flex: 0 0 auto;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--green);
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  forced-color-adjust: none;
+}
+.qqq-wq-btn .qqq-wq-val {
+  min-width: 38px;
+  text-align: left;
+  overflow: hidden;
+}
+.qqq-wq-btn .qqq-wq-spark { display: block; flex: 0 0 auto; }
+
+/* 阈值配色：>20ms 橙黄 / >50ms 红 / 无记录 灰（迷你柱 currentColor 继承） */
+.qqq-wq-btn.qqq-wq-warn { color: var(--yellow); }
+.qqq-wq-btn.qqq-wq-bad { color: var(--red); }
+.qqq-wq-btn.qqq-wq-dim { color: var(--text-dim); }
+
 /* ★ a 区域（内存图标+内存文字+CPU文字，2026-08-30 合并）：图标/文字同色 --mem-icon，CPU 无图标以文字前缀标识，整体可 hover/点击弹合并卡片 */
 .qqq-mem-block {
   color: var(--mem-icon);
@@ -478,23 +515,35 @@
   margin-left: 12px;
 }
 
-/* ── 内存图标（手绘 CSS 内存条：芯片主体 11×6 + 4 引脚，同色渐变=纯色块零模糊零阴影，色 var(--mem-icon) 更深黑/更亮白，2026-08-29） ── */
+/* ── 窗口数图标（2026-09-27 用户定案；原手绘内存条已删）：固定 13×13 绘制区，开了几个窗口就画几个纯实心
+      小黑块（色 var(--mem-icon) 不变，无描边/无圆角/无阴影=纯实线笔触）——网格列数 = ceil(sqrt(N))、行数 =
+      ceil(N/列)（3 → 第一行 2 块 + 第二行 1 块；1 窗口 = 一块占满全区），块与间隙恒整数像素、网格落区内
+      （floor 取整居中）→ 数目一眼可数；窗口越多块越小越密（=密密麻麻）。
+      ★ 格数唯一填充入口 = shell-mem-hover.js renderWinIcon()（数据源 = mem-meter 广播 m.win，与 q 行
+      「N窗口」同源同值）；CSS 只管区与格的几何，禁在别处写格。
+      格网格绝对定位、left/top 由 JS floor 取整；块/间隙恒整数像素 → 整数缩放下边缘锐利。 ── */
 .qqq-mem-icon {
   display: inline-block;
-  width: 11px;
-  height: 11px;
+  position: relative;
+  width: 13px;
+  height: 13px;
   margin-right: 4px;
   vertical-align: -2px;
-  background:
-    linear-gradient(var(--mem-icon), var(--mem-icon)) 0 0 / 11px 6px no-repeat,
-    linear-gradient(var(--mem-icon), var(--mem-icon)) 0 8px / 2px 3px no-repeat,
-    linear-gradient(var(--mem-icon), var(--mem-icon)) 3px 8px / 2px 3px no-repeat,
-    linear-gradient(var(--mem-icon), var(--mem-icon)) 6px 8px / 2px 3px no-repeat,
-    linear-gradient(var(--mem-icon), var(--mem-icon)) 9px 8px / 2px 3px no-repeat;
   -webkit-app-region: no-drag;
 }
 
-/* CPU 图标已移除（2026-08-30 合并卡片定案：状态区 a 区域 = 内存图标 + 内存文字 + CPU 文字） */
+/* 格网格：left/top 由 renderWinIcon 取整写入（绝对定位 = 整数像素落点，不用 CSS 居中——避免半像素毛边） */
+.qqq-mem-icon .qqq-mem-cells {
+  position: absolute;
+  display: grid;
+  gap: 1px;
+}
+
+.qqq-mem-icon .qqq-mem-cell {
+  background: var(--mem-icon);
+}
+
+/* CPU 图标已移除（2026-08-30 合并卡片定案：状态区 a 区域 = 窗口数图标 + 内存文字 + CPU 文字） */
 
 /* ── 赞助商文字（状态栏左下角，纯文字素雅款） ── */
 .qqq-status-sponsor {
@@ -806,6 +855,17 @@
   display: none;
 }
 
+/* ★ 下拉打开期间拖窗让位（2026-09-27 用户定案：点击行1 任意区域都要能关掉已展开的列表）
+   菜单行1 属 .qqq-menu-area 的 app-region:drag 拖窗区——mousedown 被系统当标题栏拖动
+   吞掉，DOM 收不到点击（豆腐块 = 显式 no-drag 所以能点，空白区则永远关不掉列表）。
+   下拉打开期间整行+容器临时 no-drag（关闭瞬间移除、拖窗能力立即恢复），
+   点击由 ai-viewport.js 的 document 级 mousedown 收口关闭。 */
+html.aiv-dd-open .qqq-menu-area,
+html.aiv-dd-open .qqq-menu-row-1,
+html.aiv-dd-open .aiv-container {
+  -webkit-app-region: no-drag;
+}
+
 .aiv-block {
   display: inline-flex;
   align-items: center;
@@ -949,7 +1009,34 @@
 [data-theme="dark"] .aiv-submenu,
 [data-theme="dark"] .aiv-recent-dropdown {
   background: #1e211e !important;
-  border-color: var(--border-color) !important;
+  /* ★ 暗主题「集合描边」v3（2026-09-27 用户定案）：整片下拉只留最外圈一条轮廓——
+     被画两次的线段（豆腐块底边↔列顶边贴合段、相邻列贴边缝）整段不画：列自身边界恒透明，
+     唯一绘制者 = ai-viewport.js _renderDdContour 段落层（并集外沿 4 段金虚线 + 4 段黑晕圈；
+     各列同顶同高贴边 → 并集 ≡ 包围盒，改定位公式必须同步复核）。
+     软投影留在列上（贴边缝一侧被邻列盖住，天然不可见）。 */
+  border-color: transparent !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.62) !important;
+}
+
+/* ★ 贴合不描边（2026-09-27 v3）：下拉打开时豆腐块底边与列顶边相贴（dd.top = 块 rect.bottom）——
+   块底边整段让位（透明），与列顶边贴合段一并归入「不画」，块与下拉合成一张整片。 */
+[data-theme="dark"] .aiv-block-active {
+  border-bottom-color: transparent !important;
+}
+
+/* ★ 集合描边失败兜底：段落层异常 → 恢复列自带金虚线边框（绝不留无边界整片） */
+html.aiv-contour-fail[data-theme="dark"] .aiv-dropdown,
+html.aiv-contour-fail[data-theme="dark"] .aiv-submenu,
+html.aiv-contour-fail[data-theme="dark"] .aiv-recent-dropdown {
+  border-color: var(--primary-color) !important;
+  border-style: dashed !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.9),
+    0 14px 34px rgba(0, 0, 0, 0.62) !important;
+}
+
+html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
+  border-bottom-color: var(--primary-color) !important;
 }
 
 /* ── hover 高亮：文�?文件夹统一，文字纯�?�?/纯白(�?，更显眼 ── */
@@ -1122,6 +1209,211 @@
 .gaea-search-input:focus {
   border-color: var(--primary-color);
 }
+
+/* ============================================================================
+   wq 探针 hover 卡片（2026-09-27 改版，core/wq-stats.js）——状态栏按钮上方瞬间弹出
+   内容：前摇统计（平均/最大/次数/最近 7 次）+ 媒体缓存 40MB / 转码缓存 2GB 占用
+   交互对齐 MEM 卡：hover 即弹 / 点击钉住 / 点卡片外关闭；动画仅显示态（隐藏态零燃烧）
+   ============================================================================ */
+.qqq-wq-hover {
+  position: fixed;
+  z-index: 2147483000;
+  width: 264px;
+  display: flex;
+  flex-direction: column;
+  padding: 9px 12px 10px;
+  border-radius: 10px;
+  background: var(--card-bg);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(5px) scale(0.985);
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 100ms ease-out, transform 100ms ease-out;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  overflow: hidden;
+}
+.qqq-wq-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--cyan), transparent 38%, var(--green));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.qqq-wq-hover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.qqq-wq-hover-show { opacity: 1; transform: translateY(0) scale(1); }
+
+/* 点击钉住（pin）——卡片可交互（重置按钮），金色锁定视觉 */
+.qqq-wq-hover.qqq-wq-hover-pinned {
+  pointer-events: auto;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(181, 137, 0, 0.4);
+}
+.qqq-wq-hover-pinned::before { background: linear-gradient(135deg, var(--cyan), transparent 38%, #b58900); }
+.qqq-wq-hover-pinned::after { background: linear-gradient(90deg, transparent, #b58900, transparent); opacity: 0.8; }
+
+.qqq-wq-hover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.qqq-wq-hover-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  font-weight: bold;
+}
+.qqq-wq-hover-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+}
+/* 脉冲动画仅显示态运行（隐藏态零动画零重绘——对齐 MEM 卡 v30 闲置燃烧纪律） */
+.qqq-wq-hover-show .qqq-wq-hover-dot {
+  animation: qqq-wq-live 2s ease-in-out infinite;
+}
+@keyframes qqq-wq-live {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); opacity: 1; }
+  50% { box-shadow: 0 0 6px 1px var(--green); opacity: 0.75; }
+}
+.qqq-wq-hover-reset {
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 6px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+.qqq-wq-hover-reset:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  opacity: 1;
+}
+
+.qqq-wq-hover-num {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 1px 0 3px;
+}
+.qqq-wq-hover-main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.qqq-wq-hover-val {
+  font-family: Consolas, monospace;
+  font-size: 26px;
+  font-weight: bold;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: 0.5px;
+}
+.qqq-wq-hover-unit {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--text-secondary);
+}
+.qqq-wq-hover-spark { display: block; flex: 0 0 auto; color: var(--green); }
+/* 卡片迷你柱随阈值同色（与按钮同尺） */
+.qqq-wq-hover.qqq-wq-t-warn .qqq-wq-hover-spark { color: var(--yellow); }
+.qqq-wq-hover.qqq-wq-t-bad .qqq-wq-hover-spark { color: var(--red); }
+
+.qqq-wq-hover-meta {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qqq-wq-hover-sub {
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qqq-wq-hover-sep {
+  height: 1px;
+  background: var(--border-color);
+  margin: 8px 0 7px;
+}
+
+.qqq-wq-hover-crow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.qqq-wq-hover-crow + .qqq-wq-hover-crow { margin-top: 7px; }
+.qqq-wq-hover-cname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qqq-wq-hover-cval {
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.qqq-wq-hover-cbar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.18);
+  margin-top: 3px;
+  overflow: hidden;
+}
+.qqq-wq-hover-cbar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--cyan);
+  transition: width 0.25s ease-out;
+}
+.qqq-wq-hover-cbar.qqq-wq-play-bar > i { background: var(--orange); }
+.qqq-wq-hover-cbar.qqq-wq-hot > i { background: var(--red); }
+.qqq-wq-hover-cmeta {
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qqq-wq-hover-cmeta .qqq-wq-broken { color: var(--red); }
 
 /* ============================================================================
    MEM 24H hover 面板 — 启动包内存曲线（shell-mem-hover.js，2026-08-29）

@@ -500,6 +500,17 @@
     return v;
   }
 
+  // ★ 2026-09-27：保存失败错误解析（IPC 前缀剥离 + 编码拒绝标记识别）——
+  //   壳层 file-encoding 在编码拒绝错误尾部追加 [ENC_REJECT]（确定性机器标记，不靠本地化文案猜）；
+  //   渲染层据此挂动作按钮（另存为 UTF-8 / 编码菜单），上屏前剥掉标记 + Electron IPC 包装前缀。
+  function encErrInfo(err) {
+    var raw = String((err && err.message) || err || '');
+    raw = raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, '');
+    var encReject = raw.indexOf('[ENC_REJECT]') !== -1;
+    if (encReject) raw = raw.replace(/\s*\[ENC_REJECT\]\s*$/, '');
+    return { msg: raw, encReject: encReject };
+  }
+
   function _encInjectStyle() {
     if (_encStyleInjected) return;
     _encStyleInjected = true;
@@ -511,7 +522,7 @@
       '.qqq-enc-chip[hidden]{display:none!important}' +
       '.qqq-enc-chip.qqq-enc-pinned{color:#b58900;border-color:#b58900;font-weight:700}' +
       '[data-theme="dark"] .qqq-enc-chip.qqq-enc-pinned{color:#d9a020;border-color:#d9a020}' +
-      // ★ 2026-09-20：面包屑恒显档——默认态（utf8 自动）静显：透明边框低调，hover 才浮出边框
+      // ★ 2026-09-20：面包屑恒显档基础态（tab 徽标不受影响；面包屑侧外观由 shell-main.css 作用域覆盖为恒醒）
       '.qqq-enc-chip.qqq-enc-auto{opacity:.7;color:var(--text-secondary,#657b83);border-color:transparent;background:transparent;font-weight:400}' +
       '.qqq-enc-chip.qqq-enc-auto:hover{opacity:1;border-color:var(--border-color,#93a1a1)}' +
       '.qqq-enc-pop{position:fixed;z-index:99999;min-width:200px;max-height:78vh;overflow-y:auto;background:var(--card-bg,#fffdf5);border:1px solid var(--border-color,#93a1a1);border-radius:3px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:4px 0;user-select:none}' +
@@ -527,9 +538,12 @@
 
   // 统一徽标渲染（tab 徽标 + 面包屑徽标共用同一语义源，禁两套 label/title 逻辑）
   //   showDefault=false（tab 徽标）：utf8 自动态零噪音隐藏
-  //   showDefault=true （面包屑徽标）：默认态也静显（恒定读占位 + 编码功能可点入口）
+  //   showDefault=true （面包屑徽标）：恒显（证据未到 → 默认态占位；证据到达即校正真值）
   function _applyEncChip(chip, filePath, info, showDefault) {
     if (!chip) return;
+    // ★ 恒显档（面包屑）证据未到 → 默认态占位（utf8 自动）——芯片恒在、绝不空缺；
+    //   真实证据到达（setFileEnc → _renderEncChipsFor）即覆盖校正（GBK/固定/BOM 真值）
+    if (!info && showDefault) info = { enc: 'utf8', bom: false, pinned: null };
     const isDefault = !!(info && info.enc === 'utf8' && !info.pinned && !info.bom);
     if (!info || !info.enc || (isDefault && !showDefault)) {
       chip.hidden = true; chip.textContent = ''; chip.removeAttribute('title');
@@ -538,9 +552,15 @@
     }
     const label = (info.bom && info.enc === 'utf8') ? 'UTF-8 BOM' : _encLabel(info.enc);
     chip.textContent = info.pinned ? label + ' *' : label;
+    // ★ 2026-09-27：title 带判定来源（BOM 声明 / 严格 UTF-8 / GBK 回退推测）——把「GBK 是猜的、乱码点我」教给用户
+    var _src = info.bom
+      ? _miT('editor.tabs.encSrcBom', '依据 BOM 声明')
+      : (info.enc === 'utf8'
+        ? _miT('editor.tabs.encSrcUtf8', '严格 UTF-8 解码通过')
+        : _miT('editor.tabs.encSrcGbk', 'GBK 回退推测（乱码请点此改）'));
     chip.title = info.pinned
       ? _miT('editor.tabs.encFixedAt', '编码已固定为 {v}（逃生舱）— 点击修改 / 恢复自动', { v: label })
-      : _miT('editor.tabs.encAutoAt', '编码：{v}（自动检测）— 点击可手动指定', { v: label });
+      : _miT('editor.tabs.encAutoAt', '编码：{v} — {src}；点击可手动指定', { v: label, src: _src });
     chip.classList.toggle('qqq-enc-pinned', !!info.pinned);
     chip.classList.toggle('qqq-enc-auto', isDefault);
     chip.hidden = false;
@@ -582,68 +602,93 @@
   }
 
   // 主动向主进程拉一次最新证据（文件外部重载后调用）
+  // ★ 2026-09-27 双变体查询（q368 实锤：无论打开啥文档都显 UTF-8）——主进程证据/固定按「读取时原始路径
+  //   字符串」记账（_key 仅小写归一，不归一分隔符），本函数此前先把路径转正斜杠再查 → roam 等反斜杠来源
+  //   恒 miss（主进程返 null → 徽标恒显默认 UTF-8 占位，真 GBK 文件全被遮蔽）。
+  //   查询顺序：原始入参变体 → 归一变体 → 反斜杠变体（调用方可能已归一——第三查兜底读取源为反斜杠的记账）；
+  //   前两查未中才发第三查（miss 路径 = 本就是坏态，零常态开销）。
   async function refreshEncForPath(filePath) {
-    filePath = _fp(filePath);   // ★ 路径归一
+    var _rawPath = String(filePath == null ? '' : filePath);   // 原始变体（读取记账大概率同源）
+    filePath = _fp(filePath);   // ★ 路径归一（渲染层缓存键）
     if (!filePath || !window.qqqideBridge || !window.qqqideBridge.fs || !window.qqqideBridge.fs.encoding) return;
+    if (!_rawPath) _rawPath = filePath;
     try {
-      const inf = await window.qqqideBridge.fs.encoding(filePath);
+      var inf = await window.qqqideBridge.fs.encoding(_rawPath);
+      if (!inf && _rawPath !== filePath) inf = await window.qqqideBridge.fs.encoding(filePath);
+      if (!inf) {
+        var _bsPath = filePath.replace(/\//g, '\\');   // win32 反斜杠变体（读取源反斜杠 + 调用方已归一 的兜底）
+        if (_bsPath !== _rawPath && _bsPath !== filePath) inf = await window.qqqideBridge.fs.encoding(_bsPath);
+      }
       setFileEnc(filePath, inf);
     } catch (_) { }
   }
 
   // ★ 面包屑恒显徽标：初次渲染入口（后续由 setFileEnc → _renderEncChipsFor 全量刷新覆盖）
   function renderEncIndicator(el, filePath) {
+    var _rawPath = String(filePath == null ? '' : filePath);   // ★ 原始变体留给证据查询（先归一就丢变体）
     filePath = _fp(filePath);   // ★ 路径归一
     if (!el || !filePath) return;
     _applyEncChip(el, filePath, _pathEnc[filePath], true);
+    // ★ 2026-09-27：创建即主动拉一次证据——不依赖各打开路径顺手上报（漏报/晚到即空窗无按钮）
+    refreshEncForPath(_rawPath || filePath);
   }
 
   // ★ 面包屑徽标点击入口：按路径打开编码弹层（弹层内部只依赖 filePath；tab 找不到时用合成 tab 兜底）
   function openEncPopupForPath(anchorEl, filePath) {
     filePath = _fp(filePath);   // ★ 路径归一
-    if (!anchorEl || !filePath) return;
+    if (!filePath) return;   // ★ 2026-09-27：允许无锚点（保存失败弹窗动作调用 → 默认位置弹层）
     let hit = null;
     for (const grp of groups) {
       if (grp.type !== 'file') continue;
       for (const t of grp.tabs) { if (t.filePath === filePath) { hit = { grp: grp, tab: t }; break; } }
       if (hit) break;
     }
-    openEncPopup(anchorEl, hit ? hit.grp : null, hit ? hit.tab : { filePath: filePath });
+    openEncPopup(anchorEl || {}, hit ? hit.grp : null, hit ? hit.tab : { filePath: filePath });
   }
 
   // A：重新按编码打开（pin → 主进程重读解码）
+  // ★ 2026-09-27 双变体固定/重读：主进程 pin 按路径字符串记账 —— roam 反斜杠源与归一正斜杠源是两个键，
+  //   只固定一处 → 另一变体后续打开时固定静默失效（回落自动检测）。两处同设/同清 + 用原始变体重读。
   async function applyReopenEnc(filePath, encOrNull) {
+    var _rawPath = String(filePath == null ? '' : filePath);   // 原始变体（与日常打开读取同源）
     filePath = _fp(filePath);   // ★ 路径归一
     const b = window.qqqideBridge;
     if (!b || !b.fs) return;
+    if (!_rawPath) _rawPath = filePath;
     try {
-      await b.fs.setFileEncoding(filePath, encOrNull); // null = 恢复自动检测（清固定）
-      const content = await b.fs.read(filePath);
+      await b.fs.setFileEncoding(_rawPath, encOrNull); // null = 恢复自动检测（清固定）
+      if (_rawPath !== filePath) { try { await b.fs.setFileEncoding(filePath, encOrNull); } catch (_) { } }
+      const content = await b.fs.read(_rawPath);
       if (content == null) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.readFail', '读取失败：文件不存在或不可读'), { duration: 4000, type: 'warn' }); return; }
       if (window.qqqEditor && window.qqqEditor.refreshLiveContent) window.qqqEditor.refreshLiveContent(filePath, content);
       if (window.qqqideQoast) window.qqqideQoast.show(_miT('editor.tabs.redecoded', '已按 {v} 重新解码', { v: (encOrNull ? _encLabel(encOrNull) : window._i('editor.tabs.encAuto', '自动检测')) }), { duration: 3500 });
       refreshEncForPath(filePath);
     } catch (err) {
-      if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.switchFail', '切换解码失败：') + ((err && err.message) || err), { duration: 6000, type: 'warn' });
+      if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.switchFail', '切换解码失败：') + encErrInfo(err).msg, { duration: 6000, type: 'warn' });
     }
   }
 
   // B：另存为（当前编辑器内容按所选编码写盘 = 转换；主进程清固定）
   async function applySaveAsEnc(filePath, enc) {
+    var _rawPath = String(filePath == null ? '' : filePath);   // ★ 原始变体（写盘与读取/固定记账同源）
     filePath = _fp(filePath);   // ★ 路径归一
     const b = window.qqqideBridge;
     if (!b || !b.fs) return;
+    if (!_rawPath) _rawPath = filePath;
     let ed = null;
     if (window.qqqEditor && window.qqqEditor.getEditorForFile) ed = window.qqqEditor.getEditorForFile(filePath);
     if (!ed || !ed.getValue) { if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.noEditor', '未找到该文件的编辑器内容'), { duration: 4000, type: 'warn' }); return; }
     try {
-      await b.fs.write(filePath, ed.getValue(), enc);
+      await b.fs.write(_rawPath, ed.getValue(), enc);
+      // ★ 双变体清固定（另存 = 新真理）：pin 按路径字符串记账，只清一个变体 → 另一变体残留旧固定
+      try { await b.fs.setFileEncoding(_rawPath, null); } catch (_) { }
+      if (_rawPath !== filePath) { try { await b.fs.setFileEncoding(filePath, null); } catch (_) { } }
       if (window.qqqEditor && window.qqqEditor.noteSaved) window.qqqEditor.noteSaved(filePath);
       _setTabDeleted(filePath, false);
       if (window.qqqideQoast) window.qqqideQoast.show(_miT('editor.tabs.savedAs', '已另存为 {v}', { v: _encLabel(enc) }), { duration: 3500 });
       refreshEncForPath(filePath);
     } catch (err) {
-      if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.saveAsFail', '另存失败：') + ((err && err.message) || err), { duration: 9000, type: 'warn' });
+      if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.tabs.saveAsFail', '另存失败：') + encErrInfo(err).msg, { duration: 9000, type: 'warn' });
     }
   }
 
@@ -1784,6 +1829,9 @@
     // ★ 2026-09-20 面包屑编码徽标（恒显读占位；语义/渲染与 tab 徽标同源）
     renderEncIndicator,
     openEncPopupForPath,
+    // ★ 2026-09-27：保存失败弹窗动作直通（另存为指定编码 / 错误解析）
+    applySaveAsEnc,
+    encErrInfo,
     // 退出落盘专用：清在飞防抖并立即落盘（实现恒走 _doPersist——历史上曾调用未定义函数打断资产落盘）
     flushOpenTabs: function () { if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; _doPersist(); } },
   };

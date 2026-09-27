@@ -63,6 +63,10 @@ export function _enginesRoot(appRoot: string): string {
 // ── Shell 解析（自给自足：git 组件内 bash 优先，系统 Git 兑底） ──
 export function _resolveShell(shellType: string, appRoot: string): { cmd: string; args: string[]; env: NodeJS.ProcessEnv } | null {
     const env: NodeJS.ProcessEnv = { ...process.env };
+    // ★ 2026-09-27: 管道输出缓冲对齐——kmd stdout 是管道非 tty → Python 切块缓冲（8KB 攒满才吐），
+    //   裸跑 .py 时全程黑屏（实测 90s 零输出，退出前才一次性 flush；真 CMD 黑窗是 tty 行缓冲所以实时）。
+    //   注入 PYTHONUNBUFFERED=1 强制无缓冲 = 逐行实时（cmd/PS/gitbash/mac zsh|bash 全域继承；用户已显式设置则不覆盖）。
+    if (!('PYTHONUNBUFFERED' in env)) env.PYTHONUNBUFFERED = '1';
     // ★ mac（2026-09-16）: zsh/bash 原生宿主（同一行模式架构：无 PTY，stdin 管道写行）。
     //   TERM 供提示符着色/宽度判定；-i 强制交互模式 → 提示符块与回显进管道（UI 端渲染）
     if (process.platform === 'darwin') {
@@ -149,6 +153,45 @@ function _killTree(s: KmdSession): void {
         try { process.kill(-s.proc.pid, 'SIGKILL'); } catch { /* ignore */ }
         try { s.proc.kill('SIGKILL'); } catch { /* ignore */ }
     }
+}
+
+// ── Ctrl+C 真中断（2026-09-27）：行模式无 PTY，\x03 在管道里只是普通字节（实测变成乱码命令行垃圾）→
+//    真语义 = 杀掉「当前前台命令」进程树：枚举会话 shell 的直接子进程（管道模式下命令恒为 shell
+//    直接子进程），逐个 taskkill /F /T（/T 连带整棵子孙）。shell 本尊存活 → 提示符回来、
+//    会话与滚动区保留（与 Terminate=清屏重启相区分）。边界：cmd 内部命令（dir/type 无子进程）
+//    不可中断——本就秒回，卡死场景用 Terminate 兜底。
+function _enumChildPidsWin(parentPid: number): Promise<number[]> {
+    return new Promise((resolve) => {
+        const parse = (out: string): number[] => {
+            const pids: number[] = [];
+            for (const line of String(out).split(/\r?\n/)) {
+                const t = line.trim();
+                if (!/^\d+$/.test(t)) continue;
+                const n = parseInt(t, 10);
+                if (n > 0 && n !== parentPid) pids.push(n);
+            }
+            return pids;
+        };
+        const run = (cmd: string, args: string[]): Promise<{ ok: boolean; out: string }> => new Promise((res) => {
+            let out = '';
+            let p: ChildProcess;
+            try {
+                p = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+            } catch { res({ ok: false, out: '' }); return; }
+            const t = setTimeout(() => { try { p.kill(); } catch { /* ignore */ } }, 4000);
+            p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+            p.on('error', () => { clearTimeout(t); res({ ok: false, out }); });
+            p.on('exit', (code) => { clearTimeout(t); res({ ok: code === 0, out }); });
+        });
+        // ① wmic（Win7-23H2 标配，~100-300ms）② PowerShell Get-WmiObject（PS 2.0 兼容，24H2 无 wmic 兜底）
+        run('wmic', ['process', 'where', `ParentProcessId=${parentPid}`, 'get', 'ProcessId']).then((r1) => {
+            if (r1.ok) { resolve(parse(r1.out)); return; }
+            const psCmd = `Get-WmiObject Win32_Process -Filter "ParentProcessId=${parentPid}" | ForEach-Object { $_.ProcessId }`;
+            run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd]).then((r2) => {
+                resolve(r2.ok ? parse(r2.out) : []);
+            });
+        });
+    });
 }
 
 function _spawnOne(opts: KmdSpawnOpts, appRoot: string, owner: WebContents): KmdSession | null {
@@ -254,6 +297,32 @@ export function registerKmdIpc(appRoot: string): void {
             return { ok: true };
         } catch (err) {
             return { ok: false, error: String((err as Error).message || err) };
+        }
+    });
+
+    // ── Ctrl+C 真中断：杀当前前台命令子树（会话本尊存活、滚动区保留）；Terminate 仍是整会话重启 ──
+    ipcMain.handle('qqqide:kmd:interrupt', async (_e, id: string) => {
+        const s = sessions.get(String(id || ''));
+        if (!s || !s.alive || !s.proc || s.proc.pid == null) return { ok: false, error: 'dead' };
+        if (process.platform === 'win32') {
+            const children = await _enumChildPidsWin(s.proc.pid);
+            let killed = 0;
+            for (const c of children) {
+                try {
+                    spawn('taskkill', ['/F', '/T', '/PID', String(c)], { windowsHide: true, stdio: 'ignore' });
+                    killed++;
+                } catch { /* ignore */ }
+            }
+            return { ok: true, killed };
+        }
+        // POSIX（mac zsh/bash）：shell = 独立进程组组长（detached）→ 组级 SIGINT = 真 Ctrl+C 语义
+        // （交互 shell 收到 SIGINT 回提示符；前台命令一并中断）
+        try {
+            process.kill(-s.proc.pid, 'SIGINT');
+            return { ok: true, killed: -1 };
+        } catch {
+            try { s.proc.kill('SIGINT'); return { ok: true, killed: -1 }; }
+            catch (err) { return { ok: false, error: String((err as Error).message || err) }; }
         }
     });
 

@@ -288,12 +288,6 @@
             "cannotStart": "Không thể bắt đầu tải xuống:",
             "cannotStartBare": "Không thể bắt đầu tải xuống"
         },
-        "prog": {
-            "copyingN": "Đang sao chép {n} tệp…",
-            "done": "Hoàn tất",
-            "cancelled": "Đã hủy",
-            "fail": "Thất bại"
-        },
         "exit": {
             "confirm": "Xác nhận thoát?",
             "ok": "Xác nhận thoát"

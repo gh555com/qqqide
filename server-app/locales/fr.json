@@ -288,12 +288,6 @@
             "cannotStart": "Impossible de démarrer le téléchargement :",
             "cannotStartBare": "Impossible de démarrer le téléchargement"
         },
-        "prog": {
-            "copyingN": "Copie de {n} fichier(s) en cours…",
-            "done": "Terminé",
-            "cancelled": "Annulé",
-            "fail": "Échec"
-        },
         "exit": {
             "confirm": "Confirmer la fermeture ?",
             "ok": "Confirmer la fermeture"

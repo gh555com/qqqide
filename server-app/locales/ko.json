@@ -288,12 +288,6 @@
             "cannotStart": "다운로드를 시작할 수 없습니다:",
             "cannotStartBare": "다운로드를 시작할 수 없습니다"
         },
-        "prog": {
-            "copyingN": "{n}개 파일 복사 중…",
-            "done": "완료",
-            "cancelled": "취소됨",
-            "fail": "실패"
-        },
         "exit": {
             "confirm": "정말 종료하시겠습니까?",
             "ok": "종료 확인"

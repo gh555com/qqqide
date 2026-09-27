@@ -21,6 +21,7 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 			case 'delete': performDeleteAction(item); break;
 			case 'rename': performEditAction(item); break;
 			case 'copyPath': performCopyPathAction(); break;
+			case 'queue': _playerQueueSelected(); break;
 		}
 	});
 });
@@ -411,13 +412,16 @@ async function updateDriveDisplay() {
 		}
 		if (k === 'x') {
 			e.preventDefault();
-			_vigBump('roam', { x: 1 });
-			// ★ 2026-08-25 极简规则：单文件选中 → 文件名预填 kmd 键入行（不带路径，任何类型都填）；
-			//   多选 / 文件夹 / 无选中 → 只开 kmd + cd，不预填
+			// ★ 2026-09-27 x 键呈递机器（用户定案；与主窗口 shell.js bootXKeyMachine 同款语义——改阈值两处必须同改）:
+			//   短按（600ms 内抬起）→ kmd；长按（600ms 未抬起）→ qmd；两者都带 Roam 路径 / 单文件文件名预填。
+			//   按住期间：自动重复（e.repeat）一律忽略；长按既出后抬起不再补开 kmd（"帮用户抬起 x 键"）。
+			//   原 2026-08-25 极简规则 100% 保留：单文件选中 → 文件名预填（不带路径，任何类型都填）；
+			//   多选 / 文件夹 / 无选中 → 只开终端 + cd，不预填
 			//   <= 1 而非 === 1：覆盖 selectedItem 有值但 selectedItems 数组未同步的边缘路径
 			//   （length=0 时 selectedItem 必为 null/非 file → fn 仍 undefined，多选 length>1 仍拒绝）
+			if (e.repeat) return;   // 按住自动重复：忽略（计时只认第一次按下）
 			var fn = (selectedItems.length <= 1 && selectedItem && selectedItem.type === 'file' && selectedItem.name && selectedItem.name !== '..') ? selectedItem.name : undefined;
-			_openKmdAt(currentPath, fn);
+			_xArm(currentPath, fn);
 			return;
 		}
 		if (k === 'm') {
@@ -485,6 +489,47 @@ async function updateDriveDisplay() {
 			_playSfx('purge');
 		}
 	});
+
+	// ── ★ x 键呈递机器（2026-09-27 用户定案）─────────────────────────────────
+	//   短按（600ms 内抬起）→ kmd（原语义 100% 保留，带 Roam 路径/文件名）
+	//   长按（600ms 未抬起）→ qmd（同样带 Roam 路径/文件名）+ "帮用户抬起 x 键"：
+	//   本次按键被消费——重复键忽略、抬起不补开 kmd；qmd 侧另有守卫吞掉残留 x 重复输入
+	//   （qmd-ui liftKey 守卫，由 qmd.js 随 qmd:init 下发）。
+	//   ★ 与主窗口 shell.js bootXKeyMachine 成对：改阈值/语义必须两处同改。
+	//   keyup 挂本 iframe document（Roam 持有焦点时键盘事件只在本 document 流动）。
+	var X_HOLD_MS = 600;
+	var _xSt = { armed: false, longFired: false, path: null, fileName: null, timer: null };
+	function _xArm(p, fn) {
+		if (_xSt.armed) return;   // 重复按下（自动重复已在入口滤掉）：不重置计时、不覆盖首次上下文
+		_xSt.armed = true; _xSt.longFired = false; _xSt.path = p || null; _xSt.fileName = fn || null;
+		_xSt.timer = setTimeout(function () {
+			_xSt.timer = null;
+			if (!_xSt.armed) return;
+			_xSt.longFired = true;   // 抬起不再补开 kmd
+			_vigBump('roam', { x: 1 });
+			_openQmdAt(_xSt.path, _xSt.fileName);   // 长按 → qmd
+		}, X_HOLD_MS);
+	}
+	function _xRelease() {
+		if (!_xSt.armed) return;
+		var wasLong = _xSt.longFired;
+		if (_xSt.timer) { clearTimeout(_xSt.timer); _xSt.timer = null; }
+		_xSt.armed = false; _xSt.longFired = false;
+		var p = _xSt.path, fn = _xSt.fileName;
+		_xSt.path = null; _xSt.fileName = null;
+		if (!wasLong) {          // 短按（600ms 内抬起）→ kmd
+			_vigBump('roam', { x: 1 });
+			_openKmdAt(p, fn);
+		}
+	}
+	function _xCancel() {
+		if (_xSt.timer) { clearTimeout(_xSt.timer); _xSt.timer = null; }
+		_xSt.armed = false; _xSt.longFired = false; _xSt.path = null; _xSt.fileName = null;
+	}
+	document.addEventListener('keyup', function (e) {
+		if ((e.key || '').toLowerCase() === 'x') _xRelease();
+	}, true);
+	window.addEventListener('blur', _xCancel);   // 焦点丢失（alt-tab 等）：静默取消，不误开任何终端
 })();
 
 // ---- Space key s request: recursive size calculation (from q3) ----

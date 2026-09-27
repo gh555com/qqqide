@@ -812,8 +812,9 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     return;
   }
   if (cmd === 'window.activateKmd') {
-    // ★ 2026-08-18 全局 x 键召回 kmd：非编辑态 → 打开一个新 kmd。
-    //   路径优先级：iframe 转发携带（kmd 自转发=自身 cwd）→ 活跃文件 tab 父目录 → 默认（工作空间根）
+    // ★ 2026-09-27 x 键呈递机器（600ms）定案：本分支不再直接开 kmd——只把"按下"交给机器
+    //   （短按 <600ms 抬起 → kmd；长按 ≥600ms → qmd）；最终打开走机器 up/超时触发。
+    //   路径优先级（按下时刻捕获）：iframe 转发携带（kmd 自转发=自身 cwd）→ 活跃文件 tab 父目录 → 默认（工作空间根）
     var kmdPath = window.__qqqLastKeyPath || null;
     window.__qqqLastKeyPath = null;
     if (!kmdPath && window.qqqTabs) {
@@ -826,7 +827,8 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
         }
       } catch (_ke) { }
     }
-    if (window.__qqqKmdOpen) window.__qqqKmdOpen(kmdPath);
+    if (window.__qqqXPress && window.__qqqXPress.down) { window.__qqqXPress.down(kmdPath); }
+    else if (window.__qqqKmdOpen) { window.__qqqKmdOpen(kmdPath); } // 旧壳层兜底：无机器则维持旧语义
     return;
   }
   if (cmd === 'window.activateRoam') {

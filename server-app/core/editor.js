@@ -1017,10 +1017,7 @@
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
             // ★ 保存失败必须可见：否则脏 tab 星号永久残留，用户误以为文件已保存（正体+星号之谜）
-            if (window.qqqideQoast) {
-              var _fnBlur = String(filePath).split(/[\\/]/).pop() || filePath;
-              window.qqqideQoast.show(_fnBlur + ' \u4FDD\u5B58\u5931\u8D25\uFF1A' + ((err && err.message) || err) + ' \uFF08\u5185\u5BB9\u4FDD\u7559\u5728\u7F16\u8F91\u5668\uFF0C\u53EF\u7528 Ctrl+S \u91CD\u8BD5\uFF09', { duration: 6000, type: 'warn' });
-            }
+            _showSaveFailToast(filePath, err, true);
           }
         }
       });
@@ -1040,10 +1037,7 @@
           try { var _stCtrlS = await bridge.fs.stat(filePath); if (_stCtrlS) _openedMtime[filePath] = { mtimeMs: _stCtrlS.mtimeMs, size: _stCtrlS.size }; } catch (_) {}
         } catch (e) {
           console.error('[editor] save failed:', e);
-          if (window.qqqideQoast) {
-            var _fnCs = String(filePath).split(/[\\/]/).pop() || filePath;
-            window.qqqideQoast.show(_fnCs + ' \u4FDD\u5B58\u5931\u8D25\uFF1A' + ((e && e.message) || e), { duration: 6000, type: 'warn' });
-          }
+          _showSaveFailToast(filePath, e, false);
         }
       });
 
@@ -1123,10 +1117,41 @@
   }
 
 
+  // ★ 2026-09-27：保存失败统一提示（唯一入口）——IPC 包装前缀剥离 + 编码拒绝（[ENC_REJECT]）挂动作按钮
+  //   （另存为 UTF-8 / 编码菜单）——编码机器给出的出路不再要求用户自己去菜单里找。
+  function _showSaveFailToast(filePath, err, retryHint) {
+    if (!window.qqqideQoast) return;
+    var fn = String(filePath).split(/[\\/]/).pop() || filePath;
+    var clean = String((err && err.message) || err || '');
+    var encReject = false;
+    try {
+      if (window.qqqTabs && window.qqqTabs.encErrInfo) {
+        var inf = window.qqqTabs.encErrInfo(err);
+        clean = inf.msg; encReject = inf.encReject;
+      }
+    } catch (_) { }
+    var _t = function (k, fb) { try { return window._i ? window._i(k, fb) : fb; } catch (_) { return fb; } };
+    var text = fn + ' \u4FDD\u5B58\u5931\u8D25\uFF1A' + clean;
+    if (retryHint && !encReject) text += ' \uFF08\u5185\u5BB9\u4FDD\u7559\u5728\u7F16\u8F91\u5668\uFF0C\u53EF\u7528 Ctrl+S \u91CD\u8BD5\uFF09';
+    var opts = { duration: encReject ? 16000 : 6000, type: 'warn' };
+    if (encReject) {
+      // 编码拒绝专属：动作直通（按钮 = 官方出路两步之内）
+      opts.actions = [
+        { label: _t('editor.tabs.saveAsUtf8', '另存为 UTF-8'), onClick: function () { try { window.qqqTabs.applySaveAsEnc(filePath, 'utf8'); } catch (_) { } } },
+        { label: _t('editor.tabs.encMenu', '编码菜单'), onClick: function () { try { window.qqqTabs.openEncPopupForPath(null, filePath); } catch (_) { } } }
+      ];
+    }
+    window.qqqideQoast.show(text, opts);
+  }
+
   // ---- refreshLiveContent: update an already-open pane editor with new content (for live chat.txt) ----
   function refreshLiveContent(filePath, content) {
     var ed = _paneEditors[_normFP(filePath)];   // ★ 路径归一：roam 等 iframe 送来的路径可能是反斜杠写法
     if (!ed) return false;
+    // ★ 2026-09-27 修补：内容零变化 → 全跳（无变更可言；顺带杜绝该路径的抑制标记泄漏面）
+    var _rlSameV = null;
+    try { _rlSameV = ed.getValue(); } catch (_) { }
+    if (_rlSameV !== null && String(content == null ? '' : content) === _rlSameV) return true;
     try {
       ed._isRefreshing = true;
       _globalRefreshLock = true; window.__qqqGlobalRefreshLock = true;
@@ -1213,6 +1238,15 @@
         // 编辑器干净 → 静默重载磁盘最新版
         var diskContent = await bridge.fs.read(filePath);
         if (diskContent == null) return;
+        // ★ 2026-09-27 修补：内容与编辑器一致（仅 mtime/size 变化）→ 短路（不做全量替换）——
+        //   零收益高负载，且杜绝「抑制标记未被变更事件消费」的泄漏面（残留标记会吞掉用户
+        //   下一次真实编辑 → 粘贴快照丢失 → Ctrl+Z 静默失效）；直接接受新 stat 收尾。
+        var _extCurV = null;
+        try { _extCurV = ed.getValue(); } catch (_) { }
+        if (_extCurV !== null && diskContent === _extCurV) {
+          _openedMtime[filePath] = { mtimeMs: st.mtimeMs, size: st.size };
+          return;
+        }
         // ★ 2026-09-05: 外部重载后同步刷新编码徽标（外部改写可能变了编码）
         if (window.qqqTabs && window.qqqTabs.refreshEncForPath) window.qqqTabs.refreshEncForPath(filePath);
         var m2 = ed.getModel();

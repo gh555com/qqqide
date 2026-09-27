@@ -1483,6 +1483,33 @@ function _zoomFix(x, y) {
 	return { left: x / z, top: y / z };
 }
 
+// ★ fixed 菜单视口钳制（2026-09-27）：fixed 定位菜单/浮层唯一摆放入口——「先量后位」。
+// 教训: 贴近视口底部右键 → 菜单原样向下 → 整块跑出屏幕（用户看不见，误以为没弹）。
+// 规则: ① 先显形（visibility:hidden 可量；display:none 下 offsetWidth 恒 0）再量宽高
+//       ② 纵向越界 → 翻到光标上方；上下都放不下 → 贴底钳制 ③ 横向越界 → 贴右缘，恒 ≥margin
+//       ④ 菜单高于视口 → 压顶 + 行区滚动（绝不半截出屏）
+// 单位: 与 _zoomFix 同域（CSS px）——视口恒 window.inner* ÷ zoom（详 q2-roam-boot.js zoom 换算）
+function _placeFixedMenu(el, x, y) {
+	if (!el) return;
+	var z = getComputedStyle(document.documentElement).zoom;
+	z = (z && z !== '' && z !== '1') ? (parseFloat(z) || 1) : 1;
+	var vw = window.innerWidth / z, vh = window.innerHeight / z, margin = 8;
+	var p = _zoomFix(x, y);
+	el.style.display = 'flex';
+	el.style.visibility = 'hidden';
+	el.style.maxHeight = ''; el.style.overflowY = '';
+	var mw = el.offsetWidth, mh = el.offsetHeight;
+	if (mh > vh - margin * 2) { el.style.maxHeight = (vh - margin * 2) + 'px'; el.style.overflowY = 'auto'; mh = vh - margin * 2; }
+	var top = p.top;
+	if (top + mh > vh - margin) top = (p.top - mh >= margin) ? (p.top - mh) : (vh - mh - margin);
+	if (top < margin) top = margin;
+	var left = p.left;
+	if (left + mw > vw - margin) left = vw - mw - margin;
+	if (left < margin) left = margin;
+	el.style.left = left + 'px'; el.style.top = top + 'px';
+	el.style.visibility = 'visible';
+}
+
 // ===== Actions (from q3, 100% ported) =====
 
 // ★ Q 键（文件夹）：开新 qqqide 窗口，以 folder 为主文件夹进入其工作空间
@@ -1595,6 +1622,40 @@ function _qBatchMediaPlaylist() {
 		} catch (_) {}
 	}
 	return true;
+}
+
+// ★ 右键「加入播放列表」（2026-09-26 q319 v4）：选中（多选感知）媒体 → 独立悬浮播放器窗（bridge.player.add）
+//   与 Q 键同源过滤（video/audio 白名单）；无媒体 → toast 报空；成功计数由主窗口回执 toast
+function _playerQueueSelected() {
+	var list = [];
+	try {
+		if (typeof selectedItems !== 'undefined' && selectedItems && selectedItems.length > 1) {
+			list = selectedItems.slice();
+		} else if (typeof selectedItem !== 'undefined' && selectedItem && selectedItem.name && selectedItem.name !== '..') {
+			list = [selectedItem];
+		} else if (typeof ctxTarget !== 'undefined' && ctxTarget) {
+			list = [{ path: ctxTarget, name: (typeof baseName === 'function' ? baseName(ctxTarget) : String(ctxTarget).split(/[\\/]/).pop()), type: (ctxEntry && ctxEntry.isDir) ? 'folder' : 'file' }];
+		}
+	} catch (_) {}
+	var paths = [];
+	for (var i = 0; i < list.length; i++) {
+		var it = list[i] || {};
+		if (it.type === 'folder' || !it.path) { continue; }
+		var ext = _overlayExtOf(it.name || it.path || '');
+		if (!_OVERLAY_VIDEO_EXTS[ext] && !_OVERLAY_AUDIO_EXTS[ext]) { continue; }
+		paths.push(String(it.path).replace(/\\/g, '/'));
+	}
+	if (!paths.length) {
+		try {
+			if (parent && parent.qqqideQoast) {
+				parent.qqqideQoast.show(_kk('goods.roam.mplNone', '没有可加入播放列表的媒体文件'), { duration: 3000, type: 'info' });
+			}
+		} catch (_) {}
+		_playSfx('error');
+		return;
+	}
+	try { parent.postMessage({ type: 'qqq-player-add', paths: paths }, '*'); } catch (_) {}
+	_playSfx('enter');
 }
 
 function performCodeAction(item, opts) {
@@ -1797,12 +1858,8 @@ function showContextMenu(x, y, path, entry) {
 	// ★ AI 项标签 = 当前焦点面板（父窗口 __qqq_aiTarget: 0左/1中/2右）
 	//    左: ←AI · 中: AI · 右: AI→ — 让用户清楚喂给哪一个面板
 	_updateAiMenuItem();
-	// ★ 从 q3 百分百移植：先设位置再显示，避免闪烁
-	//    光标在菜单左上角（left/top 对齐 clientX/clientY）
-	var p = _zoomFix(x, y);
-	ctxMenu.style.left = p.left + 'px';
-	ctxMenu.style.top = p.top + 'px';
-	ctxMenu.style.display = 'flex';
+	// ★ 菜单定位唯一入口（先量后位 + 视口钳制/上翻 + 贴边）——详 _placeFixedMenu
+	_placeFixedMenu(ctxMenu, x, y);
 }
 
 function _getAiTargetPanel() {
@@ -1868,6 +1925,12 @@ function _openKmdAt(p, fileName) {
 	_playSfx('terminal');
 }
 
+// ★ 长按 x（600ms）专用：打开 qmd 终端并定位到当前文件夹（2026-09-27；同 kmd 携带 Roam 路径/文件名）
+function _openQmdAt(p, fileName) {
+	try { window.parent.postMessage({ type: 'qqq-roam-open-qmd', path: p, fileName: fileName || undefined }, '*'); } catch (_) { }
+	_playSfx('terminal');
+}
+
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; var e = document.getElementById('emptyContextMenu'); if (e) e.style.display = 'none'; });
 
 // ---- Empty context menu (right-click on empty area, from q3) ----
@@ -1905,10 +1968,7 @@ if (emptyCtxMenu) {
 			var tt = _getAiTargetPanel();
 			aiItem.textContent = tt === 0 ? _kk('goods.roam.feedAiL', '←喂给 AI') : tt === 2 ? _kk('goods.roam.feedAiR', '喂给 AI→') : _kk('goods.roam.feedAi', '喂给 AI');
 		}
-		var ep = _zoomFix(e.clientX, e.clientY);
-		em.style.left = ep.left + 'px';
-		em.style.top = ep.top + 'px';
-		em.style.display = 'flex';
+		_placeFixedMenu(em, e.clientX, e.clientY);
 	});
 
 	// ---- Drag & drop paste (M8.3, 2026-08-24 升级) ----

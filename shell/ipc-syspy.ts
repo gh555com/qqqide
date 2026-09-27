@@ -622,6 +622,7 @@ async function winNodeApply(portableRoot: string): Promise<{ ok: boolean; code: 
 const MAC_BUNDLE_ID = 'com.qqqide.syspy';
 const MAC_APP_NAME = 'qqqide-syspy.app';
 const MAC_PLISTBUDDY = '/usr/libexec/PlistBuddy';
+const MAC_PLUTIL = '/usr/bin/plutil';
 const MAC_PATH_BEGIN = '# >>> qqqide syspy >>>';
 const MAC_PATH_END = '# <<< qqqide syspy <<<';
 const MAC_LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>qd (qqqide) Player</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0b0b0b;color:#dcd8d0;}
+  /* ── 拖拽区契约（v6：2026-09-26 修复「任意区拖窗→控件点不中」）─────────────
+     拖拽区 = OS 层 HTCAPTION：区内元素收不到任何鼠标事件（点击被吞）。
+     底座 #pl-root 恒 no-drag；仅三处「非交互区」可拖窗：
+       ① 顶部隐形条 #pl-dragtop  ② 空态整面 #pl-empty  ③ 播放区空背景 .ovmb-maincol
+     引擎 UI（控制条/面板/dock/媒体/转码条）与 toast 恒 no-drag（从拖拽区挖洞）。
+     ★ 新增任何悬浮元素必须同步登记 no-drag，否则点击被拖拽区吞掉。
+     ★ DOM 序 = 覆盖序：逐像素按文档序改写拖拽态（后代盖祖先、后兄弟盖前兄弟；
+       computed=none 不写）；故 no-drag 控件必须排在覆盖它的 drag 元素之后
+       （#pl-chrome 必须排在 #pl-empty 后；引擎动态追加的转码条/toast 天然在尾=安全）。 */
+  #pl-root{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:10px;overflow:hidden;box-sizing:border-box;-webkit-app-region:no-drag;}
+  #pl-root .ovmb-maincol{-webkit-app-region:drag;}
+  #pl-root .ovmb, #pl-root .ovmb *{-webkit-app-region:no-drag;}
+  #pl-root video, #pl-root audio{-webkit-app-region:no-drag;}
+  #pl-root .ovmb-txbar{-webkit-app-region:no-drag;}
+  /* 拖拽条（无边框窗：顶部隐形拖区；窗控钮 z 更高且 no-drag） */
+  #pl-dragtop{position:absolute;top:0;left:0;right:0;height:18px;-webkit-app-region:drag;z-index:40;}
+  /* 迷你窗控（右上角）：置顶 / 关闭 */
+  #pl-chrome{position:absolute;top:6px;right:6px;z-index:50;display:flex;gap:4px;-webkit-app-region:no-drag;opacity:.55;transition:opacity .15s;}
+  #pl-chrome:hover{opacity:1;}
+  .pl-cbtn{width:22px;height:22px;padding:0;border:none;border-radius:6px;background:rgba(255,255,255,0.10);color:#cfcbc2;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;cursor:pointer;}
+  .pl-cbtn:hover{background:rgba(255,255,255,0.22);color:#fff;}
+  .pl-cbtn.pl-pin-on{color:#ffd301;background:rgba(255,211,1,0.16);}
+  .pl-cbtn.pl-close:hover{background:rgba(220,50,47,0.6);color:#fff;}
+  /* 空态 */
+  #pl-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;color:#8f8b83;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.7;-webkit-app-region:drag;}
+  #pl-empty *{-webkit-app-region:drag;}
+  #pl-empty .pl-note{font-size:26px;line-height:1;color:#ffd301;opacity:.75;}
+  /* 迷你 toast（引擎宿主适配：与悬浮层 qoast 同语义） */
+  .pl-toast-wrap{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;max-width:92%;-webkit-app-region:no-drag;}
+  .pl-toast-wrap *{-webkit-app-region:no-drag;}
+  .pl-toast{background:rgba(20,20,20,0.95);border:1px solid rgba(255,255,255,0.18);color:#e8e6e0;font:12px/1.5 system-ui,-apple-system,sans-serif;border-radius:8px;padding:7px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 18px rgba(0,0,0,0.5);pointer-events:auto;max-width:100%;box-sizing:border-box;}
+  .pl-toast button{border:1px solid rgba(255,211,1,0.5);background:rgba(255,211,1,0.14);color:#ffd301;border-radius:6px;padding:2px 8px;font-size:12px;flex:0 0 auto;cursor:pointer;}
+  .pl-toast button:hover{background:rgba(255,211,1,0.3);}
+</style>
+</head>
+<body>
+<div id="pl-root"></div>
+<div id="pl-dragtop"></div>
+<div id="pl-empty">
+  <div class="pl-note">&#9834;</div>
+  <div id="pl-empty-text"></div>
+</div>
+<!-- ★ #pl-chrome 必须排在 #pl-empty 之后：拖拽态按 DOM 序逐像素覆盖（后兄弟盖前兄弟）——
+     空态整面 drag 若排在后面会把窗控钮重新盖成拖拽区（吞点击），实测实锤 -->
+<div id="pl-chrome">
+  <!-- ★ 退回悬浮层（v6）：↙ 恒显示——整体交接回主窗口悬浮层（列表+进度+模式），主进程发事件后本窗自关；失败 → toast -->
+  <button class="pl-cbtn" id="pl-ret" title="退回悬浮层"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="display:block;pointer-events:none"><path d="M20 5.41L18.59 4 7 15.59V9H5v10h10v-2H8.41L20 5.41z"/></svg></button>
+  <button class="pl-cbtn" id="pl-pin" title="Pin">&#128204;</button>
+  <button class="pl-cbtn pl-close" id="pl-close" title="Close">&#10005;</button>
+</div>
+<div class="pl-toast-wrap" id="pl-toasts"></div>
+
+<script src="../core/i18n.js"></script>
+<script src="../core/media-engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  var bridge = window.qqqideBridge;
+  var rootEl = document.getElementById('pl-root');
+  var toastWrap = document.getElementById('pl-toasts');
+  var emptyEl = document.getElementById('pl-empty');
+  var emptyTextEl = document.getElementById('pl-empty-text');
+  var pinBtn = document.getElementById('pl-pin');
+  var eng = null;
+  var cur = { list: [], index: 0 };
+  var pinned = true;
+  var saveTimer = 0;
+
+  function _tt(k, fb, p) { try { return window._i(k, fb, p); } catch (_) { return fb || k; } }
+
+  function _toast(m, o) {
+    try {
+      var op = (typeof o === 'string') ? { type: o } : (o || {});
+      var el = document.createElement('div');
+      el.className = 'pl-toast';
+      var span = document.createElement('span');
+      span.textContent = String(m || '');
+      el.appendChild(span);
+      if (op.action && op.action.label) {
+        var b = document.createElement('button');
+        b.textContent = op.action.label;
+        b.addEventListener('click', function () { try { op.action.onClick(); } catch (_) { } });
+        el.appendChild(b);
+      }
+      toastWrap.appendChild(el);
+      while (toastWrap.children.length > 3) { toastWrap.removeChild(toastWrap.firstChild); }
+      var dur = (typeof op.duration === 'number' && op.duration > 0) ? op.duration : 3000;
+      setTimeout(function () { try { el.remove(); } catch (_) { } }, dur);
+    } catch (_) { }
+  }
+
+  function _save(immediate) {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = 0; }
+    var doSave = function () {
+      try {
+        if (!eng || !bridge || !bridge.player || !bridge.player.setState) { return; }
+        var st = eng.getState();
+        bridge.player.setState({
+          list: st.list, index: st.index, rate: st.rate, loop: st.loop,
+          shuffle: st.shuffle, volume: st.volume, muted: st.muted, dockSide: st.dockSide
+        });
+      } catch (_) { }
+    };
+    if (immediate) { doSave(); } else { saveTimer = setTimeout(doSave, 700); }
+  }
+
+  var ME = window.QQQMediaEngine ? window.QQQMediaEngine.configure({
+    bridge: bridge,
+    rootEl: rootEl,
+    i18n: _tt,
+    toast: _toast,
+    onClose: function () { try { if (bridge && bridge.player && bridge.player.close) { bridge.player.close(); } } catch (_) { } },
+    reopen: function (p) {
+      openMedia({
+        src: p.src, localPath: p.localPath,
+        list: p.list || cur.list, index: (typeof p.index === 'number') ? p.index : cur.index,
+        isTx: true, play: true
+      });
+    },
+    reveal: function (p) { try { if (bridge && bridge.player && bridge.player.reveal) { bridge.player.reveal(p); } } catch (_) { } },
+    getLastDir: function () { return ''; },
+    onPlayState: function (playing) {
+      if (!playing) { return; }
+      try { if (bridge && bridge.player && bridge.player.claim) { bridge.player.claim('player'); } } catch (_) { }
+    },
+    onState: function () { _save(false); },
+    savePref: function (k, v) {
+      if (k === 'dockSide') { try { if (bridge && bridge.player && bridge.player.setState) { bridge.player.setState({ dockSide: v }); } } catch (_) { } }
+    }
+  }) : null;
+
+  function _showEmpty(on) {
+    emptyEl.style.display = on ? 'flex' : 'none';
+    emptyTextEl.textContent = _tt('shell.player.empty', '播放列表为空 — 在 Roam 中选中媒体右键「加入播放列表」，或从悬浮层 ↗ 弹出');
+  }
+
+  function openMedia(o) {
+    o = o || {};
+    var list = (o.list && o.list.length) ? o.list : null;
+    if (!list || !list.length) { _showEmpty(true); return; }
+    var idx = (typeof o.index === 'number' && o.index >= 0 && o.index < list.length) ? o.index : 0;
+    try { if (eng) { eng.destroy(); } } catch (_) { }
+    eng = null;
+    try { rootEl.innerHTML = ''; } catch (_) { }
+    cur.list = list; cur.index = idx;
+    _showEmpty(false);
+    var item = list[idx] || {};
+    eng = ME ? ME.mount({
+      container: rootEl, rootEl: rootEl,
+      mode: ME.kindOf(item.localPath || o.localPath || o.src || ''),
+      src: o.src || item.src || '',
+      localPath: item.localPath || o.localPath || null,
+      shotBase: item.localPath || o.localPath || null,
+      list: list,
+      index: idx,
+      isTx: !!o.isTx,
+      autoplay: o.play !== false,
+      startTime: o.time || 0,
+      initial: {
+        rate: (typeof o.rate === 'number') ? o.rate : undefined,
+        loop: o.loop, shuffle: o.shuffle,
+        volume: (typeof o.volume === 'number') ? o.volume : undefined,
+        muted: (typeof o.muted === 'boolean') ? o.muted : undefined,
+        dockSide: o.dockSide
+      }
+    }) : null;
+    _save(true);
+  }
+
+  function _itemsToTracks(items) {
+    var out = [];
+    for (var i = 0; i < (items || []).length; i++) {
+      var it = items[i] || {};
+      if (!it.localPath) { continue; }
+      out.push({ src: it.src || ('file:///' + it.localPath), localPath: it.localPath, name: it.name || String(it.localPath).split('/').pop() || '' });
+    }
+    return out;
+  }
+
+  // ── 引擎键盘派发（同悬浮层语义：Esc 先关面板，其余走 keys）──
+  document.addEventListener('keydown', function (e) {
+    if (!eng) { return; }
+    if (e.key === 'Escape') { try { eng.esc(); } catch (_) { } return; }
+    try { eng.keys(e); } catch (_) { }
+  });
+
+  // ── 窗控 ──
+  pinBtn.addEventListener('click', function () {
+    pinned = !pinned;
+    pinBtn.classList.toggle('pl-pin-on', pinned);
+    try { if (bridge && bridge.player && bridge.player.setState) { bridge.player.setState({ pinned: pinned }); } } catch (_) { }
+  });
+  document.getElementById('pl-close').addEventListener('click', function () {
+    try { if (bridge && bridge.player && bridge.player.close) { bridge.player.close(); } } catch (_) { }
+  });
+  // ★ 退回悬浮层（v6，2026-09-26 q319）：整体交接回主窗口悬浮层（列表+进度+模式还原）→ 主进程发事件后本窗自关；
+  //   失败（无主窗口 / 旧壳层无 returnOverlay / 空列表）→ toast 提示，本窗不动、声音不断（交接成功才随窗关闭停）
+  (function () {
+    var retBtn = document.getElementById('pl-ret');
+    if (!retBtn) { return; }
+    try { retBtn.title = _tt('shell.player.returnOv', '退回悬浮层'); } catch (_) { }
+    retBtn.addEventListener('click', function () {
+      var _fail = function () { _toast(_tt('shell.player.returnFail', '未找到主窗口，无法退回悬浮层')); };
+      try {
+        if (!bridge || !bridge.player || !bridge.player.returnOverlay) {
+          _toast(_tt('shell.player.needRestart', '播放器需要重启实例后可用'));
+          return;
+        }
+        var st = null;
+        try { st = (eng && eng.getState) ? eng.getState() : null; } catch (_) { st = null; }
+        if (!st || !st.list || !st.list.length) { _fail(); return; }
+        bridge.player.returnOverlay(st).then(function (r) {
+          if (!r || !r.ok) { _fail(); }
+        }).catch(_fail);
+      } catch (_) { }
+    });
+  })();
+
+  // ── 主题（跟随 qqq.theme.v1 镜像；播放器恒深色基调，仅标注主题态供未来样式）──
+  try {
+    var th = localStorage.getItem('qqq.theme.v1');
+    document.documentElement.setAttribute('data-theme', /dark/i.test(String(th)) ? 'dark' : (/light/i.test(String(th)) ? 'light' : 'dark'));
+  } catch (_) { document.documentElement.setAttribute('data-theme', 'dark'); }
+
+  if (!bridge || !bridge.player || !ME) {
+    _showEmpty(true);
+    return;
+  }
+
+  // ── 出声独占：悬浮层起播 → 播放器自动暂停 ──
+  try {
+    bridge.player.onClaim(function (from) {
+      if (from === 'player') { return; }
+      try { if (eng) { eng.pause(); } } catch (_) { }
+    });
+  } catch (_) { }
+
+  // ── 交接（悬浮层 ↗ / Roam 建窗携列表）──
+  try {
+    bridge.player.onHandoff(function (h) {
+      if (!h || !h.list || !h.list.length) { return; }
+      openMedia({
+        list: h.list, index: h.index || 0,
+        play: h.play !== false, time: h.time || 0,
+        rate: h.rate, loop: h.loop, shuffle: h.shuffle,
+        volume: h.volume, muted: h.muted, dockSide: h.dockSide
+      });
+    });
+  } catch (_) { }
+
+  // ── 追加（已开窗时 Roam ➕）：播放中不打断；空闲则起播首个新增 ──
+  try {
+    bridge.player.onQueue(function () {
+      bridge.player.getState().then(function (r) {
+        var list = (r && r.state && r.state.list) || [];
+        if (!list.length) { return; }
+        var tracks = _itemsToTracks(list);
+        if (!eng || !cur.list.length) { openMedia({ list: tracks, index: r.state.index || 0, play: true }); return; }
+        var known = {};
+        for (var i = 0; i < cur.list.length; i++) { if (cur.list[i] && cur.list[i].localPath) { known[cur.list[i].localPath] = 1; } }
+        var fresh = [];
+        for (var j = 0; j < tracks.length; j++) { if (!known[tracks[j].localPath]) { fresh.push(tracks[j]); } }
+        if (fresh.length) { try { eng.append(fresh, true); } catch (_) { } cur.list = cur.list.concat(fresh); }
+      }).catch(function () { });
+    });
+  } catch (_) { }
+
+  // ── 启动：恢复状态（列表存 → 暂停态显示；handoff 在轮询应答里）──
+  bridge.player.getState().then(function (r) {
+    var st = (r && r.state) || {};
+    pinned = st.pinned !== false;
+    pinBtn.classList.toggle('pl-pin-on', pinned);
+    var h = r && r.handoff;
+    if (h && h.list && h.list.length) {
+      openMedia({
+        list: h.list, index: h.index || 0,
+        play: h.play !== false, time: h.time || 0,
+        rate: h.rate, loop: h.loop, shuffle: h.shuffle,
+        volume: h.volume, muted: h.muted, dockSide: h.dockSide
+      });
+      return;
+    }
+    var list = Array.isArray(st.list) ? st.list : [];
+    if (list.length) {
+      openMedia({
+        list: list, index: st.index || 0, play: false,
+        rate: st.rate, loop: st.loop, shuffle: st.shuffle,
+        volume: st.volume, muted: st.muted, dockSide: st.dockSide
+      });
+    } else {
+      _showEmpty(true);
+    }
+  }).catch(function () { _showEmpty(true); });
+})();
+</script>
+</body>
+</html>

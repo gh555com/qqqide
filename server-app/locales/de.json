@@ -288,12 +288,6 @@
             "cannotStart": "Download kann nicht gestartet werden:",
             "cannotStartBare": "Download kann nicht gestartet werden"
         },
-        "prog": {
-            "copyingN": "{n} Dateien werden kopiert…",
-            "done": "Abgeschlossen",
-            "cancelled": "Abgebrochen",
-            "fail": "Fehlgeschlagen"
-        },
         "exit": {
             "confirm": "Beenden bestätigen?",
             "ok": "Beenden bestätigen"

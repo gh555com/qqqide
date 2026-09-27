@@ -315,9 +315,10 @@
       var on = (q && q.sfxOn) ? q.sfxOn(sc.key) : true;
       var _scLabel = sc.lk ? _i(sc.lk, sc.label) : sc.label;
       var _scDesc = sc.dk ? _i(sc.dk, sc.desc || '') : (sc.desc || '');
-      h += '<label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none;" title="' + _scDesc + '">';
+      h += '<label style="display:flex; align-items:center; gap:8px; min-width:0; padding:3px 0; cursor:pointer; user-select:none;" title="' + (_scLabel + (_scDesc ? ' · ' + _scDesc : '')).replace(/"/g, '&quot;') + '">';
       h += '<input type="checkbox" class="qqq-sfx-check" data-sfx-key="' + sc.key + '"' + (on ? ' checked' : '') + ' style="margin:0; accent-color:' + accent + '; flex-shrink:0;">';
-      h += '<span style="font-size:12px; color:' + text + '; white-space:normal; word-break:break-word; line-height:1.3;">' + _scLabel + '</span>';
+      // ★ 标签单线化（2026-09-26 定案）：任何语言恒不换行（溢出省略号；行 title 携全文）
+      h += '<span style="font-size:12px; color:' + text + '; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">' + _scLabel + '</span>';
       h += '<span style="font-size:10px; color:' + textDim + '; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + sc.file + ' · ' + _scDesc + '</span>';
       h += '</label>';
     }
@@ -374,13 +375,12 @@
   //   语义（2026-09-26）：一次性写入只管当——HKCU PATH + Classes 关联 + UserChoice hash 强写；
   //   系统已有其他解释器 → 先弹「将覆盖当前系统解释器」二确认；已是我们的 → 选中态（右下角圆勾徽章）
   //   → 再点 = 必出「取消作为系统 xx 解释器」确认 → 解除 = 纯清空一锤子买卖（不还原旧值，白板化）。
-  function _interpSetState(t, busy, phase, kind, msg) {
+  //   ★ 消息通道（2026-09-26 晚）：一切结果消息（成功/失败/错误）恒走 qoast 浮出——面板零行内文字、零跳动。
+  function _interpSetState(t, busy, phase) {
     var st = _interpState[t];
     if (!st) return;
     st.busy = !!busy;
     st.phase = phase || 'idle';
-    st.kind = kind || '';
-    st.msg = msg || '';
     if (_$panel && _$overlay && _$overlay.style.display !== 'none') _renderPanel();
   }
 
@@ -397,6 +397,7 @@
       'no-node': [pfx + 'errNoNode', '内置 Node 未就绪'],
       'denied': [pfx + 'errDenied', '权限被拒绝（可能被安全软件拦截）'],
       'verify-failed': [pfx + 'errVerify', '写入未生效'],
+      'remove-failed': [pfx + 'errRemove', '解除未完成'],
       'uac-cancelled': [pfx + 'errUac', '已取消（未授权）'],
       'busy': [pfx + 'errBusy', '正在处理中，请稍候'],
       'unsupported': [pfx + 'errGeneric', '当前系统不支持'],
@@ -410,6 +411,16 @@
     return _i(hit[0], hit[1]);
   }
 
+  // ★ 失败消息前缀（2026-09-26 用户定案）：双目标可交叉点击——qoast 必须分清香 Node 还是 Python
+  function _interpFailPre(t) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    return _i(pfx + 'fail', (t === 'node') ? '❌ Node 设置失败：' : '❌ Python 设置失败：');
+  }
+  function _interpRemPre(t) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    return _i(pfx + 'failRemove', (t === 'node') ? '❌ Node 解除失败：' : '❌ Python 解除失败：');
+  }
+
   // ★ 串行操作链：静默探测（打开面板复查徽章真值）与点击流共用——绝不并发撞壳层 _inFlight
   var _interpOpChain = Promise.resolve();
 
@@ -418,15 +429,17 @@
     var bridge = null;
     try { bridge = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { /* ignore */ }
     if (!bridge || !bridge.check || !st || st.busy) return Promise.resolve();
-    return bridge.check(t).then(function (res) {
-      if (res && res.ok && !st.busy) {
-        var next = res.mode || '';
-        if (st.mode !== next) {
-          st.mode = next;
-          if (_$panel && _$overlay && _$overlay.style.display !== 'none') _renderPanel();
+    try {
+      return Promise.resolve(bridge.check(t)).then(function (res) {
+        if (res && res.ok && !st.busy) {
+          var next = res.mode || '';
+          if (st.mode !== next) {
+            st.mode = next;
+            if (_$panel && _$overlay && _$overlay.style.display !== 'none') _renderPanel();
+          }
         }
-      }
-    }, function () { /* silent */ });
+      }, function () { /* silent */ });
+    } catch (e) { return Promise.resolve(); }
   }
 
   function _interpSilentProbe() {
@@ -441,94 +454,94 @@
     var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
     var bridge = null;
     try { bridge = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { /* ignore */ }
-    if (!bridge || !bridge.check) {
-      _interpSetState(t, false, 'idle', 'fail', _i(pfx + 'errBridge', '需重启本窗口后可用'));
+    if (!bridge || !bridge.check || !bridge.apply || !bridge.remove) {
+      _interpSetState(t, false, 'idle');
+      _pyQoast(_i(pfx + 'errBridge', (t === 'node') ? '需重启本窗口后可用（Node）' : '需重启本窗口后可用（Python）'), 'error');
       return;
     }
-    _interpSetState(t, true, 'checking', '', '');
-    _interpOpChain = _interpOpChain
-      .then(function () { return _interpClickFlow(bridge, t); }, function () { return _interpClickFlow(bridge, t); });
+    _interpSetState(t, true, 'checking');
+    // ★ 零边界漏洞（2026-09-26）：同步异常也复位 busy + 可见失败——操作链绝不粘死
+    var _guarded = function () {
+      try { return _interpClickFlow(bridge, t); }
+      catch (e) { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error'); return null; }
+    };
+    _interpOpChain = _interpOpChain.then(_guarded, _guarded);
   }
 
   function _interpClickFlow(bridge, t) {
     var st = _interpState[t];
     var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
     return bridge.check(t).then(function (res) {
-      if (!res || !res.ok) { _interpSetState(t, false, 'idle', 'fail', _interpErrText(t, res && res.code)); return; }
+      if (!res || !res.ok) { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _interpErrText(t, res && res.code), 'error'); return; }
       if (res.mode) st.mode = res.mode;
-      if (res.mode === 'unsupported') { _interpSetState(t, false, 'idle', 'fail', _interpErrText(t, 'unsupported')); return; }
+      if (res.mode === 'unsupported') { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _interpErrText(t, 'unsupported'), 'error'); return; }
       // 已是我们的（选中态）→ 解除流程：必出「取消作为系统 xx 解释器」确认 → 纯清空
       if (res.mode === 'ours') {
-        _interpAsk(t, 'remove').then(function (go) {
-          if (!go) { _interpSetState(t, false, 'idle', '', ''); return; }
-          if (!bridge.remove) { _interpSetState(t, false, 'idle', 'fail', _i(pfx + 'errBridge', '需重启本窗口后可用')); return; }
-          _interpRemove(bridge, t);
+        // ★ 链式串行（2026-09-26）：确认框与解除执行全部 return 入链——等待期间任何新操作排队，零并发
+        return _interpAsk(t, 'remove').then(function (go) {
+          if (!go) { _interpSetState(t, false, 'idle'); return; }
+          return _interpRemove(bridge, t);
         });
-        return;
       }
-      if (!res.exeOk) { _interpSetState(t, false, 'idle', 'fail', _i(pfx + (t === 'node' ? 'errNoNode' : 'errNoPython'), t === 'node' ? '内置 Node 未就绪' : '内置 Python 未就绪')); return; }
+      if (!res.exeOk) { _interpSetState(t, false, 'idle'); _pyQoast(_i(pfx + (t === 'node' ? 'errNoNode' : 'errNoPython'), t === 'node' ? '内置 Node 未就绪' : '内置 Python 未就绪'), 'error'); return; }
       // 系统已有其他解释器（已设过 PATH / 已能双击打开）→ 二次确认「将覆盖」；否则直接干
       if (res.mode === 'other') {
-        _interpAsk(t, 'override').then(function (go) {
-          if (!go) { _interpSetState(t, false, 'idle', '', ''); return; }
-          _interpApply(bridge, t, res.mode);
+        return _interpAsk(t, 'override').then(function (go) {
+          if (!go) { _interpSetState(t, false, 'idle'); return; }
+          return _interpApply(bridge, t, res.mode);
         });
-      } else {
-        _interpApply(bridge, t, res.mode);
       }
-    }, function () { _interpSetState(t, false, 'idle', 'fail', _i(pfx + 'errGeneric', '未知错误')); });
+      return _interpApply(bridge, t, res.mode);
+    }, function () { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error'); });
   }
 
   function _interpRemove(bridge, t) {
     var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
-    _interpSetState(t, true, 'removing', '', '');
-    bridge.remove(t).then(function (res) {
+    _interpSetState(t, true, 'removing');
+    return bridge.remove(t).then(function (res) {
       if (res && res.ok) {
         _interpState[t].mode = '';
-        var okMsg = _i(pfx + 'okRemove', (t === 'node') ? '✅ 已解除：内置 Node 不再作为系统解释器' : '✅ 已解除：内置 Python 不再作为系统解释器');
-        _interpSetState(t, false, 'idle', 'ok', okMsg);
-        _pyQoast(okMsg, 'success');
+        // ★ 用户定案（2026-09-26 晚）：一切结果消息都做成 qoast——面板零行内文字/零跳动
+        _interpSetState(t, false, 'idle');
+        _pyQoast(_i(pfx + 'okRemove', (t === 'node') ? '✅ 已解除：内置 Node 不再作为系统解释器' : '✅ 已解除：内置 Python 不再作为系统解释器'), 'success');
         _interpSilentProbe();   // 真值复查（徽章/状态随真值收敛）
       } else {
-        var failMsg = _i(pfx + 'failRemove', '❌ 解除失败：') + _interpErrText(t, res && res.code);
-        _interpSetState(t, false, 'idle', 'fail', failMsg);
-        _pyQoast(failMsg, 'error');
+        _interpSetState(t, false, 'idle');
+        _pyQoast(_interpRemPre(t) + _interpErrText(t, res && res.code), 'error');
       }
     }, function () {
-      var failMsg = _i(pfx + 'failRemove', '❌ 解除失败：') + _i(pfx + 'errGeneric', '未知错误');
-      _interpSetState(t, false, 'idle', 'fail', failMsg);
-      _pyQoast(failMsg, 'error');
+      _interpSetState(t, false, 'idle');
+      _pyQoast(_interpRemPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error');
     });
   }
 
   function _interpApply(bridge, t, mode) {
     var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
     var isNode = (t === 'node');
-    _interpSetState(t, true, 'applying', '', '');
-    bridge.apply(t).then(function (res) {
+    _interpSetState(t, true, 'applying');
+    return bridge.apply(t).then(function (res) {
       if (res && res.ok) {
         _interpState[t].mode = 'ours';
         var okMsg = (mode === 'ours')
           ? _i(pfx + 'okRefresh', isNode ? '✅ 已刷新：内置 Node 已接管 .js' : '✅ 已刷新：内置 Python 已接管 .py')
           : _i(pfx + 'ok', isNode ? '✅ 已设置：双击 .js 由内置 Node 运行' : '✅ 已设置：双击 .py 由内置 Python 运行');
-        _interpSetState(t, false, 'idle', 'ok', okMsg);
+        // ★ 用户定案（2026-09-26 晚）：一切结果消息都做成 qoast——面板零行内文字/零跳动
+        _interpSetState(t, false, 'idle');
         _pyQoast(okMsg, 'success');
         _interpSilentProbe();   // 真值复查（徽章随真值收敛）
       } else {
-        var failMsg = _i(pfx + 'fail', '❌ 设置失败：') + _interpErrText(t, res && res.code);
-        _interpSetState(t, false, 'idle', 'fail', failMsg);
-        _pyQoast(failMsg, 'error');
+        _interpSetState(t, false, 'idle');
+        _pyQoast(_interpFailPre(t) + _interpErrText(t, res && res.code), 'error');
       }
     }, function () {
-      var failMsg = _i(pfx + 'fail', '❌ 设置失败：') + _i(pfx + 'errGeneric', '未知错误');
-      _interpSetState(t, false, 'idle', 'fail', failMsg);
-      _pyQoast(failMsg, 'error');
+      _interpSetState(t, false, 'idle');
+      _pyQoast(_interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error');
     });
   }
 
   // 内置确认弹框（first-run 同款：CSS 变量自适应 / 主操作左 / Esc=取消 / 语言切换实时刷新 / 防重入）
-  //   titleText 缺省 = 「将覆盖当前系统解释器」；解除场景传「取消作为系统 xx 解释器」
-  function _interpConfirm(titleText) {
+  //   titleText = 标题行（「你选择了「…」」——关于啥滴目标，Node/Python 恒可分辨）；bodyText = 正文行（可选，如「将覆盖当前系统解释器」）
+  function _interpConfirm(titleText, bodyText) {
     return new Promise(function (resolve) {
       if (_pyConfirmOv) { resolve(false); return; }
       var ov = document.createElement('div');
@@ -536,7 +549,9 @@
       var panel = document.createElement('div');
       panel.style.cssText = 'width:420px;max-width:92vw;box-sizing:border-box;background:var(--background-color);color:var(--text-primary);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,0.5);padding:26px 28px 20px;font-size:14px;line-height:1.7;';
       var h = document.createElement('div');
-      h.style.cssText = 'font-size:15px;font-weight:600;margin:0 0 4px;text-align:center;white-space:pre-line;';
+      h.style.cssText = 'font-size:15px;font-weight:600;margin:0;text-align:center;white-space:pre-line;';
+      var b = document.createElement('div');
+      b.style.cssText = 'font-size:13px;margin:8px 0 0;text-align:center;white-space:pre-line;color:var(--text-secondary);';
       var btnOk = document.createElement('button');
       btnOk.type = 'button';
       btnOk.style.cssText = 'padding:7px 20px;border:1px solid var(--border-strong);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:13px;';
@@ -545,6 +560,9 @@
       btnCancel.style.cssText = btnOk.style.cssText;
       function _fill() {
         h.textContent = titleText || _i('settings.sysInterp.confirmTitle', '将覆盖当前系统解释器');
+        var _bd = bodyText || '';
+        b.textContent = _bd;
+        b.style.display = _bd ? '' : 'none';
         btnOk.textContent = _i('settings.sysInterp.confirmOk', '确认');
         btnCancel.textContent = _i('settings.sysInterp.confirmCancel', '取消');
       }
@@ -566,6 +584,7 @@
       row.appendChild(btnOk);      // 布局与 first-run 一致：主操作在左
       row.appendChild(btnCancel);
       panel.appendChild(h);
+      panel.appendChild(b);
       panel.appendChild(row);
       ov.appendChild(panel);
       document.body.appendChild(ov);
@@ -573,13 +592,19 @@
     });
   }
 
-  // ★ 确认框出口（AI 工具链 sys_python / sys_node 复用——与按钮同一弹框）：kind='override'（将覆盖）/ 'remove'（取消作为系统 xx 解释器）
+  // ★ 确认框出口（按钮与 AI 工具链 sys_python / sys_node 共用同一弹框）：
+  //   kind='override' → 标题「你选择了「做系统 xx 解释器」」+ 正文「将覆盖当前系统解释器」；
+  //   kind='remove'   → 标题「你选择了「取消作为系统 xx 解释器」」（2026-09-26 用户定案：标题行恒标清目标）
   function _interpAsk(t, kind) {
     var pfx = 'settings.' + (t === 'node' ? 'nodeInterp.' : 'pyInterp.');
+    var isNode = (t === 'node');
     if (kind === 'remove') {
-      return _interpConfirm(_i(pfx + 'confirmRemove', (t === 'node') ? '取消作为系统 Node 解释器' : '取消作为系统 Python 解释器'));
+      return _interpConfirm(_i(pfx + 'confirmRemovePick', isNode ? '你选择了「取消作为系统 Node 解释器」' : '你选择了「取消作为系统 Python 解释器」'));
     }
-    return _interpConfirm();
+    return _interpConfirm(
+      _i(pfx + 'confirmPick', isNode ? '你选择了「做系统 Node 解释器」' : '你选择了「做系统 Python 解释器」'),
+      _i('settings.sysInterp.confirmTitle', '将覆盖当前系统解释器')
+    );
   }
   try { window.qqqSysInterpConfirm = _interpConfirm; } catch (_) { /* ignore */ }
   try { window.qqqSysPyConfirm = _interpConfirm; } catch (_) { /* ignore */ }
@@ -613,8 +638,8 @@
   var _floorCapHintTimer = null;
   // ★ 系统解释器状态（python/node 双目标；跨重渲染保留，唯一后端 shell/ipc-syspy.ts）
   var _interpState = {
-    python: { busy: false, phase: 'idle', kind: '', msg: '', mode: '' },
-    node: { busy: false, phase: 'idle', kind: '', msg: '', mode: '' }
+    python: { busy: false, phase: 'idle', mode: '' },
+    node: { busy: false, phase: 'idle', mode: '' }
   };
   var _pyConfirmOv = null;
 
@@ -627,7 +652,8 @@
     var text = isDark ? '#dcd8d0' : '#656360';
     var textDim = isDark ? '#6a6660' : '#a8a6a2';
     var border = isDark ? '#333333' : '#d3c6aa';
-    var accent = isDark ? '#d4a017' : '#e8a030';
+    // ★ v9（2026-09-26 用户定案）：面板橙色全系统一到深档——滑块/重置/tab/tier 与解释器按钮同一值
+    var accent = isDark ? '#c7940e' : '#d99325';
     var green = isDark ? '#8fbc5a' : '#859900';
     var red = isDark ? '#ff4444' : '#dc322f';
 
@@ -669,25 +695,27 @@
       // ★ 系统解释器行（2026-09-26 用户定案）：零文字/零卡片框——纯左右两个大彩按钮
       var _isInterpRow = (def.type === 'interp');
       html += '<div class="qqq-setting-item" style="margin-bottom:16px;' + (_isInterpRow ? '' : ' padding:12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg2 + ';') + '">';
-      if (def.key === 'ai.compressLevel') {
-        // ★ 标题行右侧问号按钮（外观照搬 ctx-panel #ctx-help），点击跳转上下文背包文档
-        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
-        html += '<span style="font-size:13px;font-weight:bold;color:' + text + ';">' + _i(def.labelKey, def.label) + '</span>';
-        html += '<button class="qqq-compress-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;background:transparent;color:var(--text-primary,#eee);line-height:1;">?</button>';
+      // ★ 标题行唯一构建点（2026-09-26 定案）：标题 + 描述同行单线——任何语言恒不换行（描述溢出省略号，
+      //   悬停 title 看全文），右侧动作按钮（? / 1 by 1）恒贴行尾；描述 = 旧第二行小字，禁再占一行 Y 轴
+      if (def.type !== 'interp') {
+        var _descVal = def.desc ? _i(def.descKey, def.desc) : '';
+        var _headRight = '';
+        if (def.key === 'ai.compressLevel') {
+          // 问号按钮（外观照搬 ctx-panel #ctx-help），点击跳转上下文背包文档
+          _headRight += '<button class="qqq-compress-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;background:transparent;color:var(--text-primary,#eee);line-height:1;flex-shrink:0;">?</button>';
+        }
+        if (def.key === 'audio.volume') {
+          // 「1 by 1」按钮（音效开关子卡片开合）
+          _headRight += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap; flex-shrink:0;" title="' + _i('settings.sfxTooltip', '逐个音效开关') + '">1 by 1</button>';
+        }
+        html += '<div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden; margin-bottom:' + (_descVal ? '10px' : '4px') + ';">';
+        html += '<span style="font-size:13px; font-weight:bold; color:' + text + '; white-space:nowrap; flex-shrink:0;">' + _i(def.labelKey, def.label) + '</span>';
+        html += _descVal
+          ? '<span style="font-size:11px; color:' + textDim + '; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 0; min-width:0;" title="' + _descVal.replace(/"/g, '&quot;') + '">' + _descVal + '</span>'
+          : '<span style="flex:1 1 0; min-width:0;"></span>';
+        html += _headRight;
         html += '</div>';
-      } else if (def.key !== 'audio.volume' && def.type !== 'interp') {
-        // 音量卡片的标题行由下方 flex 分支渲染（右侧挂 1 by 1 按钮）
-        html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + _i(def.labelKey, def.label) + '</div>';
       }
-      // ★ 音量卡片：标题行右侧挂「1 by 1」按钮（音效开关子卡片开合）
-      if (def.key === 'audio.volume') {
-        html += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">';
-        html += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + _i(def.labelKey, def.label) + '</span>';
-        html += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap; margin-left:20px;" title="' + _i('settings.sfxTooltip', '逐个音效开关') + '">1 by 1</button>';
-        html += '</div>';
-      }
-      // ★ 无 desc 项不渲染描述行（防 undefined）
-      if (def.desc && def.type !== 'interp') html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + _i(def.descKey, def.desc) + '</div>';
 
       if (def.type === 'slider-stepped') {
         var stops = def.stops || ['0', '25', '50', '75', '100'];
@@ -760,28 +788,33 @@
           }
           html += '</div>';
         } else {
-          // 其他 radio 项保持原样
+          // ★ 其他 radio 项（2026-09-26 定案）：选项 + 描述同行单线——任何语言恒不换行（描述溢出省略号 + title 悬停全文）
           for (var j = 0; j < def.options.length; j++) {
             var opt = def.options[j];
             var checked = (currentVal === opt.value);
-            html += '<label style="display:flex; align-items:flex-start; margin-bottom:6px; padding:6px 8px; border-radius:3px; background:' + (checked ? accent + '20' : 'transparent') + '; border:1px solid ' + (checked ? accent : 'transparent') + ';">';
-            html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="margin-top:2px; margin-right:8px; accent-color:' + accent + ';">';
-            html += '<div>';
-            html += '<div style="font-size:12px; color:' + text + ';">' + (opt.labelKey ? _i(opt.labelKey, opt.label) : opt.label) + '</div>';
-            html += '<div style="font-size:10px; color:' + textDim + ';">' + (opt.descKey ? _i(opt.descKey, opt.desc) : opt.desc) + '</div>';
-            html += '</div>';
+            var _optDesc = opt.descKey ? _i(opt.descKey, opt.desc || '') : (opt.desc || '');
+            html += '<label style="display:flex; align-items:center; min-width:0; overflow:hidden; margin-bottom:6px; padding:6px 8px; border-radius:3px; background:' + (checked ? accent + '20' : 'transparent') + '; border:1px solid ' + (checked ? accent : 'transparent') + ';">';
+            html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="margin:0 8px 0 0; flex-shrink:0; accent-color:' + accent + ';">';
+            html += '<span style="font-size:12px; color:' + text + '; white-space:nowrap; flex-shrink:0;">' + (opt.labelKey ? _i(opt.labelKey, opt.label) : opt.label) + '</span>';
+            if (_optDesc) html += '<span style="font-size:10px; color:' + textDim + '; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 0; min-width:0; margin-left:8px;" title="' + _optDesc.replace(/"/g, '&quot;') + '">' + _optDesc + '</span>';
             html += '</label>';
           }
         }
       } else if (def.type === 'interp') {
         // ★ 系统解释器行（2026-09-26 用户定案 v4）：零文字/零卡片框——左右两个大按钮；
         //   标准描边按钮样式（1px 边 + 3px 小圆角 + 透明底，同面板 restart/1by1 按钮语言）；
-        //   颜色差异：Node=绿（冻结）/ Python=红；选中态（已接管）→ 右下角圆勾徽章；无渐变/无投影
+        //   颜色差异：Node=绿 / Python=橙（2026-09-26 v7 用户定案：改用面板本体双主题色——绿 + 橙 accent，弃红）；选中态（已接管）→ 右下角圆勾徽章；无渐变/无投影
         html += '<div style="display:flex; align-items:stretch; gap:14px;">';
         var _interpCols = [['node', 'qqq-sysnode-btn'], ['python', 'qqq-syspy-btn']];
+        // ★ 用户定案（2026-09-26 v7）：Python 弃红改橙——面板本体双主题色之一的 accent 橙系；
+        //   v8（用户反馈「比上方 AI 等级选中格偏淡」）：accent 基础上深一档
+        //   v9（2026-09-26 用户定案）：面板橙色全系统一——滑块/重置/tab/tier 与按钮同源同值（accent 升深档后完全一致）
+        //   （浅 #d99325 / 暗 #c7940e；1px 细线 + 透明底）；两态同色；
+        //   b = 徽章底色（随主色，与 Node 绿徽章同款处理）；Node 绿冻结（颜色自身不变）
+        var _interpO = accent;
         var _interpSkins = [
-          { c: green, hov: isDark ? '#8fbc5a1e' : '#8599001e' },
-          { c: red,   hov: isDark ? '#ff44441e' : '#dc322f1e' }
+          { c: green, hov: isDark ? '#8fbc5a1e' : '#8599001e', b: green },
+          { c: _interpO, hov: accent + '1e', b: _interpO }
         ];
         for (var _ic = 0; _ic < _interpCols.length; _ic++) {
           var _t = _interpCols[_ic][0];
@@ -794,16 +827,14 @@
             ? _i(_pfx + _busyKey, _busyFb)
             : _i(_pfx + 'btn', _t === 'node' ? '做系统 Node 解释器' : '做系统 Python 解释器');
           html += '<div style="flex:1 1 0; min-width:0; display:flex; flex-direction:column; gap:6px;">';
-          html += '<button id="' + _interpCols[_ic][1] + '" ' + (_st.busy ? 'disabled ' : '') + 'style="width:100%; box-sizing:border-box; min-height:58px; padding:10px 12px; position:relative; display:flex; align-items:center; justify-content:center; border:1px solid ' + _skin.c + '; border-radius:3px; background:transparent; color:' + _skin.c + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;' + (_st.busy ? ' opacity:0.55;' : '') + '"' + (_st.busy ? '' : ' onmouseover="this.style.background=&quot;' + _skin.hov + '&quot;" onmouseout="this.style.background=&quot;transparent&quot;"') + '>';
+          html += '<button id="' + _interpCols[_ic][1] + '" ' + (_st.busy ? 'disabled ' : '') + 'style="width:100%; box-sizing:border-box; min-height:58px; padding:10px 12px; position:relative; display:flex; align-items:center; justify-content:center; border:1px solid ' + _skin.c + '; border-radius:3px; background:transparent; color:' + _skin.c + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;"' + (_st.busy ? '' : ' onmouseover="this.style.background=&quot;' + _skin.hov + '&quot;" onmouseout="this.style.background=&quot;transparent&quot;"') + '>';
           html += _btnText;
           // ★ 选中态徽章（用户定案）：内置解释器接管中 → 右下角圆+大勾
           if (_st.mode === 'ours') {
-            html += '<span aria-hidden="true" style="position:absolute; right:6px; bottom:6px; width:22px; height:22px; border-radius:50%; background:' + _skin.c + '; color:#fff; font-size:15px; line-height:22px; text-align:center; font-weight:bold; pointer-events:none;">✓</span>';
+            html += '<span aria-hidden="true" style="position:absolute; right:6px; bottom:6px; width:22px; height:22px; border-radius:50%; background:' + (_skin.b || _skin.c) + '; color:#fff; font-size:15px; line-height:22px; text-align:center; font-weight:bold; pointer-events:none;">✓</span>';
           }
           html += '</button>';
-          if (_st.msg) {
-            html += '<div style="font-size:11px; line-height:1.35; word-break:break-word; text-align:center; color:' + (_st.kind === 'ok' ? green : (_st.kind === 'fail' ? red : textDim)) + ';">' + _st.msg + '</div>';
-          }
+          // ★ 用户定案（2026-09-26 晚）：面板零行内消息——一切结果走 qoast 浮出
           html += '</div>';
         }
         html += '</div>';
@@ -1096,7 +1127,7 @@
     var text = isDark ? '#dcd8d0' : '#656360';
     var textDim = isDark ? '#6a6660' : '#a8a6a2';
     var border = isDark ? '#333333' : '#d3c6aa';
-    var accent = isDark ? '#d4a017' : '#e8a030';
+    var accent = isDark ? '#c7940e' : '#d99325';
     var red = isDark ? '#ff4444' : '#dc322f';
 
     var _w = _tierExpanded ? '1040px' : '520px';

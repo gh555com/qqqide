@@ -123,6 +123,51 @@ export function _qmdCmdline(shellType: string, appRoot: string): { cmdline: stri
     return { cmdline: 'cmd.exe /d /k chcp 65001 >nul', env };
 }
 
+// ── 子进程枚举（带名字；Interrupt 用 —— kmd _enumChildPidsWin 同款双级链，多带 Name 列）──
+interface _ChildProc { pid: number; name: string; }
+function _childrenOfWin(parentPid: number): Promise<_ChildProc[]> {
+    return new Promise((resolve) => {
+        const parse = (out: string): _ChildProc[] => {
+            const list: _ChildProc[] = [];
+            for (const line of String(out).split(/\r?\n/)) {
+                const t = line.trim();
+                if (!t) continue;
+                const parts = t.split(/\s+/);
+                if (parts.length < 2) continue;
+                if (/^\d+$/.test(parts[0]) && parts.length === 2) { // <pid> <name> 列序
+                    const pid0 = parseInt(parts[0], 10);
+                    if (pid0 > 0) list.push({ pid: pid0, name: parts[1] });
+                    continue;
+                }
+                const last = parts[parts.length - 1]; // <name> <pid> 列序（wmic 字母序）
+                if (!/^\d+$/.test(last)) continue;
+                const pid = parseInt(last, 10);
+                if (pid > 0) list.push({ pid, name: parts.slice(0, parts.length - 1).join(' ') });
+            }
+            return list;
+        };
+        const run = (cmd: string, args: string[]): Promise<{ ok: boolean; out: string }> => new Promise((res) => {
+            let out = '';
+            let p: ChildProcess;
+            try {
+                p = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+            } catch { res({ ok: false, out: '' }); return; }
+            const t = setTimeout(() => { try { p.kill(); } catch { /* ignore */ } }, 4000);
+            p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+            p.on('error', () => { clearTimeout(t); res({ ok: false, out }); });
+            p.on('exit', (code) => { clearTimeout(t); res({ ok: code === 0, out }); });
+        });
+        // ① wmic（Win7-23H2 标配）② PowerShell Get-WmiObject（PS 2.0 兼容；24H2 无 wmic 兜底）
+        run('wmic', ['process', 'where', `ParentProcessId=${parentPid}`, 'get', 'ProcessId,Name']).then((r1) => {
+            if (r1.ok) { resolve(parse(r1.out)); return; }
+            const psCmd = `Get-WmiObject Win32_Process -Filter "ParentProcessId=${parentPid}" | ForEach-Object { "$($_.Name) $($_.ProcessId)" }`;
+            run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd]).then((r2) => {
+                resolve(r2.ok ? parse(r2.out) : []);
+            });
+        });
+    });
+}
+
 function _killTree(s: QmdSession): void {
     if (!s.proc || s.proc.pid == null) return;
     s.alive = false;
@@ -288,6 +333,33 @@ export function registerQmdIpc(appRoot: string): void {
             }
         }
         return { ok: true };
+    });
+
+    // ── Interrupt（2026-09-27 菜单）：杀「当前前台命令」子树，会话本尊存活、滚动区保留 ──
+    //   链路：bridge(qmd-conpty.exe) 直接子进程 = conhost.exe + shell 本尊 → 滤掉 conhost 得 shell →
+    //   shell 的直接子进程 = 前台命令（/T 连带整棵子孙）。与 Restart（杀树重开）/ Terminate（杀树不重开）分层。
+    //   边界：cmd 内部命令（dir/type 无子进程）与 PS 进程内 cmdlet（Start-Sleep）无子进程可杀——用 Restart 兜底。
+    ipcMain.handle('qqqide:qmd:interrupt', async (_e, id: string) => {
+        const s = sessions.get(String(id || ''));
+        if (!s || !s.alive || !s.proc || s.proc.pid == null) return { ok: false, error: 'dead' };
+        if (process.platform !== 'win32') {
+            try { process.kill(-s.proc.pid, 'SIGINT'); return { ok: true, killed: -1 }; }
+            catch (err) { return { ok: false, error: String((err as Error).message || err) }; }
+        }
+        const kids = await _childrenOfWin(s.proc.pid);
+        const shells = kids.filter((k) => !/^conhost\.exe$/i.test(k.name));
+        if (!shells.length) return { ok: false, error: 'shell_not_found' };
+        let killed = 0;
+        for (const sh of shells) {
+            const cmds = await _childrenOfWin(sh.pid);
+            for (const c of cmds) {
+                try {
+                    spawn('taskkill', ['/F', '/T', '/PID', String(c.pid)], { windowsHide: true, stdio: 'ignore' });
+                    killed++;
+                } catch { /* ignore */ }
+            }
+        }
+        return { ok: true, killed };
     });
 
     ipcMain.handle('qqqide:qmd:list', async () => {

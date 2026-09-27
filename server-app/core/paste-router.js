@@ -44,7 +44,9 @@
   function _makeAnchorToken(sha256, fileName) {
     var prefix = (sha256 || '').slice(0, 12);
     var name = String(fileName || 'file');
-    if (/[\s\u{1F4CE}\u{1F4C1}]/.test(name)) name = '"' + name + '"';
+    // ★ 必须带 u 标志（2026-09-27 修）：缺 u 时 \u{...} 退化为字面字符类，'1F4CE{}u' 等
+    //   普通字符也命中 → 无空格文件名被误加引号（曾被咬：20260926-1527-00.1807203.mp4）。
+    if (/[\s\u{1F4CE}\u{1F4C1}]/u.test(name)) name = '"' + name + '"';
     return '\u{1F4CE}' + prefix + ':' + name;
   }
 
@@ -343,6 +345,10 @@
         text: prefix + token + '\n',
         forceMoveMarkers: true,
       }]);
+      // ★ 2026-09-27 撤回保障：程序化插入必须可 Ctrl+Z——
+      //   变更事件可能被抑制窗口（刷新重载/suppressOnce 残留）吞掉 → 快照丢失 → 撤销静默失效；
+      //   mark() 显式强制记账（幂等；char-undo 缺失时零动作）。
+      try { if (window.qqqCharUndo && window.qqqCharUndo.mark) window.qqqCharUndo.mark(targetEd); } catch (_) {}
       targetEd.focus();
       // ★ 2026-09-14 根治：视口机器（viewport-machine，唯一渲染真相）持 per-editor 锚点表，
       //   粘贴必须把真实 path 显式注册进去——否则相框渲染时 path=null → 图无 src（破图），
@@ -493,6 +499,7 @@
           text: plainText,
           forceMoveMarkers: true,
         }]);
+        try { if (window.qqqCharUndo && window.qqqCharUndo.mark) window.qqqCharUndo.mark(targetEd); } catch (_) {}
         targetEd.focus();
       }
       return;
@@ -508,6 +515,7 @@
           text: pt,
           forceMoveMarkers: true,
         }]);
+        try { if (window.qqqCharUndo && window.qqqCharUndo.mark) window.qqqCharUndo.mark(targetEd); } catch (_) {}
         targetEd.focus();
       }
     }

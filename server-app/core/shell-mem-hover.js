@@ -1,9 +1,14 @@
 // shell-mem-hover.js — 启动包 内存+CPU 24h 曲线 合并 hover 面板（2026-08-30 v7 合并版）
 // 用户定案（2026-08-30）：MEM 与 CPU 数据同源同一进程树（同一 NtQuery 快照），两张卡片
 //   合二为一——上区两层（内存图+打印 / CPU 图+打印），下方共用同一进程列表（每行
-//   内存 MB + 会话累计 CPU 时间）；状态区 a 区域 = 内存图标+内存文字+CPU文字（CPU 图标
-//   移除），hover/点击弹同一张卡，点卡外任意区域关闭；卡片宽度不变（360px），高度增高
-//   （580px 固定）。配色：内存 green/cyan 系不变，CPU 换橙色系（var(--orange)）。
+//   内存 MB + 会话累计 CPU 时间）；状态区 a 区域 = 窗口数图标（N 窗口 = N 个小黑块，
+//   2026-09-27 用户定案）+内存文字+CPU文字（CPU 图标移除），hover/点击弹同一张卡，点卡外
+//   任意区域关闭；卡片宽度不变（360px），高度增高（580px 固定）。配色：内存 green/cyan
+//   系不变，CPU 换橙色系（var(--orange)）。
+// ★ v30（2026-09-27）窗口数图标：状态区 a 区域最左原「手绘内存条」→ 窗口数图（开几个窗口画几个
+//   纯色实心小矩形，同行同色 var(--mem-icon)、无描边无圆角无阴影=纯实线笔触；1 窗口 = 一块占满
+//   全区，块多则小且密）。唯一填充入口 = renderWinIcon()，数据源 = 广播 m.win（与 q 行「N窗口」
+//   同源同值，零第二套计数）；几何（固定 13×13 区 + 格）归 CSS .qqq-mem-icon。 
 // ★ 时间轴 = 累计运行时长（2026-08-30 用户实锤「把关机时间算进去了」）：断档（>3min 空洞）
 //   不推进 x 轴——程序没运行的时间在图上不占任何宽度，曲线恒铺满；刻度语义 = 运行时长
 //   （-24h = 24h 运行时长前）。60s 一点 × 1440 点 cap = 24h 运行时长（点数即运行时长，
@@ -772,6 +777,7 @@
     if (typeof m.win === 'number' && m.win > 0) {
       latest.win = m.win;
       renderWinText();
+      renderWinIcon();
     }
     if (typeof m.ncpu === 'number' && m.ncpu > 0) latest.ncpu = m.ncpu;
     if (m.cpu && typeof m.cpu.cores === 'number') {
@@ -841,7 +847,7 @@
       if (cpuPts.length) lastCpuT = cpuPts[cpuPts.length - 1].t;
       if (!latest.mb && h.mb) { latest.mb = h.mb; if ($val) $val.textContent = h.mb; }
       if (!latest.procs && h.procs) latest.procs = h.procs;
-      if (!latest.win && h.win > 0) { latest.win = h.win; renderWinText(); }
+      if (!latest.win && h.win > 0) { latest.win = h.win; renderWinText(); renderWinIcon(); }
       if (typeof h.ncpu === 'number' && h.ncpu > 0) latest.ncpu = h.ncpu;
       if (h.cpu && typeof h.cpu.cores === 'number' && !coresSmooth.length) {
         latest.cores = h.cpu.cores;
@@ -971,6 +977,43 @@
   function renderWinText() {
     if (!$phWin) return;
     $phWin.textContent = (latest.win > 0) ? (latest.win + _T('shell.mem.winUnit', '窗口')) : '--' + _T('shell.mem.winUnit', '窗口');
+  }
+
+  // ── v30 窗口数图标（状态区 a 区域最左；2026-09-27 用户定案「开几个窗口画几个小黑块」）──
+  // 语义：画出的块数 = 当前打开的窗口总数（latest.win，与 q 行「N窗口」同源同值）。
+  // 布局：列数 = ceil(sqrt(N))、行数 = ceil(N/列)——如 1 → 一块占满全区 / 2 → 两块并排 /
+  //   3 → 第一行 2 块 + 第二行 1 块 / 4 → 2×2 / ……块随 N 越多越小越密；块与间隙恒整数像素
+  //   （块边长 = floor((区宽 − 间隙×(列−1)) / 列)，间隙 1px）+ 网格落点 floor 取整（绝对定位，非 CSS 居中）
+  //   → 整数缩放下边缘锐利无半像素毛边；网格落 13×13 固定区内，区尺寸恒定 → 后随内存文字零位移。
+  // 上限：7×7 @1px+1px = 13px 区极限（49 窗口）→ 超出画满格（不再逐块可数，可读性优先）。
+  var $memIcon = document.querySelector('.qqq-mem-block .qqq-mem-icon');
+  var $memCells = null; // 格容器（惰性建，只建一次）
+  var iconN = -1;       // 已绘制块数（同值零重建）
+  var ICON_S = 13;      // 绘制区边长 px（与 CSS .qqq-mem-icon 同值）
+  var ICON_CAP = 49;    // 区内可精确表达的最大块数
+  function renderWinIcon() {
+    if (!$memIcon) return;
+    var n = latest.win | 0;
+    if (n <= 0 || n === iconN) return; // 0/缺失（枚举失败或未就绪）→ 保持现状，勿画假 1
+    var show = n > ICON_CAP ? ICON_CAP : n;
+    var cols = Math.ceil(Math.sqrt(show));
+    var rows = Math.ceil(show / cols);
+    var block = Math.floor((ICON_S - (cols - 1)) / cols); // 间隙恒 1px
+    if (block < 1) block = 1;
+    if (!$memCells) {
+      $memCells = document.createElement('span');
+      $memCells.className = 'qqq-mem-cells';
+      $memIcon.appendChild($memCells);
+    }
+    $memCells.style.gridTemplateColumns = 'repeat(' + cols + ',' + block + 'px)';
+    $memCells.style.gridAutoRows = block + 'px';
+    // 落点取整（floor）而非 CSS 居中：残留 1px 不均匀贴边，换取整数像素落点（无半像素毛边）
+    $memCells.style.left = Math.floor((ICON_S - (cols * block + (cols - 1))) / 2) + 'px';
+    $memCells.style.top = Math.floor((ICON_S - (rows * block + (rows - 1))) / 2) + 'px';
+    var html = '';
+    for (var i = 0; i < show; i++) html += '<span class="qqq-mem-cell"></span>';
+    $memCells.innerHTML = html; // 第 rows 行不足列数 → 自然左对齐（与用户「第一行 2 第二行 1」一致）
+    iconN = n;
   }
 
   // 3 点移动平均（瞬时核数平滑；无基线返回 null）

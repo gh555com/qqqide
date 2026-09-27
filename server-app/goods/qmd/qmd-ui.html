@@ -53,13 +53,16 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     <input id="name-input" maxlength="40" spellcheck="false" autocomplete="off" placeholder="命名此终端" data-i18n-placeholder="goods.kmd.namePh" title="命名此终端（实时同步标签标题）" data-i18n-title="goods.kmd.nameTitle">
     <span id="st"></span>
     <div id="kill-wrap">
-      <button id="kill-btn" title="会话操作" data-i18n-title="goods.qmd.sessionOps" aria-label="会话操作">
+      <button id="kill-btn" title="终端操作" data-i18n-title="goods.qmd.sessionOps" aria-label="终端操作">
         <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
       </button>
       <div id="kill-menu">
+        <button data-act="copy">Copy</button>
+        <button data-act="paste">Paste</button>
+        <button data-act="interrupt">Interrupt</button>
         <button data-act="restart">Restart</button>
         <button data-act="terminate">Terminate</button>
-        <div class="m-hint" data-i18n="goods.qmd.killHint">Terminate 强杀整个进程树并原地重启；Restart 正常重启会话</div>
+        <div class="m-hint" data-i18n="goods.qmd.killHint">Interrupt 只停当前命令（保留会话与滚动）；Restart 杀树后原地重开会话；Terminate 仅终止（标签与滚动保留，可再 Restart）</div>
       </div>
     </div>
   </div>
@@ -85,6 +88,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var statusEl = document.getElementById('st');
     var nameInput = document.getElementById('name-input');
     var barBtns = Array.prototype.slice.call(document.querySelectorAll('.shell-btn'));
+    var pendingType = null;   // ★ 2026-09-27 单文件选中预填：会话就绪后写入键入区（不回车）
+    var _liftXArmed = false;  // ★ "帮用户抬起 x 键"：长按 x 打开本终端 → 吞掉残留 x 自动重复
+    var _liftXTimer = null;
+    var _ownPasteAt = 0;      // ★ 自处理粘贴时间戳：压掉同一次按键触发的原生 paste（防双贴）
 
     /* ── 主题（父窗口同步，kmd 同款） ── */
     function syncTheme() {
@@ -143,6 +150,29 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         term.onData(function (d) {
             if (!running || !sessionId) return;
             if (bridge && bridge.qmd) bridge.qmd.write(sessionId, d).catch(function () { });
+        });
+        // ★ 2026-09-27 Ctrl+C / Ctrl+V 双模键（Windows Terminal 同款语义）：
+        //   Ctrl+C  有选区 → 复制 + 清选区（下一次 Ctrl+C 即中断）；无选区 → 放行 \x03（shell 侧中断）
+        //   Ctrl+V  → 粘贴（bridge.clipboard 主进程直读，绕开 iframe 剪贴板权限差异）
+        //   Ctrl+Shift+C/V → 恒定复制 / 粘贴（不论选区）
+        term.attachCustomKeyEventHandler(function (e) {
+            if (e.type !== 'keydown' || e.isComposing) return true;
+            if (!e.ctrlKey || e.altKey) return true;
+            var k = String(e.key || '').toLowerCase();
+            var isC = (e.code === 'KeyC' || k === 'c');
+            var isV = (e.code === 'KeyV' || k === 'v');
+            if (!isC && !isV) return true;
+            if (e.shiftKey) {
+                if (isC) { _copySelection(); e.preventDefault(); return false; }
+                _pasteClipboard(); e.preventDefault();
+                return false;
+            }
+            if (isC) {
+                if (_hasSelection()) { _copySelection(); e.preventDefault(); return false; }
+                return true; // 无选区：交还 xterm → 发 \x03 中断
+            }
+            _pasteClipboard(); e.preventDefault(); // Ctrl+V = 粘贴（不再透传 \x16）
+            return false;
         });
         // 终端几何变化（fit/窗口缩放）→ ConPTY resize
         var rt = null;
@@ -203,6 +233,109 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }).catch(function () { spawnSession(t); });
     }
 
+    /* ── ★ 2026-09-27 剪贴板机器（Ctrl+C/Ctrl+V/Ctrl+Shift+±C/V + 菜单 Copy/Paste）──
+       Ctrl+C 有选区 = 复制（清选区 → 下一次 Ctrl+C 就是中断，Windows Terminal 同款）；
+       粘贴 = bridge.clipboard 主进程直读（绕开 iframe 剪贴板权限差异），
+       xterm 同款预处理（\r?\n→\r）+ 括号粘贴（DECSET 2004）自动包裹。 */
+    function _hasSelection() {
+        try { return !!(term && term.hasSelection && term.hasSelection()); } catch (_) { return false; }
+    }
+    function _copySelection() {
+        if (!term) return false;
+        var sel = '';
+        try { sel = term.getSelection() || ''; } catch (_) { sel = ''; }
+        if (!sel) return false;
+        try {
+            if (bridge && bridge.clipboard && bridge.clipboard.writeText) bridge.clipboard.writeText(sel);
+            else if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(sel);
+        } catch (_) { }
+        try { term.clearSelection(); } catch (_) { }
+        return true;
+    }
+    function _pasteClipboard() {
+        if (!term || !running || !sessionId) return;
+        _ownPasteAt = Date.now(); // 压掉同一次按键触发的原生 paste（防双贴）
+        if (bridge && bridge.clipboard && bridge.clipboard.readText) {
+            try {
+                bridge.clipboard.readText().then(function (t) { if (t) _sendPastedText(t); }, function () { });
+                return;
+            } catch (_) { }
+        }
+        try {
+            if (navigator.clipboard && navigator.clipboard.readText) {
+                navigator.clipboard.readText().then(function (t) { if (t) _sendPastedText(t); }, function () { });
+            }
+        } catch (_) { }
+    }
+    function _sendPastedText(text) {
+        var norm = String(text).replace(/\r?\n/g, '\r'); // xterm 同款换行归一
+        var bp = false;
+        try { bp = !!(term && term.modes && term.modes.bracketedPasteMode); } catch (_) { }
+        var payload = bp ? ('\x1b[200~' + norm + '\x1b[201~') : norm;
+        try { if (bridge && bridge.qmd) bridge.qmd.write(sessionId, payload); } catch (_) { }
+    }
+
+    /* ── ★ 2026-09-27 菜单三档力度（Restart/Terminate 不再同体）──
+       Interrupt = 杀当前前台命令子树（会话与滚动区保留，kmd Ctrl+C 同款链路）
+       Restart   = 杀树后原地重开（任何状态可用；终止态/自然退出 → 直接拉起）
+       Terminate = 只杀不重开（终止态：标签与滚动保留，可再 Restart） */
+    function _restartSession() {
+        if (!sessionId || !bridge || !bridge.qmd) return;
+        if (!running) { spawnSession(); return; }
+        running = false;
+        bridge.qmd.kill(sessionId, { restart: true }).then(function (r) {
+            if (r && r.ok === false) spawnSession(); // 会话已不在 → 兜底拉起
+        }).catch(function () { spawnSession(); });
+    }
+    function _terminateSession() {
+        if (!sessionId || !bridge || !bridge.qmd) return;
+        if (!running) { setStatus(_kk('goods.qmd.deadHint', '已处于终止态 · Restart 可重启')); return; }
+        running = false;
+        bridge.qmd.kill(sessionId, { restart: false }).then(function () {
+            setStatus(_kk('goods.qmd.terminated', '已终止 · 可 Restart 重启'));
+            if (term) term.write('\r\n\x1b[2m' + _kk('goods.qmd.termLine', '── 会话已终止（Restart 可重启）──') + '\x1b[0m\r\n');
+        }).catch(function () { });
+    }
+    function _interruptForeground() {
+        if (!sessionId || !bridge || !bridge.qmd || !running) return;
+        if (typeof bridge.qmd.interrupt !== 'function') {
+            if (term) term.write('\r\n\x1b[33m' + _kk('goods.qmd.intRestart', '── Interrupt · 壳层升级需重启实例生效 ──') + '\x1b[0m\r\n');
+            return;
+        }
+        bridge.qmd.interrupt(sessionId).then(function (r) {
+            if (!r || !r.ok) {
+                if (term) term.write('\r\n\x1b[31m' + _kk('goods.qmd.intFail', '[Interrupt 失败] {0}', (r && r.error) || 'unknown') + '\x1b[0m\r\n');
+                return;
+            }
+            var n = (typeof r.killed === 'number') ? r.killed : -1;
+            var msg = n > 0 ? _kk('goods.qmd.intDone', '── Interrupt · 已终止 {0} 个进程 ──', String(n))
+                : (n === 0 ? _kk('goods.qmd.intIdle', '── Interrupt · 无运行中的命令 ──')
+                    : _kk('goods.qmd.intSig', '── Interrupt · 已发送中断信号 ──'));
+            if (term) term.write('\r\n\x1b[2m' + msg + '\x1b[0m\r\n');
+        }).catch(function () { });
+    }
+
+    /* ── ★ 2026-09-27 "帮用户抬起 x 键"（长按 x 打开 qmd 专用）──
+       用户物理按住 x 触发长按召回后，OS 键盘自动重复会把 xxxxx 灌进新终端。
+       守卫窗口（~2.5s）内吞掉 x 的重复键入与收尾抬起（对用户 = 系统替他松开了 x）；
+       非重复的第二击（用户已松手再按）立即解除守卫，正常输入不受影响。 */
+    function _armLiftX(on) {
+        _liftXArmed = !!on;
+        if (_liftXTimer) { clearTimeout(_liftXTimer); _liftXTimer = null; }
+        if (_liftXArmed) _liftXTimer = setTimeout(function () { _liftXArmed = false; }, 2500);
+    }
+    document.addEventListener('keydown', function (e) {
+        if (!_liftXArmed) return;
+        var k = e.key;
+        if (k !== 'x' && k !== 'X') return;
+        if (e.repeat) { e.preventDefault(); e.stopPropagation(); return; } // 自动重复：吞
+        _armLiftX(false); // 松手后再按 = 新意图：解除守卫放行
+    }, true);
+    document.addEventListener('keyup', function (e) {
+        if (!_liftXArmed) return;
+        if (e.key === 'x' || e.key === 'X') { e.preventDefault(); e.stopPropagation(); _armLiftX(false); }
+    }, true);
+
     /* ── 主消息入口 ── */
     window.addEventListener('message', function (e) {
         var d = e.data;
@@ -211,6 +344,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             sessionId = d.sessionId;
             cwd = d.cwd || '';
             if (nameInput) nameInput.value = d.title || ''; // 命名键入框初始值 = 当前标签标题（用户可立即改名）
+            pendingType = d.fileName ? String(d.fileName) : null;   // ★ 单文件选中预填（会话就绪后写入，不回车）
+            _armLiftX(d.liftKey === 'x');                            // ★ 长按 x 召回 → 吞残留 x 重复
             createTerm();
             setShellUI(d.shellType || 'cmd');
             spawnSession();
@@ -220,6 +355,14 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             setStatus('● ' + shellType + ' · pid ' + d.pid);
             setTimeout(function () { setStatus(''); }, 4000);
             try { if (term) term.focus(); } catch (_) { }
+            // ★ 2026-09-27 单文件预填：等提示符出现后把文件名写进键入区（不回车，用户补命令即执行）
+            if (pendingType) {
+                var t0 = pendingType;
+                pendingType = null;
+                setTimeout(function () {
+                    if (running && sessionId && bridge && bridge.qmd) bridge.qmd.write(sessionId, t0).catch(function () { });
+                }, 600);
+            }
         } else if (d.type === 'qmd:out') {
             if (term) { try { term.write(String(d.data || '')); } catch (_) { } }
         } else if (d.type === 'qmd:exit') {
@@ -291,15 +434,19 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         killMenu.classList.remove('open');
         var act = btn.dataset.act;
         if (!sessionId || !bridge || !bridge.qmd) return;
-        if (act === 'terminate') {
-            // 强杀进程树 + 原地重启（kmd Terminate 同语义）
-            running = false;
-            bridge.qmd.kill(sessionId, { restart: true }).then(function () {
-                setStatus('terminating…');
-            }).catch(function () { });
+        if (act === 'copy') {
+            if (!_copySelection()) {
+                setStatus(_kk('goods.qmd.noSel', '无选中文本 · 先拖选再复制'));
+                setTimeout(function () { setStatus(''); }, 2000);
+            }
+        } else if (act === 'paste') {
+            _pasteClipboard();
+        } else if (act === 'interrupt') {
+            _interruptForeground();
         } else if (act === 'restart') {
-            running = false;
-            bridge.qmd.kill(sessionId, { restart: true }).then(function () { }).catch(function () { });
+            _restartSession();
+        } else if (act === 'terminate') {
+            _terminateSession();
         }
     });
     // Escape 关闭菜单
@@ -310,6 +457,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     document.addEventListener('mousedown', function (ev) {
         if (!killWrap.contains(ev.target)) killMenu.classList.remove('open');
     });
+    // ★ 自处理粘贴压双：本页发起 Ctrl+V 后 ~400ms 内到达的原生 paste 事件 = 同一次按键的第二条路径 → 压掉
+    document.addEventListener('paste', function (e) {
+        if (_ownPasteAt && (Date.now() - _ownPasteAt) < 400) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
 
     syncTheme();
     // 通知父窗口本 iframe 就绪 → 收 qmd:init

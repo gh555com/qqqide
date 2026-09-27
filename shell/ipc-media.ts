@@ -55,6 +55,16 @@ export function registerMediaIpc(mediaService: MediaService): void {
         }
     });
 
+    // ★ 状态栏 wq 卡片：缓存占用读数（媒体缓存 40MB / 转码缓存 2GB / 命中 / 熔断）
+    //   只读统计，卡片打开时调用；零生成零淘汰副作用
+    ipcMain.handle('qqqide:media:cacheStats', async () => {
+        try {
+            return await mediaService.cacheStats();
+        } catch (e: any) {
+            return { ok: false, error: e.message || 'cachestats_exception' };
+        }
+    });
+
     // ★ 悬浮层播放/预览转码兜底（2026-09-21）：原生解不了的格式（avi/psd/prores-mov…）
     //   → ffmpeg 转码可播产物；进度经 qqqide:media:playable:progress 回发（同一 webContents）
     ipcMain.handle('qqqide:media:playable', async (e, opts: any) => {

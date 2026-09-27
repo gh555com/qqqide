@@ -15,7 +15,8 @@
 //   window.qqqCharUndo.attachMonaco(ed, monaco, opts) — 挂载到 Monaco 编辑器
 //   window.qqqCharUndo.detach(el)              — 卸载
 //   window.qqqCharUndo.reset(el)               — 重置历史（如消息发送后）
-//   window.qqqCharUndo.suppressOnce(el)        — 标记下次变更为程序化（跳过记录）
+//   window.qqqCharUndo.suppressOnce(el)        — 标记下次变更为程序化（跳过记录；仅同任务内同步消耗有效，自动过期）
+//   window.qqqCharUndo.mark(el)                — 强制记账：当前值入快照（程序化插入的可撤回保障；幂等）
 //   window.qqqCharUndo.canUndo(el)             — 是否可回退
 //   window.qqqCharUndo.canRedo(el)             — 是否可重做
 //   window.qqqCharUndo.autoAttach(root)        — 扫描 root 下所有 input/textarea 并挂载
@@ -24,6 +25,8 @@
 //   · 接入 §3 配色机器，不自定义颜色
 //   · 不触碰 cursor 样式（§19）
 //   · 兼容 key-hook.js（不拦截非编辑区 Ctrl+Z）
+//   · 程序化插入可撤回保障：插入后必须显式 mark()——变更事件会被抑制窗口（刷新/外部重载/suppressOnce）
+//     吞掉 → 快照丢失 → Ctrl+Z 静默失效；suppressOnce 标记自动过期，防泄漏吞掉用户下一次真实编辑
 // ============================================================================
 
 (function () {
@@ -46,6 +49,37 @@
       has: function (el) { return !!el[key]; }
     };
   })();
+
+  // ── 快照推入（Monaco / 原生共用；变更监听与 mark 同源，防行为漂移）──
+  function _pushEntry(state, v, pos, scrollTop) {
+    if (typeof v !== 'string' || v.length > state.ceilChars) return false;
+    if (state.index < state.history.length - 1) {
+      state.history = state.history.slice(0, state.index + 1);
+    }
+    var last = state.history[state.history.length - 1];
+    if (v === last.val) return false;
+    state.history.push({ val: v, pos: pos, scrollTop: scrollTop });
+    state.index = state.history.length - 1;
+    if (state.history.length > state.maxHistory) {
+      var drop = Math.floor(state.maxHistory / 2);
+      state.history = state.history.slice(drop);
+      state.index -= drop;
+    }
+    return true;
+  }
+
+  // ── 程序化标记（suppressOnce / 快照回放的 setValue 变更不入账）──
+  //   ★ 自动过期：仅当标记后「同任务内」真的发生变更（同步事件消耗）才有效；
+  //   未被消耗（目标内容相同无事件 / applyEdits 抛错等）→ 下一拍作废——
+  //   否则残留标记会吞掉用户的下一次真实编辑（粘贴快照丢失 → Ctrl+Z 静默失效）。
+  function _armProg(state) {
+    state.prog = true;
+    if (state._progTimer) { try { clearTimeout(state._progTimer); } catch (_) { } }
+    state._progTimer = setTimeout(function () {
+      state._progTimer = null;
+      state.prog = false;
+    }, 0);
+  }
 
   // ── MutationObserver 自动挂载 ──
   var _observer = null;
@@ -140,21 +174,7 @@
 
     function onInput() {
       if (state.prog) { state.prog = false; return; }
-      var v = el.value;
-      // 分支截断
-      if (state.index < state.history.length - 1) {
-        state.history = state.history.slice(0, state.index + 1);
-      }
-      var last = state.history[state.history.length - 1];
-      if (v !== last.val && v.length <= state.ceilChars) {
-        state.history.push({ val: v, pos: el.selectionStart });
-        state.index = state.history.length - 1;
-        if (state.history.length > state.maxHistory) {
-          var drop = Math.floor(state.maxHistory / 2);
-          state.history = state.history.slice(drop);
-          state.index -= drop;
-        }
-      }
+      _pushEntry(state, el.value, el.selectionStart, 0);
       if (state.onChange) state.onChange();
     }
 
@@ -165,7 +185,7 @@
           e.preventDefault(); e.stopPropagation();
           if (state.index < state.history.length - 1) {
             state.index++;
-            state.prog = true;
+            _armProg(state);
             var entryR = state.history[state.index];
             el.value = entryR.val;
             el.setSelectionRange(entryR.pos, entryR.pos);
@@ -176,7 +196,7 @@
           e.preventDefault(); e.stopPropagation();
           if (state.index > 0) {
             state.index--;
-            state.prog = true;
+            _armProg(state);
             var entry = state.history[state.index];
             el.value = entry.val;
             el.setSelectionRange(entry.pos, entry.pos);
@@ -190,7 +210,7 @@
         e.preventDefault(); e.stopPropagation();
         if (state.index < state.history.length - 1) {
           state.index++;
-          state.prog = true;
+          _armProg(state);
           var entryY = state.history[state.index];
           el.value = entryY.val;
           el.setSelectionRange(entryY.pos, entryY.pos);
@@ -254,28 +274,14 @@
 
       var v = '';
       try { v = editor.getValue() || ''; } catch (e) { return; }
-      if (v.length > state.ceilChars) return;
-
-      if (state.index < state.history.length - 1) {
-        state.history = state.history.slice(0, state.index + 1);
-      }
-      var last = state.history[state.history.length - 1];
-      if (v !== last.val) {
-        var pos = { line: 1, col: 1 };
-        var st = 0;
-        try {
-          var p = editor.getPosition();
-          if (p) pos = { line: p.lineNumber, col: p.column };
-          st = editor.getScrollTop();
-        } catch (e) { /* ignore */ }
-        state.history.push({ val: v, pos: pos, scrollTop: st });
-        state.index = state.history.length - 1;
-        if (state.history.length > state.maxHistory) {
-          var drop = Math.floor(state.maxHistory / 2);
-          state.history = state.history.slice(drop);
-          state.index -= drop;
-        }
-      }
+      var pos = { line: 1, col: 1 };
+      var st = 0;
+      try {
+        var p = editor.getPosition();
+        if (p) pos = { line: p.lineNumber, col: p.column };
+        st = editor.getScrollTop();
+      } catch (e) { /* ignore */ }
+      _pushEntry(state, v, pos, st);
     });
 
     // 拦截 Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
@@ -310,7 +316,7 @@
     });
 
     function _applyMonacoSnapshot(ed, st) {
-      st.prog = true;
+      _armProg(st);
       var entry = st.history[st.index];
       try {
         ed.setValue(entry.val);
@@ -375,11 +381,29 @@
     state.index = 0;
   }
 
-  // ── 标记下一次变更为程序化（用于 setValue/文件打开等） ──
+  // ── 标记下一次变更为程序化（用于 setValue/文件打开等；自动过期防泄漏） ──
   function suppressOnce(el) {
     var state = _states.get(el);
     if (!state) return;
-    state.prog = true;
+    _armProg(state);
+  }
+
+  // ── 强制记账（mark）：程序化插入的可撤回保障唯一入口 ──
+  //   paste-router / codelens rename 等程序化写入后显式调用——无论变更事件路径是否被
+  //   抑制窗口吞掉，该次写入都必然成为可 Ctrl+Z 回退的快照（幂等：值未变时零动作）。
+  function mark(el) {
+    var state = _states.get(el);
+    if (!state) return false;
+    var v = '', pos = null, scrollTop = 0;
+    if (el && el.tagName && (el.tagName.toUpperCase() === 'INPUT' || el.tagName.toUpperCase() === 'TEXTAREA')) {
+      v = el.value || '';
+      pos = el.selectionStart || 0;
+    } else {
+      try { v = el.getValue() || ''; } catch (e) { return false; }
+      try { var p = el.getPosition(); pos = p ? { line: p.lineNumber, col: p.column } : null; } catch (e) { pos = null; }
+      try { scrollTop = el.getScrollTop(); } catch (e) { scrollTop = 0; }
+    }
+    return _pushEntry(state, v, pos, scrollTop);
   }
 
   // ── 查询可否 undo/redo ──
@@ -397,7 +421,7 @@
   function _applySnapshot(el, st) {
     // Monaco editor (有 getValue/setValue)
     if (typeof el.getValue === 'function' && typeof el.setValue === 'function') {
-      st.prog = true;
+      _armProg(st);
       var entry = st.history[st.index];
       try {
         el.setValue(entry.val);
@@ -410,7 +434,7 @@
     }
     // 原生 input/textarea
     if (el.tagName) {
-      st.prog = true;
+      _armProg(st);
       var e = st.history[st.index];
       el.value = e.val;
       el.setSelectionRange(e.pos, e.pos);
@@ -482,6 +506,7 @@
     detach: detach,
     reset: reset,
     suppressOnce: suppressOnce,
+    mark: mark,
     canUndo: canUndo,
     canRedo: canRedo,
     undo: undo,

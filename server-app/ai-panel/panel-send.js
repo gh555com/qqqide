@@ -716,20 +716,21 @@ document.addEventListener('qqq-ai-attach', function (e) {
 });
 
 // \u2550\u2550\u2550 \u9762\u677f\u5feb\u6377\u952e \u2550\u2550\u2550
-// ★ 自持按住连发引擎（2026-09-26）：滚屏/跳楼层不依赖 OS 键盘自动重复——
-//   Win 筛选键（连按右 Shift 8 秒误开）/ 重复率设置差异下，按住可能只发一次 keydown
-//   （Win11 实测「按住只滚一次」= 零重复事件）。统一改由 JS 定时器连发：
-//   首步 keydown 即刻执行，_HOLD_DELAY 后进入连发，步进 _HOLD_MS。
-//   ★ 防叠加双保险（OS 重复开着的机器也绝不加速）：① e.repeat 一律忽略 ② _physHeld 物理按住板——
-//   同键第二次 keydown（无论 OS 是否补发 repeat 标记）只能靠 keyup/blur 解锁：既不触发动作、也不重启计时。
-//   步进 50ms 比 OS 默认重复间隔（~31ms）更长——最多持平偏慢，绝不更快。
-//   Win7-11 行为恒定，与 OS 重复设置解耦。同时只允许一个连发键（对齐 OS「仅最后按下键连发」语义）。
+// ★ 按住连发真理机器（2026-09-27）：节奏 100% 自持——不依赖 OS 键盘自动重复，且抹平机器快慢/定时器抖动差异。
+//   契约：keydown 首步即刻执行 → _HOLD_DELAY 起手后进入连发，此后按「墙上时钟」每 _HOLD_STEP_MS 一步
+//   （时间戳累加、欠账补发、单 tick 封顶 _HOLD_CATCHUP 步）→ keyup/blur/隐藏停发。
+//   → 跨 Win7-11 / 跨机器 / 跨 OS 设置（筛选键误开致零重复、重复率·延迟任意值）：平均频率恒定。
+//   ★ 防叠加双闸（OS 连发开着也绝不加速）：① e.repeat 一律忽略 ② _physHeld 物理按住板——
+//   同键第二次 keydown（OS 补发的重复事件）只吞不动：不触发动作、不重启计时；解锁只认 keyup/blur/隐藏。
+//   节拍 66ms/步 ≈15 步/秒（原 33ms/30 步/秒 减半，用户定案）。同时只允许一个连发键（对齐 OS「仅最后按下键连发」语义）。
 var _HOLD_KEYS = { '1': 1, '2': 1, 'q': 1, 'w': 1 };
 var _holdKey = null;
 var _physHeld = Object.create(null);   // 物理按住板: keydown 首入 / keyup 出 / blur·隐藏 全清
 var _holdTo = 0, _holdIv = 0;
-var _HOLD_DELAY = 360;
-var _HOLD_MS = 50;
+var _holdLastAt = 0;    // 时间戳累加器基线（每步仅推进 _HOLD_STEP_MS）
+var _HOLD_DELAY = 250;  // 起手延迟（延迟≠频率；手感锚点）
+var _HOLD_STEP_MS = 66; // 步进节拍：≈15 步/秒（原 33ms/30 步/秒 减半，用户定案）
+var _HOLD_CATCHUP = 3;  // 单 tick 最大补步数（防节流/卡顿解除后跳变）
 function _stopKeyHold() {
     if (_holdTo) { clearTimeout(_holdTo); _holdTo = 0; }
     if (_holdIv) { clearInterval(_holdIv); _holdIv = 0; }
@@ -746,10 +747,17 @@ function _startKeyHold(key) {
     _holdTo = setTimeout(function () {
         _holdTo = 0;
         if (_holdKey !== key) return;
+        _holdLastAt = Date.now();
         _holdIv = setInterval(function () {
             if (_holdKey !== key) { _stopKeyHold(); return; }
-            _panelKeyAction(key);
-        }, _HOLD_MS);
+            // 时间戳累加：欠几步补几步（封顶）——平均频率 = 墙上时钟，与定时器抖动/机器快慢无关
+            var now = Date.now();
+            var due = Math.floor((now - _holdLastAt) / _HOLD_STEP_MS);
+            if (due < 1) return;
+            if (due > _HOLD_CATCHUP) { due = 1; _holdLastAt = now; }  // 大落后（后台节流/卡顿）→ 丢欠账防跳变
+            else { _holdLastAt += due * _HOLD_STEP_MS; }
+            for (var i = 0; i < due; i++) _panelKeyAction(key);
+        }, _HOLD_STEP_MS);
     }, _HOLD_DELAY);
 }
 function _panelKeyAction(key) {

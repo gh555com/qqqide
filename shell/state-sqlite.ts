@@ -2,9 +2,9 @@
 
 // ============================================================================
 // state-sqlite.ts — SQLite-backed 唯一真理持久化机器 (optimized)
-// Replaces state-store.ts (837 lines hand-rolled FS) with ~550 lines of SQLite.
+// 旧 state-store.ts（839 行 FS 手写店）已于 2026-09-27 死代码清盘删除（零 import）；本店为其零迁移替代。
 //
-// Zero breaking API changes vs state-store.ts:
+// 与旧店的零破坏 API：
 //   - Same constructor signature: new StateStore(userDataDir)
 //   - Same public methods: register/get/set/setNow/append/del/list/flush/flushSync/stats
 //   - Same EventEmitter: 'changed' event
@@ -80,6 +80,9 @@ export class StateStore extends EventEmitter {
     private outboxDir: string;
     private deviceId: string;
     private outboxSeq = 0;
+    // ★ outbox 去重索引（2026-09-27）：fullKey(ns/key) → 最新 seq。同键只留一条——
+    //   旧 append-only + 云同步完全手动（渲染层无调用方，永不排空）→ 无界积压（实测 1858 条/10 键）
+    private outboxIndex: Map<string, string> = new Map();
     private lastSyncAt?: number;
 
     private schemas: Map<string, NsSchema> = new Map();
@@ -149,6 +152,7 @@ export class StateStore extends EventEmitter {
         try { fs.mkdirSync(this.outboxDir, { recursive: true }); } catch { /* ignore */ }
         this.deviceId = this._loadOrCreateDeviceId(path.dirname(this.outboxDir));
         this._restoreOutboxSeq();
+        this._compactOutbox();
         console.log('[state-sqlite] db=', this.dbPath, 'device=', this.deviceId);
     }
 
@@ -373,6 +377,36 @@ export class StateStore extends EventEmitter {
                 }
             }
         } catch { /* ignore */ }
+    }
+
+    /** ★ outbox 去重压缩（2026-09-27）：同一 ns/key 只保留最新 seq 一条，建立去重索引。
+     *  背景：outbox 是 append-only 队列，而云同步（state-cloud）为「完全手动」mode——
+     *  渲染层无调用方 → 永不排空。实测绿色包一个月积压 1858 条 / 仅 10 个键。
+     *  启动折叠一次（保最新，余者删 + 索引重建）；写入路径同键先写新再删旧（详 _queueOutbox）。 */
+    private _compactOutbox(): void {
+        try {
+            const files = fs.readdirSync(this.outboxDir).filter(f => /^\d+\.json$/.test(f));
+            const best = new Map<string, { seq: string; file: string }>();
+            let removed = 0;
+            for (const f of files) {
+                let j: any = null;
+                try { j = JSON.parse(fs.readFileSync(path.join(this.outboxDir, f), 'utf8')); } catch { continue; }
+                if (!j || !j.ns || !j.key) { continue; }
+                const fk = j.ns + '/' + j.key;
+                const seq = f.replace(/\.json$/, '');
+                const cur = best.get(fk);
+                if (!cur) { best.set(fk, { seq, file: f }); continue; }
+                if (seq > cur.seq) {
+                    try { fs.unlinkSync(path.join(this.outboxDir, cur.file)); removed++; } catch { /* ignore */ }
+                    best.set(fk, { seq, file: f });
+                } else {
+                    try { fs.unlinkSync(path.join(this.outboxDir, f)); removed++; } catch { /* ignore */ }
+                }
+            }
+            this.outboxIndex.clear();
+            for (const [fk, v] of best) { this.outboxIndex.set(fk, v.seq); }
+            if (removed > 0) { console.log('[state-sqlite] outbox compacted: -' + removed + ' (kept ' + best.size + ')'); }
+        } catch (e) { console.warn('[state-sqlite] _compactOutbox failed:', e); }
     }
 
 
@@ -1071,6 +1105,9 @@ export class StateStore extends EventEmitter {
             const seq = String(this.outboxSeq).padStart(12, '0');
             const f = path.join(this.outboxDir, seq + '.json');
             const payload = { seq, ns, key, ts: Date.now(), deleted, value: deleted ? null : value };
+            // ★ 去重（2026-09-27）：同 ns/key 只保留最新一条——写新成功后删旧（删失败留给下次启动折叠）
+            const fk = ns + '/' + key;
+            const oldSeq = this.outboxIndex.get(fk);
             tmp = f + '.tmp.' + Date.now();
             fs.writeFileSync(tmp, JSON.stringify(payload));
             try {
@@ -1082,6 +1119,8 @@ export class StateStore extends EventEmitter {
                     fs.writeFileSync(f, data);
                 } catch { /* ignore */ }
             }
+            this.outboxIndex.set(fk, seq);
+            if (oldSeq && oldSeq !== seq) { try { fs.unlinkSync(path.join(this.outboxDir, oldSeq + '.json')); } catch { /* ignore */ } }
         } catch (e) {
             console.warn('[state-sqlite] _queueOutbox failed:', e);
         } finally {
@@ -1103,7 +1142,9 @@ export class StateStore extends EventEmitter {
 
     dropOutbox(seq: string): boolean {
         const f = path.join(this.outboxDir, seq + '.json');
-        try { fs.unlinkSync(f); return true; } catch { return false; }
+        try { fs.unlinkSync(f); } catch { return false; }
+        for (const [fk, s] of this.outboxIndex) { if (s === seq) { this.outboxIndex.delete(fk); break; } }
+        return true;
     }
 
     // ----- merge-on-save (delegated to schema.merger) -------------------------
