@@ -4,10 +4,10 @@
 // qqq-center.js — qqq 设置中心（工作台大齿轮按钮的弹出大卡片）
 //
 // 2026-09-28 用户定案：
-//   · 工作台卡（core/qqq-tools.js）：[↑][↓] 云同步按钮原样 + 小齿轮（点击 → 打开本卡片）；
+//   · 工作台卡（core/qqq-tools.js）：[↑][↓] 云同步按钮原样 + 齿轮（点击 → 打开本卡片）；
 //     云同步机械由本文件导出（window.qqqCenter.doSync / open）供其桥接
-//   · 本卡片 = 云同步区（老 AQ 数据同步 [↑][↓] 100% 语义，从 qqq-tools 相位搬入）
-//             + 设置标签全量本地化（网站 gaea-good-qqqide「设置」标签移除后的唯一设置入口）
+//   · 本卡片 = 网站「设置」标签全量本地化（gaea-good-qqqide「设置」标签移除后的唯一设置入口）；
+//     卡内不含云同步区——数据同步 [↑][↓] 仅在工作台卡（设置上传为后台自动）
 //   · 样式 = 类似右上角齿轮设置面板（qd 风格：主题变量自适应 + 无轨现代滚动条 +
 //     点面板外阴影 / Esc 关闭、无右上角关闭按钮——铁律 §4.1 内置面板统一规范）
 //   · 下拉控件 = 自绘（.qc-select/.qc-pop）——原生 <select> 展开列表选中/悬停高亮在 Windows 上
@@ -16,7 +16,7 @@
 // 数据机器: window.qqqPrefs（本地持久化 + 激活用户云同步 GET/PATCH /api/profile）
 // 正版门: 💎 行（removeWatermark）未激活 = 锁 + 点击走 qqqEntitlement.guard('no-watermark')
 //
-// 暴露: window.qqqCenter = { open, close, toggle, isOpen }
+// 暴露: window.qqqCenter = { open, close, toggle, isOpen, doSync }
 // ============================================================================
 
 ; (function () {
@@ -50,10 +50,7 @@
   function _gearSvg(size) {
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + size + '" height="' + size + '"><path d="' + _GEAR_PATH + '" fill="currentColor"/></svg>';
   }
-  // 云同步 ↑↓ 原样搬自老项目 q4.js（aqUploadSvg/aqDownloadSvg，云+箭头），stroke 改 currentColor
-  var _SYNC_SVG_UP = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="15" height="15"><g transform="translate(0,-1)"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="currentColor" opacity=".6"/><path d="M12 18V9M8 12l4-4 4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
-  var _SYNC_SVG_DOWN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="15" height="15"><g transform="translate(0,-1)"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="currentColor" opacity=".6"/><path d="M12 9v9M8 15l4 4 4-4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
-  var _SVG_REFRESH = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" fill="currentColor"/></svg>';
+
 
   // ── 卡片内样式（组件自有小件；面板滚动条/拖选由 shell-base.css「内嵌弹窗统一块」提供）──
   var _styleDone = false;
@@ -103,11 +100,7 @@
     if (onClick) { b.addEventListener('click', function (e) { e.stopPropagation(); onClick(); }); }
     return b;
   }
-  function _setSyncButtons(on) {
-    if (!_panel) { return; }
-    var bs = _panel.querySelectorAll('.qc-syncbtn');
-    for (var i = 0; i < bs.length; i++) { try { bs[i].disabled = !!on; } catch (e) { } }
-  }
+
   function _syncLabels(mode) {
     // ★ skipConfirm: 渲染层已用内置确认弹框完成法律确认——壳层收到后跳过原生模态（新壳层）；
     //   旧壳层忽略此字段（一次性双确认，重启后消失）。文案保留 = 旧壳层原生框也显示本地化文本。
@@ -238,7 +231,6 @@
   function _runSync(mode, ud) {
     var isPush = (mode === 'push');
     _syncBusy = true;
-    _setSyncButtons(true);
     var io = null; try { io = window.qqqideIoast || null; } catch (e) { }
     var taskId = 'sync-' + mode + '-' + Date.now();
     var busyTitle = isPush ? _i('sync.uploading', '正在上传数据到云端...') : _i('sync.pulling', '正在从云端拉取数据...');
@@ -248,7 +240,6 @@
     catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function (r) {
       _syncBusy = false;
-      _setSyncButtons(false);
       if (r && r.ok) {
         var timeStr = new Date().toLocaleString();
         var msg = isPush
@@ -272,7 +263,6 @@
       _qoast(emsg, { type: 'error', duration: 9000 });
     }).catch(function (e) {
       _syncBusy = false;
-      _setSyncButtons(false);
       var em = String((e && e.message) || e || 'unknown');
       if (io) { try { io.fail(taskId, { summary: em }); } catch (e2) { } }
       _qoast(em, { type: 'error', duration: 9000 });
@@ -425,43 +415,6 @@
     }, 600);
   }
 
-  // ── 云同步区状态文案 ──
-  function _cloudStatusText() {
-    var login = null;
-    try { login = window.qqqLogin || null; } catch (e) { login = null; }
-    var logged = !!(login && login.isLoggedIn && login.isLoggedIn());
-    if (!logged) { return _i('prefs.csLogin', '未登录：登录并激活后，设置可跨设备同步'); }
-    if (!_activated()) { return _i('prefs.csLocked', '设置已保存在本机；云端持久化需激活正版'); }
-    return _i('prefs.csOn', '云同步已开启：本机修改会自动同步到云端');
-  }
-  function _pullReasonText(reason) {
-    switch (reason) {
-      case 'not-activated': return _i('prefs.needAct', '该功能需先激活正版');
-      case 'not-login': return _i('sync.noAuth', '当前未登录，请先登录');
-      case 'auth-expired': return _i('sync.errAuthExpired', '登录已过期，请重新登录');
-      case 'network': return _i('sync.errNetwork', '网络错误，请检查网络连接');
-      default: return _i('sync.errServer', '服务端错误，请稍后再试');
-    }
-  }
-  function _doPullCloud() {
-    var P = _P();
-    if (!P) { _needRefresh(); return; }
-    var login = null;
-    try { login = window.qqqLogin || null; } catch (e) { login = null; }
-    if (!(login && login.isLoggedIn && login.isLoggedIn())) { _qoast(_i('sync.noAuth', '当前未登录，请先登录'), { duration: 7000 }); return; }
-    if (!_activated()) { _qoast(_i('prefs.needAct', '该功能需先激活正版'), { type: 'info', duration: 8000 }); return; }
-    _qoast(_i('prefs.pullDoing', '正在从云端拉取设置…'), { duration: 4000 });
-    Promise.resolve(P.pullCloud()).then(function (r) {
-      if (r && r.ok) {
-        _render();
-        _qoast(_T('prefs.pullDone', '已从云端同步 {0} 项设置', { 0: r.count || 0 }), { type: 'success', duration: 7000 });
-      } else {
-        _qoast(_T('prefs.pullFail', '云端同步失败：{0}', { 0: _pullReasonText(r && r.reason) }), { type: 'error', duration: 9000 });
-      }
-    }).catch(function () {
-      _qoast(_i('sync.errNetwork', '网络错误，请检查网络连接'), { type: 'error', duration: 9000 });
-    });
-  }
   function _doReset() {
     var P = _P();
     if (!P) { _needRefresh(); return; }
@@ -641,34 +594,6 @@
     return _el('div', 'font-size:12px;font-weight:bold;color:var(--text-secondary);margin:16px 0 8px;', '', text);
   }
 
-  function _buildCloudSection() {
-    var sec = _el('div', 'margin-bottom:4px;');
-    sec.appendChild(_el('div', 'font-size:12px;font-weight:bold;color:var(--text-secondary);margin:0 0 8px;', '', _i('prefs.cloudSec', '☁ 云同步')));
-
-    var row = _el('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;');
-    var bUp = _qcBtn(_SYNC_SVG_UP, _i('sync.uploadTitle', '上传到云端'), function () { _doSync('push'); });
-    var bDown = _qcBtn(_SYNC_SVG_DOWN, _i('sync.downloadTitle', '下载云端数据'), function () { _doSync('pull'); });
-    bUp.classList.add('qc-syncbtn');
-    bDown.classList.add('qc-syncbtn');
-    if (_syncBusy) { bUp.disabled = true; bDown.disabled = true; }
-    row.appendChild(bUp);
-    row.appendChild(bDown);
-    sec.appendChild(row);
-
-    var desc = _el('div', 'margin-top:6px;font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
-      '', _i('workbench.cloudSyncTip', '云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含编辑器配置、各文件夹偏好、剪贴板历史。'));
-    desc.title = desc.textContent;
-    sec.appendChild(desc);
-
-    var row2 = _el('div', 'display:flex;gap:8px;align-items:center;margin-top:10px;');
-    var st = _el('div', 'flex:1 1 0;min-width:0;font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
-      '', _cloudStatusText());
-    st.title = st.textContent;
-    row2.appendChild(st);
-    row2.appendChild(_qcBtn(_SVG_REFRESH, _i('prefs.pullNow', '立即从云端拉取设置'), _doPullCloud));
-    sec.appendChild(row2);
-    return sec;
-  }
 
   function _buildItem(it) {
     var key = it.k;
@@ -775,7 +700,6 @@
     var body = _el('div', 'padding:12px 20px 18px;');
     _panel.appendChild(body);
 
-    body.appendChild(_buildCloudSection());
     for (var i = 0; i < GROUPS.length; i++) { body.appendChild(_buildGroup(GROUPS[i])); }
     body.appendChild(_buildFooter());
   }

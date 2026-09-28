@@ -1692,15 +1692,6 @@
     },
     "prefs": {
         "title": "qqq Settings",
-        "cloudSec": "☁ Cloud Sync",
-        "csLogin": "Not Logged In: Log in and activate to sync settings across devices",
-        "csLocked": "Settings saved locally; cloud persistence requires activation of the genuine version",
-        "csOn": "Cloud Sync Enabled: Local changes will automatically sync to the cloud",
-        "pullNow": "Pull settings from cloud now",
-        "pullDoing": "Pulling settings from the cloud...",
-        "pullDone": "Synced {0} settings from the cloud",
-        "pullFail": "Cloud sync failed: {0}",
-        "needAct": "This feature requires activation of the genuine version",
         "wmNeed": "Custom watermark is a Premium feature (available after activation)",
         "reset": "Restore Default Settings",
         "resetTitle": "Restore Default Settings",
@@ -1825,7 +1816,7 @@
         "durSs": "{0} sec",
         "exportDocTip": "Export current document as Word: Images and videos are embedded as images; other attachments generate a list. Saves next to the document by default; save dialog appears only if a file with the same name exists.",
         "exportZipTip": "Package the current document and all referenced files and directories into a ZIP archive (preserving directory structure, maximum compression). Saves next to the document by default; prompts for save location only if a file with the same name already exists.",
-        "cloudSyncTip": "Cloud Sync: ↑ Upload = Merge with cloud then upload (no data loss on either side); ↓ Download = Merge cloud data into local. Includes editor settings, folder preferences, and clipboard history.",
+        "cloudSyncTip": "Cloud Sync: ↑ Upload = Merge with cloud before uploading (no data loss on either side); ↓ Download = Merge cloud data into local. Includes roam settings, folder preferences, and clipboard history.",
         "playerTip": "Player: Listen to music or watch videos while coding (playlist persists across restarts). In Roam, right-click selected media and choose \"Add to Playlist,\" or pop it out from the overlay. Minimizing docks it to this slot for remote control.",
         "playerWinTip": "Independent Floating Player Window: Always-on-top mini-window—visible even when switching to other apps (↗)",
         "playerCardTip": "In-Window Player: A player card floating within the qqqide window—follows this window (⧈)",
@@ -1833,7 +1824,7 @@
         "videoUrlTip": "Pending Video: Enter a video URL to automatically download it to the document directory and insert it into a frame.",
         "pasteTip": "Pending Paste: One-click paste from clipboard to document (Ctrl+V achieves the same result).",
         "pureTip": "Pending: Scan document references to clean up orphaned files that are no longer referenced.",
-        "settingsTip": "Open qqq Settings Center: Cloud Sync + All Preferences (Performance/Frame/Watcher/Export…)",
+        "settingsTip": "Open qqq Settings Center: All preference settings (Performance/Frame/Observer/Export…)",
         "settingsNeedRestart": "Settings Center not ready (window refresh required)"
     },
     "audio": {

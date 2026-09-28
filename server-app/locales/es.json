@@ -1692,15 +1692,6 @@
     },
     "prefs": {
         "title": "Configuración de qqq",
-        "cloudSec": "☁ Sincronización en la nube",
-        "csLogin": "No conectado: inicie sesión y active para sincronizar configuraciones entre dispositivos",
-        "csLocked": "Configuración guardada localmente; la persistencia en la nube requiere activación de la versión licenciada",
-        "csOn": "Sincronización en la nube activada: los cambios locales se sincronizan automáticamente con la nube",
-        "pullNow": "Sincronizar configuración desde la nube ahora",
-        "pullDoing": "Sincronizando configuración desde la nube…",
-        "pullDone": "Se han sincronizado {0} ajustes desde la nube",
-        "pullFail": "Error de sincronización en la nube: {0}",
-        "needAct": "Esta función requiere activación de la versión licenciada",
         "wmNeed": "La personalización de marcas de agua es una función premium (disponible tras activación)",
         "reset": "Restaurar configuración predeterminada",
         "resetTitle": "Restaurar configuración predeterminada",
@@ -1825,7 +1816,7 @@
         "durSs": "{0} segundos",
         "exportDocTip": "Exporta el documento actual como archivo Word: las imágenes y vídeos se convierten en imágenes incrustadas y se genera una lista para otros adjuntos. Se guarda por defecto junto al documento; el cuadro de diálogo de guardado solo aparece si ya existe un archivo con el mismo nombre.",
         "exportZipTip": "Empaqueta el documento actual y todos los archivos y directorios referenciados en un ZIP (conservando la estructura de directorios y con máxima compresión); se guarda por defecto junto al documento, mostrando el diálogo de guardado solo si ya existe un archivo con el mismo nombre.",
-        "cloudSyncTip": "Sincronización en la nube: ↑ Subir = Combina con la nube antes de subir (ningún dato se pierde en ninguno de los lados); ↓ Descargar = Combina los datos de la nube con los locales. Incluye configuración del editor, preferencias de cada carpeta e historial del portapapeles.",
+        "cloudSyncTip": "Sincronización en la nube: ↑ Subir = fusionar primero con la nube y luego subir (sin pérdida de datos en ninguno de los dos lados); ↓ Descargar = fusionar los datos de la nube en el dispositivo local. Incluye configuración de roam, preferencias de cada carpeta e historial del portapapeles.",
         "playerTip": "Reproductor: escucha música o ve vídeos mientras codificas (la lista de reproducción se recuerda entre reinicios); en Roam, haz clic derecho en un medio seleccionado y elige «Añadir a la lista de reproducción», o expándelo desde la capa flotante. Minimizar = guardar en esta ranura para control remoto.",
         "playerWinTip": "Ventana de reproductor flotante independiente: ventana siempre visible, accesible incluso al cambiar a otras aplicaciones (↗)",
         "playerCardTip": "Reproductor en ventana: tarjeta de reproductor flotante dentro de la ventana de qqqide — sigue a esta ventana (⧈)",
@@ -1833,7 +1824,7 @@
         "videoUrlTip": "Pendiente de pegar: Introduce la URL del vídeo para descargarlo automáticamente en la carpeta del documento e insertarlo en un marco.",
         "pasteTip": "Pendiente de pegar: Pega el contenido del portapapeles en el documento con un solo clic (actualmente puedes lograr lo mismo con Ctrl+V).",
         "pureTip": "Pendiente: escanea las referencias del documento para limpiar archivos huérfanos que ya no están siendo utilizados.",
-        "settingsTip": "Abrir el centro de configuración de qqq: sincronización en la nube + todas las preferencias (rendimiento/marco/observador/exportación…)",
+        "settingsTip": "Abrir el centro de configuración de qqq: todas las preferencias (rendimiento/marco/observador/exportación…)",
         "settingsNeedRestart": "El centro de configuración no está listo (es necesario actualizar la ventana)"
     },
     "audio": {

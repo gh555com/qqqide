@@ -8,7 +8,7 @@
 //   │  [♾][■] Savor moments for yourself                    │  ← 老 q3 savorCard 100%
 //   │  [✎ export doc]        [🗜 export Zip]                │
 //   │  [ .doc ][ .docx ]                                    │
-//   │  [↑][↓] ⚙（齿轮·点击开设置中心）                       │  ← [↑][↓] 云同步（老 qqq AQ 100%）+ 齿轮开「qqq 设置中心」
+//   │  [↑][↓]           ⚙ 居中（点击开设置中心）             │  ← [↑][↓] 云同步（老 qqq AQ 100%）+ 齿轮开「qqq 设置中心」
 //   │  [⏮][⏯][⏭] Player · 轨名 n/N            [−][✕]        │  ← 播放槽（空闲=[↗][⧈]；活跃=控制台）
 //   │  [▶ Video Url] [✎ Paste] [✦ Pure]                     │  ← 占位（待移植）
 //   └───────────────────────────────────────────────────────┘
@@ -19,7 +19,7 @@
 //   2026-09-22 四次微调（用户定案）: Savor 卡内统计行删除（副行归零 → 主文字真垂直居中）；
 //   统计恒归 hover（本地语言清晰版、悬停即时刷新；「不解释，直接放核心信息」）；面板总宽 -20%（438→350px）。
 //   2026-09-28 改版（用户定案 · 设置本地化）: Cloud Sync 卡保留原尺寸——[↑][↓] 云同步按钮 100% 原样
-//   （老 qqq AQ 语义）；原 "Cloud Sync" 文字位 → 小号齿轮（16px · 正常文字色 = 非金色）；点击（或整卡点击）
+//   （老 qqq AQ 语义）；原 "Cloud Sync" 文字位 → 齿轮（22px · 卡片内居中稍偏左 6px · 正常文字色 = 非金色）；点击（或整卡点击）
 //   = 打开「qqq 设置中心」大卡片 = core/qqq-center.js；云同步机械与确认/进度相位在 qqq-center.js
 //   （本文件经 window.qqqCenter.doSync 桥接按钮）。
 //
@@ -35,7 +35,7 @@
 //   export doc   [.doc]/[.docx] chips → window.qqqExport.doc(format)
 //   export Zip   整卡点击 → window.qqqExport.zip()
 //   云同步+齿轮  [↑][↓] = 上传/下载（桥 window.qqqCenter.doSync——机械在 qqq-center.js）；齿轮（原文字位）
-//               = 点击打开「qqq 设置中心」（core/qqq-center.js：云同步 + 设置全量本地化）
+//               = 点击打开「qqq 设置中心」（core/qqq-center.js：设置全量本地化）
 //   Player       空闲 = [↗ 独立窗][⧈ 窗内]；会话活跃（卡可见/被收纳）= 播放控制台（[⏮][⏯][⏭] + 轨名 + [收纳/展开][✕]）
 //                ——收纳态（卡.stow）下本槽 = 播放器唯一遥控入口（qqq 按钮 ♪ 徽标）；状态存 player-state.json card.stow
 //   Video Url / Paste / Pure → 占位 chips（点击提示待移植）
@@ -111,10 +111,10 @@
       '.qqq-tools-card { border: 1px solid var(--border-color, #d6d6d6); border-radius: 6px; padding: 6px 10px; min-width: 0; color: var(--text-primary, #586e75); transition: border-color .12s ease, background .12s ease; }',
       '.qqq-tools-card:hover { border-color: var(--primary-color, #b58900); background: var(--hover-bg, rgba(0,0,0,0.04)); }',
       '.qqq-tools-card.wide { grid-column: 1 / -1; }',
-      '.qqq-tools-gear-ico { display: inline-flex; align-items: center; justify-content: center; color: var(--text-primary, #586e75); flex-shrink: 0; transition: transform .15s ease; }',
+      '.qqq-tools-card.qqq-tools-flex { display: flex; align-items: center; gap: 10px; position: relative; }',
+      '.qqq-tools-gear-ico { position: absolute; left: calc(50% - 6px); top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; justify-content: center; color: var(--text-primary, #586e75); flex-shrink: 0; transition: transform .15s ease; }',
       '.qqq-tools-gear-ico svg { display: block; }',
-      '.qqq-tools-card:hover .qqq-tools-gear-ico { transform: scale(1.1); }',
-      '.qqq-tools-card.qqq-tools-flex { display: flex; align-items: center; gap: 10px; }',
+      '.qqq-tools-card:hover .qqq-tools-gear-ico { transform: translate(-50%, -50%) scale(1.1); }',
       '.qqq-tools-card-body { flex: 1 1 auto; min-width: 0; }',
       '.qqq-tools-card-head { display: flex; align-items: center; gap: 6px; }',
       '.qqq-tools-card-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
@@ -363,8 +363,8 @@
   }
 
   // ★ 云同步 + 设置齿轮卡（2026-09-28 用户定案）：[↑][↓] 云同步按钮 100% 原样；原 "Cloud Sync" 文字位 =
-  //   小号齿轮（老项目 .icon-all-settings 原版 path；16px · 正常文字色 currentColor = 非金色）→ 打开设置中心。
-  var _ICO_GEAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.2-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>';
+  //   齿轮（老项目 .icon-all-settings 原版 path；22px · 卡片内居中稍偏左 · 正常文字色 currentColor = 非金色）→ 打开设置中心。
+  var _ICO_GEAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.2-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>';
 
   // 桥窗到设置中心（core/qqq-center.js）——未就绪（旧窗口/未刷新）时诚实提示
   function _centerOpen() {

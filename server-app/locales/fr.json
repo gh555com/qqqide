@@ -1692,15 +1692,6 @@
     },
     "prefs": {
         "title": "Paramètres qqq",
-        "cloudSec": "☁ Synchronisation cloud",
-        "csLogin": "Non connecté : connectez-vous et activez pour synchroniser les paramètres entre appareils",
-        "csLocked": "Paramètres enregistrés localement ; La persistance cloud nécessite l'activation de la version officielle",
-        "csOn": "Synchronisation cloud activée : les modifications locales sont automatiquement synchronisées avec le cloud",
-        "pullNow": "Récupérer les paramètres depuis le cloud maintenant",
-        "pullDoing": "Récupération des paramètres depuis le cloud…",
-        "pullDone": "{0} paramètres synchronisés depuis le cloud",
-        "pullFail": "Échec de la synchronisation cloud : {0}",
-        "needAct": "Cette fonctionnalité nécessite l'activation de la version officielle",
         "wmNeed": "La personnalisation du filigrane est une fonctionnalité premium (disponible après activation)",
         "reset": "Restaurer les paramètres par défaut",
         "resetTitle": "Restaurer les paramètres par défaut",
@@ -1825,7 +1816,7 @@
         "durSs": "{0} secondes",
         "exportDocTip": "Exporte le document actuel au format Word : les images et vidéos sont intégrées en tant qu'images, et les autres pièces jointes font l'objet d'une liste. Enregistrement par défaut à côté du document ; la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
         "exportZipTip": "Empaquete le document actuel ainsi que tous les fichiers et répertoires référencés dans une archive ZIP (en conservant la structure des répertoires, compression maximale) ; enregistrement par défaut à côté du document, la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
-        "cloudSyncTip": "Synchronisation cloud : ↑ Téléverser = fusionne avec le cloud avant le téléversement (aucune donnée perdue des deux côtés) ; ↓ Télécharger = fusionne les données du cloud avec les données locales. Inclut la configuration de l'éditeur, les préférences par dossier et l'historique du presse-papiers.",
+        "cloudSyncTip": "Synchronisation cloud : ↑ Téléverser = fusionner avec le cloud avant de téléverser (aucune perte de données des deux côtés) ; ↓ Télécharger = fusionner les données du cloud vers l'appareil local. Inclut la configuration roam, les préférences de chaque dossier et l'historique du presse-papiers.",
         "playerTip": "Lecteur : écoutez de la musique ou regardez des vidéos pendant que vous codez (liste de lecture mémorisée entre les redémarrages) ; dans Roam, faites un clic droit sur un média sélectionné et choisissez « Ajouter à la liste de lecture », ou faites-le apparaître depuis la couche flottante ; minimiser = réduire à cette emprise de contrôle.",
         "playerWinTip": "Fenêtre du lecteur flottant indépendant : fenêtre toujours visible — reste visible même lorsque vous passez à d'autres applications (↗)",
         "playerCardTip": "Lecteur intégré : carte du lecteur flottant dans la fenêtre qqqide — suit cette fenêtre (⧈)",
@@ -1833,7 +1824,7 @@
         "videoUrlTip": "En attente : saisissez l'URL de la vidéo pour la télécharger automatiquement dans le dossier du document et l'insérer dans un cadre.",
         "pasteTip": "En attente : collez le contenu du presse-papiers dans le document en un clic (vous pouvez aussi utiliser Ctrl+V).",
         "pureTip": "En attente : analyse des références du document pour nettoyer les fichiers orphelins non référencés.",
-        "settingsTip": "Ouvrir le centre de paramètres qqq : Synchronisation cloud + Tous les paramètres préférés (performance/cadre/observateur/exportation…)",
+        "settingsTip": "Ouvrir le centre de paramètres de qqq : tous les réglages de préférences (performances/cadre/observateur/exportation…)",
         "settingsNeedRestart": "Le centre de paramètres n'est pas prêt (nécessite l'actualisation de la fenêtre)"
     },
     "audio": {

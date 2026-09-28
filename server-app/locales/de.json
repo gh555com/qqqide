@@ -1692,15 +1692,6 @@
     },
     "prefs": {
         "title": "qqq Einstellungen",
-        "cloudSec": "☁ Cloud-Synchronisierung",
-        "csLogin": "Nicht angemeldet: Nach Anmeldung und Aktivierung können Einstellungen geräteübergreifend synchronisiert werden",
-        "csLocked": "Einstellungen sind lokal gespeichert; Für persistente Cloud-Speicherung ist die Vollversion erforderlich",
-        "csOn": "Cloud-Synchronisierung ist aktiviert: Änderungen auf diesem Gerät werden automatisch in die Cloud synchronisiert",
-        "pullNow": "Einstellungen jetzt aus der Cloud abrufen",
-        "pullDoing": "Einstellungen werden aus der Cloud abgerufen…",
-        "pullDone": "{0} Einstellungen wurden aus der Cloud synchronisiert",
-        "pullFail": "Cloud-Synchronisierung fehlgeschlagen: {0}",
-        "needAct": "Für diese Funktion ist eine Aktivierung der Vollversion erforderlich",
         "wmNeed": "Benutzerdefinierte Wasserzeichen sind eine Funktion der Originalversion (nach Aktivierung verfügbar)",
         "reset": "Standardeinstellungen wiederherstellen",
         "resetTitle": "Standardeinstellungen wiederherstellen",
@@ -1825,7 +1816,7 @@
         "durSs": "{0} Sekunden",
         "exportDocTip": "Aktuelles Dokument als Word-Datei exportieren: Bilder und Videos werden als eingebettete Bilder konvertiert, andere Anhänge werden als Liste generiert; standardmäßig neben dem Dokument gespeichert, Speicherdialog erscheint nur, wenn eine gleichnamige Datei bereits existiert.",
         "exportZipTip": "Packt das aktuelle Dokument und alle referenzierten Dateien und Verzeichnisse in ein ZIP-Archiv (behält Verzeichnisstruktur bei, maximale Komprimierung); standardmäßig neben dem Dokument gespeichert, Speicherdialog erscheint nur, wenn eine gleichnamige Datei bereits existiert.",
-        "cloudSyncTip": "Cloud-Sync: ↑ Hochladen = Erst mit Cloud zusammenführen, dann hochladen (keine Datenverluste auf beiden Seiten); ↓ Herunterladen = Cloud-Daten mit lokalen Daten zusammenführen. Enthält Editor-Einstellungen, Ordnerpräferenzen und Zwischenablage-Historie.",
+        "cloudSyncTip": "Cloud-Synchronisierung: ↑ Hochladen = Erst mit der Cloud zusammenführen, dann hochladen (keine Datenverluste auf beiden Seiten); ↓ Herunterladen = Cloud-Daten in den lokalen Speicher zusammenführen. Enthält Roam-Konfigurationen, Ordnerpräferenzen und Zwischenablageverlauf.",
         "playerTip": "Player: Hören Sie Musik oder schauen Sie Videos beim Coden (Wiedergabelisten bleiben auch nach Neustarts erhalten); Wählen Sie Medien in Roam aus und klicken Sie mit der rechten Maustaste auf „Zur Wiedergabeliste hinzufügen“, oder rufen Sie sie über das Overlay auf; Minimieren = In diesen Slot als Fernbedienung ablegen.",
         "playerWinTip": "Eigenständiges schwebendes Player-Fenster: Immer im Vordergrund – bleibt auch beim Wechsel zu anderen Programmen sichtbar (↗)",
         "playerCardTip": "Player im Fenster: Player-Karte schwebt im qqqide-Fenster – folgt diesem Fenster (⧈)",
@@ -1833,7 +1824,7 @@
         "videoUrlTip": "To-Do: Video-URL eingeben, automatisch in den Dokumentordner herunterladen und in einen Bildrahmen einfügen.",
         "pasteTip": "To-Do: Inhalt der Zwischenablage mit einem Klick in das Dokument einfügen (derzeit kann derselbe Vorgang mit Ctrl+V durchgeführt werden).",
         "pureTip": "Ausstehend: Dokumentreferenzen scannen und nicht mehr referenzierte verwaiste Dateien bereinigen.",
-        "settingsTip": "qqq Einstellungszentrum öffnen: Cloud-Sync + alle Präferenzen (Performance/Rahmen/Beobachter/Export…)",
+        "settingsTip": "qqq Einstellungscenter öffnen: Alle Präferenzeinstellungen (Leistung/Rahmen/Beobachter/Export…)",
         "settingsNeedRestart": "Einstellungszentrum nicht bereit (Fenster muss aktualisiert werden)"
     },
     "audio": {
