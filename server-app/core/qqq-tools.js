@@ -8,7 +8,8 @@
 //   │  [♾][■] Savor moments for yourself                    │  ← 老 q3 savorCard 100%
 //   │  [✎ export doc]        [🗜 export Zip]                │
 //   │  [ .doc ][ .docx ]                                    │
-//   │  [↑][↓] Cloud Sync                                    │  ← 老 qqq AQ 云同步 100%
+//   │  [↑][↓] ⚙（齿轮·点击开设置中心）                       │  ← [↑][↓] 云同步（老 qqq AQ 100%）+ 齿轮开「qqq 设置中心」
+//   │  [⏮][⏯][⏭] Player · 轨名 n/N            [−][✕]        │  ← 播放槽（空闲=[↗][⧈]；活跃=控制台）
 //   │  [▶ Video Url] [✎ Paste] [✦ Pure]                     │  ← 占位（待移植）
 //   └───────────────────────────────────────────────────────┘
 //   2026-09-22 二次改版: 移除 SOUND/EXPORT/DATA/SOON 分割行——纯卡片连续流。
@@ -17,6 +18,10 @@
 //   被删小字的说明职责全部转 hover tooltip：本地语言（i18n workbench.* 段）+ 详细。
 //   2026-09-22 四次微调（用户定案）: Savor 卡内统计行删除（副行归零 → 主文字真垂直居中）；
 //   统计恒归 hover（本地语言清晰版、悬停即时刷新；「不解释，直接放核心信息」）；面板总宽 -20%（438→350px）。
+//   2026-09-28 改版（用户定案 · 设置本地化）: Cloud Sync 卡保留原尺寸——[↑][↓] 云同步按钮 100% 原样
+//   （老 qqq AQ 语义）；原 "Cloud Sync" 文字位 → 小号齿轮（16px · 正常文字色 = 非金色）；点击（或整卡点击）
+//   = 打开「qqq 设置中心」大卡片 = core/qqq-center.js；云同步机械与确认/进度相位在 qqq-center.js
+//   （本文件经 window.qqqCenter.doSync 桥接按钮）。
 //
 // 设计决策（国际化）:
 //   · 面板文案全英文（菜单固有标签白名单——与老 q3 侧边按钮组一致）+ Consolas 等宽字体
@@ -29,8 +34,10 @@
 //                电台在线 → 播电台（判定在壳层桥）+ label 暗金色 #8b6914；播放中 'Savoring...'/'Looping...'
 //   export doc   [.doc]/[.docx] chips → window.qqqExport.doc(format)
 //   export Zip   整卡点击 → window.qqqExport.zip()
-//   Cloud Sync   [↑]=push / [↓]=pull → bridge.userData（Pull-Merge-Push 零丢失 + 内置确认弹框——
-//                first-run 同款风格；2026-09-22 用户定案：原生系统模态（系统主题）→ 内置弹框（IDE 主题）保 UI 风格统一）
+//   云同步+齿轮  [↑][↓] = 上传/下载（桥 window.qqqCenter.doSync——机械在 qqq-center.js）；齿轮（原文字位）
+//               = 点击打开「qqq 设置中心」（core/qqq-center.js：云同步 + 设置全量本地化）
+//   Player       空闲 = [↗ 独立窗][⧈ 窗内]；会话活跃（卡可见/被收纳）= 播放控制台（[⏮][⏯][⏭] + 轨名 + [收纳/展开][✕]）
+//                ——收纳态（卡.stow）下本槽 = 播放器唯一遥控入口（qqq 按钮 ♪ 徽标）；状态存 player-state.json card.stow
 //   Video Url / Paste / Pure → 占位 chips（点击提示待移植）
 //
 // 交互: hover 进入展开（250ms 延迟关闭）；Esc / 点别处 / resize 即关；零自定义 cursor（铁律 §4.3）。
@@ -54,10 +61,7 @@
   var _savorCardEl = null;
   var _savorLabelEl = null;
   var _savorUnsub = null;
-  // Cloud Sync 卡片引用
-  var _syncUpEl = null;
-  var _syncDownEl = null;
-  var _syncBusy = false;
+
 
   function _i(key, fb) { try { return window._i ? window._i(key, fb) : fb; } catch (e) { return fb; } }
   function _qoast(m, o) { try { if (window.qqqideQoast) { window.qqqideQoast.show(m, o || {}); } } catch (e) { } }
@@ -81,6 +85,11 @@
     s.id = 'qqq-tools-menu-style';
     s.textContent = [
       '.qqq-tools-btn:hover, .qqq-tools-btn.qqq-tools-open { background: var(--background-color) !important; opacity: .85; }',
+      '.qqq-tools-btn { position: relative; }',
+      '.qqq-tools-btn.qqq-player-stowed::after { content: "♪"; position: absolute; top: -5px; right: -2px; font-size: 9px; line-height: 1; color: var(--primary-color, #b58900); pointer-events: none; }',
+      '.qqq-player-row .qqq-tools-card-body { display: flex; align-items: center; min-width: 0; }',
+      '.qqq-player-row .qqq-tools-card-title { flex: 1 1 auto; min-width: 0; }',
+      '.qqq-pl-count { flex: 0 0 auto; margin-left: 6px; font-size: 11px; color: var(--text-secondary, #93a1a1); }',
       '.qqq-tools-menu {',
       '  position: fixed; z-index: 999999;',
       '  width: ' + PANEL_W + 'px; max-width: calc(100vw - 16px);',
@@ -102,6 +111,9 @@
       '.qqq-tools-card { border: 1px solid var(--border-color, #d6d6d6); border-radius: 6px; padding: 6px 10px; min-width: 0; color: var(--text-primary, #586e75); transition: border-color .12s ease, background .12s ease; }',
       '.qqq-tools-card:hover { border-color: var(--primary-color, #b58900); background: var(--hover-bg, rgba(0,0,0,0.04)); }',
       '.qqq-tools-card.wide { grid-column: 1 / -1; }',
+      '.qqq-tools-gear-ico { display: inline-flex; align-items: center; justify-content: center; color: var(--text-primary, #586e75); flex-shrink: 0; transition: transform .15s ease; }',
+      '.qqq-tools-gear-ico svg { display: block; }',
+      '.qqq-tools-card:hover .qqq-tools-gear-ico { transform: scale(1.1); }',
       '.qqq-tools-card.qqq-tools-flex { display: flex; align-items: center; gap: 10px; }',
       '.qqq-tools-card-body { flex: 1 1 auto; min-width: 0; }',
       '.qqq-tools-card-head { display: flex; align-items: center; gap: 6px; }',
@@ -266,8 +278,8 @@
     if (_savorUnsub) { try { _savorUnsub(); } catch (e) { } _savorUnsub = null; }
   }
 
-  // ── Cloud Sync（老 qqq AQ 模式：上传/下载按钮 100% 移植）──
-  //   SVG 原样搬自老项目 q4.js（aqUploadSvg/aqDownloadSvg，云+箭头）；stroke 改 currentColor 适配主题
+  // ── 通用 SVG 小按钮（云同步按钮 + 播放器行复用）──
+  //   [↑][↓] 云同步 SVG 原样搬自老项目 q4.js（aqUploadSvg/aqDownloadSvg，云+箭头）；stroke 改 currentColor 适配主题
   var _SYNC_SVG_UP = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="16" height="16"><g transform="translate(0,-1)"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="currentColor" opacity=".6"/><path d="M12 18V9M8 12l4-4 4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
   var _SYNC_SVG_DOWN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="16" height="16"><g transform="translate(0,-1)"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" fill="currentColor" opacity=".6"/><path d="M12 9v9M8 15l4 4 4-4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
 
@@ -281,172 +293,6 @@
     b.appendChild(ic);
     return b;
   }
-  function _setSyncButtons(on) {
-    [_syncUpEl, _syncDownEl].forEach(function (b) { if (b) { try { b.disabled = !!on; } catch (e) { } } });
-  }
-  function _syncLabels(mode) {
-    // ★ skipConfirm: 渲染层已用内置确认弹框（_syncConfirm）完成法律确认——壳层收到后跳过原生模态（新壳层）；
-    //   旧壳层忽略此字段（一次性双确认，重启后消失）。文案保留 = 旧壳层原生框也显示本地化文本。
-    if (mode === 'push') {
-      return {
-        title: _i('sync.uploadConfirmTitle', '上传数据到云端'),
-        message: _i('sync.uploadConfirmMsg', '我确认：\n1、我是正版用户；\n2、我的剪切板、文件记录偏好中不包括任何个人敏感信息（如密码），且不包括任何违法反动信息。'),
-        ok: _i('sync.uploadConfirmBtn', '我确认并上传'),
-        cancel: _i('sync.uploadCancel', '取消'),
-        skipConfirm: true,
-      };
-    }
-    return {
-      title: _i('sync.pullConfirmTitle', '从云端合并数据'),
-      message: _i('sync.pullConfirmMsg', '下载云端数据，将与本地漫游偏好和剪贴板历史合并（取并集，不丢失），是否继续？'),
-      ok: _i('sync.pullConfirmBtn', '确认下载'),
-      cancel: _i('sync.uploadCancel', '取消'),
-      skipConfirm: true,
-    };
-  }
-  function _syncReasonText(reason) {
-    switch (reason) {
-      case 'no-auth': return _i('sync.noAuth', '当前未登录，请先登录');
-      case 'not-purchased': return _i('sync.errNotPurchased', '该用户非正版用户');
-      case 'rate-limit': return _i('sync.errRateLimit', '请求太频繁，请稍后再试');
-      case 'quota': return _i('sync.errQuota', '数据超出配额限制');
-      case 'not-registered': return _i('sync.errNotRegistered', '该手机号未注册');
-      case 'auth-expired': return _i('sync.errAuthExpired', '登录已过期，请重新登录');
-      case 'no-data': return _i('sync.noData', '云端暂无数据');
-      case 'network': return _i('sync.errNetwork', '网络错误，请检查网络连接');
-      default: return _i('sync.errServer', '服务端错误，请稍后再试');
-    }
-  }
-  // ── 云同步确认弹框（内置 HTML，first-run 同款风格——主题变量自适应，UI 风格统一） ──
-  //   2026-09-22 用户定案：原生系统模态 → 内置弹框。语义保持：确认=true / 取消|Esc=false /
-  //   遮罩点击不关闭（法律确认防误触）；语言切换实时刷新；防重入（已有弹窗 → false）。
-  var _syncConfirmOv = null;
-  function _closeSyncConfirm() {
-    if (_syncConfirmOv) { try { if (_syncConfirmOv.parentNode) { _syncConfirmOv.parentNode.removeChild(_syncConfirmOv); } } catch (e) { } }
-    _syncConfirmOv = null;
-  }
-  function _syncConfirm(mode) {
-    return new Promise(function (resolve) {
-      if (_syncConfirmOv) { resolve(false); return; }
-      var isPush = (mode === 'push');
-      var ov = document.createElement('div');
-      ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);' +
-        'z-index:1000001;display:flex;align-items:center;justify-content:center;';
-      var panel = document.createElement('div');
-      panel.style.cssText = 'width:500px;max-width:92vw;box-sizing:border-box;' +
-        'background:var(--background-color);color:var(--text-primary);' +
-        'border:1px solid var(--border-strong);border-radius:10px;' +
-        'box-shadow:0 12px 48px rgba(0,0,0,0.5);padding:26px 28px 20px;' +
-        'font-size:14px;line-height:1.7;';
-
-      var h = document.createElement('div');
-      h.style.cssText = 'font-size:15px;font-weight:600;margin:0 0 12px;';
-      var msg = document.createElement('div');
-      msg.style.cssText = 'margin:0;white-space:pre-line;';
-
-      var btnOk = document.createElement('button');
-      btnOk.type = 'button';
-      btnOk.style.cssText = 'padding:7px 20px;border:1px solid var(--border-strong);border-radius:6px;' +
-        'background:transparent;color:var(--text-secondary);font-size:13px;';
-      var btnCancel = document.createElement('button');
-      btnCancel.type = 'button';
-      btnCancel.style.cssText = btnOk.style.cssText;
-
-      function _fill() {   // i18n 填充（语言切换时重刷——开着弹窗切语言不锁旧文案）
-        h.textContent = _i(isPush ? 'sync.uploadConfirmTitle' : 'sync.pullConfirmTitle', isPush ? '上传数据到云端' : '从云端合并数据');
-        msg.textContent = _i(isPush ? 'sync.uploadConfirmMsg' : 'sync.pullConfirmMsg', isPush
-          ? '我确认：\n1、我是正版用户；\n2、我的剪切板、文件记录偏好中不包括任何个人敏感信息（如密码），且不包括任何违法反动信息。'
-          : '下载云端数据，将与本地漫游偏好和剪贴板历史合并（取并集，不丢失），是否继续？');
-        btnOk.textContent = _i(isPush ? 'sync.uploadConfirmBtn' : 'sync.pullConfirmBtn', isPush ? '我确认并上传' : '确认下载');
-        btnCancel.textContent = _i('sync.uploadCancel', '取消');
-      }
-      _fill();
-
-      function _close(result) {
-        document.removeEventListener('keydown', onKey, true);
-        window.removeEventListener('qqq-lang-change', _fill);
-        _closeSyncConfirm();
-        resolve(result);
-      }
-      var onKey = function (e) { if (e && e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); _close(false); } };
-      btnOk.addEventListener('click', function (e) { e.stopPropagation(); _close(true); });
-      btnCancel.addEventListener('click', function (e) { e.stopPropagation(); _close(false); });
-      document.addEventListener('keydown', onKey, true);
-      window.addEventListener('qqq-lang-change', _fill);
-      // 遮罩点击不关闭（与原生模态一致——法律确认防误触）；仅按钮 / Esc 决议
-
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:22px;';
-      row.appendChild(btnOk);      // 布局与 first-run 一致：主操作在左
-      row.appendChild(btnCancel);
-      panel.appendChild(h);
-      panel.appendChild(msg);
-      panel.appendChild(row);
-      ov.appendChild(panel);
-      document.body.appendChild(ov);
-      _syncConfirmOv = ov;
-    });
-  }
-
-  function _doSync(mode) {
-    if (_syncBusy) { _qoast(_i('sync.lok', '正在同步中，请稍候…'), { duration: 4000 }); return; }
-    var ud = null;
-    try { ud = window.qqqideBridge && window.qqqideBridge.userData; } catch (e) { }
-    if (!ud || !ud.push) {
-      _qoast(_i('sync.bridgeMissing', '云同步不可用（需重启实例）'), { type: 'error', duration: 9000 });
-      return;
-    }
-    _closeAll();   // 先收工作台面板（弹窗模态期间不留底）
-    // 内置确认弹框先行（first-run 同款 UI 风格）；取消 = 静默返回（与原生 cancelled 语义一致）
-    _syncConfirm(mode).then(function (go) {
-      if (!go) { return; }
-      _runSync(mode, ud);
-    });
-  }
-  function _runSync(mode, ud) {
-    var isPush = (mode === 'push');
-    _syncBusy = true;
-    _setSyncButtons(true);
-    var io = null; try { io = window.qqqideIoast || null; } catch (e) { }
-    var taskId = 'sync-' + mode + '-' + Date.now();
-    var busyTitle = isPush ? _i('sync.uploading', '正在上传数据到云端...') : _i('sync.pulling', '正在从云端拉取数据...');
-    if (io) { try { io.task(taskId, { title: '☁ ' + (isPush ? '↑' : '↓'), subtitle: busyTitle, progress: 0 }); } catch (e) { } }
-    var p;
-    try { p = isPush ? ud.push(_syncLabels('push')) : ud.pull(_syncLabels('pull')); }
-    catch (e) { p = Promise.reject(e); }
-    Promise.resolve(p).then(function (r) {
-      _syncBusy = false;
-      _setSyncButtons(false);
-      if (r && r.ok) {
-        var timeStr = new Date().toLocaleString();
-        var msg = isPush
-          ? _T('sync.uploadSuccess', '已上传到云端 ({0})', { 0: timeStr })
-          : _T('sync.pullSuccess', '已从云端合并数据，新增 {1} 条 ({0})', { 0: timeStr, 1: (r.added || 0) });
-        if (io) { try { io.done(taskId, { summary: msg }); } catch (e) { } }
-        _qoast(msg, { type: 'success', duration: 8000 });
-        return;
-      }
-      var reason = (r && r.reason) || 'unknown';
-      if (reason === 'cancelled') { if (io) { try { io.remove(taskId); } catch (e) { } } return; }
-      if (reason === 'busy') {
-        if (io) { try { io.remove(taskId); } catch (e) { } }
-        _qoast(_i('sync.lok', '正在同步中，请稍候…'), { duration: 4000 });
-        return;
-      }
-      var emsg = isPush
-        ? _T('sync.uploadFailed', '上传失败：{0}', { 0: _syncReasonText(reason) })
-        : _T('sync.pullFailed', '恢复失败：{0}', { 0: _syncReasonText(reason) });
-      if (io) { try { io.fail(taskId, { summary: emsg }); } catch (e) { } }
-      _qoast(emsg, { type: 'error', duration: 9000 });
-    }).catch(function (e) {
-      _syncBusy = false;
-      _setSyncButtons(false);
-      var em = String((e && e.message) || e || 'unknown');
-      if (io) { try { io.fail(taskId, { summary: em }); } catch (e2) { } }
-      _qoast(em, { type: 'error', duration: 9000 });
-    });
-  }
-
   // ── 卡片构建 ──
   function _buildSavorCard() {
     var c = document.createElement('div');
@@ -516,36 +362,101 @@
     return c;
   }
 
-  function _buildCloudCard() {
+  // ★ 云同步 + 设置齿轮卡（2026-09-28 用户定案）：[↑][↓] 云同步按钮 100% 原样；原 "Cloud Sync" 文字位 =
+  //   小号齿轮（老项目 .icon-all-settings 原版 path；16px · 正常文字色 currentColor = 非金色）→ 打开设置中心。
+  var _ICO_GEAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.2-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>';
+
+  // 桥窗到设置中心（core/qqq-center.js）——未就绪（旧窗口/未刷新）时诚实提示
+  function _centerOpen() {
+    _closeAll();
+    try {
+      if (window.qqqCenter && window.qqqCenter.open) { window.qqqCenter.open(); return; }
+    } catch (err) { /* */ }
+    _qoast(_i('workbench.settingsNeedRestart', '设置中心未就绪（需刷新窗口）'), { type: 'info', duration: 5000 });
+  }
+  function _centerSync(mode) {
+    try {
+      if (window.qqqCenter && window.qqqCenter.doSync) { window.qqqCenter.doSync(mode); return; }
+    } catch (err) { /* */ }
+    _qoast(_i('workbench.settingsNeedRestart', '设置中心未就绪（需刷新窗口）'), { type: 'info', duration: 5000 });
+  }
+
+  function _buildGearCard() {
     var c = document.createElement('div');
     c.className = 'qqq-tools-card wide qqq-tools-flex';
     c.title = _i('workbench.cloudSyncTip', '云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含编辑器配置、各文件夹偏好、剪贴板历史。');
+    c.addEventListener('click', function (e) { e.stopPropagation(); _centerOpen(); });
     var grp = document.createElement('div');
     grp.className = 'qqq-tools-btns';
-    _syncUpEl = _syncBtn(_SYNC_SVG_UP, _i('sync.uploadTitle', '上传到云端'));
-    _syncDownEl = _syncBtn(_SYNC_SVG_DOWN, _i('sync.downloadTitle', '下载云端数据'));
-    _syncUpEl.addEventListener('click', function (e) { e.stopPropagation(); _doSync('push'); });
-    _syncDownEl.addEventListener('click', function (e) { e.stopPropagation(); _doSync('pull'); });
-    grp.appendChild(_syncUpEl);
-    grp.appendChild(_syncDownEl);
-    var body = document.createElement('div');
-    body.className = 'qqq-tools-card-body';
-    var t = document.createElement('div');
-    t.className = 'qqq-tools-card-title';
-    t.textContent = 'Cloud Sync';
-    body.appendChild(t);
+    var bUp = _syncBtn(_SYNC_SVG_UP, _i('sync.uploadTitle', '上传到云端'));
+    var bDown = _syncBtn(_SYNC_SVG_DOWN, _i('sync.downloadTitle', '下载云端数据'));
+    bUp.addEventListener('click', function (e) { e.stopPropagation(); _centerSync('push'); });
+    bDown.addEventListener('click', function (e) { e.stopPropagation(); _centerSync('pull'); });
+    grp.appendChild(bUp);
+    grp.appendChild(bDown);
     c.appendChild(grp);
-    c.appendChild(body);
+    var ic = document.createElement('span');
+    ic.className = 'qqq-tools-gear-ico';
+    ic.title = _i('workbench.settingsTip', '打开 qqq 设置中心：云同步 + 全部偏好设置（性能/相框/观察者/导出…）');
+    ic.innerHTML = _ICO_GEAR;
+    c.appendChild(ic);
     return c;
   }
 
-  // ★ 播放器双入口（2026-09-26 q319 v5 用户定案）：[↗] 独立悬浮播放器窗（A）/ [⧈] 窗内播放器卡（B）——二选一使用，共用同一播放会话
+  // ★ 播放槽（2026-09-28 q319 v7）：空闲 = [↗] 独立悬浮播放器窗（A）/ [⧈] 窗内播放器卡（B）双入口（二选一，共用同一播放会话）；
+  //   会话活跃（卡可见/被收纳）= 播放控制台 [⏮][⏯][⏭] + 轨名 n/N + [收纳/展开][✕]——收纳态下 = 播放器唯一遥控入口
   var _PL_SVG_WIN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>';
   var _PL_SVG_CARD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H5V8h14v10z"/></svg>';
-  function _buildPlayerCard() {
-    var c = document.createElement('div');
-    c.className = 'qqq-tools-card wide qqq-tools-flex';
-    c.title = _i('workbench.playerTip', '播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出。');
+  var _PL_SVG_PREV = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 6h2v12H6z"/><path d="M9.5 12l8.5 6V6z"/></svg>';
+  var _PL_SVG_NEXT = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M16 6h2v12h-2z"/><path d="M6 6l8.5 6L6 18z"/></svg>';
+  var _PL_SVG_PLAY = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  var _PL_SVG_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+  var _PL_SVG_MIN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 19h12v2H6z"/></svg>';
+  var _PL_SVG_REST = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M21 11V3h-8v2h4.59L12 10.59l1.41 1.41L19 6.41V11h2zM3 13v8h8v-2H6.41L12 13.41l-1.41-1.41L5 17.59V13H3z"/></svg>';
+  var _PL_SVG_CLOSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+  var _plRowEl = null, _plRowMode = '';
+  var _plTitleEl = null, _plCountEl = null, _plPrevB = null, _plPlayB = null, _plNextB = null, _plToggleB = null;
+  var _plEvtBound = false;
+
+  function _plInfo() {
+    try { return (window.qqqPlayerCard && window.qqqPlayerCard.getInfo) ? window.qqqPlayerCard.getInfo() : null; } catch (e) { return null; }
+  }
+  function _plCmd(a) {
+    try { if (window.qqqPlayerCard && window.qqqPlayerCard.cmd) { window.qqqPlayerCard.cmd(a); } } catch (e) { }
+  }
+  function _onPlayerState() { if (_plRowEl) { _renderPlayerRow(); } }
+  function _bindPlayerState() { if (_plEvtBound) { return; } _plEvtBound = true; window.addEventListener('qqq-player-state', _onPlayerState); }
+  function _unbindPlayerState() { if (!_plEvtBound) { return; } _plEvtBound = false; window.removeEventListener('qqq-player-state', _onPlayerState); }
+
+  function _plMiniBtn(svg, title, cls) {
+    var b = _syncBtn(svg, title);
+    if (cls) { b.classList.add(cls); }
+    return b;
+  }
+  // ★ 动态图标按钮（2026-09-28 q319 v7）：预建全部图标槽，仅切 display——禁 innerHTML 换节点
+  //   （探针实锤：鼠标跨入 Player 行触发 mouseenter 重渲染换节点时，紧随其后的整串点击事件被输入管线吞掉——ZERO 事件）
+  function _plIconBtn(icons, title, cls) {
+    var b = document.createElement('button');
+    b.className = 'qqq-tools-mini-btn';
+    if (cls) { b.classList.add(cls); }
+    b.title = title || '';
+    for (var i = 0; i < icons.length; i++) {
+      var ic = document.createElement('span');
+      ic.className = 'qqq-tools-ico-svg';
+      if (i > 0) { ic.style.display = 'none'; }
+      ic.innerHTML = icons[i];
+      b.appendChild(ic);
+    }
+    return b;
+  }
+  function _plSetIcon(btn, idx) {
+    if (!btn) { return; }
+    var kids = btn.children;
+    for (var i = 0; i < kids.length; i++) {
+      try { kids[i].style.display = (i === idx) ? '' : 'none'; } catch (e) { }
+    }
+  }
+  function _buildPlayerIdle(c) {
     var grp = document.createElement('div');
     grp.className = 'qqq-tools-btns';
     var bWin = _syncBtn(_PL_SVG_WIN, _i('workbench.playerWinTip', '独立悬浮播放器窗：置顶小窗——切到别的程序也看得见（↗）'));
@@ -577,6 +488,88 @@
     body.appendChild(t);
     c.appendChild(grp);
     c.appendChild(body);
+  }
+  function _buildPlayerConsole(c) {
+    var grp = document.createElement('div');
+    grp.className = 'qqq-tools-btns';
+    _plPrevB = _plMiniBtn(_PL_SVG_PREV, _i('shell.overlay.mprev', '上一个'), 'qqq-pl-prev');
+    _plPlayB = _plIconBtn([_PL_SVG_PAUSE, _PL_SVG_PLAY], _i('shell.overlay.mpause', '暂停'), 'qqq-pl-play');   // 0=暂停图标(在播) / 1=播放图标
+    _plNextB = _plMiniBtn(_PL_SVG_NEXT, _i('shell.overlay.mnext', '下一个'), 'qqq-pl-next');
+    _plPrevB.addEventListener('click', function (e) { e.stopPropagation(); _plCmd('prev'); });
+    _plPlayB.addEventListener('click', function (e) { e.stopPropagation(); _plCmd('toggle'); });
+    _plNextB.addEventListener('click', function (e) { e.stopPropagation(); _plCmd('next'); });
+    grp.appendChild(_plPrevB);
+    grp.appendChild(_plPlayB);
+    grp.appendChild(_plNextB);
+    var body = document.createElement('div');
+    body.className = 'qqq-tools-card-body';
+    _plTitleEl = document.createElement('div');
+    _plTitleEl.className = 'qqq-tools-card-title';
+    _plCountEl = document.createElement('span');
+    _plCountEl.className = 'qqq-pl-count';
+    body.appendChild(_plTitleEl);
+    body.appendChild(_plCountEl);
+    body.addEventListener('click', function (e) {   // 点文字 = 展开（与 Savor「点文字=主操作」同规）
+      e.stopPropagation();
+      var inf = _plInfo();
+      if (inf && inf.stow && window.qqqPlayerCard) { try { window.qqqPlayerCard.stow(false); } catch (err) { } }
+    });
+    var grp2 = document.createElement('div');
+    grp2.className = 'qqq-tools-btns';
+    _plToggleB = _plIconBtn([_PL_SVG_MIN, _PL_SVG_REST], _i('shell.player.minimize', '收纳到 qqq 工作台'), 'qqq-pl-stow');   // 0=收纳 / 1=展开
+    var bClose = _plMiniBtn(_PL_SVG_CLOSE, _i('common.close', '关闭'), 'qqq-pl-close');
+    _plToggleB.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var inf = _plInfo();
+      if (window.qqqPlayerCard && window.qqqPlayerCard.stow) { try { window.qqqPlayerCard.stow(!(inf && inf.stow)); } catch (err) { } }
+    });
+    bClose.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (window.qqqPlayerCard) { try { window.qqqPlayerCard.close(); } catch (err) { } }
+    });
+    grp2.appendChild(_plToggleB);
+    grp2.appendChild(bClose);
+    c.appendChild(grp);
+    c.appendChild(body);
+    c.appendChild(grp2);
+  }
+  function _renderPlayerRow() {
+    var c = _plRowEl;
+    if (!c) { return; }
+    var info = _plInfo();
+    var mode = (info && info.open) ? 'console' : 'idle';
+    if (_plRowMode !== mode) {
+      _plRowMode = mode;
+      try { c.innerHTML = ''; } catch (e) { }
+      _plTitleEl = null; _plCountEl = null; _plPrevB = null; _plPlayB = null; _plNextB = null; _plToggleB = null;
+      if (mode === 'console') { _buildPlayerConsole(c); } else { _buildPlayerIdle(c); }
+    }
+    if (mode !== 'console' || !info) { return; }
+    var label = 'Player';
+    if (info.name) { label += ' · ' + info.name; }
+    if (_plTitleEl) { _plTitleEl.textContent = label; }
+    if (_plCountEl) { _plCountEl.textContent = (info.total > 1) ? ((info.index + 1) + '/' + info.total) : ''; }   // 计数独立不随名字截断（flex 0 0 auto）
+    if (_plPrevB) { _plPrevB.disabled = info.total < 2; }
+    if (_plNextB) { _plNextB.disabled = info.total < 2; }
+    if (_plPlayB) {
+      _plSetIcon(_plPlayB, info.paused ? 1 : 0);   // 图标恒切 display（禁 innerHTML 换节点——换节点会吞紧随点击）
+      _plPlayB.title = info.paused ? _i('shell.overlay.mplay', '播放') : _i('shell.overlay.mpause', '暂停');
+      _plPlayB.disabled = !info.total;
+    }
+    if (_plToggleB) {
+      _plSetIcon(_plToggleB, info.stow ? 1 : 0);
+      _plToggleB.title = info.stow ? _i('shell.player.restore', '展开播放器') : _i('shell.player.minimize', '收纳到 qqq 工作台');
+    }
+  }
+  function _buildPlayerCard() {
+    var c = document.createElement('div');
+    c.className = 'qqq-tools-card wide qqq-tools-flex qqq-player-row';
+    c.title = _i('workbench.playerTip', '播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出；最小化 = 收纳到本槽位遥控。');
+    c.addEventListener('mouseenter', _renderPlayerRow);
+    _plRowEl = c;
+    _plRowMode = '';
+    _renderPlayerRow();
+    _bindPlayerState();
     return c;
   }
 
@@ -612,7 +605,7 @@
     grid.appendChild(_buildSavorCard());
     grid.appendChild(_buildDocCard());
     grid.appendChild(_buildZipCard());
-    grid.appendChild(_buildCloudCard());
+    grid.appendChild(_buildGearCard());
     grid.appendChild(_buildPlayerCard());
     grid.appendChild(_buildSoonRow());
 
@@ -645,10 +638,12 @@
   function _removeRoot() {
     if (_rootEl) { try { _rootEl.remove(); } catch (e) { } _rootEl = null; }
     _unbindSavorState();
+    _unbindPlayerState();
     _savorCardEl = null;
     _savorLabelEl = null;
-    _syncUpEl = null;
-    _syncDownEl = null;
+    _plRowEl = null;
+    _plRowMode = '';
+    _plTitleEl = null; _plCountEl = null; _plPrevB = null; _plPlayB = null; _plNextB = null; _plToggleB = null;
   }
 
   function _closeAll() {
@@ -675,7 +670,15 @@
     btn.addEventListener('mouseleave', _scheduleAll);
     tabBarEl.appendChild(btn);
     _btnEl = btn;
+    _setPlayerBadge(!!window.__qqqPlayerStowed);
   }
 
-  window.qqqToolsMenu = { mount: mount, close: _closeAll };
+  // ★ 播放器收纳徽标（qqq 按钮 ♪）：player-card 在收纳/展开/关闭时调用；挂载时按全局真值补挂
+  var _playerBadge = false;
+  function _setPlayerBadge(on) {
+    _playerBadge = !!on;
+    if (_btnEl) { try { _btnEl.classList.toggle('qqq-player-stowed', _playerBadge); } catch (e) { } }
+  }
+
+  window.qqqToolsMenu = { mount: mount, close: _closeAll, setPlayerBadge: _setPlayerBadge };
 })();

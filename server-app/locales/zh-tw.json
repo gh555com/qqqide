@@ -172,7 +172,10 @@
             "addNone": "沒有可加入的媒體檔案",
             "empty": "播放清單為空 — 在 Roam 中選中媒體右鍵「加入播放清單」，或從懸浮層 ↗ 彈出",
             "returnOv": "退回懸浮層",
-            "returnFail": "未找到主視窗，無法退回懸浮層"
+            "returnFail": "未找到主視窗，無法退回懸浮層",
+            "minimize": "收納至 qqq 工作台",
+            "restore": "展開播放器",
+            "stowed": "已收納至 qqq 工作台"
         },
         "about": {
             "title": "關於 qqq",
@@ -347,6 +350,8 @@
     "editor": {
         "copyPath": "複製路徑",
         "roamLocate": "在 Roam 中定位該檔案",
+        "timelineOpen": "在時間軸中檢視該檔案",
+        "timelineNoRoot": "無法確定該檔案的專案根目錄，時間軸不可用",
         "minimap": "縮圖導覽",
         "tabs": {
             "close": "關閉分頁",
@@ -365,7 +370,7 @@
             "encAutoReset": "自動偵測（清除固定設定）",
             "encAutoCur": "自動偵測",
             "encFixedAt": "編碼已固定為 {v}（應急模式）— 點擊修改 / 恢復自動",
-            "encAutoAt": "編碼：{v}（自動偵測）— 點擊可手動指定",
+            "encAutoAt": "編碼：{v} — {src}；點擊可手動指定",
             "encSrcBom": "依據 BOM 宣告",
             "encSrcUtf8": "嚴格 UTF-8 解碼通過",
             "encSrcGbk": "GBK 回退推測（亂碼請點此更改）",
@@ -641,7 +646,8 @@
             "history": "歷史記錄",
             "noHistory": "尚無歷史記錄",
             "saveFailed": "儲存失敗",
-            "renameTitle": "編輯名稱"
+            "renameTitle": "編輯名稱",
+            "pinCloseHint": "點我關閉"
         },
         "lock": {
             "locked": "專案已被其他視窗開啟",
@@ -1555,6 +1561,9 @@
         "tip": "收藏夾",
         "count": "共 {0} 筆",
         "searchPh": "搜尋收藏（名稱 / 任務 / 問題）",
+        "level": "重要等級",
+        "filterAll": "全部",
+        "questTip": "任務：{0}",
         "empty": "尚無收藏 · 點擊任意樓層的 ☆ 進行收藏",
         "noMatch": "沒有相符的收藏",
         "more": "僅顯示前 {0} 筆，輸入關鍵字縮小範圍",
@@ -1681,6 +1690,134 @@
         "lok": "同步中，請稍候…",
         "bridgeMissing": "雲端同步不可用（需重新啟動執行個體）"
     },
+    "prefs": {
+        "title": "qqq 設定",
+        "cloudSec": "☁ 雲端同步",
+        "csLogin": "未登入：登入並啟用後，設定可跨裝置同步",
+        "csLocked": "設定已儲存於本機；雲端持久化需啟用正版",
+        "csOn": "雲端同步已開啟：本機變更將自動同步至雲端",
+        "pullNow": "立即從雲端拉取設定",
+        "pullDoing": "正在從雲端拉取設定…",
+        "pullDone": "已從雲端同步 {0} 項設定",
+        "pullFail": "雲端同步失敗：{0}",
+        "needAct": "此功能需先啟用正版授權",
+        "wmNeed": "自訂浮水印為正版功能（啟用後可用）",
+        "reset": "恢復預設設定",
+        "resetTitle": "恢復預設設定",
+        "resetMsg": "將清除本機所有設定變更（若已開啟雲端同步，雲端設定也會一併清除）。確定要繼續嗎？",
+        "resetOk": "確認恢復",
+        "resetDone": "已恢復預設設定",
+        "needRefresh": "偏好模組尚未就緒（需重新整理視窗）",
+        "g": {
+            "core": "☀️ Kernel 核心",
+            "roam": "🛸 Roam 漫遊",
+            "observe": "👁️ Observer 觀察者",
+            "html": "🍌 HTML & Rich Text",
+            "doc": "📦 Doc Export 文件匯出",
+            "premium": "💎 Premium 正版專屬"
+        },
+        "lab": {
+            "performanceMode": "效能模式",
+            "ioEngine": "IO Engine",
+            "transactionLevel": "Transaction Level 交易層級",
+            "szDisplayMode": "大小欄位顯示",
+            "sortBy": "Sort By 排序",
+            "autoWatchChanges": "Auto Watch Changes",
+            "roamAsStartPage": "Roam as Start Page",
+            "roamName": "Roam Name",
+            "frameSizeMode": "Frame Size Mode",
+            "cleanFreak": "Clean Freak 潔癖",
+            "enlargeSmallImages": "Enlarge Small Images",
+            "textSlideColorScheme": "文字幻燈片配色方案",
+            "textSlideFontSize": "文字幻燈片字體大小",
+            "codelensLevel": "CodeLens Level",
+            "takeOverCodelensStyle": "接管 CodeLens 樣式",
+            "downloadSecurityLevel": "下載安全等級",
+            "forceTextFlowScheme": "強制文字流方案",
+            "autoDownload": "自動下載",
+            "docExportImageResolution": "Image Resolution",
+            "docExportIncludeCipher": "包含密碼串",
+            "removeWatermark": "Remove Watermark 消除浮水印"
+        },
+        "desc": {
+            "performanceMode": "☀️ 控制預覽圖的生成品質與速度",
+            "ioEngine": "☀️ IO 引擎（取捨詳見專案文件：IO_ENGINE_v16）",
+            "transactionLevel": "☀️ 交易包裝層級：決定操作的可靠性與速度",
+            "szDisplayMode": "🛸 sz 欄位顯示內容",
+            "sortBy": "🛸 檔案清單排序方式",
+            "autoWatchChanges": "🛸 勾選：外部程式修改目前目錄時自動刷新檔案清單；未勾選：零效能開銷",
+            "roamAsStartPage": "🛸 使用 qqq Roam 作為起始頁",
+            "roamName": "🛸 自訂漫遊名稱",
+            "frameSizeMode": "👁️ 預覽圖尺寸模式",
+            "cleanFreak": "👁️ 儲存前自動確保每個暗號下方有足夠空行，防止預覽/內容重疊",
+            "enlargeSmallImages": "👁️ 勾選：小於框架的預覽圖放大填滿；未勾選：保持原始尺寸置中",
+            "textSlideColorScheme": "👁️ 文字幻燈片底色",
+            "textSlideFontSize": "👁️ 文字幻燈片字體大小（1-218）",
+            "codelensLevel": "👁️ CodeLens 顯示層級",
+            "takeOverCodelensStyle": "👁️ 接管 CodeLens 樣式：紅色，字號 13",
+            "downloadSecurityLevel": "🍌 下載影片失敗時，可在此嘗試較寬鬆的策略",
+            "forceTextFlowScheme": "🍌 強制修復 HTML 亂碼（僅在頑固亂碼時勾選，代價是版面配置精度降低）",
+            "autoDownload": "🍌 偵測到影片時自動下載",
+            "docExportImageResolution": "📦 匯出時使用的圖片解析度",
+            "docExportIncludeCipher": "📦 匯出時包含圖片密碼串",
+            "removeWatermark": "💎 取消勾選後將顯示浮水印（若您想查看浮水印）"
+        },
+        "opt": {
+            "performanceMode": {
+                "extreme": "極致：僅保留首幀，品質 47",
+                "accelerated": "Accelerated：動圖/影片最多前 2 秒，7fps，品質 47",
+                "optmum": "最佳化：動態圖完整時長，影片首/中/尾共 4 秒，原始 fps，品質 71"
+            },
+            "ioEngine": {
+                "auto": "v16 auto — 理想搭配",
+                "excludePython": "Exclude Python — 靜默執行，節省約 50MB 記憶體"
+            },
+            "transactionLevel": {
+                "full": "完整包裝：所有耗時操作皆包裝於交易中 — 含進度條、復原支援、異常回滾",
+                "half": "半包裝：輕量操作使用簡易貼上 — 最快回應，無進度條，無回滾"
+            },
+            "szDisplayMode": {
+                "nothing": "不顯示",
+                "size": "顯示檔案大小",
+                "ctime": "顯示建立時間",
+                "mtime": "顯示修改時間"
+            },
+            "sortBy": {
+                "name": "依名稱排序（資料夾在前）",
+                "size": "依大小排序（資料夾在前，檔案依大小遞減）",
+                "ctime": "依建立時間排序（遞減）",
+                "mtime": "依修改時間排序（遞減）"
+            },
+            "frameSizeMode": {
+                "large": "大框架：512×288",
+                "small": "小框架：256×144",
+                "fix": "自適應：根據圖片尺寸自動選擇"
+            },
+            "cleanFreak": {
+                "never": "不自動整理（僅手動編織）",
+                "add": "僅新增：確保空行足夠，不刪除多餘空行",
+                "addRemove": "嚴格整理：恰到好處的空白行 — 刪除多餘，補上缺失"
+            },
+            "textSlideColorScheme": {
+                "light": "淺色",
+                "dark": "深色"
+            },
+            "codelensLevel": {
+                "none": "無",
+                "open": "僅開啟檔案",
+                "full": "全套：資料夾/重新命名/複製/資訊行/qode"
+            },
+            "downloadSecurityLevel": {
+                "l0": "0：最寬鬆 — 全部 11 個安全開關關閉",
+                "l1": "1：平衡 — 4 個開關開啟，7 個關閉",
+                "l2": "2：最嚴格 — 全部 11 個安全開關開啟"
+            },
+            "docExportImageResolution": {
+                "original": "原始解析度 — 完整精度",
+                "frame": "框架解析度 — 檔案較小，縮圖完整對應"
+            }
+        }
+    },
     "workbench": {
         "savorTip": "本機音樂：{v0} 次，共 {v1}\n電台：{v2} 次，共 {v3}\n日均收聽：{v4}",
         "durHm": "{0} 小時 {1} 分",
@@ -1695,7 +1832,9 @@
         "playerNeedRestart": "懸浮播放器需要重啟執行個體後方可使用",
         "videoUrlTip": "待開發：輸入影片網址，自動下載至文件目錄並插入相框。",
         "pasteTip": "待遷移：一鍵將剪貼簿內容貼上到文件（目前使用 Ctrl+V 可完成相同操作）。",
-        "pureTip": "待開發：掃描文件引用，清理不再被引用的孤立檔案。"
+        "pureTip": "待開發：掃描文件引用，清理不再被引用的孤立檔案。",
+        "settingsTip": "開啟 qqq 設定中心：雲端同步 + 全部偏好設定（效能/相框/觀察者/匯出…）",
+        "settingsNeedRestart": "設定中心尚未就緒（需重新整理視窗）"
     },
     "audio": {
         "sfx": {

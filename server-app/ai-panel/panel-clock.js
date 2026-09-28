@@ -495,7 +495,8 @@ var _questDropTimer = null;
 var _questSearchText = '';
 var _questDropLimit = 20;
 var _questSearchFocused = false;  // ★ 搜索框焦点追踪
-var _questDropPinned = false;     // ★ 点击钉住（2026-09-26）：单击豆腐块区 = 打开且永不自动关闭，收起仅认显式手势
+var _questDropPinned = false;     // ★ 点击钉住（2026-09-26）：单击豆腐块区（改名笔以左）= 打开且永不自动关闭，收起仅认显式手势
+var _q2PinSuppressUntil = 0;      // ★ 改名提交收尾窗（2026-09-28）：改名完成后同一次点击不重开/不翻转钉住（350ms）
 function closeQuestDrop() {
     clearTimeout(_questDropTimer);
     if (_questDrop) { _questDrop.remove(); _questDrop = null; }
@@ -525,6 +526,9 @@ document.documentElement.addEventListener('mouseleave', function () {
 document.documentElement.addEventListener('mouseenter', function () {
     _q2PtrOutDoc = false;
 });
+// ★ 最近一次 mousedown 落点（2026-09-28）：改名提交时判定「点在下拉内/外」——下拉内部点按不因改名收下拉
+var _q2LastMdown = { t: 0, target: null };
+document.addEventListener('mousedown', function (e) { _q2LastMdown = { t: Date.now(), target: e.target }; }, true);
 function _q2InRect(x, y, r, tol) {
     return !!(r && x >= r.left - tol && x <= r.right + tol && y >= r.top - tol && y <= r.bottom + tol);
 }
@@ -995,6 +999,17 @@ function _tofuCommitEdit() {
             textEl.textContent = _tofuEntry.title || '';
         }
     }
+    // ★ 改名完成 = 立即收起（2026-09-28 定案）：回车 / 点区域外（blur 提交）→ 下拉立即收回，钉住态同样适用——
+    //   「上一层楼」钉住豁免（点区域外不收）不适用于改名流程。唯一除外：引发本次 blur 的 mousedown 落点在下拉
+    //   内部（条目/加号=其处理器自会收；搜索框=主动使用保持打开）。
+    if (_questDrop) {
+        var _md = _q2LastMdown;
+        var _inDrop = !!(_md.target && _questDrop.contains(_md.target) && (Date.now() - _md.t) < 1200);
+        if (!_inDrop) {
+            _q2PinSuppressUntil = Date.now() + 350;   // 同一次点击不重开/不翻转钉住（见 bar click 处理器）
+            closeQuestDrop();
+        }
+    }
 }
 function _tofuCancelEdit() {
     var textEl = document.getElementById('quest-tofu-text');
@@ -1004,6 +1019,48 @@ function _tofuCancelEdit() {
     editEl.style.display = 'none';
     textEl.style.display = '';
     if (pen && _tofuEntry) pen.style.display = '';
+}
+// ★ 内联改名编辑是否在途（2026-09-28）：钉住豁免的例外判定——改名中「点区域外」立即收
+function _q2EditActive() {
+    var el = document.getElementById('quest-tofu-edit');
+    return !!(el && el.style.display !== 'none');
+}
+// ★ 钉住开启提示机器（2026-09-28 用户定案）：点击钉住成功 → 在「改名笔以左」可点区域蒙一层
+//   不透明矩形「点我关闭」，1 秒即散——教用户关法（再点同区即关）。纯提示层：pointer-events:none
+//   不挡任何操作（提示期间点击照常生效）。区域 = 豆腐块笔以左（笔隐藏 = 全宽）；过窄跳过防挤压。
+var _q2HintEl = null;
+var _q2HintTimer = null;
+function _q2ShowPinHint() {
+    try {
+        var tofu = document.getElementById('quest-tofu');
+        if (!tofu) return;
+        var rT = tofu.getBoundingClientRect();
+        var right = rT.right;
+        var pen = document.getElementById('quest-tofu-pen');
+        if (pen && pen.style.display !== 'none') {
+            var rP = pen.getBoundingClientRect();
+            if (rP.width > 0 && rP.left > rT.left) right = rP.left;   // 笔以左 = 钉住开关专属区
+        }
+        var boxW = right - rT.left, boxH = rT.height;
+        if (boxW < 40 || boxH <= 0) return;   // 区域过窄：不提示（防文字挤压丑态）
+        var el = _q2HintEl;
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'quest-pin-hint';
+            document.body.appendChild(el);
+            _q2HintEl = el;
+        }
+        el.textContent = (typeof _i === 'function') ? _i('ai.quest.pinCloseHint', '\u70b9\u6211\u5173\u95ed') : '\u70b9\u6211\u5173\u95ed';
+        el.style.left = rT.left + 'px';
+        el.style.top = rT.top + 'px';
+        el.style.width = boxW + 'px';
+        el.style.height = boxH + 'px';
+        el.classList.remove('show');
+        void el.offsetWidth;   // 强制重排：连点也能重播渐入
+        el.classList.add('show');
+        clearTimeout(_q2HintTimer);
+        _q2HintTimer = setTimeout(function () { el.classList.remove('show'); }, 1000);
+    } catch (_) { }
 }
 // hover \u5c55\u5f00/\u6536\u8d77 + \u7F16\u8F91\u7B14\u7ED1\u5B9A
 (function () {
@@ -1027,16 +1084,21 @@ function _tofuCancelEdit() {
         //   收起只认显式手势：本区再点 / 选条目 / 点加号 / Esc。
         //   ★ 钉住态点区域外不收（2026-09-26 用户定案）——留白可截图/长时间浏览；
         //     悬停态点区域外立即收（见文件底部 mousedown 捕捉处理器）。
+        //   ★ 改名流程例外（2026-09-28）：笔区不参与钉住开关；笔触发的改名在途时钉住豁免失效——
+        //     改名完成（回车/点区域外）立即收（唯一除外：mousedown 落点在下拉内部）。
         //   悬停已开时首击 = 钉住（绝不误关）；已钉住时再点 = 收起。
+        //   ★ 钉住开启提示（2026-09-28）：钉住成功即在「笔以左」区域蒙「点我关闭」提示 1 秒（教关法）。
         bar.addEventListener('click', function (e) {
             var t = e.target;
             if (t && t.closest && (t.closest('.quest-tofu-pen') || t.closest('.quest-tofu-edit') || t.closest('.quest-drop'))) return;
             e.stopPropagation();
+            if (Date.now() < _q2PinSuppressUntil) { _q2PinSuppressUntil = 0; return; }   // ★ 改名提交收尾窗：完成改名的同一次点击不重开/不翻转钉住
             clearTimeout(_questDropTimer);
             if (_questDropPinned) { closeQuestDrop(); return; }
             // openQuestDrop 内部先 closeQuestDrop（复位 flag）→ pin 必须后置
             if (!_questDrop) openQuestDrop();
             _questDropPinned = true;
+            _q2ShowPinHint();   // ★ 钉住开启提示：区域蒙「点我关闭」1 秒即散（纯提示；pointer-events:none 不挡点击）
         });
     }
     // 豆腐块兜底补开：指针从未离开 bar（如列表项点击关闭后仍停在豆腐块上）→ 再进豆腐块即重开
@@ -1068,10 +1130,14 @@ function _tofuCancelEdit() {
 // ★ 区域外点按（mousedown 捕捉相位，先于一切子处理器）= 显式离开手势：悬停态立即收，不等任何计时器。
 //   根治「外面单击了外面区域，下拉还不隐藏」（旧 click 关闭被「搜索框焦点」早退吞掉）；
 //   区域 = #quest-bar 整棵（豆腐块+下拉+流光层）；钉住态不适用（2026-09-26 用户定案：留白可截图）。
+//   ★ 改名在途例外（2026-09-28）：改名笔触发的内联编辑激活时钉住豁免失效——改名完成即收（用户定案）。
 document.addEventListener('mousedown', function (e) {
-    if (!_questDrop || _questDropPinned) return;
+    if (!_questDrop) return;
     var bar = document.getElementById('quest-bar');
     if (bar && e.target && bar.contains(e.target)) return;
+    // ★ 改名在途例外（2026-09-28）：内联编辑激活时钉住豁免失效——改名流程不适用上一楼的钉住规则，
+    //   点区域外 = 改名完成信号 → 立即收（blur 提交收尾由 _tofuCommitEdit 兜底）。
+    if (_questDropPinned && !_q2EditActive()) return;
     closeQuestDrop();
 }, true);
 

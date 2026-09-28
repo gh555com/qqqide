@@ -172,7 +172,10 @@
             "addNone": "추가할 미디어 파일이 없습니다.",
             "empty": "재생 목록이 비어 있습니다 — Roam에서 미디어를 우클릭하여 '재생 목록에 추가'하거나 오버레이에서 ↗ 팝업하세요.",
             "returnOv": "오버레이로 돌아가기",
-            "returnFail": "메인 창을 찾을 수 없어 플로팅 레이어로 돌아갈 수 없습니다."
+            "returnFail": "메인 창을 찾을 수 없어 플로팅 레이어로 돌아갈 수 없습니다.",
+            "minimize": "qqq 워크벤치로 최소화",
+            "restore": "플레이어 확장",
+            "stowed": "qqq 워크벤치로 최소화됨"
         },
         "about": {
             "title": "qqq 소개",
@@ -347,6 +350,8 @@
     "editor": {
         "copyPath": "경로 복사",
         "roamLocate": "Roam에서 이 파일 찾기",
+        "timelineOpen": "타임라인에서 이 파일 보기",
+        "timelineNoRoot": "이 파일의 프로젝트 루트 디렉터리를 확인할 수 없어 타임라인을 사용할 수 없습니다",
         "minimap": "미니맵",
         "tabs": {
             "close": "탭 닫기",
@@ -641,7 +646,8 @@
             "history": "기록",
             "noHistory": "기록 없음",
             "saveFailed": "저장 실패",
-            "renameTitle": "이름 편집"
+            "renameTitle": "이름 편집",
+            "pinCloseHint": "클릭하여 닫기"
         },
         "lock": {
             "locked": "다른 창에서 프로젝트가 열려 있습니다",
@@ -1555,6 +1561,9 @@
         "tip": "즐겨찾기",
         "count": "총 {0}개",
         "searchPh": "즐겨찾기 검색 (이름 / 작업 / 질문)",
+        "level": "중요도",
+        "filterAll": "전체",
+        "questTip": "퀘스트: {0}",
         "empty": "아직 즐겨찾기가 없습니다 · 아무 층에서 ☆를 클릭하여 추가하세요",
         "noMatch": "일치하는 즐겨찾기가 없습니다",
         "more": "최대 {0}개만 표시됩니다. 키워드를 입력하여 범위를 좁히세요",
@@ -1681,6 +1690,134 @@
         "lok": "동기화 중입니다. 잠시만 기다려주세요…",
         "bridgeMissing": "클라우드 동기화를 사용할 수 없습니다(인스턴스 재시작 필요)"
     },
+    "prefs": {
+        "title": "qqq 설정",
+        "cloudSec": "☁ 클라우드 동기화",
+        "csLogin": "미로그인: 로그인 및 활성화 후 설정을 기기 간 동기화할 수 있습니다",
+        "csLocked": "설정이 로컬에 저장되었습니다. 클라우드 영구 저장을 위해서는 정식 라이선스 활성화가 필요합니다",
+        "csOn": "클라우드 동기화 활성화됨: 이 장치의 변경 사항이 자동으로 클라우드에 동기화됩니다",
+        "pullNow": "지금 클라우드에서 설정 가져오기",
+        "pullDoing": "클라우드에서 설정을 가져오는 중…",
+        "pullDone": "클라우드에서 {0}개의 설정 항목을 동기화했습니다",
+        "pullFail": "클라우드 동기화 실패: {0}",
+        "needAct": "이 기능을 사용하려면 정식 라이선스 활성화가 필요합니다",
+        "wmNeed": "워터마크 맞춤화는 정식 라이선스 기능입니다(활성화 후 사용 가능)",
+        "reset": "기본 설정으로 복원",
+        "resetTitle": "기본 설정으로 복원",
+        "resetMsg": "이 기기의 모든 설정 변경 사항이 삭제됩니다 (클라우드 동기화가 활성화된 경우 클라우드 구성도 함께 삭제됩니다). 계속하시겠습니까?",
+        "resetOk": "복원 확인",
+        "resetDone": "기본 설정으로 복원됨",
+        "needRefresh": "선호도 모듈이 준비되지 않았습니다(창 새로 고침 필요)",
+        "g": {
+            "core": "☀️ Kernel 코어",
+            "roam": "🛸 Roam 탐색",
+            "observe": "👁️ Observer 관찰자",
+            "html": "🍌 HTML & 리치 텍스트",
+            "doc": "📦 Doc Export 문서 내보내기",
+            "premium": "💎 Premium 정식 라이선스 전용"
+        },
+        "lab": {
+            "performanceMode": "Performance Mode 성능 모드",
+            "ioEngine": "IO Engine",
+            "transactionLevel": "Transaction Level 트랜잭션 레벨",
+            "szDisplayMode": "sz 열 표시",
+            "sortBy": "Sort By 정렬",
+            "autoWatchChanges": "Auto Watch Changes",
+            "roamAsStartPage": "시작 페이지로 Roam 사용",
+            "roamName": "Roam 이름",
+            "frameSizeMode": "프레임 크기 모드",
+            "cleanFreak": "Clean Freak 깔끔함 선호",
+            "enlargeSmallImages": "작은 이미지 확대",
+            "textSlideColorScheme": "텍스트 슬라이드 색상 스키마",
+            "textSlideFontSize": "텍스트 슬라이드 글꼴 크기",
+            "codelensLevel": "CodeLens 수준",
+            "takeOverCodelensStyle": "CodeLens 스타일 상속",
+            "downloadSecurityLevel": "다운로드 보안 수준",
+            "forceTextFlowScheme": "Force Text Flow Scheme",
+            "autoDownload": "자동 다운로드",
+            "docExportImageResolution": "이미지 해상도",
+            "docExportIncludeCipher": "암호 포함",
+            "removeWatermark": "Remove Watermark 워터마크 제거"
+        },
+        "desc": {
+            "performanceMode": "☀️ 미리보기 이미지 생성 품질 및 속도 제어",
+            "ioEngine": "☀️ IO 엔진(장단점은 프로젝트 문서 참조: IO_ENGINE_v16)",
+            "transactionLevel": "☀️ 트랜잭션 래핑 수준: 작업의 신뢰성과 속도 결정",
+            "szDisplayMode": "🛸 sz 열에 표시할 내용",
+            "sortBy": "🛸 파일 목록 정렬 방식",
+            "autoWatchChanges": "🛸 체크 시: 외부 프로그램이 현재 디렉토리를 수정하면 파일 목록 자동 새로 고침; 해제 시: 성능 오버헤드 없음",
+            "roamAsStartPage": "🛸 qqq Roam을 시작 페이지로 사용",
+            "roamName": "🛸 사용자 정의 Roam 이름",
+            "frameSizeMode": "👁️ 미리보기 이미지 크기 모드",
+            "cleanFreak": "👁️ 저장 전 각 암호 아래에 충분한 빈 줄을 자동으로 확보하여 미리보기/내용 겹침 방지",
+            "enlargeSmallImages": "👁️ 체크 시: 프레임보다 작은 미리보기 이미지를 확대하여 채움; 해제 시: 원래 크기로 중앙 정렬",
+            "textSlideColorScheme": "👁️ 텍스트 슬라이드 배경색",
+            "textSlideFontSize": "👁️ 텍스트 슬라이드 글꼴 크기 (1-218)",
+            "codelensLevel": "👁️ CodeLens 표시 레벨",
+            "takeOverCodelensStyle": "👁️ CodeLens 스타일 강제 적용: 빨간색, 글꼴 크기 13",
+            "downloadSecurityLevel": "🍌 비디오 다운로드 실패 시 더 유연한 전략 시도 가능",
+            "forceTextFlowScheme": "🍌 HTML 인코딩 오류 강제 수정(완고한 인코딩 오류 발생 시에만 선택, 레이아웃 정확도 저하)",
+            "autoDownload": "🍌 비디오 감지 시 자동 다운로드",
+            "docExportImageResolution": "📦 내보내기 시 사용할 이미지 해상도",
+            "docExportIncludeCipher": "📦 내보내기 시 이미지 암호 문자열 포함",
+            "removeWatermark": "💎 선택 해제 시 워터마크 표시(워터마크를 보고 싶은 경우)"
+        },
+        "opt": {
+            "performanceMode": {
+                "extreme": "Extreme: 첫 번째 프레임만 유지, 품질 47",
+                "accelerated": "Accelerated: GIF/비디오 최대 앞 2초, 7fps, 품질 47",
+                "optmum": "Optimum: GIF 전체 길이, 비디오 시작/중간/끝 총 4초, 원본 fps, 품질 71"
+            },
+            "ioEngine": {
+                "auto": "v16 auto — 최적 조합",
+                "excludePython": "Exclude Python — 백그라운드 실행, 약 50MB 메모리 절약"
+            },
+            "transactionLevel": {
+                "full": "Full wrap: 모든 시간 소모 작업을 트랜잭션으로 래핑 - 진행률 표시줄, 실행 취소 지원, 예외 롤백",
+                "half": "Half wrap: 경량 작업은 단순 붙여넣기 사용 - 가장 빠른 응답, 진행률 표시줄 없음, 롤백 없음"
+            },
+            "szDisplayMode": {
+                "nothing": "표시 안 함",
+                "size": "파일 크기 표시",
+                "ctime": "생성 시간 표시",
+                "mtime": "수정 시간 표시"
+            },
+            "sortBy": {
+                "name": "이름순 정렬 (폴더 우선)",
+                "size": "크기순 정렬 (폴더 우선, 파일은 크기 내림차순)",
+                "ctime": "생성 시간순 정렬(내림차순)",
+                "mtime": "수정 시간순 정렬 (내림차순)"
+            },
+            "frameSizeMode": {
+                "large": "대형 프레임: 512×288",
+                "small": "소형 프레임: 256×144",
+                "fix": "자동 적응: 이미지 크기에 따라 자동 선택"
+            },
+            "cleanFreak": {
+                "never": "자동 정리 안 함(수동 컴파일만)",
+                "add": "추가만: 충분한 빈 줄 확보, 불필요한 빈 줄 삭제 안 함",
+                "addRemove": "엄격 정리: 적절한 빈 줄 유지 — 초과 삭제, 누락 추가"
+            },
+            "textSlideColorScheme": {
+                "light": "라이트 모드",
+                "dark": "다크 모드"
+            },
+            "codelensLevel": {
+                "none": "없음",
+                "open": "열린 파일만",
+                "full": "전체 세트: 폴더/이름 변경/복사/정보 행/qode"
+            },
+            "downloadSecurityLevel": {
+                "l0": "0: 가장 유연함 - 모든 11개 보안 스위치 꺼짐",
+                "l1": "1: 균형 - 4개 스위치 켜짐, 7개 꺼짐",
+                "l2": "2: 최고 엄격 — 모든 11개 보안 스위치 활성화"
+            },
+            "docExportImageResolution": {
+                "original": "원본 해상도 — 전체 정밀도 유지",
+                "frame": "프레임 해상도 — 파일 크기 감소, 썸네일 완전 일치"
+            }
+        }
+    },
     "workbench": {
         "savorTip": "로컬 음악: {v0}회, 총 {v1}\n라디오: {v2}회, 총 {v3}\n일일 평균 청취: {v4}",
         "durHm": "{0}시간 {1}분",
@@ -1689,13 +1826,15 @@
         "exportDocTip": "현재 문서를 Word 파일로 내보냅니다. 이미지와 비디오는 이미지로 변환되어 삽입되고, 기타 첨부 파일은 목록으로 생성됩니다. 기본적으로 문서 옆에 저장되며, 동일한 이름의 파일이 이미 존재하는 경우에만 저장 대화 상자가 표시됩니다.",
         "exportZipTip": "현재 문서와 참조된 모든 파일 및 디렉토리를 ZIP으로 압축합니다(디렉토리 구조 유지, 최대 압축). 기본적으로 문서 옆에 저장되며, 동일한 이름의 파일이 이미 존재하는 경우에만 저장 대화 상자가 표시됩니다.",
         "cloudSyncTip": "클라우드 동기화: ↑ 업로드 = 클라우드와 병합 후 업로드(양쪽 데이터 모두 보존); ↓ 다운로드 = 클라우드 데이터를 로컬에 병합. 편집기 설정, 각 폴더 선호도, 클립보드 기록 포함.",
-        "playerTip": "플레이어: 코딩 중에도 음악/영상 감상 가능 (재시작 후에도 재생 목록 기억); Roam에서 미디어를 우클릭해 '재생 목록에 추가'하거나 오버레이에서 팝업하세요.",
+        "playerTip": "플레이어: 코딩 중에도 음악 감상/영상 시청 가능(재시작 후에도 재생 목록 유지); Roam에서 미디어를 선택하고 우클릭하여 '재생 목록에 추가'하거나 플로팅 레이어에서 팝업 가능; 최소화 = 이 슬롯에서 원격 제어용으로 보관.",
         "playerWinTip": "독립 플로팅 플레이어 창: 항상 위에 표시되는 작은 창 — 다른 프로그램으로 전환해도 보입니다 (↗)",
         "playerCardTip": "창 내 플레이어: qqqide 창 위에 떠 있는 플레이어 카드 — 이 창을 따름 (⧈)",
         "playerNeedRestart": "플로팅 플레이어를 사용하려면 인스턴스를 재시작해야 합니다.",
         "videoUrlTip": "대기 중: 비디오 URL을 입력하면 문서 디렉토리에 자동으로 다운로드되어 프레임에 삽입됩니다.",
         "pasteTip": "대기 중: 클립보드 내용을 문서에 한 번에 붙여넣기(현재 Ctrl+V로도 동일한 작업 가능).",
-        "pureTip": "대기 중: 문서 참조를 스캔하여 더 이상 참조되지 않는 고아 파일을 정리합니다."
+        "pureTip": "대기 중: 문서 참조를 스캔하여 더 이상 참조되지 않는 고아 파일을 정리합니다.",
+        "settingsTip": "qqq 설정 센터 열기: 클라우드 동기화 + 모든 선호 설정 (성능/프레임/모니터링/내보내기 등…)",
+        "settingsNeedRestart": "설정 센터가 준비되지 않았습니다 (창 새로 고침 필요)"
     },
     "audio": {
         "sfx": {

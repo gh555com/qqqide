@@ -172,7 +172,10 @@
             "addNone": "No media files to add",
             "empty": "Playlist is empty — Select media in Roam and right-click \"Add to Playlist\", or pop out from the overlay ↗",
             "returnOv": "Return to Overlay",
-            "returnFail": "Main window not found; cannot return to floating layer"
+            "returnFail": "Main window not found; cannot return to floating layer",
+            "minimize": "Minimize to qqq workbench",
+            "restore": "Expand player",
+            "stowed": "Minimized to qqq workbench"
         },
         "about": {
             "title": "About qqq",
@@ -347,6 +350,8 @@
     "editor": {
         "copyPath": "Copy Path",
         "roamLocate": "Locate this file in Roam",
+        "timelineOpen": "View this file in the timeline",
+        "timelineNoRoot": "Unable to determine the project root directory for this file; timeline is unavailable",
         "minimap": "Minimap",
         "tabs": {
             "close": "Close Tab",
@@ -641,7 +646,8 @@
             "history": "History",
             "noHistory": "No history yet",
             "saveFailed": "Save failed",
-            "renameTitle": "Edit Name"
+            "renameTitle": "Edit Name",
+            "pinCloseHint": "Click to close"
         },
         "lock": {
             "locked": "Project is already open in another window",
@@ -1555,6 +1561,9 @@
         "tip": "Favorites",
         "count": "{0} items in total",
         "searchPh": "Search favorites (by name, task, or question)",
+        "level": "Priority Level",
+        "filterAll": "All",
+        "questTip": "Quest: {0}",
         "empty": "No favorites yet · Click ☆ on any post to add it",
         "noMatch": "No matching favorites found",
         "more": "Showing only the first {0} items. Enter keywords to narrow down results.",
@@ -1681,6 +1690,134 @@
         "lok": "Syncing, please wait...",
         "bridgeMissing": "Cloud sync unavailable (instance restart required)"
     },
+    "prefs": {
+        "title": "qqq Settings",
+        "cloudSec": "☁ Cloud Sync",
+        "csLogin": "Not Logged In: Log in and activate to sync settings across devices",
+        "csLocked": "Settings saved locally; cloud persistence requires activation of the genuine version",
+        "csOn": "Cloud Sync Enabled: Local changes will automatically sync to the cloud",
+        "pullNow": "Pull settings from cloud now",
+        "pullDoing": "Pulling settings from the cloud...",
+        "pullDone": "Synced {0} settings from the cloud",
+        "pullFail": "Cloud sync failed: {0}",
+        "needAct": "This feature requires activation of the genuine version",
+        "wmNeed": "Custom watermark is a Premium feature (available after activation)",
+        "reset": "Restore Default Settings",
+        "resetTitle": "Restore Default Settings",
+        "resetMsg": "This will clear all local setting changes (if cloud sync is enabled, cloud configurations will also be cleared). Are you sure you want to continue?",
+        "resetOk": "Confirm Reset",
+        "resetDone": "Default settings restored",
+        "needRefresh": "Preferences module not ready (window refresh required)",
+        "g": {
+            "core": "☀️ Kernel Core",
+            "roam": "🛸 Roam",
+            "observe": "👁️ Observer",
+            "html": "🍌 HTML & Rich Text",
+            "doc": "📦 Doc Export",
+            "premium": "💎 Premium Exclusive"
+        },
+        "lab": {
+            "performanceMode": "Performance Mode",
+            "ioEngine": "IO Engine",
+            "transactionLevel": "Transaction Level",
+            "szDisplayMode": "sz Column Display",
+            "sortBy": "Sort By",
+            "autoWatchChanges": "Auto Watch Changes",
+            "roamAsStartPage": "Roam as Start Page",
+            "roamName": "Roam Name",
+            "frameSizeMode": "Frame Size Mode",
+            "cleanFreak": "Clean Freak",
+            "enlargeSmallImages": "Enlarge Small Images",
+            "textSlideColorScheme": "Text Slide Color Scheme",
+            "textSlideFontSize": "Text Slide Font Size",
+            "codelensLevel": "CodeLens Level",
+            "takeOverCodelensStyle": "Take Over CodeLens Style",
+            "downloadSecurityLevel": "Download Security Level",
+            "forceTextFlowScheme": "Force Text Flow Scheme",
+            "autoDownload": "Auto Download",
+            "docExportImageResolution": "Image Resolution",
+            "docExportIncludeCipher": "Include Cipher",
+            "removeWatermark": "Remove Watermark"
+        },
+        "desc": {
+            "performanceMode": "☀️ Control preview generation quality and speed",
+            "ioEngine": "☀️ IO Engine (see project docs: IO_ENGINE_v16 for trade-offs)",
+            "transactionLevel": "☀️ Transaction Wrapping Level: Determines operation reliability and speed",
+            "szDisplayMode": "🛸 Content displayed in the sz column",
+            "sortBy": "🛸 File List Sorting Method",
+            "autoWatchChanges": "🛸 Check: Automatically refresh file list when the current directory is modified by external programs; Uncheck: Zero performance overhead",
+            "roamAsStartPage": "🛸 Use qqq Roam as the start page",
+            "roamName": "🛸 Custom Roam Name",
+            "frameSizeMode": "👁️ Thumbnail Size Mode",
+            "cleanFreak": "👁️ Automatically ensure sufficient blank lines below each cipher before saving to prevent preview/content overlap",
+            "enlargeSmallImages": "👁️ Check: Enlarge previews smaller than the frame to fill; Uncheck: Keep original size and center",
+            "textSlideColorScheme": "👁️ Text Slide Background Color",
+            "textSlideFontSize": "👁️ Text slide font size (1-218)",
+            "codelensLevel": "👁️ CodeLens display level",
+            "takeOverCodelensStyle": "👁️ Override CodeLens style: Red, font size 13",
+            "downloadSecurityLevel": "🍌 Try more lenient strategies here if video download fails",
+            "forceTextFlowScheme": "🍌 Force fix HTML garbled text (check only for stubborn cases; reduces layout precision)",
+            "autoDownload": "🍌 Automatically download when videos are detected",
+            "docExportImageResolution": "📦 Image resolution used during export",
+            "docExportIncludeCipher": "📦 Include image cipher string during export",
+            "removeWatermark": "💎 Uncheck to display watermark (if you wish to see it)"
+        },
+        "opt": {
+            "performanceMode": {
+                "extreme": "Extreme: Keep only the first frame, quality 47",
+                "accelerated": "Accelerated: GIFs/videos limited to first 2 seconds, 7fps, quality 47",
+                "optmum": "Optimum: Full GIF duration, videos show start/middle/end totaling 4 seconds, original fps, quality 71"
+            },
+            "ioEngine": {
+                "auto": "v16 auto — ideal configuration",
+                "excludePython": "Exclude Python — runs silently, saves ~50MB memory"
+            },
+            "transactionLevel": {
+                "full": "Full Wrap: All time-consuming operations wrapped in transactions — progress bar, undo support, exception rollback",
+                "half": "Half Wrap: Simple paste for lightweight operations — fastest response, no progress bar, no rollback"
+            },
+            "szDisplayMode": {
+                "nothing": "Do not show",
+                "size": "Show File Size",
+                "ctime": "Show creation time",
+                "mtime": "Show modification time"
+            },
+            "sortBy": {
+                "name": "Sort by name (folders first)",
+                "size": "Sort by size (folders first, files in descending order)",
+                "ctime": "Sort by Creation Time (Descending)",
+                "mtime": "Sort by modification time (descending)"
+            },
+            "frameSizeMode": {
+                "large": "Large Frame: 512×288",
+                "small": "Small frame: 256×144",
+                "fix": "Adaptive: Auto-select based on image dimensions"
+            },
+            "cleanFreak": {
+                "never": "No Auto-Formatting (Manual Weaving Only)",
+                "add": "Add Only: Ensure sufficient blank lines without removing extras",
+                "addRemove": "Strict organization: just enough blank lines — remove excess, add missing"
+            },
+            "textSlideColorScheme": {
+                "light": "Light",
+                "dark": "Dark"
+            },
+            "codelensLevel": {
+                "none": "None",
+                "open": "Open files only",
+                "full": "Full Suite: Folder/Rename/Copy/Info Line/qode"
+            },
+            "downloadSecurityLevel": {
+                "l0": "0: Most Lenient — All 11 security switches off",
+                "l1": "1: Balanced — 4 switches on, 7 off",
+                "l2": "2: Strictest — all 11 security switches enabled"
+            },
+            "docExportImageResolution": {
+                "original": "Original resolution — full precision",
+                "frame": "Frame resolution — smaller file size, thumbnails match perfectly"
+            }
+        }
+    },
     "workbench": {
         "savorTip": "Local Music: {v0} plays, total {v1}\nRadio: {v2} plays, total {v3}\nDaily Average Listening: {v4}",
         "durHm": "{0} hr {1} min",
@@ -1689,13 +1826,15 @@
         "exportDocTip": "Export current document as Word: Images and videos are embedded as images; other attachments generate a list. Saves next to the document by default; save dialog appears only if a file with the same name exists.",
         "exportZipTip": "Package the current document and all referenced files and directories into a ZIP archive (preserving directory structure, maximum compression). Saves next to the document by default; prompts for save location only if a file with the same name already exists.",
         "cloudSyncTip": "Cloud Sync: ↑ Upload = Merge with cloud then upload (no data loss on either side); ↓ Download = Merge cloud data into local. Includes editor settings, folder preferences, and clipboard history.",
-        "playerTip": "Player: Listen to music/watch videos while coding (playlist persists across restarts); Select media in Roam and right-click \"Add to Playlist\", or pop out from the overlay.",
+        "playerTip": "Player: Listen to music or watch videos while coding (playlist persists across restarts). In Roam, right-click selected media and choose \"Add to Playlist,\" or pop it out from the overlay. Minimizing docks it to this slot for remote control.",
         "playerWinTip": "Independent Floating Player Window: Always-on-top mini-window—visible even when switching to other apps (↗)",
         "playerCardTip": "In-Window Player: A player card floating within the qqqide window—follows this window (⧈)",
         "playerNeedRestart": "Floating player requires instance restart to become available",
         "videoUrlTip": "Pending Video: Enter a video URL to automatically download it to the document directory and insert it into a frame.",
         "pasteTip": "Pending Paste: One-click paste from clipboard to document (Ctrl+V achieves the same result).",
-        "pureTip": "Pending: Scan document references to clean up orphaned files that are no longer referenced."
+        "pureTip": "Pending: Scan document references to clean up orphaned files that are no longer referenced.",
+        "settingsTip": "Open qqq Settings Center: Cloud Sync + All Preferences (Performance/Frame/Watcher/Export…)",
+        "settingsNeedRestart": "Settings Center not ready (window refresh required)"
     },
     "audio": {
         "sfx": {

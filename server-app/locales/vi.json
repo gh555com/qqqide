@@ -172,7 +172,10 @@
             "addNone": "Không có tệp phương tiện nào để thêm",
             "empty": "Danh sách phát trống — Trong Roam, chọn phương tiện, nhấp chuột phải và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ.",
             "returnOv": "Quay lại lớp nổi",
-            "returnFail": "Không tìm thấy cửa sổ chính, không thể quay lại lớp phủ"
+            "returnFail": "Không tìm thấy cửa sổ chính, không thể quay lại lớp phủ",
+            "minimize": "Thu gọn vào bàn làm việc qqq",
+            "restore": "Mở rộng trình phát",
+            "stowed": "Đã thu gọn vào bàn làm việc qqq"
         },
         "about": {
             "title": "Giới thiệu về qqq",
@@ -347,6 +350,8 @@
     "editor": {
         "copyPath": "Sao chép đường dẫn",
         "roamLocate": "Định vị tệp này trong Roam",
+        "timelineOpen": "Xem tệp này trong dòng thời gian",
+        "timelineNoRoot": "Không thể xác định thư mục gốc của dự án cho tệp này, dòng thời gian không khả dụng",
         "minimap": "Bản đồ nhỏ",
         "tabs": {
             "close": "Đóng tab",
@@ -365,7 +370,7 @@
             "encAutoReset": "Tự động phát hiện (xóa cố định)",
             "encAutoCur": "Tự động phát hiện",
             "encFixedAt": "Mã hóa đã cố định thành {v} (chế độ khẩn cấp) — Nhấp để sửa đổi / khôi phục tự động",
-            "encAutoAt": "Mã hóa: {v} (tự động phát hiện) — Nhấp để chỉ định thủ công",
+            "encAutoAt": "Mã hóa: {v} — {src}; Nhấp để chỉ định thủ công",
             "encSrcBom": "Theo khai báo BOM",
             "encSrcUtf8": "Đã vượt qua giải mã UTF-8 nghiêm ngặt",
             "encSrcGbk": "Dự phòng GBK (nhấp vào đây nếu gặp lỗi ký tự)",
@@ -641,7 +646,8 @@
             "history": "Lịch sử",
             "noHistory": "Chưa có lịch sử",
             "saveFailed": "Lưu thất bại",
-            "renameTitle": "Chỉnh sửa tên"
+            "renameTitle": "Chỉnh sửa tên",
+            "pinCloseHint": "Nhấp để đóng"
         },
         "lock": {
             "locked": "Dự án đã được mở bởi cửa sổ khác",
@@ -1555,6 +1561,9 @@
         "tip": "Danh sách yêu thích",
         "count": "Tổng cộng {0} mục",
         "searchPh": "Tìm kiếm mục yêu thích (tên / nhiệm vụ / câu hỏi)",
+        "level": "Mức độ quan trọng",
+        "filterAll": "Tất cả",
+        "questTip": "Nhiệm vụ: {0}",
         "empty": "Chưa có mục yêu thích · Nhấn ☆ ở bất kỳ tầng nào để thêm vào yêu thích",
         "noMatch": "Không tìm thấy mục yêu thích phù hợp",
         "more": "Chỉ hiển thị {0} mục đầu tiên, nhập từ khóa để thu hẹp phạm vi",
@@ -1681,6 +1690,134 @@
         "lok": "Đang đồng bộ, vui lòng đợi…",
         "bridgeMissing": "Đồng bộ đám mây không khả dụng (cần khởi động lại instance)"
     },
+    "prefs": {
+        "title": "Cài đặt qqq",
+        "cloudSec": "☁ Đồng bộ đám mây",
+        "csLogin": "Chưa đăng nhập: Đăng nhập và kích hoạt để đồng bộ cài đặt across các thiết bị",
+        "csLocked": "Cài đặt đã lưu trên máy cục bộ; cần kích hoạt bản quyền để lưu trữ lâu dài trên đám mây",
+        "csOn": "Đồng bộ đám mây đã bật: Thay đổi trên máy này sẽ tự động đồng bộ lên đám mây",
+        "pullNow": "Kéo cài đặt từ đám mây ngay bây giờ",
+        "pullDoing": "Đang kéo cài đặt từ đám mây…",
+        "pullDone": "Đã đồng bộ {0} mục cài đặt từ đám mây",
+        "pullFail": "Đồng bộ đám mây thất bại: {0}",
+        "needAct": "Tính năng này yêu cầu kích hoạt bản quyền trước",
+        "wmNeed": "Tùy chỉnh watermark là tính năng trả phí (khả dụng sau khi kích hoạt)",
+        "reset": "Khôi phục cài đặt mặc định",
+        "resetTitle": "Khôi phục cài đặt mặc định",
+        "resetMsg": "Thao tác này sẽ xóa tất cả thay đổi cài đặt trên máy cục bộ (nếu đã bật đồng bộ đám mây, cấu hình trên đám mây cũng sẽ bị xóa). Bạn có chắc chắn muốn tiếp tục không?",
+        "resetOk": "Xác nhận khôi phục",
+        "resetDone": "Đã khôi phục cài đặt mặc định",
+        "needRefresh": "Mô-đun tùy chọn chưa sẵn sàng (cần làm mới cửa sổ)",
+        "g": {
+            "core": "☀️ Lõi hệ thống",
+            "roam": "🛸 Roam Lang thang",
+            "observe": "👁️ Chế độ Quan sát",
+            "html": "🍌 HTML & Văn bản giàu định dạng",
+            "doc": "📦 Xuất tài liệu",
+            "premium": "💎 Độc quyền bản Premium"
+        },
+        "lab": {
+            "performanceMode": "Chế độ hiệu năng",
+            "ioEngine": "IO Engine",
+            "transactionLevel": "Transaction Level Cấp độ giao dịch",
+            "szDisplayMode": "Hiển thị cột kích thước",
+            "sortBy": "Sort By Sắp xếp",
+            "autoWatchChanges": "Auto Watch Changes",
+            "roamAsStartPage": "Roam as Start Page",
+            "roamName": "Roam Name",
+            "frameSizeMode": "Frame Size Mode",
+            "cleanFreak": "Clean Freak Sạch sẽ",
+            "enlargeSmallImages": "Enlarge Small Images",
+            "textSlideColorScheme": "Bảng màu trình chiếu văn bản",
+            "textSlideFontSize": "Cỡ chữ trình chiếu văn bản",
+            "codelensLevel": "CodeLens Level",
+            "takeOverCodelensStyle": "Áp dụng kiểu CodeLens tùy chỉnh",
+            "downloadSecurityLevel": "Mức độ bảo mật tải xuống",
+            "forceTextFlowScheme": "Buộc áp dụng sơ đồ luồng văn bản",
+            "autoDownload": "Tự động tải xuống",
+            "docExportImageResolution": "Image Resolution",
+            "docExportIncludeCipher": "Bao gồm chuỗi mã hóa",
+            "removeWatermark": "Remove Watermark Loại bỏ watermark"
+        },
+        "desc": {
+            "performanceMode": "☀️ Kiểm soát chất lượng và tốc độ tạo ảnh xem trước",
+            "ioEngine": "☀️ Công cụ IO (xem tài liệu dự án: IO_ENGINE_v16)",
+            "transactionLevel": "☀️ Cấp độ gói giao dịch: Quyết định độ tin cậy và tốc độ của thao tác",
+            "szDisplayMode": "🛸 Nội dung hiển thị trong cột sz",
+            "sortBy": "🛸 Cách sắp xếp danh sách tệp",
+            "autoWatchChanges": "🛸 Chọn: Tự động làm mới danh sách tệp khi thư mục hiện tại bị thay đổi bởi chương trình bên ngoài; Bỏ chọn: Không tốn hiệu năng",
+            "roamAsStartPage": "🛸 Sử dụng qqq Roam làm trang khởi động",
+            "roamName": "🛸 Tên Roam tùy chỉnh",
+            "frameSizeMode": "👁️ Chế độ kích thước ảnh xem trước",
+            "cleanFreak": "👁️ Tự động đảm bảo đủ dòng trống dưới mỗi mã trước khi lưu, ngăn chồng lấn nội dung/xem trước",
+            "enlargeSmallImages": "👁️ Chọn: Phóng to ảnh xem trước nhỏ hơn khung để lấp đầy; Bỏ chọn: Giữ nguyên kích thước và căn giữa",
+            "textSlideColorScheme": "👁️ Màu nền slide văn bản",
+            "textSlideFontSize": "👁️ Cỡ chữ slide văn bản (1-218)",
+            "codelensLevel": "👁️ Mức độ hiển thị CodeLens",
+            "takeOverCodelensStyle": "👁️ Ghi đè kiểu CodeLens: Màu đỏ, cỡ chữ 13",
+            "downloadSecurityLevel": "🍌 Khi tải video thất bại, hãy thử chiến lược nới lỏng hơn tại đây",
+            "forceTextFlowScheme": "🍌 Buộc sửa lỗi mã hóa HTML (chỉ chọn khi gặp lỗi mã hóa cứng đầu, đánh đổi bằng độ chính xác bố cục)",
+            "autoDownload": "🍌 Tự động tải xuống khi phát hiện video",
+            "docExportImageResolution": "📦 Độ phân giải hình ảnh sử dụng khi xuất",
+            "docExportIncludeCipher": "📦 Bao gồm chuỗi mật khẩu hình ảnh khi xuất",
+            "removeWatermark": "💎 Bỏ chọn để hiển thị hình mờ (nếu bạn muốn xem hình mờ)"
+        },
+        "opt": {
+            "performanceMode": {
+                "extreme": "Cực đoan: Chỉ giữ lại khung hình đầu tiên, chất lượng 47",
+                "accelerated": "Accelerated: Ảnh GIF/video tối đa 2 giây đầu, 7fps, chất lượng 47",
+                "optmum": "Tối ưu: Giữ nguyên thời lượng ảnh động, video lấy 4 giây (đầu/giữa/cuối), fps gốc, chất lượng 71"
+            },
+            "ioEngine": {
+                "auto": "v16 auto — Cấu hình lý tưởng",
+                "excludePython": "Exclude Python — Chạy ngầm, tiết kiệm khoảng 50MB RAM"
+            },
+            "transactionLevel": {
+                "full": "Bao bọc đầy đủ: Mọi thao tác tốn thời gian đều được gói trong giao dịch — có thanh tiến trình, hỗ trợ hoàn tác, tự động khôi phục khi lỗi",
+                "half": "Bao bọc một phần: Thao tác nhẹ sử dụng dán đơn giản — phản hồi nhanh nhất, không có thanh tiến trình, không khôi phục"
+            },
+            "szDisplayMode": {
+                "nothing": "Không hiển thị",
+                "size": "Hiển thị kích thước tệp",
+                "ctime": "Hiển thị thời gian tạo",
+                "mtime": "Hiển thị thời gian sửa đổi"
+            },
+            "sortBy": {
+                "name": "Sắp xếp theo tên (thư mục lên trước)",
+                "size": "Sắp xếp theo kích thước (thư mục lên trước, tệp giảm dần theo kích thước)",
+                "ctime": "Sắp xếp theo thời gian tạo (giảm dần)",
+                "mtime": "Sắp xếp theo thời gian sửa đổi (giảm dần)"
+            },
+            "frameSizeMode": {
+                "large": "Khung lớn: 512×288",
+                "small": "Khung nhỏ: 256×144",
+                "fix": "Tự động điều chỉnh: Tự động chọn dựa trên kích thước hình ảnh"
+            },
+            "cleanFreak": {
+                "never": "Không tự động sắp xếp (chỉ sắp xếp thủ công)",
+                "add": "Chỉ thêm: Đảm bảo đủ dòng trống, không xóa các dòng trống thừa",
+                "addRemove": "Sắp xếp nghiêm ngặt: Vừa đủ dòng trống — xóa dòng thừa, thêm dòng thiếu"
+            },
+            "textSlideColorScheme": {
+                "light": "Sáng",
+                "dark": "Tối"
+            },
+            "codelensLevel": {
+                "none": "Không có",
+                "open": "Chỉ khi mở tệp",
+                "full": "Đầy đủ: Thư mục/Đổi tên/Sao chép/Dòng thông tin/qode"
+            },
+            "downloadSecurityLevel": {
+                "l0": "0: Thoải mái nhất — Tắt toàn bộ 11 công tắc bảo mật",
+                "l1": "1: Cân bằng — Bật 4 công tắc, tắt 7 công tắc",
+                "l2": "2: Nghiêm ngặt nhất — Bật tất cả 11 công tắc bảo mật"
+            },
+            "docExportImageResolution": {
+                "original": "Độ phân giải gốc — Độ chính xác đầy đủ",
+                "frame": "Độ phân giải khung hình — Tệp nhỏ hơn, ảnh thu nhỏ khớp chính xác"
+            }
+        }
+    },
     "workbench": {
         "savorTip": "Nhạc cục bộ: {v0} lần, tổng cộng {v1}\nRadio: {v2} lần, tổng cộng {v3}\nTrung bình nghe mỗi ngày: {v4}",
         "durHm": "{0} giờ {1} phút",
@@ -1689,13 +1826,15 @@
         "exportDocTip": "Xuất tài liệu hiện tại sang định dạng Word: Hình ảnh và video được chuyển thành hình ảnh nhúng, các tệp đính kèm khác được tạo danh sách; mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi tệp cùng tên đã tồn tại.",
         "exportZipTip": "Đóng gói tài liệu hiện tại cùng tất cả các tệp và thư mục được tham chiếu thành file ZIP (giữ nguyên cấu trúc thư mục, nén tối đa); mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi có tệp trùng tên.",
         "cloudSyncTip": "Đồng bộ đám mây: ↑ Tải lên = Hợp nhất với đám mây rồi tải lên (không mất dữ liệu ở cả hai bên); ↓ Tải xuống = Hợp nhất dữ liệu đám mây vào máy cục bộ. Bao gồm cấu hình trình soạn thảo, tùy chọn cho từng thư mục và lịch sử clipboard.",
-        "playerTip": "Trình phát: Nghe nhạc/xem video ngay cả khi viết code (ghi nhớ danh sách phát qua các lần khởi động lại); Trong Roam, chọn phương tiện, nhấp chuột phải và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ.",
+        "playerTip": "Trình phát: Nghe nhạc/xem video khi viết code (ghi nhớ danh sách phát sau khi khởi động lại); Trong Roam, nhấp chuột phải vào phương tiện đã chọn và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ; Thu nhỏ = Thu gọn vào khe này để điều khiển từ xa.",
         "playerWinTip": "Cửa sổ trình phát nổi độc lập: Cửa sổ nhỏ luôn hiển thị trên cùng — vẫn nhìn thấy được khi chuyển sang chương trình khác (↗)",
         "playerCardTip": "Trình phát trong cửa sổ: Thẻ trình phát nổi trong cửa sổ qqqide – đi kèm với cửa sổ này (⧈)",
         "playerNeedRestart": "Cần khởi động lại phiên bản để trình phát nổi hoạt động",
         "videoUrlTip": "Sắp ra mắt: Nhập URL video, tự động tải xuống thư mục tài liệu và chèn vào khung hình.",
         "pasteTip": "Chờ dán: Dán nội dung clipboard vào tài liệu chỉ với một cú nhấp chuột (hiện tại bạn cũng có thể dùng Ctrl+V để thực hiện thao tác tương tự).",
-        "pureTip": "Sắp ra mắt: Quét các tham chiếu trong tài liệu, dọn dẹp các tệp mồ côi không còn được tham chiếu."
+        "pureTip": "Sắp ra mắt: Quét các tham chiếu trong tài liệu, dọn dẹp các tệp mồ côi không còn được tham chiếu.",
+        "settingsTip": "Mở trung tâm cài đặt qqq: Đồng bộ đám mây + Tất cả tùy chọn (Hiệu năng/Khung hình/Quan sát/Xuất…)",
+        "settingsNeedRestart": "Trung tâm cài đặt chưa sẵn sàng (cần làm mới cửa sổ)"
     },
     "audio": {
         "sfx": {

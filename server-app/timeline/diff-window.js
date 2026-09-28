@@ -1089,6 +1089,21 @@
     // ═══ 监听主进程推送 diff 更新（同文件再次点击 A4 时复用窗口） ═══
     if (bridge && bridge.timeline && bridge.timeline.onDiffUpdate) {
         bridge.timeline.onDiffUpdate(function (data) {
+            // ★ 2026-09-28：单文件单例复用自愈——本窗口若曾以缺失/不一致参数打开（空根「缺少参数」坏窗），
+            //   携新参数整页重载（坏窗不得永久遮蔽该文件）；健康窗口（根一致）保持原「更新标记 + 重载版本列表」零打扰
+            var _np = (data.filePath || '').replace(/\\/g, '/');
+            var _nr = (data.projectRoot || '').replace(/\\/g, '/').replace(/\/$/, '');
+            var _cr = (PROJECT_ROOT || '').replace(/\\/g, '/').replace(/\/$/, '');
+            if (_np && _nr && (!_cr || _cr !== _nr || !FILE_PATH)) {
+                try {
+                    location.replace(location.pathname + '?path=' + encodeURIComponent(_np) +
+                        '&projectRoot=' + encodeURIComponent(_nr) +
+                        '&theme=' + (_isDark ? 'dark' : 'light') +
+                        (data.beforeBlobHash ? '&before=' + encodeURIComponent(data.beforeBlobHash) : '') +
+                        (data.afterBlobHash ? '&after=' + encodeURIComponent(data.afterBlobHash) : ''));
+                } catch (_) { }
+                return;
+            }
             // 仅当推送的文件路径与当前一致时才处理（用户可能已切换到其他文件）
             if (data.filePath && data.filePath !== FILE_PATH) return;
             _markedBefore = data.beforeBlobHash || '';

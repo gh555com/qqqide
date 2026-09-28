@@ -320,9 +320,10 @@
   cursor: text;
 }
 
-/* 面包屑复制按钮 / Roam 定位按钮 — 恒显 · 淡雅统一档（2026-09-27 用户定案）：与编码徽标同款外观——灰边框 + 次文字色 + 透明底；三按钮（编码/复制/Roam）风格零差异；悬浮 → 显著档（见下方 hover 规则） */
+/* 面包屑复制 / Roam / 时间线按钮 — 恒显 · 淡雅统一档（2026-09-27 用户定案；2026-09-28 并入时间线）：与编码徽标同款外观——灰边框 + 次文字色 + 透明底；四件（编码/复制/Roam/时间线）风格零差异；悬浮 → 显著档（见下方 hover 规则） */
 .qqq-breadcrumb-copy-btn,
-.qqq-breadcrumb-roam-btn {
+.qqq-breadcrumb-roam-btn,
+.qqq-breadcrumb-timeline-btn {
   display: inline-block;
   margin-left: 6px; /* 单列内联流（2026-09-27）：紧随前一部件（编码→复制→Roam），不再占右侧独立列 */
   padding: 0 6px; /* 与编码徽标同内距——三按钮统一档 */
@@ -336,10 +337,11 @@
   font-family: inherit; /* Roam 文字按钮与面包屑文字流同字体（📋 emoji 不受影响） */
 }
 
-/* ★ hover 显著档（2026-09-27 用户定案）：三按钮（编码/复制/Roam）悬浮时呈现显著外观——金边 + 主文字色 + 实底；
+/* ★ hover 显著档（2026-09-27 用户定案）：四件（编码/复制/Roam/时间线）悬浮时呈现显著外观——金边 + 主文字色 + 实底；
    移开即回淡雅档（纯色值切换，零位移零布局变化） */
 .qqq-breadcrumb-copy-btn:hover,
-.qqq-breadcrumb-roam-btn:hover {
+.qqq-breadcrumb-roam-btn:hover,
+.qqq-breadcrumb-timeline-btn:hover {
   border-color: var(--yellow);
   background: var(--card-bg);
   color: var(--text-primary);

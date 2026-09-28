@@ -406,6 +406,7 @@
         if (mEl.ended) { try { mEl.currentTime = 0; } catch (_) { } }   // 播毕重播（模式引擎弃用原生 loop 后的重播入口）
         var p = mEl.play(); if (p && p.catch) { p.catch(function () { }); }
       } else { mEl.pause(); }
+      try { syncPlay(); } catch (_) { }   // 图标立即对齐真值（play/pause 同步落定 paused 属性）
     }
     function syncPlay() {
       var playing = !mEl.paused && !mEl.ended;
@@ -878,10 +879,12 @@
     }
     abB.addEventListener('click', _abCycle);
 
-    // 播放状态事件
+    // 播放状态事件（★ emptied 补挂（2026-09-28 q319）：重设 src 打断播放时 Chromium 只发 abort/emptied、不发 pause
+    //   ——探针实锤；缺它则图标停在旧态：「切歌后按钮显示还在播放」的一道根因）
     mEl.addEventListener('play', syncPlay);
     mEl.addEventListener('pause', syncPlay);
     mEl.addEventListener('ended', syncPlay);
+    mEl.addEventListener('emptied', syncPlay);
     mEl.addEventListener('timeupdate', syncProg);
     mEl.addEventListener('timeupdate', _abCheck);
     mEl.addEventListener('loadedmetadata', syncProg);
@@ -1109,7 +1112,10 @@
     function keys(e) {
       // ★ 输入框/可编辑目标内让路（倍速自定义输入——空格/数字/字母不得触发播放控制，2026-09-26 v2）
       var _tg = e.target;
-      if (_tg && (_tg.tagName === 'INPUT' || _tg.tagName === 'TEXTAREA' || _tg.isContentEditable)) { return; }
+      if (_tg && (_tg.tagName === 'INPUT' || _tg.tagName === 'TEXTAREA' || _tg.tagName === 'SELECT' || _tg.isContentEditable)) { return; }
+      // ★ 交互元素让路（2026-09-28 q319）：焦点在按钮/链接上时（主窗口接管态下常见——刚点过工具栏/标签），
+      //   空格/方向键仍是该控件的默认激活键——播放器禁抢（防「点完别的控件按空格 → 音乐莫名暂停/被劫持」）
+      if (_tg && _tg.closest && _tg.closest('button,a,summary,label,[role="button"],[role="link"]')) { return; }
       if (e.ctrlKey || e.metaKey || e.altKey) { return; }
       var k = e.key;
       if (k === ' ' || k === 'Spacebar') {
@@ -1171,7 +1177,7 @@
     _buildDock();       // dock 一次性构建（挂入壳层行；显隐由 onListChanged 管）
     onListChanged();    // 初始显隐/行渲染（n>1 → dock 立即可见）
 
-    return { bar: bar, cleanup: cleanup, keys: keys, esc: function () { try { return _engEscHook ? !!_engEscHook() : false; } catch (_) { return false; } }, setTrack: setTrack, resetAB: resetAB, onListChanged: onListChanged };
+    return { bar: bar, cleanup: cleanup, keys: keys, esc: function () { try { return _engEscHook ? !!_engEscHook() : false; } catch (_) { return false; } }, setTrack: setTrack, resetAB: resetAB, onListChanged: onListChanged, syncPlay: syncPlay };
   }
 
 
@@ -1272,7 +1278,7 @@ function mount(opts) {
           _plSkipLeft--;
           var _bad = _plList[_plIdx];
           _toast(_i('shell.overlay.mskip', '无法播放，已跳过：{name}', { name: (_bad && _bad.name) || '' }), 'error');
-          _advanceTo((_plIdx + 1) % _plN);
+          _advanceTo((_plIdx + 1) % _plN, true);
           return;
         }
         _toast(_i('shell.overlay.mediaFailed', '媒体加载失败，可能格式不受支持或文件已损坏'), 'error');
@@ -1285,11 +1291,22 @@ function mount(opts) {
         _ovTxRun(_file, _txKind, function (newPath) {
           _reopenHost({ mode: _txKind, src: 'file:///' + newPath, localPath: newPath, list: _plList, index: _plIdx });
         }, _ovMediaFail, H);     };
-      function _loadNative(src, isTx) {
+      // ★ 播放意图显式化（2026-09-28 q319 修复「切歌即暂停/列表循环停摆/按钮态错乱」）：wantPlay 由动作语义传入
+      //   —— mount 期冻结的 _autoPlay 只决定「首载」（恢复场景安静启动）；此后一切切轨（点击列表/⏮⏭/播完进位/
+      //   跳过坏轨/追加起播）恒续播。图标对齐：Chromium 重设 src 打断播放只发 abort/emptied、不发 pause（探针实锤）
+      //   ——每次装载后必须显式 syncPlay()（读元素真值），否则按钮图标永远停在旧态；wantPlay=false 时显式 pause()
+      //   保证暂停态落定（幂等无害）。
+      function _loadNative(src, isTx, wantPlay) {
         _metaOk = false;
         if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; }
         _mEl.src = src;
-        if (_autoPlay) { try { var _p = _mEl.play(); if (_p && _p.catch) { _p.catch(function () { }); } } catch (_) { } }
+        if (wantPlay) {
+          try { var _p = _mEl.play(); if (_p && _p.catch) { _p.catch(function () { }); } } catch (_) { }
+        } else {
+          try { _mEl.pause(); } catch (_) { }
+        }
+        try { if (_barApi.syncPlay) { _barApi.syncPlay(); } } catch (_) { }
+        _persistTick();
         if (!isTx) {
           // 静默卡死兜底：8s 无元数据也无 error → 走转码
           _fallTimer = setTimeout(function () {
@@ -1319,12 +1336,12 @@ function mount(opts) {
         var _k = _bagPick();
         if (_k === null && (_ovMediaLoop === 'all' || manual)) { _bagReset(); _k = _bagPick(); }   // 空袋：循环开→重洗；手动 ⏭→必进
         if (_k === null) { return false; }
-        _advanceTo(_k);
+        _advanceTo(_k, true);
         return true;
       }
       if (_plList && _ovMediaShuffle) { _bagReset(); }
       // 切轨：本地路径/截图基准/文件名/位置计数/A-B 全量对齐该轨（A-B 时间点无跨文件意义 → 切轨即清零）
-      function _advanceTo(k) {
+      function _advanceTo(k, wantPlay) {
         _ovTxAbort();
         _plIdx = k;
         delete _plBag[k];
@@ -1336,7 +1353,7 @@ function mount(opts) {
         if (_barApi.setTrack) { _barApi.setTrack(k); }
         if (_barApi.resetAB) { _barApi.resetAB(); }
         if (_OV_TX_FIRST_EXTS[_ovTxExt(it.localPath || it.src)]) { _ovMediaTx(); return; }
-        _loadNative(it.src, false);
+        _loadNative(it.src, false, !!wantPlay);
       }
       // 模式裁决（ended 后；A-B 已由控制条先行拦截）——循环 × 随机 两独立维度
       function _plOnEnded() {
@@ -1346,19 +1363,19 @@ function mount(opts) {
           return;
         }
         if (_ovMediaShuffle) { _shuffleNext(false); return; }              // 随机：袋中取未播（空袋 → 循环开重洗 / 循环关播完停）
-        if (_plIdx < _plN - 1) { _advanceTo(_plIdx + 1); return; }         // 顺序下一轨
-        if (_ovMediaLoop === 'all') { _advanceTo(0); }                     // 尾接首
+        if (_plIdx < _plN - 1) { _advanceTo(_plIdx + 1, true); return; }    // 顺序下一轨（播完进位恒续播）
+        if (_ovMediaLoop === 'all') { _advanceTo(0, true); }                // 尾接首
       }
-      function _plPrev() { if (_plList && _plN > 1) { _advanceTo((_plIdx - 1 + _plN) % _plN); } }
+      function _plPrev() { if (_plList && _plN > 1) { _advanceTo((_plIdx - 1 + _plN) % _plN, true); } }
       function _plNext() {
         if (!_plList || _plN < 2) { return; }                              // 单轨（含移除缩到 1）→ 无跳轨语义
         if (_ovMediaShuffle && _plN > 1) { _shuffleNext(true); return; }   // 随机下手动 ⏭：袋中取（空袋必进）
-        _advanceTo((_plIdx + 1) % _plN);
+        _advanceTo((_plIdx + 1) % _plN, true);
       }
       _plApi.onEnded = _plOnEnded; _plApi.onPrev = _plPrev; _plApi.onNext = _plNext;
-      _plApi.jump = function (k) {                                        // 列表面板点击切轨（当前轨零动作）
+      _plApi.jump = function (k) {                                        // 列表点击切轨（当前轨零动作）
         if (!_plList || typeof k !== 'number' || k < 0 || k >= _plN || k === _plIdx) { return; }
-        _advanceTo(k);
+        _advanceTo(k, true);                                              // 点击选曲 = 明确播放意图（选曲即播，万向播放器语义）
       };
       _plApi.onModeChange = function (dim) {                              // 随机开启 → 袋按当前轨重建
         if (dim === 'shuffle' && _ovMediaShuffle && _plList) { _bagReset(); }
@@ -1386,12 +1403,14 @@ function mount(opts) {
       _plApi.remove = function (i) {
         if (!_plList || typeof i !== 'number' || i < 0 || i >= _plList.length) { return; }
         if (i === _plIdx) {                                     // 移除当前轨 → 原位接播（切片后同索引 = 下一轨；末位 → 新末位）
+          var _wasPlaying = false;
+          try { _wasPlaying = !_mEl.paused && !_mEl.ended; } catch (_) { }
           _plList.splice(i, 1);
           _plN = _plList.length; _plApi.n = _plN;
           if (_plN === 0) { try { _closeHost(); } catch (_) { } return; }
           _plSkipLeft = Math.min(_plSkipLeft, _plN);
           _plBagSanitize();
-          _advanceTo(Math.min(i, _plN - 1));
+          _advanceTo(Math.min(i, _plN - 1), _wasPlaying);       // 播放态跟随：在播 → 接播；暂停 → 保持暂停
           return;
         }
         _plList.splice(i, 1);
@@ -1414,13 +1433,14 @@ function mount(opts) {
   _mEl.addEventListener('pause', function () { try { if (H.onPlayState) { H.onPlayState(false); } } catch (_) { } });
   _mEl.addEventListener('volumechange', function () { _persistTick(); });
 
-  // 初始加载：_tx 产物直载 / 首发命中转码组直接转码（状态条进度）/ 否则原生 + 静默卡死兜底
+  // 初始加载（wantPlay 恒 = _autoPlay：恢复场景安静启动；此后切轨由动作语义驱动）：
+  // _tx 产物直载 / 首发命中转码组直接转码（状态条进度）/ 否则原生 + 静默卡死兜底
   if (opts.isTx) {
-    _loadNative(opts.src, true);
+    _loadNative(opts.src, true, _autoPlay);
   } else if (_OV_TX_FIRST_EXTS[_ovTxExt((_actItem && _actItem.localPath) || _curLocalPath || _localPathFromSrc(opts.src) || opts.src)]) {
     _ovMediaTx();
   } else {
-    _loadNative(opts.src || ((_actItem && _actItem.src) || ''), false);
+    _loadNative(opts.src || ((_actItem && _actItem.src) || ''), false, _autoPlay);
   }
 
   var _api = {
@@ -1432,7 +1452,13 @@ function mount(opts) {
       try { _mEl.pause(); _mEl.removeAttribute('src'); _mEl.load(); } catch (_) { }
       try { if (H.onPlayState) { H.onPlayState(false); } } catch (_) { }
     },
-    pause: function () { try { _mEl.pause(); } catch (_) { } },
+    // ★ 三入口（暂停/播放/开关）恒补 syncPlay（2026-09-28 q319）：读元素真值——claim 互斥暂停、工作台槽 ⏯ 后图标不落后
+    pause: function () { try { _mEl.pause(); } catch (_) { } try { if (_barApi.syncPlay) { _barApi.syncPlay(); } } catch (_) { } },
+    // ★ 工作台 Player 槽播控（2026-09-28 q319 v7）：收纳后控制条不可见——槽位 [⏮][⏯][⏭] 唯一播控入口
+    play: function () { try { _mEl.play(); } catch (_) { } try { if (_barApi.syncPlay) { _barApi.syncPlay(); } } catch (_) { } },
+    toggle: function () { try { if (_mEl.paused) { _mEl.play(); } else { _mEl.pause(); } } catch (_) { } try { if (_barApi.syncPlay) { _barApi.syncPlay(); } } catch (_) { } },
+    prev: function () { try { if (_plApi.onPrev) { _plApi.onPrev(); } } catch (_) { } },
+    next: function () { try { if (_plApi.onNext) { _plApi.onNext(); } } catch (_) { } },
     isPlaying: function () { try { return !_mEl.paused && !_mEl.ended; } catch (_) { return false; } },
     append: function (items, autoplay) {
       if (!items || !items.length) { return 0; }
@@ -1444,7 +1470,7 @@ function mount(opts) {
       _plN = _plList.length; _plApi.n = _plN;
       try { _barApi.onListChanged(); } catch (_) { }
       _persistTick();
-      if (wasIdle && autoplay !== false && added > 0) { _advanceTo(firstNew); }
+      if (wasIdle && autoplay !== false && added > 0) { _advanceTo(firstNew, true); }
       return added;
     },
     getState: function () {

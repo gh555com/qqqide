@@ -172,7 +172,10 @@
             "addNone": "No hay archivos multimedia para añadir",
             "empty": "La lista de reproducción está vacía: selecciona medios en Roam, haz clic derecho y elige «Añadir a la lista de reproducción», o expándela desde la capa flotante ↗",
             "returnOv": "Volver a la capa flotante",
-            "returnFail": "No se encontró la ventana principal, no se puede volver a la capa flotante"
+            "returnFail": "No se encontró la ventana principal, no se puede volver a la capa flotante",
+            "minimize": "Minimizar al área de trabajo de qqq",
+            "restore": "Expandir reproductor",
+            "stowed": "Minimizado al área de trabajo de qqq"
         },
         "about": {
             "title": "Acerca de qqq",
@@ -347,6 +350,8 @@
     "editor": {
         "copyPath": "Copiar ruta",
         "roamLocate": "Localizar este archivo en Roam",
+        "timelineOpen": "Ver este archivo en la línea de tiempo",
+        "timelineNoRoot": "No se puede determinar el directorio raíz del proyecto para este archivo; la línea de tiempo no está disponible",
         "minimap": "Minimapa",
         "tabs": {
             "close": "Cerrar pestaña",
@@ -641,7 +646,8 @@
             "history": "Historial",
             "noHistory": "Sin historial",
             "saveFailed": "Error al guardar",
-            "renameTitle": "Editar nombre"
+            "renameTitle": "Editar nombre",
+            "pinCloseHint": "Haz clic para cerrar"
         },
         "lock": {
             "locked": "El proyecto ya está abierto en otra ventana",
@@ -1555,6 +1561,9 @@
         "tip": "Favoritos",
         "count": "Total: {0} elementos",
         "searchPh": "Buscar en favoritos (nombre / tarea / pregunta)",
+        "level": "Nivel de importancia",
+        "filterAll": "Todos",
+        "questTip": "Misión: {0}",
         "empty": "Aún no hay favoritos · Haz clic en ☆ en cualquier piso para guardarlo",
         "noMatch": "No hay favoritos coincidentes",
         "more": "Solo se muestran los primeros {0} elementos, introduce una palabra clave para filtrar",
@@ -1681,6 +1690,134 @@
         "lok": "Sincronizando, por favor espera…",
         "bridgeMissing": "La sincronización en la nube no está disponible (requiere reiniciar la instancia)."
     },
+    "prefs": {
+        "title": "Configuración de qqq",
+        "cloudSec": "☁ Sincronización en la nube",
+        "csLogin": "No conectado: inicie sesión y active para sincronizar configuraciones entre dispositivos",
+        "csLocked": "Configuración guardada localmente; la persistencia en la nube requiere activación de la versión licenciada",
+        "csOn": "Sincronización en la nube activada: los cambios locales se sincronizan automáticamente con la nube",
+        "pullNow": "Sincronizar configuración desde la nube ahora",
+        "pullDoing": "Sincronizando configuración desde la nube…",
+        "pullDone": "Se han sincronizado {0} ajustes desde la nube",
+        "pullFail": "Error de sincronización en la nube: {0}",
+        "needAct": "Esta función requiere activación de la versión licenciada",
+        "wmNeed": "La personalización de marcas de agua es una función premium (disponible tras activación)",
+        "reset": "Restaurar configuración predeterminada",
+        "resetTitle": "Restaurar configuración predeterminada",
+        "resetMsg": "Se eliminarán todos los cambios de configuración locales (si la sincronización en la nube está activada, la configuración en la nube también se eliminará). ¿Desea continuar?",
+        "resetOk": "Confirmar restauración",
+        "resetDone": "Configuración predeterminada restaurada",
+        "needRefresh": "El módulo de preferencias no está listo (requiere actualizar la ventana)",
+        "g": {
+            "core": "☀️ Núcleo",
+            "roam": "🛸 Roam Deambular",
+            "observe": "👁️ Observador",
+            "html": "🍌 HTML y texto enriquecido",
+            "doc": "📦 Exportación de documentos",
+            "premium": "💎 Premium exclusivo para licencias originales"
+        },
+        "lab": {
+            "performanceMode": "Modo de rendimiento",
+            "ioEngine": "IO Engine",
+            "transactionLevel": "Transaction Level Nivel de transacción",
+            "szDisplayMode": "sz Column Display",
+            "sortBy": "Ordenar por",
+            "autoWatchChanges": "Auto Watch Changes",
+            "roamAsStartPage": "Roam como página de inicio",
+            "roamName": "Nombre de Roam",
+            "frameSizeMode": "Modo de tamaño de marco",
+            "cleanFreak": "Limpieza extrema",
+            "enlargeSmallImages": "Ampliar imágenes pequeñas",
+            "textSlideColorScheme": "Text Slide Color Scheme",
+            "textSlideFontSize": "Tamaño de fuente de diapositivas de texto",
+            "codelensLevel": "Nivel de CodeLens",
+            "takeOverCodelensStyle": "Estilo CodeLens personalizado",
+            "downloadSecurityLevel": "Nivel de seguridad de descarga",
+            "forceTextFlowScheme": "Force Text Flow Scheme",
+            "autoDownload": "Descarga automática",
+            "docExportImageResolution": "Resolución de imagen",
+            "docExportIncludeCipher": "Incluir cifrado",
+            "removeWatermark": "Remove Watermark Eliminar marca de agua"
+        },
+        "desc": {
+            "performanceMode": "☀️ Controla la calidad y velocidad de generación de miniaturas",
+            "ioEngine": "☀️ Motor de E/S (consulte la documentación del proyecto: IO_ENGINE_v16)",
+            "transactionLevel": "☀️ Nivel de envoltura de transacciones: determina la fiabilidad y velocidad de las operaciones",
+            "szDisplayMode": "🛸 Contenido mostrado en la columna sz",
+            "sortBy": "🛸 Método de ordenación de la lista de archivos",
+            "autoWatchChanges": "🛸 Activar: actualiza automáticamente la lista de archivos cuando programas externos modifican el directorio actual; Desactivar: cero impacto en el rendimiento",
+            "roamAsStartPage": "🛸 Usar qqq Roam como página de inicio",
+            "roamName": "🛸 Nombre personalizado de Roam",
+            "frameSizeMode": "👁️ Modo de tamaño de vista previa",
+            "cleanFreak": "👁️ Asegurar automáticamente líneas en blanco suficientes bajo cada código antes de guardar, para evitar superposiciones en la vista previa o el contenido",
+            "enlargeSmallImages": "👁️ Activar: ampliar las miniaturas menores que el marco para rellenarlo; Desactivar: mantener tamaño original y centrar",
+            "textSlideColorScheme": "👁️ Color de fondo de las diapositivas de texto",
+            "textSlideFontSize": "👁️ Tamaño de fuente para diapositivas de texto (1-218)",
+            "codelensLevel": "👁️ Nivel de visualización de CodeLens",
+            "takeOverCodelensStyle": "👁️ Adoptar estilo de CodeLens: rojo, tamaño 13",
+            "downloadSecurityLevel": "🍌 Si falla la descarga de videos, puede probar estrategias más permisivas aquí",
+            "forceTextFlowScheme": "🍌 Forzar corrección de caracteres ilegibles en HTML (marcar solo en casos persistentes; reduce la precisión del diseño)",
+            "autoDownload": "🍌 Descargar automáticamente al detectar videos",
+            "docExportImageResolution": "📦 Resolución de imagen utilizada al exportar",
+            "docExportIncludeCipher": "📦 Incluir cadena de contraseña de imagen al exportar",
+            "removeWatermark": "💎 Desmarcar para mostrar la marca de agua (si desea verla)"
+        },
+        "opt": {
+            "performanceMode": {
+                "extreme": "Extremo: solo conserva el primer fotograma, calidad 47",
+                "accelerated": "Accelerated: GIF/video máx. 2 segundos iniciales, 7 fps, calidad 47",
+                "optmum": "Optimum: GIF duración completa, video 4 segundos (inicio/medio/final), fps originales, calidad 71"
+            },
+            "ioEngine": {
+                "auto": "v16 auto — combinación ideal",
+                "excludePython": "Exclude Python — ejecución silenciosa, ahorra ~50 MB de RAM"
+            },
+            "transactionLevel": {
+                "full": "Envoltura completa: todas las operaciones lentas se envuelven en transacciones — barra de progreso, soporte para deshacer, reversión ante errores",
+                "half": "Media envoltura: operaciones ligeras usan pegado simple — respuesta más rápida, sin barra de progreso ni reversión"
+            },
+            "szDisplayMode": {
+                "nothing": "No mostrar",
+                "size": "Mostrar tamaño del archivo",
+                "ctime": "Mostrar fecha de creación",
+                "mtime": "Mostrar fecha de modificación"
+            },
+            "sortBy": {
+                "name": "Ordenar por nombre (carpetas primero)",
+                "size": "Ordenar por tamaño (carpetas primero, archivos en orden descendente)",
+                "ctime": "Ordenar por fecha de creación (descendente)",
+                "mtime": "Ordenar por fecha de modificación (descendente)"
+            },
+            "frameSizeMode": {
+                "large": "Marco grande: 512×288",
+                "small": "Marco pequeño: 256×144",
+                "fix": "Adaptativo: selección automática según el tamaño de la imagen"
+            },
+            "cleanFreak": {
+                "never": "No organizar automáticamente (solo manualmente)",
+                "add": "Solo añadir: asegura líneas en blanco suficientes, sin eliminar las excesivas",
+                "addRemove": "Organización estricta: líneas vacías justas y necesarias — elimina las sobrantes, añade las faltantes"
+            },
+            "textSlideColorScheme": {
+                "light": "Claro",
+                "dark": "Oscuro"
+            },
+            "codelensLevel": {
+                "none": "Ninguno",
+                "open": "Solo archivos abiertos",
+                "full": "Completo: carpetas/renombrar/copiar/línea de información/qode"
+            },
+            "downloadSecurityLevel": {
+                "l0": "0: Más permisivo — los 11 interruptores de seguridad desactivados",
+                "l1": "1: Equilibrado — 4 interruptores activados, 7 desactivados",
+                "l2": "2: Máxima seguridad — los 11 interruptores de seguridad activados"
+            },
+            "docExportImageResolution": {
+                "original": "Resolución original: precisión completa",
+                "frame": "Resolución del marco: archivo más pequeño, miniaturas perfectamente ajustadas"
+            }
+        }
+    },
     "workbench": {
         "savorTip": "Música local: {v0} veces, total {v1}\nRadio: {v2} veces, total {v3}\nPromedio diario de escucha: {v4}",
         "durHm": "{0} horas {1} minutos",
@@ -1689,13 +1826,15 @@
         "exportDocTip": "Exporta el documento actual como archivo Word: las imágenes y vídeos se convierten en imágenes incrustadas y se genera una lista para otros adjuntos. Se guarda por defecto junto al documento; el cuadro de diálogo de guardado solo aparece si ya existe un archivo con el mismo nombre.",
         "exportZipTip": "Empaqueta el documento actual y todos los archivos y directorios referenciados en un ZIP (conservando la estructura de directorios y con máxima compresión); se guarda por defecto junto al documento, mostrando el diálogo de guardado solo si ya existe un archivo con el mismo nombre.",
         "cloudSyncTip": "Sincronización en la nube: ↑ Subir = Combina con la nube antes de subir (ningún dato se pierde en ninguno de los lados); ↓ Descargar = Combina los datos de la nube con los locales. Incluye configuración del editor, preferencias de cada carpeta e historial del portapapeles.",
-        "playerTip": "Reproductor: escucha música o ve vídeos mientras programas (la lista de reproducción persiste entre reinicios); en Roam, selecciona medios, haz clic derecho y elige «Añadir a la lista de reproducción», o expándela desde la capa flotante.",
+        "playerTip": "Reproductor: escucha música o ve vídeos mientras codificas (la lista de reproducción se recuerda entre reinicios); en Roam, haz clic derecho en un medio seleccionado y elige «Añadir a la lista de reproducción», o expándelo desde la capa flotante. Minimizar = guardar en esta ranura para control remoto.",
         "playerWinTip": "Ventana de reproductor flotante independiente: ventana siempre visible, accesible incluso al cambiar a otras aplicaciones (↗)",
         "playerCardTip": "Reproductor en ventana: tarjeta de reproductor flotante dentro de la ventana de qqqide — sigue a esta ventana (⧈)",
         "playerNeedRestart": "El reproductor flotante requiere reiniciar la instancia para estar disponible",
         "videoUrlTip": "Pendiente de pegar: Introduce la URL del vídeo para descargarlo automáticamente en la carpeta del documento e insertarlo en un marco.",
         "pasteTip": "Pendiente de pegar: Pega el contenido del portapapeles en el documento con un solo clic (actualmente puedes lograr lo mismo con Ctrl+V).",
-        "pureTip": "Pendiente: escanea las referencias del documento para limpiar archivos huérfanos que ya no están siendo utilizados."
+        "pureTip": "Pendiente: escanea las referencias del documento para limpiar archivos huérfanos que ya no están siendo utilizados.",
+        "settingsTip": "Abrir el centro de configuración de qqq: sincronización en la nube + todas las preferencias (rendimiento/marco/observador/exportación…)",
+        "settingsNeedRestart": "El centro de configuración no está listo (es necesario actualizar la ventana)"
     },
     "audio": {
         "sfx": {

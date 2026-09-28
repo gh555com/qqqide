@@ -21,21 +21,64 @@ function _favFq(key, fb, params) {
 function _favKey(questId, floorNum) { return String(questId) + '|' + String(floorNum); }
 function _favSleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+// ── 星标目标解析（★ 活的）──
+// 铁律级时序事实：_initClockBlock 恒在 aiEl 挂进 .card 之前执行
+//   （实时建楼 startBuildingFloor / 历史恢复 _buildFloorDOM —— 两路径皆先建钟后挂载），
+//   彼时 closest('.card') 为 null → 构建瞬间写不进 data-qid/data-fn（曾致全量星标永远 ☆、
+//   重载也不亮色的断链）。故一切状态读取必须『挂载后活解析』+ 未解析重试链，
+//   禁止只依赖构建瞬间写入的祖先属性。
+function _favResolve(btn) {
+    var qid = (btn.getAttribute && btn.getAttribute('data-qid')) || '';
+    var fn = parseInt((btn.getAttribute && btn.getAttribute('data-fn')) || '', 10) || 0;
+    if (qid && fn) return { qid: qid, fn: fn };
+    var block = btn.closest ? btn.closest('.msg-ai-clock') : null;
+    var aiDiv = block ? block.parentNode : null;
+    var card = (aiDiv && aiDiv.closest) ? aiDiv.closest('.card') : null;
+    if (!qid) qid = card ? (card.getAttribute('data-quest') || '') : '';
+    if (!fn) fn = (aiDiv && parseInt(aiDiv._floor, 10)) || 0;
+    if (qid && fn) {
+        try { btn.setAttribute('data-qid', qid); btn.setAttribute('data-fn', String(fn)); } catch (_) { }
+    }
+    return { qid: qid, fn: fn };
+}
 // ── 星标外观 ──
 function _favApplyStar(btn) {
-    if (!btn) return;
-    var qid = btn.getAttribute('data-qid') || '';
-    var fn = btn.getAttribute('data-fn') || '';
-    var on = !!(qid && fn && _favState[_favKey(qid, fn)]);
+    if (!btn) return false;
+    var t = _favResolve(btn);
+    var on = !!(t.qid && t.fn && _favState[_favKey(t.qid, t.fn)]);
     if (on) btn.classList.add('on'); else btn.classList.remove('on');
     btn.textContent = on ? '\u2605' : '\u2606';
     btn.title = on ? _favFq('fav.starTipOn', '已收藏（点击编辑）') : _favFq('fav.starTip', '收藏此楼层');
+    return !!(t.qid && t.fn);
 }
 function _favRefreshAll() {
+    var unresolved = 0;
     try {
         var btns = document.querySelectorAll('.msg-ai-clock .clock-fav');
-        for (var i = 0; i < btns.length; i++) _favApplyStar(btns[i]);
+        for (var i = 0; i < btns.length; i++) {
+            var b = btns[i];
+            // 自愈：脚本晚载/星标未接线（hook 缺失窗口）→ 补接线
+            if (!b._favWired) {
+                var blk = b.closest ? b.closest('.msg-ai-clock') : null;
+                var ai = blk ? blk.parentNode : null;
+                if (ai && typeof window._favHookStar === 'function') { try { window._favHookStar(ai); } catch (_) { } }
+            }
+            if (!_favApplyStar(b)) unresolved++;
+        }
     } catch (_) { }
+    return unresolved;
+}
+// ── 挂载后重刷链（与 DOM 挂载赛跑；自终止）──
+var _favRetryTimer = null, _favRetryLeft = 0;
+function _favScheduleRefresh(retries) {
+    if (typeof retries === 'number' && retries > _favRetryLeft) _favRetryLeft = retries;
+    if (_favRetryTimer) return;
+    _favRetryTimer = setTimeout(function () {
+        _favRetryTimer = null;
+        var unresolved = _favRefreshAll();
+        if (unresolved > 0 && _favRetryLeft > 0) { _favRetryLeft--; _favScheduleRefresh(); }
+        else _favRetryLeft = 0;
+    }, 60);
 }
 
 // ── 星标注入钩（panel-clock.js _initClockBlock 调用；建楼/历史恢复两路径同此一处汇入）──
@@ -58,7 +101,9 @@ window._favHookStar = function (aiDiv) {
                 _favOnStarClick(aiDiv);
             });
         }
-        _favApplyStar(btn);
+        var resolved = _favApplyStar(btn);
+        // ★ 构建瞬未挂载（两路径皆如此）→ 挂载后延迟重刷（自终止重试链）
+        _favScheduleRefresh(resolved ? 0 : 10);
     } catch (_) { }
 };
 
@@ -123,7 +168,8 @@ function _favOnState(items) {
         }
     }
     _favState = next;
-    _favRefreshAll();
+    var unresolved = _favRefreshAll();
+    if (unresolved > 0) _favScheduleRefresh(10);
 }
 
 // ── 收藏跳转（主窗口 → 面板；点了必达）──
@@ -253,7 +299,7 @@ window.addEventListener('message', function (e) {
     if (!d || !d.type) return;
     if (d.type === 'qqq-fav-state') { _favOnState(d.items); return; }
     if (d.type === 'qqq-fav-jump') { _favJump(String(d.questId || ''), parseInt(d.floorNum, 10) || 0); return; }
-    if (d.type === 'qqq-lang-change') { _favRefreshAll(); return; }
+    if (d.type === 'qqq-lang-change') { if (_favRefreshAll() > 0) _favScheduleRefresh(4); return; }
 });
 
 // 启动主动拉一次状态（主窗口先加载广播在前时，面板后挂载也能收敛）

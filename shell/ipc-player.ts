@@ -248,6 +248,11 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
                     };
                     const gv = _clampCardGeom(c.video); if (gv) { next.video = gv; } else if (prev.video) { next.video = prev.video; }
                     const ga = _clampCardGeom(c.audio); if (ga) { next.audio = ga; } else if (prev.audio) { next.audio = prev.audio; }
+                    // ★ 窗内卡收纳（2026-09-28 q319 v7）：stow = 卡隐/播放续，控制入口 = qqq 工作台 Player 槽（旧 mini 字段迁移后弃用）
+                    if (typeof c.stow === 'boolean') { next.stow = c.stow; }
+                    else if (typeof c.mini === 'boolean') { next.stow = c.mini; }
+                    else if (typeof prev.stow === 'boolean') { next.stow = prev.stow; }
+                    else if (typeof prev.mini === 'boolean') { next.stow = prev.mini; }
                     st.card = next;
                 }
                 if (typeof patch.pinned === 'boolean') {

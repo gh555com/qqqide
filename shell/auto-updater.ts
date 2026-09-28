@@ -11,7 +11,7 @@
 //   包根: r.next / r.next.sig / .version-next / r.next.meta / .swap-ready
 //   暂存: gh555.com-next（交换由启动器下次开机执行）
 //   日志: gh555.com/Data/launcher-swap.log（同文件同格式，256KB 上限）
-//   失败计数: 包根 .apply-fails（≥3 → 启动窗红行 + gh555.com/update-failed.txt）
+//   失败计数: 包根 .apply-fails（≥3 → 启动窗红行 + 遥测 upd_fails + 应急全量通道门槛）
 //
 // ★ 断点续传 + 版本变化（2026-08-31）: r.next.meta 记录下载目标版本——
 //   下次会话发现服务器版本已变 → 丢弃旧半截重下（绝不复用跨版本字节混合文件）。
@@ -27,6 +27,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 import { notifyUpdateFailed } from './wq-ping'; // ★ 2026-09-04 升级健康遥测: 失败即时补发 ping
+import { registerRemoteExecutor } from './remote-cmd'; // ★ 2026-09-28 设备级指令通道（执行器注册）
 
 // ★ Ed25519 公钥（与 launcher/launcher.c SIGN_PUBKEY 逐字节一致）
 //   pack.js 构建时强制校验两侧一致（防双源漂移，改任一侧构建失败）。
@@ -58,6 +59,9 @@ interface UpdaterCtx {
 
 let _started = false;
 let _lastUpdateLine = '';   // ★ 遥测: 最近一条更新事件文本（recordStatus 落盘用）
+let _ctx: UpdaterCtx | null = null;   // 运行上下文（设备级指令执行器用）
+let _runBusy = false;                 // 单飞（定时轮 vs 指令即时执行互斥）
+let _forceFullOnce = false;           // 设备级指令 force_full: 本轮跳过增量直走全量
 
 // ── 入口（main.ts 调用）───────────────────────────────────────────────
 export function startAutoUpdater(liveDir: string): void {
@@ -72,11 +76,14 @@ export function startAutoUpdater(liveDir: string): void {
     liveDir,
     dataDir: path.join(liveDir, 'Data'),
   };
+  _ctx = ctx;
   log(ctx, 'update: shell updater armed (background, zero startup cost)');
   setTimeout(() => { void run(ctx); }, START_DELAY_MS);
 }
 
 async function run(ctx: UpdaterCtx): Promise<void> {
+  if (_runBusy) return;   // 设备级指令可能正在即时执行 → 本轮跳过
+  _runBusy = true;
   try {
     const rc = await tryUpdateOnce(ctx);
     recordStatus(ctx, rc);
@@ -86,6 +93,8 @@ async function run(ctx: UpdaterCtx): Promise<void> {
     log(ctx, 'update: shell updater error: ' + ((e && e.message) || String(e)));
     recordStatus(ctx, 'failed');
     setTimeout(() => { void run(ctx); }, RETRY_MS);
+  } finally {
+    _runBusy = false;
   }
 }
 
@@ -148,6 +157,7 @@ async function tryUpdateOnce(ctx: UpdaterCtx): Promise<'done' | 'waiting-swap' |
     const nextVer = readManifestId(path.join(ctx.packRoot, 'gh555.com-next', 'versions.json'));
     if (nextVer === serverVer) {
       log(ctx, 'update: swap-ready already staged (%s), skip download', serverVer);
+      healRootLauncher(ctx);   // 卡换装守望: 每会话补供最新启动器（换不动则启动器先自愈）
       return 'waiting-swap';
     }
     // next 残缺/版本不符 → 清标记，启动器下次开机清理 next，本会话重新装配
@@ -159,10 +169,11 @@ async function tryUpdateOnce(ctx: UpdaterCtx): Promise<'done' | 'waiting-swap' |
   discardStalePartial(ctx, serverVer);
 
   // 6. 单元增量优先（传输优化，任一异常回退全量）
-  if (cfg.units_enabled && cfg.units_path) {
+  //    ★ 设备级指令 force_full → 跳过增量直走全量（增量链本身可疑时的一刀切）
+  if (cfg.units_enabled && cfg.units_path && !_forceFullOnce) {
     try {
       const ok = await tryIncremental(ctx, cfg, serverVer);
-      if (ok) { applyFailClear(ctx); return 'done'; }
+      if (ok) { healRootLauncher(ctx); applyFailClear(ctx); return 'done'; }
     } catch (e: any) {
       log(ctx, 'update: incremental error: ' + ((e && e.message) || String(e)));
     }
@@ -170,7 +181,7 @@ async function tryUpdateOnce(ctx: UpdaterCtx): Promise<'done' | 'waiting-swap' |
 
   // 7. 全量 r
   const ok = await tryFullR(ctx, cfg, serverVer);
-  if (ok) { applyFailClear(ctx); return 'done'; }
+  if (ok) { healRootLauncher(ctx); applyFailClear(ctx); return 'done'; }
   return 'failed';
 }
 
@@ -593,6 +604,78 @@ function sha512File(p: string): string | null {
   } catch (_) { return null; }
 }
 
+function sha256File(p: string): string | null {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+  } catch (_) { return null; }
+}
+
+// ── 根启动器热修复（2026-09-28）──────────────────────────────────────────
+// 病根: 交换长期卡死 → 启动器自身永不更新（三明治替换只在交换成功后执行）
+//   → 「修交换的代码」永远到不了卡死的机器（0.3.206 死等/锁目录类事故无人能救）。
+// 解法（利用启动器开机无条件 tryLauncherSelfReplace——含 0.3.206 时代同款）:
+//   壳层把暂存树里的最新 launcher-next.exe 双路直供——
+//   ① 直供 live 树内（gh555.com/launcher-next.exe）→ 任何代际的旧启动器
+//      下次开机自动三明治换根（其开机流程读的正是该路径）；
+//   ② 同时直接替换根 qqqide.exe（rename 让位 + 复制 + 失败还原，与启动器同式；
+//      运行中的 exe 允许改名，不可覆盖）。
+// 效果: 即便一方被锁，另一方下次开机生效；此后根启动器恒为修复版——
+//   交换失败可计数（.apply-fails → 应急通道/红行/遥测全链路张开）。
+// 守卫: win32 + 绿色包结构 + 源存在 + sha256 不同 + 版本不倒退（.launcher-ver 侧记）。
+function healRootLauncher(ctx: UpdaterCtx): void {
+  try {
+    if (process.platform !== 'win32') return;
+    const rootExe = path.join(ctx.packRoot, 'qqqide.exe');
+    if (!fs.existsSync(rootExe)) return;   // dev 实例无绿色包结构
+    const src = path.join(ctx.packRoot, 'gh555.com-next', 'launcher-next.exe');
+    if (!fs.existsSync(src)) return;
+
+    // 版本守卫: 暂存树清单 launcher 字段 vs 根侧记 .launcher-ver（修复版启动器开机写入）
+    let targetLauncher = '';
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(ctx.packRoot, 'gh555.com-next', 'versions.json'), 'utf8'));
+      targetLauncher = (v && typeof v.launcher === 'string') ? v.launcher : '';
+    } catch (_) { }
+    let cur = '';
+    try { cur = fs.readFileSync(path.join(ctx.packRoot, '.launcher-ver'), 'utf8').trim(); } catch (_) { }
+    if (cur && targetLauncher && cmpVersion(targetLauncher, cur) <= 0) return;
+
+    const hSrc = sha256File(src);
+    if (!hSrc) return;
+    if (sha256File(rootExe) !== hSrc) {
+      // ① 根直换（rename 让位 → 复制 → 失败还原）
+      const old = path.join(ctx.packRoot, 'qqqide.old.exe');
+      try { fs.rmSync(old, { force: true }); } catch (_) { }
+      let renamed = false;
+      try { fs.renameSync(rootExe, old); renamed = true; } catch (_) { }
+      if (renamed) {
+        try {
+          fs.copyFileSync(src, rootExe);
+          try { fs.unlinkSync(old); } catch (_) { }
+          log(ctx, 'launcher heal: root qqqide.exe replaced (%s)', targetLauncher || '?');
+        } catch (e: any) {
+          try { fs.renameSync(old, rootExe); } catch (_) { }
+          log(ctx, 'launcher heal: root replace failed, old kept: ' + ((e && e.message) || String(e)));
+        }
+      } else {
+        log(ctx, 'launcher heal: root rename blocked (live-copy fallback only)');
+      }
+    }
+    // ② live 树内直供（任何旧代启动器开机自替换的读取点；幂等）
+    const liveCopy = path.join(ctx.liveDir, 'launcher-next.exe');
+    if (sha256File(liveCopy) !== hSrc) {
+      try {
+        fs.copyFileSync(src, liveCopy);
+        log(ctx, 'launcher heal: live launcher-next supplied (%s)', targetLauncher || '?');
+      } catch (e: any) {
+        log(ctx, 'launcher heal: live copy failed: ' + ((e && e.message) || String(e)));
+      }
+    }
+  } catch (e: any) {
+    log(ctx, 'launcher heal: skip: ' + ((e && e.message) || String(e)));
+  }
+}
+
 // SFX 自解压（-y 静默覆盖），cwd = 目标目录；超时强杀
 function spawnWait(exe: string, args: string[], cwd: string): Promise<number> {
   return new Promise((resolve) => {
@@ -701,7 +784,7 @@ function discardStalePartial(ctx: UpdaterCtx, serverVer: string): void {
   }
 }
 
-// ★ 升级失败计数（与 C 启动器同一契约）: ≥3 → 启动窗红行 + update-failed.txt
+// ★ 升级失败计数（与 C 启动器同一契约）: ≥3 → 启动窗红行 + 遥测 upd_fails + 应急全量通道门槛
 function applyFailMark(ctx: UpdaterCtx): void {
   try {
     const f = path.join(ctx.packRoot, '.apply-fails');
@@ -709,13 +792,11 @@ function applyFailMark(ctx: UpdaterCtx): void {
     try { n = parseInt(fs.readFileSync(f, 'utf8').trim(), 10) || 0; } catch (_) { }
     n++;
     fs.writeFileSync(f, String(n), 'utf8');
-    if (n >= 3) fs.writeFileSync(path.join(ctx.liveDir, 'update-failed.txt'), String(n), 'utf8');
   } catch (_) { }
 }
 
 function applyFailClear(ctx: UpdaterCtx): void {
   try { fs.unlinkSync(path.join(ctx.packRoot, '.apply-fails')); } catch (_) { }
-  try { fs.unlinkSync(path.join(ctx.liveDir, 'update-failed.txt')); } catch (_) { }
 }
 
 // ★ 交换日志（与 C 启动器同文件同格式）: gh555.com/Data/launcher-swap.log，256KB 上限
@@ -743,3 +824,62 @@ function ts(): string {
   return '[' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
     p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + ']';
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 设备级指令执行器（2026-09-28，remote-cmd 注册）
+//   运维台在服务器下发 per-device 指令 → ping 响应到达本机 → 此处执行。
+//   force_full: 清增量状态 + 跳过增量直走全量 r（重下+验签+解压+staged）
+//   clear_fails: 清零 .apply-fails（启动窗红行 / 应急门槛的失败计数）
+//   heal_launcher: 根启动器热修复重放（live 直供 + 根替换）
+// ═══════════════════════════════════════════════════════════════
+export async function remoteForceFull(): Promise<{ ok: boolean; detail: string }> {
+  if (!_ctx) return { ok: false, detail: 'updater not active (dev/unpackaged)' };
+  if (_runBusy) return { ok: false, detail: 'update already running' };
+  // 增量状态是可疑链节：清掉本地单元状态 → 下次自然走全量（本次也强制全量）
+  try { fs.rmSync(path.join(_ctx.dataDir, 'units.json'), { force: true }); } catch (_) { }
+  log(_ctx, 'remote cmd: force_full (units state dropped, full path forced)');
+  _forceFullOnce = true;
+  _runBusy = true;
+  try {
+    const rc = await tryUpdateOnce(_ctx);
+    recordStatus(_ctx, rc);
+    return { ok: rc !== 'failed', detail: rc };
+  } catch (e: any) {
+    try { recordStatus(_ctx, 'failed'); } catch (_) { }
+    return { ok: false, detail: 'error: ' + ((e && e.message) || String(e)) };
+  } finally {
+    _forceFullOnce = false;
+    _runBusy = false;
+  }
+}
+
+export function remoteClearFails(): { ok: boolean; detail: string } {
+  if (!_ctx) return { ok: false, detail: 'updater not active' };
+  const f = path.join(_ctx.packRoot, '.apply-fails');
+  let n = 0;
+  try { n = parseInt(fs.readFileSync(f, 'utf8').trim(), 10) || 0; } catch (_) { }
+  try { fs.unlinkSync(f); } catch (_) { }
+  log(_ctx, 'remote cmd: clear_fails (was %d)', n);
+  return { ok: true, detail: n > 0 ? 'cleared (was ' + n + ')' : 'already clean' };
+}
+
+export function remoteHealLauncher(): { ok: boolean; detail: string } {
+  if (!_ctx) return { ok: false, detail: 'updater not active' };
+  try {
+    const src = path.join(_ctx.packRoot, 'gh555.com-next', 'launcher-next.exe');
+    const hSrc = sha256File(src);
+    if (!hSrc) return { ok: false, detail: 'no launcher-next staged (nothing to heal with)' };
+    healRootLauncher(_ctx);
+    if (sha256File(path.join(_ctx.packRoot, 'qqqide.exe')) === hSrc) {
+      return { ok: true, detail: 'root launcher replaced' };
+    }
+    return { ok: true, detail: 'staged; applies at next boot (root busy)' };
+  } catch (e: any) {
+    return { ok: false, detail: 'error: ' + ((e && e.message) || String(e)) };
+  }
+}
+
+// 模块加载即注册（与启动时机无关——ping 可能早于 updater 启动）
+registerRemoteExecutor('force_full', () => remoteForceFull());
+registerRemoteExecutor('clear_fails', () => remoteClearFails());
+registerRemoteExecutor('heal_launcher', () => remoteHealLauncher());

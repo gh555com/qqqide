@@ -42,9 +42,11 @@
   var WM_SMALL = 'assets/frames/as.png';
   var TEXT_FONT_DEFAULT = 14;
 
-  var _removeWatermark = false;
-  function setRemoveWatermark(v) { _removeWatermark = !!v; }
-  function shouldRemoveWatermark() { return _removeWatermark; }
+  // ★ 水印开关 = 偏好驱动（2026-09-28 设置本地化）：removeWatermark 为真才去水印；
+  //   正版门由 qqqPrefs 收口（未激活 get 恒 free=false = 水印照显）
+  function shouldRemoveWatermark() {
+    try { return !!(window.qqqPrefs && window.qqqPrefs.get && window.qqqPrefs.get('removeWatermark')); } catch (e) { return false; }
+  }
 
   // ═══ 用户偏好（core/qqq-prefs.js；未加载时按老项目默认模板）═══
   function _pref(key) {
@@ -67,7 +69,7 @@
   function variantKey() {
     return [
       _perfMode(), _frameSizeMode(), _enlarge() ? 1 : 0,
-      _textScheme(), _textFontSize(), _removeWatermark ? 1 : 0,
+      _textScheme(), _textFontSize(), shouldRemoveWatermark() ? 1 : 0,
     ].join('|');
   }
 
@@ -218,7 +220,7 @@
     box.appendChild(pbar);
 
     // 水印（老：仅精确命中大/小框尺寸时贴对应水印）
-    if (!_removeWatermark && ((pw === LARGE_W && ph === LARGE_H) || (pw === SMALL_W && ph === SMALL_H))) {
+    if (!shouldRemoveWatermark() && ((pw === LARGE_W && ph === LARGE_H) || (pw === SMALL_W && ph === SMALL_H))) {
       var wm = document.createElement('img');
       wm.className = 'qqq-frame-wm';
       wm.draggable = false;
@@ -625,7 +627,6 @@
     isTextExt: function (ext) { return !!TEXT_EXTS[String(ext || '').toLowerCase()]; },
     looksLikeText: _looksLikeText,
     variantKey: variantKey,
-    setRemoveWatermark: setRemoveWatermark,
     shouldRemoveWatermark: shouldRemoveWatermark,
     LARGE_W: LARGE_W,
     LARGE_H: LARGE_H,

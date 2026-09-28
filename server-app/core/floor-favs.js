@@ -25,6 +25,7 @@
   var _loadingRoot = null; // 单飞所属主文件夹
   var _panelOv = null;     // 收藏夹面板 overlay
   var _namerOv = null;     // 命名框 overlay
+  var _filterLevel = 0;    // 收藏夹重要级别筛选（0=全部）
 
   function _i(key, fb, params) {
     try { return window._i ? window._i(key, fb, params) : fb; } catch (_) { return fb; }
@@ -51,6 +52,12 @@
   function _newId() {
     return 'ff' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
+  function _ymd(ts) {
+    var d = new Date(ts || Date.now());
+    if (isNaN(d.getTime())) d = new Date();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
   function _autoName(question, questTitle, floorNum) {
     var q = String(question || '').replace(/\s+/g, ' ').trim();
     if (q) return q.length > 60 ? q.slice(0, 60) + '…' : q;
@@ -63,11 +70,14 @@
     var floorNum = parseInt(raw.floorNum, 10) || 0;
     if (!/^q\d+$/.test(questId) || floorNum <= 0) return null;
     var now = Date.now();
+    var lv = parseInt(raw.level, 10);
+    if (!(lv >= 1 && lv <= 3)) lv = 2;   // 重要级别（1-3；缺省/脏数据 → 2）
     return {
       id: String(raw.id || _newId()),
       questId: questId,
       floorNum: floorNum,
       name: String(raw.name || ''),
+      level: lv,
       question: String(raw.question || ''),
       questTitle: String(raw.questTitle || ''),
       createdAt: parseInt(raw.createdAt, 10) || now,
@@ -215,11 +225,44 @@
     var box = document.createElement('div');
     box.className = 'qqq-fav-modal';
 
+    // ★ 重要级别（1-3；默认两颗、可后改）：dialog 内星星点选，随条目落盘
+    var lv = existing ? (existing.level || 2) : 2;
+    var head = document.createElement('div');
+    head.className = 'qqq-fav-namer-head';
     var title = document.createElement('div');
     title.className = 'qqq-fav-modal-title';
+    var stars = document.createElement('div');
+    stars.className = 'qqq-fav-namer-stars';
+    stars.title = _i('fav.level', '重要级别');
+    var starEls = [];
+    for (var _si = 1; _si <= 3; _si++) {
+      (function (idx) {
+        var sb = document.createElement('button');
+        sb.type = 'button';
+        sb.tabIndex = -1;
+        sb.className = 'qqq-fav-star';
+        sb.addEventListener('mousedown', function (e) { e.preventDefault(); });   // 防焦点转移（点星后可继续打字直接回车）
+        sb.addEventListener('click', function (e) { e.stopPropagation(); lv = idx; _paint(); });
+        stars.appendChild(sb);
+        starEls.push(sb);
+      })(_si);
+    }
+    function _paint() {
+      for (var i = 0; i < starEls.length; i++) {
+        var on = (i + 1) <= lv;
+        starEls[i].textContent = on ? '\u2605' : '\u2606';
+        if (on) starEls[i].classList.add('on'); else starEls[i].classList.remove('on');
+      }
+    }
+    _paint();
+    head.appendChild(title);
+    head.appendChild(stars);
     var sub = document.createElement('div');
     sub.className = 'qqq-fav-modal-sub';
-    sub.textContent = (meta.questTitle || _liveTitle({ questId: meta.questId, questTitle: '' }) || meta.questId) + ' · f' + meta.floorNum;
+    // ★ 恒显示不可变编号 q{n} · f{m}（任务名可改可长——正文不留标题防溢出；悬停看全文）
+    sub.textContent = meta.questId + ' \u00B7 f' + meta.floorNum;
+    var _subTitle = _liveTitle({ questId: meta.questId, questTitle: meta.questTitle || '' });
+    if (_subTitle) sub.title = _i('fav.questTip', 'quest：{0}', { 0: _subTitle });
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'qqq-fav-input';
@@ -256,6 +299,7 @@
       var item = _find(meta.questId, meta.floorNum);
       if (item) {
         item.name = name;
+        item.level = lv;
         if (meta.question) item.question = meta.question;
         if (meta.questTitle) item.questTitle = meta.questTitle;
         item.updatedAt = now;
@@ -265,6 +309,7 @@
           questId: meta.questId,
           floorNum: meta.floorNum,
           name: name,
+          level: lv,
           question: meta.question || '',
           questTitle: meta.questTitle || '',
           createdAt: now,
@@ -300,12 +345,19 @@
     ov.addEventListener('mousedown', function (e) { if (e.target === ov) _close(); });
     box.addEventListener('mousedown', function (e) { e.stopPropagation(); });
 
+    var foot = document.createElement('div');
+    foot.className = 'qqq-fav-namer-foot';
+    var dateEl = document.createElement('span');
+    dateEl.className = 'qqq-fav-namer-date';
+    dateEl.textContent = _ymd(existing ? (existing.createdAt || Date.now()) : Date.now());
+    foot.appendChild(dateEl);
+    foot.appendChild(actions);
     title.textContent = _i(existing ? 'fav.namerTitleEdit' : 'fav.namerTitle', existing ? '编辑收藏' : '收藏此楼层');
     input.placeholder = _i('fav.namePh', '收藏名称（直接回车用自动名）');
-    box.appendChild(title);
+    box.appendChild(head);
     box.appendChild(sub);
     box.appendChild(input);
-    box.appendChild(actions);
+    box.appendChild(foot);
     ov.appendChild(box);
     document.body.appendChild(ov);
     _namerOv = ov;
@@ -351,6 +403,20 @@
       search.type = 'text';
       search.className = 'qqq-fav-search';
       search.maxLength = 200;
+      // ★ 重要级别筛选 chips：全部 / ★ / ★★ / ★★★（单选取值 0-3）
+      var filterBar = document.createElement('div');
+      filterBar.className = 'qqq-fav-filter';
+      var chips = [];
+      for (var _fi = 0; _fi < 4; _fi++) {
+        (function (val) {
+          var ch = document.createElement('button');
+          ch.type = 'button';
+          ch.className = 'qqq-fav-chip';
+          ch.addEventListener('click', function () { _filterLevel = val; _renderPanel(_panelQuery()); });
+          filterBar.appendChild(ch);
+          chips.push(ch);
+        })(_fi);
+      }
       var listWrap = document.createElement('div');
       listWrap.className = 'qqq-fav-list';
       var foot = document.createElement('div');
@@ -358,12 +424,21 @@
       foot.style.display = 'none';
       panel.appendChild(head);
       panel.appendChild(search);
+      panel.appendChild(filterBar);
       panel.appendChild(listWrap);
       panel.appendChild(foot);
       ov.appendChild(panel);
+      // 行悬停即时提示框（quest 名全文；随面板销毁，随面板之外为零残留）
+      var tip = document.createElement('div');
+      tip.className = 'qqq-fav-tip';
+      tip.style.display = 'none';
+      ov.appendChild(tip);
       document.body.appendChild(ov);
       _panelOv = ov;
+      _filterLevel = 0;             // 每次打开回到「全部」
       ov._searchTimer = null;
+      ov._favChips = chips;
+      ov._favTip = tip;
       panel.addEventListener('mousedown', function (e) { e.stopPropagation(); });
       ov.addEventListener('mousedown', function (e) { if (e.target === ov) _closePanel(); });
       document.addEventListener('keydown', _panelKey, true);
@@ -372,6 +447,8 @@
         clearTimeout(ov._searchTimer);
         ov._searchTimer = setTimeout(function () { _renderPanel(search.value); }, 120);
       });
+      listWrap.addEventListener('scroll', _hideRowTip, { passive: true });
+      listWrap.addEventListener('mouseleave', _hideRowTip);
       try { window.addEventListener('qqq-lang-change', _panelLangRefresh); } catch (_) { }
       _renderPanel('');
       setTimeout(function () { try { search.focus(); } catch (_) { } }, 0);
@@ -384,10 +461,8 @@
     }
   }
   function _metaText(item) {
-    var d = new Date(item.createdAt || Date.now());
-    var ds = d.toLocaleString();
-    var t = _liveTitle(item);
-    return (t || item.questId) + ' · f' + item.floorNum + ' · ' + ds;
+    // ★ 不可变编号 + 收藏日期（任务名可改可长，不进此处——悬停看全文）
+    return item.questId + ' \u00B7 f' + item.floorNum + ' \u00B7 ' + _ymd(item.createdAt);
   }
   function _renderPanel(query) {
     if (!_panelOv) return;
@@ -400,20 +475,29 @@
     var foot = panel.querySelector('.qqq-fav-more');
     if (hTitle) hTitle.textContent = '★ ' + _i('fav.title', '收藏夹');
     if (search && search.placeholder !== undefined) search.placeholder = _i('fav.searchPh', '搜索收藏（名称 / 任务 / 问题）');
+    _hideRowTip();
+    var chips = _panelOv._favChips || [];
+    var _chipLabels = [_i('fav.filterAll', '全部'), '\u2605', '\u2605\u2605', '\u2605\u2605\u2605'];
+    for (var ci = 0; ci < chips.length; ci++) {
+      chips[ci].textContent = _chipLabels[ci] || '';
+      if (ci === _filterLevel) chips[ci].classList.add('on'); else chips[ci].classList.remove('on');
+    }
     var items = (_list || []).slice().sort(function (a, b) {
-      return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+      // ★ 排序 = 收藏时间倒序（创建即身份）——改名/调级不挪行，检索时列表稳定
+      return (b.createdAt || 0) - (a.createdAt || 0);
     });
-    if (hCount) hCount.textContent = _i('fav.count', '共 {0} 条', { 0: items.length });
     var q = String(query || '').trim().toLowerCase();
     var rows = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
+      if (_filterLevel && (it.level || 2) !== _filterLevel) continue;
       if (q) {
         var hay = (it.name + '\n' + it.question + '\n' + it.questTitle + '\n' + it.questId + '\nf' + it.floorNum).toLowerCase();
         if (hay.indexOf(q) < 0) continue;
       }
       rows.push(it);
     }
+    if (hCount) hCount.textContent = _i('fav.count', '共 {0} 条', { 0: rows.length });
     listWrap.textContent = '';
     if (!rows.length) {
       var empty = document.createElement('div');
@@ -436,6 +520,44 @@
       }
     }
   }
+  // ★ 行悬停即时提示框（quest 名原文全文「一字不漏」；先显后量再定位，四边距恒 ≥8px）
+  function _showRowTip(row, item) {
+    if (!_panelOv || !_panelOv._favTip) return;
+    var tip = _panelOv._favTip;
+    var t = _liveTitle(item) || '';
+    tip.textContent = t ? _i('fav.questTip', 'quest：{0}', { 0: t }) : item.questId;
+    tip.style.display = 'block';
+    var r = row.getBoundingClientRect();
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var x = Math.min(Math.max(8, r.left), Math.max(8, vw - w - 8));
+    var y = r.bottom + 6;
+    if (y + h > vh - 8) y = r.top - h - 6;
+    if (y < 8) y = Math.max(8, Math.min(vh - h - 8, r.bottom + 6));
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+  function _hideRowTip() {
+    if (_panelOv && _panelOv._favTip) _panelOv._favTip.style.display = 'none';
+  }
+  // ★ 行内调级：本地重绘该行星星（不整表重建）；筛选态 → 级别变化可能移出视野，直落全量重渲染
+  function _setLevel(item, lv, starsWrap) {
+    if (!item || (item.level || 2) === lv) return;
+    item.level = lv;
+    item.updatedAt = Date.now();   // 云同步 LWW 语义需要（本地排序按 createdAt，不挪行）
+    _persist().then(function (ok) {
+      if (!ok) _toast('★ ' + _i('fav.saveFail', '收藏保存失败'), { type: 'error', duration: 6000 });
+    });
+    if (_filterLevel) { _renderPanel(_panelQuery()); return; }
+    try {
+      var btns = starsWrap ? starsWrap.querySelectorAll('.qqq-fav-star') : [];
+      for (var i = 0; i < btns.length; i++) {
+        var on = (i + 1) <= lv;
+        btns[i].textContent = on ? '\u2605' : '\u2606';
+        if (on) btns[i].classList.add('on'); else btns[i].classList.remove('on');
+      }
+    } catch (_) { }
+  }
   function _mkRow(item) {
     var row = document.createElement('div');
     row.className = 'qqq-fav-row';
@@ -451,6 +573,26 @@
     mt.textContent = _metaText(item) + (alive ? '' : ' · ' + _i('fav.deletedTag', '任务已删除'));
     main.appendChild(nm);
     main.appendChild(mt);
+    // ★ 重要级别星标（行内可改；点第 n 颗 = 级别 n）
+    var starsWrap = document.createElement('div');
+    starsWrap.className = 'qqq-fav-row-stars';
+    starsWrap.title = _i('fav.level', '重要级别');
+    var _lvNow = item.level || 2;
+    for (var _ri = 1; _ri <= 3; _ri++) {
+      (function (idx) {
+        var sb = document.createElement('button');
+        sb.type = 'button';
+        sb.className = 'qqq-fav-star';
+        var on = idx <= _lvNow;
+        sb.textContent = on ? '\u2605' : '\u2606';
+        if (on) sb.classList.add('on');
+        sb.addEventListener('click', function (e) {
+          e.stopPropagation();
+          _setLevel(item, idx, starsWrap);
+        });
+        starsWrap.appendChild(sb);
+      })(_ri);
+    }
     var acts = document.createElement('div');
     acts.className = 'qqq-fav-act';
     var bRename = document.createElement('button');
@@ -466,7 +608,10 @@
     acts.appendChild(bRename);
     acts.appendChild(bDel);
     row.appendChild(main);
+    row.appendChild(starsWrap);
     row.appendChild(acts);
+    row.addEventListener('mouseenter', function () { _showRowTip(row, item); });
+    row.addEventListener('mouseleave', _hideRowTip);
     row.addEventListener('click', function () {
       if (!_questAlive(item.questId)) {
         _toast('★ ' + _i('fav.questGone', '该任务已不存在（可在收藏夹中移除该条）'), { type: 'warning', duration: 5000 });

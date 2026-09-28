@@ -15,14 +15,16 @@
   // ★ 激活页 / 个人中心 URL 唯一真理源 —— 全项目禁止第二处硬编码
   //   （迁移对象: settings.js 楼层守卫、shell-menu.js 激活行；gaea-host GH HEALTH
   //     落地页品牌链接非激活门，不收敛）
+  //   2026-09-28 设置本地化：官网「设置」标签移除——openProfile 优先转客户端设置中心（qqqCenter），
+  //   PROFILE_URL 降为旧载荷回退；ACT_URL（激活页）语义不变。
   var ACT_URL = 'https://www.gh555.com/gaea/d/qqqide?lang=zh#price';
   var PROFILE_URL = 'https://www.gh555.com/gaea/d/qqqide?lang=zh#profile';
 
   // ★ 功能注册表 —— 新 VIP 功能 = 一行（值域校验/展示形态留在消费方，与权限门分离）
   var FEATURES = {
     'floor-cap-32': 1,
-    'floor-cap-64': 1
-    // 'no-watermark': 1   ← 将来有服务端成本的功能在此注册，真正裁决在服务端计费点
+    'floor-cap-64': 1,
+    'no-watermark': 1   // 消除相框水印（2026-09-28 设置本地化：客户端行为门 = 设置中心 💎 行；真正裁决在服务端计费点）
   };
 
   function _login() { return window.qqqLogin || null; }
@@ -71,7 +73,12 @@
     },
     // 唯一打开入口（菜单激活行/设置守卫共用；禁旁路 openExternal 激活页）
     openActivation: function () { _open(ACT_URL); },
-    openProfile: function () { _open(PROFILE_URL); },
+    // ★ 2026-09-28 设置本地化：「已激活」入口优先打开客户端设置中心（qqqCenter = 云同步 + 设置全量本地化）；
+    //   模块缺失（旧载荷）回退官网 #profile（URL 常量保留 = URL 唯一源）
+    openProfile: function () {
+      try { if (window.qqqCenter && window.qqqCenter.open) { window.qqqCenter.open(); return; } } catch (e) { }
+      _open(PROFILE_URL);
+    },
     // 登录/激活状态变更订阅（登录、登出、激活成功、跨窗口推送均触发 → UI 重渲染/解灰）
     onChange: function (fn) {
       var login = _login();

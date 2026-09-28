@@ -172,7 +172,10 @@
       "addNone": "没有可加入的媒体文件",
       "empty": "播放列表为空 — 在 Roam 中选中媒体右键「加入播放列表」，或从悬浮层 ↗ 弹出",
       "returnOv": "退回悬浮层",
-      "returnFail": "未找到主窗口，无法退回悬浮层"
+      "returnFail": "未找到主窗口，无法退回悬浮层",
+      "minimize": "收纳到 qqq 工作台",
+      "restore": "展开播放器",
+      "stowed": "已收纳到 qqq 工作台"
     },
     "about": {
       "title": "关于 qqq",
@@ -346,6 +349,8 @@
   "editor": {
     "copyPath": "复制路径",
     "roamLocate": "在 Roam 中定位该文件",
+    "timelineOpen": "在时间线中查看该文件",
+    "timelineNoRoot": "无法确定该文件的项目根目录，时间线不可用",
     "minimap": "小地图",
     "tabs": {
       "close": "关闭标签",
@@ -640,7 +645,8 @@
       "history": "历史记录",
       "noHistory": "暂无历史",
       "saveFailed": "保存失败",
-      "renameTitle": "编辑名称"
+      "renameTitle": "编辑名称",
+      "pinCloseHint": "点我关闭"
     },
     "lock": {
       "locked": "项目已被其他窗口打开",
@@ -1546,6 +1552,9 @@
     "tip": "收藏夹",
     "count": "共 {0} 条",
     "searchPh": "搜索收藏（名称 / 任务 / 问题）",
+    "level": "重要级别",
+    "filterAll": "全部",
+    "questTip": "quest：{0}",
     "empty": "还没有收藏 · 任意楼层点 ☆ 收藏它",
     "noMatch": "没有匹配的收藏",
     "more": "仅显示前 {0} 条，输入关键字缩小范围",
@@ -1672,6 +1681,134 @@
     "lok": "正在同步中，请稍候…",
     "bridgeMissing": "云同步不可用（需重启实例）"
   },
+  "prefs": {
+    "title": "qqq 设置",
+    "cloudSec": "☁ 云同步",
+    "csLogin": "未登录：登录并激活后，设置可跨设备同步",
+    "csLocked": "设置已保存在本机；云端持久化需激活正版",
+    "csOn": "云同步已开启：本机修改会自动同步到云端",
+    "pullNow": "立即从云端拉取设置",
+    "pullDoing": "正在从云端拉取设置…",
+    "pullDone": "已从云端同步 {0} 项设置",
+    "pullFail": "云端同步失败：{0}",
+    "needAct": "该功能需先激活正版",
+    "wmNeed": "水印自定义是正版功能（激活后可用）",
+    "reset": "恢复默认设置",
+    "resetTitle": "恢复默认设置",
+    "resetMsg": "将清除本机全部设置改动（如已开启云同步，云端配置也会一并清除）。确定继续吗？",
+    "resetOk": "确认恢复",
+    "resetDone": "已恢复默认设置",
+    "needRefresh": "偏好模块未就绪（需刷新窗口）",
+    "g": {
+      "core": "☀️ Kernel 核心",
+      "roam": "🛸 Roam 漫游",
+      "observe": "👁️ Observer 观察者",
+      "html": "🍌 HTML & Rich Text",
+      "doc": "📦 Doc Export 文档导出",
+      "premium": "💎 Premium 正版专属"
+    },
+    "lab": {
+      "performanceMode": "Performance Mode 性能模式",
+      "ioEngine": "IO Engine",
+      "transactionLevel": "Transaction Level 事务级别",
+      "szDisplayMode": "sz Column Display",
+      "sortBy": "Sort By 排序",
+      "autoWatchChanges": "Auto Watch Changes",
+      "roamAsStartPage": "Roam as Start Page",
+      "roamName": "Roam Name",
+      "frameSizeMode": "Frame Size Mode",
+      "cleanFreak": "Clean Freak 洁癖",
+      "enlargeSmallImages": "Enlarge Small Images",
+      "textSlideColorScheme": "Text Slide Color Scheme",
+      "textSlideFontSize": "Text Slide Font Size",
+      "codelensLevel": "CodeLens Level",
+      "takeOverCodelensStyle": "Take Over CodeLens Style",
+      "downloadSecurityLevel": "Download Security Level",
+      "forceTextFlowScheme": "Force Text Flow Scheme",
+      "autoDownload": "Auto Download",
+      "docExportImageResolution": "Image Resolution",
+      "docExportIncludeCipher": "Include Cipher",
+      "removeWatermark": "Remove Watermark 消除水印"
+    },
+    "desc": {
+      "performanceMode": "☀️ 控制预览图的生成质量和速度",
+      "ioEngine": "☀️ IO 引擎（取舍见项目文档：IO_ENGINE_v16）",
+      "transactionLevel": "☀️ 事务包装级别：决定操作的可靠性与速度",
+      "szDisplayMode": "🛸 sz列显示内容",
+      "sortBy": "🛸 文件列表排序方式",
+      "autoWatchChanges": "🛸 勾选：外部程序修改当前目录时自动刷新文件列表；不勾选：零性能开销",
+      "roamAsStartPage": "🛸 使用 qqq Roam 作为起始页",
+      "roamName": "🛸 自定义漫游名字",
+      "frameSizeMode": "👁️ 预览图尺寸模式",
+      "cleanFreak": "👁️ 保存前自动确保每个暗号下方有足够空行，防止预览/内容重叠",
+      "enlargeSmallImages": "👁️ 勾选：小于框架的预览图放大填充；不勾选：保持原尺寸居中",
+      "textSlideColorScheme": "👁️ 文本胶片底色",
+      "textSlideFontSize": "👁️ 文本胶片字号（1-218）",
+      "codelensLevel": "👁️ CodeLens 显示级别",
+      "takeOverCodelensStyle": "👁️ 接管 CodeLens 样式：红色，字号13",
+      "downloadSecurityLevel": "🍌 下载视频失败时，可在此尝试更宽松的策略",
+      "forceTextFlowScheme": "🍌 强制修复HTML乱码（仅在顽固乱码时勾选，代价是布局精度降低）",
+      "autoDownload": "🍌 检测到视频时自动下载",
+      "docExportImageResolution": "📦 导出时使用的图片分辨率",
+      "docExportIncludeCipher": "📦 导出时包含图片密码串",
+      "removeWatermark": "💎 取消勾选后将显示水印（如果您想看水印的话）"
+    },
+    "opt": {
+      "performanceMode": {
+        "extreme": "Extreme：仅保留首帧，质量47",
+        "accelerated": "Accelerated：动图/视频最多前2秒，7fps，质量47",
+        "optmum": "Optimum：动图完整时长，视频首/中/尾共4秒，原始fps，质量71"
+      },
+      "ioEngine": {
+        "auto": "v16 auto — 理想搭配",
+        "excludePython": "Exclude Python — 静默运行，节省约50MB内存"
+      },
+      "transactionLevel": {
+        "full": "Full wrap：所有耗时操作都包装在事务中 — 进度条、撤销支持、异常回滚",
+        "half": "Half wrap：轻量操作使用简单粘贴 — 最快响应，无进度条，无回滚"
+      },
+      "szDisplayMode": {
+        "nothing": "不显示",
+        "size": "显示文件大小",
+        "ctime": "显示创建时间",
+        "mtime": "显示修改时间"
+      },
+      "sortBy": {
+        "name": "按名字排序（文件夹在前）",
+        "size": "按大小排序（文件夹在前，文件按大小降序）",
+        "ctime": "按创建时间排序（降序）",
+        "mtime": "按修改时间排序（降序）"
+      },
+      "frameSizeMode": {
+        "large": "大框架：512×288",
+        "small": "小框架：256×144",
+        "fix": "自适应：根据图片尺寸自动选择"
+      },
+      "cleanFreak": {
+        "never": "不自动整理（仅手动编织）",
+        "add": "仅添加：确保空行足够，不删除多余空行",
+        "addRemove": "严格整理：恰好足够空行 — 删除多余，添加缺失"
+      },
+      "textSlideColorScheme": {
+        "light": "浅色",
+        "dark": "深色"
+      },
+      "codelensLevel": {
+        "none": "无",
+        "open": "仅打开文件",
+        "full": "全套：文件夹/重命名/复制/信息行/qode"
+      },
+      "downloadSecurityLevel": {
+        "l0": "0：最宽松 — 全部11个安全开关关闭",
+        "l1": "1：平衡 — 4个开关打开，7个关闭",
+        "l2": "2：最严格 — 全部11个安全开关打开"
+      },
+      "docExportImageResolution": {
+        "original": "原始分辨率 — 完整精度",
+        "frame": "框架分辨率 — 文件更小，缩略图完整对应"
+      }
+    }
+  },
   "workbench": {
     "savorTip": "本地音乐：{v0} 次，共 {v1}\n电台：{v2} 次，共 {v3}\n日均收听：{v4}",
     "durHm": "{0} 小时 {1} 分",
@@ -1680,13 +1817,15 @@
     "exportDocTip": "把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
     "exportZipTip": "把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
     "cloudSyncTip": "云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含编辑器配置、各文件夹偏好、剪贴板历史。",
-    "playerTip": "播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出。",
+       "playerTip": "播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出；最小化 = 收纳到本槽位遥控。",
     "playerWinTip": "独立悬浮播放器窗：置顶小窗——切到别的程序也看得见（↗）",
     "playerCardTip": "窗内播放器：悬浮在 qqqide 窗口里的播放器卡——跟随本窗口（⧈）",
     "playerNeedRestart": "悬浮播放器需要重启实例后可用",
     "videoUrlTip": "待移植：输入视频网址，自动下载到文档目录并插入相框。",
     "pasteTip": "待移植：一键把剪贴板内容粘贴到文档（目前用 Ctrl+V 可完成同样操作）。",
-    "pureTip": "待移植：扫描文档引用，清理不再被引用的孤儿文件。"
+    "pureTip": "待移植：扫描文档引用，清理不再被引用的孤儿文件。",
+    "settingsTip": "打开 qqq 设置中心：云同步 + 全部偏好设置（性能/相框/观察者/导出…）",
+    "settingsNeedRestart": "设置中心未就绪（需刷新窗口）"
   },
   "audio": {
     "sfx": {

@@ -708,9 +708,12 @@ body {
 
 /* ── 内嵌弹窗统一滚动条 — qd 现代无轨样式（5px、轨道透明、thumb rgba(128,128,128,.35) 圆角；基准 .tier-popup-panel/本块）──
    ★ 铁律 §4.1：一切内置面板必须挂入本块——漏挂 = 原生滚动条（违反即返工）；含 descendant 式（覆盖面板内嵌滚动区）。
-   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板（语言下拉不滚动，不列）
+   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板/内嵌播放器卡（窗内播放器，2026-09-28 挂入）/qqq 设置中心（.qqq-center-panel，2026-09-28 挂入）/设置中心自绘下拉浮层（.qc-pop，2026-09-28 挂入）（语言下拉不滚动，不列）
    ★ 单源：面板滚动条/拖选样式只认本块——组件内自注入迁入并删源（shell-overlay / tier-popup 已迁） */
 .qqq-settings-panel::-webkit-scrollbar,
+.qqq-center-panel::-webkit-scrollbar,
+.qqq-center-panel ::-webkit-scrollbar,
+.qc-pop::-webkit-scrollbar,
 .qqq-ldr-panel::-webkit-scrollbar,
 .qqq-onl-panel::-webkit-scrollbar,
 .qqq-act-modal::-webkit-scrollbar,
@@ -728,11 +731,16 @@ body {
 .qqq-sg-panel::-webkit-scrollbar,
 .qqq-sg-body::-webkit-scrollbar,
 .qqq-fav-panel::-webkit-scrollbar,
-.qqq-fav-panel ::-webkit-scrollbar {
+.qqq-fav-panel ::-webkit-scrollbar,
+#qqq-player-card::-webkit-scrollbar,
+#qqq-player-card ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 .qqq-settings-panel::-webkit-scrollbar-track,
+.qqq-center-panel::-webkit-scrollbar-track,
+.qqq-center-panel ::-webkit-scrollbar-track,
+.qc-pop::-webkit-scrollbar-track,
 .qqq-ldr-panel::-webkit-scrollbar-track,
 .qqq-onl-panel::-webkit-scrollbar-track,
 .qqq-act-modal::-webkit-scrollbar-track,
@@ -750,10 +758,15 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-track,
 .qqq-sg-body::-webkit-scrollbar-track,
 .qqq-fav-panel::-webkit-scrollbar-track,
-.qqq-fav-panel ::-webkit-scrollbar-track {
+.qqq-fav-panel ::-webkit-scrollbar-track,
+#qqq-player-card::-webkit-scrollbar-track,
+#qqq-player-card ::-webkit-scrollbar-track {
   background: transparent;
 }
 .qqq-settings-panel::-webkit-scrollbar-thumb,
+.qqq-center-panel::-webkit-scrollbar-thumb,
+.qqq-center-panel ::-webkit-scrollbar-thumb,
+.qc-pop::-webkit-scrollbar-thumb,
 .qqq-ldr-panel::-webkit-scrollbar-thumb,
 .qqq-onl-panel::-webkit-scrollbar-thumb,
 .qqq-act-modal::-webkit-scrollbar-thumb,
@@ -771,11 +784,16 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-thumb,
 .qqq-sg-body::-webkit-scrollbar-thumb,
 .qqq-fav-panel::-webkit-scrollbar-thumb,
-.qqq-fav-panel ::-webkit-scrollbar-thumb {
+.qqq-fav-panel ::-webkit-scrollbar-thumb,
+#qqq-player-card::-webkit-scrollbar-thumb,
+#qqq-player-card ::-webkit-scrollbar-thumb {
   background: rgba(128, 128, 128, 0.35);
   border-radius: 3px;
 }
 .qqq-settings-panel::-webkit-scrollbar-thumb:hover,
+.qqq-center-panel::-webkit-scrollbar-thumb:hover,
+.qqq-center-panel ::-webkit-scrollbar-thumb:hover,
+.qc-pop::-webkit-scrollbar-thumb:hover,
 .qqq-ldr-panel::-webkit-scrollbar-thumb:hover,
 .qqq-onl-panel::-webkit-scrollbar-thumb:hover,
 .qqq-act-modal::-webkit-scrollbar-thumb:hover,
@@ -793,10 +811,15 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-thumb:hover,
 .qqq-sg-body::-webkit-scrollbar-thumb:hover,
 .qqq-fav-panel::-webkit-scrollbar-thumb:hover,
-.qqq-fav-panel ::-webkit-scrollbar-thumb:hover {
+.qqq-fav-panel ::-webkit-scrollbar-thumb:hover,
+#qqq-player-card::-webkit-scrollbar-thumb:hover,
+#qqq-player-card ::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.55);
 }
 .qqq-settings-panel::-webkit-scrollbar-corner,
+.qqq-center-panel::-webkit-scrollbar-corner,
+.qqq-center-panel ::-webkit-scrollbar-corner,
+.qc-pop::-webkit-scrollbar-corner,
 .qqq-ldr-panel::-webkit-scrollbar-corner,
 .qqq-onl-panel::-webkit-scrollbar-corner,
 .qqq-act-modal::-webkit-scrollbar-corner,
@@ -814,7 +837,9 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-corner,
 .qqq-sg-body::-webkit-scrollbar-corner,
 .qqq-fav-panel::-webkit-scrollbar-corner,
-.qqq-fav-panel ::-webkit-scrollbar-corner {
+.qqq-fav-panel ::-webkit-scrollbar-corner,
+#qqq-player-card::-webkit-scrollbar-corner,
+#qqq-player-card ::-webkit-scrollbar-corner {
   background: transparent;
 }
 /* 悬浮预览层直系 div 滚动条隐藏（外层为主体滚动区；原 shell-overlay.js 自注入迁入） */
@@ -827,6 +852,8 @@ body {
    ② 拖选色恒 = 传统淡橙 var(--selection-bg)/var(--selection-text)（唯一源 core/qqqide-theme.js）——禁浏览器默认蓝、禁自造色
    ③ 新增面板：带唯一 class → 同时挂入本块与上方滚动条块（双块缺一不可） */
 .qqq-settings-panel,
+.qqq-center-panel,
+.qc-pop,
 .qqq-ldr-panel,
 .qqq-onl-panel,
 .qqq-act-modal,
@@ -837,11 +864,14 @@ body {
 .qqq-notice-modal,
 .qqq-fav-panel,
 .qqq-fav-modal,
-.qqq-sg-panel {
+.qqq-sg-panel,
+#qqq-player-card {
   -webkit-user-select: text;
   user-select: text;
 }
 .qqq-settings-panel::selection, .qqq-settings-panel ::selection,
+.qqq-center-panel::selection, .qqq-center-panel ::selection,
+.qc-pop::selection, .qc-pop ::selection,
 .qqq-ldr-panel::selection, .qqq-ldr-panel ::selection,
 .qqq-onl-panel::selection, .qqq-onl-panel ::selection,
 .qqq-act-modal::selection, .qqq-act-modal ::selection,
@@ -854,7 +884,8 @@ body {
 .qqq-sg-panel::selection, .qqq-sg-panel ::selection,
 .qqq-fav-panel::selection, .qqq-fav-panel ::selection,
 .qqq-fav-modal::selection, .qqq-fav-modal ::selection,
-#qqq-ai-overlay-content::selection, #qqq-ai-overlay-content ::selection {
+#qqq-ai-overlay-content::selection, #qqq-ai-overlay-content ::selection,
+#qqq-player-card::selection, #qqq-player-card ::selection {
   background: var(--selection-bg, #e8a090);
   color: var(--selection-text, #000000);
 }
@@ -1228,4 +1259,114 @@ body {
 }
 .qqq-fav-btn.qqq-fav-icon.danger:hover {
   color: var(--red);
+}
+/* 命名框：标题行（标题 + 三星重要级别） */
+.qqq-fav-namer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+.qqq-fav-namer-head .qqq-fav-modal-title {
+  margin: 0;
+}
+.qqq-fav-namer-stars,
+.qqq-fav-row-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.qqq-fav-star {
+  border: none;
+  background: none;
+  padding: 0 1px;
+  font-size: 17px;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.28);
+  transition: color 0.15s;
+}
+[data-theme="dark"] .qqq-fav-star {
+  color: rgba(255, 255, 255, 0.3);
+}
+.qqq-fav-star:hover {
+  color: rgba(0, 0, 0, 0.65);
+}
+[data-theme="dark"] .qqq-fav-star:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+.qqq-fav-star.on {
+  color: #b58900;
+}
+[data-theme="dark"] .qqq-fav-star.on {
+  color: #e6b800;
+}
+/* 命名框底行：左「收藏日期（年月日）」+ 右动作按钮 */
+.qqq-fav-namer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+}
+.qqq-fav-namer-foot .qqq-fav-actions {
+  margin-top: 0;
+}
+.qqq-fav-namer-date {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+/* 收藏夹：级别筛选 chips */
+.qqq-fav-filter {
+  display: flex;
+  gap: 6px;
+  padding: 0 20px 10px;
+}
+.qqq-fav-chip {
+  padding: 3px 11px;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.qqq-fav-chip:hover {
+  color: var(--text-primary);
+}
+.qqq-fav-chip.on {
+  color: #b58900;
+  border-color: #b58900;
+}
+[data-theme="dark"] .qqq-fav-chip.on {
+  color: #e6b800;
+  border-color: #e6b800;
+}
+/* 列表行：级别星标列 */
+.qqq-fav-row-stars {
+  padding-top: 2px;
+}
+.qqq-fav-row-stars .qqq-fav-star {
+  font-size: 15px;
+}
+/* 行悬停：自定义即时提示框（quest 名全文，一字不漏；随面板销毁） */
+.qqq-fav-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000002;
+  max-width: min(560px, 72vw);
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fff;
+  background: rgba(20, 20, 20, 0.92);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+  word-break: break-word;
+  pointer-events: none;
 }

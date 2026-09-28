@@ -3,8 +3,8 @@
 // ============================================================================
 // editor-breadcrumb.js — 极简面包屑（独立豆腐块）+ 悬浮按钮行
 //
-// 1. 顶端面包屑：独立 DOM 块（2026-09-27——真·单列内联流：flex 三列整体废除，三个部件同处一条文字流）
-//    串行编队：路径文本 → 编码按钮 → 复制按钮 → Roam 按钮（2026-09-27 回中间位 + 末尾 Roam 定位）；路径吃满整行宽度折行（换行次数最少 = 上下空间最省）
+// 1. 顶端面包屑：独立 DOM 块（2026-09-27——真·单列内联流：flex 三列整体废除，全部部件同处一条文字流）
+//    串行编队：路径文本 → 编码按钮 → 复制按钮 → Roam 按钮 → 时间线按钮（2026-09-27 回中间位 + 末尾 Roam；2026-09-28 末位新增时间线）；路径吃满整行宽度折行（换行次数最少 = 上下空间最省）
 //    路径恒完整显示（绝不省略号——放不下时自然折行）
 //    文字可选中/复制，不可编辑；下方一切（Monaco / Ctrl+F / 小地图）被其高度挤开
 // 2. 底端悬浮按钮行（Monaco 容器内 absolute 右下角）：md 预览 👁（仅 Markdown 文件）
@@ -16,6 +16,54 @@
   'use strict';
 
   var _i = window._i || function (k, f) { return f || k; };
+
+  // ── 时间线根目录解析（2026-09-28）——文件自寻主，与时间线记录侧同一口径：
+  //   ① 逐级向上找 _qqq/timeline 或 .git（panel-a4 钩子 Q「文件自寻主」同规则——绝大多数时间线记录写于此根）
+  //   ② window._workspaceRoot（主窗口全局，由 AI 面板绑定工作空间时写入——可能为空，禁作唯一来源）
+  //   ③ bridge.sync.getProjectPath()（主进程当前项目路径）
+  //   命中即回调；全失败回调 ''（调用方拒绝开空窗）。返回恒为正斜杠/无尾斜杠字符串。
+  function _resolveTimelineRoot(filePath, done) {
+    var b = window.qqqideBridge;
+    function _ws() {
+      try {
+        var w = window._workspaceRoot || '';
+        if (w) return String(w).replace(/\\/g, '/').replace(/\/$/, '');
+      } catch (_) { }
+      return '';
+    }
+    function _proc() {
+      try {
+        if (b && b.sync && b.sync.getProjectPath) {
+          b.sync.getProjectPath().then(function (p) {
+            done(p ? String(p).replace(/\\/g, '/').replace(/\/$/, '') : '');
+          }).catch(function () { done(''); });
+          return;
+        }
+      } catch (_) { }
+      done('');
+    }
+    if (!filePath || !b || !b.fs || !b.fs.stat) return _proc();
+    var dir = String(filePath).replace(/\\/g, '/').replace(/\/[^\/]*$/, '');
+    var depth = 0;
+    function step() {
+      if (!dir || dir.length <= 3 || depth >= 12) {
+        var w = _ws();
+        if (w) return done(w);
+        return _proc();
+      }
+      depth++;
+      var cur = dir;
+      function down() { dir = cur.replace(/\/[^\/]*$/, ''); step(); }
+      b.fs.stat(cur + '/_qqq/timeline').then(function (st) {
+        if (st && st.isDir) return done(cur);
+        b.fs.stat(cur + '/.git').then(function (st2) {
+          if (st2 && st2.isDir) return done(cur);
+          down();
+        }).catch(down);
+      }).catch(down);
+    }
+    step();
+  }
 
   // ── 按住连点引擎（undo/redo 长按持续触发）──
   var _repeatTimer = null;
@@ -145,6 +193,38 @@
       } catch (_) { }
     });
     bar.appendChild(roamBtn);
+
+    // 时间线按钮 — 恒显内联 · 淡雅统一档（2026-09-28 用户定案）：点击 = 打开该文件的版本时间线窗口
+    //   唯一入口 = bridge.timeline.openDiffWindow（与 AI 视口右键「时间线」/ A4 快照点击同源零第二实现；
+    //   单文件单例窗口——已在开则聚焦并刷新）；projectRoot 经 _resolveTimelineRoot 三层解析（文件自寻主优先——
+    //   ✘ 旧实现单取 window._workspaceRoot：绑定期为空 → 空根开窗 →「缺少参数」空白窗）
+    var tlBtn = document.createElement('button');
+    tlBtn.className = 'qqq-breadcrumb-timeline-btn';
+    tlBtn.textContent = '\uD83D\uDD58'; // 时钟图标（文字按钮「timeline」太宽，图标化 ≈28px）
+    tlBtn.title = _i('editor.timelineOpen', '在时间线中查看该文件');
+    tlBtn.setAttribute('data-no-cd', '');
+    tlBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var p = filePath || '';
+      if (!p) return;
+      var b = window.qqqideBridge;
+      if (!b || !b.timeline || !b.timeline.openDiffWindow) return;
+      _resolveTimelineRoot(p, function (root) {
+        if (!root) {
+          // 全链解析失败：不开空窗（旧实现带空根开窗 = 空白窗「缺少参数」），如实提示
+          try {
+            if (window.qqqideQoast) window.qqqideQoast.show(_i('editor.timelineNoRoot', '无法确定该文件的项目根目录，时间线不可用'), { type: 'warn', duration: 5000 });
+          } catch (_) { }
+          return;
+        }
+        try {
+          var r = b.timeline.openDiffWindow({ filePath: p, projectRoot: root });
+          if (r && r.catch) r.catch(function () { });
+        } catch (_) { }
+      });
+    });
+    bar.appendChild(tlBtn);
 
     // 修复：body 级 user-select:none 导致 Chromium 不触发 copy 事件。
     // ★ 根因：bar tabindex=-1 不会被点击聚焦，keydown 永远到不了 bar。

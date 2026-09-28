@@ -172,7 +172,10 @@
             "addNone": "Nenhum arquivo de mídia disponível para adicionar",
             "empty": "Lista de reprodução vazia — selecione mídia no Roam, clique com o botão direito e escolha \"Adicionar à lista de reprodução\", ou abra a partir da camada flutuante ↗",
             "returnOv": "Retornar à camada flutuante",
-            "returnFail": "Janela principal não encontrada, impossível retornar à camada flutuante"
+            "returnFail": "Janela principal não encontrada, impossível retornar à camada flutuante",
+            "minimize": "Minimizar para a área de trabalho do qqq",
+            "restore": "Expandir o player",
+            "stowed": "Minimizado para a área de trabalho do qqq"
         },
         "about": {
             "title": "Sobre o qqq",
@@ -347,6 +350,8 @@
     "editor": {
         "copyPath": "Copiar caminho",
         "roamLocate": "Localizar este arquivo no Roam",
+        "timelineOpen": "Visualizar este arquivo na linha do tempo",
+        "timelineNoRoot": "Não foi possível determinar o diretório raiz do projeto para este arquivo. A linha do tempo não está disponível.",
         "minimap": "Minimapa",
         "tabs": {
             "close": "Fechar aba",
@@ -365,7 +370,7 @@
             "encAutoReset": "Detecção automática (limpar fixação)",
             "encAutoCur": "Detecção automática",
             "encFixedAt": "Codificação fixada como {v} (modo de emergência) — Clique para alterar / restaurar automático",
-            "encAutoAt": "Codificação: {v} (detecção automática) — Clique para especificar manualmente",
+            "encAutoAt": "Codificação: {v} — {src}; Clique para especificar manualmente",
             "encSrcBom": "Conforme declaração BOM",
             "encSrcUtf8": "Decodificação UTF-8 estrita aprovada",
             "encSrcGbk": "Detecção fallback GBK (clique aqui para corrigir caracteres ilegíveis)",
@@ -641,7 +646,8 @@
             "history": "Histórico",
             "noHistory": "Sem histórico",
             "saveFailed": "Falha ao salvar",
-            "renameTitle": "Editar nome"
+            "renameTitle": "Editar nome",
+            "pinCloseHint": "Clique aqui para fechar"
         },
         "lock": {
             "locked": "Projeto já aberto em outra janela",
@@ -1170,7 +1176,7 @@
             "exitedTerm": "── Sessão encerrada{0} ──",
             "restarted": "● Reiniciado",
             "noSel": "Nenhum texto selecionado · Selecione antes de copiar",
-            "intRestart": "── Interrupt · A atualização do shell requer reinício da instância para生效 ──",
+            "intRestart": "── Interrupt · A atualização do shell requer reinício da instância para entrar em vigor ──",
             "intDone": "── Interrompido · {0} processos encerrados ──",
             "intIdle": "── Interrupt · Nenhum comando em execução ──",
             "intSig": "── Interrupt · Sinal de interrupção enviado ──",
@@ -1555,6 +1561,9 @@
         "tip": "Favoritos",
         "count": "Total de {0} itens",
         "searchPh": "Pesquisar favoritos (nome / tarefa / pergunta)",
+        "level": "Nível de importância",
+        "filterAll": "Todos",
+        "questTip": "Quest: {0}",
         "empty": "Nenhum favorito ainda · Clique em ☆ em qualquer nível para favoritar",
         "noMatch": "Nenhum favorito correspondente encontrado",
         "more": "Exibindo apenas os primeiros {0} itens, digite uma palavra-chave para filtrar",
@@ -1681,6 +1690,134 @@
         "lok": "Sincronizando, aguarde…",
         "bridgeMissing": "Sincronização em nuvem indisponível (é necessário reiniciar a instância)"
     },
+    "prefs": {
+        "title": "Configurações do qqq",
+        "cloudSec": "☁ Sincronização na Nuvem",
+        "csLogin": "Não conectado: faça login e ative para sincronizar configurações entre dispositivos",
+        "csLocked": "Configurações salvas localmente; a persistência na nuvem requer ativação da versão original",
+        "csOn": "Sincronização em nuvem ativada: as alterações neste dispositivo serão sincronizadas automaticamente com a nuvem",
+        "pullNow": "Buscar configurações da nuvem agora",
+        "pullDoing": "Buscando configurações da nuvem...",
+        "pullDone": "{0} configurações sincronizadas da nuvem",
+        "pullFail": "Falha na sincronização com a nuvem: {0}",
+        "needAct": "Esta função requer ativação da versão licenciada",
+        "wmNeed": "Personalização de marca d'água é um recurso da versão licenciada (disponível após ativação)",
+        "reset": "Restaurar configurações padrão",
+        "resetTitle": "Restaurar Configurações Padrão",
+        "resetMsg": "Isso limpará todas as alterações de configurações locais (se a sincronização na nuvem estiver ativada, as configurações da nuvem também serão removidas). Deseja continuar?",
+        "resetOk": "Confirmar restauração",
+        "resetDone": "Configurações padrão restauradas",
+        "needRefresh": "Módulo de preferências não pronto (é necessário atualizar a janela)",
+        "g": {
+            "core": "☀️ Núcleo",
+            "roam": "🛸 Roam",
+            "observe": "👁️ Observador",
+            "html": "🍌 HTML e Texto Rico",
+            "doc": "📦 Exportação de Documentos",
+            "premium": "💎 Exclusivo Premium Original"
+        },
+        "lab": {
+            "performanceMode": "Modo de Desempenho",
+            "ioEngine": "Motor de E/S",
+            "transactionLevel": "Nível de Transação",
+            "szDisplayMode": "Exibição da Coluna sz",
+            "sortBy": "Ordenar Por",
+            "autoWatchChanges": "Monitorar Alterações Automaticamente",
+            "roamAsStartPage": "Roam como Página Inicial",
+            "roamName": "Nome do Roam",
+            "frameSizeMode": "Modo de Tamanho do Quadro",
+            "cleanFreak": "Limpeza Rigorosa",
+            "enlargeSmallImages": "Ampliar Imagens Pequenas",
+            "textSlideColorScheme": "Esquema de Cores do Slide de Texto",
+            "textSlideFontSize": "Tamanho da Fonte do Slide de Texto",
+            "codelensLevel": "Nível do CodeLens",
+            "takeOverCodelensStyle": "Assumir Estilo do CodeLens",
+            "downloadSecurityLevel": "Nível de Segurança de Download",
+            "forceTextFlowScheme": "Forçar Esquema de Fluxo de Texto",
+            "autoDownload": "Download Automático",
+            "docExportImageResolution": "Resolução da Imagem",
+            "docExportIncludeCipher": "Incluir Cifra",
+            "removeWatermark": "Remover Marca d'água"
+        },
+        "desc": {
+            "performanceMode": "☀️ Controla a qualidade e velocidade de geração das visualizações",
+            "ioEngine": "☀️ Motor de E/S (veja a documentação do projeto para detalhes: IO_ENGINE_v16)",
+            "transactionLevel": "☀️ Nível de encapsulamento de transação: determina confiabilidade e velocidade das operações",
+            "szDisplayMode": "🛸 Conteúdo exibido na coluna sz",
+            "sortBy": "🛸 Método de ordenação da lista de arquivos",
+            "autoWatchChanges": "🛸 Marcado: atualiza automaticamente a lista de arquivos quando o diretório atual é modificado por programas externos; Desmarcado: zero impacto no desempenho",
+            "roamAsStartPage": "🛸 Usar qqq Roam como página inicial",
+            "roamName": "🛸 Personalizar nome do Roam",
+            "frameSizeMode": "👁️ Modo de tamanho do quadro de visualização",
+            "cleanFreak": "👁️ Garante automaticamente linhas vazias suficientes abaixo de cada código antes de salvar, evitando sobreposição de visualização/conteúdo",
+            "enlargeSmallImages": "👁️ Marcado: amplia miniaturas menores que o quadro para preenchê-lo; Desmarcado: mantém o tamanho original centralizado",
+            "textSlideColorScheme": "👁️ Cor de fundo do slide de texto",
+            "textSlideFontSize": "👁️ Tamanho da fonte do slide de texto (1-218)",
+            "codelensLevel": "👁️ Nível de exibição do CodeLens",
+            "takeOverCodelensStyle": "👁️ Assumir estilo do CodeLens: vermelho, tamanho 13",
+            "downloadSecurityLevel": "🍌 Em caso de falha no download de vídeo, tente estratégias mais flexíveis aqui",
+            "forceTextFlowScheme": "🍌 Forçar correção de caracteres ilegíveis no HTML (marque apenas em casos persistentes; reduz a precisão do layout)",
+            "autoDownload": "🍌 Baixa automaticamente ao detectar vídeos",
+            "docExportImageResolution": "📦 Resolução de imagem usada na exportação",
+            "docExportIncludeCipher": "📦 Incluir cadeia de senha da imagem na exportação",
+            "removeWatermark": "💎 Desmarcar para exibir a marca d'água (se você quiser vê-la)"
+        },
+        "opt": {
+            "performanceMode": {
+                "extreme": "Extremo: mantém apenas o primeiro quadro, qualidade 47",
+                "accelerated": "Accelerated: GIFs/vídeos limitados aos primeiros 2 segundos, 7fps, qualidade 47",
+                "optmum": "Ótimo: duração completa da animação, vídeo com 4 segundos (início/meio/fim), fps original, qualidade 71"
+            },
+            "ioEngine": {
+                "auto": "v16 auto — combinação ideal",
+                "excludePython": "Exclude Python — execução silenciosa, economiza cerca de 50MB de memória"
+            },
+            "transactionLevel": {
+                "full": "Wrap completo: todas as operações demoradas são encapsuladas em transações — barra de progresso, suporte a desfazer, reversão em caso de exceção",
+                "half": "Wrap parcial: operações leves usam colagem simples — resposta mais rápida, sem barra de progresso, sem reversão"
+            },
+            "szDisplayMode": {
+                "nothing": "Não exibir",
+                "size": "Exibir tamanho do arquivo",
+                "ctime": "Exibir data de criação",
+                "mtime": "Exibir data de modificação"
+            },
+            "sortBy": {
+                "name": "Ordenar por nome (pastas primeiro)",
+                "size": "Ordenar por tamanho (pastas primeiro, arquivos em ordem decrescente de tamanho)",
+                "ctime": "Ordenar por data de criação (decrescente)",
+                "mtime": "Ordenar por data de modificação (decrescente)"
+            },
+            "frameSizeMode": {
+                "large": "Quadro grande: 512×288",
+                "small": "Quadro pequeno: 256×144",
+                "fix": "Adaptativo: seleciona automaticamente com base no tamanho da imagem"
+            },
+            "cleanFreak": {
+                "never": "Não organizar automaticamente (apenas tecer manualmente)",
+                "add": "Apenas adicionar: garante linhas vazias suficientes, sem remover linhas extras",
+                "addRemove": "Organização rigorosa: exatamente linhas vazias suficientes — remove excessos, adiciona faltantes"
+            },
+            "textSlideColorScheme": {
+                "light": "Claro",
+                "dark": "Escuro"
+            },
+            "codelensLevel": {
+                "none": "Nenhum",
+                "open": "Apenas arquivos abertos",
+                "full": "Completo: pasta/renomear/copiar/linha de informações/qode"
+            },
+            "downloadSecurityLevel": {
+                "l0": "0: Mais permissivo — todos os 11 interruptores de segurança desativados",
+                "l1": "1: Equilibrado — 4 interruptores ativados, 7 desativados",
+                "l2": "2: Mais rigoroso — todos os 11 interruptores de segurança ativados"
+            },
+            "docExportImageResolution": {
+                "original": "Resolução original — precisão total",
+                "frame": "Resolução do quadro — arquivo menor, miniaturas totalmente correspondentes"
+            }
+        }
+    },
     "workbench": {
         "savorTip": "Música local: {v0} vezes, total {v1}\nRádio: {v2} vezes, total {v3}\nMédia diária de escuta: {v4}",
         "durHm": "{0} horas {1} minutos",
@@ -1695,7 +1832,9 @@
         "playerNeedRestart": "O player flutuante precisa ser reiniciado para ficar disponível",
         "videoUrlTip": "Pendente: insira a URL do vídeo, ele será baixado automaticamente para o diretório do documento e inserido em um quadro.",
         "pasteTip": "Colar pendente: Cole o conteúdo da área de transferência no documento com um clique (atualmente, Ctrl+V realiza a mesma ação).",
-        "pureTip": "Pendente: escanear referências do documento e limpar arquivos órfãos que não são mais referenciados."
+        "pureTip": "Pendente: escanear referências do documento e limpar arquivos órfãos que não são mais referenciados.",
+        "settingsTip": "Abrir Central de Configurações do qqq: sincronização na nuvem + todas as preferências (desempenho/quadro/observador/exportação…)",
+        "settingsNeedRestart": "Central de configurações não está pronta (é necessário atualizar a janela)"
     },
     "audio": {
         "sfx": {

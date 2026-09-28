@@ -38,6 +38,13 @@
   .pl-toast{background:rgba(20,20,20,0.95);border:1px solid rgba(255,255,255,0.18);color:#e8e6e0;font:12px/1.5 system-ui,-apple-system,sans-serif;border-radius:8px;padding:7px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 18px rgba(0,0,0,0.5);pointer-events:auto;max-width:100%;box-sizing:border-box;}
   .pl-toast button{border:1px solid rgba(255,211,1,0.5);background:rgba(255,211,1,0.14);color:#ffd301;border-radius:6px;padding:2px 8px;font-size:12px;flex:0 0 auto;cursor:pointer;}
   .pl-toast button:hover{background:rgba(255,211,1,0.3);}
+  /* ── qd 无轨滚动条（shell-base.css「内嵌弹窗统一块」同标准——本窗为独立文档镜像，同 goods mdview 先例；2026-09-28 q319）
+     5px / 轨道透明 / thumb rgba(128,128,128,.35) 圆角 / hover .55 / corner 透明——禁改数值（改 = 与统一块脱钩） ── */
+  ::-webkit-scrollbar{width:5px;height:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.35);border-radius:3px;}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.55);}
+  ::-webkit-scrollbar-corner{background:transparent;}
 </style>
 </head>
 <body>

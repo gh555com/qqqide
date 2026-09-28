@@ -242,7 +242,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         const existingWin = _diffWindows.get(normalizedPath);
         if (existingWin && !existingWin.isDestroyed()) {
             try {
-                existingWin.webContents.send('qqqide:diff:update', { filePath: normalizedPath, beforeBlobHash, afterBlobHash });
+                // 复用推送必须带 projectRoot——渲染层「坏窗自愈」依此裁决是否整页重载（空根旧窗不得永久遮蔽文件）
+                existingWin.webContents.send('qqqide:diff:update', { filePath: normalizedPath, projectRoot, beforeBlobHash, afterBlobHash });
                 if (existingWin.isMinimized()) existingWin.restore();
                 existingWin.focus();
             } catch (_) { }

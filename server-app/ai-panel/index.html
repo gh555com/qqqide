@@ -72,6 +72,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
 [data-theme="dark"] .q2-shimmer-overlay::before{
   background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.02) 40%,rgba(255,255,255,.05) 46%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.05) 54%,rgba(255,255,255,.02) 60%,transparent 75%);
 }
+/* ── 钉住开启提示：「点我关闭」不透明蒙层——出现 1 秒即散（教关法）；纯提示层 pointer-events:none 不挡操作 ── */
+.quest-pin-hint{position:fixed;z-index:99998;display:flex;align-items:center;justify-content:center;background:#e8a030;color:#211f1c;font-size:15px;font-weight:700;letter-spacing:1px;pointer-events:none;opacity:0;transition:opacity .18s ease;user-select:none}
+.quest-pin-hint.show{opacity:1}
 #quest-bar.quest-expanded .quest-drop{
   top:100%;
   border:2px dashed var(--yellow);

@@ -7,9 +7,12 @@
 //   卡片 DOM/拖拽/缩放/持久化/交接/出声独占 + 引擎挂载。
 //   入口：悬浮层 ⧈ / 工作台 Player 卡的「窗内」按钮 / Roam ➕（卡开着时）/ 启动恢复（card.open）。
 //   持久化（OS 级 player-state.json，与独立窗共用同一会话字段——两宿主互通、二选一不丢列表）：
-//     card = { open, dockSide, video:{x,y,w,h}, audio:{x,y,w,h} }（几何按媒体类型各记一套）
+//     card = { open, dockSide, stow, video:{x,y,w,h}, audio:{x,y,w,h} }（几何按媒体类型各记一套；stow = 收纳态）
 //     会话 = { list, index, rate, loop, shuffle, volume, muted, dockSide }（写入即与 A 窗互通）
 //   出声独占：卡起播 → claim('card')；他处起播 → 卡自动暂停。
+//   ★ 最小化（2026-09-28 q319 v7）= 收纳（stow）：头部 — → 整卡隐藏、播放不断（仅隐 UI 不碰引擎）；
+//    控制 / 展开唯一入口 = qqq 工作台 Player 槽（会话活跃时该槽渲染播放控制台；收纳态 qqq 按钮带 ♪ 徽标）；
+//    stow 随 card 段持久化（壳层 ipc-player.ts 合并，跨重启保持）——禁再引入任何独立悬浮迷你条。
 //   生命周期：不入编队/项目锁/窗口恢复；最后一个 qd 窗口关闭随实例退；Ctrl+R 重载后自动恢复（暂停态）。
 // ============================================================================
 (function () {
@@ -20,7 +23,7 @@
   var cardEl = null, headEl = null, bodyEl = null, titleEl = null, emptyEl = null, resizeEl = null;
   var eng = null;
   var cur = { list: [], index: 0 };
-  var card = { open: false, dockSide: 'right', video: null, audio: null };
+  var card = { open: false, dockSide: 'right', video: null, audio: null, stow: false };
   var curKind = 'video';
   var saveTimer = 0, sessTimer = 0;
   var DEF_GEO = { video: { w: 760, h: 440 }, audio: { w: 680, h: 210 } };
@@ -61,7 +64,9 @@
       '.qpc-empty .qpc-note{font-size:24px;line-height:1;color:#ffd301;opacity:.75}' +
       '.qpc-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;z-index:6;touch-action:none;' +
       'background:linear-gradient(135deg,rgba(255,255,255,0) 46%,rgba(255,255,255,0.38) 50%,rgba(255,255,255,0) 54%),' +
-      'linear-gradient(135deg,rgba(255,255,255,0) 62%,rgba(255,255,255,0.28) 66%,rgba(255,255,255,0) 70%)}';
+      'linear-gradient(135deg,rgba(255,255,255,0) 62%,rgba(255,255,255,0.28) 66%,rgba(255,255,255,0) 70%)}' +
+      // ★ 收纳（2026-09-28 q319 v7）：整卡隐藏、播放不断（display:none 不中断解码）；控制/展开 = qqq 工作台 Player 槽
+      '#qqq-player-card.qpc-stow{display:none!important}';
     (document.head || document.documentElement).appendChild(st);
   }
 
@@ -76,6 +81,13 @@
     titleEl = document.createElement('span');
     titleEl.className = 'qpc-title';
     titleEl.textContent = _i('shell.player.title', '播放器');
+    var minB = document.createElement('button');
+    minB.className = 'qpc-hbtn qpc-min-btn';
+    minB.tabIndex = -1;
+    minB.setAttribute('data-no-cd', '');
+    minB.title = _i('shell.player.minimize', '收纳到 qqq 工作台');
+    minB.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="display:block;pointer-events:none"><path d="M6 19h12v2H6z"/></svg>';
+    minB.addEventListener('click', function () { _setStow(true); });
     var popB = document.createElement('button');
     popB.className = 'qpc-hbtn';
     popB.tabIndex = -1;
@@ -92,6 +104,7 @@
     closeB.textContent = '\u2715';
     closeB.addEventListener('click', function () { close(); });
     headEl.appendChild(titleEl);
+    headEl.appendChild(minB);
     headEl.appendChild(popB);
     headEl.appendChild(closeB);
     bodyEl = document.createElement('div');
@@ -119,7 +132,7 @@
 
   function _showEmpty(on) { try { emptyEl.style.display = on ? 'flex' : 'none'; } catch (_) { } }
 
-  // ── 头部长条拖拽（跟随监听挂 document 捕获相位——指针移出头部/视口外 event 也不丢，pointerup 必达）──
+  // ── 拖拽（头部长条；跟随监听挂 document 捕获相位——指针移出头部/视口外 event 也不丢，pointerup 必达）──
   function _hookDrag() {
     var drag = null;
     function _mv(e) {
@@ -139,16 +152,20 @@
       document.removeEventListener('pointercancel', _up, true);
       _saveGeom();
     }
-    headEl.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0) { return; }
-      if (e.target && e.target.closest && e.target.closest('.qpc-hbtn')) { return; }
-      var r = cardEl.getBoundingClientRect();
-      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-      document.addEventListener('pointermove', _mv, true);
-      document.addEventListener('pointerup', _up, true);
-      document.addEventListener('pointercancel', _up, true);
-      e.preventDefault();
-    });
+    function _bind(el) {
+      if (!el) { return; }
+      el.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0) { return; }
+        if (e.target && e.target.closest && e.target.closest('.qpc-hbtn')) { return; }
+        var r = cardEl.getBoundingClientRect();
+        drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY };
+        document.addEventListener('pointermove', _mv, true);
+        document.addEventListener('pointerup', _up, true);
+        document.addEventListener('pointercancel', _up, true);
+        e.preventDefault();
+      });
+    }
+    _bind(headEl);
   }
 
   // ── 右下角缩放（跟随监听挂 document 捕获相位——手柄仅 16px，光标必然逸出，靠捕获必达）──
@@ -209,6 +226,36 @@
     } catch (_) { }
     _saveCardSoon();
   }
+  // ── 收纳 / 展开（唯一入口；收纳仅隐 UI——不碰引擎，播放不断；控制/展开入口 = qqq 工作台 Player 槽）──
+  function _setStow(on) {
+    if (!cardEl) { return; }
+    on = !!on;
+    if (on && !card.stow) {
+      // 先捕获完整几何（展开时回原位）
+      try {
+        var r = cardEl.getBoundingClientRect();
+        card[_geomKey()] = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+      } catch (_) { }
+    }
+    card.stow = on;
+    try { cardEl.classList.toggle('qpc-stow', on); } catch (_) { }
+    if (!on) { _applyGeom(); }
+    if (on) { _toast(_i('shell.player.stowed', '已收纳到 qqq 工作台'), { type: 'info', duration: 2600 }); }
+    _saveCardNow();
+    _emit();
+  }
+  // ── 状态广播（收纳/展开/播放态/会话变化 → 工作台 Player 槽与 qqq 按钮 ♪ 徽标实时刷新）──
+  function _emit() {
+    try { window.dispatchEvent(new CustomEvent('qqq-player-state')); } catch (_) { }
+    _updateBadge();
+  }
+  function _updateBadge() {
+    try {
+      var stowed = !!(card.open && card.stow);
+      window.__qqqPlayerStowed = stowed;
+      if (window.qqqToolsMenu && window.qqqToolsMenu.setPlayerBadge) { window.qqqToolsMenu.setPlayerBadge(stowed); }
+    } catch (_) { }
+  }
 
   // ── 持久化（OS 级 player-state.json：card 段 + 会话段——与独立窗互通）──
   function _saveCardSoon() {
@@ -218,7 +265,7 @@
   function _saveCardNow() {
     try {
       if (!bridge || !bridge.player || !bridge.player.setState) { return; }
-      bridge.player.setState({ card: { open: !!card.open, dockSide: card.dockSide, video: card.video, audio: card.audio } });
+      bridge.player.setState({ card: { open: !!card.open, dockSide: card.dockSide, video: card.video, audio: card.audio, stow: !!card.stow } });
     } catch (_) { }
   }
   function _saveSession() {
@@ -261,10 +308,11 @@
       },
       getLastDir: function () { return ''; },
       onPlayState: function (playing) {
+        _emit();
         if (!playing) { return; }
         try { if (bridge && bridge.player && bridge.player.claim) { bridge.player.claim('card'); } } catch (_) { }
       },
-      onState: function () { _saveSessionDebounced(); },
+      onState: function () { _saveSessionDebounced(); _emit(); },
       savePref: function (k, v) {
         if (k === 'dockSide') { card.dockSide = (v === 'left') ? 'left' : 'right'; _saveCardSoon(); }
       }
@@ -313,6 +361,7 @@
       }
     }) : null;
     _saveSession();
+    _emit();
   }
 
   // ── 打开（handoff = 悬浮层 ⧈ 交接整机状态；缺省 = 恢复会话/空卡）──
@@ -328,7 +377,11 @@
       var list = h ? h.list : ((st && Array.isArray(st.list)) ? st.list : []);
       var index = h ? (h.index || 0) : ((st && st.index) || 0);
       if (!list || !list.length) {
-        _mountMedia(null);   // 空态（占位提示；后续 appendPaths 即开播）
+        _mountMedia(null);   // 空态（占位提示；后续 appendPaths 即开播）——空列表恒展开态（提示可见）
+        card.stow = false;
+        try { cardEl.classList.remove('qpc-stow'); } catch (_) { }
+        _applyGeom();
+        _emit();
         _saveCardNow();
         return;
       }
@@ -339,6 +392,9 @@
         rate: h ? h.rate : (st && st.rate), loop: h ? h.loop : (st && st.loop), shuffle: h ? h.shuffle : (st && st.shuffle),
         volume: h ? h.volume : (st && st.volume), muted: h ? h.muted : (st && st.muted)
       });
+      try { cardEl.classList.toggle('qpc-stow', !!card.stow); } catch (_) { }
+      if (!card.stow) { _applyGeom(); }
+      _emit();
       _saveCardNow();
     };
     bridge.player.getState().then(function (r) {
@@ -347,6 +403,7 @@
         card.dockSide = (st.card.dockSide === 'left') ? 'left' : 'right';
         card.video = st.card.video || card.video;
         card.audio = st.card.audio || card.audio;
+        card.stow = !!(st.card.stow || st.card.mini);   // 旧 mini 字段迁移
       }
       _after(st);
     }).catch(function () { _after(null); });
@@ -362,12 +419,43 @@
     eng = null;
     try { bodyEl.innerHTML = ''; } catch (_) { }
     try { cardEl.classList.remove('qpc-open'); } catch (_) { }
+    try { cardEl.classList.remove('qpc-stow'); } catch (_) { }
     card.open = false;
+    card.stow = false;
     _showEmpty(false);
     _saveCardNow();
+    _emit();
   }
 
   function isOpen() { try { return !!(cardEl && cardEl.classList.contains('qpc-open')); } catch (_) { return false; } }
+
+  // ── 状态快照（qqq 工作台 Player 槽消费：open/stow/轨名/计数/播放态）──
+  function _info() {
+    var st = null;
+    try { st = eng ? eng.getState() : null; } catch (_) { st = null; }
+    var list = (st && st.list) || [];
+    var idx = (st && typeof st.index === 'number') ? st.index : 0;
+    var it = list[idx] || null;
+    var name = '';
+    if (it) { name = String(it.name || it.localPath || ''); if (name) { name = name.split(/[\\/]/).pop(); } }
+    return {
+      open: !!card.open,
+      stow: !!card.stow,
+      total: list.length,
+      index: idx,
+      name: name,
+      paused: st ? !!st.paused : true
+    };
+  }
+  // ── 播控（qqq 工作台 Player 槽唯一入口：播放开关 / 切轨）──
+  function _cmd(a) {
+    try {
+      if (!eng) { return; }
+      if (a === 'toggle') { eng.toggle(); }
+      else if (a === 'next') { if (eng.next) { eng.next(); } }
+      else if (a === 'prev') { if (eng.prev) { eng.prev(); } }
+    } catch (_) { }
+  }
 
   // ── 追加（Roam ➕ 且卡开着时唯一入口）：去重追加；播放中不打断；空闲则起播首个新增 ──
   function appendPaths(paths) {
@@ -447,6 +535,7 @@
         card.dockSide = (c.dockSide === 'left') ? 'left' : 'right';
         card.video = c.video || null;
         card.audio = c.audio || null;
+        card.stow = !!(c.stow || c.mini);   // 旧 mini 字段迁移
         _ensureDom();
         open(null);
       }).catch(function () { });
@@ -458,7 +547,10 @@
     openFromHandoff: openFromHandoff,
     close: close,
     isOpen: isOpen,
-    appendPaths: appendPaths
+    appendPaths: appendPaths,
+    stow: _setStow,
+    cmd: _cmd,
+    getInfo: _info
   };
 
   _hookKeys();

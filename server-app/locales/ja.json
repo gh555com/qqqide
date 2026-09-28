@@ -172,7 +172,10 @@
             "addNone": "追加可能なメディアファイルがありません",
             "empty": "プレイリストが空です — Roam でメディアを右クリックして「プレイリストに追加」するか、オーバーレイから ↗ ポップアウトしてください",
             "returnOv": "オーバーレイに戻る",
-            "returnFail": "未找到主窗口，无法返回悬浮层"
+            "returnFail": "未找到主窗口，无法返回悬浮层",
+            "minimize": "qqq ワークベンチに格納",
+            "restore": "プレーヤーを展開",
+            "stowed": "qqq ワークベンチに格納済み"
         },
         "about": {
             "title": "qqq について",
@@ -347,6 +350,8 @@
     "editor": {
         "copyPath": "パスをコピー",
         "roamLocate": "Roam でこのファイルを探す",
+        "timelineOpen": "タイムラインでこのファイルを表示",
+        "timelineNoRoot": "このファイルのプロジェクトルートディレクトリを特定できないため、タイムラインは利用できません",
         "minimap": "ミニマップ",
         "tabs": {
             "close": "タブを閉じる",
@@ -641,7 +646,8 @@
             "history": "履歴",
             "noHistory": "履歴なし",
             "saveFailed": "保存に失敗しました",
-            "renameTitle": "名前を編集"
+            "renameTitle": "名前を編集",
+            "pinCloseHint": "クリックして閉じる"
         },
         "lock": {
             "locked": "このプロジェクトは他のウィンドウで開かれています",
@@ -1555,6 +1561,9 @@
         "tip": "お気に入り",
         "count": "全 {0} 件",
         "searchPh": "お気に入りを検索（名前 / タスク / 質問）",
+        "level": "重要度",
+        "filterAll": "すべて",
+        "questTip": "クエスト：{0}",
         "empty": "まだお気に入りはありません · 任意の階層で ☆ をクリックして追加",
         "noMatch": "一致するお気に入りはありません",
         "more": "最初の {0} 件のみ表示、キーワードを入力して絞り込み",
@@ -1681,6 +1690,134 @@
         "lok": "同期中です。しばらくお待ちください…",
         "bridgeMissing": "クラウド同期が利用できません（インスタンスの再起動が必要です）"
     },
+    "prefs": {
+        "title": "qqq 設定",
+        "cloudSec": "☁ クラウド同期",
+        "csLogin": "未ログイン：ログインしてアクティベートすると、設定をデバイス間で同期できます",
+        "csLocked": "設定はローカルに保存されました。クラウドへの永続化には正規版のアクティベーションが必要です",
+        "csOn": "クラウド同期が有効：この端末での変更は自動的にクラウドに同期されます",
+        "pullNow": "今すぐクラウドから設定を取得",
+        "pullDoing": "クラウドから設定を取得中…",
+        "pullDone": "クラウドから {0} 件の設定を同期しました",
+        "pullFail": "クラウド同期失敗：{0}",
+        "needAct": "この機能を使用するには正規版のアクティベーションが必要です",
+        "wmNeed": "ウォーターマークのカスタマイズは正規版機能です（アクティベート後に利用可能）",
+        "reset": "デフォルト設定に戻す",
+        "resetTitle": "デフォルト設定に戻す",
+        "resetMsg": "ローカルのすべての設定変更をクリアします（クラウド同期が有効な場合、クラウドの設定も同時にクリアされます）。続行しますか？",
+        "resetOk": "復元を確認",
+        "resetDone": "デフォルト設定に戻しました",
+        "needRefresh": "設定モジュールが準備できていません（ウィンドウの再読み込みが必要です）",
+        "g": {
+            "core": "☀️ Kernel コア",
+            "roam": "🛸 Roam 漫游",
+            "observe": "👁️ Observer 観察者",
+            "html": "🍌 HTML & リッチテキスト",
+            "doc": "📦 Doc Export ドキュメントエクスポート",
+            "premium": "💎 Premium 正規版限定"
+        },
+        "lab": {
+            "performanceMode": "パフォーマンスモード",
+            "ioEngine": "IO Engine",
+            "transactionLevel": "Transaction Level トランザクションレベル",
+            "szDisplayMode": "sz列の表示",
+            "sortBy": "並べ替え",
+            "autoWatchChanges": "Auto Watch Changes",
+            "roamAsStartPage": "スタートページとしてRoamを使用",
+            "roamName": "Roam名",
+            "frameSizeMode": "フレームサイズモード",
+            "cleanFreak": "Clean Freak 潔癖症",
+            "enlargeSmallImages": "小さい画像を拡大",
+            "textSlideColorScheme": "テキストスライドの配色",
+            "textSlideFontSize": "テキストスライドのフォントサイズ",
+            "codelensLevel": "CodeLensレベル",
+            "takeOverCodelensStyle": "CodeLensスタイルを引き継ぐ",
+            "downloadSecurityLevel": "ダウンロードセキュリティレベル",
+            "forceTextFlowScheme": "Force Text Flow Scheme",
+            "autoDownload": "自動ダウンロード",
+            "docExportImageResolution": "画像解像度",
+            "docExportIncludeCipher": "暗号を含める",
+            "removeWatermark": "Remove Watermark ウォーターマークを除去"
+        },
+        "desc": {
+            "performanceMode": "☀️ プレビュー画像の生成品質と速度を制御",
+            "ioEngine": "☀️ IO エンジン（トレードオフはプロジェクトドキュメント参照：IO_ENGINE_v16）",
+            "transactionLevel": "☀️ トランザクション包装レベル：操作の信頼性と速度を決定",
+            "szDisplayMode": "🛸 sz列に表示する内容",
+            "sortBy": "🛸 ファイルリストの並べ替え方法",
+            "autoWatchChanges": "🛸 チェック：外部プログラムによる現在のディレクトリの変更時にファイルリストを自動更新；未チェック：パフォーマンスオーバーヘッドゼロ",
+            "roamAsStartPage": "🛸 qqq Roamを開始ページとして使用",
+            "roamName": "🛸 カスタムRoam名",
+            "frameSizeMode": "👁️ プレビュー画像サイズモード",
+            "cleanFreak": "👁️ 保存前に各暗号の下に十分な空行を自動的に確保し、プレビューやコンテンツの重なりを防ぐ",
+            "enlargeSmallImages": "👁️ チェック：フレームより小さいプレビュー画像を拡大して填充；未チェック：元のサイズで中央配置",
+            "textSlideColorScheme": "👁️ テキストスライドの背景色",
+            "textSlideFontSize": "👁️ テキストスライドのフォントサイズ（1-218）",
+            "codelensLevel": "👁️ CodeLens表示レベル",
+            "takeOverCodelensStyle": "👁️ CodeLensスタイルを引き継ぐ：赤色、フォントサイズ13",
+            "downloadSecurityLevel": "🍌 動画のダウンロードに失敗した場合、ここでより緩やかな戦略を試すことができます",
+            "forceTextFlowScheme": "🍌 HTML文字化けを強制的に修正（頑固な文字化けの場合のみチェック。レイアウト精度が低下する代价あり）",
+            "autoDownload": "🍌 動画検出時に自動ダウンロード",
+            "docExportImageResolution": "📦 エクスポート時に使用する画像解像度",
+            "docExportIncludeCipher": "📦 エクスポート時に画像パスワード文字列を含める",
+            "removeWatermark": "💎 チェックを外すとウォーターマークが表示されます（ウォーターマークを表示したい場合）"
+        },
+        "opt": {
+            "performanceMode": {
+                "extreme": "Extreme：最初のフレームのみ保持、品質47",
+                "accelerated": "Accelerated：アニメーション/動画は最大2秒、7fps、品質47",
+                "optmum": "Optimum：アニメーションは全長、動画は最初・中間・最後の計4秒、元のfps、品質71"
+            },
+            "ioEngine": {
+                "auto": "v16 auto — 理想的な組み合わせ",
+                "excludePython": "Exclude Python — サイレント実行、約50MBのメモリを節約"
+            },
+            "transactionLevel": {
+                "full": "Full wrap：すべての時間がかかる操作をトランザクションで包装 — プログレスバー、元に戻すサポート、例外時のロールバック",
+                "half": "Half wrap：軽量操作には単純な貼り付けを使用 — 最速の応答、プログレスバーなし、ロールバックなし"
+            },
+            "szDisplayMode": {
+                "nothing": "表示しない",
+                "size": "ファイルサイズを表示",
+                "ctime": "作成日時を表示",
+                "mtime": "更新日時を表示"
+            },
+            "sortBy": {
+                "name": "名前順で並べ替え（フォルダを優先）",
+                "size": "サイズ順で並べ替え（フォルダを優先、ファイルはサイズ降順）",
+                "ctime": "作成日時で並べ替え（降順）",
+                "mtime": "更新日時順で並べ替え（降順）"
+            },
+            "frameSizeMode": {
+                "large": "大フレーム：512×288",
+                "small": "小フレーム：256×144",
+                "fix": "自動調整：画像サイズに応じて自動選択"
+            },
+            "cleanFreak": {
+                "never": "自動整理しない（手動編成のみ）",
+                "add": "追加のみ：空行が十分であることを確認し、余分な空行は削除しない",
+                "addRemove": "厳密な整理：適切な空行 — 余分なものを削除し、不足しているものを追加"
+            },
+            "textSlideColorScheme": {
+                "light": "ライト",
+                "dark": "ダーク"
+            },
+            "codelensLevel": {
+                "none": "なし",
+                "open": "開いているファイルのみ",
+                "full": "フルセット：フォルダ/名前変更/コピー/情報行/qode"
+            },
+            "downloadSecurityLevel": {
+                "l0": "0：最も緩やか — 全11のセキュリティスイッチをオフ",
+                "l1": "1：バランス — 4つのスイッチをオン、7つをオフ",
+                "l2": "2：最も厳格 — 全11個のセキュリティスイッチをオン"
+            },
+            "docExportImageResolution": {
+                "original": "元の解像度 — 完全な精度",
+                "frame": "フレーム解像度 — ファイルサイズが小さく、サムネイルと完全に対応"
+            }
+        }
+    },
     "workbench": {
         "savorTip": "ローカル音楽：{v0} 回、合計 {v1}\nラジオ：{v2} 回、合計 {v3}\n1日平均聴取時間：{v4}",
         "durHm": "{0} 時間 {1} 分",
@@ -1689,13 +1826,15 @@
         "exportDocTip": "現在のドキュメントを Word ファイルとしてエクスポート：画像と動画は画像として埋め込まれ、その他の添付ファイルはリストとして生成されます。デフォルトではドキュメントの隣に保存され、同名のファイルが既に存在する場合のみ保存ダイアログが表示されます。",
         "exportZipTip": "現在のドキュメントと参照されているすべてのファイル・ディレクトリをZIP形式でパッケージ化（ディレクトリ構造を保持、最高圧縮）。デフォルトではドキュメントの隣に保存され、同名ファイルが既に存在する場合のみ保存ダイアログが表示されます。",
         "cloudSyncTip": "クラウド同期：↑ アップロード = クラウドとマージしてからアップロード（両方のデータを保持）；↓ ダウンロード = クラウドデータをローカルにマージ。エディター設定、各フォルダーの設定、クリップボード履歴が含まれます。",
-        "playerTip": "プレイヤー：コーディング中でも音楽や動画を楽しめます（再起動後もプレイリストを記憶）。Roam でメディアを右クリックして「プレイリストに追加」するか、オーバーレイからポップアウトしてください。",
+        "playerTip": "プレーヤー：コーディング中でも音楽や動画を楽しめます（再起動後もプレイリストを保持）。Roam でメディアを選択し右クリックで「プレイリストに追加」、またはフローティングレイヤーからポップアップ表示可能。最小化すると、このスロットのリモコンとして格納されます。",
         "playerWinTip": "独立したフローティングプレイヤーウィンドウ：常に最前面に表示される小窓——他のアプリに切り替えても表示されます（↗）",
         "playerCardTip": "窗口内播放器：悬浮于 qqqide 窗口中的播放器卡片——随本窗口移动（⧈）",
         "playerNeedRestart": "フローティングプレーヤーを使用するにはインスタンスの再起動が必要です",
         "videoUrlTip": "待機中：動画のURLを入力すると、ドキュメントディレクトリに自動的にダウンロードされ、フレームに挿入されます。",
         "pasteTip": "待機中：クリップボードの内容をドキュメントにワンクリックで貼り付け（現在は Ctrl+V でも同じ操作が可能です）。",
-        "pureTip": "待機中：ドキュメントの参照をスキャンし、参照されていない孤立ファイルをクリーンアップします。"
+        "pureTip": "待機中：ドキュメントの参照をスキャンし、参照されていない孤立ファイルをクリーンアップします。",
+        "settingsTip": "qqq 設定センターを開く：クラウド同期 + すべての設定（パフォーマンス/フレーム/ウォッチャー/エクスポート…）",
+        "settingsNeedRestart": "設定センターが準備できていません（ウィンドウの再読み込みが必要です）"
     },
     "audio": {
         "sfx": {

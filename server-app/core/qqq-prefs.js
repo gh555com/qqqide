@@ -1,25 +1,26 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// qqq-prefs.js — 用户偏好机器（q3 老项目 23 项偏好 100% 移植）
+// qqq-prefs.js — 用户偏好机器（q3 老项目 23 项偏好 100% 移植 + 设置本地化）
 //
-// ★ 语义（与老项目逐字一致）:
-//   · 本地永远不保存配置 —— set() 只改本次会话内存，重启即回默认模板
-//   · 未激活用户 = 出厂默认值模板（老项目 default 原值，一项不差）
-//   · 已激活用户 = 官网（#profile）保存配置 → 客户端自动拉取生效（pullCloud）
+// ★ 语义（2026-09-28 用户定案 · 设置本地化 v2）:
+//   · 本地持久化：所有用户 —— set() 即时生效并落盘 qgs.simple('qqq.prefs')（设备本地，重启保留）
+//   · 云端同步：激活（正版）用户 —— 启动自动拉取 + 修改自动回传（GET/PATCH /api/profile，
+//     与官网同库同结构；网站设置标签已移除，存量云配置经此无缝拉回）
+//   · 刷新时序: session（本次会话） > cloud（激活用户云端） > local（本机落盘） > default（出厂）
+//   · 离线/失败不丢：改动记入脏表（随 local 落盘），启动/下次改动时自动补传；恢复默认离线时挂 pending
 //
-// 数据方向: defaults（唯一起点） ← session overrides（本次会话，可丢弃）
-//                                ← cloud config（正版，官网保存，自动拉取）
-// 读取优先: session > cloud > default
+// 数据方向: defaults（唯一起点） ← local（本机） ← cloud（激活用户） ← session
+// 读取优先: session > cloud > local > default
 //
 // 暴露: window.qqqPrefs
-// 依赖: window.qqqLogin（激活判定，可选——缺失按未激活处理）
+// 依赖: window.qqqLogin（激活判定/令牌，可选——缺失按未激活处理）；window.qgs（本地库，可选）
 // ============================================================================
 
 (function () {
   'use strict';
 
-  // ═══ 偏好注册表 — 23 项，键名/默认值/枚举 = 老 q3 package.json 原值 ═══
+  // ═══ 偏好注册表 — 键名/默认值/枚举 = 老 q3 package.json 原值（+ qqqide 补充项 removeWatermark）═══
   var REGISTRY = {
     // ── ☀️ 核心 ──
     'language': {
@@ -137,18 +138,46 @@
       type: 'bool', default: true,
       desc: '📦 导出图片暗号字符串',
     },
+
+    // ── 💎 正版专属（2026-09-28 设置本地化：网站标签移除后接管，正版用户可本地调整） ──
+    'removeWatermark': {
+      type: 'bool', default: true, premium: true, free: false,
+      desc: '💎 消除相框水印（正版功能；取消勾选后将显示水印）',
+    },
   };
 
   var ORDER = Object.keys(REGISTRY);
 
+  // ═══ 云端（官网同库；激活用户自动同步）═══
+  var CLOUD_API = 'https://www.gh555.com/api/profile';
+  var CLOUD_GOOD = 'qqqide';
+
   // ═══ 状态 ═══
-  var _session = {};          // 本次会话覆盖（永不落盘）
-  var _cloud = null;          // 云端配置（正版用户拉取）
+  var _session = {};          // 本次会话覆盖（内存，最高优先）
+  var _local = {};            // 本机持久化（qgs 'qqq.prefs'，所有用户）
+  var _cloud = null;          // 云端配置（激活用户拉取）
+  var _dirty = {};            // 待回传云端的键（离线/失败保值）
+  var _resetPending = false;  // 恢复默认的云端清除未完成（离线时挂起，联网自动补）
+  var _cloudLoaded = false;
   var _listeners = [];
   var _log = function () { };
 
+  // ═══ 本地库句柄（qgs.simple；非云同步 ns——云同步走本模块自有通道）═══
+  var _localHandle = null;
+  var _loadRetryCount = 0;
+  var _loadRetryTimer = null;
+  var _persistTimer = null;
+
   function _warn(msg) {
     try { console.warn('[qqqPrefs] ' + msg); } catch (e) { /* */ }
+  }
+  function _has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+
+  function _handle() {
+    if (!_localHandle && window.qgs && window.qgs.simple) {
+      try { _localHandle = window.qgs.simple('qqq.prefs', { cloud: false }); } catch (e) { _localHandle = null; }
+    }
+    return _localHandle;
   }
 
   // ═══ 激活判定（qqqLogin 缺失 = 未激活）═══
@@ -161,18 +190,30 @@
     return false;
   }
 
-  // ═══ 取值：session > cloud > default ═══
+  function _token() {
+    try {
+      if (window.qqqLogin && window.qqqLogin.getAuthToken) return window.qqqLogin.getAuthToken() || '';
+    } catch (e) { /* */ }
+    return '';
+  }
+
+  // ═══ 取值：session > cloud > local > default（premium 项对未激活用户恒为 free 语义）═══
   function sourceOf(key) {
-    if (Object.prototype.hasOwnProperty.call(_session, key)) return 'session';
-    if (_cloud && Object.prototype.hasOwnProperty.call(_cloud, key)) return 'cloud';
+    if (_has(_session, key)) return 'session';
+    if (_cloud && _has(_cloud, key)) return 'cloud';
+    if (_has(_local, key)) return 'local';
     return 'default';
   }
 
   function get(key) {
     var def = REGISTRY[key];
     if (!def) { _warn('unknown key: ' + key); return undefined; }
-    if (Object.prototype.hasOwnProperty.call(_session, key)) return _session[key];
-    if (_cloud && Object.prototype.hasOwnProperty.call(_cloud, key)) return _cloud[key];
+    if (def.premium && !isActivated()) {
+      return (def.free !== undefined) ? def.free : def.default;   // 正版专属项：未激活 = 出厂免费语义（水印照显）
+    }
+    if (_has(_session, key)) return _session[key];
+    if (_cloud && _has(_cloud, key)) return _cloud[key];
+    if (_has(_local, key)) return _local[key];
     return def.default;
   }
 
@@ -197,11 +238,81 @@
     return { ok: true, value: String(value) };
   }
 
-  // ═══ 写：仅本次会话内存（本地永不保存——铁律）═══
+  // 老格式归一（网站时代存量值 → 客户端枚举；codelensLevel 老 3 = 全套）
+  function _normLegacy(key, value) {
+    if (key === 'codelensLevel' && String(value) === '3') return '7';
+    return value;
+  }
+
+  // ═══ 本地持久化（debounce 400ms；reset/清零走 _persistNow 立即写）═══
+  function _persistNow() {
+    if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
+    var h = _handle();
+    if (!h) { return; }
+    try { var p1 = h.set('values', _local); if (p1 && p1.catch) p1.catch(function () { }); } catch (e) { }
+    try { var p2 = h.set('dirty', _dirty); if (p2 && p2.catch) p2.catch(function () { }); } catch (e) { }
+    try { var p3 = h.set('resetPending', _resetPending ? 1 : 0); if (p3 && p3.catch) p3.catch(function () { }); } catch (e) { }
+  }
+  function _persistLocal() {
+    if (_persistTimer) { return; }
+    _persistTimer = setTimeout(function () {
+      _persistTimer = null;
+      _persistNow();
+    }, 400);
+  }
+
+  // ═══ 本地加载（所有用户；失败退避重试 ≤3）═══
+  function _scheduleLoadRetry() {
+    if (_loadRetryTimer) { return; }
+    if (_loadRetryCount >= 3) {
+      try { console.warn('[qqqPrefs] local store load failed after retries — defaults/local-empty this session'); } catch (e) { }
+      return;
+    }
+    var delay = [1000, 3000, 8000][_loadRetryCount] || 8000;
+    _loadRetryCount++;
+    _loadRetryTimer = setTimeout(function () {
+      _loadRetryTimer = null;
+      _loadLocal();
+    }, delay);
+  }
+  function _loadLocal() {
+    var h = _handle();
+    if (!h) { _scheduleLoadRetry(); return; }
+    try {
+      h.get('values').then(function (v) {
+        if (v && typeof v === 'object') {
+          var ks = Object.keys(v);
+          for (var i = 0; i < ks.length; i++) {
+            var vv = _validate(ks[i], v[ks[i]]);
+            if (vv.ok) { _local[ks[i]] = vv.value; }
+          }
+          _emit(null);
+        }
+        return h.get('dirty');
+      }).then(function (d) {
+        if (d && typeof d === 'object') {
+          var dk = Object.keys(d);
+          for (var j = 0; j < dk.length; j++) { if (REGISTRY[dk[j]]) { _dirty[dk[j]] = 1; } }
+        }
+        return h.get('resetPending');
+      }).then(function (rp) {
+        if (rp) { _resetPending = true; }
+        _drainDirty();   // 启动补传（上次会话离线/失败的改动）
+      }, function () { _scheduleLoadRetry(); });
+    } catch (e) { _scheduleLoadRetry(); }
+  }
+
+  // ═══ 写：内存即时生效 + 本地落盘 + （激活）脏表回传 ═══
   function set(key, value) {
+    var def = REGISTRY[key];
+    if (!def) { _warn('set(' + key + ') unknown key'); return false; }
+    if (def.premium && !isActivated()) { _warn('set(' + key + ') rejected: not-activated'); return false; }
     var v = _validate(key, value);
     if (!v.ok) { _warn('set(' + key + ') rejected: ' + v.reason); return false; }
     _session[key] = v.value;
+    _local[key] = v.value;
+    _persistLocal();
+    if (isActivated()) { _dirty[key] = 1; _schedulePush(); }
     _emit(key);
     return true;
   }
@@ -227,39 +338,45 @@
     return out;
   }
 
-  // ═══ 云端拉取（正版用户；官网 #profile 保存 → 自动拉取生效）═══
-  //   契约就绪前保持关闭：URL 为空 = 明确返回 not-wired（绝不假装成功）
-  var CLOUD_PULL_URL = '';   // TODO(prefs-cloud): 服务端配置接口就绪后填入
-
+  // ═══ 云端拉取（激活用户；与官网设置同库 /api/profile）═══
   var _pulling = null;
   function pullCloud() {
     if (!isActivated()) {
       return Promise.resolve({ ok: false, reason: 'not-activated' });
     }
-    if (!CLOUD_PULL_URL) {
-      return Promise.resolve({ ok: false, reason: 'endpoint-not-wired' });
+    var token = _token();
+    if (!token) {
+      return Promise.resolve({ ok: false, reason: 'not-login' });
     }
     if (_pulling) return _pulling;
-    var token = '';
-    try {
-      if (window.qqqLogin && window.qqqLogin.getAuthToken) token = window.qqqLogin.getAuthToken() || '';
-    } catch (e) { /* */ }
 
-    _pulling = fetch(CLOUD_PULL_URL, {
-      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+    _pulling = fetch(CLOUD_API + '?good=' + CLOUD_GOOD, {
+      headers: { 'Authorization': 'Bearer ' + token },
       cache: 'no-store',
-    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    }).then(function (r) {
+      if (r.status === 401) { return { _status: 401 }; }
+      return r.ok ? r.json() : null;
+    }).then(function (j) {
       _pulling = null;
-      if (!j || !j.config || typeof j.config !== 'object') {
+      if (j && j._status === 401) { return { ok: false, reason: 'auth-expired' }; }
+      if (!j || !j.ok || !j.profile || typeof j.profile !== 'object') {
         return { ok: false, reason: 'bad-response' };
       }
       var next = {};
-      var keys = Object.keys(j.config);
+      var keys = Object.keys(j.profile);
       for (var i = 0; i < keys.length; i++) {
-        var v = _validate(keys[i], j.config[keys[i]]);
+        var nv = _normLegacy(keys[i], j.profile[keys[i]]);
+        var v = _validate(keys[i], nv);
         if (v.ok) next[keys[i]] = v.value;
       }
       _cloud = next;
+      _cloudLoaded = true;
+      // ★ 脏键（本机已改但未回传）优先——离线编辑不被云端旧值覆盖，并立即补传
+      var dk = Object.keys(_dirty);
+      for (var d = 0; d < dk.length; d++) {
+        if (_local[dk[d]] !== undefined) { _session[dk[d]] = _local[dk[d]]; }
+      }
+      if (dk.length || _resetPending) { _schedulePush(); }
       _emit(null);
       return { ok: true, count: Object.keys(next).length };
     }).catch(function (e) {
@@ -267,6 +384,91 @@
       return { ok: false, reason: 'network', message: e && e.message };
     });
     return _pulling;
+  }
+
+  // ═══ 云端回传（PATCH 单键；离线/失败保脏表下次补）═══
+  var _pushTimer = null;
+  function _schedulePush() {
+    if (_pushTimer) { return; }
+    _pushTimer = setTimeout(function () {
+      _pushTimer = null;
+      _flushPush();
+    }, 900);
+  }
+  function _deleteCloud(token) {
+    try {
+      return fetch(CLOUD_API + '?good=' + CLOUD_GOOD, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token },
+      }).then(function (r) {
+        return r.ok ? r.json().catch(function () { return null; }) : null;
+      }).then(function (j) { return !!(j && j.ok); })
+        .catch(function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+  function _flushPush() {
+    if (!isActivated()) return;
+    var token = _token();
+    if (!token) return;
+    if (_resetPending) {
+      _deleteCloud(token).then(function (ok) {
+        if (ok) { _resetPending = false; _persistNow(); }
+      });
+    }
+    var keys = Object.keys(_dirty);
+    for (var i = 0; i < keys.length; i++) {
+      (function (k) {
+        if (!REGISTRY[k]) { delete _dirty[k]; return; }
+        var v = (_has(_local, k)) ? _local[k] : get(k);
+        try {
+          fetch(CLOUD_API, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token,
+            },
+            body: JSON.stringify({ good: CLOUD_GOOD, key: k, value: v }),
+          }).then(function (r) {
+            return r.ok ? r.json().catch(function () { return null; }) : null;
+          }).then(function (j) {
+            if (j && j.ok) {
+              delete _dirty[k];
+              if (_cloud) { _cloud[k] = v; }
+              _persistNow();
+            }
+          }).catch(function () { /* 保脏表，下次补传 */ });
+        } catch (e) { /* 保脏表 */ }
+      })(keys[i]);
+    }
+  }
+  function _drainDirty() {
+    if (isActivated() && (Object.keys(_dirty).length || _resetPending)) { _schedulePush(); }
+  }
+
+  // ═══ 恢复默认（本地即清；激活用户连同云端配置删除——离线挂 pending 自动补）═══
+  function resetAll() {
+    _session = {};
+    _local = {};
+    _dirty = {};
+    _cloud = {};
+    var out = { ok: true, cloud: 'skipped' };
+    if (isActivated()) {
+      var token = _token();
+      if (!token) {
+        _resetPending = true;
+        out.cloud = 'deferred';
+      } else {
+        _resetPending = true;   // 先挂标记（DELETE 在途失败也不丢意图）
+        out.cloud = 'pending';
+        _deleteCloud(token).then(function (ok) {
+          if (ok) { _resetPending = false; _emit(null); }
+          _persistNow();
+        });
+      }
+    }
+    _persistNow();
+    _emit(null);
+    return out;
   }
 
   // ═══ 变更广播 ═══
@@ -280,6 +482,15 @@
     }
   }
 
+  // ═══ 云端状态查询（设置中心 UI 用）═══
+  function cloudInfo() {
+    return {
+      loaded: !!_cloudLoaded,
+      dirty: Object.keys(_dirty).length,
+      resetPending: !!_resetPending,
+    };
+  }
+
   window.qqqPrefs = {
     REGISTRY: REGISTRY,
     ORDER: ORDER,
@@ -290,11 +501,28 @@
     sourceOf: sourceOf,
     isActivated: isActivated,
     pullCloud: pullCloud,
+    resetAll: resetAll,
+    cloudInfo: cloudInfo,
     onChange: onChange,
   };
 
-  // ★ 已激活用户：启动自动拉取云端配置（未接线时静默 no-op）
+  // ★ 启动：本地持久化总是加载（所有用户）；云端拉取仅激活用户
+  try { _loadLocal(); } catch (e) { /* */ }
   if (isActivated()) {
     try { pullCloud(); } catch (e) { /* */ }
   }
+  // ★ 登录/激活状态变更 → 刷新门与补传（拉取时机=激活刚确认且尚未拉过）
+  try {
+    if (window.qqqEntitlement && window.qqqEntitlement.onChange) {
+      window.qqqEntitlement.onChange(function () {
+        try {
+          if (isActivated()) {
+            if (!_cloudLoaded) { pullCloud(); }
+            _drainDirty();
+          }
+        } catch (e) { /* */ }
+        _emit(null);
+      });
+    }
+  } catch (e) { /* */ }
 })();

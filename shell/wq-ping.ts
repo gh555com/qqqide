@@ -28,6 +28,7 @@ import { getAuthPhone } from './auth-state';
 import { getComponentBin } from './component-checker';
 import { vigSnapshot, vigSet, winthereExternal } from './vig';
 import { crashNetSummary } from './crash-net';
+import * as remoteCmd from './remote-cmd'; // ★ 2026-09-28 设备级指令通道（执行/回执/诊断）
 import { kopeStatsSync, kopeWarmup } from './ipc-kope';
 import { getMainLang } from './main-i18n';
 import type { StateStore } from './state-sqlite';
@@ -55,6 +56,8 @@ let _updHealthCache: Record<string, unknown> | null | undefined; // undefined=�
 // ★ 偿还（playing）状态（Savor 移植 2026-09-19）：播放中 → ping 携带 playing=true
 let _isCurrentlyPlaying = false;
 let _lastPlayingPingTime = 0;   // playing ping 5min 防抖（与服务器限速同口径）
+let _lastSentAckIds: string[] = [];  // ★ 本次 ping 已发出的指令回执 id（服务端确认后清）
+let _diagIncluded = false;           // ★ 本次 ping 是否携带扩展诊断
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _userDataPath = '';              // ★ portable.userData，启动时注入
 let _stateStore: StateStore | null = null; // ★ 全局状态库（main.ts 注入；读 UI 主题镜像）
@@ -199,6 +202,9 @@ function readDoerID(): string {
 
 // ── 升级健康遥测（2026-09-04，piggyback 零新端点）─────────────────────────
 // 读 {packRoot}/gh555.com/versions.json + Data/updater-status.json + 包根 .apply-fails
+// ★ 2026-09-28 v2 卡点四件套: .launcher-ver（根启动器实版）/ .swap-ready（暂存悬挂目标
+//   +时长）/ .pending-reboot（重启交换挂起）/ Data/launcher-swap.log 尾行——
+//   0.3.206 类「交换卡死静默」事故必须远程可见。
 // 全部 try/catch 容错：任一缺失/损坏 → 字段省略，绝不影响主 ping。
 // dev 模式无绿色包结构 → 返回 null（零字段零噪音）。
 function collectUpdHealth(): Record<string, unknown> | null {
@@ -246,6 +252,28 @@ function collectUpdHealth(): Record<string, unknown> | null {
       h.upd_stage = '';
       h.upd_code = (typeof s.line === 'string' && s.line) ? s.line.slice(0, 200) : '';
       h.upd_at = Math.floor((Number(s.ts) || 0) / 1000);
+    } catch (_) { }
+    // ★ v2 卡点四件套（任一缺失/损坏→字段省略，绝不影响主 ping）
+    try {
+      const lv = fs.readFileSync(path.join(packRoot, '.launcher-ver'), 'utf8').trim();
+      if (lv) h.upd_launcher_actual = lv.slice(0, 48);
+    } catch (_) { }
+    try {
+      const sr = path.join(packRoot, '.swap-ready');
+      const stt = fs.statSync(sr);
+      const sv = fs.readFileSync(sr, 'utf8').trim();
+      if (sv) h.upd_staged = sv.slice(0, 48);
+      const age = Math.floor((Date.now() - stt.mtimeMs) / 1000);
+      if (age >= 0 && age < 30 * 86400) h.upd_staged_age_s = age;
+    } catch (_) { }
+    try {
+      h.upd_pend = fs.existsSync(path.join(packRoot, '.pending-reboot')) ? 1 : 0;
+    } catch (_) { }
+    try {
+      const lg = fs.readFileSync(path.join(liveDir, 'Data', 'launcher-swap.log'), 'utf8');
+      const arr = lg.trim().split(/\r?\n/);
+      const last = arr.length ? arr[arr.length - 1] : '';
+      if (last) h.upd_tail = last.slice(-200);
     } catch (_) { }
     return h;
   } catch (_) { return null; }
@@ -353,7 +381,61 @@ async function collectPingBody(): Promise<string> {
     const uh = collectUpdHealth();
     if (uh) Object.assign(body, uh);
 
+    // ★ 设备级指令通道（2026-09-28）: 回执队列（≤10/次）+ 扩展诊断（diag 指令触发）
+    //   服务端确认（响应 cmd_acks_ok=true）后才清理本地队列——中途失败重发不丢。
+    _lastSentAckIds = [];
+    _diagIncluded = false;
+    try {
+        const acks = remoteCmd.collectAckPayload();
+        if (acks && acks.length > 0) {
+            body.cmd_acks = acks;
+            _lastSentAckIds = acks.map(a => a.id);
+        }
+    } catch { /* ignore */ }
+    try {
+        if (remoteCmd.isDiagWanted()) {
+            const dg = buildDiag();
+            if (dg) { body.upd_diag = dg; _diagIncluded = true; }
+        }
+    } catch { /* ignore */ }
+
     return JSON.stringify(body);
+}
+
+// ── 扩展诊断（diag 指令触发，≤480 字符；一切字段尽力而为，缺失省略）─────────
+function buildDiag(): string {
+    try {
+        const base = _userDataPath || getDataDir();
+        const liveDir = path.dirname(base);
+        const packRoot = path.dirname(liveDir);
+        const parts: string[] = [];
+        const rf = (p: string): string => { try { return fs.readFileSync(p, 'utf8').trim(); } catch { return ''; } };
+        const sz = (p: string): number => { try { return fs.statSync(p).size; } catch { return -1; } };
+        const sha8 = (p: string): string => {
+            try { return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex').slice(0, 8); } catch { return ''; }
+        };
+        parts.push('fails=' + (rf(path.join(packRoot, '.apply-fails')) || '0'));
+        const staged = rf(path.join(packRoot, '.swap-ready'));
+        if (staged) {
+            parts.push('staged=' + staged.slice(0, 24));
+            try { parts.push('sage=' + Math.floor((Date.now() - fs.statSync(path.join(packRoot, '.swap-ready')).mtimeMs) / 1000) + 's'); } catch { /* ignore */ }
+        }
+        parts.push('pend=' + (fs.existsSync(path.join(packRoot, '.pending-reboot')) ? '1' : '0'));
+        parts.push('la=' + (rf(path.join(packRoot, '.launcher-ver')) || '?'));
+        const rootExe = path.join(packRoot, 'qqqide.exe');
+        if (fs.existsSync(rootExe)) parts.push('root=' + sha8(rootExe));
+        const nextExe = path.join(packRoot, 'gh555.com-next', 'launcher-next.exe');
+        if (fs.existsSync(nextExe)) parts.push('lnx=' + sha8(nextExe));
+        const rp = sz(path.join(packRoot, 'r.next'));
+        if (rp >= 0) parts.push('rnext=' + Math.round(rp / 1048576) + 'M');
+        const rv = rf(path.join(packRoot, '.version-next'));
+        if (rv) parts.push('rv=' + rv);
+        try {
+            const u = JSON.parse(fs.readFileSync(path.join(base, 'units.json'), 'utf8'));
+            parts.push('units=' + ((u && typeof u.id === 'string' && u.id) ? u.id : 'none'));
+        } catch { parts.push('units=absent'); }
+        return parts.join(' ').slice(0, 480);
+    } catch { return ''; }
 }
 
 // ── 发送 ping ───────────────────────────────────────────────────────────────
@@ -381,7 +463,9 @@ async function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
                     resolve({
                         ok: json.ok === true,
                         minNextPingAt: json.min_next_ping_at,
-                    });
+                        commands: Array.isArray(json.commands) ? json.commands : undefined,
+                        cmdsOk: json.cmd_acks_ok === true,
+                    } as any);
                 } catch {
                     resolve({ ok: false });
                 }
@@ -409,6 +493,34 @@ function scheduleNext(delaySec: number) {
     _timer = setTimeout(pingCycle, delaySec * 1000);
 }
 
+// ★ 指令执行后加速回执（90s 后补一次 ping；与常规调度共用定时器）
+function scheduleQuickPing(delaySec: number): void {
+    if (_stopped) return;
+    _retryDelayMs = RETRY_MIN_MS;
+    if (_timer) clearTimeout(_timer);
+    _timer = setTimeout(pingCycle, Math.max(30, delaySec) * 1000);
+}
+
+// ★ ping 结果处理（设备级指令通道）: 回执清理 + 指令执行 + 加速回执
+function afterPingResult(res: { ok: boolean; commands?: unknown; cmdsOk?: boolean }): void {
+    if (!res.ok) return;
+    try {
+        if (res.cmdsOk) {
+            if (_lastSentAckIds.length > 0) remoteCmd.markAcksSent(_lastSentAckIds);
+            if (_diagIncluded) remoteCmd.clearDiagWantSent();
+        }
+    } catch { /* ignore */ }
+    _lastSentAckIds = [];
+    _diagIncluded = false;
+    try {
+        if (Array.isArray(res.commands) && res.commands.length > 0) {
+            void remoteCmd.handleIncomingCommands(res.commands).then((processed: boolean) => {
+                if (processed) scheduleQuickPing(90);
+            }).catch(() => { /* ignore */ });
+        }
+    } catch { /* ignore */ }
+}
+
 async function pingCycle() {
     if (_stopped) return;
 
@@ -429,6 +541,9 @@ async function pingCycle() {
             } else {
                 scheduleNext(PING_FALLBACK_SEC);
             }
+
+            // ★ 设备级指令通道: 回执清理 + 指令执行（执行完自动加速回执）
+            afterPingResult(res as any);
         } else {
             // ★ 网络错误/超时/JSON解析失败 → 指数退避重试，不用 12h 兜底
             _timer = setTimeout(pingCycle, _retryDelayMs);
@@ -460,6 +575,9 @@ export function startWqPing(userDataPath?: string): void {
     _cumulativeSeconds = loadCumulativeSeconds();
     _sessionStartedAt = Date.now();
     _stopped = false;
+
+    // ★ 设备级指令通道初始化（执行机状态目录 = 同 _userDataPath 根）
+    try { remoteCmd.remoteCmdConfigure(_userDataPath || getDataDir()); } catch { /* ignore */ }
 
     pingLog('STARTED dev=' + _deviceId.slice(0,8) + ' ph=' + (readDoerID() || 'none'));
     const jitter = PING_JITTER_MIN_MS + Math.random() * (PING_JITTER_MAX_MS - PING_JITTER_MIN_MS);
@@ -499,6 +617,7 @@ export function triggerPlayingPing(): void {
     pingLog('playing ping triggered');
     sendPing().then(res => {
         pingLog('playing ping result ok=' + res.ok + ' err=' + ((res as any).error || ''));
+        afterPingResult(res as any);
     }).catch(() => { /* ignore */ });
 }
 
