@@ -218,6 +218,12 @@ function bootRpcForwarder() {
       return;
     }
 
+    // ★ 外部修改机器 v2：AI 写工具落盘 → 编辑器即时校验（净 → 自动刷新 / 脏 → 冲突条）
+    if (e.data.type === 'qqq-file-written' && e.data.path && window.qqqEditor && window.qqqEditor.notifyExternalWrite) {
+      window.qqqEditor.notifyExternalWrite(e.data.path);
+      return;
+    }
+
     // Handle qqq-command from iframes (q4-sidebar, etc.)
     if (e.data.type === 'qqq-command' && e.data.cmd) {
       document.dispatchEvent(new CustomEvent('qqq-command', { detail: { cmd: e.data.cmd, url: e.data.url } }));

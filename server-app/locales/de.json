@@ -134,7 +134,17 @@
             "mspeedCustom": "Benutzerdefinierter Faktor",
             "mspeedOk": "Bestätigen",
             "mfsFail": "Vollbildmodus fehlgeschlagen",
-            "mloop": "Wiederholen (Tastenkürzel L)",
+            "mmode": "Wiedergabemodus (L Wiederholen / R Zufall)",
+            "mlooplab": "Wiederholen",
+            "mshuflab": "Zufallswiedergabe",
+            "mOff": "Aus",
+            "mOn": "Ein",
+            "mplist": "Wiedergabeliste",
+            "modeOne": "Einzelnen Titel wiederholen",
+            "modeListLoop": "Playlist-Schleife",
+            "mprev": "Vorheriges",
+            "mnext": "Nächster",
+            "mskip": "Wiedergabe nicht möglich, übersprungen: {name}",
             "mpip": "Bild-in-Bild",
             "mfs": "Vollbild (Tastenkürzel F)",
             "mstep": "Einzelbildschritt (Tastenkürzel . vorwärts / , rückwärts)",
@@ -146,7 +156,23 @@
             "mabClear": "A-B-Schleife gelöscht",
             "mshot": "Einzelbild-Screenshot (Tastenkürzel S)",
             "mshotSaved": "Screenshot gespeichert: {name}",
-            "mshotFail": "Screenshot fehlgeschlagen"
+            "mshotFail": "Screenshot fehlgeschlagen",
+            "mplUp": "Nach oben",
+            "mplDown": "Nach unten",
+            "mplDel": "Aus Wiedergabeliste entfernen",
+            "mpopout": "Eigenständigen Player ausdocken",
+            "mpopin": "Player im Fenster öffnen",
+            "mdockside": "Listenposition wechseln (links / rechts)"
+        },
+        "player": {
+            "title": "Player",
+            "needRestart": "Player erfordert Neustart der Instanz",
+            "added": "{n} zur Wiedergabeliste hinzugefügt",
+            "addedIgnored": "{n} zur Wiedergabeliste hinzugefügt · {m} ignoriert",
+            "addNone": "Keine Mediendateien zum Hinzufügen vorhanden",
+            "empty": "Playlist ist leer – Wähle Medien in Roam aus und klicke mit der rechten Maustaste auf „Zur Playlist hinzufügen“ oder docke sie aus der Overlay-Ebene aus (↗).",
+            "returnOv": "Zurück zur Overlay-Ebene",
+            "returnFail": "Hauptfenster nicht gefunden, Rückkehr zur Schwebeschicht nicht möglich"
         },
         "about": {
             "title": "Über qqq",
@@ -293,11 +319,21 @@
             "ok": "Beenden bestätigen"
         },
         "wq": {
-            "tip": "wq Vorlauf-Statistik: Einfügen der Probe-Ausführungszeit\nKlicken zum Zurücksetzen",
-            "tipShort": "wq Vorlauf-Statistik"
+            "title": "wq-Sonde",
+            "empty": "Keine Einträge",
+            "probeMeta": "Max. {max} ms · Insgesamt {n} Mal",
+            "recent": "Zuletzt {list}",
+            "cacheMedia": "Medien-Cache",
+            "cachePlay": "Transkodierungs-Cache",
+            "cacheMeta": "{n} Einträge · Trefferquote {p}%",
+            "cacheMetaNoHit": "{n} Einträge",
+            "cacheBroken": "Unterbrechung {n}",
+            "reset": "Zurücksetzen",
+            "resetDone": "wq-Statistik zurückgesetzt"
         },
         "goods": {
-            "kmdXTip": "Drücken Sie x, um ein neues kmd zu öffnen"
+            "kmdXTip": "Kurzes Drücken der x-Taste öffnet ein neues kmd. Zuvor kannst du eine Roam-Datei oder einen Ordner auswählen, um deren Pfad zu übernehmen.",
+            "qmdXTip": "Halten Sie die Taste x lange gedrückt, um ein neues qmd zu öffnen. Drücken Sie sie zuvor, um eine Roam-Datei oder einen Ordner auszuwählen, sodass deren Pfad übernommen wird."
         },
         "aZone": {
             "nullTip": "Bereich A einklappen / Klicken zum Wiederherstellen"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "Pfad kopieren",
+        "roamLocate": "Diese Datei in Roam lokalisieren",
         "minimap": "Minikarte",
         "tabs": {
             "close": "Tab schließen",
@@ -328,7 +365,12 @@
             "encAutoReset": "Automatische Erkennung (Feste Einstellung entfernen)",
             "encAutoCur": "Automatisch erkennen",
             "encFixedAt": "Kodierung festgelegt auf {v} (Notfallmodus) – Klicken, um zu ändern / automatische Erkennung wiederherzustellen",
-            "encAutoAt": "Kodierung: {v} (automatisch erkannt) – Klicken Sie hier, um sie manuell festzulegen",
+            "encAutoAt": "Kodierung: {v} — {src}; Klicken zur manuellen Auswahl",
+            "encSrcBom": "Gemäß BOM-Deklaration",
+            "encSrcUtf8": "Strikte UTF-8-Dekodierung bestanden",
+            "encSrcGbk": "GBK-Fallback-Schätzung (bei Zeichensalat hier klicken)",
+            "saveAsUtf8": "Als UTF-8 speichern",
+            "encMenu": "Kodierungsmenü",
             "readFail": "Lesefehler: Datei existiert nicht oder ist nicht lesbar",
             "redecoded": "Neu dekodiert mit {v}",
             "switchFail": "Decodierungswechsel fehlgeschlagen:",
@@ -337,6 +379,24 @@
             "saveAsFail": "Speichern unter fehlgeschlagen:",
             "dirtyFirst": "Datei enthält nicht gespeicherte Änderungen – Bitte zuerst mit Strg+S speichern, dann Kodierung wechseln (liest die Datei erneut von der Festplatte)",
             "recallTip": "Drücke Tab oder F2, um mich wieder einzublenden"
+        },
+        "ext": {
+            "refreshedTip": "Extern geändert, Anzeige aktualisiert",
+            "conflictTitle": "Datei wurde extern geändert",
+            "conflictHint": "Ihre Änderungen bleiben im Editor erhalten",
+            "conflictToast": "Die Datei wurde extern geändert. Automatisches Speichern pausiert. Bitte wählen Sie, welche Version behalten werden soll.",
+            "saveBlocked": "Speichern pausiert: Festplatte extern geändert, bitte zuerst Konflikte lösen",
+            "btnCompare": "Vergleichen",
+            "btnUseDisk": "Datenträgerversion verwenden",
+            "btnKeepMine": "Meine Version behalten",
+            "usedDiskToast": "Datenträgerversion geladen; vorherige Änderungen in der Zeitleiste gespeichert",
+            "keepMineToast": "Deine Version hat die auf dem Datenträger überschrieben",
+            "closeTitle": "Nicht gespeicherte Änderungen",
+            "closeHint": "Änderungen vor dem Schließen speichern?",
+            "closeConflictNote": "Datenträger wurde extern geändert: Speichern überschreibt die externe Version (Snapshots beider Versionen wurden archiviert)",
+            "closeSave": "Speichern und schließen",
+            "closeDiscard": "Nicht speichern",
+            "closeCancel": "Abbrechen"
         },
         "contextMenu": {
             "cut": "Ausschneiden",
@@ -859,7 +919,11 @@
             "switched": "── Gewechselt zu {0} ──",
             "switchFail": "[Wechsel fehlgeschlagen] {0}",
             "switchErr": "[Umschaltfehler] {0}",
-            "ctrlCFail": "[Senden von Strg+C fehlgeschlagen] {0}"
+            "ctrlCFail": "[Senden von Strg+C fehlgeschlagen] {0}",
+            "intDone": "── Strg+C · {0} Prozess(e) beendet ──",
+            "intIdle": "── Strg+C · Kein Befehl wird ausgeführt ──",
+            "intSig": "── Strg+C · Interrupt-Signal gesendet ──",
+            "intRestart": "── Ctrl+C · Shell-Upgrade erfordert Neustart der Instanz ──"
         },
         "git": {
             "refresh": "Aktualisieren",
@@ -1097,14 +1161,23 @@
             "unknownErr": "Unbekannter Fehler"
         },
         "qmd": {
-            "sessionOps": "Sitzungsoperationen",
-            "killHint": "Terminate: Beendet den gesamten Prozessbaum zwangsweise und startet ihn sofort neu; Restart: Startet die Sitzung normal neu",
+            "sessionOps": "Terminal-Operationen",
+            "killHint": "Interrupt stoppt nur den aktuellen Befehl (Sitzung und Scrollverlauf bleiben erhalten); Restart beendet den Prozessbaum und startet die Sitzung am selben Ort neu; Terminate beendet nur (Tab und Scrollverlauf bleiben erhalten, kann erneut mit Restart gestartet werden)",
             "startFail": "[Start fehlgeschlagen] {0}",
             "startFailTerm": "[qmd] Sitzungsstart fehlgeschlagen: {0}",
             "startErr": "[Startfehler]",
             "exited": "{0} beendet",
             "exitedTerm": "── Sitzung beendet{0} ──",
-            "restarted": "● Neu gestartet"
+            "restarted": "● Neu gestartet",
+            "noSel": "Kein Text ausgewählt · Erst markieren, dann kopieren",
+            "intRestart": "── Unterbrechung · Shell-Upgrade erfordert Neustart der Instanz ──",
+            "intDone": "── Interrupt · {0} Prozesse beendet ──",
+            "intIdle": "── Interrupt · Kein Befehl wird ausgeführt ──",
+            "intSig": "── Interrupt · Unterbrechungssignal gesendet ──",
+            "intFail": "[Interrupt fehlgeschlagen] {0}",
+            "terminated": "Beendet · Kann mit Restart neu gestartet werden",
+            "termLine": "── Sitzung beendet (Neustart möglich) ──",
+            "deadHint": "Bereits im Beendigungsstatus · Restart startet neu"
         },
         "dsecret": {
             "targetProject": "Zielprojekt",
@@ -1154,6 +1227,9 @@
             "notChecked": "(Nicht geprüft)"
         },
         "roam": {
+            "qBatchIgnore": "Q-Wiedergabeliste: {0} hinzugefügt · {1} ignoriert (unterschiedlicher Typ)",
+            "mplAdd": "Zur Wiedergabeliste hinzufügen",
+            "mplNone": "Keine Mediendateien zum Hinzufügen zur Playlist verfügbar",
             "szSize": "Anzeige im sz-Bereich: Dateigröße",
             "szCtime": "Anzeige im sz-Bereich: Erstellungszeit",
             "szMtime": "Anzeige im sz-Bereich: Änderungszeit",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ Untracked-Cache für {name} aktiviert, wirksam ab dem nächsten Scan",
         "ucFail": "Dieses Repository unterstützt keinen Untracked-Cache (möglicherweise kein lokales Laufwerk), keine Änderungen vorgenommen"
     },
+    "fav": {
+        "title": "Favoriten",
+        "tip": "Favoriten",
+        "count": "Insgesamt {0} Einträge",
+        "searchPh": "Favoriten suchen (Name / Aufgabe / Frage)",
+        "empty": "Noch keine Favoriten · Klicken Sie auf ☆ in einer beliebigen Ebene, um sie zu favorisieren",
+        "noMatch": "Keine passenden Favoriten gefunden",
+        "more": "Zeigt nur die ersten {0} Einträge an. Geben Sie ein Schlüsselwort ein, um den Bereich einzugrenzen.",
+        "starTip": "Diese Ebene favorisieren",
+        "starTipOn": "Favorisiert (zum Bearbeiten klicken)",
+        "namerTitle": "Diese Ebene favorisieren",
+        "namerTitleEdit": "Favorit bearbeiten",
+        "namePh": "Name des Favoriten (Enter für automatischen Namen)",
+        "save": "Favorisieren",
+        "saveEdit": "Speichern",
+        "remove": "Aus Favoriten entfernen",
+        "close": "Schließen",
+        "cancel": "Abbrechen",
+        "rename": "Umbenennen",
+        "rowRemove": "Entfernen",
+        "questGone": "Diese Aufgabe existiert nicht mehr (kann aus den Favoriten entfernt werden)",
+        "floorGone": "Daten dieser Ebene sind nicht vorhanden",
+        "cardGone": "Aufgabendaten sind nicht bereit oder wurden gelöscht",
+        "noPanel": "AI-Panel ist noch nicht bereit",
+        "saveFail": "Fehler beim Speichern des Favoriten",
+        "deletedTag": "Aufgabe gelöscht"
+    },
     "firstRun": {
         "expert": "Ich bin ein Experte, ich kenne die Gefahren jedes Befehls, ich lösche keine Dateien mit qqqide",
         "agree": "Zustimmen und fortfahren",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "Aktuelles Dokument als Word-Datei exportieren: Bilder und Videos werden als eingebettete Bilder konvertiert, andere Anhänge werden als Liste generiert; standardmäßig neben dem Dokument gespeichert, Speicherdialog erscheint nur, wenn eine gleichnamige Datei bereits existiert.",
         "exportZipTip": "Packt das aktuelle Dokument und alle referenzierten Dateien und Verzeichnisse in ein ZIP-Archiv (behält Verzeichnisstruktur bei, maximale Komprimierung); standardmäßig neben dem Dokument gespeichert, Speicherdialog erscheint nur, wenn eine gleichnamige Datei bereits existiert.",
         "cloudSyncTip": "Cloud-Sync: ↑ Hochladen = Erst mit Cloud zusammenführen, dann hochladen (keine Datenverluste auf beiden Seiten); ↓ Herunterladen = Cloud-Daten mit lokalen Daten zusammenführen. Enthält Editor-Einstellungen, Ordnerpräferenzen und Zwischenablage-Historie.",
+        "playerTip": "Player: Höre Musik oder schaue Videos während des Codens (Playlist wird über Neustarts hinweg gespeichert); Wähle Medien in Roam aus und klicke mit der rechten Maustaste auf „Zur Playlist hinzufügen“ oder docke sie aus der Overlay-Ebene aus.",
+        "playerWinTip": "Eigenständiges schwebendes Player-Fenster: Immer im Vordergrund – bleibt auch beim Wechsel zu anderen Programmen sichtbar (↗)",
+        "playerCardTip": "Player im Fenster: Player-Karte schwebt im qqqide-Fenster – folgt diesem Fenster (⧈)",
+        "playerNeedRestart": "Schwebender Player erfordert Neustart der Instanz",
         "videoUrlTip": "To-Do: Video-URL eingeben, automatisch in den Dokumentordner herunterladen und in einen Bildrahmen einfügen.",
         "pasteTip": "To-Do: Inhalt der Zwischenablage mit einem Klick in das Dokument einfügen (derzeit kann derselbe Vorgang mit Ctrl+V durchgeführt werden).",
         "pureTip": "Ausstehend: Dokumentreferenzen scannen und nicht mehr referenzierte verwaiste Dateien bereinigen."
@@ -1686,18 +1793,54 @@
             "btn": "Als systemweiten Python-Interpreter festlegen",
             "busyChecking": "Überprüfung läuft…",
             "busyApplying": "Einstellungen werden angewendet…",
+            "busyRemoving": "Wird entfernt…",
+            "confirmPick": "Du hast „Als systemweiten Python-Interpreter festlegen“ ausgewählt",
+            "confirmRemovePick": "Du hast „Als systemweiten Python-Interpreter entfernen“ ausgewählt",
             "confirmTitle": "Der aktuelle Systeminterpreter wird überschrieben",
+            "confirmRemove": "Als systemweiten Python-Interpreter aufheben",
             "confirmOk": "Bestätigen",
             "confirmCancel": "Abbrechen",
             "ok": "✅ Eingestellt: .py-Dateien werden mit integriertem Python ausgeführt",
             "okRefresh": "✅ Aktualisiert: Integriertes Python hat .py-Dateien übernommen",
-            "fail": "❌ Einstellung fehlgeschlagen:",
+            "okRemove": "✅ Entfernt: Integriertes Python ist nicht mehr der systemweite Interpreter",
+            "fail": "❌ Python-Einstellung fehlgeschlagen:",
+            "failRemove": "❌ Python-Entfernung fehlgeschlagen:",
             "errNoPython": "Integriertes Python ist nicht bereit",
             "errDenied": "Zugriff verweigert (möglicherweise durch Sicherheitssoftware blockiert)",
             "errVerify": "Schreibvorgang nicht wirksam",
             "errUac": "Abgebrochen (nicht autorisiert)",
-            "errBridge": "Fenster muss neu gestartet werden, damit die Änderung wirksam wird",
+            "errBridge": "Fenster muss neu gestartet werden, damit Python verfügbar ist",
             "errBusy": "Verarbeitung läuft, bitte warten",
+            "errRemove": "Entfernung nicht abgeschlossen",
+            "errGeneric": "Unbekannter Fehler"
+        },
+        "sysInterp": {
+            "label": "Systeminterpreter",
+            "desc": "Lässt .js / .py Dateien per Doppelklick mit dem integrierten Node / Python ausführen (Fenster bleibt offen). Einmalige Einrichtung; nach Verschieben des Installationsverzeichnisses einfach erneut ausführen.",
+            "confirmTitle": "Aktuellen Systeminterpreter überschreiben",
+            "confirmOk": "Bestätigen",
+            "confirmCancel": "Abbrechen"
+        },
+        "nodeInterp": {
+            "btn": "Als systemweiten Node-Interpreter festlegen",
+            "busyChecking": "Wird überprüft…",
+            "busyApplying": "Wird eingerichtet…",
+            "busyRemoving": "Wird entfernt…",
+            "confirmPick": "Du hast „Als systemweiten Node-Interpreter festlegen“ ausgewählt",
+            "confirmRemovePick": "Sie haben „Als systemweiten Node-Interpreter aufheben“ ausgewählt",
+            "confirmRemove": "Als systemweiten Node-Interpreter aufheben",
+            "ok": "✅ Eingestellt: Doppelklick auf .js führt mit integriertem Node aus",
+            "okRefresh": "✅ Aktualisiert: Integriertes Node hat .js übernommen",
+            "okRemove": "✅ Entfernt: Integrierter Node ist nicht mehr der Systeminterpreter",
+            "fail": "❌ Node-Einrichtung fehlgeschlagen:",
+            "failRemove": "❌ Node-Entfernung fehlgeschlagen:",
+            "errNoNode": "Integriertes Node nicht bereit",
+            "errDenied": "Zugriff verweigert (möglicherweise durch Sicherheitssoftware blockiert)",
+            "errVerify": "Schreibvorgang nicht wirksam",
+            "errUac": "Abgebrochen (nicht autorisiert)",
+            "errBridge": "Fenster muss neu gestartet werden, damit Node verfügbar ist",
+            "errBusy": "Wird verarbeitet, bitte warten",
+            "errRemove": "Entfernung nicht abgeschlossen",
             "errGeneric": "Unbekannter Fehler"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "Beenden"
         },
         "enc": {
-            "saveRejected": "Speichern abgelehnt: Das Zeichen \"{ch}\" ({cp}) kann nicht mit {enc} kodiert werden, Inhalt wurde nicht geschrieben. Optionen: ① Löschen Sie das Zeichen und speichern Sie erneut; ② Wählen Sie im Kodierungsmenü des Tabs „Speichern unter UTF-8/GB18030“ (vollständige Zeichenkodierung, kein Datenverlust)."
+            "saveRejected": "Speichern abgelehnt: Zeichen \"{ch}\" ({cp}) kann nicht mit {enc} kodiert werden, Inhalt nicht geschrieben. Optionen: ① Lösche das Zeichen und speichere erneut; ② Klicke auf das Kodierungs-Logo neben dem oberen Pfad und wähle „Als UTF-8/GB18030 speichern“ (vollständige Zeichenkodierung, kein Datenverlust).",
+            "saveRejectedDecode": "Speichern abgelehnt: Datei enthält {n} Stellen mit nicht dekodierbaren Zeichen (angezeigt als , nicht Teil deiner Eingabe) – {enc} kann sie nicht darstellen, direktes Speichern würde sie in andere Zeichen umwandeln. Optionen: ① Klicke auf das Kodierungs-Logo neben dem oberen Pfad, um die Datei mit einer anderen Kodierung erneut zu öffnen; ② Oder „Als UTF-8 speichern“, um den aktuellen Inhalt unverändert zu sichern."
         },
         "search": {
             "rgMissing": "ripgrep ist nicht installiert. Ausführen: python op/components.py ensure ripgrep",

@@ -134,7 +134,17 @@
             "mspeedCustom": "自訂倍數",
             "mspeedOk": "確認",
             "mfsFail": "全螢幕失敗",
-            "mloop": "循環播放（快捷鍵 L）",
+            "mmode": "播放模式（L 循環 / R 隨機）",
+            "mlooplab": "循環",
+            "mshuflab": "隨機",
+            "mOff": "關",
+            "mOn": "開",
+            "mplist": "播放清單",
+            "modeOne": "單曲循環",
+            "modeListLoop": "清單循環",
+            "mprev": "上一個",
+            "mnext": "下一個",
+            "mskip": "無法播放，已跳過：{name}",
             "mpip": "子母畫面",
             "mfs": "全螢幕（快捷鍵 F）",
             "mstep": "逐幀步進（快捷鍵 . 前進 / , 後退）",
@@ -146,7 +156,23 @@
             "mabClear": "已清除 A-B 循環",
             "mshot": "單幀截圖（快捷鍵 S）",
             "mshotSaved": "已儲存截圖：{name}",
-            "mshotFail": "截圖失敗"
+            "mshotFail": "截圖失敗",
+            "mplUp": "上移",
+            "mplDown": "下移",
+            "mplDel": "從播放清單移除",
+            "mpopout": "彈出獨立播放器",
+            "mpopin": "在視窗內開啟播放器",
+            "mdockside": "切換清單位置（左 / 右）"
+        },
+        "player": {
+            "title": "播放器",
+            "needRestart": "播放器需要重啟實例後可用",
+            "added": "已加入播放清單：{n} 個",
+            "addedIgnored": "已加入播放清單：{n} 個 · 忽略 {m} 個",
+            "addNone": "沒有可加入的媒體檔案",
+            "empty": "播放清單為空 — 在 Roam 中選中媒體右鍵「加入播放清單」，或從懸浮層 ↗ 彈出",
+            "returnOv": "退回懸浮層",
+            "returnFail": "未找到主視窗，無法退回懸浮層"
         },
         "about": {
             "title": "關於 qqq",
@@ -293,11 +319,21 @@
             "ok": "確認退出"
         },
         "wq": {
-            "tip": "wq 前搖統計：貼上探針執行時間\n點擊重置",
-            "tipShort": "wq 前搖統計"
+            "title": "wq 探針",
+            "empty": "暫無記錄",
+            "probeMeta": "最大 {max} ms · 共 {n} 次",
+            "recent": "最近 {list}",
+            "cacheMedia": "媒體快取",
+            "cachePlay": "轉碼快取",
+            "cacheMeta": "{n} 項 · 命中 {p}%",
+            "cacheMetaNoHit": "{n} 項",
+            "cacheBroken": "熔斷 {n}",
+            "reset": "重置",
+            "resetDone": "wq 統計已重設"
         },
         "goods": {
-            "kmdXTip": "按 x 鍵開啟新 kmd"
+            "kmdXTip": "按 x 鍵開啟新 kmd",
+            "qmdXTip": "長按 x 鍵開啟一個新 qmd，按之前可選中 Roam 檔案或資料夾，以帶上該檔案或資料夾路徑。"
         },
         "aZone": {
             "nullTip": "收起 A 區 / 點擊還原"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "複製路徑",
+        "roamLocate": "在 Roam 中定位該檔案",
         "minimap": "縮圖導覽",
         "tabs": {
             "close": "關閉分頁",
@@ -329,6 +366,11 @@
             "encAutoCur": "自動偵測",
             "encFixedAt": "編碼已固定為 {v}（應急模式）— 點擊修改 / 恢復自動",
             "encAutoAt": "編碼：{v}（自動偵測）— 點擊可手動指定",
+            "encSrcBom": "依據 BOM 宣告",
+            "encSrcUtf8": "嚴格 UTF-8 解碼通過",
+            "encSrcGbk": "GBK 回退推測（亂碼請點此更改）",
+            "saveAsUtf8": "另存為 UTF-8",
+            "encMenu": "編碼選單",
             "readFail": "讀取失敗：檔案不存在或無法讀取",
             "redecoded": "已依 {v} 重新解碼",
             "switchFail": "切換解碼失敗：",
@@ -337,6 +379,24 @@
             "saveAsFail": "另存為失敗：",
             "dirtyFirst": "檔案有未儲存的變更 — 請先按 Ctrl+S 儲存，再切換編碼（將重新讀取磁碟內容）",
             "recallTip": "按 Tab 或 F2 鍵召回我"
+        },
+        "ext": {
+            "refreshedTip": "已被外部修改，已重新整理顯示",
+            "conflictTitle": "磁碟檔案已被外部修改",
+            "conflictHint": "你的修改仍保留在編輯器裡",
+            "conflictToast": "磁碟上的檔案已被外部修改，已暫停自動儲存；請選擇要保留的版本",
+            "saveBlocked": "已暫停儲存：磁碟被外部修改，請先處理衝突項目",
+            "btnCompare": "比較",
+            "btnUseDisk": "使用磁碟版本",
+            "btnKeepMine": "保留我的版本",
+            "usedDiskToast": "已載入磁碟版本；你之前的修改已存入時間軸",
+            "keepMineToast": "已用你的版本覆蓋磁碟",
+            "closeTitle": "有未儲存的變更",
+            "closeHint": "關閉前是否儲存變更？",
+            "closeConflictNote": "磁碟已被外部修改：儲存將覆蓋外部版本（雙方快照已存檔）",
+            "closeSave": "儲存並關閉",
+            "closeDiscard": "不儲存",
+            "closeCancel": "取消"
         },
         "contextMenu": {
             "cut": "剪下",
@@ -859,7 +919,11 @@
             "switched": "── 已切換 {0} ──",
             "switchFail": "[切換失敗] {0}",
             "switchErr": "[切換異常] {0}",
-            "ctrlCFail": "[Ctrl+C 傳送失敗] {0}"
+            "ctrlCFail": "[Ctrl+C 傳送失敗] {0}",
+            "intDone": "── Ctrl+C · 已終止 {0} 個行程 ──",
+            "intIdle": "── Ctrl+C · 無執行中的命令 ──",
+            "intSig": "── Ctrl+C · 已發送中斷訊號 ──",
+            "intRestart": "── Ctrl+C · Shell 升級需重啟執行個體方可生效 ──"
         },
         "git": {
             "refresh": "重新整理",
@@ -1104,7 +1168,16 @@
             "startErr": "[啟動異常]",
             "exited": "已退出{0}",
             "exitedTerm": "── 工作階段已退出{0} ──",
-            "restarted": "● 已重新啟動"
+            "restarted": "● 已重新啟動",
+            "noSel": "無選取文字 · 先拖曳選取再複製",
+            "intRestart": "── 中斷 · 殼層升級需重啟實例生效 ──",
+            "intDone": "── 中斷 · 已終止 {0} 個行程 ──",
+            "intIdle": "── Interrupt · 無正在執行的命令 ──",
+            "intSig": "── 中斷 · 已發送中斷訊號 ──",
+            "intFail": "[Interrupt 失敗] {0}",
+            "terminated": "已終止 · 可點擊 Restart 重新啟動",
+            "termLine": "── 工作階段已終止（Restart 可重啟）──",
+            "deadHint": "已處於終止狀態 · Restart 可重啟"
         },
         "dsecret": {
             "targetProject": "目標專案",
@@ -1154,6 +1227,9 @@
             "notChecked": "（未檢查）"
         },
         "roam": {
+            "qBatchIgnore": "Q 播放清單：已加入 {0} 個 · 忽略 {1} 個（類型不同）",
+            "mplAdd": "加入播放清單",
+            "mplNone": "沒有可加入播放清單的媒體檔案",
             "szSize": "sz區顯示: 檔案大小",
             "szCtime": "sz 區顯示：建立時間",
             "szMtime": "sz區顯示: 修改時間",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ 已為 {name} 開啟 untracked cache，下次掃描時生效",
         "ucFail": "該儲存庫不支援 untracked cache（可能非本機磁碟），未進行任何修改"
     },
+    "fav": {
+        "title": "收藏夾",
+        "tip": "收藏夾",
+        "count": "共 {0} 筆",
+        "searchPh": "搜尋收藏（名稱 / 任務 / 問題）",
+        "empty": "尚無收藏 · 點擊任意樓層的 ☆ 進行收藏",
+        "noMatch": "沒有相符的收藏",
+        "more": "僅顯示前 {0} 筆，輸入關鍵字縮小範圍",
+        "starTip": "收藏此樓層",
+        "starTipOn": "已收藏（點擊以編輯）",
+        "namerTitle": "收藏此樓層",
+        "namerTitleEdit": "編輯收藏",
+        "namePh": "收藏名稱（直接按 Enter 使用自動命名）",
+        "save": "收藏",
+        "saveEdit": "儲存",
+        "remove": "取消收藏",
+        "close": "關閉",
+        "cancel": "取消",
+        "rename": "重新命名",
+        "rowRemove": "移除",
+        "questGone": "該任務已不存在（可在收藏夾中移除此項目）",
+        "floorGone": "該樓層資料不存在",
+        "cardGone": "任務資料尚未就緒或已被刪除",
+        "noPanel": "AI 面板尚未就緒",
+        "saveFail": "收藏儲存失敗",
+        "deletedTag": "任務已刪除"
+    },
     "firstRun": {
         "expert": "我是專家，我懂得每個指令的危害，我不使用 qqqide 刪除檔案",
         "agree": "同意並繼續",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "將目前文件匯出為 Word 檔案：圖片與影片轉換為內嵌圖片，其他附件生成清單；預設儲存於文件旁，僅當同名檔案已存在時才彈出儲存對話框。",
         "exportZipTip": "將目前文件及其引用的所有檔案、目錄打包成 ZIP（保留目錄結構、最高壓縮）；預設儲存於文件旁，僅當同名檔案已存在時才彈出儲存對話框。",
         "cloudSyncTip": "雲端同步：↑ 上傳 = 先與雲端合併再上傳（雙方資料皆不會遺失）；↓ 下載 = 將雲端資料合併至本機。包含編輯器設定、各資料夾偏好、剪貼簿歷史。",
+        "playerTip": "播放器：寫程式時也能聽歌/看影片（跨重啟記憶播放清單）；在 Roam 中選取媒體右鍵點擊「加入播放清單」，或從懸浮層彈出。",
+        "playerWinTip": "獨立懸浮播放器視窗：置頂小視窗——切換到其他程式也看得見（↗）",
+        "playerCardTip": "視窗內播放器：懸浮在 qqqide 視窗裡的播放器卡片——跟隨本視窗（⧈）",
+        "playerNeedRestart": "懸浮播放器需要重啟執行個體後方可使用",
         "videoUrlTip": "待開發：輸入影片網址，自動下載至文件目錄並插入相框。",
         "pasteTip": "待遷移：一鍵將剪貼簿內容貼上到文件（目前使用 Ctrl+V 可完成相同操作）。",
         "pureTip": "待開發：掃描文件引用，清理不再被引用的孤立檔案。"
@@ -1686,18 +1793,54 @@
             "btn": "設為系統 Python 直譯器",
             "busyChecking": "檢查中…",
             "busyApplying": "設定中…",
+            "busyRemoving": "正在解除…",
+            "confirmPick": "你選擇了「設為系統 Python 直譯器」",
+            "confirmRemovePick": "你選擇了「取消作為系統 Python 直譯器」",
             "confirmTitle": "將覆蓋目前的系統直譯器",
+            "confirmRemove": "取消作為系統 Python 直譯器",
             "confirmOk": "確認",
             "confirmCancel": "取消",
             "ok": "✅ 已設定：雙擊 .py 將由內建 Python 執行",
             "okRefresh": "✅ 已重新整理：內建 Python 已接管 .py",
+            "okRemove": "✅ 已解除：內建 Python 不再作為系統直譯器",
             "fail": "❌ 設定失敗：",
+            "failRemove": "❌ Python 解除失敗：",
             "errNoPython": "內建 Python 尚未就緒",
             "errDenied": "權限被拒絕（可能被安全軟體攔截）",
             "errVerify": "寫入未生效",
             "errUac": "已取消（未授權）",
             "errBridge": "需重新啟動此視窗後方可使用",
             "errBusy": "處理中，請稍候",
+            "errRemove": "解除未完成",
+            "errGeneric": "未知錯誤"
+        },
+        "sysInterp": {
+            "label": "系統直譯器",
+            "desc": "讓雙擊 .js / .py 由內建 Node / Python 執行（視窗不關閉）——一次性設定，無需額外管理；若安裝目錄移動，重新點擊一次即可",
+            "confirmTitle": "將覆蓋目前系統直譯器",
+            "confirmOk": "確認",
+            "confirmCancel": "取消"
+        },
+        "nodeInterp": {
+            "btn": "設為系統 Node 直譯器",
+            "busyChecking": "正在檢查…",
+            "busyApplying": "正在設定…",
+            "busyRemoving": "正在解除…",
+            "confirmPick": "你選擇了「做系統 Node 直譯器」",
+            "confirmRemovePick": "你選擇了「取消作為系統 Node 直譯器」",
+            "confirmRemove": "取消作為系統 Node 直譯器",
+            "ok": "✅ 已設定：雙擊 .js 由內建 Node 執行",
+            "okRefresh": "✅ 已重新整理：內建 Node 已接管 .js",
+            "okRemove": "✅ 已解除：內建 Node 不再作為系統直譯器",
+            "fail": "❌ Node 設定失敗：",
+            "failRemove": "❌ Node 解除失敗：",
+            "errNoNode": "內建 Node 未就緒",
+            "errDenied": "權限被拒絕（可能被安全軟體攔截）",
+            "errVerify": "寫入未生效",
+            "errUac": "已取消（未授權）",
+            "errBridge": "需重啟本視窗後可用（Node）",
+            "errBusy": "正在處理中，請稍候",
+            "errRemove": "解除未完成",
             "errGeneric": "未知錯誤"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "結束"
         },
         "enc": {
-            "saveRejected": "儲存被拒：字元 \"{ch}\"（{cp}）無法用 {enc} 編碼表示，內容未寫入。可：① 刪除該字元後重新儲存；② 在標籤頁編碼選單選擇「另存為 UTF-8/GB18030」（完整字元編碼，永不遺失）。"
+            "saveRejected": "儲存被拒：字元 \"{ch}\"（{cp}）無法用 {enc} 編碼表示，內容未寫入。可：① 刪除該字元後重新儲存；② 在標籤頁編碼選單選擇「另存為 UTF-8/GB18030」（完整字元編碼，永不遺失）。",
+            "saveRejectedDecode": "儲存被拒：檔案包含 {n} 處無法解碼的字元（顯示為 ，並非你輸入的內容）——{enc} 無法容納這些字元，直接儲存會將其轉換為其他字元。建議：① 點擊頂部路徑旁的編碼徽章，切換編碼後重新開啟；② 或選擇「另存為 UTF-8」，將當前內容原樣儲存。"
         },
         "search": {
             "rgMissing": "ripgrep 未安裝。執行: python op/components.py ensure ripgrep",

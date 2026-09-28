@@ -134,7 +134,17 @@
             "mspeedCustom": "Vitesse personnalisée",
             "mspeedOk": "Confirmer",
             "mfsFail": "Échec du passage en plein écran",
-            "mloop": "Lecture en boucle (raccourci L)",
+            "mmode": "Mode de lecture (L Boucle / R Aléatoire)",
+            "mlooplab": "Boucle",
+            "mshuflab": "Aléatoire",
+            "mOff": "Désactivé",
+            "mOn": "Activé",
+            "mplist": "Liste de lecture",
+            "modeOne": "Répéter une seule piste",
+            "modeListLoop": "Boucle de la liste",
+            "mprev": "Précédent",
+            "mnext": "Suivant",
+            "mskip": "Lecture impossible, passé à la suite : {name}",
             "mpip": "Picture-in-Picture",
             "mfs": "Plein écran (raccourci F)",
             "mstep": "Avance image par image (raccourci . pour avancer / , pour reculer)",
@@ -146,7 +156,23 @@
             "mabClear": "Boucle A-B effacée",
             "mshot": "Capture d'image unique (raccourci S)",
             "mshotSaved": "Capture d'écran enregistrée : {name}",
-            "mshotFail": "Échec de la capture d'écran"
+            "mshotFail": "Échec de la capture d'écran",
+            "mplUp": "Déplacer vers le haut",
+            "mplDown": "Déplacer vers le bas",
+            "mplDel": "Retirer de la liste de lecture",
+            "mpopout": "Ouvrir le lecteur dans une fenêtre indépendante",
+            "mpopin": "Ouvrir le lecteur dans la fenêtre",
+            "mdockside": "Changer la position de la liste (gauche / droite)"
+        },
+        "player": {
+            "title": "Lecteur",
+            "needRestart": "Le lecteur nécessite le redémarrage de l'instance pour être disponible",
+            "added": "Ajouté à la liste de lecture : {n} élément(s)",
+            "addedIgnored": "Ajouté à la liste de lecture : {n} élément(s) · {m} ignoré(s)",
+            "addNone": "Aucun fichier média à ajouter",
+            "empty": "La liste de lecture est vide — Sélectionnez un média dans Roam, faites un clic droit et choisissez « Ajouter à la liste de lecture », ou ouvrez depuis la couche flottante ↗",
+            "returnOv": "Retour à la couche flottante",
+            "returnFail": "Fenêtre principale introuvable, impossible de revenir à la couche flottante"
         },
         "about": {
             "title": "À propos de qqq",
@@ -293,11 +319,21 @@
             "ok": "Confirmer la fermeture"
         },
         "wq": {
-            "tip": "Statistiques de préchauffage wq : coller le temps d'exécution de la sonde\nCliquez pour réinitialiser",
-            "tipShort": "Statistiques de préchauffage wq"
+            "title": "Sonde wq",
+            "empty": "Aucun enregistrement pour le moment",
+            "probeMeta": "Max {max} ms · Total {n} fois",
+            "recent": "Récents {list}",
+            "cacheMedia": "Cache média",
+            "cachePlay": "Cache de transcodage",
+            "cacheMeta": "{n} élément(s) · Taux de succès {p}%",
+            "cacheMetaNoHit": "{n} éléments",
+            "cacheBroken": "Disjoncteur {n}",
+            "reset": "Réinitialiser",
+            "resetDone": "Statistiques wq réinitialisées"
         },
         "goods": {
-            "kmdXTip": "Appuyez sur la touche x pour ouvrir un nouveau kmd"
+            "kmdXTip": "Appuyez brièvement sur la touche x pour ouvrir un nouveau kmd. Vous pouvez auparavant sélectionner un fichier ou un dossier dans Roam pour inclure son chemin.",
+            "qmdXTip": "Maintenez la touche x enfoncée pour ouvrir un nouveau qmd. Vous pouvez auparavant sélectionner un fichier ou un dossier Roam pour inclure son chemin."
         },
         "aZone": {
             "nullTip": "Réduire la zone A / Cliquer pour restaurer"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "Copier le chemin",
+        "roamLocate": "Localiser ce fichier dans Roam",
         "minimap": "Minimap",
         "tabs": {
             "close": "Fermer l'onglet",
@@ -328,7 +365,12 @@
             "encAutoReset": "Détection automatique (effacer le fixe)",
             "encAutoCur": "Détection automatique",
             "encFixedAt": "Encodage fixé à {v} (mode secours) — Cliquez pour modifier ou restaurer l'automatique",
-            "encAutoAt": "Encodage : {v} (détection automatique) — Cliquez pour spécifier manuellement",
+            "encAutoAt": "Encodage : {v} — {src} ; cliquez pour spécifier manuellement",
+            "encSrcBom": "Selon la déclaration BOM",
+            "encSrcUtf8": "Décodage UTF-8 strict réussi",
+            "encSrcGbk": "Déduction de secours GBK (cliquez ici en cas de caractères illisibles)",
+            "saveAsUtf8": "Enregistrer sous UTF-8",
+            "encMenu": "Menu d'encodage",
             "readFail": "Échec de la lecture : le fichier n'existe pas ou n'est pas lisible",
             "redecoded": "Redécodé selon {v}",
             "switchFail": "Échec du changement de décodage :",
@@ -337,6 +379,24 @@
             "saveAsFail": "Échec de l'enregistrement sous :",
             "dirtyFirst": "Le fichier contient des modifications non enregistrées — Veuillez d'abord enregistrer avec Ctrl+S, puis changer l'encodage (le fichier sera relu depuis le disque)",
             "recallTip": "Appuyez sur Tab ou F2 pour me rappeler"
+        },
+        "ext": {
+            "refreshedTip": "Modifié en externe, affichage actualisé",
+            "conflictTitle": "Le fichier a été modifié en externe",
+            "conflictHint": "Vos modifications sont toujours conservées dans l'éditeur",
+            "conflictToast": "Le fichier a été modifié en externe, la sauvegarde automatique est suspendue ; veuillez choisir la version à conserver",
+            "saveBlocked": "Enregistrement suspendu : le disque a été modifié externement, veuillez résoudre les conflits",
+            "btnCompare": "Comparer",
+            "btnUseDisk": "Utiliser la version du disque",
+            "btnKeepMine": "Garder ma version",
+            "usedDiskToast": "Version du disque chargée ; vos modifications précédentes ont été enregistrées dans l'historique",
+            "keepMineToast": "Votre version a écrasé celle du disque",
+            "closeTitle": "Modifications non enregistrées",
+            "closeHint": "Enregistrer les modifications avant de fermer ?",
+            "closeConflictNote": "Le fichier sur le disque a été modifié en externe : l'enregistrement écrasera la version externe (des instantanés des deux versions ont été archivés)",
+            "closeSave": "Enregistrer et fermer",
+            "closeDiscard": "Ne pas enregistrer",
+            "closeCancel": "Annuler"
         },
         "contextMenu": {
             "cut": "Couper",
@@ -859,7 +919,11 @@
             "switched": "── Basculé vers {0} ──",
             "switchFail": "[Échec du basculement] {0}",
             "switchErr": "[Erreur de basculement] {0}",
-            "ctrlCFail": "[Échec de l'envoi de Ctrl+C] {0}"
+            "ctrlCFail": "[Échec de l'envoi de Ctrl+C] {0}",
+            "intDone": "── Ctrl+C · {0} processus terminé(s) ──",
+            "intIdle": "── Ctrl+C · Aucune commande en cours d'exécution ──",
+            "intSig": "── Ctrl+C · Signal d'interruption envoyé ──",
+            "intRestart": "── Ctrl+C · La mise à niveau du shell nécessite un redémarrage de l'instance pour prendre effet ──"
         },
         "git": {
             "refresh": "Actualiser",
@@ -1097,14 +1161,23 @@
             "unknownErr": "Erreur inconnue"
         },
         "qmd": {
-            "sessionOps": "Opérations de session",
-            "killHint": "Terminate tue force l'arborescence des processus et redémarre sur place ; Restart redémarre normalement la session",
+            "sessionOps": "Opérations du terminal",
+            "killHint": "Interrupt arrête uniquement la commande en cours (conserve la session et le défilement) ; Restart tue l'arborescence et rouvre la session sur place ; Terminate termine uniquement (l'onglet et le défilement sont conservés, possibilité de redémarrer avec Restart)",
             "startFail": "[Échec du démarrage] {0}",
             "startFailTerm": "[qmd] Échec du démarrage de la session : {0}",
             "startErr": "[Erreur au démarrage]",
             "exited": "{0} quitté",
             "exitedTerm": "── Session terminée{0} ──",
-            "restarted": "● Redémarré"
+            "restarted": "● Redémarré",
+            "noSel": "Aucun texte sélectionné · Sélectionnez d'abord puis copiez",
+            "intRestart": "── Interrupt · Le redémarrage de l'instance est requis pour appliquer la mise à niveau du shell ──",
+            "intDone": "── Interrupt · {0} processus terminés ──",
+            "intIdle": "── Interruption · Aucune commande en cours d'exécution ──",
+            "intSig": "── Interruption · Signal d'interruption envoyé ──",
+            "intFail": "[Échec de l'interruption] {0}",
+            "terminated": "Terminé · Peut être redémarré avec Restart",
+            "termLine": "── Session terminée (Redémarrer pour relancer) ──",
+            "deadHint": "État terminé · Utilisez Restart pour redémarrer"
         },
         "dsecret": {
             "targetProject": "Projet cible",
@@ -1154,6 +1227,9 @@
             "notChecked": "(Non vérifié)"
         },
         "roam": {
+            "qBatchIgnore": "Liste de lecture Q : {0} ajouté(s) · {1} ignoré(s) (type différent)",
+            "mplAdd": "Ajouter à la liste de lecture",
+            "mplNone": "Aucun fichier média à ajouter à la liste de lecture",
             "szSize": "Zone sz affiche : Taille du fichier",
             "szCtime": "Zone sz affiche : Date de création",
             "szMtime": "Affichage zone sz : Date de modification",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ Cache non suivi activé pour {name}, effectif dès la prochaine analyse",
         "ucFail": "Ce dépôt ne prend pas en charge le cache non suivi (peut-être pas sur un disque local), aucune modification n'a été effectuée"
     },
+    "fav": {
+        "title": "Favoris",
+        "tip": "Favoris",
+        "count": "{0} élément(s) au total",
+        "searchPh": "Rechercher dans les favoris (nom / tâche / question)",
+        "empty": "Aucun favori pour le moment · Cliquez sur ☆ à n'importe quel étage pour l'ajouter",
+        "noMatch": "Aucun favori correspondant",
+        "more": "Affichage des {0} premiers éléments uniquement, saisissez un mot-clé pour affiner la recherche",
+        "starTip": "Ajouter cet étage aux favoris",
+        "starTipOn": "Ajouté aux favoris (cliquez pour modifier)",
+        "namerTitle": "Ajouter cet étage aux favoris",
+        "namerTitleEdit": "Modifier le favori",
+        "namePh": "Nom du favori (appuyez sur Entrée pour utiliser le nom automatique)",
+        "save": "Ajouter aux favoris",
+        "saveEdit": "Enregistrer",
+        "remove": "Retirer des favoris",
+        "close": "Fermer",
+        "cancel": "Annuler",
+        "rename": "Renommer",
+        "rowRemove": "Supprimer",
+        "questGone": "Cette tâche n'existe plus (vous pouvez la supprimer de vos favoris)",
+        "floorGone": "Les données de cet étage sont introuvables",
+        "cardGone": "Les données de la tâche ne sont pas prêtes ou ont été supprimées",
+        "noPanel": "Le panneau IA n'est pas encore prêt",
+        "saveFail": "Échec de l'enregistrement du favori",
+        "deletedTag": "Tâche supprimée"
+    },
     "firstRun": {
         "expert": "Je suis un expert, je connais les risques de chaque commande, je n'utilise pas qqqide pour supprimer des fichiers",
         "agree": "Accepter et continuer",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "Exporte le document actuel au format Word : les images et vidéos sont intégrées en tant qu'images, et les autres pièces jointes font l'objet d'une liste. Enregistrement par défaut à côté du document ; la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
         "exportZipTip": "Empaquete le document actuel ainsi que tous les fichiers et répertoires référencés dans une archive ZIP (en conservant la structure des répertoires, compression maximale) ; enregistrement par défaut à côté du document, la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
         "cloudSyncTip": "Synchronisation cloud : ↑ Téléverser = fusionne avec le cloud avant le téléversement (aucune donnée perdue des deux côtés) ; ↓ Télécharger = fusionne les données du cloud avec les données locales. Inclut la configuration de l'éditeur, les préférences par dossier et l'historique du presse-papiers.",
+        "playerTip": "Lecteur : écoutez de la musique ou regardez des vidéos même en codant (la liste de lecture est mémorisée entre les redémarrages) ; dans Roam, sélectionnez un média, faites un clic droit et choisissez « Ajouter à la liste de lecture », ou ouvrez depuis la couche flottante.",
+        "playerWinTip": "Fenêtre du lecteur flottant indépendant : fenêtre toujours visible — reste visible même lorsque vous passez à d'autres applications (↗)",
+        "playerCardTip": "Lecteur intégré : carte du lecteur flottant dans la fenêtre qqqide — suit cette fenêtre (⧈)",
+        "playerNeedRestart": "Le lecteur flottant nécessite le redémarrage de l'instance pour être disponible",
         "videoUrlTip": "En attente : saisissez l'URL de la vidéo pour la télécharger automatiquement dans le dossier du document et l'insérer dans un cadre.",
         "pasteTip": "En attente : collez le contenu du presse-papiers dans le document en un clic (vous pouvez aussi utiliser Ctrl+V).",
         "pureTip": "En attente : analyse des références du document pour nettoyer les fichiers orphelins non référencés."
@@ -1686,18 +1793,54 @@
             "btn": "Définir comme interpréteur Python système",
             "busyChecking": "Vérification en cours…",
             "busyApplying": "Configuration en cours…",
+            "busyRemoving": "Suppression en cours…",
+            "confirmPick": "Vous avez choisi « Définir comme interpréteur système Python »",
+            "confirmRemovePick": "Vous avez choisi « Annuler en tant qu'interpréteur système Python »",
             "confirmTitle": "Cela remplacera l'interpréteur système actuel",
+            "confirmRemove": "Annuler comme interpréteur Python système",
             "confirmOk": "Confirmer",
             "confirmCancel": "Annuler",
             "ok": "✅ Configuré : Les fichiers .py s'ouvrent avec le Python intégré lors d'un double-clic",
             "okRefresh": "✅ Actualisé : Le Python intégré gère désormais les fichiers .py",
-            "fail": "❌ Échec de la configuration :",
+            "okRemove": "✅ Supprimé : Le Python intégré n'est plus l'interpréteur système",
+            "fail": "❌ Échec de la configuration de Python :",
+            "failRemove": "❌ Échec de la suppression de Python :",
             "errNoPython": "Le Python intégré n'est pas prêt",
             "errDenied": "Permission refusée (peut être bloqué par un logiciel de sécurité)",
             "errVerify": "L'écriture n'a pas pris effet",
             "errUac": "Annulé (non autorisé)",
-            "errBridge": "Nécessite un redémarrage de cette fenêtre pour prendre effet",
+            "errBridge": "Nécessite le redémarrage de cette fenêtre pour être disponible (Python)",
             "errBusy": "Traitement en cours, veuillez patienter",
+            "errRemove": "Suppression incomplète",
+            "errGeneric": "Erreur inconnue"
+        },
+        "sysInterp": {
+            "label": "Interpréteur système",
+            "desc": "Permet d'exécuter les fichiers .js / .py par double-clic avec Node / Python intégré (sans fermer la fenêtre) – configuration unique, installation transparente ; réappliquez simplement si le répertoire d'installation change",
+            "confirmTitle": "Cela remplacera l'interpréteur système actuel",
+            "confirmOk": "Confirmer",
+            "confirmCancel": "Annuler"
+        },
+        "nodeInterp": {
+            "btn": "Définir comme interpréteur système Node",
+            "busyChecking": "Vérification en cours…",
+            "busyApplying": "Configuration en cours…",
+            "busyRemoving": "Suppression en cours…",
+            "confirmPick": "Vous avez choisi « Définir comme interpréteur système Node »",
+            "confirmRemovePick": "Vous avez choisi « Annuler comme interpréteur Node système »",
+            "confirmRemove": "Annuler comme interpréteur Node système",
+            "ok": "✅ Configuré : les fichiers .js s'ouvrent avec le Node intégré",
+            "okRefresh": "✅ Actualisé : Le Node intégré gère désormais les fichiers .js",
+            "okRemove": "✅ Supprimé : le Node intégré n'est plus l'interpréteur système",
+            "fail": "❌ Échec de la configuration de Node :",
+            "failRemove": "❌ Échec de la suppression de Node :",
+            "errNoNode": "Node intégré non prêt",
+            "errDenied": "Permission refusée (peut être bloqué par un logiciel de sécurité)",
+            "errVerify": "Échec de l'écriture",
+            "errUac": "Annulé (non autorisé)",
+            "errBridge": "Nécessite le redémarrage de cette fenêtre pour être disponible (Node)",
+            "errBusy": "Traitement en cours, veuillez patienter",
+            "errRemove": "Suppression incomplète",
             "errGeneric": "Erreur inconnue"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "Quitter"
         },
         "enc": {
-            "saveRejected": "Enregistrement refusé : le caractère « {ch} » ({cp}) ne peut pas être encodé avec {enc}, le contenu n'a pas été écrit. Solutions : ① Supprimer ce caractère et réenregistrer ; ② Dans le menu d'encodage de l'onglet, sélectionner « Enregistrer sous UTF-8/GB18030 » (encodage universel, aucune perte de données)."
+            "saveRejected": "Enregistrement refusé : le caractère \"{ch}\" ({cp}) ne peut pas être représenté avec l'encodage {enc}, le contenu n'a pas été écrit. Solutions : ① Supprimez ce caractère et réenregistrez ; ② Cliquez sur l'icône d'encodage à côté du chemin en haut et sélectionnez « Enregistrer sous UTF-8/GB18030 » (encodage complet des caractères, aucune perte).",
+            "saveRejectedDecode": "Enregistrement refusé : le fichier contient {n} caractère(s) indécodeable(s) (affiché(s) par , ce n'est pas ce que vous avez saisi) — {enc} ne peut pas les contenir, les enregistrer directement les transformerait en d'autres caractères. Solutions : ① Cliquez sur l'icône d'encodage à côté du chemin en haut pour rouvrir avec un autre encodage ; ② Ou « Enregistrer sous UTF-8 » pour sauvegarder le contenu actuel tel quel."
         },
         "search": {
             "rgMissing": "ripgrep n'est pas installé. Exécutez : python op/components.py ensure ripgrep",

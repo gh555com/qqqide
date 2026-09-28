@@ -200,7 +200,17 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 .msg-ai-clock .clock-min{font-size:48px}
 .msg-ai-clock .clock-sec{font-size:24px}
 .msg-ai-clock canvas{width:42px;height:42px;border-radius:50%;flex-shrink:0}
-.msg-ai-clock .clock-cost{font-family:ui-monospace,monospace;font-weight:700;font-size:18px;margin-left:auto;flex-shrink:0}
+.msg-ai-clock .clock-cost{font-family:ui-monospace,monospace;font-weight:700;font-size:18px;flex-shrink:0}
+/* 楼层收藏星标：两侧 auto margin → 恒居中于饼图与 ge 之间（ge 恒贴右端）；未收藏低对比 / 已收藏金色 */
+.msg-ai-clock .clock-fav{border:none;background:none;padding:0 8px;font-size:26px;line-height:1;color:rgba(0,0,0,0.28);flex-shrink:0;margin-left:auto;margin-right:auto;transition:color 0.15s}
+[data-theme="dark"] .msg-ai-clock .clock-fav{color:rgba(255,255,255,0.30)}
+.msg-ai-clock .clock-fav:hover{color:rgba(0,0,0,0.65)}
+[data-theme="dark"] .msg-ai-clock .clock-fav:hover{color:rgba(255,255,255,0.75)}
+.msg-ai-clock .clock-fav.on{color:#b58900}
+[data-theme="dark"] .msg-ai-clock .clock-fav.on{color:#e6b800}
+/* 收藏跳转落点高亮（panel-fav.js）：闪 3 下 */
+@keyframes fav-flash-kf{0%,100%{box-shadow:none;background:transparent}35%{box-shadow:0 0 0 4px rgba(181,137,0,0.5);background:rgba(181,137,0,0.10)}}
+.fav-flash{animation:fav-flash-kf 0.55s ease-in-out 3;border-radius:6px}
 /* A1 tofu — live HOUSE/ROOM counter + reasoning.txt size, above clock */
 .msg-a1{display:flex;flex-direction:column;gap:4px;padding:8px 10px;margin:4px 0 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-bg);user-select:none;cursor:pointer}
 .msg-a1:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
@@ -743,6 +753,8 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="panel-send.js"></script>
 <script src="panel-drop.js"></script>
 <script src="panel-health.js"></script>
+<!-- ★ 楼层收藏：星标（az 区）+ 收藏跳转（孤层按需重建/滚动/高亮）；与主窗口 core/floor-favs.js 经 postMessage 协作 -->
+<script src="panel-fav.js"></script>
 <!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 roam（F75，F99 补：AI 面板是 iframe，父窗口收不到内部按键） -->
 <script>
 (function () {

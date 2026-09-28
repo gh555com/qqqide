@@ -275,10 +275,19 @@
   }
 
   // ---- Close tab ----
-  function closeTabById(grp, tabId) {
+  function closeTabById(grp, tabId, _gatePassed) {
     const idx = grp.tabs.findIndex(t => t.id === tabId);
     if (idx < 0) return;
     const tab = grp.tabs[idx];
+
+    // ★ 外部修改机器 v2：关闭守卫 —— 脏/冲突/在飞保存 → 提示（保存[覆盖]/不保存/取消）
+    //   弹框裁决后由回调重入（_gatePassed=true）放行；干净路径零打扰直通
+    if (!_gatePassed && tab.filePath && window.qqqEditor && window.qqqEditor.beforeTabClose) {
+      var _gate = window.qqqEditor.beforeTabClose(tab.filePath, function () {
+        try { closeTabById(grp, tabId, true); } catch (_) { }
+      });
+      if (_gate === 'hold') return;
+    }
 
     // ★ 关闭前暂停旧编辑器 layout（避免 pane.remove 触发 0×0 尺寸的昂贵 layout）
     if (tab.filePath && window.qqqEditor && window.qqqEditor.suspendPaneLayout) {

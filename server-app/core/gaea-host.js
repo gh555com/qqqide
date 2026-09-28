@@ -108,6 +108,30 @@
 
   // ---- Tab bar (renders into menu row 2 toolbar) ----
   // ★ 菜单行2 仅 search / git 按钮（均无 A 区面板，点不切换 A 区）
+
+  // ★ 收藏夹按钮（core/floor-favs.js）——goods 组尾入栏（inbox 之后）
+  var _favBtnEl = null;
+  function _favTipApply(btn) {
+    try { btn.title = window._i ? window._i('fav.tip', '收藏夹') : '收藏夹'; } catch (_) { btn.title = '收藏夹'; }
+  }
+  function _renderFavButton() {
+    var btn = document.createElement('button');
+    btn.className = 'gaea-tab-btn qqq-goods-btn qqq-fav-btn';
+    btn.textContent = '\u2605';
+    btn.style.cssText =
+      'height:22px; padding:0 8px; margin:0 1px; border:1px solid var(--border-color); border-radius:3px;' +
+      'background:transparent;' +
+      'color:var(--text-primary);' +
+      'transition: background 0.15s;';
+    _favTipApply(btn);
+    btn.addEventListener('click', function () {
+      try { if (window.qqqFloorFavs && window.qqqFloorFavs.open) window.qqqFloorFavs.open(); } catch (_) { }
+    });
+    _tabBarEl.appendChild(btn);
+    _favBtnEl = btn;
+  }
+  window.addEventListener('qqq-lang-change', function () { if (_favBtnEl) _favTipApply(_favBtnEl); });
+
   function renderTabBar() {
     if (!_tabBarEl) return;
     // ★ 2026-08-18 / 2026-09-27: 重建前清理 kmd·qmd 按钮残留 tooltip（hover 中切换 goods 会销毁按钮，tip 不残留）
@@ -170,6 +194,9 @@
     if (goods.has('inbox')) {
       _renderInboxButton();
     }
+
+    // ★ 收藏夹按钮 — goods 组尾（core/floor-favs.js 窗口；点开全窗居中悬浮收藏夹）
+    _renderFavButton();
 
     // qqq 按钮（core/qqq-tools.js）— help 左边：hover 下拉 = 老项目侧边按钮组移植
     //   （Savor/Paste/Video Url/export doc/Pure/export Zip；必须在 help 挂载之前调用）

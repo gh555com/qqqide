@@ -86,6 +86,8 @@ async function switchQuest(id) {
                     _card.totalFloors = 0;
                     _card.floors = [];
                     _card._floorMetaMap = {};
+                    _card._keepFloors = {};
+                    _card._floorNodes = {};
                 }
             }
         } else {
@@ -97,6 +99,8 @@ async function switchQuest(id) {
                 _card2.totalFloors = 0;
                 _card2.floors = [];
                 _card2._floorMetaMap = {};
+                _card2._keepFloors = {};
+                _card2._floorNodes = {};
             }
         }
         // ★ 必须先设 questActiveId 再 switchTo：switchTo 内二次守卫用 questActiveId 检测

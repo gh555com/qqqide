@@ -93,7 +93,7 @@
       if (filePath && window.qqqTabs && window.qqqTabs.renderEncIndicator) window.qqqTabs.renderEncIndicator(encChip, filePath);
     } catch (_) { }
 
-    // 复制按钮 — 恒显内联（2026-09-27：外观 = 旧 hover 态；不再等光标 hover、不再占右侧独立列——紧随编码按钮）
+    // 复制按钮 — 恒显内联 · 淡雅统一档（2026-09-27：外观 = 编码徽标同款（灰边框+次文字色+透明底），悬浮 → 显著档（金边+实底）；不再等光标 hover、不再占右侧独立列——紧随编码按钮）
     var copyBtn = document.createElement('button');
     copyBtn.className = 'qqq-breadcrumb-copy-btn';
     copyBtn.textContent = '📋';
@@ -121,7 +121,7 @@
     });
     bar.appendChild(copyBtn);
 
-    // Roam 按钮 — 恒显内联（2026-09-27）：点击 = 在 Roam 中定位该文件（定位机器唯一入口 = shell-overlay __qqq_roamRevealPath——
+    // Roam 按钮 — 恒显内联 · 淡雅统一档（2026-09-27：外观与编码徽标/复制按钮零差异，悬浮 → 显著档）：点击 = 在 Roam 中定位该文件（定位机器唯一入口 = shell-overlay __qqq_roamRevealPath——
     //   与 codelens 🗀qqq 同源零第二实现：命中 revealFile 选中+滚动（Roam 未开则召回/加开 tab）/ 缺失自动爬升最近祖先 + qoast 裁决）
     var roamBtn = document.createElement('button');
     roamBtn.className = 'qqq-breadcrumb-roam-btn';

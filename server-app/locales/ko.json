@@ -134,7 +134,17 @@
             "mspeedCustom": "사용자 정의 배속",
             "mspeedOk": "확인",
             "mfsFail": "전체 화면 전환 실패",
-            "mloop": "반복 재생 (단축키 L)",
+            "mmode": "재생 모드 (L 반복 / R 랜덤)",
+            "mlooplab": "반복",
+            "mshuflab": "랜덤",
+            "mOff": "끄기",
+            "mOn": "켜기",
+            "mplist": "재생 목록",
+            "modeOne": "단일 곡 반복",
+            "modeListLoop": "목록 반복",
+            "mprev": "이전",
+            "mnext": "다음",
+            "mskip": "재생 불가, 건너뜀: {name}",
             "mpip": "화면 속 화면(PiP)",
             "mfs": "전체 화면 (단축키 F)",
             "mstep": "프레임 단위 이동 (단축키 . 앞으로 / , 뒤로)",
@@ -146,7 +156,23 @@
             "mabClear": "A-B 반복 재생이 해제되었습니다",
             "mshot": "단일 프레임 스크린샷 (단축키 S)",
             "mshotSaved": "스크린샷 저장 완료: {name}",
-            "mshotFail": "스크린샷 실패"
+            "mshotFail": "스크린샷 실패",
+            "mplUp": "위로 이동",
+            "mplDown": "아래로 이동",
+            "mplDel": "재생 목록에서 제거",
+            "mpopout": "독립 플레이어 팝업",
+            "mpopin": "창 내에서 플레이어 열기",
+            "mdockside": "목록 위치 전환 (왼쪽 / 오른쪽)"
+        },
+        "player": {
+            "title": "플레이어",
+            "needRestart": "플레이어를 사용하려면 인스턴스를 재시작해야 합니다.",
+            "added": "재생 목록에 추가됨: {n}개",
+            "addedIgnored": "재생 목록에 추가됨: {n}개 · 무시됨: {m}개",
+            "addNone": "추가할 미디어 파일이 없습니다.",
+            "empty": "재생 목록이 비어 있습니다 — Roam에서 미디어를 우클릭하여 '재생 목록에 추가'하거나 오버레이에서 ↗ 팝업하세요.",
+            "returnOv": "오버레이로 돌아가기",
+            "returnFail": "메인 창을 찾을 수 없어 플로팅 레이어로 돌아갈 수 없습니다."
         },
         "about": {
             "title": "qqq 소개",
@@ -293,11 +319,21 @@
             "ok": "종료 확인"
         },
         "wq": {
-            "tip": "wq 준비 시간 통계: 프로브 실행 시간 붙여넣기\n클릭하여 초기화",
-            "tipShort": "wq 준비 시간 통계"
+            "title": "wq 프로브",
+            "empty": "기록 없음",
+            "probeMeta": "최대 {max} ms · 총 {n} 회",
+            "recent": "최근 {list}",
+            "cacheMedia": "미디어 캐시",
+            "cachePlay": "트랜스코딩 캐시",
+            "cacheMeta": "{n}항목 · 일치율 {p}%",
+            "cacheMetaNoHit": "{n} 항목",
+            "cacheBroken": "회로 차단 {n}",
+            "reset": "초기화",
+            "resetDone": "wq 통계가 재설정되었습니다."
         },
         "goods": {
-            "kmdXTip": "x 키를 눌러 새 kmd 열기"
+            "kmdXTip": "x 키를 짧게 눌러 새 kmd를 엽니다. 누르기 전에 Roam 파일이나 폴더를 선택하면 해당 경로가 포함됩니다.",
+            "qmdXTip": "x 키를 길게 눌러 새 qmd를 엽니다. 이전에 Roam 파일이나 폴더를 선택하면 해당 경로가 포함됩니다."
         },
         "aZone": {
             "nullTip": "A 영역 축소 / 클릭하여 복원"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "경로 복사",
+        "roamLocate": "Roam에서 이 파일 찾기",
         "minimap": "미니맵",
         "tabs": {
             "close": "탭 닫기",
@@ -328,7 +365,12 @@
             "encAutoReset": "자동 감지 (고정 해제)",
             "encAutoCur": "자동 감지",
             "encFixedAt": "인코딩이 {v}(비상 탈출)로 고정되었습니다 — 클릭하여 수정하거나 자동 복구",
-            "encAutoAt": "인코딩: {v} (자동 감지) — 클릭하여 수동 지정",
+            "encAutoAt": "인코딩: {v} — {src}; 클릭하여 수동 지정",
+            "encSrcBom": "BOM 선언 기반",
+            "encSrcUtf8": "엄격한 UTF-8 디코딩 통과",
+            "encSrcGbk": "GBK 대체 추측 (인코딩 오류 시 클릭)",
+            "saveAsUtf8": "UTF-8로 다른 이름으로 저장",
+            "encMenu": "인코딩 메뉴",
             "readFail": "읽기 실패: 파일이 존재하지 않거나 읽을 수 없습니다",
             "redecoded": "{v}로 다시 디코딩됨",
             "switchFail": "디코딩 전환 실패:",
@@ -337,6 +379,24 @@
             "saveAsFail": "다른 이름으로 저장 실패:",
             "dirtyFirst": "파일에 저장되지 않은 변경 사항이 있습니다 — Ctrl+S로 먼저 저장한 후 인코딩을 전환하세요(디스크에서 다시 읽습니다)",
             "recallTip": "Tab 또는 F2 키를 눌러 나를 호출하세요"
+        },
+        "ext": {
+            "refreshedTip": "외부에서 수정되어 표시가 새로 고침됨",
+            "conflictTitle": "디스크 파일이 외부에서 수정됨",
+            "conflictHint": "변경 사항은 편집기에 계속 유지됩니다.",
+            "conflictToast": "디스크 파일이 외부에서 수정되어 자동 저장이 일시 중지되었습니다. 버전을 선택하세요.",
+            "saveBlocked": "저장 일시 중지: 디스크가 외부에서 수정되었습니다. 충돌 항목을 먼저 해결하세요.",
+            "btnCompare": "비교",
+            "btnUseDisk": "디스크 버전 사용",
+            "btnKeepMine": "내 버전 유지",
+            "usedDiskToast": "디스크 버전을 로드했습니다. 이전 변경 사항은 타임라인에 저장되었습니다.",
+            "keepMineToast": "내 버전으로 디스크를 덮어썼습니다.",
+            "closeTitle": "저장되지 않은 변경 사항이 있음",
+            "closeHint": "닫기 전에 변경 사항을 저장하시겠습니까?",
+            "closeConflictNote": "디스크가 외부에서 수정되었습니다. 저장하면 외부 버전이 덮어씌워집니다(양쪽 스냅샷은 보관됨).",
+            "closeSave": "저장하고 닫기",
+            "closeDiscard": "저장 안 함",
+            "closeCancel": "취소"
         },
         "contextMenu": {
             "cut": "잘라내기",
@@ -859,7 +919,11 @@
             "switched": "── {0}로 전환됨 ──",
             "switchFail": "[전환 실패] {0}",
             "switchErr": "[전환 예외] {0}",
-            "ctrlCFail": "[Ctrl+C 전송 실패] {0}"
+            "ctrlCFail": "[Ctrl+C 전송 실패] {0}",
+            "intDone": "── Ctrl+C · {0}개 프로세스 종료됨 ──",
+            "intIdle": "── Ctrl+C · 실행 중인 명령 없음 ──",
+            "intSig": "── Ctrl+C · 중단 신호 전송됨 ──",
+            "intRestart": "── Ctrl+C · 셸 업그레이드는 인스턴스 재시작 필요 ──"
         },
         "git": {
             "refresh": "새로 고침",
@@ -1097,14 +1161,23 @@
             "unknownErr": "알 수 없는 오류"
         },
         "qmd": {
-            "sessionOps": "세션 작업",
-            "killHint": "Terminate는 전체 프로세스 트리를 강제 종료하고 즉시 재시작합니다; Restart는 세션을 정상적으로 재시작합니다",
+            "sessionOps": "터미널 작업",
+            "killHint": "Interrupt는 현재 명령만 중지(세션 및 스크롤 유지); Restart는 트리를 강제 종료한 후 세션을 다시 시작; Terminate는 단순히 종료(탭 및 스크롤 유지, 이후 Restart 가능)",
             "startFail": "[시작 실패] {0}",
             "startFailTerm": "[qmd] 세션 시작 실패: {0}",
             "startErr": "[시작 예외]",
             "exited": "{0} 종료됨",
             "exitedTerm": "── 세션 종료됨{0} ──",
-            "restarted": "● 재시작됨"
+            "restarted": "● 재시작됨",
+            "noSel": "선택된 텍스트 없음 · 먼저 드래그하여 선택한 후 복사",
+            "intRestart": "── Interrupt · 셸 업그레이드를 위해 인스턴스 재시작 필요 ──",
+            "intDone": "── Interrupt · {0}개 프로세스 종료됨 ──",
+            "intIdle": "── 인터럽트 · 실행 중인 명령 없음 ──",
+            "intSig": "── 인터럽트 · 중단 신호 전송됨 ──",
+            "intFail": "[Interrupt 실패] {0}",
+            "terminated": "종료됨 · Restart로 재시작 가능",
+            "termLine": "── 세션 종료됨 (Restart로 재시작 가능) ──",
+            "deadHint": "이미 종료 상태임 · Restart로 재시작 가능"
         },
         "dsecret": {
             "targetProject": "대상 프로젝트",
@@ -1154,6 +1227,9 @@
             "notChecked": "(검사되지 않음)"
         },
         "roam": {
+            "qBatchIgnore": "Q 재생 목록: {0}개 추가됨 · {1}개 무시됨 (유형 불일치)",
+            "mplAdd": "재생 목록에 추가",
+            "mplNone": "재생 목록에 추가할 미디어 파일이 없음",
             "szSize": "sz 영역 표시: 파일 크기",
             "szCtime": "sz 영역 표시: 생성 시간",
             "szMtime": "SZ 영역 표시: 수정 시간",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ {name}에 대해 untracked cache가 활성화되었으며, 다음 스캔부터 적용됩니다.",
         "ucFail": "이 저장소는 untracked cache를 지원하지 않습니다 (로컬 디스크가 아닐 수 있음). 변경 사항이 없습니다."
     },
+    "fav": {
+        "title": "즐겨찾기",
+        "tip": "즐겨찾기",
+        "count": "총 {0}개",
+        "searchPh": "즐겨찾기 검색 (이름 / 작업 / 질문)",
+        "empty": "아직 즐겨찾기가 없습니다 · 아무 층에서 ☆를 클릭하여 추가하세요",
+        "noMatch": "일치하는 즐겨찾기가 없습니다",
+        "more": "최대 {0}개만 표시됩니다. 키워드를 입력하여 범위를 좁히세요",
+        "starTip": "이 층을 즐겨찾기에 추가",
+        "starTipOn": "즐겨찾기 완료 (클릭하여 편집)",
+        "namerTitle": "이 층을 즐겨찾기에 추가",
+        "namerTitleEdit": "즐겨찾기 편집",
+        "namePh": "즐겨찾기 이름 (Enter 키를 누르면 자동 이름 사용)",
+        "save": "즐겨찾기",
+        "saveEdit": "저장",
+        "remove": "즐겨찾기 취소",
+        "close": "닫기",
+        "cancel": "취소",
+        "rename": "이름 변경",
+        "rowRemove": "제거",
+        "questGone": "해당 작업이 존재하지 않습니다 (즐겨찾기에서 이 항목을 제거할 수 있습니다)",
+        "floorGone": "해당 층의 데이터가 존재하지 않습니다",
+        "cardGone": "작업 데이터가 준비되지 않았거나 삭제되었습니다",
+        "noPanel": "AI 패널이 준비되지 않았습니다",
+        "saveFail": "즐겨찾기 저장 실패",
+        "deletedTag": "작업이 삭제됨"
+    },
     "firstRun": {
         "expert": "나는 전문가입니다. 모든 명령어의 위험성을 이해하고 있으며, qqqide로 파일을 삭제하지 않습니다",
         "agree": "동의하고 계속",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "현재 문서를 Word 파일로 내보냅니다. 이미지와 비디오는 이미지로 변환되어 삽입되고, 기타 첨부 파일은 목록으로 생성됩니다. 기본적으로 문서 옆에 저장되며, 동일한 이름의 파일이 이미 존재하는 경우에만 저장 대화 상자가 표시됩니다.",
         "exportZipTip": "현재 문서와 참조된 모든 파일 및 디렉토리를 ZIP으로 압축합니다(디렉토리 구조 유지, 최대 압축). 기본적으로 문서 옆에 저장되며, 동일한 이름의 파일이 이미 존재하는 경우에만 저장 대화 상자가 표시됩니다.",
         "cloudSyncTip": "클라우드 동기화: ↑ 업로드 = 클라우드와 병합 후 업로드(양쪽 데이터 모두 보존); ↓ 다운로드 = 클라우드 데이터를 로컬에 병합. 편집기 설정, 각 폴더 선호도, 클립보드 기록 포함.",
+        "playerTip": "플레이어: 코딩 중에도 음악/영상 감상 가능 (재시작 후에도 재생 목록 기억); Roam에서 미디어를 우클릭해 '재생 목록에 추가'하거나 오버레이에서 팝업하세요.",
+        "playerWinTip": "독립 플로팅 플레이어 창: 항상 위에 표시되는 작은 창 — 다른 프로그램으로 전환해도 보입니다 (↗)",
+        "playerCardTip": "창 내 플레이어: qqqide 창 위에 떠 있는 플레이어 카드 — 이 창을 따름 (⧈)",
+        "playerNeedRestart": "플로팅 플레이어를 사용하려면 인스턴스를 재시작해야 합니다.",
         "videoUrlTip": "대기 중: 비디오 URL을 입력하면 문서 디렉토리에 자동으로 다운로드되어 프레임에 삽입됩니다.",
         "pasteTip": "대기 중: 클립보드 내용을 문서에 한 번에 붙여넣기(현재 Ctrl+V로도 동일한 작업 가능).",
         "pureTip": "대기 중: 문서 참조를 스캔하여 더 이상 참조되지 않는 고아 파일을 정리합니다."
@@ -1686,18 +1793,54 @@
             "btn": "시스템 Python 인터프리터로 설정",
             "busyChecking": "확인 중…",
             "busyApplying": "설정 중…",
+            "busyRemoving": "제거 중…",
+            "confirmPick": "'시스템 Python 인터프리터로 설정'을 선택했습니다",
+            "confirmRemovePick": "'시스템 Python 인터프리터 취소'를 선택했습니다",
             "confirmTitle": "현재 시스템 인터프리터를 덮어씁니다.",
+            "confirmRemove": "시스템 Python 인터프리터 설정 취소",
             "confirmOk": "확인",
             "confirmCancel": "취소",
             "ok": "✅ 설정 완료: .py 파일을 더블 클릭하면 내장 Python으로 실행됩니다.",
             "okRefresh": "✅ 새로 고침 완료: 내장 Python이 .py 파일을 처리합니다",
-            "fail": "❌ 설정 실패:",
+            "okRemove": "✅ 연결 해제 완료: 내장 Python이 더 이상 시스템 인터프리터로 사용되지 않음",
+            "fail": "❌ Python 설정 실패:",
+            "failRemove": "❌ Python 제거 실패:",
             "errNoPython": "내장 Python이 준비되지 않았습니다.",
             "errDenied": "권한이 거부되었습니다 (보안 소프트웨어에 의해 차단되었을 수 있음)",
             "errVerify": "쓰기가 적용되지 않았습니다.",
             "errUac": "취소됨 (승인되지 않음)",
-            "errBridge": "이 창을 다시 시작한 후 사용 가능합니다.",
+            "errBridge": "사용하려면 창을 재시작해야 합니다 (Python)",
             "errBusy": "처리 중입니다. 잠시만 기다려 주세요.",
+            "errRemove": "연결 해제가 완료되지 않음",
+            "errGeneric": "알 수 없는 오류"
+        },
+        "sysInterp": {
+            "label": "시스템 인터프리터",
+            "desc": ".js / .py 파일을 더블 클릭하면 내장 Node / Python으로 실행됩니다 (창은 닫히지 않음). 한 번만 설정하면 되며, 설치 디렉터리가 이동되면 다시 설정하세요.",
+            "confirmTitle": "현재 시스템 인터프리터를 덮어씁니다.",
+            "confirmOk": "확인",
+            "confirmCancel": "취소"
+        },
+        "nodeInterp": {
+            "btn": "시스템 Node 인터프리터로 설정",
+            "busyChecking": "확인 중…",
+            "busyApplying": "설정 중…",
+            "busyRemoving": "제거 중…",
+            "confirmPick": "'시스템 Node 인터프리터로 설정'을 선택했습니다",
+            "confirmRemovePick": "「시스템 Node 인터프리터 설정 취소」를 선택했습니다.",
+            "confirmRemove": "시스템 Node 인터프리터 설정 취소",
+            "ok": "✅ 설정 완료: .js 파일을 더블 클릭하면 내장 Node로 실행됩니다.",
+            "okRefresh": "✅ 새로 고침 완료: 내장 Node가 .js를 인수함",
+            "okRemove": "✅ 해제 완료: 내장 Node가 더 이상 시스템 인터프리터로 사용되지 않습니다.",
+            "fail": "❌ Node 설정 실패:",
+            "failRemove": "❌ Node 연결 해제 실패:",
+            "errNoNode": "내장 Node가 준비되지 않았습니다.",
+            "errDenied": "권한이 거부되었습니다 (보안 소프트웨어가 차단했을 수 있음)",
+            "errVerify": "쓰기가 적용되지 않았습니다.",
+            "errUac": "취소됨 (승인되지 않음)",
+            "errBridge": "사용하려면 창을 재시작해야 합니다 (Node)",
+            "errBusy": "처리 중입니다. 잠시만 기다려 주세요.",
+            "errRemove": "연결 해제가 완료되지 않음",
             "errGeneric": "알 수 없는 오류"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "종료"
         },
         "enc": {
-            "saveRejected": "저장 거부됨: 문자 \"{ch}\"({cp})는 {enc} 인코딩으로 표현할 수 없어 내용이 저장되지 않았습니다. 해결 방법: ① 해당 문자를 삭제한 후 다시 저장; ② 탭 인코딩 메뉴에서 'UTF-8/GB18030으로 다른 이름으로 저장' 선택(모든 문자 인코딩 지원, 데이터 손실 없음)."
+            "saveRejected": "저장 거부: 문자 \"{ch}\"({cp})는 {enc} 인코딩으로 표현할 수 없어 내용이 기록되지 않았습니다. 해결 방법: ① 해당 문자를 삭제한 후 다시 저장; ② 상단 경로 옆의 인코딩 배지를 클릭하여 'UTF-8/GB18030로 다른 이름으로 저장'(모든 문자 인코딩, 손실 없음) 선택.",
+            "saveRejectedDecode": "저장 거부: 파일에 디코딩 불가능한 문자 {n}개가 포함되어 있습니다(로 표시되며 사용자가 입력한 내용이 아님) — {enc}로는 이를 수용할 수 없으며, 직접 저장하면 다른 문자로 변환됩니다. 해결 방법: ① 상단 경로 옆의 인코딩 배지를 클릭하여 다른 인코딩으로 다시 열기; ② 또는 'UTF-8로 다른 이름으로 저장'을 통해 현재 내용을 그대로 저장."
         },
         "search": {
             "rgMissing": "ripgrep이 설치되지 않았습니다. 실행: python op/components.py ensure ripgrep",

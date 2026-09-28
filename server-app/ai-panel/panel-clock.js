@@ -272,13 +272,17 @@ function _initClockBlock(aiDiv) {
     if (aiDiv._clockBlock) return;
     var block = document.createElement('div');
     block.className = 'msg-ai-clock';
-    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);margin-left:auto">0.00 ge</span>';
+    // ★ 楼层收藏（2026-09-28）：az 区中式星标——恒居中于饼图与 ge 之间（star 两侧 auto margin；ge 恒贴右端）
+    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><button type="button" tabindex="-1" class="clock-fav">\u2606</button><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary)">0.00 ge</span>';
     aiDiv.appendChild(block);
     aiDiv._clockBlock = block;
     aiDiv._clockMin = block.querySelector('.clock-min');
     aiDiv._clockSec = block.querySelector('.clock-sec');
     aiDiv._clockCanvas = block.querySelector('canvas');
     aiDiv._clockCost = block.querySelector('.clock-cost');
+    aiDiv._clockFav = block.querySelector('.clock-fav');
+    // ★ 楼层收藏：星标接线（panel-fav.js 唯一实现）——建楼/历史恢复两条路径同此一处汇入
+    try { if (typeof window._favHookStar === 'function') window._favHookStar(aiDiv); } catch (_eFav) { }
     var clockCost = aiDiv._clockCost;
     clockCost.addEventListener('mouseenter', function (e) {
         var raw = clockCost._rawGe;
@@ -357,12 +361,26 @@ function startFloorTimer(aiDiv, ag, resume) {
     var _ag = ag;
     // ★ 防御：先清除可能残存的旧 timer（防止重复 start 产生僵尸）
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
-    ag._floorTimerId = setInterval(function () {
+    // ★★ 电子钟幽灵自愈（2026-09-27 q368 f9 实锤）：agent 是跨 iframe realm 共享的对象，
+    //   而 setInterval/clearInterval 的 id 是 realm 局部量——跨面板重开卡片/迁移时
+    //   「别的 realm 创建的 id」在本 realm clearInterval 静默失效（同号还会误杀本 realm 无辜 timer），
+    //   钟一旦漏杀即永久走字（陈旧 _lastProgressPerf → 常亮红色 clock-stall；实测楼层完结后走 84 分钟）。
+    //   → 钟不再信任外部 kill：每 tick 先验①本代令牌 ②楼层是否仍在建楼，任一不符用「自己的 id」自停。
+    var _clockTok = {};
+    ag._clockToken = _clockTok;
+    var _myId = setInterval(function () {
+        // ① 代际易主（新钟/stopFloorTimer 已接管）或 ② 楼层已尘埃落定 → 自停，绝不续写（保留定格显示）
+        if (_ag._clockToken !== _clockTok || (_ag._stopState !== 'sending' && _ag._stopState !== 'streaming' && _ag._stopState !== 'stopping')) {
+            clearInterval(_myId);
+            if (_ag._floorTimerId === _myId) _ag._floorTimerId = null;
+            return;
+        }
         // ★ 守卫：用本地闭包 aiDiv 而非 _ag._activeAiDiv，防压缩/恢复路径篡改
         //   若 aiDiv 已脱离 DOM（Card 被驱逐），自停 timer
+        //   ★ 只清自己的 id（旧实现清共享字段 _ag._floorTimerId —— 会误杀别的活跃钟/null 掉共享字段）
         if (!aiDiv || !aiDiv._clockBlock || !aiDiv._clockBlock.isConnected) {
-            clearInterval(_ag._floorTimerId);
-            _ag._floorTimerId = null;
+            clearInterval(_myId);
+            if (_ag._floorTimerId === _myId) _ag._floorTimerId = null;
             return;
         }
         var elapsed = Math.max(0, Date.now() - _ag._floorStartPerf);  // ★ wall-clock（2026-09-06）
@@ -392,6 +410,7 @@ function startFloorTimer(aiDiv, ag, resume) {
             else if (_silenceS > 120) aiDiv._clockBlock.classList.add('clock-slow');
         }
     }, 1000);
+    ag._floorTimerId = _myId;
 }
 
 // ★ 楼层尘埃落定音效 — 唯一权威触发点 = 电子钟变黑瞬间（stopFloorTimer，2026-09-03 用户定案）
@@ -434,6 +453,8 @@ function _playFloorEndSfx(ag) {
 
 function stopFloorTimer(timing, ag) {
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
+    // ★ 幽灵钟令牌作废（2026-09-27）：本 realm 清不掉的跨 realm 钟，最迟 1s 内自行验令牌自停
+    ag._clockToken = null;
     ag._floorCurrentTiming = timing;
     // ★ wall-clock 基准（2026-09-06）：与 startFloorTimer 同轴；从未 start（perf=0）→ 0，防 epoch/NaN 写盘
     var elapsed = (ag._floorStartPerf > 0) ? Math.max(0, Date.now() - ag._floorStartPerf) : 0;

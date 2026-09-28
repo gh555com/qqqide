@@ -134,7 +134,17 @@
             "mspeedCustom": "Velocidad personalizada",
             "mspeedOk": "Confirmar",
             "mfsFail": "Error al entrar en pantalla completa",
-            "mloop": "Reproducción en bucle (atajo L)",
+            "mmode": "Modo de reproducción (L bucle / R aleatorio)",
+            "mlooplab": "Repetir",
+            "mshuflab": "Aleatorio",
+            "mOff": "Desactivado",
+            "mOn": "Activado",
+            "mplist": "Lista de reproducción",
+            "modeOne": "Repetir una",
+            "modeListLoop": "Repetir lista",
+            "mprev": "Anterior",
+            "mnext": "Siguiente",
+            "mskip": "No se puede reproducir, omitido: {name}",
             "mpip": "Imagen en imagen",
             "mfs": "Pantalla completa (atajo F)",
             "mstep": "Avance cuadro a cuadro (atajo: . adelante / , atrás)",
@@ -146,7 +156,23 @@
             "mabClear": "Bucle A-B eliminado",
             "mshot": "Captura de un fotograma (atajo S)",
             "mshotSaved": "Captura guardada: {name}",
-            "mshotFail": "Error al capturar pantalla"
+            "mshotFail": "Error al capturar pantalla",
+            "mplUp": "Mover arriba",
+            "mplDown": "Mover abajo",
+            "mplDel": "Eliminar de la lista de reproducción",
+            "mpopout": "Abrir reproductor independiente",
+            "mpopin": "Abrir reproductor dentro de la ventana",
+            "mdockside": "Cambiar posición de la lista (izquierda / derecha)"
+        },
+        "player": {
+            "title": "Reproductor",
+            "needRestart": "El reproductor requiere reiniciar la instancia para estar disponible",
+            "added": "Añadidos a la lista de reproducción: {n}",
+            "addedIgnored": "Añadidos a la lista de reproducción: {n} · Ignorados: {m}",
+            "addNone": "No hay archivos multimedia para añadir",
+            "empty": "La lista de reproducción está vacía: selecciona medios en Roam, haz clic derecho y elige «Añadir a la lista de reproducción», o expándela desde la capa flotante ↗",
+            "returnOv": "Volver a la capa flotante",
+            "returnFail": "No se encontró la ventana principal, no se puede volver a la capa flotante"
         },
         "about": {
             "title": "Acerca de qqq",
@@ -293,11 +319,21 @@
             "ok": "Confirmar salida"
         },
         "wq": {
-            "tip": "Estadísticas de precalentamiento wq: pega el tiempo de ejecución de la sonda\nHaz clic para reiniciar",
-            "tipShort": "Estadísticas de precalentamiento wq"
+            "title": "Sonda wq",
+            "empty": "Sin registros por ahora",
+            "probeMeta": "Máximo {max} ms · Total {n} veces",
+            "recent": "Recientes {list}",
+            "cacheMedia": "Caché de medios",
+            "cachePlay": "Caché de transcodificación",
+            "cacheMeta": "{n} elementos · Coincidencia {p}%",
+            "cacheMetaNoHit": "{n} elementos",
+            "cacheBroken": "Interrupción por fallo {n}",
+            "reset": "Restablecer",
+            "resetDone": "Estadísticas de wq restablecidas"
         },
         "goods": {
-            "kmdXTip": "Presiona la tecla x para abrir un nuevo kmd"
+            "kmdXTip": "Pulsa brevemente la tecla x para abrir un nuevo kmd; antes puedes seleccionar un archivo o carpeta en Roam para incluir su ruta.",
+            "qmdXTip": "Mantén pulsada la tecla x para abrir un nuevo qmd; previamente puedes seleccionar un archivo o carpeta de Roam para incluir su ruta."
         },
         "aZone": {
             "nullTip": "Contraer zona A / Haz clic para restaurar"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "Copiar ruta",
+        "roamLocate": "Localizar este archivo en Roam",
         "minimap": "Minimapa",
         "tabs": {
             "close": "Cerrar pestaña",
@@ -328,7 +365,12 @@
             "encAutoReset": "Detección automática (eliminar fijos)",
             "encAutoCur": "Detección automática",
             "encFixedAt": "Codificación fijada a {v} (modo de emergencia) — Haz clic para modificar o restaurar la detección automática",
-            "encAutoAt": "Codificación: {v} (detección automática) — Haz clic para especificar manualmente",
+            "encAutoAt": "Codificación: {v} — {src}; haz clic para especificar manualmente",
+            "encSrcBom": "Según declaración BOM",
+            "encSrcUtf8": "Decodificación UTF-8 estricta aprobada",
+            "encSrcGbk": "Detección retroactiva GBK (haz clic aquí si hay caracteres ilegibles)",
+            "saveAsUtf8": "Guardar como UTF-8",
+            "encMenu": "Menú de codificación",
             "readFail": "Error de lectura: el archivo no existe o no es legible",
             "redecoded": "Decodificado nuevamente según {v}",
             "switchFail": "Error al cambiar la decodificación:",
@@ -337,6 +379,24 @@
             "saveAsFail": "Error al guardar como:",
             "dirtyFirst": "El archivo tiene cambios sin guardar — Guarda primero con Ctrl+S antes de cambiar la codificación (se volverá a leer desde el disco)",
             "recallTip": "Presione Tab o F2 para recuperarme"
+        },
+        "ext": {
+            "refreshedTip": "Modificado externamente, visualización actualizada",
+            "conflictTitle": "El archivo ha sido modificado externamente",
+            "conflictHint": "Tus cambios siguen conservados en el editor",
+            "conflictToast": "El archivo ha sido modificado externamente; el guardado automático se ha pausado. Por favor, elige qué versión conservar.",
+            "saveBlocked": "Guardado pausado: el disco fue modificado externamente, resuelva primero los conflictos",
+            "btnCompare": "Comparar",
+            "btnUseDisk": "Usar versión del disco",
+            "btnKeepMine": "Conservar la mía",
+            "usedDiskToast": "Versión del disco cargada; tus cambios anteriores se han guardado en la línea de tiempo",
+            "keepMineToast": "Se ha sobrescrito el archivo en disco con tu versión",
+            "closeTitle": "Hay cambios sin guardar",
+            "closeHint": "¿Guardar los cambios antes de cerrar?",
+            "closeConflictNote": "El archivo en disco ha sido modificado externamente: al guardar se sobrescribirá la versión externa (se han archivado instantáneas de ambas versiones)",
+            "closeSave": "Guardar y cerrar",
+            "closeDiscard": "No guardar",
+            "closeCancel": "Cancelar"
         },
         "contextMenu": {
             "cut": "Cortar",
@@ -859,7 +919,11 @@
             "switched": "── Cambiado a {0} ──",
             "switchFail": "[Error al cambiar] {0}",
             "switchErr": "[Excepción al cambiar] {0}",
-            "ctrlCFail": "[Fallo al enviar con Ctrl+C] {0}"
+            "ctrlCFail": "[Fallo al enviar con Ctrl+C] {0}",
+            "intDone": "── Ctrl+C · {0} procesos terminados ──",
+            "intIdle": "── Ctrl+C · No hay comandos en ejecución ──",
+            "intSig": "── Ctrl+C · Señal de interrupción enviada ──",
+            "intRestart": "── Ctrl+C · La actualización del shell requiere reiniciar la instancia para aplicar cambios ──"
         },
         "git": {
             "refresh": "Actualizar",
@@ -1097,14 +1161,23 @@
             "unknownErr": "Error desconocido"
         },
         "qmd": {
-            "sessionOps": "Operaciones de sesión",
-            "killHint": "Terminar: mata forzosamente todo el árbol de procesos y lo reinicia in situ; Reiniciar: reinicia la sesión normalmente",
+            "sessionOps": "Operaciones de terminal",
+            "killHint": "Interrupt solo detiene el comando actual (conserva la sesión y el desplazamiento); Restart termina el árbol de procesos y reinicia la sesión in situ; Terminate solo termina (conserva la pestaña y el desplazamiento, permite reiniciar después)",
             "startFail": "[Fallo al iniciar] {0}",
             "startFailTerm": "[qmd] Error al iniciar sesión: {0}",
             "startErr": "[Error al iniciar]",
             "exited": "{0} ha salido",
             "exitedTerm": "── Sesión finalizada{0} ──",
-            "restarted": "● Reiniciado"
+            "restarted": "● Reiniciado",
+            "noSel": "Sin texto seleccionado · Selecciona arrastrando y luego copia",
+            "intRestart": "── Interrumpido · La actualización del shell requiere reiniciar la instancia para surtir efecto ──",
+            "intDone": "── Interrupt · {0} procesos terminados ──",
+            "intIdle": "── Interrupción · No hay comandos en ejecución ──",
+            "intSig": "── Interrupción · Señal de interrupción enviada ──",
+            "intFail": "[Fallo de Interrupt] {0}",
+            "terminated": "Terminado · Puedes reiniciar con Restart",
+            "termLine": "── Sesión terminada (usa Restart para reiniciar) ──",
+            "deadHint": "En estado terminado · Usa Restart para reiniciar"
         },
         "dsecret": {
             "targetProject": "Proyecto objetivo",
@@ -1154,6 +1227,9 @@
             "notChecked": "(No verificado)"
         },
         "roam": {
+            "qBatchIgnore": "Lista de reproducción Q: {0} añadidos · {1} omitidos (tipo diferente)",
+            "mplAdd": "Añadir a la lista de reproducción",
+            "mplNone": "No hay archivos multimedia disponibles para añadir a la lista de reproducción",
             "szSize": "Mostrar tamaño de archivo en la zona sz",
             "szCtime": "Mostrar en zona sz: fecha de creación",
             "szMtime": "Mostrar en zona sz: hora de modificación",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ Se ha habilitado la caché de archivos no rastreados para {name}. Entrará en vigor en el próximo escaneo.",
         "ucFail": "Este repositorio no admite caché de archivos no rastreados (posiblemente no sea un disco local), no se realizaron cambios"
     },
+    "fav": {
+        "title": "Favoritos",
+        "tip": "Favoritos",
+        "count": "Total: {0} elementos",
+        "searchPh": "Buscar en favoritos (nombre / tarea / pregunta)",
+        "empty": "Aún no hay favoritos · Haz clic en ☆ en cualquier piso para guardarlo",
+        "noMatch": "No hay favoritos coincidentes",
+        "more": "Solo se muestran los primeros {0} elementos, introduce una palabra clave para filtrar",
+        "starTip": "Guardar este piso",
+        "starTipOn": "Ya guardado (haz clic para editar)",
+        "namerTitle": "Guardar este piso",
+        "namerTitleEdit": "Editar favorito",
+        "namePh": "Nombre del favorito (pulsa Intro para usar el nombre automático)",
+        "save": "Guardar",
+        "saveEdit": "Guardar",
+        "remove": "Quitar de favoritos",
+        "close": "Cerrar",
+        "cancel": "Cancelar",
+        "rename": "Cambiar nombre",
+        "rowRemove": "Eliminar",
+        "questGone": "Esta tarea ya no existe (puedes eliminarla de tus favoritos)",
+        "floorGone": "Los datos de este piso no existen",
+        "cardGone": "Los datos de la tarea no están listos o han sido eliminados",
+        "noPanel": "El panel de IA aún no está listo",
+        "saveFail": "Error al guardar el favorito",
+        "deletedTag": "Tarea eliminada"
+    },
     "firstRun": {
         "expert": "Soy un experto, conozco los riesgos de cada comando, no uso qqqide para eliminar archivos",
         "agree": "Aceptar y continuar",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "Exporta el documento actual como archivo Word: las imágenes y vídeos se convierten en imágenes incrustadas y se genera una lista para otros adjuntos. Se guarda por defecto junto al documento; el cuadro de diálogo de guardado solo aparece si ya existe un archivo con el mismo nombre.",
         "exportZipTip": "Empaqueta el documento actual y todos los archivos y directorios referenciados en un ZIP (conservando la estructura de directorios y con máxima compresión); se guarda por defecto junto al documento, mostrando el diálogo de guardado solo si ya existe un archivo con el mismo nombre.",
         "cloudSyncTip": "Sincronización en la nube: ↑ Subir = Combina con la nube antes de subir (ningún dato se pierde en ninguno de los lados); ↓ Descargar = Combina los datos de la nube con los locales. Incluye configuración del editor, preferencias de cada carpeta e historial del portapapeles.",
+        "playerTip": "Reproductor: escucha música o ve vídeos mientras programas (la lista de reproducción persiste entre reinicios); en Roam, selecciona medios, haz clic derecho y elige «Añadir a la lista de reproducción», o expándela desde la capa flotante.",
+        "playerWinTip": "Ventana de reproductor flotante independiente: ventana siempre visible, accesible incluso al cambiar a otras aplicaciones (↗)",
+        "playerCardTip": "Reproductor en ventana: tarjeta de reproductor flotante dentro de la ventana de qqqide — sigue a esta ventana (⧈)",
+        "playerNeedRestart": "El reproductor flotante requiere reiniciar la instancia para estar disponible",
         "videoUrlTip": "Pendiente de pegar: Introduce la URL del vídeo para descargarlo automáticamente en la carpeta del documento e insertarlo en un marco.",
         "pasteTip": "Pendiente de pegar: Pega el contenido del portapapeles en el documento con un solo clic (actualmente puedes lograr lo mismo con Ctrl+V).",
         "pureTip": "Pendiente: escanea las referencias del documento para limpiar archivos huérfanos que ya no están siendo utilizados."
@@ -1686,18 +1793,54 @@
             "btn": "Establecer como intérprete Python del sistema",
             "busyChecking": "Comprobando…",
             "busyApplying": "Configurando…",
+            "busyRemoving": "Eliminando…",
+            "confirmPick": "Has seleccionado «Establecer como intérprete de sistema Python»",
+            "confirmRemovePick": "Has seleccionado «Cancelar como intérprete de sistema Python»",
             "confirmTitle": "Sobrescribirá el intérprete actual del sistema",
+            "confirmRemove": "Cancelar como intérprete Python del sistema",
             "confirmOk": "Confirmar",
             "confirmCancel": "Cancelar",
             "ok": "✅ Configurado: doble clic en .py se ejecutará con Python integrado",
             "okRefresh": "✅ Actualizado: Python integrado ha tomado el control de .py",
-            "fail": "❌ Error al configurar:",
+            "okRemove": "✅ Desvinculado: el Python integrado ya no actúa como intérprete del sistema",
+            "fail": "❌ Fallo en la configuración de Python:",
+            "failRemove": "❌ Fallo al eliminar Python:",
             "errNoPython": "Python integrado no está listo",
             "errDenied": "Permiso denegado (posiblemente bloqueado por software de seguridad)",
             "errVerify": "La escritura no surtió efecto",
             "errUac": "Cancelado (no autorizado)",
-            "errBridge": "Requiere reiniciar esta ventana para estar disponible",
+            "errBridge": "Requiere reiniciar esta ventana para estar disponible (Python)",
             "errBusy": "Procesando, por favor espere",
+            "errRemove": "Desvinculación incompleta",
+            "errGeneric": "Error desconocido"
+        },
+        "sysInterp": {
+            "label": "Intérprete del sistema",
+            "desc": "Permite que los archivos .js / .py se ejecuten con Node / Python integrados al hacer doble clic (sin cerrar la ventana). Configuración única; si cambias el directorio de instalación, vuelve a aplicar.",
+            "confirmTitle": "Sobrescribirá el intérprete del sistema actual",
+            "confirmOk": "Confirmar",
+            "confirmCancel": "Cancelar"
+        },
+        "nodeInterp": {
+            "btn": "Establecer como intérprete de sistema Node",
+            "busyChecking": "Verificando…",
+            "busyApplying": "Configurando…",
+            "busyRemoving": "Eliminando…",
+            "confirmPick": "Has seleccionado «Establecer como intérprete de sistema Node»",
+            "confirmRemovePick": "Has seleccionado «Cancelar como intérprete Node del sistema»",
+            "confirmRemove": "Cancelar como intérprete Node del sistema",
+            "ok": "✅ Configurado: doble clic en .js ejecuta con Node integrado",
+            "okRefresh": "✅ Actualizado: el Node integrado ahora gestiona los archivos .js",
+            "okRemove": "✅ Desactivado: Node integrado ya no es el intérprete del sistema",
+            "fail": "❌ Error al configurar Node:",
+            "failRemove": "❌ Error al desvincular Node:",
+            "errNoNode": "Node integrado no está listo",
+            "errDenied": "Permiso denegado (posiblemente bloqueado por software de seguridad)",
+            "errVerify": "La escritura no surtió efecto",
+            "errUac": "Cancelado (no autorizado)",
+            "errBridge": "Requiere reiniciar esta ventana para estar disponible (Node)",
+            "errBusy": "Procesando, por favor espere",
+            "errRemove": "Desvinculación incompleta",
             "errGeneric": "Error desconocido"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "Salir"
         },
         "enc": {
-            "saveRejected": "Guardado rechazado: el carácter \"{ch}\" ({cp}) no puede representarse con la codificación {enc}, el contenido no se ha escrito. Puedes: ① Eliminar ese carácter y volver a guardar; ② Seleccionar «Guardar como UTF-8/GB18030» en el menú de codificación de la pestaña (codificación completa de caracteres, sin pérdida de datos)."
+            "saveRejected": "Guardado rechazado: el carácter \"{ch}\" ({cp}) no puede representarse con la codificación {enc}, el contenido no se ha escrito. Opciones: ① Elimina ese carácter y vuelve a guardar; ② Haz clic en el icono de codificación junto a la ruta superior y selecciona «Guardar como UTF-8/GB18030» (codificación completa, sin pérdida de datos).",
+            "saveRejectedDecode": "Guardado rechazado: el archivo contiene {n} caracteres no decodificables (mostrados como , no introducidos por ti); la codificación {enc} no puede contenerlos y guardarlos directamente los transformaría en otros caracteres. Opciones: ① Haz clic en el icono de codificación junto a la ruta superior para volver a abrir con otra codificación; ② O usa «Guardar como UTF-8» para conservar el contenido actual tal cual."
         },
         "search": {
             "rgMissing": "ripgrep no está instalado. Ejecute: python op/components.py ensure ripgrep",

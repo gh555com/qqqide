@@ -134,7 +134,17 @@
             "mspeedCustom": "Multiplicador personalizado",
             "mspeedOk": "Confirmar",
             "mfsFail": "Falha ao entrar em tela cheia",
-            "mloop": "Reprodução em loop (atalho L)",
+            "mmode": "Modo de reprodução (L Repetir / R Aleatório)",
+            "mlooplab": "Repetir",
+            "mshuflab": "Aleatório",
+            "mOff": "Desligado",
+            "mOn": "Ligado",
+            "mplist": "Lista de reprodução",
+            "modeOne": "Repetir uma faixa",
+            "modeListLoop": "Repetir lista",
+            "mprev": "Anterior",
+            "mnext": "Próximo",
+            "mskip": "Não foi possível reproduzir, pulado: {name}",
             "mpip": "Picture-in-Picture",
             "mfs": "Tela cheia (atalho F)",
             "mstep": "Avanço quadro a quadro (atalho: . para avançar / , para retroceder)",
@@ -146,7 +156,23 @@
             "mabClear": "Loop A-B limpo",
             "mshot": "Captura de tela única (atalho S)",
             "mshotSaved": "Captura salva: {name}",
-            "mshotFail": "Falha na captura de tela"
+            "mshotFail": "Falha na captura de tela",
+            "mplUp": "Mover para cima",
+            "mplDown": "Mover para baixo",
+            "mplDel": "Remover da lista de reprodução",
+            "mpopout": "Abrir player independente",
+            "mpopin": "Abrir player dentro da janela",
+            "mdockside": "Alternar posição da lista (Esquerda / Direita)"
+        },
+        "player": {
+            "title": "Player",
+            "needRestart": "O player precisa ser reiniciado para ficar disponível",
+            "added": "Adicionado à lista de reprodução: {n} itens",
+            "addedIgnored": "Adicionado à lista de reprodução: {n} · Ignorado {m}",
+            "addNone": "Nenhum arquivo de mídia disponível para adicionar",
+            "empty": "Lista de reprodução vazia — selecione mídia no Roam, clique com o botão direito e escolha \"Adicionar à lista de reprodução\", ou abra a partir da camada flutuante ↗",
+            "returnOv": "Retornar à camada flutuante",
+            "returnFail": "Janela principal não encontrada, impossível retornar à camada flutuante"
         },
         "about": {
             "title": "Sobre o qqq",
@@ -293,11 +319,21 @@
             "ok": "Confirmar saída"
         },
         "wq": {
-            "tip": "Estatísticas de preparação do wq: tempo de execução da sonda de colagem\nClique para redefinir",
-            "tipShort": "Estatísticas de preparação do wq"
+            "title": "Sonda wq",
+            "empty": "Nenhum registro no momento",
+            "probeMeta": "Máximo {max} ms · Total {n} vezes",
+            "recent": "Recentes {list}",
+            "cacheMedia": "Cache de mídia",
+            "cachePlay": "Cache de transcodificação",
+            "cacheMeta": "{n} itens · Taxa de acerto {p}%",
+            "cacheMetaNoHit": "{n} itens",
+            "cacheBroken": "Disjuntor ativado {n}",
+            "reset": "Redefinir",
+            "resetDone": "Estatísticas wq redefinidas"
         },
         "goods": {
-            "kmdXTip": "Pressione a tecla x para abrir um novo kmd"
+            "kmdXTip": "Pressione a tecla x para abrir um novo kmd",
+            "qmdXTip": "Mantenha pressionada a tecla x para abrir um novo qmd. Pressione anteriormente para selecionar arquivos ou pastas do Roam, anexando o caminho desse arquivo ou pasta."
         },
         "aZone": {
             "nullTip": "Recolher Zona A / Clicar para restaurar"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "Copiar caminho",
+        "roamLocate": "Localizar este arquivo no Roam",
         "minimap": "Minimapa",
         "tabs": {
             "close": "Fechar aba",
@@ -329,6 +366,11 @@
             "encAutoCur": "Detecção automática",
             "encFixedAt": "Codificação fixada como {v} (modo de emergência) — Clique para alterar / restaurar automático",
             "encAutoAt": "Codificação: {v} (detecção automática) — Clique para especificar manualmente",
+            "encSrcBom": "Conforme declaração BOM",
+            "encSrcUtf8": "Decodificação UTF-8 estrita aprovada",
+            "encSrcGbk": "Detecção fallback GBK (clique aqui para corrigir caracteres ilegíveis)",
+            "saveAsUtf8": "Salvar como UTF-8",
+            "encMenu": "Menu de codificação",
             "readFail": "Falha na leitura: arquivo não existe ou não é legível",
             "redecoded": "Decodificado novamente como {v}",
             "switchFail": "Falha na troca de decodificação:",
@@ -337,6 +379,24 @@
             "saveAsFail": "Falha ao salvar como:",
             "dirtyFirst": "O arquivo tem alterações não salvas — Salve com Ctrl+S primeiro antes de alterar a codificação (irá reler do disco)",
             "recallTip": "Pressione Tab ou F2 para me chamar"
+        },
+        "ext": {
+            "refreshedTip": "Modificado externamente, exibição atualizada",
+            "conflictTitle": "O disco foi modificado externamente",
+            "conflictHint": "Suas alterações permanecem no editor",
+            "conflictToast": "O arquivo no disco foi modificado externamente. Salvamento automático pausado; escolha qual versão manter",
+            "saveBlocked": "Salvamento pausado: o disco foi modificado externamente. Resolva os conflitos primeiro.",
+            "btnCompare": "Comparar",
+            "btnUseDisk": "Usar versão do disco",
+            "btnKeepMine": "Manter minhas alterações",
+            "usedDiskToast": "Versão do disco carregada; suas alterações anteriores foram salvas na linha do tempo",
+            "keepMineToast": "Sua versão substituiu a do disco",
+            "closeTitle": "Alterações não salvas",
+            "closeHint": "Salvar alterações antes de fechar?",
+            "closeConflictNote": "O disco foi modificado externamente: salvar irá sobrescrever a versão externa (ambos os snapshots foram arquivados)",
+            "closeSave": "Salvar e fechar",
+            "closeDiscard": "Não salvar",
+            "closeCancel": "Cancelar"
         },
         "contextMenu": {
             "cut": "Recortar",
@@ -859,7 +919,11 @@
             "switched": "── Alternado para {0} ──",
             "switchFail": "[Falha na troca] {0}",
             "switchErr": "[Erro ao alternar] {0}",
-            "ctrlCFail": "[Falha ao enviar Ctrl+C] {0}"
+            "ctrlCFail": "[Falha ao enviar Ctrl+C] {0}",
+            "intDone": "── Ctrl+C · {0} processos encerrados ──",
+            "intIdle": "── Ctrl+C · Nenhum comando em execução ──",
+            "intSig": "── Ctrl+C · Sinal de interrupção enviado ──",
+            "intRestart": "── Ctrl+C · Reinicie a instância para aplicar a atualização do shell ──"
         },
         "git": {
             "refresh": "Atualizar",
@@ -1104,7 +1168,16 @@
             "startErr": "[Erro ao iniciar]",
             "exited": "Encerrado{0}",
             "exitedTerm": "── Sessão encerrada{0} ──",
-            "restarted": "● Reiniciado"
+            "restarted": "● Reiniciado",
+            "noSel": "Nenhum texto selecionado · Selecione antes de copiar",
+            "intRestart": "── Interrupt · A atualização do shell requer reinício da instância para生效 ──",
+            "intDone": "── Interrompido · {0} processos encerrados ──",
+            "intIdle": "── Interrupt · Nenhum comando em execução ──",
+            "intSig": "── Interrupt · Sinal de interrupção enviado ──",
+            "intFail": "[Falha no Interrupt] {0}",
+            "terminated": "Encerrado · Use Restart para reiniciar",
+            "termLine": "── Sessão encerrada (Use Restart para reiniciar) ──",
+            "deadHint": "Estado encerrado · Use Restart para reiniciar"
         },
         "dsecret": {
             "targetProject": "Projeto alvo",
@@ -1154,6 +1227,9 @@
             "notChecked": "(Não verificado)"
         },
         "roam": {
+            "qBatchIgnore": "Lista de reprodução Q: {0} adicionados · {1} ignorados (tipos diferentes)",
+            "mplAdd": "Adicionar à lista de reprodução",
+            "mplNone": "Nenhum arquivo de mídia disponível para adicionar à lista de reprodução",
             "szSize": "Exibição da área sz: Tamanho do arquivo",
             "szCtime": "Exibição na zona sz: data de criação",
             "szMtime": "Exibição da zona sz: Data de modificação",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ Cache de arquivos não rastreados ativado para {name}. Entrará em vigor na próxima verificação.",
         "ucFail": "Este repositório não suporta cache de arquivos não rastreados (possivelmente não está em disco local). Nenhuma alteração foi feita."
     },
+    "fav": {
+        "title": "Favoritos",
+        "tip": "Favoritos",
+        "count": "Total de {0} itens",
+        "searchPh": "Pesquisar favoritos (nome / tarefa / pergunta)",
+        "empty": "Nenhum favorito ainda · Clique em ☆ em qualquer nível para favoritar",
+        "noMatch": "Nenhum favorito correspondente encontrado",
+        "more": "Exibindo apenas os primeiros {0} itens, digite uma palavra-chave para filtrar",
+        "starTip": "Favoritar este nível",
+        "starTipOn": "Favoritado (clique para editar)",
+        "namerTitle": "Favoritar este nível",
+        "namerTitleEdit": "Editar favorito",
+        "namePh": "Nome do favorito (pressione Enter para usar o nome automático)",
+        "save": "Favoritar",
+        "saveEdit": "Salvar",
+        "remove": "Remover dos favoritos",
+        "close": "Fechar",
+        "cancel": "Cancelar",
+        "rename": "Renomear",
+        "rowRemove": "Remover",
+        "questGone": "Esta tarefa não existe mais (pode ser removida dos favoritos)",
+        "floorGone": "Os dados deste nível não existem",
+        "cardGone": "Dados da tarefa não estão prontos ou foram excluídos",
+        "noPanel": "O painel de IA ainda não está pronto",
+        "saveFail": "Falha ao salvar o favorito",
+        "deletedTag": "Tarefa excluída"
+    },
     "firstRun": {
         "expert": "Sou um especialista, conheço os riscos de cada comando e não uso o qqqide para excluir arquivos",
         "agree": "Concordar e continuar",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "Exportar o documento atual como arquivo Word: imagens e vídeos são convertidos em imagens incorporadas, outros anexos geram uma lista; salvo por padrão ao lado do documento, o diálogo de salvar só aparece se já existir um arquivo com o mesmo nome.",
         "exportZipTip": "Empacota o documento atual e todos os arquivos/diretórios referenciados em um ZIP (mantém a estrutura de diretórios, compressão máxima). Salvo por padrão ao lado do documento; o diálogo de salvar só aparece se já existir um arquivo com o mesmo nome.",
         "cloudSyncTip": "Sincronização em nuvem: ↑ Enviar = mesclar com a nuvem antes de enviar (nenhum dado é perdido em nenhum lado); ↓ Baixar = mesclar dados da nuvem com os locais. Inclui configurações do editor, preferências de cada pasta e histórico da área de transferência.",
+        "playerTip": "Player: ouça músicas/assista vídeos enquanto codifica (a lista de reprodução persiste entre reinicializações); no Roam, selecione mídia, clique com o botão direito e escolha \"Adicionar à lista de reprodução\", ou abra a partir da camada flutuante.",
+        "playerWinTip": "Janela flutuante independente do player: janela sempre visível — permanece visível mesmo ao alternar para outros aplicativos (↗)",
+        "playerCardTip": "Player na janela: Cartão do player flutuante dentro da janela qqqide — segue esta janela (⧈)",
+        "playerNeedRestart": "O player flutuante precisa ser reiniciado para ficar disponível",
         "videoUrlTip": "Pendente: insira a URL do vídeo, ele será baixado automaticamente para o diretório do documento e inserido em um quadro.",
         "pasteTip": "Colar pendente: Cole o conteúdo da área de transferência no documento com um clique (atualmente, Ctrl+V realiza a mesma ação).",
         "pureTip": "Pendente: escanear referências do documento e limpar arquivos órfãos que não são mais referenciados."
@@ -1686,18 +1793,54 @@
             "btn": "Definir como interpretador Python do sistema",
             "busyChecking": "Verificando…",
             "busyApplying": "Configurando…",
+            "busyRemoving": "Removendo…",
+            "confirmPick": "Você selecionou «Definir como interpretador Python do sistema»",
+            "confirmRemovePick": "Você selecionou \"Cancelar como interpretador Python do sistema\"",
             "confirmTitle": "Isso substituirá o interpretador do sistema atual",
+            "confirmRemove": "Cancelar como interpretador Python do sistema",
             "confirmOk": "Confirmar",
             "confirmCancel": "Cancelar",
             "ok": "✅ Configurado: arquivos .py serão executados pelo Python integrado ao clicar duas vezes",
             "okRefresh": "✅ Atualizado: o Python integrado agora assume os arquivos .py",
+            "okRemove": "✅ Removido: O Python integrado não é mais o interpretador do sistema",
             "fail": "❌ Falha na configuração:",
+            "failRemove": "❌ Falha ao remover Python:",
             "errNoPython": "O Python integrado não está pronto",
             "errDenied": "Permissão negada (possivelmente bloqueado por software de segurança)",
             "errVerify": "A gravação não entrou em vigor",
             "errUac": "Cancelado (não autorizado)",
             "errBridge": "É necessário reiniciar esta janela para que tenha efeito",
             "errBusy": "Processando, aguarde por favor",
+            "errRemove": "Remoção incompleta",
+            "errGeneric": "Erro desconhecido"
+        },
+        "sysInterp": {
+            "label": "Interpretador do sistema",
+            "desc": "Permite que arquivos .js / .py sejam executados pelo Node / Python integrado ao clicar duas vezes (a janela não fecha). Configuração única; basta reexecutar após mover o diretório de instalação.",
+            "confirmTitle": "Isso substituirá o interpretador do sistema atual",
+            "confirmOk": "Confirmar",
+            "confirmCancel": "Cancelar"
+        },
+        "nodeInterp": {
+            "btn": "Usar como interpretador Node do sistema",
+            "busyChecking": "Verificando…",
+            "busyApplying": "Configurando…",
+            "busyRemoving": "Removendo…",
+            "confirmPick": "Você selecionou \"Usar como interpretador Node do sistema\"",
+            "confirmRemovePick": "Você selecionou «Cancelar como interpretador Node do sistema»",
+            "confirmRemove": "Remover como interpretador Node do sistema",
+            "ok": "✅ Configurado: Arquivos .js serão executados pelo Node integrado ao clicar duas vezes",
+            "okRefresh": "✅ Atualizado: O Node integrado agora assume os arquivos .js",
+            "okRemove": "✅ Removido: O Node integrado não é mais o interpretador do sistema",
+            "fail": "❌ Falha na configuração do Node:",
+            "failRemove": "❌ Falha ao remover Node:",
+            "errNoNode": "Node integrado não está pronto",
+            "errDenied": "Permissão negada (possivelmente bloqueado por software de segurança)",
+            "errVerify": "A alteração não foi aplicada",
+            "errUac": "Cancelado (não autorizado)",
+            "errBridge": "É necessário reiniciar esta janela para usar (Node)",
+            "errBusy": "Processando, aguarde",
+            "errRemove": "Remoção não concluída",
             "errGeneric": "Erro desconhecido"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "Sair"
         },
         "enc": {
-            "saveRejected": "Salvamento recusado: o caractere \"{ch}\" ({cp}) não pode ser representado pela codificação {enc}; o conteúdo não foi gravado. Soluções: ① Exclua o caractere e salve novamente; ② No menu de codificação da aba, selecione \"Salvar como UTF-8/GB18030\" (codificação completa de caracteres, sem perdas)."
+            "saveRejected": "Salvamento recusado: o caractere \"{ch}\" ({cp}) não pode ser representado pela codificação {enc}; o conteúdo não foi gravado. Soluções: ① Exclua o caractere e salve novamente; ② No menu de codificação da aba, selecione \"Salvar como UTF-8/GB18030\" (codificação completa de caracteres, sem perdas).",
+            "saveRejectedDecode": "Salvamento recusado: o arquivo contém {n} caracteres indecodificáveis (exibidos como , não sendo conteúdo digitado por você) — {enc} não suporta esses caracteres. Salvar diretamente os converterá em outros caracteres. Opções: ① Clique no ícone de codificação próximo ao caminho no topo para reabrir com outra codificação; ② Ou use \"Salvar como UTF-8\" para preservar o conteúdo atual."
         },
         "search": {
             "rgMissing": "ripgrep não está instalado. Execute: python op/components.py ensure ripgrep",

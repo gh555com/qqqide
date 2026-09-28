@@ -134,7 +134,17 @@
             "mspeedCustom": "Custom speed",
             "mspeedOk": "Confirm",
             "mfsFail": "Failed to enter full screen",
-            "mloop": "Loop (Shortcut: L)",
+            "mmode": "Playback Mode (L Loop / R Shuffle)",
+            "mlooplab": "Loop",
+            "mshuflab": "Shuffle",
+            "mOff": "Off",
+            "mOn": "On",
+            "mplist": "Playlist",
+            "modeOne": "Repeat One",
+            "modeListLoop": "Playlist Loop",
+            "mprev": "Previous",
+            "mnext": "Next",
+            "mskip": "Unable to play, skipped: {name}",
             "mpip": "Picture-in-Picture",
             "mfs": "Fullscreen (Shortcut: F)",
             "mstep": "Frame-by-frame step (Shortcut: . forward / , backward)",
@@ -146,7 +156,23 @@
             "mabClear": "A-B Loop Cleared",
             "mshot": "Single Frame Screenshot (Shortcut: S)",
             "mshotSaved": "Screenshot Saved: {name}",
-            "mshotFail": "Screenshot Failed"
+            "mshotFail": "Screenshot Failed",
+            "mplUp": "Move Up",
+            "mplDown": "Move Down",
+            "mplDel": "Remove from Playlist",
+            "mpopout": "Pop out independent player",
+            "mpopin": "Open player in window",
+            "mdockside": "Toggle list position (Left / Right)"
+        },
+        "player": {
+            "title": "Player",
+            "needRestart": "Player requires instance restart to become available",
+            "added": "Added to playlist: {n} item(s)",
+            "addedIgnored": "Added to playlist: {n} item(s) · Ignored {m} item(s)",
+            "addNone": "No media files to add",
+            "empty": "Playlist is empty — Select media in Roam and right-click \"Add to Playlist\", or pop out from the overlay ↗",
+            "returnOv": "Return to Overlay",
+            "returnFail": "Main window not found; cannot return to floating layer"
         },
         "about": {
             "title": "About qqq",
@@ -293,11 +319,21 @@
             "ok": "Confirm Exit"
         },
         "wq": {
-            "tip": "wq Warm-up Stats: Paste probe execution time\nClick to reset",
-            "tipShort": "wq Warm-up Stats"
+            "title": "wq Probe",
+            "empty": "No records yet",
+            "probeMeta": "Max {max} ms · Total {n} attempts",
+            "recent": "Recent {list}",
+            "cacheMedia": "Media Cache",
+            "cachePlay": "Transcode Cache",
+            "cacheMeta": "{n} items · Hit rate {p}%",
+            "cacheMetaNoHit": "{n} items",
+            "cacheBroken": "Circuit Breaker Triggered {n}",
+            "reset": "Reset",
+            "resetDone": "wq statistics reset"
         },
         "goods": {
-            "kmdXTip": "Press x to open a new kmd"
+            "kmdXTip": "Press 'x' briefly to open a new kmd. You can select a Roam file or folder beforehand to include its path.",
+            "qmdXTip": "Long-press X to open a new qmd. Previously selected Roam files or folders will have their paths included."
         },
         "aZone": {
             "nullTip": "Collapse Zone A / Click to restore"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "Copy Path",
+        "roamLocate": "Locate this file in Roam",
         "minimap": "Minimap",
         "tabs": {
             "close": "Close Tab",
@@ -328,7 +365,12 @@
             "encAutoReset": "Auto-Detect (Clear Fixed)",
             "encAutoCur": "Auto-detect",
             "encFixedAt": "Encoding fixed to {v} (Escape Hatch) — Click to modify or restore automatic detection",
-            "encAutoAt": "Encoding: {v} (Auto-detected) — Click to specify manually",
+            "encAutoAt": "Encoding: {v} — {src}; click to specify manually",
+            "encSrcBom": "Based on BOM Declaration",
+            "encSrcUtf8": "Strict UTF-8 decoding passed",
+            "encSrcGbk": "GBK Fallback Detection (Click here if garbled)",
+            "saveAsUtf8": "Save as UTF-8",
+            "encMenu": "Encoding Menu",
             "readFail": "Read failed: File does not exist or is not readable",
             "redecoded": "Re-decoded using {v}",
             "switchFail": "Switch decoding failed:",
@@ -337,6 +379,24 @@
             "saveAsFail": "Save As failed:",
             "dirtyFirst": "File has unsaved changes — Please press Ctrl+S to save before switching encoding (will reload from disk)",
             "recallTip": "Press Tab or F2 to recall me"
+        },
+        "ext": {
+            "refreshedTip": "Modified externally; display refreshed",
+            "conflictTitle": "File Modified Externally",
+            "conflictHint": "Your changes are still retained in the editor.",
+            "conflictToast": "The file has been modified externally. Auto-save is paused; please choose which version to keep.",
+            "saveBlocked": "Save paused: Disk modified externally. Please resolve conflicts first.",
+            "btnCompare": "Compare",
+            "btnUseDisk": "Use Disk Version",
+            "btnKeepMine": "Keep Mine",
+            "usedDiskToast": "Loaded disk version; your previous changes are saved in the timeline",
+            "keepMineToast": "Overwritten disk with your version",
+            "closeTitle": "Unsaved Changes",
+            "closeHint": "Save changes before closing?",
+            "closeConflictNote": "The file on disk has been modified externally. Saving will overwrite the external version (snapshots of both versions have been archived).",
+            "closeSave": "Save & Close",
+            "closeDiscard": "Don't Save",
+            "closeCancel": "Cancel"
         },
         "contextMenu": {
             "cut": "Cut",
@@ -859,7 +919,11 @@
             "switched": "── Switched to {0} ──",
             "switchFail": "[Switch Failed] {0}",
             "switchErr": "[Switch Error] {0}",
-            "ctrlCFail": "[Ctrl+C Send Failed] {0}"
+            "ctrlCFail": "[Ctrl+C Send Failed] {0}",
+            "intDone": "── Ctrl+C · Terminated {0} process(es) ──",
+            "intIdle": "── Ctrl+C · No running command ──",
+            "intSig": "── Ctrl+C · Interrupt signal sent ──",
+            "intRestart": "── Ctrl+C · Shell upgrade requires instance restart to take effect ──"
         },
         "git": {
             "refresh": "Refresh",
@@ -1097,14 +1161,23 @@
             "unknownErr": "Unknown error"
         },
         "qmd": {
-            "sessionOps": "Session Actions",
-            "killHint": "Terminate forcefully kills the entire process tree and restarts in place; Restart normally restarts the session",
+            "sessionOps": "Terminal Operations",
+            "killHint": "Interrupt stops only the current command (preserving session and scrollback); Restart kills the process tree and reopens the session in place; Terminate only ends the process (tab and scrollback preserved, can Restart again)",
             "startFail": "[Startup failed] {0}",
             "startFailTerm": "[qmd] Session start failed: {0}",
             "startErr": "[Startup Exception]",
             "exited": "Exited {0}",
             "exitedTerm": "── Session exited {0} ──",
-            "restarted": "● Restarted"
+            "restarted": "● Restarted",
+            "noSel": "No text selected · Drag to select first, then copy",
+            "intRestart": "── Interrupt · Shell upgrade requires instance restart to take effect ──",
+            "intDone": "── Interrupt · Terminated {0} processes ──",
+            "intIdle": "── Interrupt · No command running ──",
+            "intSig": "── Interrupt · Interrupt signal sent ──",
+            "intFail": "[Interrupt Failed] {0}",
+            "terminated": "Terminated · Restart to relaunch",
+            "termLine": "── Session terminated (Restart to resume) ──",
+            "deadHint": "Already in terminated state · Restart to relaunch"
         },
         "dsecret": {
             "targetProject": "Target Project",
@@ -1154,6 +1227,9 @@
             "notChecked": "(Not checked)"
         },
         "roam": {
+            "qBatchIgnore": "Q Playlist: {0} added · {1} ignored (type mismatch)",
+            "mplAdd": "Add to Playlist",
+            "mplNone": "No media files available to add to playlist",
             "szSize": "SZ Area Display: File Size",
             "szCtime": "SZ Area Display: Creation Time",
             "szMtime": "SZ area display: Modified Time",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ Untracked cache enabled for {name}; takes effect from the next scan",
         "ucFail": "This repository does not support untracked cache (possibly not on a local disk); no changes made"
     },
+    "fav": {
+        "title": "Favorites",
+        "tip": "Favorites",
+        "count": "{0} items in total",
+        "searchPh": "Search favorites (by name, task, or question)",
+        "empty": "No favorites yet · Click ☆ on any post to add it",
+        "noMatch": "No matching favorites found",
+        "more": "Showing only the first {0} items. Enter keywords to narrow down results.",
+        "starTip": "Add this post to favorites",
+        "starTipOn": "Favorited (click to edit)",
+        "namerTitle": "Add to Favorites",
+        "namerTitleEdit": "Edit Favorite",
+        "namePh": "Favorite name (press Enter to use auto-generated name)",
+        "save": "Favorite",
+        "saveEdit": "Save",
+        "remove": "Unfavorite",
+        "close": "Close",
+        "cancel": "Cancel",
+        "rename": "Rename",
+        "rowRemove": "Remove",
+        "questGone": "This task no longer exists (you can remove it from favorites)",
+        "floorGone": "Post data not found",
+        "cardGone": "Task data is not ready or has been deleted",
+        "noPanel": "AI panel is not ready",
+        "saveFail": "Failed to save favorite",
+        "deletedTag": "Task deleted"
+    },
     "firstRun": {
         "expert": "I am an expert. I understand the risks of every command. I do not use qqqide to delete files.",
         "agree": "Agree and Continue",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "Export current document as Word: Images and videos are embedded as images; other attachments generate a list. Saves next to the document by default; save dialog appears only if a file with the same name exists.",
         "exportZipTip": "Package the current document and all referenced files and directories into a ZIP archive (preserving directory structure, maximum compression). Saves next to the document by default; prompts for save location only if a file with the same name already exists.",
         "cloudSyncTip": "Cloud Sync: ↑ Upload = Merge with cloud then upload (no data loss on either side); ↓ Download = Merge cloud data into local. Includes editor settings, folder preferences, and clipboard history.",
+        "playerTip": "Player: Listen to music/watch videos while coding (playlist persists across restarts); Select media in Roam and right-click \"Add to Playlist\", or pop out from the overlay.",
+        "playerWinTip": "Independent Floating Player Window: Always-on-top mini-window—visible even when switching to other apps (↗)",
+        "playerCardTip": "In-Window Player: A player card floating within the qqqide window—follows this window (⧈)",
+        "playerNeedRestart": "Floating player requires instance restart to become available",
         "videoUrlTip": "Pending Video: Enter a video URL to automatically download it to the document directory and insert it into a frame.",
         "pasteTip": "Pending Paste: One-click paste from clipboard to document (Ctrl+V achieves the same result).",
         "pureTip": "Pending: Scan document references to clean up orphaned files that are no longer referenced."
@@ -1686,18 +1793,54 @@
             "btn": "Set as System Python Interpreter",
             "busyChecking": "Checking…",
             "busyApplying": "Applying settings…",
+            "busyRemoving": "Removing...",
+            "confirmPick": "You selected \"Set as System Python Interpreter\"",
+            "confirmRemovePick": "You selected \"Cancel as System Python Interpreter\"",
             "confirmTitle": "This will overwrite the current system interpreter",
+            "confirmRemove": "Unset as system Python interpreter",
             "confirmOk": "Confirm",
             "confirmCancel": "Cancel",
             "ok": "✅ Set: Double-clicking .py files will run with built-in Python",
             "okRefresh": "✅ Refreshed: Built-in Python has taken over .py files",
-            "fail": "❌ Setup failed:",
+            "okRemove": "✅ Removed: Built-in Python is no longer the system interpreter",
+            "fail": "❌ Failed to configure Python:",
+            "failRemove": "❌ Failed to remove Python:",
             "errNoPython": "Built-in Python is not ready",
             "errDenied": "Permission denied (possibly blocked by security software)",
             "errVerify": "Write did not take effect",
             "errUac": "Canceled (Unauthorized)",
-            "errBridge": "Requires restarting this window to take effect",
+            "errBridge": "Requires window restart to take effect (Python)",
             "errBusy": "Processing, please wait",
+            "errRemove": "Removal incomplete",
+            "errGeneric": "Unknown error"
+        },
+        "sysInterp": {
+            "label": "System Interpreter",
+            "desc": "Allows double-clicking .js/.py files to run with built-in Node/Python (window stays open). One-time setup; just set it. If the installation directory moves, simply reapply.",
+            "confirmTitle": "This will overwrite the current system interpreter",
+            "confirmOk": "Confirm",
+            "confirmCancel": "Cancel"
+        },
+        "nodeInterp": {
+            "btn": "Set as System Node Interpreter",
+            "busyChecking": "Checking...",
+            "busyApplying": "Configuring...",
+            "busyRemoving": "Removing...",
+            "confirmPick": "You selected \"Set as System Node Interpreter\"",
+            "confirmRemovePick": "You selected \"Unset as system Node interpreter\"",
+            "confirmRemove": "Unset as system Node interpreter",
+            "ok": "✅ Set: Double-click .js files to run with built-in Node",
+            "okRefresh": "✅ Refreshed: Built-in Node has taken over .js files",
+            "okRemove": "✅ Removed: Built-in Node is no longer the system interpreter",
+            "fail": "❌ Failed to set Node:",
+            "failRemove": "❌ Failed to remove Node association:",
+            "errNoNode": "Built-in Node not ready",
+            "errDenied": "Permission denied (possibly blocked by security software)",
+            "errVerify": "Write failed to take effect",
+            "errUac": "Cancelled (Unauthorized)",
+            "errBridge": "Requires window restart to take effect (Node)",
+            "errBusy": "Processing, please wait",
+            "errRemove": "Removal incomplete",
             "errGeneric": "Unknown error"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "Exit"
         },
         "enc": {
-            "saveRejected": "Save rejected: Character \"{ch}\" ({cp}) cannot be encoded with {enc}. Content was not saved. Solutions: ① Delete the character and save again; ② Select \"Save As UTF-8/GB18030\" from the tab encoding menu (supports all characters, no data loss)."
+            "saveRejected": "Save rejected: Character \"{ch}\" ({cp}) cannot be represented in {enc} encoding; content not written. Options: 1. Delete the character and save again; 2. Click the encoding badge next to the top path and select \"Save as UTF-8/GB18030\" (supports all characters, no data loss).",
+            "saveRejectedDecode": "Save rejected: The file contains {n} undecodable characters (displayed as , not your input)—{enc} cannot handle them, and saving directly would corrupt them. Options: 1. Click the encoding badge next to the top path to reopen with a different encoding; 2. Or \"Save as UTF-8\" to preserve the current content as-is."
         },
         "search": {
             "rgMissing": "ripgrep is not installed. Run: python op/components.py ensure ripgrep",

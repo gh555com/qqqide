@@ -30,29 +30,28 @@ window.addEventListener('message', function (e) {
 	}
 });
 
-// ---- Color scheme randomizer (runs immediately, sets --selection-bg/text) ----
+// ---- 行选中配色机（刻意例外：不接主题系统，goods 唯一私有配色）----
+// 色池恒老版 3 淡色（亮暗主题通用）；禁红禁暗——红底红字不可读、暗系显泥土感。
+// 每窗口掷一次锁存 sessionStorage：窗口内刷新/主题切换/面板重载不重掷，开新窗口才新掷。
 (function() {
-	var isDark = false;
-	try { isDark = parent.document.documentElement.getAttribute('data-theme') === 'dark'; } catch(e) {}
-	var lightSchemes = [
-		{ name: 'Coral', bg: '#e8d0c0', text: '#000000', weight: 30 },
-		{ name: 'Warm Apricot', bg: '#e8d0b0', text: '#000000', weight: 30 },
-		{ name: 'Bean Paste', bg: '#e7e4c2', text: '#000000', weight: 30 }
+	var POOL = [
+		{ name: 'Coral', bg: '#e8d0c0', text: '#000000' },
+		{ name: 'Warm Apricot', bg: '#e8d0b0', text: '#000000' },
+		{ name: 'Bean Paste', bg: '#e7e4c2', text: '#000000' }
 	];
-	var darkSchemes = [
-		{ name: 'Ember', bg: '#5a3a2a', text: '#f0e8d8', weight: 30 },
-		{ name: 'Bronze', bg: '#4a3520', text: '#e8d8c0', weight: 30 },
-		{ name: 'Olive Night', bg: '#3a3a20', text: '#d8d0b0', weight: 30 }
-	];
-	var schemes = isDark ? darkSchemes : lightSchemes;
-	var totalWeight = schemes.reduce(function(s, x) { return s + x.weight; }, 0);
-	var rand = Math.random() * totalWeight, cumulative = 0, selected = schemes[0];
-	for (var i = 0; i < schemes.length; i++) {
-		cumulative += schemes[i].weight;
-		if (rand < cumulative) { selected = schemes[i]; break; }
+	var KEY = 'qqq.roam.selScheme.v1';
+	var saved = null;
+	try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+	var selected = null;
+	for (var i = 0; i < POOL.length; i++) {
+		if (POOL[i].name === saved) { selected = POOL[i]; break; }
 	}
-	document.documentElement.style.setProperty('--selection-bg', selected.bg);
-	document.documentElement.style.setProperty('--selection-text', selected.text);
+	if (!selected) {
+		selected = POOL[Math.floor(Math.random() * POOL.length)];
+		try { sessionStorage.setItem(KEY, selected.name); } catch (e) {}
+	}
+	document.documentElement.style.setProperty('--roam-sel-bg', selected.bg);
+	document.documentElement.style.setProperty('--roam-sel-text', selected.text);
 })();
 
 // ---- main roam logic ----

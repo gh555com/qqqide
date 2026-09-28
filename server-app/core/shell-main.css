@@ -259,6 +259,43 @@
   display: block;
 }
 
+/* ── 外部修改机器 v2：冲突条（pane 顶部悬浮）+ 已刷新变更行高亮 ── */
+.qqq-ext-conflict {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  font-size: 12px;
+  box-sizing: border-box;
+  background: rgba(181, 137, 0, 0.16);
+  border-bottom: 1px solid rgba(181, 137, 0, 0.5);
+  color: var(--text-primary);
+}
+.qqq-ext-conflict .qqq-ext-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qqq-ext-conflict button {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+}
+.qqq-ext-changed-line {
+  background: rgba(181, 137, 0, 0.16);
+}
+
 /* ============================================================================
    Editor Breadcrumb Bar �?独立豆腐块（flex item，占真实高度�?   ============================================================================ */
 [data-qqq-editor-breadcrumb] {
@@ -283,20 +320,29 @@
   cursor: text;
 }
 
-/* 面包屑复制按钮 / Roam 定位按钮 — 恒显（2026-09-27）：直接呈现旧 hover 外观（金边+主文字色），不再等光标 hover 才浮现 */
+/* 面包屑复制按钮 / Roam 定位按钮 — 恒显 · 淡雅统一档（2026-09-27 用户定案）：与编码徽标同款外观——灰边框 + 次文字色 + 透明底；三按钮（编码/复制/Roam）风格零差异；悬浮 → 显著档（见下方 hover 规则） */
 .qqq-breadcrumb-copy-btn,
 .qqq-breadcrumb-roam-btn {
   display: inline-block;
   margin-left: 6px; /* 单列内联流（2026-09-27）：紧随前一部件（编码→复制→Roam），不再占右侧独立列 */
-  padding: 0 4px;
+  padding: 0 6px; /* 与编码徽标同内距——三按钮统一档 */
   font-size: 11px;
   line-height: 16px;
-  border: 1px solid var(--yellow);
+  border: 1px solid var(--border-color); /* 淡雅档：灰边框（对齐编码徽标） */
   border-radius: 3px;
-  background: var(--card-bg);
-  color: var(--text-primary);
+  background: transparent; /* 淡雅档：透明底（对齐编码徽标） */
+  color: var(--text-secondary); /* 淡雅档：次文字色（对齐编码徽标——降低存在感） */
   white-space: nowrap;
   font-family: inherit; /* Roam 文字按钮与面包屑文字流同字体（📋 emoji 不受影响） */
+}
+
+/* ★ hover 显著档（2026-09-27 用户定案）：三按钮（编码/复制/Roam）悬浮时呈现显著外观——金边 + 主文字色 + 实底；
+   移开即回淡雅档（纯色值切换，零位移零布局变化） */
+.qqq-breadcrumb-copy-btn:hover,
+.qqq-breadcrumb-roam-btn:hover {
+  border-color: var(--yellow);
+  background: var(--card-bg);
+  color: var(--text-primary);
 }
 
 /* 路径文本 — 单列内联流（2026-09-27）：吃满整行宽度折行（不再被两侧列挤压，换行次数最少）；恒完整显示——绝不省略号/截断 */
@@ -317,10 +363,30 @@
   padding: 0 6px;
 }
 
-/* ★ 恒醒态（2026-09-27）：默认态（utf8 自动）不再静显——直接呈现 hover 外观（全不透明+可见边框） */
+/* ★ 恒醒态（2026-09-27）：默认态（utf8 自动）静置即显（全不透明 + 可见边框）；悬浮 → 显著档（见下方 hover 规则） */
 [data-qqq-editor-breadcrumb] .qqq-enc-chip.qqq-enc-auto {
   opacity: 1;
   border-color: var(--border-color);
+}
+
+/* ★ hover 显著档（2026-09-27 用户定案）：编码徽标悬浮时呈现显著外观——金边 + 主文字色 + 实底（移开回淡雅档）；
+   固定态（qqq-enc-pinned）悬浮保持金色指示，不被通用规则冲掉 */
+[data-qqq-editor-breadcrumb] .qqq-enc-chip:hover,
+[data-qqq-editor-breadcrumb] .qqq-enc-chip.qqq-enc-auto:hover {
+  opacity: 1;
+  border-color: var(--yellow);
+  background: var(--card-bg);
+  color: var(--text-primary);
+}
+
+[data-qqq-editor-breadcrumb] .qqq-enc-chip.qqq-enc-pinned:hover {
+  color: #b58900;
+  border-color: #b58900;
+}
+
+[data-theme="dark"] [data-qqq-editor-breadcrumb] .qqq-enc-chip.qqq-enc-pinned:hover {
+  color: #d9a020;
+  border-color: #d9a020;
 }
 
 [data-qqq-editor-breadcrumb]::selection,

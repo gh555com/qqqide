@@ -74,12 +74,13 @@ async function _handleSyncMessage(msg) {
                         try {
                             var _fcContainer = _fcCard.dom && _fcCard.dom.parentNode;
                             if (_fcContainer) _fcScrollTop = _fcContainer.scrollTop;
-                        } catch (_) { }
-                        _fcCard._contentWrap.innerHTML = '';
-                        _fcCard.floorDOM = {};
-                        _fcCard.totalFloors = 0;
-                        _fcCard.floors = [];
-                        _fcCard._floorMetaMap = {};
+                        } catch (_) { }                        _fcCard._contentWrap.innerHTML = '';
+                        _fcCard.floorDOM = {};
+                        _fcCard.totalFloors = 0;
+                        _fcCard.floors = [];
+                        _fcCard._floorMetaMap = {};
+                        _fcCard._keepFloors = {};
+                        _fcCard._floorNodes = {};
                         await cardPool._loadCardData(_fcCard);
                         // ★ 恢复滚动位置（跨面板重建卡片后用户不应被打断）
                         try {
@@ -281,6 +282,8 @@ function _reapplyFloorCap() {
                 c.totalFloors = 0;
                 c.floors = [];
                 c._floorMetaMap = {};
+                c._keepFloors = {};
+                c._floorNodes = {};
                 cardPool._loadCardData(c).then(function () {
                     try {
                         if (cont) {

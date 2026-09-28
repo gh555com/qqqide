@@ -182,6 +182,8 @@ var CardPool = (function () {
     card._contentWrap = null;
     card.floorDOM = {};
     card._floorMetaMap = {};
+    card._keepFloors = {};
+    card._floorNodes = {};
     card.floors = [];
 
     delete this._cards[questId];
@@ -561,7 +563,13 @@ var CardPool = (function () {
 
   function _populateImgInfos(container) {
     if (!container || !container.querySelectorAll) return;
-    var wraps = container.querySelectorAll('.table-wrap');
+    // ★ 自匹配（2026-09-28 修复）：MutationObserver 的 addedNode 本身可能就是一个 .table-wrap——
+    //   ① onDone 全量 innerHTML（首 house）： <div.table-wrap> 被 HTML 解析器从 <p> 里弹出，成为顶层直接添加节点
+    //   ② 流式 _lastParaEl.innerHTML 同理；querySelectorAll 不含自身 → 曾漏挂 mem/file/path 三按钮
+    var wraps = [];
+    if (container.nodeType === 1 && container.classList && container.classList.contains('table-wrap')) wraps.push(container);
+    var _descWraps = container.querySelectorAll('.table-wrap');
+    for (var _di = 0; _di < _descWraps.length; _di++) wraps.push(_descWraps[_di]);
     for (var _wi = 0; _wi < wraps.length; _wi++) {
       var _img = wraps[_wi].querySelector(':scope > img');
       var _inf = wraps[_wi].querySelector(':scope > .img-info');
@@ -585,6 +593,8 @@ var CardPool = (function () {
       if (!wrap) return;
       var info = wrap.querySelector(':scope > .img-info');
       if (info) _fillImgInfo(img, info);
+      // ★ 兜底（2026-09-28）：任何图片 load 完成即确保三按钮存在（防 Observer 漏网；幂等）
+      _ensureImgActBar(wrap, img);
     }, true);
 
     // ② 初始扫描：处理已缓存/已加载的图片
@@ -1034,7 +1044,13 @@ var CardPool = (function () {
 
     // 存储 floor DOM 引用
     card.floorDOM[fNum] = { userEl: userEl, aiEl: aiEl, a1El: a1El, clockEl: aiEl._clockBlock };
+    // ★ 楼层收藏（panel-fav.js）：记录本楼层块的全部节点（按序）——
+    //   卡上限之外的老楼层被裁 DOM 后，收藏跳转需按需重建单层并精准插回原位
+    var _favNodes = Array.prototype.slice.call(frag.childNodes);
     card._contentWrap.appendChild(frag);
+    card._floorNodes = card._floorNodes || {};
+    card._floorNodes[fNum] = _favNodes;
+    return { nodes: _favNodes, userEl: userEl, aiEl: aiEl, gapEl: _floorGap };
   };
 
   // ═══ 在建楼：创建 AI div（A1 + 时钟），插入活跃 Card ═══
@@ -1211,12 +1227,21 @@ var CardPool = (function () {
     var _capNow = _floorCap();  // ★ 动态上限（2026-09-05；64 档 2026-09-06，设置 ai.floorCap 16/32/64）
     while (cappedFloors.length > _capNow) {
       var oldest = cappedFloors.shift();
+      // ★ 楼层收藏免驱逐（panel-fav.js）：用户主动收藏跳转重建的孤儿楼层不参与裁剪
+      if (card._keepFloors && card._keepFloors[oldest]) continue;
       var dom = card.floorDOM[oldest];
-      if (dom) {
+      var _blkNodes = card._floorNodes && card._floorNodes[oldest];
+      if (_blkNodes && _blkNodes.length) {
+        // ★ 整块节点全量移除（含 aq 行/floor-gap——旧实现只删 userEl/aiEl 留下残尾）
+        for (var _bn = 0; _bn < _blkNodes.length; _bn++) {
+          try { if (_blkNodes[_bn] && _blkNodes[_bn].parentNode) _blkNodes[_bn].parentNode.removeChild(_blkNodes[_bn]); } catch (_) { }
+        }
+        delete card._floorNodes[oldest];
+      } else if (dom) {
         if (dom.userEl && dom.userEl.parentNode) dom.userEl.parentNode.removeChild(dom.userEl);
         if (dom.aiEl && dom.aiEl.parentNode) dom.aiEl.parentNode.removeChild(dom.aiEl);
-        delete card.floorDOM[oldest];
       }
+      if (dom) delete card.floorDOM[oldest];
       // [silent] trimmed floor
     }
   };
@@ -1417,6 +1442,8 @@ var CardPool = (function () {
     }
     card.floorDOM = {};
     card._floorMetaMap = {};
+    card._keepFloors = {};
+    card._floorNodes = {};
     card.floors = [];
     card.totalFloors = 0;
     card.buildingFloor = null;

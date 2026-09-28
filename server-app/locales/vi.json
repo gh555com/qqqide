@@ -134,7 +134,17 @@
             "mspeedCustom": "Tùy chỉnh tốc độ",
             "mspeedOk": "Xác nhận",
             "mfsFail": "Lỗi toàn màn hình",
-            "mloop": "Phát lặp lại (phím tắt L)",
+            "mmode": "Chế độ phát (L Lặp lại / R Ngẫu nhiên)",
+            "mlooplab": "Lặp lại",
+            "mshuflab": "Ngẫu nhiên",
+            "mOff": "Tắt",
+            "mOn": "Bật",
+            "mplist": "Danh sách phát",
+            "modeOne": "Lặp lại một bài",
+            "modeListLoop": "Lặp lại danh sách",
+            "mprev": "Trước đó",
+            "mnext": "Tiếp theo",
+            "mskip": "Không thể phát, đã bỏ qua: {name}",
             "mpip": "Chế độ hình trong hình",
             "mfs": "Toàn màn hình (phím tắt F)",
             "mstep": "Bước từng khung hình (phím tắt . tiến / , lùi)",
@@ -146,7 +156,23 @@
             "mabClear": "Đã xóa vòng lặp A-B",
             "mshot": "Chụp một khung hình (phím tắt S)",
             "mshotSaved": "Đã lưu ảnh chụp màn hình: {name}",
-            "mshotFail": "Chụp màn hình thất bại"
+            "mshotFail": "Chụp màn hình thất bại",
+            "mplUp": "Di chuyển lên",
+            "mplDown": "Di chuyển xuống",
+            "mplDel": "Xóa khỏi danh sách phát",
+            "mpopout": "Mở trình phát độc lập",
+            "mpopin": "Mở trình phát trong cửa sổ",
+            "mdockside": "Chuyển vị trí danh sách (Trái / Phải)"
+        },
+        "player": {
+            "title": "Trình phát",
+            "needRestart": "Cần khởi động lại phiên bản để trình phát hoạt động",
+            "added": "Đã thêm vào danh sách phát: {n} mục",
+            "addedIgnored": "Đã thêm vào danh sách phát: {n} mục · Bỏ qua {m} mục",
+            "addNone": "Không có tệp phương tiện nào để thêm",
+            "empty": "Danh sách phát trống — Trong Roam, chọn phương tiện, nhấp chuột phải và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ.",
+            "returnOv": "Quay lại lớp nổi",
+            "returnFail": "Không tìm thấy cửa sổ chính, không thể quay lại lớp phủ"
         },
         "about": {
             "title": "Giới thiệu về qqq",
@@ -293,11 +319,21 @@
             "ok": "Xác nhận thoát"
         },
         "wq": {
-            "tip": "Thống kê thời gian chuẩn bị wq: thời gian thực thi probe dán\nNhấp để đặt lại",
-            "tipShort": "Thống kê thời gian chuẩn bị wq"
+            "title": "Công cụ dò wq",
+            "empty": "Chưa có bản ghi",
+            "probeMeta": "Tối đa {max} ms · Tổng cộng {n} lần",
+            "recent": "Gần đây {list}",
+            "cacheMedia": "Bộ nhớ đệm phương tiện",
+            "cachePlay": "Bộ nhớ đệm chuyển mã",
+            "cacheMeta": "{n} mục · Tỷ lệ khớp {p}%",
+            "cacheMetaNoHit": "{n} mục",
+            "cacheBroken": "Ngắt mạch {n}",
+            "reset": "Đặt lại",
+            "resetDone": "Thống kê wq đã được đặt lại"
         },
         "goods": {
-            "kmdXTip": "Nhấn phím x để mở một kmd mới"
+            "kmdXTip": "Nhấn phím x để mở một kmd mới",
+            "qmdXTip": "Nhấn và giữ phím x để mở qmd mới, nhấn trước đó có thể chọn tệp hoặc thư mục trong Roam để kèm theo đường dẫn của tệp hoặc thư mục đó."
         },
         "aZone": {
             "nullTip": "Thu gọn khu vực A / Nhấp để khôi phục"
@@ -310,6 +346,7 @@
     },
     "editor": {
         "copyPath": "Sao chép đường dẫn",
+        "roamLocate": "Định vị tệp này trong Roam",
         "minimap": "Bản đồ nhỏ",
         "tabs": {
             "close": "Đóng tab",
@@ -329,6 +366,11 @@
             "encAutoCur": "Tự động phát hiện",
             "encFixedAt": "Mã hóa đã cố định thành {v} (chế độ khẩn cấp) — Nhấp để sửa đổi / khôi phục tự động",
             "encAutoAt": "Mã hóa: {v} (tự động phát hiện) — Nhấp để chỉ định thủ công",
+            "encSrcBom": "Theo khai báo BOM",
+            "encSrcUtf8": "Đã vượt qua giải mã UTF-8 nghiêm ngặt",
+            "encSrcGbk": "Dự phòng GBK (nhấp vào đây nếu gặp lỗi ký tự)",
+            "saveAsUtf8": "Lưu dưới dạng UTF-8",
+            "encMenu": "Menu mã hóa",
             "readFail": "Đọc thất bại: Tệp không tồn tại hoặc không thể đọc",
             "redecoded": "Đã giải mã lại theo {v}",
             "switchFail": "Chuyển đổi giải mã thất bại：",
@@ -337,6 +379,24 @@
             "saveAsFail": "Lưu dưới dạng thất bại:",
             "dirtyFirst": "Tệp có thay đổi chưa lưu — Vui lòng nhấn Ctrl+S để lưu trước, sau đó chuyển đổi bộ giải mã (sẽ đọc lại từ đĩa)",
             "recallTip": "Nhấn Tab hoặc F2 để gọi tôi"
+        },
+        "ext": {
+            "refreshedTip": "Đã bị sửa đổi bởi ứng dụng bên ngoài, hiển thị đã được làm mới",
+            "conflictTitle": "Đĩa đã bị sửa đổi bên ngoài",
+            "conflictHint": "Các thay đổi của bạn vẫn được giữ trong trình soạn thảo",
+            "conflictToast": "Đĩa đã bị sửa đổi bên ngoài, đã tạm dừng lưu tự động; vui lòng chọn phiên bản cần giữ lại",
+            "saveBlocked": "Đã tạm dừng lưu: Đĩa bị sửa đổi bởi ứng dụng bên ngoài, vui lòng xử lý xung đột trước",
+            "btnCompare": "So sánh",
+            "btnUseDisk": "Dùng phiên bản trên đĩa",
+            "btnKeepMine": "Giữ phiên bản của tôi",
+            "usedDiskToast": "Đã tải phiên bản từ đĩa; các thay đổi trước đó của bạn đã được lưu vào dòng thời gian",
+            "keepMineToast": "Đã ghi đè lên đĩa bằng phiên bản của bạn",
+            "closeTitle": "Có thay đổi chưa lưu",
+            "closeHint": "Lưu các thay đổi trước khi đóng?",
+            "closeConflictNote": "Đĩa đã bị sửa đổi bởi ứng dụng bên ngoài: Việc lưu sẽ ghi đè lên phiên bản bên ngoài (các bản chụp nhanh của cả hai bên đã được lưu trữ)",
+            "closeSave": "Lưu và đóng",
+            "closeDiscard": "Không lưu",
+            "closeCancel": "Hủy"
         },
         "contextMenu": {
             "cut": "Cắt",
@@ -859,7 +919,11 @@
             "switched": "── Đã chuyển sang {0} ──",
             "switchFail": "[Chuyển đổi thất bại] {0}",
             "switchErr": "[Lỗi chuyển đổi] {0}",
-            "ctrlCFail": "[Gửi Ctrl+C thất bại] {0}"
+            "ctrlCFail": "[Gửi Ctrl+C thất bại] {0}",
+            "intDone": "── Ctrl+C · Đã chấm dứt {0} tiến trình ──",
+            "intIdle": "── Ctrl+C · Không có lệnh nào đang chạy ──",
+            "intSig": "── Ctrl+C · Đã gửi tín hiệu ngắt ──",
+            "intRestart": "── Ctrl+C · Nâng cấp shell cần khởi động lại instance để có hiệu lực ──"
         },
         "git": {
             "refresh": "Làm mới",
@@ -1104,7 +1168,16 @@
             "startErr": "[Lỗi khởi động]",
             "exited": "Đã thoát {0}",
             "exitedTerm": "── Phiên làm việc đã thoát{0} ──",
-            "restarted": "● Đã khởi động lại"
+            "restarted": "● Đã khởi động lại",
+            "noSel": "Chưa chọn văn bản · Hãy kéo chọn trước khi sao chép",
+            "intRestart": "── Interrupt · Nâng cấp shell cần khởi động lại instance để có hiệu lực ──",
+            "intDone": "── Interrupt · Đã chấm dứt {0} tiến trình ──",
+            "intIdle": "── Interrupt · Không có lệnh nào đang chạy ──",
+            "intSig": "── Interrupt · Đã gửi tín hiệu ngắt ──",
+            "intFail": "[Interrupt thất bại] {0}",
+            "terminated": "Đã chấm dứt · Có thể Restart để khởi động lại",
+            "termLine": "── Phiên đã kết thúc (Restart để khởi động lại) ──",
+            "deadHint": "Đã ở trạng thái kết thúc · Nhấn Restart để khởi động lại"
         },
         "dsecret": {
             "targetProject": "Dự án mục tiêu",
@@ -1154,6 +1227,9 @@
             "notChecked": "(Chưa kiểm tra)"
         },
         "roam": {
+            "qBatchIgnore": "Danh sách phát Q: Đã thêm {0} mục · Bỏ qua {1} mục (khác loại)",
+            "mplAdd": "Thêm vào danh sách phát",
+            "mplNone": "Không có tệp phương tiện nào để thêm vào danh sách phát",
             "szSize": "Khu vực sz hiển thị: Kích thước tệp",
             "szCtime": "Hiển thị khu sz: Thời gian tạo",
             "szMtime": "Khu vực sz hiển thị: Thời gian sửa đổi",
@@ -1474,6 +1550,33 @@
         "ucDone": "✓ Đã bật bộ nhớ cache untracked cho {name}, có hiệu lực từ lần quét tiếp theo",
         "ucFail": "Kho lưu trữ này không hỗ trợ bộ nhớ cache untracked (có thể không phải ổ đĩa cục bộ), không thực hiện thay đổi nào"
     },
+    "fav": {
+        "title": "Danh sách yêu thích",
+        "tip": "Danh sách yêu thích",
+        "count": "Tổng cộng {0} mục",
+        "searchPh": "Tìm kiếm mục yêu thích (tên / nhiệm vụ / câu hỏi)",
+        "empty": "Chưa có mục yêu thích · Nhấn ☆ ở bất kỳ tầng nào để thêm vào yêu thích",
+        "noMatch": "Không tìm thấy mục yêu thích phù hợp",
+        "more": "Chỉ hiển thị {0} mục đầu tiên, nhập từ khóa để thu hẹp phạm vi",
+        "starTip": "Thêm tầng này vào yêu thích",
+        "starTipOn": "Đã thêm vào yêu thích (nhấp để chỉnh sửa)",
+        "namerTitle": "Thêm tầng này vào yêu thích",
+        "namerTitleEdit": "Chỉnh sửa mục yêu thích",
+        "namePh": "Tên mục yêu thích (nhấn Enter để dùng tên tự động)",
+        "save": "Yêu thích",
+        "saveEdit": "Lưu",
+        "remove": "Hủy yêu thích",
+        "close": "Đóng",
+        "cancel": "Hủy",
+        "rename": "Đổi tên",
+        "rowRemove": "Xóa",
+        "questGone": "Nhiệm vụ này không còn tồn tại (có thể xóa khỏi danh sách yêu thích)",
+        "floorGone": "Dữ liệu tầng này không tồn tại",
+        "cardGone": "Dữ liệu nhiệm vụ chưa sẵn sàng hoặc đã bị xóa",
+        "noPanel": "Bảng điều khiển AI chưa sẵn sàng",
+        "saveFail": "Lưu mục yêu thích thất bại",
+        "deletedTag": "Nhiệm vụ đã bị xóa"
+    },
     "firstRun": {
         "expert": "Tôi là chuyên gia, tôi hiểu rõ tác hại của mọi lệnh, tôi không dùng qqqide để xóa tệp",
         "agree": "Đồng ý và tiếp tục",
@@ -1586,6 +1689,10 @@
         "exportDocTip": "Xuất tài liệu hiện tại sang định dạng Word: Hình ảnh và video được chuyển thành hình ảnh nhúng, các tệp đính kèm khác được tạo danh sách; mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi tệp cùng tên đã tồn tại.",
         "exportZipTip": "Đóng gói tài liệu hiện tại cùng tất cả các tệp và thư mục được tham chiếu thành file ZIP (giữ nguyên cấu trúc thư mục, nén tối đa); mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi có tệp trùng tên.",
         "cloudSyncTip": "Đồng bộ đám mây: ↑ Tải lên = Hợp nhất với đám mây rồi tải lên (không mất dữ liệu ở cả hai bên); ↓ Tải xuống = Hợp nhất dữ liệu đám mây vào máy cục bộ. Bao gồm cấu hình trình soạn thảo, tùy chọn cho từng thư mục và lịch sử clipboard.",
+        "playerTip": "Trình phát: Nghe nhạc/xem video ngay cả khi viết code (ghi nhớ danh sách phát qua các lần khởi động lại); Trong Roam, chọn phương tiện, nhấp chuột phải và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ.",
+        "playerWinTip": "Cửa sổ trình phát nổi độc lập: Cửa sổ nhỏ luôn hiển thị trên cùng — vẫn nhìn thấy được khi chuyển sang chương trình khác (↗)",
+        "playerCardTip": "Trình phát trong cửa sổ: Thẻ trình phát nổi trong cửa sổ qqqide – đi kèm với cửa sổ này (⧈)",
+        "playerNeedRestart": "Cần khởi động lại phiên bản để trình phát nổi hoạt động",
         "videoUrlTip": "Sắp ra mắt: Nhập URL video, tự động tải xuống thư mục tài liệu và chèn vào khung hình.",
         "pasteTip": "Chờ dán: Dán nội dung clipboard vào tài liệu chỉ với một cú nhấp chuột (hiện tại bạn cũng có thể dùng Ctrl+V để thực hiện thao tác tương tự).",
         "pureTip": "Sắp ra mắt: Quét các tham chiếu trong tài liệu, dọn dẹp các tệp mồ côi không còn được tham chiếu."
@@ -1686,18 +1793,54 @@
             "btn": "Đặt làm trình thông dịch Python hệ thống",
             "busyChecking": "Đang kiểm tra…",
             "busyApplying": "Đang thiết lập…",
+            "busyRemoving": "Đang hủy…",
+            "confirmPick": "Bạn đã chọn \"Làm trình thông dịch Python hệ thống\"",
+            "confirmRemovePick": "Bạn đã chọn \"Hủy làm trình thông dịch Python hệ thống\"",
             "confirmTitle": "Sẽ ghi đè lên trình thông dịch hệ thống hiện tại",
+            "confirmRemove": "Hủy làm trình thông dịch Python hệ thống",
             "confirmOk": "Xác nhận",
             "confirmCancel": "Hủy",
             "ok": "✅ Đã thiết lập: Nhấp đúp vào .py sẽ chạy bằng Python tích hợp",
             "okRefresh": "✅ Đã làm mới: Python tích hợp đã tiếp quản .py",
+            "okRemove": "✅ Đã hủy: Python tích hợp không còn là trình thông dịch hệ thống",
             "fail": "❌ Thiết lập thất bại:",
+            "failRemove": "❌ Hủy Python thất bại:",
             "errNoPython": "Python tích hợp chưa sẵn sàng",
             "errDenied": "Quyền bị từ chối (có thể bị phần mềm bảo mật chặn)",
             "errVerify": "Ghi không có hiệu lực",
             "errUac": "Đã hủy (chưa được cấp quyền)",
             "errBridge": "Cần khởi động lại cửa sổ này để sử dụng",
             "errBusy": "Đang xử lý, vui lòng đợi",
+            "errRemove": "Hủy chưa hoàn tất",
+            "errGeneric": "Lỗi không xác định"
+        },
+        "sysInterp": {
+            "label": "Trình thông dịch hệ thống",
+            "desc": "Cho phép chạy .js / .py bằng Node / Python tích hợp khi nhấp đúp (cửa sổ không đóng) — cài đặt một lần, sử dụng lâu dài; nếu thư mục cài đặt di chuyển, chỉ cần nhấn lại một lần.",
+            "confirmTitle": "Sẽ ghi đè lên trình thông dịch hệ thống hiện tại",
+            "confirmOk": "Xác nhận",
+            "confirmCancel": "Hủy"
+        },
+        "nodeInterp": {
+            "btn": "Làm trình thông dịch Node hệ thống",
+            "busyChecking": "Đang kiểm tra…",
+            "busyApplying": "Đang thiết lập…",
+            "busyRemoving": "Đang hủy…",
+            "confirmPick": "Bạn đã chọn «Làm trình thông dịch Node hệ thống»",
+            "confirmRemovePick": "Bạn đã chọn \"Hủy làm trình thông dịch Node hệ thống\"",
+            "confirmRemove": "Hủy vai trò thông dịch viên Node hệ thống",
+            "ok": "✅ Đã thiết lập: Nhấp đúp .js sẽ chạy bằng Node tích hợp",
+            "okRefresh": "✅ Đã làm mới: Node tích hợp đã tiếp quản .js",
+            "okRemove": "✅ Đã hủy: Node tích hợp không còn là trình thông dịch hệ thống",
+            "fail": "❌ Thiết lập Node thất bại:",
+            "failRemove": "❌ Không thể hủy Node: ",
+            "errNoNode": "Node tích hợp chưa sẵn sàng",
+            "errDenied": "Quyền bị từ chối (có thể bị phần mềm bảo mật chặn)",
+            "errVerify": "Ghi không có hiệu lực",
+            "errUac": "Đã hủy (không được ủy quyền)",
+            "errBridge": "Cần khởi động lại cửa sổ này để sử dụng (Node)",
+            "errBusy": "Đang xử lý, vui lòng đợi",
+            "errRemove": "Hủy chưa hoàn tất",
             "errGeneric": "Lỗi không xác định"
         },
         "tier": {
@@ -1847,7 +1990,8 @@
             "exit": "Thoát"
         },
         "enc": {
-            "saveRejected": "Lưu bị từ chối: Ký tự \"{ch}\" ({cp}) không thể được biểu thị bằng mã hóa {enc}, nội dung chưa được ghi. Bạn có thể: ① Xóa ký tự này và lưu lại; ② Chọn \"Lưu dưới dạng UTF-8/GB18030\" trong menu mã hóa của tab (mã hóa toàn bộ ký tự, không bao giờ mất dữ liệu)."
+            "saveRejected": "Lưu bị từ chối: Ký tự \"{ch}\" ({cp}) không thể được biểu thị bằng mã hóa {enc}, nội dung chưa được ghi. Bạn có thể: ① Xóa ký tự này và lưu lại; ② Chọn \"Lưu dưới dạng UTF-8/GB18030\" trong menu mã hóa của tab (mã hóa toàn bộ ký tự, không bao giờ mất dữ liệu).",
+            "saveRejectedDecode": "Lưu bị từ chối: Tệp chứa {n} ký tự không thể giải mã (hiển thị là , không phải nội dung bạn đã nhập) — {enc} không thể chứa chúng, việc lưu trực tiếp sẽ thay thế chúng bằng các ký tự khác. Bạn có thể: ① Nhấp vào biểu tượng mã hóa bên cạnh đường dẫn ở trên cùng để mở lại với một mã hóa khác; ② Hoặc chọn «Lưu dưới dạng UTF-8» để lưu nguyên vẹn nội dung hiện tại."
         },
         "search": {
             "rgMissing": "ripgrep chưa được cài đặt. Chạy lệnh: python op/components.py ensure ripgrep",

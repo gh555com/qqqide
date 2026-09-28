@@ -641,6 +641,15 @@
   var _globalRefreshLock = false;
   var _modelRefs = {};      // model.id → 引用计数（split view 共享 model，归零才 dispose）
 
+  // ═══ 外部修改机器 v2 状态：冲突 / 在飞保存 / 检测在飞 / 轮询 / 提示节流 ═══
+  var _conflictState = {};   // fp → {diskSig, at} — 磁盘外部修改未裁（编辑器脏）
+  var _conflictArchBuf = {}; // fp|side → 已归档内容/哈希（双端快照去重）
+  var _savingPaths = {};     // fp → Promise — 在飞保存（检测/关闭守卫互斥用）
+  var _extBusy = {};         // fp → bool — 检测在飞（防重入）
+  var _extToastAt = {};      // fp → ts — 提示节流（8s）
+  var _extDebounce = {};     // fp → timer — 突发写合并（120ms）
+  var _extPollTimer = null;  // 外部修改轮询（5s，可见时）
+
   // ── 括号匹配 — 自实现，零 LSP 依赖 ──
   var _bracketStyleInjected = false;
   var _BR_PAIRS = { '(': ')', '[': ']', '{': '}' };
@@ -1000,44 +1009,53 @@
         }).catch(function () { });
       }
 
-      // ---- Auto-save on editor blur ----
+      // ---- Auto-save on editor blur（外部修改机器 v2：统一走保存守卫，绝不盲写） ----
       ed.onDidBlurEditorWidget(async function () {
         if (_paneDirtyMap[filePath] && filePath && !(opts && opts.readOnly)) {
+          var _saveP = _saveWithGuard(filePath, ed, { trigger: 'blur' });
+          _savingPaths[filePath] = _saveP;
           try {
-            var content = ed.getValue();
-            await _captureExternalBefore(filePath);
-            await bridge.fs.write(filePath, content);
-            _markClean();
-            _xHookRecord(filePath, content, 'editx');
-            _removeDirty(filePath);
-            // ★ 2026-08-17: 保存成功 → 清除已删除标记
-            if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
-            // ★ 更新 mtime
-            try { var _stBlur = await bridge.fs.stat(filePath); if (_stBlur) _openedMtime[filePath] = { mtimeMs: _stBlur.mtimeMs, size: _stBlur.size }; } catch (_) {}
+            var _sr = await _saveP;
+            if (_sr && _sr.ok) {
+              _markClean();
+              _xHookRecord(filePath, _sr.content, 'editx');
+              _removeDirty(filePath);
+              // ★ 2026-08-17: 保存成功 → 清除已删除标记
+              if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
+            } else if (_sr && _sr.error) {
+              console.error('[editor] auto-save failed:', filePath, _sr.error && _sr.error.message);
+              // ★ 保存失败必须可见：否则脏 tab 星号永久残留，用户误以为文件已保存（正体+星号之谜）
+              _showSaveFailToast(filePath, _sr.error, true);
+            }
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
-            // ★ 保存失败必须可见：否则脏 tab 星号永久残留，用户误以为文件已保存（正体+星号之谜）
             _showSaveFailToast(filePath, err, true);
+          } finally {
+            if (_savingPaths[filePath] === _saveP) delete _savingPaths[filePath];
           }
         }
       });
 
-      // ---- Ctrl+S ----
+      // ---- Ctrl+S（外部修改机器 v2：统一走保存守卫） ----
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+        var _saveP2 = _saveWithGuard(filePath, ed, { trigger: 'ctrl-s' });
+        _savingPaths[filePath] = _saveP2;
         try {
-          var val = ed.getValue();
-          await _captureExternalBefore(filePath);
-          await bridge.fs.write(filePath, val);
-          _markClean();
-          _xHookRecord(filePath, val, 'editx');
-          _removeDirty(filePath);
-          // ★ 2026-08-17: 保存成功 → 清除已删除标记
-          if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
-          // ★ 更新 mtime
-          try { var _stCtrlS = await bridge.fs.stat(filePath); if (_stCtrlS) _openedMtime[filePath] = { mtimeMs: _stCtrlS.mtimeMs, size: _stCtrlS.size }; } catch (_) {}
+          var _sr2 = await _saveP2;
+          if (_sr2 && _sr2.ok) {
+            _markClean();
+            _xHookRecord(filePath, _sr2.content, 'editx');
+            _removeDirty(filePath);
+            // ★ 2026-08-17: 保存成功 → 清除已删除标记
+            if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
+          } else if (_sr2 && _sr2.error) {
+            _showSaveFailToast(filePath, _sr2.error, false);
+          }
         } catch (e) {
           console.error('[editor] save failed:', e);
           _showSaveFailToast(filePath, e, false);
+        } finally {
+          if (_savingPaths[filePath] === _saveP2) delete _savingPaths[filePath];
         }
       });
 
@@ -1067,6 +1085,12 @@
         if (_activePaneEd === ed) _activePaneEd = null;
         if (!_stillOpen) delete _openedMtime[filePath];
         if (!_stillOpen) delete _paneDirtyMap[filePath];
+        // ★ 外部修改机器 v2：最后一个同路径编辑器关闭 → 清「脏快照 store + 冲突态」
+        //   （陈旧快照残留会被重开/他窗拉取再现旧内容——「关掉再开还原」病灶）
+        if (!_stillOpen) {
+          try { _removeDirty(filePath); } catch (_) { }
+          try { if (_conflictState[filePath]) delete _conflictState[filePath]; } catch (_) { }
+        }
         // ★ model 引用计数归零 → 真正 dispose（防提前销毁 split view 共享 model）
         try {
           if (model && !model.isDisposed()) {
@@ -1188,88 +1212,487 @@
     bridge.dirty.remove(filePath.replace(/\\/g, '/'));
   }
 
-  // 焦点/tab切换：拉脏快照（Layer 2）+ 检测外部修改（stat mtime）
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 外部修改机器 v2（唯一真理源）——「磁盘唯一权威 + 人的缓冲永不丢」
+  //   净 → 自动刷新（保滚动 + 变更行高亮 + 可见短提示）
+  //   脏 → 冲突条（对比 / 用磁盘版本 / 保留我的）——绝不覆盖、绝不静默
+  //   保存 → 守卫先检磁盘签名：外部改动未裁 → 拒写转冲突（force 仅限「用户已查看过该外部版本」）
+  //   关闭 → 脏/冲突/在飞保存 → 提示（保存[覆盖] / 不保存 / 取消）
+  //   触点 → 轮询 5s + 窗口聚焦 + tab 激活 + AI 写推送（notifyExternalWrite）
+  // ═══════════════════════════════════════════════════════════════════════════
+  function _extT(k, fb) {
+    try { return (typeof window._i === 'function') ? window._i(k, fb) : fb; } catch (_) { return fb; }
+  }
+  function _extName(fp) { try { return String(fp).split(/[\\/]/).pop(); } catch (_) { return String(fp); } }
+  function _extRoot() {
+    return (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+      ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+  }
+  function _extToast(fp, text, opts) {
+    if (!window.qqqideQoast || !text) return;
+    var now = Date.now();
+    if (_extToastAt[fp] && now - _extToastAt[fp] < 8000) return;
+    _extToastAt[fp] = now;
+    try { window.qqqideQoast.show(text, opts || { duration: 3000 }); } catch (_) { }
+  }
+  function _extStat(fp) {
+    if (!bridge || !bridge.fs || !bridge.fs.stat) return Promise.resolve(null);
+    return bridge.fs.stat(fp).catch(function () { return null; });
+  }
+  function _extSameSig(a, b) { return !!a && !!b && a.mtimeMs === b.mtimeMs && a.size === b.size; }
+  function _extKick(fp) {
+    fp = _normFP(fp);
+    if (!fp) return;
+    if (_extDebounce[fp]) clearTimeout(_extDebounce[fp]);
+    _extDebounce[fp] = setTimeout(function () {
+      delete _extDebounce[fp];
+      var ed = _paneEditors[fp];
+      if (ed) { try { _checkDirtyAndRefreshPane(fp, ed); } catch (_) { } }
+    }, 120);
+  }
+  function _extSetDirty(fp, d) {
+    var cur = !!_paneDirtyMap[fp];
+    if (cur !== !!d) {
+      _paneDirtyMap[fp] = !!d;
+      try { document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: fp, dirty: !!d } })); } catch (_) { }
+    }
+    if (!d) { try { _removeDirty(fp); } catch (_) { } }
+  }
+
+  // ── 冲突条（挂 pane 顶部悬浮；每路径一条；多视图同源） ──
+  function _extPanels(fp) {
+    var out = [];
+    try {
+      var set = _paneEdSets[fp];
+      if (set) set.forEach(function (edx) {
+        try {
+          var n = edx.getDomNode && edx.getDomNode();
+          n = (n && n.closest) ? n.closest('.qqq-tab-pane') : null;
+          if (n && out.indexOf(n) === -1) out.push(n);
+        } catch (_) { }
+      });
+    } catch (_) { }
+    return out;
+  }
+  function _hideConflictBar(fp) {
+    var panels = _extPanels(fp);
+    for (var i = 0; i < panels.length; i++) {
+      var b = panels[i].querySelector(':scope > .qqq-ext-conflict');
+      if (b && b.parentNode) { try { b.parentNode.removeChild(b); } catch (_) { } }
+    }
+  }
+  function _showConflictBar(fp) {
+    var panels = _extPanels(fp);
+    for (var i = 0; i < panels.length; i++) {
+      var pane = panels[i];
+      var old = pane.querySelector(':scope > .qqq-ext-conflict');
+      if (old && old.parentNode) { try { old.parentNode.removeChild(old); } catch (_) { } }
+      var bar = document.createElement('div');
+      bar.className = 'qqq-ext-conflict';
+      var msg = document.createElement('span');
+      msg.className = 'qqq-ext-msg';
+      msg.textContent = '⚠ ' + _extT('editor.ext.conflictTitle', '磁盘已被外部修改') + ' — ' + _extT('editor.ext.conflictHint', '你的修改仍保留在编辑器里');
+      bar.appendChild(msg);
+      function _mkBtn(k, fb, fn) {
+        var b2 = document.createElement('button');
+        b2.type = 'button';
+        b2.textContent = _extT(k, fb);
+        b2.addEventListener('click', function (ev) { ev.stopPropagation(); fn(); });
+        bar.appendChild(b2);
+      }
+      _mkBtn('editor.ext.btnCompare', '对比', function () { _openConflictDiff(fp); });
+      _mkBtn('editor.ext.btnUseDisk', '用磁盘版本', function () { _resolveConflictUseDisk(fp); });
+      _mkBtn('editor.ext.btnKeepMine', '保留我的', function () { _resolveConflictKeepMine(fp); });
+      pane.appendChild(bar);
+    }
+  }
+
+  // ── 冲突双端快照归档（timeline 留档，随时找回；同内容去重） ──
+  async function _archiveConflictSides(fp, ed) {
+    var out = { diskHash: null, bufHash: null };
+    var root = _extRoot();
+    if (!root || !bridge || !bridge.timeline || !bridge.timeline.record) return out;
+    try {
+      if (bridge.fs && bridge.fs.read) {
+        var disk = await bridge.fs.read(fp);
+        if (disk != null) {
+          if (_conflictArchBuf[fp + '|disk.c'] !== disk) {
+            var r1 = await bridge.timeline.record({ projectRoot: root, filePath: fp, content: disk, source: 'conflict-disk' });
+            _conflictArchBuf[fp + '|disk.c'] = disk;
+            _conflictArchBuf[fp + '|disk.h'] = (r1 && r1.blob_hash) || null;
+          }
+          out.diskHash = _conflictArchBuf[fp + '|disk.h'] || null;
+        }
+      }
+    } catch (_) { }
+    try {
+      var cur = (ed && ed.getValue) ? ed.getValue() : null;
+      if (typeof cur === 'string') {
+        if (_conflictArchBuf[fp + '|buf.c'] !== cur) {
+          var r2 = await bridge.timeline.record({ projectRoot: root, filePath: fp, content: cur, source: 'conflict-buffer' });
+          _conflictArchBuf[fp + '|buf.c'] = cur;
+          _conflictArchBuf[fp + '|buf.h'] = (r2 && r2.blob_hash) || null;
+        }
+        out.bufHash = _conflictArchBuf[fp + '|buf.h'] || null;
+      }
+    } catch (_) { }
+    return out;
+  }
+
+  function _enterConflict(fp, ed, st) {
+    var first = !_conflictState[fp];
+    _conflictState[fp] = { diskSig: st ? { mtimeMs: st.mtimeMs, size: st.size } : null, at: Date.now() };
+    _showConflictBar(fp);
+    _archiveConflictSides(fp, ed).catch(function () { });
+    if (first) {
+      _extToast(fp, '⚠ ' + _extName(fp) + ' — ' + _extT('editor.ext.conflictToast', '磁盘已被外部修改，已暂停自动保存；请选择保留哪一版'), { duration: 6000 });
+    }
+  }
+  function _exitConflict(fp) {
+    if (_conflictState[fp]) delete _conflictState[fp];
+    _hideConflictBar(fp);
+  }
+  async function _resolveConflictUseDisk(fp) {
+    var ed = _paneEditors[fp];
+    if (!ed) { _exitConflict(fp); return; }
+    var st = await _extStat(fp);
+    if (!st || !st.isFile) { _exitConflict(fp); _extSetDirty(fp, false); return; }
+    try { await _archiveConflictSides(fp, ed); } catch (_) { }
+    var ok = await _reloadFromDisk(fp, ed, st);
+    if (ok) {
+      _exitConflict(fp);
+      _extSetDirty(fp, false);
+      _extToast(fp, _extT('editor.ext.usedDiskToast', '已载入磁盘版本；你之前的修改已存入时间线'), { duration: 4000 });
+    }
+  }
+  async function _resolveConflictKeepMine(fp) {
+    var ed = _paneEditors[fp];
+    if (!ed) { _exitConflict(fp); return; }
+    var r = await _saveWithGuard(fp, ed, { trigger: 'conflict-overwrite' });
+    if (r && r.ok) {
+      _exitConflict(fp);
+      _extSetDirty(fp, false);
+      _extToast(fp, _extT('editor.ext.keepMineToast', '已用你的版本覆盖磁盘'), { duration: 3500 });
+    }
+  }
+  async function _openConflictDiff(fp) {
+    var root = _extRoot();
+    if (!root || !bridge || !bridge.timeline || !bridge.timeline.openDiffWindow) return;
+    var ed = _paneEditors[fp];
+    var sides = { diskHash: null, bufHash: null };
+    try { sides = await _archiveConflictSides(fp, ed); } catch (_) { }
+    try {
+      bridge.timeline.openDiffWindow({
+        filePath: fp, projectRoot: root,
+        beforeBlobHash: sides.diskHash || undefined,
+        afterBlobHash: sides.bufHash || undefined
+      }).catch(function () { });
+    } catch (_) { }
+  }
+
+  // ── 变更行段（首/末差异行；巨大文件跳过）＋ 高亮（2.6s 自熄） ──
+  function _extDiffBand(a, b) {
+    if (a === b) return null;
+    var al = a.split('\n'), bl = b.split('\n');
+    if (al.length > 120000 || bl.length > 120000) return null;
+    var n = Math.min(al.length, bl.length);
+    var top = 0;
+    while (top < n && al[top] === bl[top]) top++;
+    var bot = 0;
+    while (bot < n - top && al[al.length - 1 - bot] === bl[bl.length - 1 - bot]) bot++;
+    var startLine = top + 1;
+    var endLine = Math.max(startLine, bl.length - bot);
+    return { startLine: startLine, endLine: endLine };
+  }
+  function _extFlashBand(editors, band, model) {
+    var mn = _monacoRef;
+    if (!mn || !mn.Range) return;
+    var maxLine = 1;
+    try { maxLine = model.getLineCount(); } catch (_) { }
+    var startL = Math.max(1, Math.min(band.startLine, maxLine));
+    var endL = Math.max(startL, Math.min(band.endLine, maxLine));
+    var decos = [];
+    for (var i = 0; i < editors.length; i++) {
+      try {
+        var ids = editors[i].deltaDecorations([], [{
+          range: new mn.Range(startL, 1, endL, 1),
+          options: { isWholeLine: true, className: 'qqq-ext-changed-line' }
+        }]);
+        decos.push({ ed: editors[i], ids: ids });
+      } catch (_) { }
+    }
+    if (!decos.length) return;
+    setTimeout(function () {
+      for (var j = 0; j < decos.length; j++) {
+        try { decos[j].ed.deltaDecorations(decos[j].ids, []); } catch (_) { }
+      }
+    }, 2600);
+  }
+
+  // ── 干净重载（保滚动/光标 + 变更高亮；读后复检防半截写） ──
+  async function _reloadFromDisk(fp, ed, st) {
+    if (!bridge || !bridge.fs || !bridge.fs.read) return false;
+    var disk = null;
+    try { disk = await bridge.fs.read(fp); } catch (_) { return false; }
+    if (disk == null) return false;
+    try {
+      var st2 = await _extStat(fp);
+      if (st2 && st && !_extSameSig(st, st2)) {
+        var disk2 = await bridge.fs.read(fp);
+        if (disk2 != null) { disk = disk2; st = st2; }
+      }
+    } catch (_) { }
+    var editors = [];
+    try { var set = _paneEdSets[fp]; if (set) set.forEach(function (x) { editors.push(x); }); } catch (_) { }
+    if (!editors.length && ed) editors.push(ed);
+    var m = null;
+    try { m = ed.getModel ? ed.getModel() : null; } catch (_) { }
+    if (!m || m.isDisposed()) return false;
+    var oldV = '';
+    try { oldV = m.getValue(); } catch (_) { }
+    if (disk === oldV) { _openedMtime[fp] = { mtimeMs: st.mtimeMs, size: st.size }; return true; }
+    var band = _extDiffBand(oldV, disk);
+    var scrolls = editors.map(function (x) { try { return x.getScrollTop(); } catch (_) { return 0; } });
+    var pos = null;
+    try { pos = ed.getPosition(); } catch (_) { }
+    ed._isRefreshing = true;
+    _globalRefreshLock = true; window.__qqqGlobalRefreshLock = true;
+    if (window.qqqCharUndo) { try { window.qqqCharUndo.suppressOnce(ed); } catch (_) { } }
+    try {
+      m.applyEdits([{ range: m.getFullModelRange(), text: String(disk), forceMoveMarkers: true }]);
+    } finally {
+      ed._isRefreshing = false; _globalRefreshLock = false; window.__qqqGlobalRefreshLock = false;
+    }
+    _openedMtime[fp] = { mtimeMs: st.mtimeMs, size: st.size };
+    for (var i = 0; i < editors.length; i++) {
+      try { editors[i].setScrollTop(scrolls[i]); } catch (_) { }
+    }
+    if (pos) {
+      try { ed.setPosition({ lineNumber: Math.min(pos.lineNumber, m.getLineCount()), column: 1 }); } catch (_) { }
+    }
+    if (band) _extFlashBand(editors, band, m);
+    if (window.qqqTabs && window.qqqTabs.refreshEncForPath) { try { window.qqqTabs.refreshEncForPath(fp); } catch (_) { } }
+    try {
+      var dn = ed.getDomNode && ed.getDomNode();
+      var paneNode = (dn && dn.closest) ? dn.closest('.qqq-tab-pane') : null;
+      var visible = !!(paneNode && paneNode.classList.contains('qqq-tab-pane-active') && document.visibilityState === 'visible');
+      if (visible) _extToast(fp, '↻ ' + _extName(fp) + ' ' + _extT('editor.ext.refreshedTip', '已被外部修改，已刷新显示'), { duration: 3000 });
+    } catch (_) { }
+    return true;
+  }
+
+  // ── 保存守卫（一切保存路径唯一入口）：外部改动未裁 → 拒写转冲突 ──
+  //   force（conflict-overwrite）仅在「磁盘仍是用户已查看过的那个外部版本」时放行；
+  //   磁盘又变了 → 重新进冲突（绝无静默覆盖窗口）。
+  async function _saveWithGuard(fp, ed, opts) {
+    opts = opts || {};
+    var force = opts.trigger === 'conflict-overwrite';
+    var val = '';
+    try { val = ed.getValue(); } catch (_) { return { ok: false, error: 'no-value' }; }
+    var prev = _openedMtime[fp];
+    var st = await _extStat(fp);
+    var exists = !!(st && st.isFile);
+    var diskChanged = !!(exists && prev && !_extSameSig(prev, st));
+    if (diskChanged) {
+      var diskV = null;
+      try { diskV = await bridge.fs.read(fp); } catch (_) { }
+      if (diskV != null && diskV === val) {
+        _openedMtime[fp] = { mtimeMs: st.mtimeMs, size: st.size };
+        if (_conflictState[fp]) _exitConflict(fp);
+        return { ok: true, noop: true, content: val };
+      }
+      var cSig = _conflictState[fp] && _conflictState[fp].diskSig;
+      var forceValid = force && cSig && _extSameSig(cSig, st);
+      if (!forceValid) {
+        if (!_paneDirtyMap[fp] && !_conflictState[fp]) {
+          // 干净缓冲（无用户修改）→ 净重载语义（不做覆盖）
+          await _reloadFromDisk(fp, ed, st);
+          return { ok: false, refreshed: true };
+        }
+        _enterConflict(fp, ed, st);
+        _extToast(fp, '⚠ ' + _extName(fp) + ' ' + _extT('editor.ext.saveBlocked', '已暂停保存：磁盘被外部修改，请先处理冲突条'), { duration: 6000 });
+        return { ok: false, blocked: true };
+      }
+    }
+    try {
+      try { await _captureExternalBefore(fp); } catch (_) { }
+      await bridge.fs.write(fp, val);
+    } catch (err) {
+      return { ok: false, error: err };
+    }
+    try { var st3 = await _extStat(fp); if (st3 && st3.isFile) _openedMtime[fp] = { mtimeMs: st3.mtimeMs, size: st3.size }; } catch (_) { }
+    if (_conflictState[fp]) _exitConflict(fp);
+    return { ok: true, content: val };
+  }
+
+  // ── 关闭守卫（tab 关闭唯一闸门）：脏/冲突/在飞保存 → 提示 ──
+  var _closePromptOv = null;
+  var _closePromptCtx = null;
+  var _closePromptFill = null;
+  function _promptClose(fp, retryCb) {
+    if (_closePromptOv) {
+      _closePromptCtx = { fp: fp, retry: retryCb };
+      if (_closePromptFill) { try { _closePromptFill(); } catch (_) { } }
+      return;
+    }
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:1000002;display:flex;align-items:center;justify-content:center;';
+    var panel = document.createElement('div');
+    panel.style.cssText = 'width:470px;max-width:92vw;box-sizing:border-box;background:var(--background-color);color:var(--text-primary);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,0.5);padding:24px 26px 18px;font-size:14px;line-height:1.7;';
+    var h = document.createElement('div');
+    h.style.cssText = 'font-size:15px;font-weight:600;text-align:center;word-break:break-all;';
+    var b = document.createElement('div');
+    b.style.cssText = 'font-size:12.5px;margin:10px 0 0;text-align:center;color:var(--text-secondary);white-space:pre-line;';
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:26px;flex-wrap:wrap;';
+    var btnSave = document.createElement('button');
+    var btnDiscard = document.createElement('button');
+    var btnCancel = document.createElement('button');
+    var _btnStyle = 'padding:7px 16px;border:1px solid var(--border-strong);border-radius:6px;background:transparent;color:var(--text-primary);font-size:13px;';
+    [btnSave, btnDiscard, btnCancel].forEach(function (b2) { b2.type = 'button'; b2.style.cssText = _btnStyle; row.appendChild(b2); });
+    panel.appendChild(h); panel.appendChild(b); panel.appendChild(row);
+    ov.appendChild(panel); document.body.appendChild(ov);
+    _closePromptOv = ov;
+    _closePromptFill = function () {
+      var conflict2 = !!(_closePromptCtx && _conflictState[_closePromptCtx.fp]);
+      var nm = _closePromptCtx ? _extName(_closePromptCtx.fp) : '';
+      h.textContent = _extT('editor.ext.closeTitle', '有未保存的修改') + (nm ? ' — ' + nm : '');
+      b.textContent = conflict2 ? _extT('editor.ext.closeConflictNote', '磁盘已被外部修改：保存将覆盖外部版本（双方快照已留档）')
+        : _extT('editor.ext.closeHint', '关闭前保存修改吗？');
+      btnSave.textContent = _extT('editor.ext.closeSave', '保存并关闭');
+      btnDiscard.textContent = _extT('editor.ext.closeDiscard', '不保存');
+      btnCancel.textContent = _extT('editor.ext.closeCancel', '取消');
+    };
+    function _close(result) {
+      document.removeEventListener('keydown', _onKey, true);
+      window.removeEventListener('qqq-lang-change', _closePromptFill);
+      if (ov.parentNode) { try { ov.parentNode.removeChild(ov); } catch (_) { } }
+      _closePromptOv = null; _closePromptFill = null;
+      var ctx = _closePromptCtx; _closePromptCtx = null;
+      if (result === 'cancel' || !ctx) return;
+      if (result === 'discard') {
+        try { _exitConflict(ctx.fp); } catch (_) { }
+        try { _extSetDirty(ctx.fp, false); } catch (_) { }
+        try { ctx.retry && ctx.retry(); } catch (_) { }
+        return;
+      }
+      (async function () {
+        var ed2 = _paneEditors[ctx.fp];
+        if (!ed2) { try { ctx.retry && ctx.retry(); } catch (_) { } return; }
+        var trig = _conflictState[ctx.fp] ? 'conflict-overwrite' : 'blur';
+        var r = await _saveWithGuard(ctx.fp, ed2, { trigger: trig });
+        if (r && r.ok) {
+          _exitConflict(ctx.fp); _extSetDirty(ctx.fp, false);
+          try { ctx.retry && ctx.retry(); } catch (_) { }
+        } else {
+          // 竞争窗口内磁盘又变 / 写失败 → 再问一次（绝无静默）
+          _promptClose(ctx.fp, ctx.retry);
+        }
+      })();
+    }
+    var _onKey = function (e) { if (e && e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); _close('cancel'); } };
+    document.addEventListener('keydown', _onKey, true);
+    window.addEventListener('qqq-lang-change', _closePromptFill);
+    btnSave.addEventListener('click', function (e) { e.stopPropagation(); _close('save'); });
+    btnDiscard.addEventListener('click', function (e) { e.stopPropagation(); _close('discard'); });
+    btnCancel.addEventListener('click', function (e) { e.stopPropagation(); _close('cancel'); });
+    _closePromptCtx = { fp: fp, retry: retryCb };
+    _closePromptFill();
+  }
+  function _extBeforeTabClose(filePath, retry) {
+    filePath = _normFP(filePath);
+    if (!filePath) return 'ok';
+    var saving = _savingPaths[filePath];
+    var busy = _extBusy[filePath];
+    var dirty = !!_paneDirtyMap[filePath];
+    var conflict = !!_conflictState[filePath];
+    if (!saving && !busy && !dirty && !conflict) return 'ok';
+    if (!_paneEditors[filePath]) {
+      // 无存活编辑器（簿记残留）→ 无可保存内容，静默清账放行
+      try { if (dirty) _extSetDirty(filePath, false); } catch (_) { }
+      try { if (conflict) _exitConflict(filePath); } catch (_) { }
+      return 'ok';
+    }
+    var proceed = function () { try { retry && retry(); } catch (_) { } };
+    var settle = function () {
+      if (_paneDirtyMap[filePath] || _conflictState[filePath]) _promptClose(filePath, proceed);
+      else proceed();
+    };
+    if (saving || busy) {
+      if (saving) {
+        saving.then(function () { setTimeout(settle, 30); }, function () { setTimeout(settle, 30); });
+      } else {
+        var t0 = Date.now();
+        (function _w() {
+          if (!_extBusy[filePath] || Date.now() - t0 > 3000) { settle(); return; }
+          setTimeout(_w, 100);
+        })();
+      }
+      return 'hold';
+    }
+    _promptClose(filePath, proceed);
+    return 'hold';
+  }
+
+  // ── 外部修改机器 v2 · 检测唯一入口 ──
+  //   盘面 = 唯一权威；净 → 自动刷新（保滚动+变更行高亮）；脏 → 冲突条；绝不静默覆盖
+  //   触发：轮询 5s + 窗口聚焦 + tab 激活 + AI 写推送（shell-rpc → notifyExternalWrite）
   async function _checkDirtyAndRefreshPane(filePath, ed) {
     filePath = _normFP(filePath);   // ★ 路径归一：_openedMtime / dirty 快照键必须与挂载口径一致
     if (!filePath || !isElectron || !bridge || !ed) return;
-    // 用户正在此编辑器里编辑 → 不覆盖
-    try { if (ed.hasTextFocus()) return; } catch (_) {}
+    if (_extBusy[filePath] || _savingPaths[filePath]) return;   // 在飞去重 / 自身保存中不检测
+    var m0 = null;
+    try { m0 = ed.getModel ? ed.getModel() : null; } catch (_) { }
+    if (!m0 || m0.isDisposed()) return;
+    _extBusy[filePath] = true;
     try {
-      // Layer 2: 跨窗口脏快照 → 刷新
+      // 1) 盘面状态优先（旧序把脏快照拉取放最前 → 快照命中即 return，外部改动永不被看见）
+      if (!bridge.fs || !bridge.fs.stat) return;
+      var st = await _extStat(filePath);
+      if (!st || !st.isFile) {
+        // 文件已被删除 → tab 灰色+删除线（保留语义）；冲突态随之作废
+        if (window.qqqTabs && window.qqqTabs.setTabDeleted) window.qqqTabs.setTabDeleted(filePath, true);
+        delete _openedMtime[filePath];
+        if (_conflictState[filePath]) _exitConflict(filePath);
+        return;
+      }
+      if (window.qqqTabs && window.qqqTabs.setTabDeleted) window.qqqTabs.setTabDeleted(filePath, false);
+      var prev = _openedMtime[filePath];
+      if (!prev) { _openedMtime[filePath] = { mtimeMs: st.mtimeMs, size: st.size }; }
+      var diskChanged = !!(prev && !_extSameSig(prev, st));
+      if (diskChanged) {
+        // 2) 外部修改：冲突未决 → 保持冲突条（磁盘可能又变了，不重复打扰）
+        if (_conflictState[filePath]) { _showConflictBar(filePath); return; }
+        if (_paneDirtyMap[filePath]) { _enterConflict(filePath, ed, st); return; }
+        // 3) 干净 → 自动刷新（唯一真理 = 磁盘）
+        await _reloadFromDisk(filePath, ed, st);
+        return;
+      }
+      // 4) 无外改 → 跨窗口脏快照（仅未聚焦时拉取，避免光标下换文；拉取必须显式标脏）
       if (bridge.dirty) {
         var dirtyContent = await bridge.dirty.get(filePath);
         if (dirtyContent) {
-          var m = ed.getModel();
-          if (!m || m.isDisposed()) return;
-          var cur = ed.getValue();
-          if (cur === dirtyContent) return;
-          ed._isRefreshing = true;
-          _globalRefreshLock = true; window.__qqqGlobalRefreshLock = true;
-          if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-          try {
-            m.applyEdits([{ range: m.getFullModelRange(), text: String(dirtyContent), forceMoveMarkers: true }]);
-          } finally { ed._isRefreshing = false; _globalRefreshLock = false; window.__qqqGlobalRefreshLock = false; }
-          // ★ 不 dispatch dirty:false — 跨窗口脏快照的内容未落盘，
-          //    dispatch false 会让标签星号消失但文件实际未保存（大脑分裂）。
-          //    让 _markDirty 自然触发（下次用户操作或 onDidChangeModelContent）。
-          return;
+          var cur = '';
+          try { cur = ed.getValue(); } catch (_) { }
+          if (cur !== dirtyContent) {
+            try { if (ed.hasTextFocus()) return; } catch (_) { }
+            var m = m0;
+            if (!m || m.isDisposed()) return;
+            ed._isRefreshing = true;
+            _globalRefreshLock = true; window.__qqqGlobalRefreshLock = true;
+            if (window.qqqCharUndo) { try { window.qqqCharUndo.suppressOnce(ed); } catch (_) { } }
+            try {
+              m.applyEdits([{ range: m.getFullModelRange(), text: String(dirtyContent), forceMoveMarkers: true }]);
+            } finally { ed._isRefreshing = false; _globalRefreshLock = false; window.__qqqGlobalRefreshLock = false; }
+            // ★ 未落盘内容必须显式标脏（旧注释指望「自然触发」，但全局锁把变更事件屏蔽 → 恒不触发 = 状态分裂）
+            _extSetDirty(filePath, true);
+          }
         }
       }
-      // 无脏快照 → stat 检测外部修改 / 文件已删除
-      if (!bridge.fs || !bridge.fs.stat) return;
-      var st = await bridge.fs.stat(filePath);
-      if (!st || !st.isFile) {
-        // ★ 2026-08-17: 文件已被删除 → tab 显示灰色+删除线
-        if (window.qqqTabs && window.qqqTabs.setTabDeleted) {
-          window.qqqTabs.setTabDeleted(filePath, true);
-        }
-        delete _openedMtime[filePath];
-        return;
-      }
-      // 文件存在 → 清除已删除标记
-      if (window.qqqTabs && window.qqqTabs.setTabDeleted) {
-        window.qqqTabs.setTabDeleted(filePath, false);
-      }
-      var prev = _openedMtime[filePath];
-      if (!prev || (prev.mtimeMs === st.mtimeMs && prev.size === st.size)) return;
-      // 外部修改了！
-      var isDirty = !!_paneDirtyMap[filePath];
-      if (!isDirty) {
-        // 编辑器干净 → 静默重载磁盘最新版
-        var diskContent = await bridge.fs.read(filePath);
-        if (diskContent == null) return;
-        // ★ 2026-09-27 修补：内容与编辑器一致（仅 mtime/size 变化）→ 短路（不做全量替换）——
-        //   零收益高负载，且杜绝「抑制标记未被变更事件消费」的泄漏面（残留标记会吞掉用户
-        //   下一次真实编辑 → 粘贴快照丢失 → Ctrl+Z 静默失效）；直接接受新 stat 收尾。
-        var _extCurV = null;
-        try { _extCurV = ed.getValue(); } catch (_) { }
-        if (_extCurV !== null && diskContent === _extCurV) {
-          _openedMtime[filePath] = { mtimeMs: st.mtimeMs, size: st.size };
-          return;
-        }
-        // ★ 2026-09-05: 外部重载后同步刷新编码徽标（外部改写可能变了编码）
-        if (window.qqqTabs && window.qqqTabs.refreshEncForPath) window.qqqTabs.refreshEncForPath(filePath);
-        var m2 = ed.getModel();
-        if (!m2 || m2.isDisposed()) return;
-        ed._isRefreshing = true;
-        _globalRefreshLock = true;
-        if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-        try {
-          m2.applyEdits([{ range: m2.getFullModelRange(), text: String(diskContent), forceMoveMarkers: true }]);
-        } finally { ed._isRefreshing = false; _globalRefreshLock = false; window.__qqqGlobalRefreshLock = false; }
-        _openedMtime[filePath] = { mtimeMs: st.mtimeMs, size: st.size };
-      } else {
-        // 编辑器脏 → 捕获外部版本到 timeline + 通知用户
-        _captureExternalBefore(filePath);
-        var fname = filePath.split(/[\\/]/).pop();
-        if (window.qqqideQoast) {
-          window.qqqideQoast.show(
-            fname + ' \u5728\u5916\u90e8\u88ab\u4fee\u6539\u4e86\uff0c\u4f60\u7684\u7f16\u8f91\u4fdd\u7559\uff0c\u53ef\u5728diff\u7a97\u53e3\u5ba1\u67e5',
-            { duration: 6000 }
-          );
-        }
-      }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      delete _extBusy[filePath];
+    }
   }
 
   // 窗口聚焦：遍历所有打开的 editor，刷新脏快照 + 检测外部修改
@@ -1326,6 +1749,34 @@
     return _paneEditors[_normFP(filePath)] || null;   // 未给 pane → 单槽兜底
   }
 
+  // ── 外部修改机器武装：轮询（可见时 5s）+ 启动信号门控 ──
+  function _extCheckAll() {
+    if (!isElectron || !bridge) return;
+    var keys = Object.keys(_paneEditors);
+    for (var i = 0; i < keys.length; i++) {
+      var fp = keys[i];
+      var ed = _paneEditors[fp];
+      if (ed) { try { _checkDirtyAndRefreshPane(fp, ed); } catch (_) { } }
+    }
+  }
+  function _extPollBoot() {
+    if (_extPollTimer || !isElectron || !bridge) return;
+    _extPollTimer = setInterval(function () {
+      if (document.visibilityState === 'hidden') return;
+      _extCheckAll();
+    }, 5000);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') _extCheckAll();
+    });
+  }
+  if (isElectron && bridge) {
+    if (window.__qqqUiShown) _extPollBoot();
+    else {
+      window.addEventListener('qqq-ui-ready', _extPollBoot, { once: true });
+      setTimeout(_extPollBoot, 30000);   // 兜底（信号丢失/空白窗）
+    }
+  }
+
   window.qqqEditor = {
     openInPane,
     // ★ 路径级脏查询（tab-manager 预览复用/状态同步用，唯一真理 = _paneDirtyMap）
@@ -1350,6 +1801,15 @@
     getEditorForFile(filePath) {
       filePath = _normFP(filePath);   // ★ 路径归一（外部调用方路径写法不定）
       return _paneEditors[filePath] || null;
+    },
+    // ★ 外部修改机器 v2 出口（AI 写推送即时校验 / tab 关闭守卫 / 诊断）
+    notifyExternalWrite: function (filePath) { _extKick(filePath); },
+    beforeTabClose: function (filePath, retry) { return _extBeforeTabClose(filePath, retry); },
+    extState: function () {
+      var dirty = [];
+      var ks = Object.keys(_paneDirtyMap);
+      for (var i = 0; i < ks.length; i++) { if (_paneDirtyMap[ks[i]]) dirty.push(ks[i]); }
+      return { conflict: Object.keys(_conflictState), dirty: dirty, tracked: Object.keys(_openedMtime) };
     },
     refreshLiveContent,
     isBinaryFile,

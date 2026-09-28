@@ -387,6 +387,9 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
     // ---- 4. 记录快照（钩子 Q：记 both before+after 到 timeline）----
     await _a4RecordSnapshot(filePath, name, beforeContent, afterContent, beforeBlobHash, _capturedAg);
 
+    // ★ 外部修改机器 v2：AI 写工具落盘 → 通知主窗口编辑器即时校验（净 → 自动刷新 / 脏 → 冲突条）
+    try { window.parent.postMessage({ type: 'qqq-file-written', path: filePath }, '*'); } catch (_) { }
+
     // ★ 将 afterBlobHash + trace 追加到返回值，供 AI 后续通过 read_file sha256 读取历史版本
     var snapEntry = _capturedAg._a4Snapshots && _capturedAg._a4Snapshots[filePath];
     if (snapEntry && snapEntry.afterBlobHash) {
