@@ -82,7 +82,9 @@ export class AudioEngine {
                 stdio: ['pipe', 'pipe', 'pipe'],
                 windowsHide: true,
                 cwd: path.dirname(script),
-                env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
+                // ★ OPENBLAS_NUM_THREADS=1（详铁律 §9.5）: numpy 导入按核数建 OpenBLAS 线程缓冲
+                //   （实测 ~750MB 提交/进程，驻留仅 ~13MB）；音频桥不做 BLAS 计算，单线程零代价
+                env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', OPENBLAS_NUM_THREADS: '1' },
             });
             this.proc = proc;
             const rl = readline.createInterface({ input: proc.stdout, crlfDelay: Infinity });

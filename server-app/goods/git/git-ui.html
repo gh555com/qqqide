@@ -315,6 +315,17 @@ async function _initGitExe() {
   _gitExePath = 'git'; return _gitExePath;
 }
 
+// ═══ git badge 活动踢（变更类子命令成功 → 刷新 AI 视口未提交数；内部 2.5s 防抖） ═══
+var _GIT_MUTATING = { add:1, reset:1, rm:1, mv:1, commit:1, pull:1, push:1, fetch:1, stash:1, checkout:1, switch:1, restore:1, merge:1, rebase:1, revert:1, 'cherry-pick':1, init:1, apply:1, am:1, clean:1, tag:1 };
+function _gitBadgeKick(args, r) {
+  try {
+    if (!r || r.exitCode !== 0) return;
+    var sub = args && args[0];
+    if (!sub || !_GIT_MUTATING[sub]) return;
+    if (parent && parent.qqqGitPoll && parent.qqqGitPoll.kick) parent.qqqGitPoll.kick('git-goods');
+  } catch (_) {}
+}
+
 // ═══ core git spawn ═══
 async function _gitCmd(args, opts) {
   opts = opts || {};
@@ -324,10 +335,11 @@ async function _gitCmd(args, opts) {
       cmd: _gitExePath || (await _initGitExe()),
       args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000, shell: false
     });
+    _gitBadgeKick(args, result);
     return result;
   } catch(e) {
     if (_gitExePath.indexOf('/components/git/') >= 0) {
-      try { return await bridge.qz.spawn({ cmd: 'git', args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000, shell: false }); } catch(e2) {}
+      try { var _r2 = await bridge.qz.spawn({ cmd: 'git', args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000, shell: false }); _gitBadgeKick(args, _r2); return _r2; } catch(e2) {}
     }
     return { stdout: '', stderr: e.message || String(e), exitCode: 1 };
   }

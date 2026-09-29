@@ -219,8 +219,18 @@ function bootRpcForwarder() {
     }
 
     // ★ 外部修改机器 v2：AI 写工具落盘 → 编辑器即时校验（净 → 自动刷新 / 脏 → 冲突条）
-    if (e.data.type === 'qqq-file-written' && e.data.path && window.qqqEditor && window.qqqEditor.notifyExternalWrite) {
-      window.qqqEditor.notifyExternalWrite(e.data.path);
+    // ★ git badge 活动踢：同一落盘事件即时刷新 AI 视口未提交数（内部 2.5s 防抖）
+    if (e.data.type === 'qqq-file-written') {
+      try { if (window.qqqGitPoll && window.qqqGitPoll.kick) window.qqqGitPoll.kick('ai-write'); } catch (_) { }
+      if (e.data.path && window.qqqEditor && window.qqqEditor.notifyExternalWrite) {
+        window.qqqEditor.notifyExternalWrite(e.data.path);
+      }
+      return;
+    }
+
+    // ★ git badge 活动踢（AI run_command 等文件活动信号 — panel-a4 转发）
+    if (e.data.type === 'qqq-fs-activity') {
+      try { if (window.qqqGitPoll && window.qqqGitPoll.kick) window.qqqGitPoll.kick('fs-activity'); } catch (_) { }
       return;
     }
 

@@ -4,6 +4,7 @@
 # 类型门：tsc --noEmit（npm run check:types）——类型债清零后已并入 types 任务。
 # 单测门：npm test（node:test，ci/tests/*.test.js）——与 types 同 job 复用一次 npm ci。
 #       注：compareVersion 用例依赖私有部件 launcher/ 与 C 编译器，均不在公开检出 → 显式 skip。
+# 静态检查门（advisory）：npm run lint（ESLint 三规则，全 warn）——只输出稳定警告面，0 error 恒绿。
 name: Static checks
 
 on:
@@ -15,6 +16,7 @@ on:
       - 'shell-build/**'
       - 'ci/**'
       - 'tsconfig.json'
+      - '.eslintrc.js'
       - 'package.json'
       - '.github/workflows/static-checks.yml'
   pull_request:
@@ -24,6 +26,7 @@ on:
       - 'shell-build/**'
       - 'ci/**'
       - 'tsconfig.json'
+      - '.eslintrc.js'
       - 'package.json'
       - '.github/workflows/static-checks.yml'
 
@@ -50,7 +53,7 @@ jobs:
         run: node ci/check-syntax.js
 
   types:
-    name: TypeScript + unit tests
+    name: TypeScript + tests + lint
     runs-on: windows-2022
     timeout-minutes: 15
     env:
@@ -70,3 +73,6 @@ jobs:
 
       - name: npm test（node:test 单元测试）
         run: npm test
+
+      - name: npm run lint（ESLint 三规则 · warn-only）
+        run: npm run lint

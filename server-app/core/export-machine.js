@@ -321,6 +321,8 @@
         var _vb = window.qqqideBridge && window.qqqideBridge.vig;
         if (_vb && _vb.bump) { _vb.bump(isDoc ? 'export_doc' : 'export_zip', { n: 1 }); }
       } catch (_) { }
+      // ★ git badge 活动踢：导出落盘（默认文档旁）→ 通知 AI 视口刷新未提交数（内部 2.5s 防抖）
+      try { if (window.qqqGitPoll && window.qqqGitPoll.kick) window.qqqGitPoll.kick('export'); } catch (_) { }
       var sizeStr = _fmtBytes(r.size || 0);
       var msg = _T('export.docExported', 'qqq: \u6587\u6863\u5DF2\u5BFC\u51FA ({0}): {1}', { 0: sizeStr, 1: r.path });
       if (!r.hasAnchors) {

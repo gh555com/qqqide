@@ -1,6 +1,6 @@
 {
   "name": "qqqide",
-  "version": "0.3.435",
+  "version": "0.3.438",
   "description": "qqqide — portable AI-powered IDE. Win7+ compatible, zero C-drive write.",
   "private": true,
   "main": "shell-out/bootstrap.js",
@@ -16,6 +16,7 @@
     "check:syntax": "node ci/check-syntax.js",
     "check:types": "tsc --noEmit",
     "test": "node ci/tests/run.js",
+    "lint": "eslint server-app",
     "smoke": "npm run build && node ci/smoke/run-smoke.js",
     "pack:win-x64": "npm run build && node shell-build/pack.js --target=win-x64-sfx",
     "pack:win-x64:zip": "npm run build && node shell-build/pack.js --target=win-x64",
@@ -31,7 +32,6 @@
   },
   "dependencies": {
     "monaco-editor": "0.34.1",
-    "rcedit": "^5.0.1",
     "sql.js": "^1.11.0"
   },
   "devDependencies": {
@@ -39,6 +39,8 @@
     "electron": "22.3.27",
     "electron-builder": "^23.6.0",
     "esbuild": "0.19.12",
+    "eslint": "8.57.1",
+    "rcedit": "^5.0.1",
     "typescript": "5.0.4"
   },
   "_packagingDeps": {

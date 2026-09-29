@@ -1737,10 +1737,6 @@
         "sfxAll": "Todos",
         "sfxNone": "Nenhum",
         "sfxTooltip": "Alternar efeitos sonoros individualmente",
-        "uiZoom": {
-            "label": "Zoom da interface",
-            "desc": "Proporção de exibição de toda a interface (independente do zoom do sistema; reduza para telas grandes, aumente se a fonte estiver pequena)"
-        },
         "undoMode": {
             "label": "Modo de desfazer do editor",
             "desc": "Granularidade do Ctrl+Z ao desfazer no editor de código",
@@ -1923,7 +1919,8 @@
                 "render": "Falha no processo de renderização",
                 "fails": "Contagem de falhas"
             }
-        }
+        },
+        "uiZoom": {}
     },
     "squad": {
         "tipActive": "Esquadrão {sq} — Espaço+{sq} para recuperar (clique para trocar de esquadrão)",
@@ -2036,6 +2033,6 @@
     },
     "uiZoom": {
         "toast": "Zoom da interface {p}% ({k} para redefinir)",
-        "tip": "Ajustar o zoom da interface"
+        "hotkeys": "{m}= Aumentar · {m}- Diminuir · {m}0 Redefinir"
     }
 }

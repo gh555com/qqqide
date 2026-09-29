@@ -3,12 +3,13 @@
 // ============================================================================
 // ui-zoom.js — 应用级界面缩放机器（qqq-prefs 'uiZoom' → 壳层 webContents zoom）
 //
-// 三路输入（统一收敛到 qqq-prefs / 壳层）：
-//   ① 右上角设置面板「界面缩放」行（qqqSettings.set 桥 → qqqPrefs.set）→ onChange → 壳层热应用
-//   ② 状态栏缩放徽章（本文件；恒显，非 100% 高亮；点击弹八档点选）→ qqqPrefs.set → 同上
-//   ③ 应急快捷键 Ctrl+= / Ctrl+- / Ctrl+0（壳层主进程直控）→ bridge.uiZoom.onChanged
-//      → 回写 qqq-prefs 内存（保设置面板一致 + 云同步标记）+ 发起窗口 toast
-// 渲染：徽章 + 弹层（八档与 qqq-prefs 'uiZoom' enum 严格同值——两处同改）。
+// 唯一可见入口 = 状态栏缩放徽章（CPU 与时间分割线之间；恒显，非 100% 高亮）：
+//   hover 显快捷键组 tooltip；点击弹八档点选层 → qqqPrefs.set → onChange → 壳层热应用。
+// 其余输入（统一收敛到 qqq-prefs / 壳层）：
+//   ① 应急快捷键 Ctrl+= / Ctrl+- / Ctrl+0（壳层主进程直控）→ bridge.uiZoom.onChanged
+//      → 回写 qqq-prefs 内存（保持徽章一致 + 云同步标记）+ 发起窗口 toast
+//   ② 云拉取 / 恢复默认 → qqqPrefs.onChange → 同上
+// 渲染：徽章 + tooltip + 弹层（八档与 qqq-prefs 'uiZoom' enum 严格同值——两处同改）。
 // 依赖：qqq-prefs.js（先行加载）。
 // ============================================================================
 
@@ -50,25 +51,76 @@
     } catch (e) { /* ignore */ }
   }
 
-  // ═══ 状态栏徽章（恒显按钮；非 100% 高亮）═══
+  // ═══ 状态栏徽章（恒显按钮；非 100% 高亮；位于 CPU 与时间分割线之间——分割线由 shell-main.css 落在时钟左侧）═══
   var _badge = null;
 
   function _ensureBadge() {
     if (_badge) { return; }
-    var anchor = document.getElementById('qqq-status-online');
+    var anchor = document.getElementById('qqq-status-mem') || document.getElementById('qqq-status-online');
     if (!anchor || !anchor.parentNode) { return; }
     _badge = document.createElement('span');
     _badge.className = 'qqq-status-item qqq-zoom-badge';
     _badge.id = 'qqq-status-zoom';
     _badge.textContent = '100%';
-    _badge.setAttribute('data-i18n-title', 'uiZoom.tip');
-    _badge.title = (window._i ? window._i('uiZoom.tip', '调整界面缩放') : '调整界面缩放');
+    _badge.addEventListener('mouseenter', function () {
+      if (_tipTimer) { clearTimeout(_tipTimer); }
+      _tipTimer = setTimeout(function () { _tipTimer = null; _showTip(); }, 140);
+    });
+    _badge.addEventListener('mouseleave', function () { _hideTip(); });
     _badge.addEventListener('click', function (e) {
       if (e && e.stopPropagation) { e.stopPropagation(); }
+      _hideTip();
       _togglePop();
     });
     anchor.parentNode.insertBefore(_badge, anchor.nextSibling);
+    // 徽章位置随窗口/密度级联漂移 → 位移即收（pop 由 _ensurePop 的 resize 钩重定位）
+    window.addEventListener('resize', _hideTip);
+    window.addEventListener('blur', _hideTip);
+    window.addEventListener('qqq-lang-change', _hideTip);
     _refreshBadge(_curPct());
+  }
+
+  // ═══ 快捷键组 tooltip（hover 显；点击/移开/失焦/换语言即收）═══
+  var _tip = null, _tipTimer = null;
+
+  function _modLabel() {
+    try { return /Mac/i.test(navigator.platform || '') ? '⌘' : 'Ctrl+'; } catch (e) { return 'Ctrl+'; }
+  }
+
+  function _tipText() {
+    var m = _modLabel();
+    try {
+      if (window._i) { return window._i('uiZoom.hotkeys', '{m}= 放大 · {m}- 缩小 · {m}0 复位', { m: m }); }
+    } catch (e) { /* ignore */ }
+    return m + '= 放大 · ' + m + '- 缩小 · ' + m + '0 复位';
+  }
+
+  function _positionTip() {
+    if (!_badge || !_tip) { return; }
+    var r = _badge.getBoundingClientRect();
+    var tw = _tip.offsetWidth, th = _tip.offsetHeight;
+    var left = r.right - tw;
+    var maxL = window.innerWidth - tw - 8;
+    if (left > maxL) { left = maxL; }
+    if (left < 8) { left = 8; }
+    _tip.style.left = Math.round(left) + 'px';
+    _tip.style.top = Math.round(r.top - th - 6) + 'px';
+  }
+
+  function _showTip() {
+    if (_pop && _pop.classList.contains('qqq-zoom-open')) { return; }
+    if (!_tip) {
+      _tip = document.createElement('div');
+      _tip.className = 'qqq-zoom-tip';
+      document.body.appendChild(_tip);
+    }
+    _tip.textContent = _tipText();
+    _tip.classList.add('qqq-zoom-tip-open');
+    _positionTip();
+  }
+  function _hideTip() {
+    if (_tipTimer) { clearTimeout(_tipTimer); _tipTimer = null; }
+    if (_tip) { _tip.classList.remove('qqq-zoom-tip-open'); }
   }
 
   function _refreshBadge(pct) {
@@ -179,7 +231,7 @@
   }
 
   function _boot() {
-    // ① 设置面板 / 徽章 / 云拉取 / 恢复默认 → 推壳层热应用 + 徽章刷新
+    // ① 徽章 / 云拉取 / 恢复默认 → 推壳层热应用 + 徽章刷新
     try {
       var P = window.qqqPrefs;
       if (P && P.onChange) {

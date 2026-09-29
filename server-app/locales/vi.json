@@ -1737,10 +1737,6 @@
         "sfxAll": "Tất cả",
         "sfxNone": "Không có",
         "sfxTooltip": "Bật/tắt hiệu ứng âm thanh riêng lẻ",
-        "uiZoom": {
-            "label": "Phóng to giao diện",
-            "desc": "Tỷ lệ hiển thị của toàn bộ giao diện (độc lập với tỷ lệ phóng to hệ thống; màn hình lớn thì giảm, chữ nhỏ thì tăng)"
-        },
         "undoMode": {
             "label": "Chế độ hoàn tác trong trình soạn thảo",
             "desc": "Độ chi tiết của thao tác hoàn tác Ctrl+Z trong trình soạn thảo mã",
@@ -1923,7 +1919,8 @@
                 "render": "Tiến trình render bị sập",
                 "fails": "Số lần thất bại"
             }
-        }
+        },
+        "uiZoom": {}
     },
     "squad": {
         "tipActive": "Biệt đội {sq} — Space+{sq} để triệu hồi (nhấp để thay đổi biệt đội)",
@@ -2036,6 +2033,6 @@
     },
     "uiZoom": {
         "toast": "Thu phóng giao diện {p}% ({k} để đặt lại)",
-        "tip": "Điều chỉnh tỷ lệ phóng to giao diện"
+        "hotkeys": "{m}= Phóng to · {m}- Thu nhỏ · {m}0 Đặt lại"
     }
 }

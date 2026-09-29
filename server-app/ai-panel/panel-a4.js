@@ -297,10 +297,14 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
     if (name === 'run_command') {
         var _trackCmd = (typeof qqqSettings !== 'undefined' && qqqSettings.get) ? qqqSettings.get('timeline.trackRunCommand', false) : false;
         if (!_trackCmd) {
-            return _a4OriginalExecuteTool(name, args);
+            var _rc0 = await _a4OriginalExecuteTool(name, args);
+            // ★ git badge 活动踢：命令可能落盘文件 → 通知主窗口刷新未提交数（内部 2.5s 防抖）
+            try { window.parent.postMessage({ type: 'qqq-fs-activity' }, '*'); } catch (_) { }
+            return _rc0;
         }
         var cmdStartTs = Date.now();
         var cmdResult = await _a4OriginalExecuteTool(name, args);
+        try { window.parent.postMessage({ type: 'qqq-fs-activity' }, '*'); } catch (_) { }
         if (cmdResult && typeof cmdResult === 'string' && cmdResult.indexOf('Error') !== 0) {
             var bridge3 = getBridge();
             var scanRoot = args.cwd ? await _resolveProjectRoot(args.cwd.replace(/\\/g, '/')) : null;

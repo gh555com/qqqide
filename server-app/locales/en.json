@@ -1737,10 +1737,6 @@
         "sfxAll": "All",
         "sfxNone": "None",
         "sfxTooltip": "Toggle sound effects individually",
-        "uiZoom": {
-            "label": "UI Zoom",
-            "desc": "Display scale for the entire interface (independent of system scaling; reduce for larger screens, increase if text is too small)"
-        },
         "undoMode": {
             "label": "Editor Undo Mode",
             "desc": "Granularity of Ctrl+Z undo in the code editor",
@@ -1923,7 +1919,8 @@
                 "status": "Latest update attempt",
                 "state": "State store events"
             }
-        }
+        },
+        "uiZoom": {}
     },
     "squad": {
         "tipActive": "Squad {sq} — Space+{sq} to recall (click to change squad)",
@@ -2036,6 +2033,6 @@
     },
     "uiZoom": {
         "toast": "UI zoom {p}% ({k} to reset)",
-        "tip": "Adjust UI zoom"
+        "hotkeys": "{m}= Zoom In · {m}- Zoom Out · {m}0 Reset"
     }
 }

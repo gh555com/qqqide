@@ -28,37 +28,65 @@
   let activeSubmenus = [];   // all open submenu elements
 
   // ── git 未提交计数 badge ──
-  // ★ 轮询机器（2026-09-24 重写）: 全渲染层唯一周期性 git 重活 —— 大仓库下必须
-  //   「少磨盘 + 不在用户能感觉到的时刻磨」。四原则:
+  // ★ 轮询机器 v2: 「活动驱动 + 静默退避」——全渲染层唯一周期性 git 重活。六原则:
   //   ① 就绪门控——启动恢复全部完成后才武装（壳层揭幕信号 qqq-ui-ready；
   //      空白窗用 core 就绪 +15s 兜底），首轮再静置 8s
-  //   ② 可见门控——窗口隐藏或失焦 → 暂停；回到前台/可见 → 立即补一轮（所见即最新）
-  //   ③ 耗时自适应——间隔 = clamp(15s, 最慢单仓库耗时×10, 120s)；单飞（上轮未完不排下轮）
-  //   ④ 硬错误退避——spawn 级失败（git 缺失/被杀）60s→×2→10min 封顶；任何成功清零
+  //   ② 可见+焦点门控——窗口隐藏或失焦 → 暂停（60s 兜底重查防失联）；回前台/可见
+  //      立即补一轮。焦点初始态 = document.hasFocus()（后台窗口绝不凭空轮询）；
+  //      每轮/每踢再按 hasFocus 自愈一次（防漏 focus 事件）
+  //   ③ 活动驱动——IDE 内文件落盘即时踢（window.qqqGitPoll.kick）:
+  //      AI 写工具（shell-rpc 'qqq-file-written'）/ AI run_command 完成
+  //      （panel-a4 → 'qqq-fs-activity'）/ 编辑器保存（editor.js）/
+  //      Roam 文件操作（q2-roam _vigBump fc）/ git goods 变更操作 /
+  //      下载·导出落盘。2.5s 防抖合并突发 + 距上轮 15s 最小间隔
+  //      （活跃期密度上限 = 15s 节拍）
+  //   ④ 静默退避——连续无变化轮数翻倍: 30s→60s→120s；任何变化清零
+  //      （闲时最长 2 分钟一次 = 外部改动兜底心跳）
+  //   ⑤ 非仓库退避——git 非零退出（非仓库/路径失效）10 分钟重探一次
+  //   ⑥ 硬错误退避——spawn 级失败（git 缺失/被杀）60s→×2→10min 封顶；成功清零
   //   副产物: 单仓库连续慢 ≥2 轮 → 一次性提示开启 untracked cache（2~10× 提速，
   //   仅用户点击才写仓库配置；先 --test-untracked-cache 探测支持性）
   var _gitBadgeCache = {};       // path → { count, error }
   var _gitBadgeEls = {};         // path → badge DOM element (direct reference)
   var _gitPoll = {
     gateStarted: false, armed: false, timer: null, running: false,
+    kickPending: false,        // 踢落在一轮运行中 → 轮末补一轮
+    roundChanged: false,       // 本轮是否出现计数变化（静默退避输入）
     bin: null,                 // git 路径（会话级缓存；硬错误时清空重解析）
     lastDur: 0,                // 上轮最慢单仓库耗时 ms（自适应间隔依据）
+    lastRoundEnd: 0,           // 上轮结束墙钟（踢最小间隔依据）
+    lastChangeTs: 0,           // 最近一次计数变化墙钟（诊断）
+    quiet: 0,                  // 连续无变化轮数（静默退避依据）
+    lastKickSrc: '',           // 最近一次活动踢来源（诊断）
     failBackoff: 0,            // 硬错误退避 ms（0 = 正常）
-    focused: true,
+    focused: true,             // init 后立即校正为 document.hasFocus()
+    nonRepo: {},               // path → 重探时间戳（非仓库退避）
     slowHits: {},              // path → 连续慢轮数
     ucAsked: {},               // path → 1（本会话已提示/已处理）
-    rounds: 0, errors: 0       // 诊断（window.qqqGitPoll.stats()）
+    rounds: 0, errors: 0, kicks: 0, spawns: 0   // 诊断（window.qqqGitPoll.stats()）
   };
-  var _GIT_POLL_MIN_MS = 15000, _GIT_POLL_MAX_MS = 120000;
+  try { _gitPoll.focused = !!document.hasFocus(); } catch (_) { }
+  var _GIT_POLL_MIN_MS = 30000, _GIT_POLL_MAX_MS = 120000;
   var _GIT_SLOW_MS = 1500, _GIT_SLOW_RESET_MS = 1200, _GIT_UC_HITS = 2;
+  var _GIT_KICK_DEBOUNCE_MS = 2500, _GIT_KICK_GAP_MS = 15000, _GIT_NONREPO_MS = 600000;
 
   function _gitPollPaused() {
     return document.hidden || !_gitPoll.focused;
   }
 
+  // 统一排程入口（单一 timer 字段——任何重排先清旧定时器，杜绝双发）
+  function _gitPollRequest(ms) {
+    if (!_gitPoll.armed) return;
+    if (_gitPoll.running) { _gitPoll.kickPending = true; return; }
+    if (_gitPoll.timer) { clearTimeout(_gitPoll.timer); _gitPoll.timer = null; }
+    _gitPoll.timer = setTimeout(_gitPollRound, ms);
+  }
+
   function _gitPollDelay() {
     if (_gitPoll.failBackoff > 0) return _gitPoll.failBackoff;
-    var d = _GIT_POLL_MIN_MS;
+    // 静默退避: 30s → 60s → 120s（连续无变化翻倍，任何变化清零）
+    var q = Math.min(_gitPoll.quiet, 3);
+    var d = Math.min(_GIT_POLL_MIN_MS * Math.pow(2, q), _GIT_POLL_MAX_MS);
     if (_gitPoll.lastDur > _GIT_SLOW_RESET_MS) {
       d = Math.max(d, Math.min(_gitPoll.lastDur * 10, _GIT_POLL_MAX_MS));
     }
@@ -66,34 +94,46 @@
   }
 
   function _gitPollSchedule() {
-    if (_gitPoll.timer) { clearTimeout(_gitPoll.timer); _gitPoll.timer = null; }
-    if (!_gitPoll.armed) return;
-    _gitPoll.timer = setTimeout(_gitPollRound, _gitPollDelay());
+    // 轮末：有挂起的活动踢 → 略后再补一轮（消解与上一轮的写竞争）
+    if (_gitPoll.kickPending) { _gitPoll.kickPending = false; _gitPollRequest(_GIT_KICK_DEBOUNCE_MS + 3000); return; }
+    _gitPollRequest(_gitPollDelay());
   }
 
-  function _gitPollKick() {
-    // 回到前台/可见 → 立即补一轮（300ms 让位当前帧；清旧定时器防双发）
-    if (!_gitPoll.armed || _gitPoll.running || _gitPollPaused()) return;
-    if (_gitPoll.timer) { clearTimeout(_gitPoll.timer); _gitPoll.timer = null; }
-    _gitPoll.timer = setTimeout(_gitPollRound, 300);
+  // 焦点/可见回归踢（立即补一轮，300ms 让位当前帧）
+  function _gitPollFocusKick() {
+    if (!_gitPoll.armed || _gitPollPaused()) return;
+    _gitPollRequest(300);
+  }
+
+  // ★ 活动踢（文件落盘信号 → 即时刷新，2.5s 防抖 + 距上轮 15s 最小间隔）
+  function _gitPollKick(reason) {
+    if (!_gitPoll.armed) return;
+    if (!document.hidden && document.hasFocus()) _gitPoll.focused = true;   // 焦点自愈
+    if (_gitPollPaused()) return;      // 不可见不跑（聚焦/可见回归时自会补一轮）
+    _gitPoll.kicks++;
+    _gitPoll.lastKickSrc = reason || '';
+    var gap = Math.max(0, (_gitPoll.lastRoundEnd || 0) + _GIT_KICK_GAP_MS - Date.now());
+    _gitPollRequest(Math.max(_GIT_KICK_DEBOUNCE_MS, gap));
   }
 
   function _gitPollRound() {
     if (!_gitPoll.armed || _gitPoll.running) return;
+    // 焦点自愈（防漏 focus 事件；后台窗口绝不凭空轮询）
+    if (!document.hidden && document.hasFocus()) _gitPoll.focused = true;
     if (!projects.length) { _gitPollSchedule(); return; }
     if (_gitPollPaused()) {
-      // 暂停期不跑；恢复路径 = visibilitychange / focus → kick；60s 兜底重查防失联
-      if (_gitPoll.timer) clearTimeout(_gitPoll.timer);
-      _gitPoll.timer = setTimeout(_gitPollRound, 60000);
+      // 暂停期不跑；恢复路径 = visibilitychange / focus → 踢；60s 兜底重查防失联
+      _gitPollRequest(60000);
       return;
     }
     _gitPoll.running = true;
-    var t0 = performance.now();
+    _gitPoll.roundChanged = false;
     var maxOne = 0, hardErr = false;
     var idx = 0;
     (function next() {
       if (idx >= projects.length) return Promise.resolve();
       var p = projects[idx++];
+      if ((_gitPoll.nonRepo[p.path] || 0) > Date.now()) return next();   // 非仓库退避中
       var pt0 = performance.now();
       return Promise.resolve(_checkOneGitBadge(p)).then(function (res) {
         var pd = performance.now() - pt0;
@@ -105,7 +145,11 @@
     })().catch(function () { }).then(function () {
       _gitPoll.running = false;
       _gitPoll.rounds++;
-      _gitPoll.lastDur = maxOne;
+      if (maxOne > 0) _gitPoll.lastDur = maxOne;
+      _gitPoll.lastRoundEnd = Date.now();
+      // 静默退避输入：任何计数变化/状态转换 → 清零；无变化 → 翻倍档位
+      if (_gitPoll.roundChanged) { _gitPoll.quiet = 0; _gitPoll.lastChangeTs = Date.now(); }
+      else if (_gitPoll.quiet < 9) _gitPoll.quiet++;
       if (hardErr) {
         _gitPoll.errors++;
         _gitPoll.failBackoff = _gitPoll.failBackoff ? Math.min(_gitPoll.failBackoff * 2, 600000) : 60000;
@@ -179,7 +223,7 @@
     } catch (e) { _fail(); }
   }
 
-  // 返回: 'ok' = 成功 / 'soft' = git 跑了但非零退出（如非仓库——正常稳态，不进退避） /
+  // 返回: 'ok' = 成功 / 'soft' = git 跑了但非零退出（非仓库/路径失效——10 分钟退避） /
   //       'hard' = spawn 级失败（git 缺失/被杀——进退避 + 下轮重解析路径）
   async function _checkOneGitBadge(proj) {
     try {
@@ -190,14 +234,25 @@
         }
         _gitPoll.bin = gitBin;   // 会话级缓存: 每轮每仓库 2 次 IPC → 全程 2 次
       }
+      _gitPoll.spawns++;
       var r = await bridge.qz.spawn({
         cmd: _gitPoll.bin,
         args: ['-C', proj.path, 'status', '--porcelain'],
         timeout: 20000   // 8s→20s: 大仓库给它跑完的机会（超时不再常态误判）
       });
-      if (!r || r.exitCode !== 0) { _gitBadgeCache[proj.path] = { error: true }; return 'soft'; }
+      if (!r || r.exitCode !== 0) {
+        // 非仓库/路径失效 → 10 分钟退避（禁每轮空转）
+        _gitPoll.nonRepo[proj.path] = Date.now() + _GIT_NONREPO_MS;
+        var prevS = _gitBadgeCache[proj.path];
+        _gitBadgeCache[proj.path] = { error: true };
+        if (!prevS || !prevS.error) _gitPoll.roundChanged = true;
+        return 'soft';
+      }
       var count = (r.stdout || '').split('\n').filter(Boolean).length;
+      var prev = _gitBadgeCache[proj.path];
       _gitBadgeCache[proj.path] = { count: count, error: false };
+      if (_gitPoll.nonRepo[proj.path]) delete _gitPoll.nonRepo[proj.path];   // 已恢复为仓库
+      if (!prev || prev.error || prev.count !== count) _gitPoll.roundChanged = true;
       _updateBadgeDOM(proj.path, count);
       // ★ 密钥脱敏触发器（secret-guard.js）：porcelain 原文变化才干活（上升沿）
       try {
@@ -230,16 +285,15 @@
   function _armGitPoll() {
     if (_gitPoll.armed) return;
     _gitPoll.armed = true;
-    if (_gitPoll.timer) clearTimeout(_gitPoll.timer);
-    _gitPoll.timer = setTimeout(_gitPollRound, 8000);   // 亮相后再静置 8s（恢复尾巴让路）
+    _gitPollRequest(8000);   // 亮相后再静置 8s（恢复尾巴让路）
   }
 
   function _startGitBadgePolling() {
     if (_gitPoll.gateStarted) return;
     _gitPoll.gateStarted = true;
     // ② 可见门控接线
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) _gitPollKick(); });
-    window.addEventListener('focus', function () { _gitPoll.focused = true; _gitPollKick(); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) _gitPollFocusKick(); });
+    window.addEventListener('focus', function () { _gitPoll.focused = true; _gitPollFocusKick(); });
     window.addEventListener('blur', function () { _gitPoll.focused = false; });
     // ① 就绪门控: 壳层揭幕信号（qqq-ui-ready，shell.js 在启动面板撤除时派发）→ 武装
     if (window.__qqqUiShown) { _armGitPoll(); return; }
@@ -254,17 +308,22 @@
     }, 3000);
   }
 
-  // 诊断入口（DevTools）: 轮数 / 最近耗时 / 退避 / 慢仓库名单
+  // 诊断入口（DevTools）: 轮数/踢数/生成进程数/静默档/退避/非仓库名单
   window.qqqGitPoll = {
     stats: function () {
+      var nr = [], now = Date.now();
+      for (var k in _gitPoll.nonRepo) { if (_gitPoll.nonRepo[k] > now) nr.push(k); }
       return {
         armed: _gitPoll.armed, running: _gitPoll.running, rounds: _gitPoll.rounds,
-        errors: _gitPoll.errors, lastDurMs: Math.round(_gitPoll.lastDur),
-        backoffMs: _gitPoll.failBackoff, slowHits: _gitPoll.slowHits,
+        errors: _gitPoll.errors, kicks: _gitPoll.kicks, spawns: _gitPoll.spawns,
+        quiet: _gitPoll.quiet, lastKickSrc: _gitPoll.lastKickSrc, nextDelayMs: _gitPollDelay(),
+        lastDurMs: Math.round(_gitPoll.lastDur), backoffMs: _gitPoll.failBackoff,
+        lastChangeMsAgo: _gitPoll.lastChangeTs ? (now - _gitPoll.lastChangeTs) : -1,
+        nonRepo: nr, slowHits: _gitPoll.slowHits,
         projects: projects.map(function (p) { return p.path; })
       };
     },
-    kick: _gitPollKick
+    kick: function (reason) { _gitPollKick(reason); }
   };
 
   // ---- module-level state (dropdown stays forever until explicit dismiss) ----

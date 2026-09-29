@@ -1520,6 +1520,8 @@
     } catch (err) {
       return { ok: false, error: err };
     }
+    // ★ git badge 活动踢：保存落盘 → 通知 AI 视口刷新未提交数（内部 2.5s 防抖 + 距上轮 15s 最小间隔）
+    try { if (window.qqqGitPoll && window.qqqGitPoll.kick) window.qqqGitPoll.kick('editor-save'); } catch (_) { }
     try { var st3 = await _extStat(fp); if (st3 && st3.isFile) _openedMtime[fp] = { mtimeMs: st3.mtimeMs, size: st3.size }; } catch (_) { }
     if (_conflictState[fp]) _exitConflict(fp);
     return { ok: true, content: val };

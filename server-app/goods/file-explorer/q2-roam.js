@@ -217,6 +217,13 @@ function _vigBump(mod, add) {
 		var pb = parent && parent.qqqideBridge;
 		if (pb && pb.vig && pb.vig.bump) { pb.vig.bump(mod, add); }
 	} catch (e) { }
+	// ★ git badge 活动踢：文件操作（新建/删除/重命名/粘贴 = fc 计数）→ 通知主窗口刷新未提交数
+	try {
+		if (add && add.fc) {
+			var pp = window.parent;
+			if (pp && pp.qqqGitPoll && pp.qqqGitPoll.kick) pp.qqqGitPoll.kick('roam');
+		}
+	} catch (e) { }
 }
 
 // 初始主题同步

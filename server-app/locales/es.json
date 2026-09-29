@@ -1737,10 +1737,6 @@
         "sfxAll": "Todos",
         "sfxNone": "Ninguno",
         "sfxTooltip": "Interruptor de efectos de sonido individuales",
-        "uiZoom": {
-            "label": "Zoom de la interfaz",
-            "desc": "Escala de visualización de toda la interfaz (independiente del zoom del sistema; reducir para pantallas grandes, aumentar si el texto es demasiado pequeño)"
-        },
         "undoMode": {
             "label": "Modo de deshacer del editor",
             "desc": "Granularidad de Ctrl+Z en el editor de código",
@@ -1923,7 +1919,8 @@
                 "status": "Último intento de actualización",
                 "state": "Eventos de la base de datos de estado"
             }
-        }
+        },
+        "uiZoom": {}
     },
     "squad": {
         "tipActive": "Escuadra {sq} — Espacio+{sq} para recuperar (clic para cambiar escuadra)",
@@ -2036,6 +2033,6 @@
     },
     "uiZoom": {
         "toast": "Escala de la interfaz {p}% ({k} para restablecer)",
-        "tip": "Ajustar el zoom de la interfaz"
+        "hotkeys": "{m}= Ampliar · {m}- Reducir · {m}0 Restablecer"
     }
 }

@@ -1752,10 +1752,6 @@
     "sfxAll": "All",
     "sfxNone": "None",
     "sfxTooltip": "逐个音效开关",
-    "uiZoom": {
-      "label": "界面缩放",
-      "desc": "整个界面的显示比例（独立于系统缩放；屏幕大调小，字小了调大）"
-    },
     "undoMode": {
       "label": "编辑器撤销模式",
       "desc": "Ctrl+Z 在代码编辑器中撤销的粒度",
@@ -2049,6 +2045,6 @@
   },
   "uiZoom": {
     "toast": "界面缩放 {p}%（{k} 复位）",
-    "tip": "调整界面缩放"
+    "hotkeys": "{m}= 放大 · {m}- 缩小 · {m}0 复位"
   }
 }

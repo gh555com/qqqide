@@ -130,9 +130,17 @@ export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<nu
 }
 
 // ---- Security hardening ----
+// 权限白名单唯一源：仅「用户手势驱动 + 自有 UI 必需」三项（改这里必须同步铁律 §12.1 + 重新矩阵实测）
+const _PERM_ALLOW = new Set<string>(['clipboard-read', 'clipboard-sanitized-write', 'fullscreen']);
+
 export function hardenSession(): void {
     const ses = session.defaultSession;
-    ses.setPermissionRequestHandler((_wc, _perm, callback) => callback(false));
+    // ★ 权限总闸（双处理器 · 白名单制）：仅放行三项用户手势驱动的自有 UI 权限——clipboard-read /
+    //   clipboard-sanitized-write（编辑框粘贴·复制原生通道）/ fullscreen（播放器全屏）；其余一切
+    //   （摄像头/麦克风/定位/通知/指针锁/录屏…）恒拒。不装处理器 = Electron 默认全部自动放行且零提示；
+    //   全拒则 fullscreen promise 悬空（按钮静默死）——白名单为四阶段矩阵实测后的定案（详铁律 §12.1）。
+    ses.setPermissionRequestHandler((_wc, permission, callback) => callback(_PERM_ALLOW.has(permission)));
+    ses.setPermissionCheckHandler((_wc, permission) => _PERM_ALLOW.has(permission));
 
     ses.webRequest.onHeadersReceived((details, cb) => {
         const headers = details.responseHeaders || {};
@@ -304,10 +312,21 @@ export function registerExitHandlers(
 //   setWindowOpenHandler → 点击 target=_blank 链接 → Electron 默认创建裸 BrowserWindow → 新窗口
 //   will-navigate 拦截 + openUrl（用户看到「外部浏览器 + 空窗口」双开）。
 //   调用时机：main.ts 在 createWindow 之前调用 hardenWebContents(bootConfig)。
+// 外部移交白名单（window.open / 主帧导航的唯一放行面）：仅四种协议交系统浏览器/邮件客户端；
+// file:/data:/自定义协议一律静默拦下——远程内容（iframe 页面）可借 window.open 触发本机协议
+// 处理器（实测 window.open('file:///…') 可达），白名单是唯一边界；应用自身打开本地文件的通道
+// 不经此处（bridge.shell.openExternal → ipc-misc，独立路径，不受影响）。
+function isExternalSchemeAllowed(url: string): boolean {
+    try {
+        const p = new URL(url).protocol;
+        return p === 'http:' || p === 'https:' || p === 'mailto:' || p === 'tel:';
+    } catch { return false; }
+}
+
 export function hardenWebContents(bootConfig: BootConfig): void {
     app.on('web-contents-created', (_e, contents) => {
         contents.setWindowOpenHandler(({ url }) => {
-            openUrl(url);
+            if (isExternalSchemeAllowed(url)) { openUrl(url); }
             return { action: 'deny' };
         });
         contents.on('will-navigate', (e, url) => {
@@ -316,7 +335,7 @@ export function hardenWebContents(bootConfig: BootConfig): void {
                 const allowed = new URL(bootConfig.url);
                 if (target.origin !== allowed.origin && !url.startsWith('file://')) {
                     e.preventDefault();
-                    openUrl(url);
+                    if (isExternalSchemeAllowed(url)) { openUrl(url); }
                 }
             } catch { e.preventDefault(); }
         });

@@ -1737,10 +1737,6 @@
         "sfxAll": "Alle",
         "sfxNone": "Keine",
         "sfxTooltip": "Soundeffekte einzeln ein-/ausschalten",
-        "uiZoom": {
-            "label": "Benutzeroberflächen-Zoom",
-            "desc": "Anzeigemaßstab der gesamten Benutzeroberfläche (unabhängig von der Systemskalierung; bei großen Bildschirmen verringern, bei zu kleiner Schrift vergrößern)"
-        },
         "undoMode": {
             "label": "Rückgängig-Modus im Editor",
             "desc": "Granularität von Strg+Z im Code-Editor",
@@ -1923,7 +1919,8 @@
                 "status": "Letzter Update-Versuch",
                 "state": "Statusbibliotheks-Ereignisse"
             }
-        }
+        },
+        "uiZoom": {}
     },
     "squad": {
         "tipActive": "Trupp {sq} — Leertaste+{sq} zum Aufrufen (klicken, um Trupp zu wechseln)",
@@ -2036,6 +2033,6 @@
     },
     "uiZoom": {
         "toast": "Benutzeroberflächen-Zoom {p}% ({k} zurücksetzen)",
-        "tip": "Benutzeroberflächen-Zoom anpassen"
+        "hotkeys": "{m}= Vergrößern · {m}- Verkleinern · {m}0 Zurücksetzen"
     }
 }

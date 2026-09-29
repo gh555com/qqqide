@@ -1737,10 +1737,6 @@
         "sfxAll": "Tous",
         "sfxNone": "Aucun",
         "sfxTooltip": "Activer/désactiver les effets sonores individuels",
-        "uiZoom": {
-            "label": "Zoom de l'interface",
-            "desc": "Échelle d'affichage de toute l'interface (indépendante du zoom système ; réduisez-la pour les grands écrans, augmentez-la si le texte est trop petit)"
-        },
         "undoMode": {
             "label": "Mode d'annulation de l'éditeur",
             "desc": "Granularité de l'annulation (Ctrl+Z) dans l'éditeur de code",
@@ -1923,7 +1919,8 @@
                 "status": "Dernière tentative de mise à jour",
                 "state": "Événements de la base d'états"
             }
-        }
+        },
+        "uiZoom": {}
     },
     "squad": {
         "tipActive": "Escouade {sq} — Espace+{sq} pour rappeler (cliquer pour changer d'escouade)",
@@ -2036,6 +2033,6 @@
     },
     "uiZoom": {
         "toast": "Zoom de l'interface {p}% ({k} pour réinitialiser)",
-        "tip": "Ajuster le zoom de l'interface"
+        "hotkeys": "{m}= Zoomer · {m}- Dézoomer · {m}0 Réinitialiser"
     }
 }

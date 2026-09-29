@@ -573,7 +573,7 @@
 .qqq-wq-btn.qqq-wq-bad { color: var(--red); }
 .qqq-wq-btn.qqq-wq-dim { color: var(--text-dim); }
 
-/* ── 界面缩放徽章（状态栏恒显按钮；非 100% 高亮）+ 八档弹层（core/ui-zoom.js 唯一渲染机）──
+/* ── 界面缩放徽章（状态栏恒显按钮，位于 CPU 核数右侧；非 100% 高亮）+ 快捷键组 tooltip + 八档弹层（core/ui-zoom.js 唯一渲染机）──
    ★ 类名禁叫 qqq-zoom-btn——已属编辑器字号 ± 按钮（shell-base.css），冲突即双向污染 */
 .qqq-zoom-badge {
   display: inline-flex;
@@ -612,6 +612,24 @@
   box-shadow: 0 6px 22px rgba(0,0,0,0.18);
 }
 .qqq-zoom-pop.qqq-zoom-open { display: grid; }
+/* 快捷键组 tooltip（hover 徽章显示；纯展示不挡指针） */
+.qqq-zoom-tip {
+  display: none;
+  position: fixed;
+  z-index: 9997;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--background-color);
+  color: var(--text-secondary);
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.18);
+}
+.qqq-zoom-tip.qqq-zoom-tip-open { display: block; }
 .qqq-zoom-opt {
   padding: 5px 0;
   border: 1px solid var(--border-color);
@@ -635,9 +653,14 @@
   color: var(--mem-icon);
   white-space: nowrap;
   margin-right: 16px;
-  padding-right: 12px;
-  border-right: 1px solid var(--border-color);
   -webkit-app-region: no-drag;
+}
+
+/* 时间分割线 = 时钟左侧边（2026-09-29 用户定案）：分割线以左依次为 CPU 核数与界面缩放徽章；
+   徽章由 ui-zoom.js 插在 mem 块之后（自然落在 CPU 与分割线之间） */
+#qqq-status-clock {
+  border-left: 1px solid var(--border-color);
+  padding-left: 12px;
 }
 .qqq-mem-block .qqq-cpu-val {
   margin-left: 12px;

@@ -59,11 +59,12 @@ npm ci              # install dev toolchain (esbuild, TypeScript, …)
 npm run build       # bundle shell/*.ts → shell-out/ (esbuild)
 npm test            # unit tests (node:test) — encoding machine, version compare, cmd tokenizer, …
 npm run check       # full local gate: syntax + types + tests
+npm run lint        # ESLint (three rules, warn-only) over the payload
 npm run smoke       # end-to-end smoke: boot → probe → exit (isolated temp data dir, non-zero on failure)
 npm run dev         # dev loop: esbuild watch + dev server + Electron
 ```
 
-`npm test` covers the parts where a bug corrupts data rather than merely misbehaving: the text-encoding machine (BOM / strict UTF-8 / GBK), the Windows command tokenizer (quote splitting / array-spawn routing), semantic version comparison, the `.gitignore` probe parser, and the multi-instance merge rules for window squads. CI (`.github/workflows/static-checks.yml`) runs the syntax gate, `tsc --noEmit` and the test suite on every push. `npm run smoke` boots the real shell against the bundled webapp in an isolated temp data directory, waits for the renderer-ready signal, probes the preload bridge over IPC, then exits with a status code — CI (`.github/workflows/smoke.yml`) runs it on every push as well.
+`npm test` covers the parts where a bug corrupts data rather than merely misbehaving: the text-encoding machine (BOM / strict UTF-8 / GBK), the Windows command tokenizer (quote splitting / array-spawn routing), semantic version comparison, the `.gitignore` probe parser, and the multi-instance merge rules for window squads. CI (`.github/workflows/static-checks.yml`) runs the syntax gate, `tsc --noEmit`, the test suite and the warn-only lint pass on every push. `npm run smoke` boots the real shell against the bundled webapp in an isolated temp data directory, waits for the renderer-ready signal, probes the preload bridge over IPC, then exits with a status code — CI (`.github/workflows/smoke.yml`) runs it on every push as well.
 
 ## What is intentionally not in this repository
 
@@ -90,7 +91,7 @@ Security reports are genuinely welcome: see `SECURITY.md` for the private channe
 
 This is not a community project — we are not accepting external pull requests at this time. Bug reports and security reports are welcome; see `CONTRIBUTING.md`.
 
-New to the terminology (`floor`, `house`, `goods`, `qgs`, …)? See `docs/GLOSSARY.md`.
+New to the terminology (`floor`, `house`, `goods`, `qgs`, …)? See `docs/GLOSSARY.md`. For the module-level map of the payload and its global integration points, see `docs/MODULE-MAP.md`.
 
 ## License
 

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html data-theme="dark">
+<head>
+<meta charset="utf-8">
+<style>
+:root{--cyan:#5ab890;--green:#8fbc5a;--background-color:#1e1e1e;--card-bg:#2a2a2a;--border-color:#333333;--border-strong:#555555;--text-primary:#dcd8d0;--primary-color:#d4a017;}
+body{margin:0}
+</style>
+<link rel="stylesheet" href="core/shell-base.css?x=3">
+</head>
+<body>
+<script>
+window.__ringTest = async function () {
+  await new Promise(r => setTimeout(r, 600));
+  var out = { sheets: [], cases: {} };
+  for (var i = 0; i < document.styleSheets.length; i++) {
+    var s = document.styleSheets[i];
+    var info = { href: s.href || '(inline)', rules: -1 };
+    try { info.rules = s.cssRules.length; } catch (e) { info.rulesErr = String(e).slice(0, 60); }
+    out.sheets.push(info);
+  }
+  var cases = ['qqq-settings-panel','qqq-sg-panel','qqq-tools-menu','qc-pop','qqq-zoom-pop','qqq-notice-panel','qqq-fav-panel','qqq-squad-dropdown','qqq-onl-panel'];
+  for (var j = 0; j < cases.length; j++) {
+    var cls = cases[j];
+    var d = document.createElement('div');
+    d.className = cls;
+    d.style.cssText = 'position:fixed;left:200px;top:100px;width:300px;height:200px;';
+    document.body.appendChild(d);
+    var cs = getComputedStyle(d);
+    out.cases[cls] = {
+      border: cs.borderTopStyle + ' ' + cs.borderTopWidth + ' ' + cs.borderTopColor,
+      layers: (cs.backgroundImage.match(/linear-gradient/g) || []).length,
+      clip: cs.backgroundClip,
+      origin: cs.backgroundOrigin,
+      radius: cs.borderTopLeftRadius
+    };
+    d.remove();
+  }
+  return out;
+};
+</script>
+</body>
+</html>

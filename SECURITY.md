@@ -53,6 +53,10 @@ for untrusted code.
 - `setWindowOpenHandler` denies every new-window request (external links go to
   the user's browser); `will-navigate` is origin-pinned. Both are registered
   before any window exists (`hardenWebContents` in `shell/shutdown.ts`).
+- Page-level permissions (camera, microphone, geolocation, notifications, …) are
+  denied by default via paired session handlers. The only allowlist is three
+  user-gesture-driven capabilities used by first-party UI — clipboard read,
+  clipboard write and fullscreen.
 - The payload is served from the app's own origin/protocol; pages declare a
   Content-Security-Policy meta tag.
 

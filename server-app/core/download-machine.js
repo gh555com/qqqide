@@ -143,6 +143,8 @@
           },
         });
         if (fin) { try { fin({ ok: true, path: entry.filePath || '', name: finalName }); } catch (_) {} }
+        // ★ git badge 活动踢：下载落盘 → 通知 AI 视口刷新未提交数（内部 2.5s 防抖）
+        try { if (window.qqqGitPoll && window.qqqGitPoll.kick) window.qqqGitPoll.kick('download'); } catch (_) {}
       }
       delete _tasks[entry.id];
       return;
@@ -233,6 +235,8 @@
       if (io) io.done(taskId, { summary: _T('shell.dl.saved', '已保存：') + name + '（' + _fmt(bl.size) + '）' });
       _qoast(_T('shell.dl.saved', '已保存：') + name, { type: 'success', duration: 12000 });
       fireFin({ ok: true, blob: true, name: name });
+      // ★ git badge 活动踢：下载落盘 → 通知 AI 视口刷新未提交数
+      try { if (window.qqqGitPoll && window.qqqGitPoll.kick) window.qqqGitPoll.kick('download'); } catch (_) {}
       return { ok: true, blob: true };
     }
   }

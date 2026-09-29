@@ -897,15 +897,18 @@ body {
   color: var(--selection-text, #000000);
 }
 
-/* ── 内嵌弹窗统一金虚线边界块（★ 铁律 §4.1；2026-09-29 用户定案 v3）──
-   暗主题内置面板边界 = 1px 金虚线 + 暖金发光环（var(--primary-color) 系，与 AI 视口「集合描边」同一原语）：
-   border 环位于 padding box 之外——面板内一切子元素（流内 / absolute inset:0）结构上无法遮盖；
-   面板内里配色零改动（底色/卡片保持主题原色）；浅主题不生效（视口描边同为暗色专属，浅色天然可见）。
-   ★ v3 发光环：同规则 box-shadow 合并单值（发光两层 + 投影一层，恒 !important——center/ldr 等面板阴影为
-   内联 cssText，样式表非 important 覆盖不到）；暗底黑投影物理失效——发光恒为暗主题「浮起」语言；色值 =
-   --primary-color 暗主题 #b58900 的发光形态（CSS 无法给 hex 变量加 alpha——改主色须同步此值）。
+/* ── 内嵌弹窗统一边界块（★ 铁律 §4.1；2026-09-29 用户定案 v5）──
+   暗主题一切面板/悬浮弹层边界 = 「鎏金渐变环」——与状态栏内存监控卡（.qqq-mem-hover::before）
+   同一原语同一渐变：linear-gradient(135deg, var(--cyan), transparent 38%, var(--green))。
+   技法 = 双背景层：内层 padding-box 铺面板本色（border 区除外），外层 border-box 铺渐变，
+   1px 透明边框让渐变只在环上露头。★ 为什么不用内存卡的 ::before 覆盖层：面板根多为
+   overflow 滚动容器（center/tier/diag/sg/onl/qc-pop 等），覆盖层会随内容滚动被顶飞；
+   背景随元素绘制永不失位，且不占伪元素（零冲突面）。★ 为什么必须 !important：center/ldr/tier/
+   sg 等底色与边框为内联 cssText，样式表非 important 覆盖不到。白泛光（v4）与虚线金边（v3）
+   已整体废除；AI 视口「集合描边」金虚线不受本块管辖（保持不变）。浅主题不生效（暗色专属）。
    ★ 新增面板必须挂入本块（与滚动条/拖选块同注册表）；组件自注入禁写死本块。
-   不列：下拉浮层（tools/help/recent/qc-pop/zoom-pop——自带边框已定义边界）+ 恒暗定制弹窗（act/悬浮预览/播放器卡）。 */
+   不列：恒暗定制弹窗（act/悬浮预览/播放器卡）+ 确认框类小弹窗（自带描边弹在遮罩上，无边界问题）。 */
+/* A 组：面板本色 = var(--background-color) */
 html[data-theme="dark"] .qqq-settings-panel,
 html[data-theme="dark"] .qqq-center-panel,
 html[data-theme="dark"] .qqq-ldr-panel,
@@ -914,17 +917,34 @@ html[data-theme="dark"] .tier-popup-panel,
 html[data-theme="dark"] .qqq-diag-panel,
 html[data-theme="dark"] .qqq-notice-panel,
 html[data-theme="dark"] .qqq-notice-modal,
-html[data-theme="dark"] .qqq-sg-panel,
 html[data-theme="dark"] .qqq-fav-panel,
-html[data-theme="dark"] .qqq-fav-modal {
-  border: 1px dashed var(--primary-color);
-  /* v3 发光环（详块头注释）——!important 收编内联 cssText 阴影（center/ldr 等），暗主题专属 */
-  box-shadow: 0 0 12px rgba(181, 137, 0, 0.40), 0 0 28px rgba(181, 137, 0, 0.18), 0 8px 32px rgba(0, 0, 0, 0.38) !important;
+html[data-theme="dark"] .qqq-fav-modal,
+html[data-theme="dark"] .qqq-squad-dropdown,
+html[data-theme="dark"] .qqq-phone-dropdown,
+html[data-theme="dark"] .qqq-zoom-pop {
+  border: 1px solid transparent !important;
+  background: linear-gradient(var(--background-color), var(--background-color)) padding-box,
+              linear-gradient(135deg, var(--cyan), transparent 38%, var(--green)) border-box !important;
 }
-/* 基准边框（原内联迁入——内联样式无法被样式表覆盖：浅主题观感不变；暗主题由上方金虚线块覆盖） */
+/* 基准边框（原内联迁入——浅主题观感不变；暗主题由上方「鎏金渐变环」块覆盖） */
 .qqq-sg-panel,
 .qqq-diag-panel {
   border: 1px solid var(--border-color);
+}
+
+/* B 组：面板本色 = var(--card-bg)（sg 面板 + 全部悬浮弹层） */
+html[data-theme="dark"] .qqq-sg-panel,
+html[data-theme="dark"] .qqq-tools-menu,
+html[data-theme="dark"] .qqq-menubar-popup,
+html[data-theme="dark"] .qqq-menubar-recent-dropdown,
+html[data-theme="dark"] .qqq-evangelist-sub,
+html[data-theme="dark"] .qqq-help-menu,
+html[data-theme="dark"] .qqq-help-sub,
+html[data-theme="dark"] .qqq-brand-dropdown,
+html[data-theme="dark"] .qc-pop {
+  border: 1px solid transparent !important;
+  background: linear-gradient(var(--card-bg), var(--card-bg)) padding-box,
+              linear-gradient(135deg, var(--cyan), transparent 38%, var(--green)) border-box !important;
 }
 
 /* ── 在线用户弹窗（shell-statusbar.js 动态创建，2026-09-03 暗色配色修复）──
