@@ -19,7 +19,7 @@
 //   2026-09-22 四次微调（用户定案）: Savor 卡内统计行删除（副行归零 → 主文字真垂直居中）；
 //   统计恒归 hover（本地语言清晰版、悬停即时刷新；「不解释，直接放核心信息」）；面板总宽 -20%（438→350px）。
 //   2026-09-28 改版（用户定案 · 设置本地化）: Cloud Sync 卡保留原尺寸——[↑][↓] 云同步按钮 100% 原样
-//   （老 qqq AQ 语义）；原 "Cloud Sync" 文字位 → 齿轮（22px · 卡片内居中稍偏左 6px · 正常文字色 = 非金色）；点击（或整卡点击）
+//   （老 qqq AQ 语义）；原 "Cloud Sync" 文字位 → 齿轮（20px · 卡片内居中稍偏左 6px · 正常文字色 = 非金色）；点击（或整卡点击）
 //   = 打开「qqq 设置中心」大卡片 = core/qqq-center.js；云同步机械与确认/进度相位在 qqq-center.js
 //   （本文件经 window.qqqCenter.doSync 桥接按钮）。
 //
@@ -132,6 +132,14 @@
       '.qqq-tools-chip { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 3px 8px; font-size: 11px; font-family: inherit; border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; background: var(--base3, #eee8d5); color: var(--text-primary, #586e75); }',
       '.qqq-tools-chip:hover { background: var(--primary-color, #b58900); color: #1e1e1e; }',
       '.qqq-tools-chip svg { display: block; }',
+      // ★ 导出合页指示器（两卡右侧）：竖双方块共缝（合页形）；实心 = 即将被导出的编辑分组；单分组 = 独占态（单块 +4px 向左宽出）
+      '.qqq-tools-hinge { margin-left: auto; display: inline-flex; align-items: center; flex: 0 0 auto; }',
+      '.qqq-tools-hinge i { display: block; width: 7px; height: 13px; box-sizing: border-box; border: 1px solid currentColor; border-radius: 1px; }',
+      '.qqq-tools-hinge i + i { margin-left: -1px; }',
+      '.qqq-tools-hinge.single i { width: 11px; }',
+      '.qqq-tools-hinge i.on { background: currentColor; }',
+      '.qqq-tools-hinge:hover i { border-color: var(--primary-color, #b58900); }',
+      '.qqq-tools-hinge:hover i.on { background: var(--primary-color, #b58900); }',
       '.qqq-tools-soon { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }',
       '.qqq-tools-soon .qqq-tools-chip { border-style: dashed; opacity: .5; padding: 6px 6px; }',
       '.qqq-tools-soon .qqq-tools-chip:hover { opacity: .85; }',
@@ -322,10 +330,171 @@
     return c;
   }
 
+  // ── 导出目标指示机器（合页图标 + 悬停淡紫目标框）──
+  //   与导出本体同源 = window.qqqExport.resolveTarget()（唯一出口；禁第二套扫描）。
+  //   · 合页 = 两卡右侧竖双方块：实心 = 即将被导出的编辑分组（X 区文件分组，左→右）；空心 = 其余
+  //   · 单分组 = 独占态：单块 +4px 向左宽出（7→11px，容器右对齐 → 右缘锚定不动）
+  //   · 点方块 = 聚焦该分组当前标签（直接切换导出目标，不导出、不关面板）
+  //   · 悬停导出卡 = 目标编辑区亮淡紫 3px 虚线框（同 drop-overlay 绘制，仅换色）
+  var _expCards = [];      // [{el, base}] 两张导出卡 + 基础 tooltip
+  var _hingeEls = [];      // 两张卡右侧合页图标
+  var _expOvEl = null;     // 淡紫目标框（懒建；指针穿透）
+  var _expOvShown = false;
+
+  function _expResolve() {
+    try {
+      var x = window.qqqExport;
+      if (x && x.resolveTarget) { return x.resolveTarget() || null; }
+    } catch (e) { /* */ }
+    return null;
+  }
+  function _expFileGroups() {
+    try {
+      var t = window.qqqTabs;
+      if (t && t.getGroups) {
+        return (t.getGroups() || []).filter(function (g) { return g && g.type === 'file'; });
+      }
+    } catch (e) { /* */ }
+    return [];
+  }
+  // 目标编辑器 → 所属文件分组下标（mountEl 归属优先；缺失按路径匹配、活动标签优先；无为 -1）
+  function _expTargetGroupIdx(groups, target) {
+    if (!target || !target.ed) { return -1; }
+    var hold = null;
+    try { hold = (target.mountEl && target.mountEl.closest) ? target.mountEl.closest('.qqq-tab-group') : null; } catch (e) { hold = null; }
+    var i, k;
+    for (i = 0; i < groups.length; i++) { if (hold && groups[i].el === hold) { return i; } }
+    var fp = target.filePath ? String(target.filePath).replace(/\\/g, '/') : '';
+    if (!fp) { return -1; }
+    var anyHit = -1;
+    for (i = 0; i < groups.length; i++) {
+      var tabs = groups[i].tabs || [];
+      for (k = 0; k < tabs.length; k++) {
+        var tb = tabs[k];
+        var tfp = (tb && tb.filePath) ? String(tb.filePath).replace(/\\/g, '/') : '';
+        if (tfp !== fp) { continue; }
+        if (tb.id === groups[i].activeTabId) { return i; }
+        if (anyHit < 0) { anyHit = i; }
+      }
+    }
+    return anyHit;
+  }
+  function _hingeRender(w, n, fillIdx) {
+    while (w.children.length > n) { w.removeChild(w.lastChild); }
+    while (w.children.length < n) { w.appendChild(document.createElement('i')); }
+    for (var i = 0; i < w.children.length; i++) {
+      w.children[i].className = (i === fillIdx) ? 'on' : '';
+    }
+    w.className = 'qqq-tools-hinge' + (n === 1 ? ' single' : '');
+    w.style.display = n > 0 ? '' : 'none';
+  }
+  function _buildHinge() {
+    var w = document.createElement('span');
+    w.className = 'qqq-tools-hinge';
+    w.addEventListener('click', function (e) {
+      e.stopPropagation();   // 不触发整卡导出；面板保持打开
+      var idx = -1;
+      for (var i = 0; i < w.children.length; i++) { if (e.target === w.children[i]) { idx = i; break; } }
+      if (idx >= 0) { _expPickGroup(idx); }
+    });
+    _hingeEls.push(w);
+    return w;
+  }
+  function _expPickGroup(idx) {
+    var groups = _expFileGroups();
+    var g = groups[idx];
+    if (!g) { return; }
+    var tabs = g.tabs || [];
+    var act = null;
+    for (var k = 0; k < tabs.length; k++) { if (tabs[k] && tabs[k].id === g.activeTabId) { act = tabs[k]; break; } }
+    if (!act) { act = tabs[tabs.length - 1] || null; }
+    var pane = act && act.paneEl;
+    var mount = (pane && pane.querySelector) ? pane.querySelector('[data-editor-mount]') : null;
+    var ed = mount && mount._qqqEd;
+    if (ed && ed.focus) { try { ed.focus(); } catch (e) { /* */ } }
+    var re = function () { _refreshExportCards(); if (_expOvShown) { _expOvShow(); } };
+    re();
+    setTimeout(re, 60);   // 焦点事件落定后二次对齐（活跃编辑器机器更新）
+  }
+  function _refreshExportCards() {
+    if (!_expCards.length) { return; }
+    var groups = _expFileGroups();
+    var target = _expResolve();
+    var fillIdx = _expTargetGroupIdx(groups, target);
+    var name = '';
+    if (target && target.filePath) { name = String(target.filePath).replace(/\\/g, '/').split('/').pop() || ''; }
+    var nameLine = name ? ('\n\u25B8 ' + _T('workbench.exportWillExport', '即将导出：{0}', { 0: name })) : '';
+    for (var c = 0; c < _expCards.length; c++) { _expCards[c].el.title = _expCards[c].base + nameLine; }
+    for (var h = 0; h < _hingeEls.length; h++) {
+      _hingeRender(_hingeEls[h], groups.length, fillIdx);
+      _hingeEls[h].title = _i('workbench.exportHingeTip', '实心 = 即将被导出的编辑分组（你最后在看的那个）；空心 = 另一分组。点方块可切换导出目标；悬停导出卡时，目标编辑区会亮起淡紫虚线框。') + nameLine;
+    }
+  }
+  function _expOvEnsure() {
+    if (_expOvEl && _expOvEl.parentNode) { return _expOvEl; }
+    var d = document.createElement('div');
+    d.id = 'qqq-export-target-overlay';
+    d.style.cssText =
+      'position:fixed;display:none;pointer-events:none;z-index:999998;' +
+      'border:3px dashed #b57edc;border-radius:4px;' +
+      'box-shadow:inset 0 0 0 2px rgba(181,126,220,0.12), 0 0 0 2px rgba(181,126,220,0.18);';
+    document.body.appendChild(d);
+    _expOvEl = d;
+    return d;
+  }
+  function _expOvShow() {
+    var t = _expResolve();
+    var m = t && t.mountEl;
+    if (!m || !m.getBoundingClientRect) { _expOvHide(); return; }
+    var r = m.getBoundingClientRect();
+    if (!r || (!r.width && !r.height)) { _expOvHide(); return; }
+    var ov = _expOvEnsure();
+    ov.style.left = r.left + 'px';
+    ov.style.top = r.top + 'px';
+    ov.style.width = r.width + 'px';
+    ov.style.height = r.height + 'px';
+    ov.style.display = 'block';
+    _expOvShown = true;
+  }
+  function _expOvHide() {
+    _expOvShown = false;
+    if (_expOvEl) { try { _expOvEl.style.display = 'none'; } catch (e) { /* */ } }
+  }
+  function _expCardEnter() {
+    _refreshExportCards();
+    _expOvShow();
+  }
+  function _expCardLeave(e) {
+    var rt = e && e.relatedTarget;
+    if (rt) {
+      for (var i = 0; i < _expCards.length; i++) {
+        try { if (_expCards[i].el.contains(rt)) { return; } } catch (err) { /* */ }
+      }
+    }
+    _expOvHide();
+  }
+  function _expWireCard(el, tipKey, tipFb) {
+    var base = _i(tipKey, tipFb);
+    el.title = base;
+    _expCards.push({ el: el, base: base });
+    el.addEventListener('mouseenter', _expCardEnter);
+    el.addEventListener('mouseleave', _expCardLeave);
+  }
+  // 诊断 / 单测入口（只读当前裁决态）
+  function _expState() {
+    var groups = _expFileGroups();
+    var target = _expResolve();
+    return {
+      groups: groups.length,
+      fillIdx: _expTargetGroupIdx(groups, target),
+      filePath: (target && target.filePath) || '',
+      hasMount: !!(target && target.mountEl),
+    };
+  }
+
   function _buildDocCard() {
     var c = document.createElement('div');
     c.className = 'qqq-tools-card';
-    c.title = _i('workbench.exportDocTip', '把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。');
     var h = document.createElement('div');
     h.className = 'qqq-tools-card-head';
     h.appendChild(_ico(_ICO_PEN));
@@ -333,6 +502,7 @@
     t.className = 'qqq-tools-card-title';
     t.textContent = 'export doc';
     h.appendChild(t);
+    h.appendChild(_buildHinge());
     var chips = document.createElement('div');
     chips.className = 'qqq-tools-chips';
     var bRtf = _chip('.doc', _i('export.docFormatRtf', '.doc 文档（兼容 Office 2003, RTF）'));
@@ -343,13 +513,13 @@
     chips.appendChild(bDocx);
     c.appendChild(h);
     c.appendChild(chips);
+    _expWireCard(c, 'workbench.exportDocTip', '把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。');
     return c;
   }
 
   function _buildZipCard() {
     var c = document.createElement('div');
     c.className = 'qqq-tools-card';
-    c.title = _i('workbench.exportZipTip', '把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。');
     c.addEventListener('click', function (e) { e.stopPropagation(); _closeAll(); _callExport('zip'); });
     var h = document.createElement('div');
     h.className = 'qqq-tools-card-head';
@@ -358,13 +528,15 @@
     t.className = 'qqq-tools-card-title';
     t.textContent = 'export Zip';
     h.appendChild(t);
+    h.appendChild(_buildHinge());
     c.appendChild(h);
+    _expWireCard(c, 'workbench.exportZipTip', '把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。');
     return c;
   }
 
   // ★ 云同步 + 设置齿轮卡（2026-09-28 用户定案）：[↑][↓] 云同步按钮 100% 原样；原 "Cloud Sync" 文字位 =
-  //   齿轮（老项目 .icon-all-settings 原版 path；22px · 卡片内居中稍偏左 · 正常文字色 currentColor = 非金色）→ 打开设置中心。
-  var _ICO_GEAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.2-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>';
+  //   齿轮（老项目 .icon-all-settings 原版 path；20px · 卡片内居中稍偏左 · 正常文字色 currentColor = 非金色）→ 打开设置中心。
+  var _ICO_GEAR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.2-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>';
 
   // 桥窗到设置中心（core/qqq-center.js）——未就绪（旧窗口/未刷新）时诚实提示
   function _centerOpen() {
@@ -609,6 +781,8 @@
     grid.appendChild(_buildPlayerCard());
     grid.appendChild(_buildSoonRow());
 
+    _refreshExportCards();   // 合页指示器 + 「即将导出」tooltip（打开即对齐当前目标）
+
     root.appendChild(grid);
     return root;
   }
@@ -644,6 +818,9 @@
     _plRowEl = null;
     _plRowMode = '';
     _plTitleEl = null; _plCountEl = null; _plPrevB = null; _plPlayB = null; _plNextB = null; _plToggleB = null;
+    _expCards = [];
+    _hingeEls = [];
+    _expOvHide();
   }
 
   function _closeAll() {
@@ -680,5 +857,5 @@
     if (_btnEl) { try { _btnEl.classList.toggle('qqq-player-stowed', _playerBadge); } catch (e) { } }
   }
 
-  window.qqqToolsMenu = { mount: mount, close: _closeAll, setPlayerBadge: _setPlayerBadge };
+  window.qqqToolsMenu = { mount: mount, close: _closeAll, setPlayerBadge: _setPlayerBadge, expTarget: _expState };
 })();

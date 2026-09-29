@@ -427,7 +427,7 @@ export function registerEditIpc(): void {
                         let pos = 0;
                         while ((pos = nc.indexOf(nf, pos)) !== -1) { count++; pos++; }
                         if (count > 1) {
-                            multiWarn += ` ⚠️ edit #${plan.match.index + 1}: ${count} candidates found, applied to first (L${plan.match.matchLevel})`;
+                            multiWarn += ` ⚠️ edit #${plan.index + 1}: ${count} candidates found, applied to first (L${plan.match.matchLevel})`;
                         }
                     }
                 }

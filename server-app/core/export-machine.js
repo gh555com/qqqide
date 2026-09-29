@@ -6,6 +6,8 @@
 //   window.qqqExport.doc('rtf' | 'docx')   导出当前文档（.doc RTF / .docx）
 //   window.qqqExport.zip()                 导出当前文档 + 全部引用文件/目录 → zip
 //
+// 目标裁决 = 活跃编辑器机器（qqqEditor.getEditorInstance——最后聚焦/最近激活；禁第二套扫描）
+// ★ 目标裁决唯一出口 = window.qqqExport.resolveTarget()（工作台合页指示器 / 悬停淡紫目标框 / 导出本体三处同源）
 // 链路：活动编辑器 → viewport-machine.prepareExportAnchors（唯一锚点真相）→
 //   按文档顺序切元素（text/media/path）→ bridge.export.* → 壳层 export-service
 //   （ffmpeg 转 PNG / SHA256 / RTF·DOCX·ZIP 生成 / 保存对话框）→ 完成 qoast + Roam 定位
@@ -65,16 +67,33 @@
     try { var b = _b(); if (b && b.shell && b.shell.showItemInFolder) { b.shell.showItemInFolder(p); } } catch (_) { }
   }
 
-  // ── 活动编辑器（焦点优先 → 任一带文件编辑器）──
+  // ── 活动编辑器（焦点 → 活跃编辑器机器 → 兜底）──
+  //   ★ 目标裁决唯一真相 = qqqEditor.getEditorInstance()（活跃编辑器 = 最后聚焦/最近激活的 pane 实例）；
+  //     经 qqq 工作台按钮触发时编辑器已失焦——焦点探测恒空，必须靠活跃机器记住「用户刚在看的文档」；
+  //     禁自取「首个带文件编辑器」（第二套裁决 = 导出错误文档）。
+  function _editorUsable(ed) {
+    try {
+      if (!ed || !ed.getModel) { return false; }
+      var m = ed.getModel();
+      return !!(m && !m.isDisposed());
+    } catch (_) { return false; }
+  }
   function _activeEditor() {
     var monaco = window.monaco;
     var eds = [];
     try { if (monaco && monaco.editor && monaco.editor.getEditors) { eds = monaco.editor.getEditors() || []; } } catch (_) { eds = []; }
+    // ① 真焦点（最直接真相）
     for (var i = 0; i < eds.length; i++) {
       try { if (eds[i].hasTextFocus && eds[i].hasTextFocus()) { return eds[i]; } } catch (_) { }
     }
+    // ② 活跃编辑器机器（最后聚焦/最近激活——失焦后仍准；出口 = editor.js getEditorInstance）
+    try {
+      var ce = (window.qqqEditor && window.qqqEditor.getEditorInstance) ? window.qqqEditor.getEditorInstance() : null;
+      if (ce && ce._qqqFilePath && _editorUsable(ce)) { return ce; }
+    } catch (_) { }
+    // ③ 兜底：任一带文件的存活编辑器
     for (var j = 0; j < eds.length; j++) {
-      try { if (eds[j]._qqqFilePath && eds[j].getModel && eds[j].getModel() && !eds[j].getModel().isDisposed()) { return eds[j]; } } catch (_) { }
+      try { if (eds[j]._qqqFilePath && _editorUsable(eds[j])) { return eds[j]; } } catch (_) { }
     }
     return null;
   }
@@ -93,6 +112,28 @@
       }
     } catch (_) { }
     return '';
+  }
+
+  // ── 目标编辑器所在挂载点（[data-editor-mount]；合页指示器 / 悬停淡紫目标框消费）──
+  function _mountOfEditor(ed) {
+    try {
+      var nodes = document.querySelectorAll('[data-editor-mount]');
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i] && nodes[i]._qqqEd === ed) { return nodes[i]; }
+      }
+    } catch (_) { }
+    return null;
+  }
+
+  // ★ 导出目标裁决唯一出口（工作台合页指示器 / 悬停淡紫目标框 / 导出本体三处同源，禁第二套扫描）
+  //   返回 { ed, filePath, mountEl }；ed = null 表示当前无可导出文档。
+  function resolveTarget() {
+    var ed = _activeEditor();
+    return {
+      ed: ed || null,
+      filePath: ed ? _fileOfEditor(ed) : '',
+      mountEl: ed ? _mountOfEditor(ed) : null,
+    };
   }
 
   // ── 锚点 → 有序元素列表（唯一真相 = viewport-machine 锚点表；本函数只切文本不扫描）──
@@ -181,7 +222,7 @@
       _qoast(_T('export.bridgeMissing', 'qqq: \u5BFC\u51FA\u670D\u52A1\u4E0D\u53EF\u7528\uFF08\u9700\u91CD\u542F\u5B9E\u4F8B\uFF09'), { type: 'error', duration: 9000 });
       return;
     }
-    var ed = _activeEditor();
+    var ed = resolveTarget().ed;   // ★ 唯一出口（与工作台合页指示器 / 淡紫目标框同源）
     if (!ed) {
       _qoast(_T('export.noOpenDocument', 'qqq: \u8BF7\u9009\u62E9\u6253\u5F00\u6EF4\u6587\u6863'), { type: 'warning', duration: 6000 });
       return;
@@ -313,5 +354,8 @@
   window.qqqExport = {
     doc: function (format) { _run('doc', format === 'docx' ? 'docx' : 'rtf'); },
     zip: function () { _run('zip'); },
+    // ★ 目标裁决唯一出口（工作台合页指示器 / 悬停淡紫目标框 / 导出本体三处同源）：
+    //   返回 { ed, filePath, mountEl }；ed = null 表示当前无可导出文档。
+    resolveTarget: resolveTarget,
   };
 })();

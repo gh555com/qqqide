@@ -35,6 +35,7 @@ tmp_dispatch.json
 ci_log*.txt
 ci_log*.zip
 _qqq-app.tar.gz
+ci/tests/.build/
 
 # Python one-liner temp files (accidental commits)
 import sys*
@@ -80,10 +81,6 @@ tools/
 
 
 /论文/video
-
-q47.📎“E__s_wol_py_qqq-shell-v2_127.0.0.1-1781150362854/
-
-
 
 # 敏感配置（含 secrets/token）
 .qqq-rules.txt

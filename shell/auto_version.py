@@ -15,7 +15,6 @@
 #
 # 用法:
 #   python shell/auto_version.py <项目根目录>
-#   python shell/auto_version.py E:/s/wol/py/qqq-shell-v2
 # ============================================================================
 
 import sys

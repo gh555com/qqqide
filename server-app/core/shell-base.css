@@ -708,8 +708,9 @@ body {
 
 /* ── 内嵌弹窗统一滚动条 — qd 现代无轨样式（5px、轨道透明、thumb rgba(128,128,128,.35) 圆角；基准 .tier-popup-panel/本块）──
    ★ 铁律 §4.1：一切内置面板必须挂入本块——漏挂 = 原生滚动条（违反即返工）；含 descendant 式（覆盖面板内嵌滚动区）。
-   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板/内嵌播放器卡（窗内播放器，2026-09-28 挂入）/qqq 设置中心（.qqq-center-panel，2026-09-28 挂入）/设置中心自绘下拉浮层（.qc-pop，2026-09-28 挂入）（语言下拉不滚动，不列）
+   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板/内嵌播放器卡（窗内播放器，2026-09-28 挂入）/qqq 设置中心（.qqq-center-panel，2026-09-28 挂入）/设置中心自绘下拉浮层（.qc-pop，2026-09-28 挂入）/界面缩放弹层（.qqq-zoom-pop，2026-09-29 挂入）（语言下拉不滚动，不列）
    ★ 单源：面板滚动条/拖选样式只认本块——组件内自注入迁入并删源（shell-overlay / tier-popup 已迁） */
+.qqq-zoom-pop::-webkit-scrollbar,
 .qqq-settings-panel::-webkit-scrollbar,
 .qqq-center-panel::-webkit-scrollbar,
 .qqq-center-panel ::-webkit-scrollbar,
@@ -737,6 +738,7 @@ body {
   width: 5px;
   height: 5px;
 }
+.qqq-zoom-pop::-webkit-scrollbar-track,
 .qqq-settings-panel::-webkit-scrollbar-track,
 .qqq-center-panel::-webkit-scrollbar-track,
 .qqq-center-panel ::-webkit-scrollbar-track,
@@ -763,6 +765,7 @@ body {
 #qqq-player-card ::-webkit-scrollbar-track {
   background: transparent;
 }
+.qqq-zoom-pop::-webkit-scrollbar-thumb,
 .qqq-settings-panel::-webkit-scrollbar-thumb,
 .qqq-center-panel::-webkit-scrollbar-thumb,
 .qqq-center-panel ::-webkit-scrollbar-thumb,
@@ -790,6 +793,7 @@ body {
   background: rgba(128, 128, 128, 0.35);
   border-radius: 3px;
 }
+.qqq-zoom-pop::-webkit-scrollbar-thumb:hover,
 .qqq-settings-panel::-webkit-scrollbar-thumb:hover,
 .qqq-center-panel::-webkit-scrollbar-thumb:hover,
 .qqq-center-panel ::-webkit-scrollbar-thumb:hover,
@@ -816,6 +820,7 @@ body {
 #qqq-player-card ::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.55);
 }
+.qqq-zoom-pop::-webkit-scrollbar-corner,
 .qqq-settings-panel::-webkit-scrollbar-corner,
 .qqq-center-panel::-webkit-scrollbar-corner,
 .qqq-center-panel ::-webkit-scrollbar-corner,
@@ -851,6 +856,7 @@ body {
    ① 一切内置面板文字可选中复制（显式覆盖 body 全局 user-select:none）
    ② 拖选色恒 = 传统淡橙 var(--selection-bg)/var(--selection-text)（唯一源 core/qqqide-theme.js）——禁浏览器默认蓝、禁自造色
    ③ 新增面板：带唯一 class → 同时挂入本块与上方滚动条块（双块缺一不可） */
+.qqq-zoom-pop,
 .qqq-settings-panel,
 .qqq-center-panel,
 .qc-pop,
@@ -869,6 +875,7 @@ body {
   -webkit-user-select: text;
   user-select: text;
 }
+.qqq-zoom-pop::selection, .qqq-zoom-pop ::selection,
 .qqq-settings-panel::selection, .qqq-settings-panel ::selection,
 .qqq-center-panel::selection, .qqq-center-panel ::selection,
 .qc-pop::selection, .qc-pop ::selection,
@@ -888,6 +895,36 @@ body {
 #qqq-player-card::selection, #qqq-player-card ::selection {
   background: var(--selection-bg, #e8a090);
   color: var(--selection-text, #000000);
+}
+
+/* ── 内嵌弹窗统一金虚线边界块（★ 铁律 §4.1；2026-09-29 用户定案 v3）──
+   暗主题内置面板边界 = 1px 金虚线 + 暖金发光环（var(--primary-color) 系，与 AI 视口「集合描边」同一原语）：
+   border 环位于 padding box 之外——面板内一切子元素（流内 / absolute inset:0）结构上无法遮盖；
+   面板内里配色零改动（底色/卡片保持主题原色）；浅主题不生效（视口描边同为暗色专属，浅色天然可见）。
+   ★ v3 发光环：同规则 box-shadow 合并单值（发光两层 + 投影一层，恒 !important——center/ldr 等面板阴影为
+   内联 cssText，样式表非 important 覆盖不到）；暗底黑投影物理失效——发光恒为暗主题「浮起」语言；色值 =
+   --primary-color 暗主题 #b58900 的发光形态（CSS 无法给 hex 变量加 alpha——改主色须同步此值）。
+   ★ 新增面板必须挂入本块（与滚动条/拖选块同注册表）；组件自注入禁写死本块。
+   不列：下拉浮层（tools/help/recent/qc-pop/zoom-pop——自带边框已定义边界）+ 恒暗定制弹窗（act/悬浮预览/播放器卡）。 */
+html[data-theme="dark"] .qqq-settings-panel,
+html[data-theme="dark"] .qqq-center-panel,
+html[data-theme="dark"] .qqq-ldr-panel,
+html[data-theme="dark"] .qqq-onl-panel,
+html[data-theme="dark"] .tier-popup-panel,
+html[data-theme="dark"] .qqq-diag-panel,
+html[data-theme="dark"] .qqq-notice-panel,
+html[data-theme="dark"] .qqq-notice-modal,
+html[data-theme="dark"] .qqq-sg-panel,
+html[data-theme="dark"] .qqq-fav-panel,
+html[data-theme="dark"] .qqq-fav-modal {
+  border: 1px dashed var(--primary-color);
+  /* v3 发光环（详块头注释）——!important 收编内联 cssText 阴影（center/ldr 等），暗主题专属 */
+  box-shadow: 0 0 12px rgba(181, 137, 0, 0.40), 0 0 28px rgba(181, 137, 0, 0.18), 0 8px 32px rgba(0, 0, 0, 0.38) !important;
+}
+/* 基准边框（原内联迁入——内联样式无法被样式表覆盖：浅主题观感不变；暗主题由上方金虚线块覆盖） */
+.qqq-sg-panel,
+.qqq-diag-panel {
+  border: 1px solid var(--border-color);
 }
 
 /* ── 在线用户弹窗（shell-statusbar.js 动态创建，2026-09-03 暗色配色修复）──

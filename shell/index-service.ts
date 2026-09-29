@@ -808,7 +808,9 @@ export class IndexService {
     /** Update a single file in the index (called on file save) */
     async updateFile(filePath: string): Promise<void> {
         if (!this.idx || !this.manifest || !this.symbols) return;
-        const relPath = path.relative(this.rootDir, filePath).replace(/\\/g, '/');
+        const root = this.rootDir;
+        if (!root) return;
+        const relPath = path.relative(root, filePath).replace(/\\/g, '/');
 
         // Remove old entries
         if (this.manifest.files[relPath]) {
@@ -849,7 +851,7 @@ export class IndexService {
 
             finalizeIndex(this.idx);
             this._symbolGraphCache = null;  // ★ invalidate on update
-            await saveIndex(this.rootDir, this.idx, this.manifest, this.symbols);
+            await saveIndex(root, this.idx, this.manifest, this.symbols);
         } catch {
             // skip
         }
@@ -858,12 +860,14 @@ export class IndexService {
     /** Remove a file from the index */
     async removeFile(filePath: string): Promise<void> {
         if (!this.idx || !this.manifest || !this.symbols) return;
-        const relPath = path.relative(this.rootDir, filePath).replace(/\\/g, '/');
+        const root = this.rootDir;
+        if (!root) return;
+        const relPath = path.relative(root, filePath).replace(/\\/g, '/');
         removeFromIndex(this.idx, relPath);
         delete this.manifest.files[relPath];
         delete this.symbols[relPath];
         this._symbolGraphCache = null;  // ★ invalidate on remove
-        await saveIndex(this.rootDir, this.idx, this.manifest, this.symbols);
+        await saveIndex(root, this.idx, this.manifest, this.symbols);
     }
 
     /** Main search: BM25 + symbol matching */

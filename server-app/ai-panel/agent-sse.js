@@ -59,7 +59,7 @@ AgentLoop.prototype._processBillingEvent = function (parsed) {
 // ═══ BYOK 记账合成 — 平台无 billing 事件（直连/代理）时从上游 usage 提取「展示口径」 ═══
 //   BYOK 对话零平台计费（wge 恒 0，ge 只算平台通道：识图/代理等）；
 //   tokens / 缓存命中率以上游回传为准（OpenAI 兼容 stream_options.include_usage）：
-//     缓存字段三家形态：prompt_cache_hit_tokens（DeepSeek 系）→ prompt_tokens_details.cached_tokens（OpenAI 系）→ cached_tokens；
+//     缓存字段三家形态：prompt_cache_hit_tokens → prompt_tokens_details.cached_tokens → cached_tokens；
 //     上游未回传 → usage=null → 详单该行显示 '-'（区分「无数据」与「真 0」）。
 //   平台事件已存在（平台通道 / live 模式代理扣费注入）→ 仅补 usage 缺位，绝不覆盖平台口径。
 //   仅 BYOK 通道合成（_floorByokRoute 由 agent-gateway 依响应标记）——平台路径 billing 事件权威，无事件不冒充。

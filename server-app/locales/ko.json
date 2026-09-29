@@ -39,15 +39,11 @@
         "cancelled": "취소됨"
     },
     "shell": {
-        "title": "qqq",
         "menu": {
             "file": "파일",
             "fileNew": "새로 만들기",
-            "fileOpen": "열기",
             "fileNewWindow": "새 창 열기",
             "fileExit": "종료",
-            "tools": "도구",
-            "devTools": "개발자 도구",
             "activate": "활성화",
             "activated": "활성화됨",
             "evangelist": "멘토",
@@ -56,13 +52,11 @@
         "window": {
             "minimize": "최소화",
             "maximize": "최대화",
-            "restore": "복원",
             "close": "닫기"
         },
         "zoom": {
-            "in": "UI 확대 (Ctrl+=)",
-            "out": "UI 축소 (Ctrl+-)",
-            "reset": "줌 초기화"
+            "in": "편집기 글꼴 확대 (Ctrl+Alt+=)",
+            "out": "편집기 글꼴 축소 (Ctrl+Alt+-)"
         },
         "theme": {
             "toggle": "라이트/다크 모드 전환",
@@ -71,11 +65,6 @@
         },
         "lang": {
             "switch": "언어 변경"
-        },
-        "status": {
-            "version": "버전",
-            "engineOn": "엔진 온라인",
-            "engineOff": "엔진 오프라인"
         },
         "output": {
             "title": "출력",
@@ -104,7 +93,6 @@
             "copyFailed": "복사 실패",
             "zoomIn": "확대",
             "zoomOut": "축소",
-            "close": "닫기 (Esc 또는 마우스 우클릭)",
             "resetPosition": "위치 초기화",
             "mem": "메모리",
             "file": "파일",
@@ -191,8 +179,6 @@
             "removeProject": "이 프로젝트 제거",
             "addProject": "AI 뷰포트에 프로젝트 폴더 추가",
             "selectFolder": "AI 뷰포트에 추가할 폴더 선택",
-            "searchFolder": "이 폴더 검색",
-            "recentFolders": "최근 메인 폴더",
             "noRecent": "최근 기록이 없습니다. +를 클릭하여 폴더를 선택하세요.",
             "editx": "파일 편집",
             "openInOs": "시스템에서 열기",
@@ -206,7 +192,6 @@
             "openElsewhere": "⚠️ 이 프로젝트는 다른 창에서 기본 폴더로 이미 열려 있습니다",
             "clearedBusy": "⚠️ 기본 폴더가 다른 창에서 사용 중이므로, AI 뷰포트가 깨끗한 창으로 초기화되었습니다"
         },
-        "dev": "개발자 모드",
         "gaeaHostLoading": "gaea host 로딩 중...",
         "onl": {
             "title": "온라인 인원",
@@ -344,8 +329,7 @@
         "bulb": {
             "left": "왼쪽 AI 패널",
             "right": "오른쪽 AI 패널"
-        },
-        "free": {}
+        }
     },
     "editor": {
         "copyPath": "경로 복사",
@@ -402,15 +386,6 @@
             "closeSave": "저장하고 닫기",
             "closeDiscard": "저장 안 함",
             "closeCancel": "취소"
-        },
-        "contextMenu": {
-            "cut": "잘라내기",
-            "copy": "복사",
-            "paste": "붙여넣기",
-            "selectAll": "전체 선택",
-            "undo": "실행 취소",
-            "redo": "다시 실행",
-            "feedToAi": "📎 AI에 입력"
         },
         "undo": "실행 취소 (Ctrl+Z)",
         "redo": "다시 실행 (Ctrl+Y)",
@@ -594,15 +569,6 @@
         "inputLimitQoastImageSize": "{0}개의 이미지가 단일 파일 크기 제한을 초과하여 건너뛰었습니다",
         "inputSendBusy": "AI가 처리 중입니다. 잠시만 기다려 주세요…",
         "embedImage": "삽입",
-        "level": {
-            "a": "보수적",
-            "1": "경미함",
-            "2": "중간",
-            "3": "지능형",
-            "4": "강력함",
-            "5": "극한",
-            "6": "Pro Max"
-        },
         "floor": "층",
         "house": "건물",
         "room": "방",
@@ -613,33 +579,6 @@
         "confirmConnect": "연결 확인",
         "thinking": "생각 중...",
         "streaming": "생성 중...",
-        "tools": {
-            "readFile": "파일 읽기",
-            "editFile": "파일 편집",
-            "createFile": "파일 생성",
-            "deleteFile": "파일 삭제",
-            "writeFile": "파일 쓰기",
-            "searchText": "텍스트 검색",
-            "findFiles": "파일 찾기",
-            "listFiles": "파일 목록",
-            "getDiagnostics": "진단 정보 가져오기",
-            "runCommand": "명령 실행",
-            "fetchWebpage": "웹 페이지 가져오기",
-            "getVision": "시각 컨텍스트 가져오기"
-        },
-        "output": {
-            "empty": "입력 대기 중...",
-            "compressInProgress": "압축 중...",
-            "compressDone": "압축 완료",
-            "tokenLimit": "토큰 제한 도달"
-        },
-        "rules": {
-            "title": "프로젝트 규칙",
-            "edit": "규칙 편집",
-            "empty": "규칙 없음",
-            "globalRule": "전역 규칙 (.qqq-rules.txt)",
-            "projectRule": "프로젝트 규칙 (project.txt)"
-        },
         "quest": {
             "switch": "프로젝트 전환",
             "newQuest": "새 대화",
@@ -894,11 +833,6 @@
             "inputPlaceholder": "경로 입력 후 Enter로 열기 / Esc로 닫기",
             "noRecent": "최근 파일이 없습니다. 먼저 파일 트리에서 몇 개의 파일을 열어보세요.",
             "noMatch": "일치하는 항목 없음"
-        },
-        "pasteImage": {
-            "saveFailed": "붙여넣은 이미지 저장 실패",
-            "saved": "이미지가 저장되었습니다:",
-            "useCtrlV": "Ctrl+V를 사용하여 이미지를 붙여넣으세요"
         },
         "kmd": {
             "namePh": "이 터미널 이름 지정",
@@ -1302,57 +1236,7 @@
             "macNeedPerm": "macOS에서는 이 프로그램이 작동하려면 '손쉬운 사용' 권한을 수동으로 활성화해야 합니다.\n\n{guide}",
             "macPermGuide": "다음 단계를 따르세요:\n\n1. [시스템 환경설정] 열기\n2. [보안 및 개인정보 보호] 진입\n3. [개인정보 보호] 탭 선택\n4. 왼쪽 목록에서 [손쉬운 사용] 찾기\n5. 오른쪽 목록에서 이 프로그램(또는 이를 실행한 터미널)을 찾아 체크 표시\n\n목록에 이 프로그램이 없으면 + 버튼을 눌러 수동으로 추가하세요.\n\n권한 부여 후 프로그램을 다시 시작하세요.",
             "cfgError": "구성 {op} 중 오류 발생:\n{err}"
-        },
-        "bar": {},
-        "fileExplorer": {},
-        "wysiwyg": {},
-        "rage": {
-            "clip": {},
-            "captain": {},
-            "search": {}
         }
-    },
-    "dialog": {
-        "about": {
-            "title": "qqq 정보",
-            "message": "qqq-shell v2",
-            "detail": "포터블 / Win7+ / 서버 핫 업데이트"
-        },
-        "confirmDelete": {
-            "title": "삭제 확인",
-            "message": "정말로 삭제하시겠습니까? 이 작업은 취소할 수 없습니다."
-        },
-        "unsaved": {
-            "title": "저장되지 않은 변경 사항",
-            "message": "저장되지 않은 변경 사항이 있습니다. 저장 후 닫으시겠습니까?",
-            "save": "저장",
-            "discard": "저장 안 함",
-            "cancel": "취소"
-        }
-    },
-    "shortcuts": {
-        "ctrlS": "저장",
-        "ctrlZ": "실행 취소",
-        "ctrlShiftZ": "다시 실행",
-        "ctrlX": "잘라내기",
-        "ctrlC": "복사",
-        "ctrlV": "붙여넣기",
-        "ctrlA": "전체 선택",
-        "ctrlF": "찾기",
-        "ctrlH": "바꾸기",
-        "ctrlN": "새 파일",
-        "ctrlO": "파일 열기",
-        "ctrlW": "탭 닫기",
-        "ctrlShiftE": "파일 탐색기 표시",
-        "ctrlShiftF": "파일 검색",
-        "ctrlBackslash": "오른쪽으로 분할",
-        "ctrlPlus": "확대",
-        "ctrlMinus": "축소",
-        "ctrl0": "줌 초기화",
-        "f12": "개발자 도구",
-        "f1": "명령 팔레트",
-        "altLeft": "뒤로",
-        "altRight": "앞으로"
     },
     "wings": {
         "redrawing": "다시 그리는 중"
@@ -1693,6 +1577,7 @@
     "prefs": {
         "title": "qqq 설정",
         "wmNeed": "워터마크 맞춤화는 정식 라이선스 기능입니다(활성화 후 사용 가능)",
+        "rnNeed": "사용자 정의 Roam 이름은 정식 버전 기능입니다(활성화 후 사용 가능).",
         "reset": "기본 설정으로 복원",
         "resetTitle": "기본 설정으로 복원",
         "resetMsg": "이 기기의 모든 설정 변경 사항이 삭제됩니다 (클라우드 동기화가 활성화된 경우 클라우드 구성도 함께 삭제됩니다). 계속하시겠습니까?",
@@ -1700,7 +1585,6 @@
         "resetDone": "기본 설정으로 복원됨",
         "needRefresh": "선호도 모듈이 준비되지 않았습니다(창 새로 고침 필요)",
         "g": {
-            "core": "☀️ Kernel 코어",
             "roam": "🛸 Roam 탐색",
             "observe": "👁️ Observer 관찰자",
             "html": "🍌 HTML & 리치 텍스트",
@@ -1709,20 +1593,15 @@
         },
         "lab": {
             "performanceMode": "Performance Mode 성능 모드",
-            "ioEngine": "IO Engine",
-            "transactionLevel": "Transaction Level 트랜잭션 레벨",
             "szDisplayMode": "sz 열 표시",
             "sortBy": "Sort By 정렬",
             "autoWatchChanges": "Auto Watch Changes",
-            "roamAsStartPage": "시작 페이지로 Roam 사용",
             "roamName": "Roam 이름",
             "frameSizeMode": "프레임 크기 모드",
-            "cleanFreak": "Clean Freak 깔끔함 선호",
             "enlargeSmallImages": "작은 이미지 확대",
             "textSlideColorScheme": "텍스트 슬라이드 색상 스키마",
             "textSlideFontSize": "텍스트 슬라이드 글꼴 크기",
             "codelensLevel": "CodeLens 수준",
-            "takeOverCodelensStyle": "CodeLens 스타일 상속",
             "downloadSecurityLevel": "다운로드 보안 수준",
             "forceTextFlowScheme": "Force Text Flow Scheme",
             "autoDownload": "자동 다운로드",
@@ -1731,21 +1610,16 @@
             "removeWatermark": "Remove Watermark 워터마크 제거"
         },
         "desc": {
-            "performanceMode": "☀️ 미리보기 이미지 생성 품질 및 속도 제어",
-            "ioEngine": "☀️ IO 엔진(장단점은 프로젝트 문서 참조: IO_ENGINE_v16)",
-            "transactionLevel": "☀️ 트랜잭션 래핑 수준: 작업의 신뢰성과 속도 결정",
+            "performanceMode": "👁️ 「qqq 프레임」의 렌더링 품질과 속도를 결정합니다",
             "szDisplayMode": "🛸 sz 열에 표시할 내용",
             "sortBy": "🛸 파일 목록 정렬 방식",
             "autoWatchChanges": "🛸 체크 시: 외부 프로그램이 현재 디렉토리를 수정하면 파일 목록 자동 새로 고침; 해제 시: 성능 오버헤드 없음",
-            "roamAsStartPage": "🛸 qqq Roam을 시작 페이지로 사용",
-            "roamName": "🛸 사용자 정의 Roam 이름",
+            "roamName": "🛸 사용자 정의 Roam 이름 (최대 12자, Roam 탭에 표시)",
             "frameSizeMode": "👁️ 미리보기 이미지 크기 모드",
-            "cleanFreak": "👁️ 저장 전 각 암호 아래에 충분한 빈 줄을 자동으로 확보하여 미리보기/내용 겹침 방지",
             "enlargeSmallImages": "👁️ 체크 시: 프레임보다 작은 미리보기 이미지를 확대하여 채움; 해제 시: 원래 크기로 중앙 정렬",
             "textSlideColorScheme": "👁️ 텍스트 슬라이드 배경색",
             "textSlideFontSize": "👁️ 텍스트 슬라이드 글꼴 크기 (1-218)",
             "codelensLevel": "👁️ CodeLens 표시 레벨",
-            "takeOverCodelensStyle": "👁️ CodeLens 스타일 강제 적용: 빨간색, 글꼴 크기 13",
             "downloadSecurityLevel": "🍌 비디오 다운로드 실패 시 더 유연한 전략 시도 가능",
             "forceTextFlowScheme": "🍌 HTML 인코딩 오류 강제 수정(완고한 인코딩 오류 발생 시에만 선택, 레이아웃 정확도 저하)",
             "autoDownload": "🍌 비디오 감지 시 자동 다운로드",
@@ -1757,15 +1631,7 @@
             "performanceMode": {
                 "extreme": "Extreme: 첫 번째 프레임만 유지, 품질 47",
                 "accelerated": "Accelerated: GIF/비디오 최대 앞 2초, 7fps, 품질 47",
-                "optmum": "Optimum: GIF 전체 길이, 비디오 시작/중간/끝 총 4초, 원본 fps, 품질 71"
-            },
-            "ioEngine": {
-                "auto": "v16 auto — 최적 조합",
-                "excludePython": "Exclude Python — 백그라운드 실행, 약 50MB 메모리 절약"
-            },
-            "transactionLevel": {
-                "full": "Full wrap: 모든 시간 소모 작업을 트랜잭션으로 래핑 - 진행률 표시줄, 실행 취소 지원, 예외 롤백",
-                "half": "Half wrap: 경량 작업은 단순 붙여넣기 사용 - 가장 빠른 응답, 진행률 표시줄 없음, 롤백 없음"
+                "optmum": "최적: 짧은 미디어(<10초)는 전체 길이·원본 프레임 레이트; 긴 미디어는 시작/중간/끝 부분 총 4초·15fps; 품질 71"
             },
             "szDisplayMode": {
                 "nothing": "표시 안 함",
@@ -1784,11 +1650,6 @@
                 "small": "소형 프레임: 256×144",
                 "fix": "자동 적응: 이미지 크기에 따라 자동 선택"
             },
-            "cleanFreak": {
-                "never": "자동 정리 안 함(수동 컴파일만)",
-                "add": "추가만: 충분한 빈 줄 확보, 불필요한 빈 줄 삭제 안 함",
-                "addRemove": "엄격 정리: 적절한 빈 줄 유지 — 초과 삭제, 누락 추가"
-            },
             "textSlideColorScheme": {
                 "light": "라이트 모드",
                 "dark": "다크 모드"
@@ -1796,7 +1657,7 @@
             "codelensLevel": {
                 "none": "없음",
                 "open": "열린 파일만",
-                "full": "전체 세트: 폴더/이름 변경/복사/정보 행/qode"
+                "full": "전체: 폴더/이름 변경/복사/정보 줄/qqqide"
             },
             "downloadSecurityLevel": {
                 "l0": "0: 가장 유연함 - 모든 11개 보안 스위치 꺼짐",
@@ -1806,7 +1667,8 @@
             "docExportImageResolution": {
                 "original": "원본 해상도 — 전체 정밀도 유지",
                 "frame": "프레임 해상도 — 파일 크기 감소, 썸네일 완전 일치"
-            }
+            },
+            "uiZoom": {}
         }
     },
     "workbench": {
@@ -1816,6 +1678,8 @@
         "durSs": "{0}초",
         "exportDocTip": "현재 문서를 Word 파일로 내보냅니다. 이미지와 비디오는 이미지로 변환되어 삽입되고, 기타 첨부 파일은 목록으로 생성됩니다. 기본적으로 문서 옆에 저장되며, 동일한 이름의 파일이 이미 존재하는 경우에만 저장 대화 상자가 표시됩니다.",
         "exportZipTip": "현재 문서와 참조된 모든 파일 및 디렉토리를 ZIP으로 압축합니다(디렉토리 구조 유지, 최대 압축). 기본적으로 문서 옆에 저장되며, 동일한 이름의 파일이 이미 존재하는 경우에만 저장 대화 상자가 표시됩니다.",
+        "exportHingeTip": "실선 = 내보낼 편집 그룹(마지막으로 본 그룹); 점선 = 다른 그룹. 사각형을 클릭하여 내보내기 대상을 전환할 수 있습니다. 내보내기 카드를 가리키면 대상 편집 영역에 연한 보라색 점선 테두리가 표시됩니다.",
+        "exportWillExport": "내보낼 항목: {0}",
         "cloudSyncTip": "클라우드 동기화: ↑ 업로드 = 클라우드와 먼저 병합한 후 업로드(양쪽 데이터 모두 보존); ↓ 다운로드 = 클라우드 데이터를 로컬에 병합. Roam 설정, 각 폴더 선호도, 클립보드 기록 포함.",
         "playerTip": "플레이어: 코딩 중에도 음악 감상/영상 시청 가능(재시작 후에도 재생 목록 유지); Roam에서 미디어를 선택하고 우클릭하여 '재생 목록에 추가'하거나 플로팅 레이어에서 팝업 가능; 최소화 = 이 슬롯에서 원격 제어용으로 보관.",
         "playerWinTip": "독립 플로팅 플레이어 창: 항상 위에 표시되는 작은 창 — 다른 프로그램으로 전환해도 보입니다 (↗)",
@@ -1873,6 +1737,10 @@
         "sfxAll": "모두",
         "sfxNone": "없음",
         "sfxTooltip": "개별 효과음 스위치",
+        "uiZoom": {
+            "label": "인터페이스 확대/축소",
+            "desc": "전체 인터페이스의 표시 비율(시스템 확대/축소와 독립적; 화면이 크면 줄이고, 글자가 작으면 늘림)"
+        },
         "undoMode": {
             "label": "편집기 실행 취소 모드",
             "desc": "코드 편집기에서 Ctrl+Z로 실행 취소할 단위",
@@ -2165,5 +2033,9 @@
         "dropDone": "드래그 앤 드롭: {ok} 성공, {fail} 실패",
         "unknownErr": "알 수 없는 오류",
         "unknownErrSave": "알 수 없는 오류 (저장 결과 반환 안 됨)"
+    },
+    "uiZoom": {
+        "toast": "인터페이스 줌 {p}% ({k}로 초기화)",
+        "tip": "인터페이스 확대/축소 조정"
     }
 }

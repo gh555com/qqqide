@@ -86,7 +86,7 @@ window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqqide-roam-changed') {
       _onRoamChanged(e.data.key, e.data.value);
     }
-    // ★ 自动感知外部变化 (q3 autoWatchChanges 移植, 默认开): 主进程检测到外部文件变化 → 刷新当前目录
+    // ★ 自动感知外部变化（设置中心 autoWatchChanges，默认开）: 主进程检测到外部文件变化 → 刷新当前目录
     if (e.data && e.data.type === 'qqqide-roam-fs-changed') {
       reloadCurrentDir();
     }
@@ -238,7 +238,7 @@ var selectedItem = null;
 var lastSelectedItem = null;
 var lnkJumpFromPath = null; // ★ 从 .lnk 快捷方式跳转时记录来源目录，返回时回到这里而非上层
 var sortBy = 'name', _globalSortBy = 'name';
-var szMode = 'size', _globalSzMode = 'size';
+var szMode = 'nothing', _globalSzMode = 'nothing';   // 全局默认 = 设置中心 szDisplayMode（boot 时读取；'nothing'=不显示——老 q3 语义）
 var filesOnTop = false;
 var sidebarW = 160;
 var _qqiq = [];           // [{path,type}]
@@ -263,10 +263,38 @@ function _fineScmSave() {
 	}
 	_roamSet('roam.fineScm', _fineScm);
 }
-function _prefsSave() {
-	_roamSet('roam.prefs', {
-		lineSpacing: _lineSpacing, globalSzMode: _globalSzMode, globalSortBy: _globalSortBy
-	});
+// ★ 设置中心接线（2026-09-29 用户定案 · 老 q3 语义：settings.szDisplayMode/sortBy 即 roam 全局默认）：
+//   sz 显示 / 排序 / 自动感知 = qqq-prefs 消费方；侧栏 S/C/M/N 按钮 = 每目录覆盖 fineScm（覆盖优先）。
+//   qqq-prefs 变更（设置修改 / 云拉取 / 恢复默认 / 激活）→ 实时重算 + 重渲染。
+var _autoWatchEnabled = true;   // 设置中心 autoWatchChanges（默认开）；实际值 boot 时从 qqq-prefs 读取
+function _prefGet(key) {
+	try {
+		if (parent && parent.qqqPrefs && parent.qqqPrefs.get) { return parent.qqqPrefs.get(key); }
+	} catch (e) { }
+	return undefined;
+}
+function _applyCenterPrefs() {
+	var gs = _prefGet('szDisplayMode');
+	var gt = _prefGet('sortBy');
+	var aw = _prefGet('autoWatchChanges');
+	var changed = false;
+	if (gs && gs !== _globalSzMode) { _globalSzMode = gs; changed = true; }
+	if (gt && gt !== _globalSortBy) { _globalSortBy = gt; changed = true; }
+	if (typeof aw === 'boolean' && aw !== _autoWatchEnabled) {
+		_autoWatchEnabled = aw;
+		_syncWatch();
+	}
+	if (changed) {
+		applyFineScm(currentPath);
+		if (currentPath) reloadCurrentDir();
+	}
+}
+// 自动感知 watcher 同步：开 → 绑当前目录；关 → 清 watcher（主进程 _watchDir('') = 释放绑定，零性能开销）
+function _syncWatch() {
+	try {
+		if (_autoWatchEnabled) { if (currentPath) rpc('roam.watchDir', currentPath).catch(function () { }); }
+		else { rpc('roam.watchDir', '').catch(function () { }); }
+	} catch (e) { }
 }
 function _applyLineSpacing() {
 	try { document.documentElement.style.setProperty('--roam-ls', _lineSpacing + 'px'); } catch(e) {}
@@ -285,10 +313,9 @@ function _onRoamChanged(key, value) {
 		case 'roam.pinnedDirs': if (Array.isArray(value)) _pinnedDirs = value; break;
 		case 'roam.cmdHistory': if (value && typeof value === 'object') _cmdHistory = value; break;
 		case 'roam.prefs':
+			// 全局 sz/排序 已迁设置中心（qqq-prefs）——roam.prefs 仅剩 lineSpacing
 			if (value && typeof value === 'object') {
 				if (typeof value.lineSpacing === 'number') _lineSpacing = value.lineSpacing;
-				if (value.globalSzMode) _globalSzMode = value.globalSzMode;
-				if (value.globalSortBy) _globalSortBy = value.globalSortBy;
 			}
 			_applyLineSpacing();
 			break;
@@ -322,9 +349,9 @@ function fineScmSet(p, sz, so, fot) {
 // Apply fine-grained SCM for current folder
 function applyFineScm(p) {
 	var f = fineScmGet(p);
-	// Effective: fine > global > default
+	// Effective: fine（每目录覆盖） > global（设置中心全局默认） > 出厂默认
+	//   'nothing' = 真正不显示（老 q3 语义——全局默认即可为「不显示」；侧栏 S/C/M 按钮可按目录覆盖）
 	szMode = f.szMode || _globalSzMode;
-	if (szMode === 'nothing') szMode = 'size'; // never truly nothing
 	sortBy = f.sortBy || _globalSortBy;
 	filesOnTop = !!f.filesOnTop;
 	updateSCMButtons();
@@ -499,10 +526,10 @@ function navigateTo(p, opts) {
 	opts = opts || {};
 	// ★ 正常导航时清除 lnkJumpFromPath（lnk 跳转在调用后重新设置）
 	if (!opts.keepLnkJump) lnkJumpFromPath = null;
-	// ★ 自动感知 (q3 autoWatchChanges 移植, 默认开): 主进程 fs.watch 当前目录, 外部变化自动刷新
-	//   fire-and-forget — RPC 失败静默降级为不自动感知, 不阻塞导航
-	rpc('roam.watchDir', p).catch(function(){});
 	currentPath = p;
+	// ★ 自动感知（设置中心 autoWatchChanges，默认开）：开 → 主进程 fs.watch 当前目录（外部变化自动刷新）；
+	//   关 → 释放 watcher（零性能开销）。fire-and-forget — RPC 失败静默降级，不阻塞导航。
+	_syncWatch();
 	applyFineScm(p);
 	addressInput.value = p;
 	updateAddressDisplay(p);

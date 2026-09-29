@@ -40,6 +40,18 @@
   // ── 设置定义（元数据）── 默认值从 window.QQQ_DEFAULTS 读取 ──
   var _D = window.qqqideDefaults || {};
   var SETTINGS_DEF = [
+    // ★ 界面缩放（2026-09-29 用户定案：窗口/界面级设置归右上角设置面板；值源 = qqq-prefs 'uiZoom'，禁落 qqq.settings）
+    {
+      key: 'uiZoom',
+      label: '界面缩放',
+      labelKey: 'settings.uiZoom.label',
+      desc: '整个界面的显示比例（独立于系统缩放；屏幕大调小，字小了调大）',
+      descKey: 'settings.uiZoom.desc',
+      type: 'slider-stepped',
+      tab: 'general',
+      defaultValue: '100',
+      stops: ['80', '90', '100', '110', '125', '150', '175', '200']
+    },
     {
       key: 'editor.undoMode',
       label: '编辑器撤销模式',
@@ -160,8 +172,22 @@
     return _qgsHandle;
   }
 
+  // ★ 界面缩放值桥（值源 = qqq-prefs 'uiZoom'；未就绪/异常回落 '100'；档位外归 100）
+  var UI_ZOOM_STOPS = ['80', '90', '100', '110', '125', '150', '175', '200'];
+  function _uiZoomGet() {
+    try {
+      if (window.qqqPrefs && window.qqqPrefs.get) {
+        var v = String(window.qqqPrefs.get('uiZoom'));
+        if (UI_ZOOM_STOPS.indexOf(v) >= 0) { return v; }
+      }
+    } catch (e) { /* ignore */ }
+    return '100';
+  }
+
   // ── 读取 ──
   function get(key, fallback) {
+    // ★ 界面缩放：值源 = qqq-prefs（跨设备云同步 + 壳层快捷键回写共用同一存储）
+    if (key === 'uiZoom') { return _uiZoomGet(); }
     if (key in _cache) return _cache[key];
     // 查默认值
     for (var i = 0; i < SETTINGS_DEF.length; i++) {
@@ -174,6 +200,14 @@
 
   // ── 写入 ──
   function set(key, value) {
+    // ★ 界面缩放：唯一存储 = qqq-prefs（其 set 链自带全窗热应用：core/ui-zoom.js 订阅 → 壳层 zoom）
+    if (key === 'uiZoom') {
+      var _zOld = _uiZoomGet();
+      var _zOk = false;
+      try { if (window.qqqPrefs && window.qqqPrefs.set) { _zOk = window.qqqPrefs.set('uiZoom', String(value)); } } catch (e) { _zOk = false; }
+      if (_zOk !== false) { _fireListeners(key, String(value), _zOld); }
+      return;
+    }
     var old = _cache[key];
     _cache[key] = value;
     // 异步持久化（★ 2026-09-17: 补 catch —— 旧实现 promise rejection 裸奔进控制台）
@@ -253,6 +287,7 @@
     var h = _qgs();
     if (!h) { _scheduleLoadRetry(); return; }
     for (var i = 0; i < SETTINGS_DEF.length; i++) {
+      if (SETTINGS_DEF[i].key === 'uiZoom') { continue; }   // ★ 值源 = qqq-prefs（qqq.settings 无此键）
       (function (k) {
         try {
           h.get(k).then(function (v) {
@@ -1062,6 +1097,14 @@
     // 桌面快捷方式：初始同步 + 变更监听
     setTimeout(function () { _syncDesktopShortcut(); }, 2000);
     onChange('desktop.shortcut', function () { _syncDesktopShortcut(); });
+    // ★ 界面缩放外部变更（壳层快捷键 / 云拉取 / 恢复默认 / 状态栏徽章）→ 打开中的面板行即时刷新
+    try {
+      if (window.qqqPrefs && window.qqqPrefs.onChange) {
+        window.qqqPrefs.onChange(function (key) {
+          if (key === null || key === 'uiZoom') { _rerenderIfOpen(); }
+        });
+      }
+    } catch (e) { /* ignore */ }
     // ★ 语言切换 → 打开中的面板/弹窗即时按新语言重渲染（i18n.setLang 广播 qqq-lang-change）
     window.addEventListener('qqq-lang-change', function () {
       if (_$overlay && _$overlay.style.display !== 'none') _renderPanel();

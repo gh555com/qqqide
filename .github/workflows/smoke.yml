@@ -1,0 +1,62 @@
+# Smoke — 端到端冒烟（起 → 探 → 退）
+# 设计：windows-2022——与产品平台一致（GitHub 托管 runner 有交互式会话，可跑 Electron GUI）。
+# 步骤：npm ci（含 Electron 二进制）→ npm run build → node ci/smoke/run-smoke.js
+#   临时数据根 + OS 级状态全隔离（QQQIDE_SMOKE_* 环境变量 + shell/portable-paths.ts 重定向），
+#   不触碰任何真实用户数据；CI 设备不写生产遥测（main.ts 冒烟门控）。
+# 失败时上传 smoke-report.json（逐项探针 + 环境矩阵）。
+name: Smoke (end-to-end boot)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'server-app/**'
+      - 'shell/**'
+      - 'shell-build/**'
+      - 'ci/**'
+      - 'package.json'
+      - '.github/workflows/smoke.yml'
+  pull_request:
+    paths:
+      - 'server-app/**'
+      - 'shell/**'
+      - 'shell-build/**'
+      - 'ci/**'
+      - 'package.json'
+      - '.github/workflows/smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Boot → probe → exit
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: npm ci（需要 Electron 二进制——冒烟要真启动）
+        run: npm ci --no-audit --no-fund
+
+      - name: npm run build（shell esbuild）
+        run: npm run build
+
+      - name: 冒烟（起 → 探 → 退）
+        run: node ci/smoke/run-smoke.js --report=smoke-report.json
+
+      - name: 上传报告（失败时）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: smoke-report.json
+          if-no-files-found: ignore

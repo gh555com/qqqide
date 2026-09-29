@@ -26,7 +26,9 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 	});
 });
 
-// ---- SCM buttons: toggle (re-click = cancel = default) ----
+// ---- SCM buttons（每目录覆盖 fineScm；再点激活项 = 取消覆盖 → 回退设置中心全局默认——老 q3 语义）----
+//   ★ 2026-09-29：全局默认源 = qqq-prefs（szDisplayMode/sortBy）；每次只写自己那一维度的覆盖，
+//     另一维度维持既有覆盖态（禁把「生效值」误存成覆盖——旧实现切排序会顺带物化 sz 覆盖）。
 function updateSCMButtons() {
 	document.querySelectorAll('#szModeGroup .scm-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.mode === szMode); });
 	document.querySelectorAll('#sortByGroup .scm-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.sort === sortBy); });
@@ -34,27 +36,32 @@ function updateSCMButtons() {
 }
 document.querySelectorAll('#szModeGroup .scm-btn').forEach(function(btn) {
 	btn.addEventListener('click', function() {
+		if (!currentPath) return;
 		var m = btn.dataset.mode;
-		szMode = (szMode === m) ? 'nothing' : m;
-		updateSCMButtons();
-		fineScmSet(currentPath, szMode === 'nothing' ? null : szMode, sortBy === 'name' ? null : sortBy, filesOnTop);
-		if (currentPath) reloadCurrentDir();
+		var f = fineScmGet(currentPath);
+		var nextSz = (szMode === m) ? null : m;   // null = 取消覆盖 → 回退全局
+		fineScmSet(currentPath, nextSz, f.sortBy, f.filesOnTop);
+		applyFineScm(currentPath);
+		reloadCurrentDir();
 	});
 });
 document.querySelectorAll('#sortByGroup .scm-btn').forEach(function(btn) {
 	btn.addEventListener('click', function() {
+		if (!currentPath) return;
 		var s = btn.dataset.sort;
-		sortBy = (sortBy === s) ? 'name' : s;
-		updateSCMButtons();
-		fineScmSet(currentPath, szMode === 'nothing' ? null : szMode, sortBy === 'name' ? null : sortBy, filesOnTop);
-		if (currentPath) reloadCurrentDir();
+		var f = fineScmGet(currentPath);
+		var nextSo = (sortBy === s) ? null : s;   // null = 取消覆盖 → 回退全局
+		fineScmSet(currentPath, f.szMode, nextSo, f.filesOnTop);
+		applyFineScm(currentPath);
+		reloadCurrentDir();
 	});
 });
 document.getElementById('filesOnTopBtn').addEventListener('click', function() {
-	filesOnTop = !filesOnTop;
-	updateSCMButtons();
-	fineScmSet(currentPath, szMode === 'nothing' ? null : szMode, sortBy === 'name' ? null : sortBy, filesOnTop);
-	if (currentPath) reloadCurrentDir();
+	if (!currentPath) return;
+	var f = fineScmGet(currentPath);
+	fineScmSet(currentPath, f.szMode, f.sortBy, !filesOnTop);
+	applyFineScm(currentPath);
+	reloadCurrentDir();
 });
 
 // ---- Filter ----

@@ -28,7 +28,7 @@
 // IPC：qqqide:syspy:check / qqqide:syspy:apply → preload bridge.sysPy
 
 import { ipcMain } from 'electron';
-import { spawn } from 'child_process';
+import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -497,7 +497,7 @@ interface PsResult {
 
 function runPs(script: string, env: Record<string, string>, timeoutMs: number): Promise<PsResult> {
     return new Promise((resolve) => {
-        let child: ReturnType<typeof spawn>;
+        let child: ChildProcessWithoutNullStreams;
         try {
             child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '-'], {
                 env: { ...process.env, ...env } as NodeJS.ProcessEnv,
@@ -631,7 +631,7 @@ interface CmdResult { code: number | null; out: string; err: string; }
 
 function runCmd(bin: string, args: string[], timeoutMs: number): Promise<CmdResult> {
     return new Promise((resolve) => {
-        let child: ReturnType<typeof spawn>;
+        let child: ChildProcessWithoutNullStreams;
         try { child = spawn(bin, args, { windowsHide: true }); }
         catch (e: any) { resolve({ code: -1, out: '', err: String((e && e.message) || e) }); return; }
         let out = ''; let err = ''; let settled = false;

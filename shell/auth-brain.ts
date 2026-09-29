@@ -12,9 +12,10 @@
 //   + OS 协议回调 + 主进程轮询兜底。
 // ============================================================================
 
-import { net, safeStorage, BrowserWindow, ipcMain, shell } from 'electron';
+import { safeStorage, BrowserWindow, ipcMain, shell } from 'electron';
 import { waitMainWindowShown } from './ipc-secure';
 import * as crypto from 'crypto';
+import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import { openUrl } from './browser-launcher';
@@ -72,6 +73,25 @@ const LOGIN_URL = 'https://gh555.com/login';
 const BALANCE_INTERVAL = 60_000;
 const LV_INTERVAL = 60_000;
 const SESSION_POLL_MS = 3_000;
+
+// ★ HTTP JSON 拉取（GET）：Electron 22.3.27 的 net 模块无 fetch（该版源码仅 request/isOnline）——
+//   统一走 Node https（wq-ping 同款模式）；返回形状对齐 fetch 最小面 { ok, status, data }。
+function _apiGetJson(url: string, init?: { headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; data: any }> {
+    return new Promise((resolve, reject) => {
+        const req = https.get(url, { headers: init?.headers, timeout: 15_000 }, (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (c: Buffer) => chunks.push(c));
+            res.on('end', () => {
+                const status = res.statusCode || 0;
+                let data: any = null;
+                try { data = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { /* 非 JSON → data=null */ }
+                resolve({ ok: status >= 200 && status < 300, status, data });
+            });
+        });
+        req.on('timeout', () => { req.destroy(new Error('timeout')); });
+        req.on('error', reject);
+    });
+}
 
 // ═══ 实现 ═══
 
@@ -234,12 +254,12 @@ class AuthBrain {
             try {
                 // ★ F39: 与登录页同域（https://gh555.com/api）——客户能打开登录页就能 poll，
                 //   不再依赖 direct-cn 灰云域名（客户网络环境可能直连不通）。
-                const resp = await net.fetch(`https://gh555.com/api/gaea/qqq/auth/poll?session=${sid}`);
+                const resp = await _apiGetJson(`https://gh555.com/api/gaea/qqq/auth/poll?session=${sid}`);
                 if (!resp.ok) {
                     console.warn('[auth-brain] poll HTTP ' + resp.status + ' for session=' + sid.slice(0, 8));
                     return;
                 }
-                const data = await resp.json();
+                const data = resp.data;
                 if (data?.ok && data.token) {
                     console.log('[auth-brain] poll got token, phone=' + (data.phone || '').slice(-4));
                     await this.setAuth(data.token, data.phone, data.country_iso2, data.purchased);
@@ -282,7 +302,7 @@ class AuthBrain {
             const payload = {
                 token: this.authData.token,
                 phone: this.authData.phone,
-                country_iso2: this.authData.countryIso2,
+                country_iso2: this.authData.country_iso2,
                 purchased: this.authData.purchased,
                 device_name: this.authData.device_name,
             };
@@ -318,11 +338,11 @@ class AuthBrain {
     private async _fetchBalance(): Promise<void> {
         if (!this.authData?.token) return;
         try {
-            const resp = await net.fetch(API_BASE + '/wallet/balance', {
+            const resp = await _apiGetJson(API_BASE + '/wallet/balance', {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
             });
             if (resp.ok) {
-                const data = await resp.json();
+                const data = resp.data;
                 if (data?.ok && typeof data.balance !== 'undefined') {
                     this.balanceGe = data.balance;
                     this._broadcast('balance-fetch');
@@ -336,11 +356,11 @@ class AuthBrain {
     private async _fetchLv(): Promise<void> {
         if (!this.authData?.token) return;
         try {
-            const resp = await net.fetch(API_BASE + '/qqq/lv', {
+            const resp = await _apiGetJson(API_BASE + '/qqq/lv', {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
             });
             if (resp.ok) {
-                const data = await resp.json();
+                const data = resp.data;
                 if (data?.ok) {
                     this.lvData = {
                         level: data.level,
@@ -353,8 +373,8 @@ class AuthBrain {
                         last_season_level: data.last_season_level ?? 0,
                         country_iso2: data.country_iso2,
                     };
-                    if (data.country_iso2 && this.authData && !this.authData.countryIso2) {
-                        this.authData.countryIso2 = data.country_iso2;
+                    if (data.country_iso2 && this.authData && !this.authData.country_iso2) {
+                        this.authData.country_iso2 = data.country_iso2;
                         await this._persist();
                     }
                     this._broadcast('lv-fetch');

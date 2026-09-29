@@ -4,7 +4,7 @@
 // window-manager.ts — 窗口创建 / 缩放 / 边界持久化 / 全局快捷键
 // ============================================================================
 
-import { BrowserWindow, screen, globalShortcut } from 'electron';
+import { app, BrowserWindow, screen, globalShortcut, WebContents } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -17,7 +17,8 @@ import { SimpleWebSocket } from './cdp-sniffer';import { crashNetLog, crashNetS
 import { DownloadService } from './download-service';
 import { StateStore } from './state-sqlite';
 import { wsStateGetKey, wsStateSetKey } from './ipc-ws-state';
-import { extractFlags } from './boot';
+import { extractFlags } from './boot';
+import { getUiZoom, addUiZoomListener, handleUiZoomShortcut } from './ui-zoom';
 
 // ── 控制台全量 buffer（所有窗口共用，供 DevTools 复制/另存为按钮） ──
 export const _consoleBuffer: string[] = [];
@@ -49,12 +50,35 @@ export const WING_WIDTH = 389;
 export const CENTER_MIN_W = 1100;
 export const CENTER_MIN_H = 800;
 
-/** Update window minimum size based on which wings are open */
+/** Update window minimum size based on which wings are open — ★ 随界面缩放等比（封顶工作区） */
 export function updateWingMinSize(win: BrowserWindow, leftOpen: boolean, rightOpen: boolean): void {
     if (!win || win.isDestroyed()) return;
+    const z = getUiZoom();
     const wingW = (leftOpen ? WING_WIDTH : 0) + (rightOpen ? WING_WIDTH : 0);
-    win.setMinimumSize(CENTER_MIN_W + wingW, CENTER_MIN_H);
+    let minW = Math.round((CENTER_MIN_W + wingW) * z);
+    let minH = Math.round(CENTER_MIN_H * z);
+    try {
+        const wa = screen.getDisplayMatching(win.getBounds()).workAreaSize;
+        if (wa && wa.width > 0) { minW = Math.min(minW, wa.width); }
+        if (wa && wa.height > 0) { minH = Math.min(minH, wa.height); }
+    } catch { /* ignore */ }
+    win.setMinimumSize(minW, minH);
 }
+
+/** 界面缩放变更 → 全部受管窗口最小尺寸等比刷新（现尺寸低于新下限则即时补足） */
+export function refreshAllWingMinSizes(): void {
+    for (const [id, w] of _windowWingMap) {
+        const win = BrowserWindow.fromId(id);
+        if (!win || win.isDestroyed()) continue;
+        updateWingMinSize(win, w.left, w.right);
+        try {
+            const [mw, mh] = win.getMinimumSize();
+            const [cw, ch] = win.getSize();
+            if (cw < mw || ch < mh) { win.setSize(Math.max(cw, mw), Math.max(ch, mh)); }
+        } catch { /* ignore */ }
+    }
+}
+addUiZoomListener(refreshAllWingMinSizes);
 
 // ---- Wing open/closed state — 窗口记忆, 与 bounds 同链双写 (2026-08-09) ----
 // ★ 翼开关状态从项目级 only.sq3 升入窗口记忆: 双写 global.sq3 wings_bulbs + OS 级 ws.sq3 windowWings
@@ -117,7 +141,8 @@ export async function restoreWindowBounds(win: BrowserWindow, stateStore: StateS
         if (typeof v.w === 'number' && typeof v.h === 'number' && v.w > 0 && v.h > 0) {
             let w = v.w;
             const wingW = (wings.left ? WING_WIDTH : 0) + (wings.right ? WING_WIDTH : 0);
-            if (wingW > 0 && w < CENTER_MIN_W + wingW) w = CENTER_MIN_W + wingW;
+            const minWz = Math.round((CENTER_MIN_W + wingW) * getUiZoom());
+            if (wingW > 0 && w < minWz) w = minWz;
             const displays = screen.getAllDisplays();
             const anyOverlap = displays.some(d => {
                 const dx = d.bounds.x, dy = d.bounds.y, dw = d.bounds.width, dh = d.bounds.height;
@@ -330,12 +355,73 @@ function _saveOpenWindowsNow(closingWin: BrowserWindow, stateStore: StateStore):
         // ★ 空列表也写 (清陈旧恢复集 — 最后一个窗口无项目时, 绝不复活旧窗口)
         _persistOpenWindows(list, stateStore);
     } catch { /* ignore */ }
-}
-
-// ★ 关闭确认旁路：菜单退出时设置，跳过 Alt+F4 确认框
-export function bypassCloseConfirm(win: BrowserWindow): void {
-    (win as any).__qqqCloseBypass = true;
-}
+}// ★ 关闭确认旁路：菜单退出时设置，跳过 Alt+F4 确认框
+export function bypassCloseConfirm(win: BrowserWindow): void {
+    (win as any).__qqqCloseBypass = true;
+}
+
+// ---- 缩放快捷键（附属窗口统一挂载）----
+// 主窗口（createWindow）自带内联挂载；时间线 diff / git diff / 播放器窗口由本钩子覆盖——
+// 一键组：界面缩放 Ctrl/Cmd + = / - / 0 ＋ 编辑器字号 Ctrl/Cmd + Alt + = / - / 0（两组互斥）
+// 事件类型双收 keyDown|rawKeyDown（跨键类别防御）；id 集幂等防双挂
+let _zoomKeysStateStore: StateStore | null = null;
+const _zoomKeysWiredIds = new Set<number>();
+
+export function attachZoomKeys(win: BrowserWindow, stateStore: StateStore | null): void {
+    if (!win || win.isDestroyed()) { return; }
+    const wid = win.id;
+    if (_zoomKeysWiredIds.has(wid)) { return; }
+    _zoomKeysWiredIds.add(wid);
+    win.once('closed', () => { try { _zoomKeysWiredIds.delete(wid); } catch { /* ignore */ } });
+
+    // ① 界面缩放（Ctrl/Cmd + = / - / 0）
+    win.webContents.on('before-input-event', (ev, input) => {
+        if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
+        const mod = input.control || input.meta;
+        if (!mod || input.alt) { return; }
+        const k = input.key;
+        if (k === '=' || k === '+' || k === '-' || k === '_' || k === '0') {
+            ev.preventDefault();
+            handleUiZoomShortcut(k === '0' ? 'reset' : ((k === '=' || k === '+') ? 'in' : 'out'), win.webContents.id);
+        }
+    });
+
+    // ② 编辑器字号（Ctrl/Cmd + Alt + = / - / 0）
+    win.webContents.on('before-input-event', (ev, input) => {
+        if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
+        const ctrl = input.control || input.meta;
+        if (!ctrl || !input.alt) { return; }
+        const k = input.key;
+        if (k === '=' || k === '+') {
+            ev.preventDefault();
+            editorFontSize = Math.min(128, editorFontSize + 1);
+            if (stateStore) { saveEditorFontSize(stateStore); }
+            broadcastEditorFontSize(editorFontSize);
+        } else if (k === '-' || k === '_') {
+            ev.preventDefault();
+            editorFontSize = Math.max(1, editorFontSize - 1);
+            if (stateStore) { saveEditorFontSize(stateStore); }
+            broadcastEditorFontSize(editorFontSize);
+        } else if (k === '0') {
+            ev.preventDefault();
+            editorFontSize = 13;
+            if (stateStore) { saveEditorFontSize(stateStore); }
+            broadcastEditorFontSize(editorFontSize);
+        }
+    });
+}
+
+// 附属窗口捕获：browser-window-created 全量注册（setImmediate 延迟判断——主窗口标记于构造后同步写入）
+app.on('browser-window-created', (_e, w) => {
+    setImmediate(() => {
+        try {
+            const w2 = w as unknown as BrowserWindow;
+            if (!w2 || w2.isDestroyed()) { return; }
+            if ((w2 as any).__qqqMainWindow) { return; }
+            attachZoomKeys(w2, _zoomKeysStateStore);
+        } catch { /* ignore */ }
+    });
+});
 
 // ---- createWindow ----export function createWindow(
     portableRoot: string,
@@ -367,6 +453,10 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
             ],
         },
     });
+
+    // ★ 主窗口标记 + stateStore 存根：附属窗口缩放快捷键钩子据此跳过（防双挂）
+    (win as any).__qqqMainWindow = true;
+    _zoomKeysStateStore = stateStore;
 
     // ★ 窗口编队认领: 创建即按序认领最近空闲槽位 (1 2 q w a s z x), 无空闲=null (>8窗口)
     claimSquad(win);
@@ -484,10 +574,14 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
         try { console.error('[window-manager] renderer unresponsive win=' + win.id); } catch (_) { }
     });
 
+    // ★ win.id 先在窗口存活期捕获（2026-09-29 冒烟实测）: 'closed' 触发时窗口已销毁——
+    //   win.id 取值抛 'Object has been destroyed'（全局兑底会吞但会跳过本处理器全部
+    //   后续清理；app.exit/快速退出路径下异常还沿同步栈外溢）。处理器内禁用 win.id。
+    const winId = win.id;
     win.on('closed', () => {
         (win as any).__qqqConfirmArmed = false;
         // ★ 半销毁标记清除 (2026-08-16): 窗口彻底销毁, 不再污染存活快照
-        _closingWinIds.delete(win.id);
+        _closingWinIds.delete(winId);
         if (_quitAllBatch) {
             // 批次成员全部销毁 → 批次状态清空 (进程即将退出, 防陈旧状态污染)
             const alive = _quitAllBatch.members.some((m: any) => {
@@ -501,14 +595,14 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
         //   与 window.claimProject（注册 _windowProjectMap）是两条独立 IPC——时序竞态下
         //   claim 已成功但 map 未注册 → 旧逻辑条件释放被跳过 → _held 残留 + 心跳永续
         //   → 幽灵锁（绿色包误报 pid=9424=自己 实锤）。releaseProject 内部 _held 无条目时安全 return。
-        try { releaseProject(win.id); } catch (_) { }
+        try { releaseProject(winId); } catch (_) { }
         // ★ 窗口关闭 → 编队槽位回到空闲 + 广播（他窗秒同步）
-        try { releaseSquad(win.id); } catch (_) { }
+        try { releaseSquad(winId); } catch (_) { }
         try { broadcastSquadState(); } catch (_) { }
         try {
-            const ownedProject = _windowProjectMap.get(win.id);
+            const ownedProject = _windowProjectMap.get(winId);
             if (ownedProject) {
-                _windowProjectMap.delete(win.id);
+                _windowProjectMap.delete(winId);
                 _projectWindowMap.delete(ownedProject);
             }
         } catch (_) { }
@@ -557,20 +651,29 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
                 try { w.webContents.send('qqqide:download:progress', entry); } catch { /* ignore */ }
             }
         }
-    });
-
-    // Lock window UI at 1.0 (no zoom — editor font size handles text scaling)
+    });    // ★ 界面缩放（应用级 UI scale）：应用当前缩放 —— 替换旧「锁 1.0」（editor font size 只管编辑器字号）
     win.webContents.on('did-finish-load', () => {
-        win.webContents.setZoomFactor(1.0);
+        win.webContents.setZoomFactor(getUiZoom());
         // ★ 翼状态重推（Ctrl+R 热重载后 renderer 需重新应用；主进程 map 仍在）
         _pushWingsTo(win, _windowWingMap.get(win.id) || { left: false, right: false });
-    });
-
-    // Ctrl/Cmd + (+/-/0) editor font size shortcuts
-    win.webContents.on('before-input-event', (ev, input) => {
-        if (input.type !== 'keyDown') { return; }
-        const ctrl = input.control || input.meta;
-        if (!ctrl) { return; }
+    });    // ★ 界面缩放应急快捷键（Ctrl/Cmd + = / - / 0，浏览器同款）——主进程直控（详 ui-zoom.ts）；
+    //   渲染层无依赖，UI 异常时仍可把窗口救回来；落盘 + 全窗广播 + 发起窗 toast
+    win.webContents.on('before-input-event', (ev, input) => {
+        if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
+        const mod = input.control || input.meta;
+        if (!mod || input.alt) { return; }
+        const k = input.key;
+        if (k === '=' || k === '+' || k === '-' || k === '_' || k === '0') {
+            ev.preventDefault();
+            handleUiZoomShortcut(k === '0' ? 'reset' : ((k === '=' || k === '+') ? 'in' : 'out'), win.webContents.id);
+        }
+    });
+
+    // Ctrl/Cmd + Alt + (+/-/0) editor font size shortcuts（★ Ctrl+= / Ctrl+- / Ctrl+0 已归位给界面缩放）
+    win.webContents.on('before-input-event', (ev, input) => {
+        if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
+        const ctrl = input.control || input.meta;
+        if (!ctrl || !input.alt) { return; }
         const k = input.key;
         if (k === '=' || k === '+') {
             ev.preventDefault();
@@ -617,7 +720,8 @@ export function bypassCloseConfirm(win: BrowserWindow): void {
         });
         win.webContents.openDevTools({ mode: 'detach' });
         win.webContents.on('before-input-event', (ev, input) => {
-            if (input.type !== 'keyDown') { return; }
+            if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
+
             if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
                 ev.preventDefault();
                 win.webContents.reloadIgnoringCache();

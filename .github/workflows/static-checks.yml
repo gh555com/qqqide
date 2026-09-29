@@ -1,0 +1,72 @@
+# 静态门 — push / PR 自动跑（JS 语法全量检查）
+# 设计：跑 windows-2022——产品仅面向 Windows（Win7-11），与开发环境同平台
+#       可避免大小写/路径差异造成的假阳性；公开仓 Actions 免额度。
+# 类型门：tsc --noEmit（npm run check:types）——类型债清零后已并入 types 任务。
+# 单测门：npm test（node:test，ci/tests/*.test.js）——与 types 同 job 复用一次 npm ci。
+#       注：compareVersion 用例依赖私有部件 launcher/ 与 C 编译器，均不在公开检出 → 显式 skip。
+name: Static checks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'server-app/**'
+      - 'shell/**'
+      - 'shell-build/**'
+      - 'ci/**'
+      - 'tsconfig.json'
+      - 'package.json'
+      - '.github/workflows/static-checks.yml'
+  pull_request:
+    paths:
+      - 'server-app/**'
+      - 'shell/**'
+      - 'shell-build/**'
+      - 'ci/**'
+      - 'tsconfig.json'
+      - 'package.json'
+      - '.github/workflows/static-checks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax:
+    name: JS syntax (node --check)
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: node --check（server-app + shell-build 全量）
+        run: node ci/check-syntax.js
+
+  types:
+    name: TypeScript + unit tests
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: npm ci（跳过 Electron 二进制下载）
+        run: npm ci --no-audit --no-fund
+
+      - name: tsc --noEmit（shell 全量类型门）
+        run: npm run check:types
+
+      - name: npm test（node:test 单元测试）
+        run: npm test

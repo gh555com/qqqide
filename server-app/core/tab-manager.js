@@ -1680,9 +1680,42 @@
     _doRestore();
   }
 
+  // ★ 自定义漫游名字（2026-09-29 · 用户定案）：roam 常驻标签标题 = qqqPrefs 'roamName'
+  //   （老 q3 语义 100%：漫游名 = 面板/标签标题；默认「Roam」，编辑框占位范例「的梦gaea」）。正版门在数据层
+  //   （qqq-prefs premium：未激活 get 恒「Roam」 + set 拒绝）——本处只管读 + 显示净化。
+  //   上限 _ROAM_NAME_MAX 与 qqq-prefs 注册表 roamName.maxlen 同值（两处同改）。
+  var _ROAM_NAME_MAX = 12;
+  var _ROAM_NAME_FB = 'Roam';
+  function _sanitizeRoamName(s) {
+    var t = String(s == null ? '' : s);
+    t = t.replace(/[\r\n]+/g, ' ');
+    t = t.replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, '');
+    t = t.replace(/<[^>]*>/g, '');
+    t = t.replace(/\s+/g, ' ').trim();
+    var cps = Array.from(t);
+    if (cps.length > _ROAM_NAME_MAX) { t = cps.slice(0, _ROAM_NAME_MAX).join(''); }
+    return t;
+  }
+  function roamTitle() {
+    var v = '';
+    try { if (window.qqqPrefs && window.qqqPrefs.get) { v = window.qqqPrefs.get('roamName'); } } catch (e) { /* */ }
+    return _sanitizeRoamName(v) || _ROAM_NAME_FB;
+  }
+  var _roamNameSub = false;
+  function _applyRoamTitle() {
+    try {
+      var grp = getGaeaGroup();
+      if (!grp) { return; }
+      var t = grp.tabs.find(function (x) { return x.gaeaId === 'roam'; });
+      if (!t) { return; }
+      var nt = roamTitle();
+      if (t.title !== nt) { renameGaeaTab(t.id, nt); }
+    } catch (e) { /* */ }
+  }
+
   // ★ roam 硬创建函数：零依赖 goods/gaea-host，零异步
   function _createRoamTabHard() {
-    addGaeaTab('roam', 'Roam', function (pane) {
+    addGaeaTab('roam', roamTitle(), function (pane) {
       pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
       var iframe = document.createElement('iframe');
       iframe.src = '/qqqide/goods/file-explorer/q2-roam.html';
@@ -1715,6 +1748,11 @@
     addGroup('gaea');
     // ★ roam 永远是 gaea 分组的第一个标签，在所有持久化/异步逻辑之前同步创建
     _createRoamTabHard();
+    // ★ 漫游名实时同步（2026-09-29）：设置中心修改 / 云端拉取 / 恢复默认 / 激活态变化 → 标签标题即刻跟随
+    if (!_roamNameSub && window.qqqPrefs && window.qqqPrefs.onChange) {
+      _roamNameSub = true;
+      try { window.qqqPrefs.onChange(function (key) { if (key === 'roamName' || key === null) { _applyRoamTitle(); } }); } catch (e) { /* */ }
+    }
     setTimeout(function () { restoreOpenTabs(); }, 100);
   }
 
@@ -1831,6 +1869,7 @@
     getGroups,
     getGaeaGroup,
     renameGaeaTab,
+    roamTitle,
     setTabDirty,
     setTabDeleted: _setTabDeleted,
     // ★ 编码徽标外部刷新入口（shell-rpc / editor 外部重载后调用）

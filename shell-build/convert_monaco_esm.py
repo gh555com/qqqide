@@ -9,7 +9,7 @@ writes output to cache/monaco-deps/vs/.
 
 import os, re, sys
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # shell-build/ → 项目根
 ESM_ROOT = os.path.join(PROJECT_ROOT, 'node_modules', 'monaco-editor', 'esm', 'vs')
 OUT_ROOT = os.path.join(PROJECT_ROOT, 'cache', 'monaco-deps', 'vs')
 

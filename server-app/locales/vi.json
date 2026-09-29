@@ -39,15 +39,11 @@
         "cancelled": "Đã hủy"
     },
     "shell": {
-        "title": "qqq",
         "menu": {
             "file": "Tệp",
             "fileNew": "Mới",
-            "fileOpen": "Mở",
             "fileNewWindow": "Mở cửa sổ mới",
             "fileExit": "Thoát",
-            "tools": "Công cụ",
-            "devTools": "Công cụ dành cho nhà phát triển",
             "activate": "Kích hoạt",
             "activated": "Đã kích hoạt",
             "evangelist": "Người hướng dẫn",
@@ -56,13 +52,11 @@
         "window": {
             "minimize": "Thu nhỏ",
             "maximize": "Phóng to",
-            "restore": "Khôi phục",
             "close": "Đóng"
         },
         "zoom": {
             "in": "Phóng to giao diện (Ctrl+=)",
-            "out": "Thu nhỏ giao diện (Ctrl+-)",
-            "reset": "Đặt lại thu phóng"
+            "out": "Thu nhỏ giao diện (Ctrl+-)"
         },
         "theme": {
             "toggle": "Chuyển đổi sáng/tối",
@@ -71,11 +65,6 @@
         },
         "lang": {
             "switch": "Chuyển ngôn ngữ"
-        },
-        "status": {
-            "version": "Phiên bản",
-            "engineOn": "Engine đang trực tuyến",
-            "engineOff": "Engine ngoại tuyến"
         },
         "output": {
             "title": "Kết quả",
@@ -104,7 +93,6 @@
             "copyFailed": "Sao chép thất bại",
             "zoomIn": "Phóng to",
             "zoomOut": "Thu nhỏ",
-            "close": "Đóng (Esc hoặc nhấp chuột phải)",
             "resetPosition": "Đặt lại vị trí",
             "mem": "Bộ nhớ",
             "file": "Tệp",
@@ -191,8 +179,6 @@
             "removeProject": "Xóa dự án này",
             "addProject": "Thêm thư mục dự án vào khung nhìn AI",
             "selectFolder": "Chọn thư mục để thêm vào khung nhìn AI",
-            "searchFolder": "Tìm kiếm trong thư mục này",
-            "recentFolders": "Các thư mục chính đã mở gần đây",
             "noRecent": "Chưa có lịch sử gần đây, nhấn + để chọn thư mục",
             "editx": "Chỉnh sửa tệp",
             "openInOs": "Mở trong hệ thống",
@@ -206,7 +192,6 @@
             "openElsewhere": "⚠️ Dự án này đã được mở dưới dạng thư mục chính trong một cửa sổ khác",
             "clearedBusy": "⚠️ Thư mục chính đang bị chiếm dụng bởi cửa sổ khác, khung nhìn AI đã được làm sạch"
         },
-        "dev": "Chế độ nhà phát triển",
         "gaeaHostLoading": "Đang tải gaea host...",
         "onl": {
             "title": "Số người trực tuyến",
@@ -344,8 +329,7 @@
         "bulb": {
             "left": "Bảng AI bên trái",
             "right": "Bảng AI bên phải"
-        },
-        "free": {}
+        }
     },
     "editor": {
         "copyPath": "Sao chép đường dẫn",
@@ -402,15 +386,6 @@
             "closeSave": "Lưu và đóng",
             "closeDiscard": "Không lưu",
             "closeCancel": "Hủy"
-        },
-        "contextMenu": {
-            "cut": "Cắt",
-            "copy": "Sao chép",
-            "paste": "Dán",
-            "selectAll": "Chọn tất cả",
-            "undo": "Hoàn tác",
-            "redo": "Làm lại",
-            "feedToAi": "📎 Gửi cho AI"
         },
         "undo": "Hoàn tác (Ctrl+Z)",
         "redo": "Làm lại (Ctrl+Y)",
@@ -594,15 +569,6 @@
         "inputLimitQoastImageSize": "Có {0} hình ảnh vượt quá giới hạn kích thước mỗi file, đã bỏ qua",
         "inputSendBusy": "AI đang xử lý, vui lòng chờ…",
         "embedImage": "Nhúng",
-        "level": {
-            "a": "Thận trọng",
-            "1": "Nhẹ",
-            "2": "Trung bình",
-            "3": "Thông minh",
-            "4": "Mạnh mẽ",
-            "5": "Cực hạn",
-            "6": "Pro Max"
-        },
         "floor": "Tầng",
         "house": "Ngôi nhà",
         "room": "Phòng",
@@ -613,33 +579,6 @@
         "confirmConnect": "Xác nhận kết nối",
         "thinking": "Đang suy nghĩ...",
         "streaming": "Đang tạo...",
-        "tools": {
-            "readFile": "Đọc tệp",
-            "editFile": "Chỉnh sửa tệp",
-            "createFile": "Tạo tệp",
-            "deleteFile": "Xóa tệp",
-            "writeFile": "Ghi tệp",
-            "searchText": "Tìm kiếm văn bản",
-            "findFiles": "Tìm tệp",
-            "listFiles": "Liệt kê tệp",
-            "getDiagnostics": "Lấy chẩn đoán",
-            "runCommand": "Chạy lệnh",
-            "fetchWebpage": "Thu thập trang web",
-            "getVision": "Lấy ngữ cảnh hình ảnh"
-        },
-        "output": {
-            "empty": "Đang chờ nhập...",
-            "compressInProgress": "Đang nén...",
-            "compressDone": "Nén hoàn tất",
-            "tokenLimit": "Đã đạt giới hạn Token"
-        },
-        "rules": {
-            "title": "Quy tắc dự án",
-            "edit": "Chỉnh sửa quy tắc",
-            "empty": "Chưa có quy tắc",
-            "globalRule": "Quy tắc toàn cục (.qqq-rules.txt)",
-            "projectRule": "Quy tắc dự án (project.txt)"
-        },
         "quest": {
             "switch": "Chuyển dự án",
             "newQuest": "Tạo hội thoại mới",
@@ -894,11 +833,6 @@
             "inputPlaceholder": "Nhập đoạn đường dẫn, Enter để mở / Esc để đóng",
             "noRecent": "Chưa có tệp gần đây, hãy mở một vài tệp trong cây tệp trước",
             "noMatch": "Không tìm thấy kết quả phù hợp"
-        },
-        "pasteImage": {
-            "saveFailed": "Lưu hình ảnh đã dán thất bại",
-            "saved": "Đã lưu hình ảnh vào",
-            "useCtrlV": "Vui lòng sử dụng Ctrl+V để dán hình ảnh"
         },
         "kmd": {
             "namePh": "Đặt tên cho terminal này",
@@ -1302,57 +1236,7 @@
             "macNeedPerm": "macOS yêu cầu bạn bật thủ công quyền \"Trợ năng\" để chương trình này hoạt động.\n\n{guide}",
             "macPermGuide": "Vui lòng làm theo các bước sau:\n\n1. Mở [Tùy chọn Hệ thống]\n2. Vào [Bảo mật & Quyền riêng tư]\n3. Chọn tab [Quyền riêng tư]\n4. Tìm [Trợ năng] trong danh sách bên trái\n5. Đánh dấu vào chương trình này (hoặc terminal đang chạy nó) trong danh sách bên phải\n\nNếu không thấy chương trình này trong danh sách, hãy nhấp vào dấu + để thêm thủ công.\n\nVui lòng khởi động lại chương trình sau khi cấp quyền.",
             "cfgError": "Đã xảy ra lỗi khi {op} cấu hình:\n{err}"
-        },
-        "bar": {},
-        "fileExplorer": {},
-        "wysiwyg": {},
-        "rage": {
-            "clip": {},
-            "captain": {},
-            "search": {}
         }
-    },
-    "dialog": {
-        "about": {
-            "title": "Giới thiệu về qqq",
-            "message": "qqq-shell v2",
-            "detail": "Di động / Hỗ trợ Win7+ / Cập nhật nóng từ máy chủ"
-        },
-        "confirmDelete": {
-            "title": "Xác nhận xóa",
-            "message": "Bạn có chắc chắn muốn xóa không? Thao tác này không thể hoàn tác."
-        },
-        "unsaved": {
-            "title": "Thay đổi chưa lưu",
-            "message": "Có thay đổi chưa được lưu, bạn có muốn lưu trước khi đóng không?",
-            "save": "Lưu",
-            "discard": "Hủy bỏ",
-            "cancel": "Hủy"
-        }
-    },
-    "shortcuts": {
-        "ctrlS": "Lưu",
-        "ctrlZ": "Hoàn tác",
-        "ctrlShiftZ": "Làm lại",
-        "ctrlX": "Cắt",
-        "ctrlC": "Sao chép",
-        "ctrlV": "Dán",
-        "ctrlA": "Chọn tất cả",
-        "ctrlF": "Tìm kiếm",
-        "ctrlH": "Thay thế",
-        "ctrlN": "Tạo tệp mới",
-        "ctrlO": "Mở tệp",
-        "ctrlW": "Đóng tab",
-        "ctrlShiftE": "Hiển thị trình duyệt tệp",
-        "ctrlShiftF": "Tìm kiếm tệp",
-        "ctrlBackslash": "Chia đôi sang phải",
-        "ctrlPlus": "Phóng to",
-        "ctrlMinus": "Thu nhỏ",
-        "ctrl0": "Đặt lại tỷ lệ phóng",
-        "f12": "Công cụ dành cho nhà phát triển",
-        "f1": "Bảng lệnh",
-        "altLeft": "Quay lại",
-        "altRight": "Tiến tới"
     },
     "wings": {
         "redrawing": "Đang vẽ lại"
@@ -1693,6 +1577,7 @@
     "prefs": {
         "title": "Cài đặt qqq",
         "wmNeed": "Tùy chỉnh watermark là tính năng trả phí (khả dụng sau khi kích hoạt)",
+        "rnNeed": "Tùy chỉnh tên Roam là tính năng dành cho bản quyền (khả dụng sau khi kích hoạt)",
         "reset": "Khôi phục cài đặt mặc định",
         "resetTitle": "Khôi phục cài đặt mặc định",
         "resetMsg": "Thao tác này sẽ xóa tất cả thay đổi cài đặt trên máy cục bộ (nếu đã bật đồng bộ đám mây, cấu hình trên đám mây cũng sẽ bị xóa). Bạn có chắc chắn muốn tiếp tục không?",
@@ -1700,7 +1585,6 @@
         "resetDone": "Đã khôi phục cài đặt mặc định",
         "needRefresh": "Mô-đun tùy chọn chưa sẵn sàng (cần làm mới cửa sổ)",
         "g": {
-            "core": "☀️ Lõi hệ thống",
             "roam": "🛸 Roam Lang thang",
             "observe": "👁️ Chế độ Quan sát",
             "html": "🍌 HTML & Văn bản giàu định dạng",
@@ -1709,20 +1593,15 @@
         },
         "lab": {
             "performanceMode": "Chế độ hiệu năng",
-            "ioEngine": "IO Engine",
-            "transactionLevel": "Transaction Level Cấp độ giao dịch",
             "szDisplayMode": "Hiển thị cột kích thước",
             "sortBy": "Sort By Sắp xếp",
             "autoWatchChanges": "Auto Watch Changes",
-            "roamAsStartPage": "Roam as Start Page",
             "roamName": "Roam Name",
             "frameSizeMode": "Frame Size Mode",
-            "cleanFreak": "Clean Freak Sạch sẽ",
             "enlargeSmallImages": "Enlarge Small Images",
             "textSlideColorScheme": "Bảng màu trình chiếu văn bản",
             "textSlideFontSize": "Cỡ chữ trình chiếu văn bản",
             "codelensLevel": "CodeLens Level",
-            "takeOverCodelensStyle": "Áp dụng kiểu CodeLens tùy chỉnh",
             "downloadSecurityLevel": "Mức độ bảo mật tải xuống",
             "forceTextFlowScheme": "Buộc áp dụng sơ đồ luồng văn bản",
             "autoDownload": "Tự động tải xuống",
@@ -1731,21 +1610,16 @@
             "removeWatermark": "Remove Watermark Loại bỏ watermark"
         },
         "desc": {
-            "performanceMode": "☀️ Kiểm soát chất lượng và tốc độ tạo ảnh xem trước",
-            "ioEngine": "☀️ Công cụ IO (xem tài liệu dự án: IO_ENGINE_v16)",
-            "transactionLevel": "☀️ Cấp độ gói giao dịch: Quyết định độ tin cậy và tốc độ của thao tác",
+            "performanceMode": "👁️ Quyết định chất lượng và tốc độ kết xuất của 「Khung ảnh qqq」",
             "szDisplayMode": "🛸 Nội dung hiển thị trong cột sz",
             "sortBy": "🛸 Cách sắp xếp danh sách tệp",
             "autoWatchChanges": "🛸 Chọn: Tự động làm mới danh sách tệp khi thư mục hiện tại bị thay đổi bởi chương trình bên ngoài; Bỏ chọn: Không tốn hiệu năng",
-            "roamAsStartPage": "🛸 Sử dụng qqq Roam làm trang khởi động",
-            "roamName": "🛸 Tên Roam tùy chỉnh",
+            "roamName": "🛸 Tùy chỉnh tên Roam (tối đa 12 ký tự, hiển thị trên thẻ Roam)",
             "frameSizeMode": "👁️ Chế độ kích thước ảnh xem trước",
-            "cleanFreak": "👁️ Tự động đảm bảo đủ dòng trống dưới mỗi mã trước khi lưu, ngăn chồng lấn nội dung/xem trước",
             "enlargeSmallImages": "👁️ Chọn: Phóng to ảnh xem trước nhỏ hơn khung để lấp đầy; Bỏ chọn: Giữ nguyên kích thước và căn giữa",
             "textSlideColorScheme": "👁️ Màu nền slide văn bản",
             "textSlideFontSize": "👁️ Cỡ chữ slide văn bản (1-218)",
             "codelensLevel": "👁️ Mức độ hiển thị CodeLens",
-            "takeOverCodelensStyle": "👁️ Ghi đè kiểu CodeLens: Màu đỏ, cỡ chữ 13",
             "downloadSecurityLevel": "🍌 Khi tải video thất bại, hãy thử chiến lược nới lỏng hơn tại đây",
             "forceTextFlowScheme": "🍌 Buộc sửa lỗi mã hóa HTML (chỉ chọn khi gặp lỗi mã hóa cứng đầu, đánh đổi bằng độ chính xác bố cục)",
             "autoDownload": "🍌 Tự động tải xuống khi phát hiện video",
@@ -1757,15 +1631,7 @@
             "performanceMode": {
                 "extreme": "Cực đoan: Chỉ giữ lại khung hình đầu tiên, chất lượng 47",
                 "accelerated": "Accelerated: Ảnh GIF/video tối đa 2 giây đầu, 7fps, chất lượng 47",
-                "optmum": "Tối ưu: Giữ nguyên thời lượng ảnh động, video lấy 4 giây (đầu/giữa/cuối), fps gốc, chất lượng 71"
-            },
-            "ioEngine": {
-                "auto": "v16 auto — Cấu hình lý tưởng",
-                "excludePython": "Exclude Python — Chạy ngầm, tiết kiệm khoảng 50MB RAM"
-            },
-            "transactionLevel": {
-                "full": "Bao bọc đầy đủ: Mọi thao tác tốn thời gian đều được gói trong giao dịch — có thanh tiến trình, hỗ trợ hoàn tác, tự động khôi phục khi lỗi",
-                "half": "Bao bọc một phần: Thao tác nhẹ sử dụng dán đơn giản — phản hồi nhanh nhất, không có thanh tiến trình, không khôi phục"
+                "optmum": "Tối ưu: Phương tiện ngắn (<10s) giữ nguyên thời lượng và tốc độ khung hình gốc; phương tiện dài lấy 4 giây (đầu/giữa/cuối) ở 15fps; chất lượng 71"
             },
             "szDisplayMode": {
                 "nothing": "Không hiển thị",
@@ -1784,11 +1650,6 @@
                 "small": "Khung nhỏ: 256×144",
                 "fix": "Tự động điều chỉnh: Tự động chọn dựa trên kích thước hình ảnh"
             },
-            "cleanFreak": {
-                "never": "Không tự động sắp xếp (chỉ sắp xếp thủ công)",
-                "add": "Chỉ thêm: Đảm bảo đủ dòng trống, không xóa các dòng trống thừa",
-                "addRemove": "Sắp xếp nghiêm ngặt: Vừa đủ dòng trống — xóa dòng thừa, thêm dòng thiếu"
-            },
             "textSlideColorScheme": {
                 "light": "Sáng",
                 "dark": "Tối"
@@ -1796,7 +1657,7 @@
             "codelensLevel": {
                 "none": "Không có",
                 "open": "Chỉ khi mở tệp",
-                "full": "Đầy đủ: Thư mục/Đổi tên/Sao chép/Dòng thông tin/qode"
+                "full": "Đầy đủ: Thư mục/Đổi tên/Sao chép/Dòng thông tin/qqqide"
             },
             "downloadSecurityLevel": {
                 "l0": "0: Thoải mái nhất — Tắt toàn bộ 11 công tắc bảo mật",
@@ -1806,7 +1667,8 @@
             "docExportImageResolution": {
                 "original": "Độ phân giải gốc — Độ chính xác đầy đủ",
                 "frame": "Độ phân giải khung hình — Tệp nhỏ hơn, ảnh thu nhỏ khớp chính xác"
-            }
+            },
+            "uiZoom": {}
         }
     },
     "workbench": {
@@ -1816,6 +1678,8 @@
         "durSs": "{0} giây",
         "exportDocTip": "Xuất tài liệu hiện tại sang định dạng Word: Hình ảnh và video được chuyển thành hình ảnh nhúng, các tệp đính kèm khác được tạo danh sách; mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi tệp cùng tên đã tồn tại.",
         "exportZipTip": "Đóng gói tài liệu hiện tại cùng tất cả các tệp và thư mục được tham chiếu thành file ZIP (giữ nguyên cấu trúc thư mục, nén tối đa); mặc định lưu cạnh tài liệu, chỉ hiển thị hộp thoại lưu khi có tệp trùng tên.",
+        "exportHingeTip": "Đặc = Nhóm chỉnh sửa sẽ được xuất (nhóm bạn đang xem cuối cùng); Rỗng = Nhóm khác. Nhấp vào ô vuông để chuyển đổi mục tiêu xuất; khi di chuột qua thẻ xuất, vùng chỉnh sửa mục tiêu sẽ hiển thị khung nét đứt màu tím nhạt.",
+        "exportWillExport": "Sắp xuất: {0}",
         "cloudSyncTip": "Đồng bộ đám mây: ↑ Tải lên = Hợp nhất với đám mây rồi tải lên (không mất dữ liệu ở cả hai bên); ↓ Tải xuống = Hợp nhất dữ liệu đám mây vào máy cục bộ. Bao gồm cấu hình trình soạn thảo, tùy chọn cho từng thư mục và lịch sử clipboard.",
         "playerTip": "Trình phát: Nghe nhạc/xem video khi viết code (ghi nhớ danh sách phát sau khi khởi động lại); Trong Roam, nhấp chuột phải vào phương tiện đã chọn và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ; Thu nhỏ = Thu gọn vào khe này để điều khiển từ xa.",
         "playerWinTip": "Cửa sổ trình phát nổi độc lập: Cửa sổ nhỏ luôn hiển thị trên cùng — vẫn nhìn thấy được khi chuyển sang chương trình khác (↗)",
@@ -1873,6 +1737,10 @@
         "sfxAll": "Tất cả",
         "sfxNone": "Không có",
         "sfxTooltip": "Bật/tắt hiệu ứng âm thanh riêng lẻ",
+        "uiZoom": {
+            "label": "Phóng to giao diện",
+            "desc": "Tỷ lệ hiển thị của toàn bộ giao diện (độc lập với tỷ lệ phóng to hệ thống; màn hình lớn thì giảm, chữ nhỏ thì tăng)"
+        },
         "undoMode": {
             "label": "Chế độ hoàn tác trong trình soạn thảo",
             "desc": "Độ chi tiết của thao tác hoàn tác Ctrl+Z trong trình soạn thảo mã",
@@ -2165,5 +2033,9 @@
         "dropDone": "Kéo thả: {ok} thành công, {fail} thất bại",
         "unknownErr": "Lỗi không xác định",
         "unknownErrSave": "Lỗi không xác định (lưu không trả về kết quả)"
+    },
+    "uiZoom": {
+        "toast": "Thu phóng giao diện {p}% ({k} để đặt lại)",
+        "tip": "Điều chỉnh tỷ lệ phóng to giao diện"
     }
 }

@@ -315,8 +315,9 @@ export class MediaService {
         else { dur = MediaService._webpDurationFromFile(dst); }
         let size = 0;
         try { size = fs.statSync(dst).size; } catch { /* ignore */ }
-        await this._touch(cacheKey, dst, size, dur);
-        return { dur };
+        const durN = dur ?? 0;
+        await this._touch(cacheKey, dst, size, durN);
+        return { dur: durN };
     }
 
     // -------------------------------------------------------------------------
@@ -1021,6 +1022,8 @@ export class MediaService {
     private async _genPreview(opts: { src: string }, meta: any, mode: PreviewMode, quality: number,
         tw: number, th: number, dst: string, cacheKey: string,
         st: { sig: string; mtimeMs: number; size: number }): Promise<PreviewResult> {
+            const ff = this._ffmpegPath;
+            if (!ff) { return { ok: false, error: 'ffmpeg_not_found' }; }
         // ── 参数构建（老 buildUnifiedWebPArgs）──
         const scaleFilter = `scale=${tw}:${th}:force_original_aspect_ratio=decrease:flags=bilinear,format=yuva420p`;
         const args: string[] = ['-hide_banner', '-loglevel', 'error'];
@@ -1071,7 +1074,7 @@ export class MediaService {
         const tmpPath = dst + '.tmp';
         try { if (fs.existsSync(tmpPath)) { fs.unlinkSync(tmpPath); } } catch { /* ignore */ }
         const r = await this.qz.spawn({
-            cmd: this._ffmpegPath,
+            cmd: ff,
             args: [...args, '-y', tmpPath],
             timeout: 30_000,
             stallMs: 20_000,
@@ -1165,6 +1168,8 @@ export class MediaService {
 
     private async _genTextPreview(src: string, scheme: string, fontSize: number, dst: string, cacheKey: string,
         st: { sig: string; mtimeMs: number; size: number }): Promise<PreviewResult> {
+            const ff = this._ffmpegPath;
+            if (!ff) { return { ok: false, error: 'ffmpeg_not_found' }; }
         // ── 读头部 4KB + 解码 ──
         let text = '';
         try {
@@ -1241,7 +1246,7 @@ export class MediaService {
             '-y', tmpPath,
         ];
         const r = await this.qz.spawn({
-            cmd: this._ffmpegPath,
+            cmd: ff,
             args,
             timeout: 15_000,
             stallMs: 12_000,

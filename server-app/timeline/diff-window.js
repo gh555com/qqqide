@@ -438,7 +438,7 @@
     var $vaultFoot = document.getElementById('vault-foot');
     var _vpPanelOpen = false;
     var _vpRoot = null;         // 全库目录树（数据就绪时构建）
-    var _vpDir = '';            // 当前目录（''=根/盘符层；'E:'；'E:/s/wol'…，原始大小写）
+    var _vpDir = '';            // 当前目录（''=根/盘符层；'E:'；'E:/dir/sub'…，原始大小写）
     var _vpQuery = '';
     var _vpOnlyGone = false;
     var _vpList = [];           // 当前视图行 [{kind:'dir'|'file',...}]

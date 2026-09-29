@@ -29,7 +29,7 @@
 // ============================================================================
 
 import { ipcMain, WebContents } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, ChildProcessWithoutNullStreams } from 'child_process';
 import { mi } from './main-i18n';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -37,12 +37,19 @@ import * as os from 'os';
 
 const MAX_SESSIONS = 16; // 会话上限，防进程泄漏（与 kmd 同）
 
+export type QmdShellType = 'cmd' | 'powershell' | 'gitbash';
+
 export interface QmdSpawnOpts {
     id: string;
-    shellType: 'cmd' | 'powershell' | 'gitbash';
+    shellType: QmdShellType;
     cwd?: string;
     cols?: number;
     rows?: number;
+}
+
+// shell 名归一：仅接受三个合法值，其余回落 'cmd'（与 _qmdCmdline 默认分支同语义）
+function _normQmdShell(v: string): QmdShellType {
+    return (v === 'powershell' || v === 'gitbash') ? v : 'cmd';
 }
 
 interface QmdSession {
@@ -153,7 +160,7 @@ function _childrenOfWin(parentPid: number): Promise<_ChildProc[]> {
                 p = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
             } catch { res({ ok: false, out: '' }); return; }
             const t = setTimeout(() => { try { p.kill(); } catch { /* ignore */ } }, 4000);
-            p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+            p.stdout!.on('data', (d: Buffer) => { out += d.toString('utf8'); });
             p.on('error', () => { clearTimeout(t); res({ ok: false, out }); });
             p.on('exit', (code) => { clearTimeout(t); res({ ok: code === 0, out }); });
         });
@@ -222,7 +229,7 @@ function _spawnOne(opts: QmdSpawnOpts, appRoot: string, owner: WebContents): Qmd
         QMD_ROWS: String(opts.rows || 30),
     };
 
-    let proc: ChildProcess;
+    let proc: ChildProcessWithoutNullStreams;
     try {
         proc = spawn(bridge, [], {
             env,
@@ -269,7 +276,7 @@ export function registerQmdIpc(appRoot: string): void {
     ipcMain.handle('qqqide:qmd:spawn', async (e, opts: any) => {
         const o = opts || {};
         const id = String(o.id || '');
-        const shellType = String(o.shellType || 'cmd');
+        const shellType = _normQmdShell(String(o.shellType || 'cmd'));
         if (!id || sessions.has(id)) return { ok: false, error: 'bad_id' };
         if (sessions.size >= MAX_SESSIONS) return { ok: false, error: 'session_limit' };
         if (shellType === 'gitbash') {
@@ -317,7 +324,7 @@ export function registerQmdIpc(appRoot: string): void {
         const s = sessions.get(sid);
         if (!s) return { ok: false, error: 'not_found' };
         const owner = s.owner;
-        const shellType = s.shellType;
+        const shellType = _normQmdShell(s.shellType);
         const cwd = s.cwd;
         const cols = s.cols;
         const rows = s.rows;

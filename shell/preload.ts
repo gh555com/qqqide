@@ -156,12 +156,21 @@ const QQQ = {    // ---- app info ----
     // ---- devtools bridge (renderer → main process) ----
     devtools: {
         rename: (projectRoot: string) => ipcRenderer.invoke('qqqide:devtools:rename', projectRoot),
-    },
-
-    // ---- zoom (UI scale) ----
-    zoom: {
-        get: () => ipcRenderer.invoke('qqqide:zoom:get'),
-        set: (factor: number) => ipcRenderer.invoke('qqqide:zoom:set', factor),
+    },    // ---- uiZoom (应用级界面缩放 — 与系统缩放解耦；设置中心/应急快捷键 → shell/ui-zoom.ts) ----
+    uiZoom: {
+        get: () => ipcRenderer.invoke('qqqide:ui-zoom:get'),
+        set: (pct: number) => ipcRenderer.invoke('qqqide:ui-zoom:set', pct),
+        onChanged: (cb: (payload: { pct: number; toast?: boolean }) => void) => {
+            const handler = (_e: any, payload: any) => { try { cb(payload || {}); } catch (_) {} };
+            ipcRenderer.on('qqqide:ui-zoom:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:ui-zoom:changed', handler);
+        },
+    },
+
+    // ---- zoom (editor font size; was UI scale — 旧名保留) ----
+    zoom: {
+        get: () => ipcRenderer.invoke('qqqide:zoom:get'),
+        set: (factor: number) => ipcRenderer.invoke('qqqide:zoom:set', factor),
         adjust: (delta: number) => ipcRenderer.invoke('qqqide:zoom:adjust', delta),
         onChanged: (cb: (factor: number) => void) => {
             const handler = (_e: any, factor: number) => cb(factor);

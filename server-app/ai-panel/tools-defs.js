@@ -326,14 +326,14 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: '🔴 ONLY tool for image gen/editing. ★ MUST-DISPLAY: after the cloud returns image path(s), you MUST print EVERY returned image in your chat reply via Markdown ![](file:///abs/path.png) (full file:/// URL prefix) — never omit, never bare-path only. Only exception: user explicitly says do NOT print. Generate or edit images via cloud AI. 🚫 NEVER write Python/PIL/opencv scripts for image tasks — this tool IS the only way. Styles: photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature. 4K only for text-to-image; editing max 2K.',
+            description: '🔴 ONLY tool for image gen/editing. ★ MUST-DISPLAY: after the cloud returns image path(s), you MUST print EVERY returned image in your chat reply via Markdown ![](file:///abs/path.png) (full file:/// URL prefix) — never omit, never bare-path only. Only exception: user explicitly says do NOT print. Generate or edit images via cloud AI. 🚫 NEVER write Python/PIL/opencv scripts for image tasks — this tool IS the only way. Styles: photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature. 4K only for text-to-image; editing custom "W*H" up to ~5.9Mpx.',
             parameters: {
                 type: 'object',
                 properties: {
                     prompt: { type: 'string', description: 'Image description (text-to-image) or editing instruction (image editing). Natural language, Chinese or English.' },
                     images: { type: 'array', items: { type: 'string' }, description: 'Reference image paths. Absolute or project-relative. For image editing: the image(s) to edit. Omit for pure text-to-image.' },
                     style: { type: 'string', description: 'Style tag (text-to-image only): photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature' },
-                    size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H". 4K only for text-to-image; image editing max 2K.' },
+                    size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H". 4K only for text-to-image; image editing custom "W*H" up to ~5.9Mpx (larger sizes keep input ratio).' },
                     n: { type: 'number', description: 'Number of images to generate (1-4, default 1)' },
                     out_dir: { type: 'string', description: 'Output directory. Absolute or project-relative. Default: {project_root}/_qqq/genera/ — omit this param unless you need a custom location' }
                 },

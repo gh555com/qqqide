@@ -127,7 +127,7 @@ export function crashNetSummary(): Record<string, number> | null {
 
 // ── 事件流 ──
 
-function _appendEvent(kind: string, data: any): void {
+function _appendEvent(kind: string, data: any = {}): void {
     let line: string;
     try { line = JSON.stringify({ ts: Date.now(), kind, ...data }); } catch { return; }
     _eventsBuf.push(line);

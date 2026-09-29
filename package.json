@@ -1,6 +1,6 @@
 {
   "name": "qqqide",
-  "version": "0.3.421",
+  "version": "0.3.435",
   "description": "qqqide — portable AI-powered IDE. Win7+ compatible, zero C-drive write.",
   "private": true,
   "main": "shell-out/bootstrap.js",
@@ -12,6 +12,11 @@
     "dev:server": "node shell-build/dev-server.js",
     "dev:shell": "npm run build && electron . --dev",
     "dev": "node shell-build/dev-launch.js",
+    "check": "npm run check:syntax && npm run check:types && npm test",
+    "check:syntax": "node ci/check-syntax.js",
+    "check:types": "tsc --noEmit",
+    "test": "node ci/tests/run.js",
+    "smoke": "npm run build && node ci/smoke/run-smoke.js",
     "pack:win-x64": "npm run build && node shell-build/pack.js --target=win-x64-sfx",
     "pack:win-x64:zip": "npm run build && node shell-build/pack.js --target=win-x64",
     "pack:win-x64:flat": "npm run build && node shell-build/pack.js --target=win-x64 --flat",
@@ -58,8 +63,7 @@
       "server-app/**",
       "node_modules/monaco-editor/min/**",
       "node_modules/sql.js/**",
-      "node_modules/sql.js/**",
-            "package.json"
+      "package.json"
     ],
     "win": {
       "target": [

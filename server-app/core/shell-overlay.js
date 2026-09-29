@@ -1063,7 +1063,7 @@ function bootAiOverlay() {
       var roamTab = gaeaGrp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
       if (!roamTab && window.qqqTabs.addGaeaTab) {
         try {
-          window.qqqTabs.addGaeaTab('roam', 'Roam', function (pane) {
+          window.qqqTabs.addGaeaTab('roam', (window.qqqTabs.roamTitle ? window.qqqTabs.roamTitle() : 'Roam'), function (pane) {
             pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
             var iframe = document.createElement('iframe');
             iframe.src = '/qqqide/goods/file-explorer/q2-roam.html';

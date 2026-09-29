@@ -51,6 +51,7 @@
     // ── 同步串行（异步建帧不并发）──
     this._syncRunning = false;
     this._syncQueued = false;
+    this._clDirty = false;    // codelens 刷新闸门（仅锚点集合变化才通知——每轮 sync 无条件通知 = 每次按键重拉整套按钮）
 
     // ── Anchor Map（per-editor，独立扫描）──
     this._anchorMap = {};
@@ -470,15 +471,18 @@
       var model = editor.getModel();
       if (!model) return;
 
+      vp._clDirty = true;   // 全量重扫 → codelens 数据可能变化（下一轮 sync 通知）
       var text = model.getValue();
       var newMap = {};
 
       // 已解析路径沿袭表（fileName → path）：重扫（聚焦/切标签）不丢已有路径，
       //   否则路径归零 → 帧缓存被清 → 全部重建（可见闪烁）+ 重复 IPC
       var prevPaths = {};
+      var pool = [];   // ★ 身份搬运池：旧条目（重扫后同令牌 → 帧缓存/zone 元数据随键搬运，同一帧零重建）
       var pk = Object.keys(vp._anchorMap);
       for (var pi = 0; pi < pk.length; pi++) {
         var pe = vp._anchorMap[pk[pi]];
+        if (pe && pe.fileName) pool.push({ key: pk[pi], entry: pe });
         if (pe && pe.fileName && pe.path && !prevPaths[pe.fileName]) prevPaths[pe.fileName] = pe.path;
       }
 
@@ -507,27 +511,52 @@
           var tail = this._lineTail(text, match.index + match[0].length);
           if (tail) entry._tail = tail;
         }
+        // ★ 同令牌身份搬运（位置未变 → 零动作；位移 → 缓存/zone 元数据跟到新键，帧不重建）
+        if (pool.length) {
+          var hit = this._takePoolMatch(pool, entry.sha256, entry.fileName);
+          if (hit) this._rekKey(vp, hit.key, key);
+        }
         newMap[key] = entry;
       }
 
       vp._anchorMap = newMap;
     },
 
+    // 身份池取匹配（sha + 文件名全等一对一消费；双向共用：全量重扫 / 区间重扫）
+    _takePoolMatch: function (pool, sha, name) {
+      for (var pi = 0; pi < pool.length; pi++) {
+        var oe = pool[pi] && pool[pi].entry;
+        if (!oe) continue;
+        if (String(oe.sha256 || '').toLowerCase() === String(sha || '').toLowerCase() &&
+            String(oe.fileName || '') === String(name || '')) {
+          return pool.splice(pi, 1)[0];
+        }
+      }
+      return null;
+    },
+
     // 增量更新 anchor map（model 变更时）
     _onModelChange: function (vp, e) {
       if (!e || !e.changes) return;
       var hasChange = false;
+      var bigReplace = !!e.isFlush;   // setValue 全文档 flush（模型装饰全销毁）
       for (var i = 0; i < e.changes.length; i++) {
         var change = e.changes[i];
         var range = change.range;
         var newText = change.text || '';
 
-        // 1. 移除被删除/替换范围内的条目
+        // 1. 移除被删除/替换范围内的条目（★ 收集 dropped：重扫命中同令牌时按身份继承路径/帧缓存——
+        //    撤销/整串替换后相框不重建的根机）
+        var dropped = [];
         var newMap = {};
         var keys = Object.keys(vp._anchorMap);
         for (var k = 0; k < keys.length; k++) {
           var entry = vp._anchorMap[keys[k]];
-          if (!this._isInRange(entry, range)) {
+          if (this._isInRange(entry, range)) {
+            dropped.push({ key: keys[k], entry: entry });
+            // 覆盖到已隐藏令牌 → 其隐藏装饰可能随替换销毁（重扫后签名相同会被早退跳过）→ 强制作废签名
+            if (entry.path) vp._hideSig = '';
+          } else {
             newMap[keys[k]] = entry;
           }
         }
@@ -538,31 +567,68 @@
         var newLineCount = newLines.length;
         var oldLineSpan = range.endLineNumber - range.startLineNumber + 1;
         var deltaLines = newLineCount - oldLineSpan;
+        // 同行列偏移：单行替换 = 新段长 − 被替换长；跨行替换 = 末段长 − （末行被替换前缀长，即 endColumn−1）
+        var _lastSegLen = newLines[newLines.length - 1].length;
+        var endLineColDelta = (range.startLineNumber === range.endLineNumber)
+          ? (_lastSegLen - (range.endColumn - range.startColumn))
+          : (_lastSegLen - (range.endColumn - 1));
 
-        // 3. 偏移后续条目
-        if (deltaLines !== 0) {
-          var shiftedMap = {};
-          keys = Object.keys(vp._anchorMap);
-          for (var s = 0; s < keys.length; s++) {
-            var ent = vp._anchorMap[keys[s]];
-            if (ent.line > range.endLineNumber) {
-              ent.line += deltaLines;
-            }
-            shiftedMap[this._posKey(ent.line, ent.col)] = ent;
+        // 3. 偏移后续条目（行偏移 + 同行列偏移；★ 帧缓存/zone 元数据随键同步搬运——同一帧零重建，
+        //    zone 原位挪不在这里做，交 _buildAndApply 检出后 layoutZone 原地平移）
+        var shiftedMap = {};
+        keys = Object.keys(vp._anchorMap);
+        for (var s = 0; s < keys.length; s++) {
+          var ent = vp._anchorMap[keys[s]];
+          var oldKeyS = keys[s];
+          if (deltaLines !== 0 && ent.line > range.endLineNumber) {
+            ent.line += deltaLines;
+          } else if (endLineColDelta !== 0 && ent.line === range.endLineNumber && ent.col >= range.endColumn) {
+            ent.col += endLineColDelta;
           }
-          vp._anchorMap = shiftedMap;
+          var newKeyS = this._posKey(ent.line, ent.col);
+          if (newKeyS !== oldKeyS) this._rekKey(vp, oldKeyS, newKeyS);
+          shiftedMap[newKeyS] = ent;
+        }
+        vp._anchorMap = shiftedMap;
+
+        // 4. 扫描新文本中的锚点（dropped = 身份继承池）
+        if (newText.indexOf('📎') >= 0) {
+          this._scanTextIntoMap(vp, newText, range.startLineNumber, range.startColumn, dropped);
         }
 
-        // 4. 扫描新文本中的锚点
-        if (newText.indexOf('📎') >= 0) {
-          this._scanTextIntoMap(vp, newText, range.startLineNumber, range.startColumn);
+        // 大范围整串替换（applyEdits 全文/refresh 重载）→ 区间内模型装饰已随替换销毁，强制作废隐藏签名
+        if (!bigReplace && change.rangeOffset === 0 && range.startLineNumber === 1 && range.startColumn === 1) {
+          try {
+            var m9 = vp.editor && vp.editor.getModel && vp.editor.getModel();
+            var newLen9 = m9 ? m9.getValueLength() : 0;
+            var oldLen9 = newLen9 - newText.length + (change.rangeLength || 0);
+            if (oldLen9 > 0 && (change.rangeLength || 0) >= oldLen9 - 4) bigReplace = true;
+          } catch (_e9) { /* */ }
         }
 
         hasChange = true;
       }
 
+      if (bigReplace) vp._hideSig = '';   // 装饰已销毁 → 下一轮 _applyHideDecos 必须重挂（防令牌裸奔）
+
       if (hasChange) {
+        vp._clDirty = true;
         this._scheduleSync(vp);
+      }
+    },
+
+    // 锚点位移 → 帧缓存 / zone 元数据重新键控（键 = 位置）
+    //   ★ 搬运 = 同一帧零重建；zone 本体仍停在旧行（Monaco 不随文本移动 zone——afterLineNumber 由我们自持），
+    //   由 _buildAndApply 检出 meta.entry.line ≠ 新行后 layoutZone 原地平移
+    _rekKey: function (vp, oldKey, newKey) {
+      if (!oldKey || !newKey || oldKey === newKey) return;
+      if (vp._frameCache[oldKey] !== undefined && vp._frameCache[newKey] === undefined) {
+        vp._frameCache[newKey] = vp._frameCache[oldKey];
+        delete vp._frameCache[oldKey];
+      }
+      if (vp._zoneMeta[oldKey] && !vp._zoneMeta[newKey]) {
+        vp._zoneMeta[newKey] = vp._zoneMeta[oldKey];
+        delete vp._zoneMeta[oldKey];
       }
     },
 
@@ -574,9 +640,18 @@
       return true;
     },
 
-    _scanTextIntoMap: function (vp, text, startLine, startCol) {
+    _scanTextIntoMap: function (vp, text, startLine, startCol, dropped) {
       var model = vp.editor && vp.editor.getModel();
       if (!model) return;
+
+      // 身份继承池：被替换区间丢弃的旧条目（按文档序；同令牌一对一消费）
+      //   ★ 撤销/整串替换后相框保命链——无它则每次重扫路径归零 → 帧缓存清空 → 全量重建闪烁
+      var pool = [];
+      if (dropped && dropped.length) {
+        pool = dropped.slice(0);
+        pool.sort(function (a, b) { return (a.entry.line - b.entry.line) || ((a.entry.col || 0) - (b.entry.col || 0)); });
+      }
+      var _takeMatch = function (sha, name) { return _machine._takePoolMatch(pool, sha, name); };
 
       var regex = vp.ANCHOR_REGEX;
       regex.lastIndex = 0;
@@ -603,6 +678,21 @@
         if (!match[2]) {
           var tail = this._lineTail(text, offset + match[0].length);
           if (tail) entry._tail = tail;
+        }
+        // ★ 同令牌继承（sha + 文件名全等）：沿袭已解析路径/失败标记 + 搬运帧缓存（零重建、零裸奔闪烁）
+        var hit = _takeMatch(entry.sha256, entry.fileName);
+        if (hit) {
+          var oe2 = hit.entry;
+          if (oe2.path) entry.path = oe2.path;
+          else if (oe2._resolveTried) entry._resolveTried = true;
+          if (oe2.fileName && oe2.fileName !== entry.fileName && oe2.fileName.indexOf(entry.fileName) === 0) {
+            // 旧条目曾是旧式空格令牌的完整名补偿 → 沿袭真名/类型/隐藏跨度
+            entry.fileName = oe2.fileName;
+            entry.type = oe2.type || entry.type;
+            if (oe2._rawLen) entry._rawLen = oe2._rawLen;
+            delete entry._tail;
+          }
+          this._rekKey(vp, hit.key, key);
         }
         vp._anchorMap[key] = entry;
       }
@@ -789,7 +879,8 @@
           if (!valid[ck[ci]]) { delete vp._frameCache[ck[ci]]; }
         }
 
-        // 移除过期 zone（锚点位移 / 路径变化 / 帧高变化）
+        // 过期 zone 判定：身份变化 / 帧 DOM 更换（mtime 重建）/ 无效条目 → 拆；
+        //   同帧仅位置/高度变化 → ★ 原地平移（不拆）
         var oldKeys = Object.keys(vp._zoneMeta);
         for (var j = 0; j < oldKeys.length; j++) {
           var k2 = oldKeys[j];
@@ -797,14 +888,30 @@
           var ent2 = valid[k2];
           var c2 = vp._frameCache[k2];
           var rowH2 = (rowHByKey[k2] !== undefined) ? rowHByKey[k2] : _lh;
-          var stale = vp._forceLiftRebuild || !ent2 || !c2 || !c2.frameDom ||
-            meta.entry.line !== ent2.line || meta.entry.col !== ent2.col ||
-            meta.entry.path !== ent2.path || meta.entry.fileName !== ent2.fileName ||
-            meta.height !== _pullGeom(c2.frameDom, rowH2).h || meta.pull !== rowH2;
-          if (stale) {
+          var sameFrame = !!(ent2 && c2 && c2.frameDom && meta.frameDom === c2.frameDom &&
+            meta.entry.path === ent2.path && meta.entry.fileName === ent2.fileName);
+          if (vp._forceLiftRebuild || !sameFrame) {
             try { accessor.removeZone(meta.zoneId); } catch (e3) { /* */ }
             delete vp._zoneMeta[k2];
+            continue;
           }
+          // ★ 原地平移（Monaco 官方 codelens 同款：delegate 变异 + layoutZone）——
+          //   remove+add 会真拆 zone DOM（display:none → 下帧才复显）→ 相框整屏闪烁；
+          //   平移只改 whitespace 位置/高度，帧 DOM 全程不脱离文档（撤销/打字引起的行位移零闪烁）
+          var geom2 = _pullGeom(c2.frameDom, rowH2);
+          if (meta.entry.line !== ent2.line || meta.height !== geom2.h || meta.pull !== rowH2) {
+            try {
+              if (meta.delegate) {
+                meta.delegate.afterLineNumber = ent2.line;
+                meta.delegate.heightInPx = geom2.h;
+              }
+              try { c2.frameDom.style.marginTop = geom2.m + 'px'; } catch (_eM) { /* */ }
+              accessor.layoutZone(meta.zoneId);
+            } catch (_eL) { /* */ }
+          }
+          meta.entry = { line: ent2.line, col: ent2.col, path: ent2.path, fileName: ent2.fileName };
+          meta.height = geom2.h;
+          meta.pull = rowH2;
         }
 
         // 新增 zone
@@ -821,13 +928,16 @@
           var rowH3 = (rowHByKey[mk] !== undefined) ? rowHByKey[mk] : _lh;
           var geom3 = _pullGeom(frameDom, rowH3);
           try { frameDom.style.marginTop = geom3.m + 'px'; } catch (_eM) { /* */ }
-          var zoneId = accessor.addZone({
+          // ★ delegate 对象必须自持引用：后续位移/高度变更一律变异它 + layoutZone 原地平移（禁 remove+add）
+          var zoneObj = {
             afterLineNumber: ent3.line,
             heightInPx: geom3.h,
             domNode: frameDom,
-          });
+          };
+          var zoneId = accessor.addZone(zoneObj);
           vp._zoneMeta[mk] = {
             zoneId: zoneId,
+            delegate: zoneObj,
             frameDom: frameDom,
             entry: { line: ent3.line, col: ent3.col, path: ent3.path, fileName: ent3.fileName },
             height: geom3.h,
@@ -845,9 +955,13 @@
       this._resolveNullPaths(vp);
 
       // ⑤ codelens 按钮刷新（qqq-codelens：锚点路径解析完成 = 按钮行就绪；唯一通知源）
-      try {
-        if (window.qqqCodelens && window.qqqCodelens.scheduleRefresh) window.qqqCodelens.scheduleRefresh();
-      } catch (e5) { /* */ }
+      //   ★ 闸门：仅锚点集合真变化才通知——每轮 sync（每次按键/滚动）无条件 fire = 每次重拉整套按钮（无效重绘）
+      if (vp._clDirty) {
+        vp._clDirty = false;
+        try {
+          if (window.qqqCodelens && window.qqqCodelens.scheduleRefresh) window.qqqCodelens.scheduleRefresh();
+        } catch (e5) { /* */ }
+      }
     },
 
     // ═══ 粘贴锚点精确注册（paste-router 调用；修「粘贴后破图直到重开文件」）═══
@@ -890,6 +1004,7 @@
       delete entry._tail;   // 注册的真名优先，补偿候选作废
 
       this._applyHideDecos(vp);   // ★ 粘贴即隐令牌原文（不等 sync 防抖；帧随后补上）
+      vp._clDirty = true;
       this._scheduleSync(vp);
       return true;
     },
@@ -940,6 +1055,7 @@
         vp._resolvingPaths = false;
         if (any) {
           self._applyHideDecos(vp);   // ★ 解析命中立即隐藏（不等 100ms sync 防抖）
+          vp._clDirty = true;         // 路径解析完成 → codelens 按钮行就绪
           self._scheduleSync(vp);
         }
       }).catch(function () { vp._resolvingPaths = false; });

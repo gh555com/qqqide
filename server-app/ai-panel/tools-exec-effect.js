@@ -253,6 +253,21 @@ var _CMD_BUILTINS = {
     title: 1, type: 1, ver: 1, verify: 1, vol: 1
 };
 
+// 数组 spawn 裁决（唯一裁决点，单测钩）:「多行 / 含 \"」命令可安全走 CreateProcess
+//   直传时返回 {cmd, args}（head 剥引号，args 逐个剥引号 + \" 解转义）；否则返回 null
+//   （调用方回落整串 shell:true）。守卫: 引号外无 cmd 元字符（& | < > ^ %）+ 非 cd 开头
+//   + 非 cmd 内部命令 + 非 .bat/.cmd。
+function _cmdArrayEligible(cmd) {
+    var sp = _splitCmdLine(cmd);
+    var toks = sp.toks;
+    var metaOut = /[&|<>^%]/.test(sp.outer) || /^cd\s+/i.test(toks[0] || '');
+    if (metaOut || toks.length < 2) return null;
+    var head = _unquoteCmdTok(toks[0]);
+    var isBuiltin = _CMD_BUILTINS[head.toLowerCase()] === 1 || /\.(bat|cmd)$/i.test(head);
+    if (isBuiltin) return null;
+    return { cmd: head, args: toks.slice(1).map(_unquoteCmdTok) };
+}
+
 async function executeRunCommand(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
@@ -329,18 +344,11 @@ async function executeRunCommand(args) {
                 var _arrOk = false;
                 var _arrArgs = [];
                 if (_hasNL || _escDQ) {
-                    var _sp = _splitCmdLine(cmd);
-                    var _toks = _sp.toks;
-                    var _metaOut = /[&|<>^%]/.test(_sp.outer) || /^cd\s+/i.test(_toks[0] || '');
-                    if (!_metaOut && _toks.length >= 2) {
-                        var _head = _unquoteCmdTok(_toks[0]);
-                        var _isBuiltin = _CMD_BUILTINS[_head.toLowerCase()] === 1
-                            || /\.(bat|cmd)$/i.test(_head);
-                        if (!_isBuiltin) {
-                            _arrArgs = _toks.slice(1).map(_unquoteCmdTok);
-                            cmd = _head;
-                            _arrOk = true;
-                        }
+                    var _plan = _cmdArrayEligible(cmd);
+                    if (_plan) {
+                        cmd = _plan.cmd;
+                        _arrArgs = _plan.args;
+                        _arrOk = true;
                     }
                 }
                 if (_arrOk) {
@@ -1314,6 +1322,10 @@ if (typeof module !== 'undefined' && module.exports) {
         TOOL_DEFINITIONS: (typeof TOOL_DEFINITIONS !== 'undefined' ? TOOL_DEFINITIONS : []),
         TOOL_CATEGORY: (typeof TOOL_CATEGORY !== 'undefined' ? TOOL_CATEGORY : {}),
         getTools: (typeof getTools === 'function' ? getTools : function () { return []; }),
-        executeTool: (typeof executeTool === 'function' ? executeTool : null)
+        executeTool: (typeof executeTool === 'function' ? executeTool : null),
+        // 单测钩（Node-only；浏览器零影响）: 纯函数直出
+        _splitCmdLine: _splitCmdLine,
+        _unquoteCmdTok: _unquoteCmdTok,
+        _cmdArrayEligible: _cmdArrayEligible
     };
 }

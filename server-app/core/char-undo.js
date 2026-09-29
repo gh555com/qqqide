@@ -68,7 +68,7 @@
     return true;
   }
 
-  // ── 程序化标记（suppressOnce / 快照回放的 setValue 变更不入账）──
+  // ── 程序化标记（suppressOnce / 快照回放的变更不入账）──
   //   ★ 自动过期：仅当标记后「同任务内」真的发生变更（同步事件消耗）才有效；
   //   未被消耗（目标内容相同无事件 / applyEdits 抛错等）→ 下一拍作废——
   //   否则残留标记会吞掉用户的下一次真实编辑（粘贴快照丢失 → Ctrl+Z 静默失效）。
@@ -79,6 +79,49 @@
       state._progTimer = null;
       state.prog = false;
     }, 0);
+  }
+
+  // ── Monaco 值恢复 = 最小编辑区（公共前缀/后缀收缩）──
+  //   ★ 禁 setValue：setValue = 全文档 flush 替换（模型装饰全销毁 + 全区巨型变更事件）——
+  //   WYSIWYG 相框/隐藏令牌/codelens 全部被推倒重来 → 每次 Ctrl+Z 整屏闪烁（相框多的文档会炸）。
+  //   最小编辑 = 普通增量变更事件：视口机器只按受影响区间更新，区间外相框零重建零位移。
+  //   model 不可用等异常路径回落全域替换（setValue）——语义等价，仅贵。
+  function _applyMonacoVal(ed, monacoRef, val) {
+    var cur = '';
+    try { cur = ed.getValue() || ''; } catch (e0) { return false; }
+    if (cur === val) return true;
+    var model = null;
+    try { model = (typeof ed.getModel === 'function') ? ed.getModel() : null; } catch (e1) { model = null; }
+    if (!model || (typeof model.isDisposed === 'function' && model.isDisposed()) ||
+        typeof model.getPositionAt !== 'function' || typeof model.applyEdits !== 'function') {
+      try { ed.setValue(val); return true; } catch (e2) { return false; }
+    }
+    var op = null;
+    try {
+      // 公共前缀 / 公共后缀 → 最小替换区（撤销一个字符 = 一个字符的编辑）
+      var minLen = Math.min(cur.length, val.length);
+      var pre = 0;
+      while (pre < minLen && cur.charCodeAt(pre) === val.charCodeAt(pre)) pre++;
+      var maxSuf = Math.min(cur.length - pre, val.length - pre);
+      var suf = 0;
+      while (suf < maxSuf && cur.charCodeAt(cur.length - 1 - suf) === val.charCodeAt(val.length - 1 - suf)) suf++;
+      var sp = model.getPositionAt(pre);
+      var ep = model.getPositionAt(cur.length - suf);
+      var range = { startLineNumber: sp.lineNumber, startColumn: sp.column, endLineNumber: ep.lineNumber, endColumn: ep.column };
+      if (monacoRef && monacoRef.Range) {
+        range = new monacoRef.Range(range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn);
+      }
+      op = { range: range, text: val.slice(pre, val.length - suf), forceMoveMarkers: true };
+    } catch (e3) { op = null; }
+    if (!op) { try { ed.setValue(val); return true; } catch (e4) { return false; } }
+    // 直接走 model.applyEdits（computeUndoEdits 默 false）：内容变更照发事件，但不污染原生撤销栈
+    //（与 editor.js 外部重载同口径；光标/滚动由调用方显式恢复）
+    var ok = false;
+    try { model.applyEdits([op], false); ok = true; } catch (e5) { ok = false; }
+    if (!ok) {
+      try { ed.setValue(val); return true; } catch (e6) { return false; }
+    }
+    return true;
   }
 
   // ── MutationObserver 自动挂载 ──
@@ -319,7 +362,7 @@
       _armProg(st);
       var entry = st.history[st.index];
       try {
-        ed.setValue(entry.val);
+        _applyMonacoVal(ed, monaco, entry.val);
         if (entry.pos) {
           ed.setPosition({ lineNumber: entry.pos.line, column: entry.pos.col });
         }
@@ -424,7 +467,7 @@
       _armProg(st);
       var entry = st.history[st.index];
       try {
-        el.setValue(entry.val);
+        _applyMonacoVal(el, window.monaco, entry.val);
         if (entry.pos) {
           el.setPosition({ lineNumber: entry.pos.line, column: entry.pos.col });
         }

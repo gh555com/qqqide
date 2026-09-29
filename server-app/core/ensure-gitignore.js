@@ -78,17 +78,13 @@
     return 'git';
   }
 
-  // 单候选查询: true=已忽略 / false=未忽略 / null=未知（git 异常 → 放弃）
-  async function _isIgnored(gitBin, root, cand) {
-    var b = _b();
-    var r = await b.qz.spawn({
-      cmd: gitBin,
-      args: ['-C', root, 'check-ignore', '-n', '-v', '--', cand + '/'],
-      timeout: 8000
-    });
-    if (!r || typeof r.stdout !== 'string') return null;
-    var out = r.stdout;
-    if (!out.trim()) return null;
+  // 解析 git check-ignore -n -v 输出（纯函数，单测钩）: true=已忽略 / false=未忽略 / null=未知。
+  //   真命中 = .gitignore:<行号>:<模式>\t<路径> 且模式非空；
+  //   `::` 前缀 = 明确的「未忽略」（-n 回显）；
+  //   空模式（如 .gitignore:<空行>:\t<路径>）= 部分 git 的伪命中 → 判「未忽略」（实测坑）；
+  //   空输出 / 无 tab 行 → 未知。
+  function _parseCheckIgnoreOut(out) {
+    if (typeof out !== 'string' || !out.trim()) return null;
     var lines = out.split('\n');
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
@@ -102,6 +98,18 @@
       return m[2].length > 0;                            // 空模式=伪命中 → 未忽略
     }
     return null;
+  }
+
+  // 单候选查询: true=已忽略 / false=未忽略 / null=未知（git 异常 → 放弃）
+  async function _isIgnored(gitBin, root, cand) {
+    var b = _b();
+    var r = await b.qz.spawn({
+      cmd: gitBin,
+      args: ['-C', root, 'check-ignore', '-n', '-v', '--', cand + '/'],
+      timeout: 8000
+    });
+    if (!r || typeof r.stdout !== 'string') return null;
+    return _parseCheckIgnoreOut(r.stdout);
   }
 
   async function _scan(root) {
@@ -201,8 +209,16 @@
   function _init() {
     window.addEventListener('qqq:git-dirty', _onGitDirty);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _init);
-  else _init();
+  if (typeof window !== 'undefined') {
+    if (typeof document !== 'undefined') {
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _init);
+      else _init();
+    }
+    window.qqqEnsureGitignore = { scan: _scan };
+  }
 
-  window.qqqEnsureGitignore = { scan: _scan };
+  // ---- 单测钩（Node-only；浏览器零影响）----
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { _parseCheckIgnoreOut: _parseCheckIgnoreOut };
+  }
 })();

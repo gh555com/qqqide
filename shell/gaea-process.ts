@@ -554,7 +554,7 @@ export function startGaeaProcess(
             }
             // ★ 秒同步：立即推送运行态（不等 5s poll）
             _lastOsRunning.set(goodsId, { running: true, pid: osCheck.pid ?? null });
-            _notifyStatus(goodsId, true, osCheck.pid);
+            _notifyStatus(goodsId, true, osCheck.pid ?? null);
             return { ok: true, pid: osCheck.pid, alreadyRunning: true };
         }
     }

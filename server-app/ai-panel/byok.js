@@ -303,7 +303,7 @@
         }
         // ★ 思考参数（2026-09-16 解耦：不再跟随平台档位 1/2/3，完全由用户配置）
         //   优先自定义 JSON（有效对象 → 逐键合入请求体，可表达任意服务商格式）；
-        //   否则按所选档位发送 reasoning_effort（实测 DeepSeek / OpenAI 兼容端点均接受）。
+        //   否则按所选档位发送 reasoning_effort（实测主流 OpenAI 兼容端点均接受）。
         if (cfg.sendThinking) {
             var applied = false;
             var custom = String(cfg.thinkJson || '').trim();

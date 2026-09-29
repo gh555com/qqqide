@@ -12,9 +12,10 @@
 //     点面板外阴影 / Esc 关闭、无右上角关闭按钮——铁律 §4.1 内置面板统一规范）
 //   · 下拉控件 = 自绘（.qc-select/.qc-pop）——原生 <select> 展开列表选中/悬停高亮在 Windows 上
 //     恒为系统蓝且 CSS 不可覆盖（option:hover/:checked 无效），唯一可控解 = 完全自绘（qd 风格零蓝）
+//     ★ 行悬停高亮 = var(--gold-hover-bg)（qd 金饰系，同 squad/login 下拉行；禁回退 --hover-bg 白亮——冷感，2026-09-28 用户定案）
 //
 // 数据机器: window.qqqPrefs（本地持久化 + 激活用户云同步 GET/PATCH /api/profile）
-// 正版门: 💎 行（removeWatermark）未激活 = 锁 + 点击走 qqqEntitlement.guard('no-watermark')
+// 正版门: 💎 行（removeWatermark / roamName）未激活 = 锁 + 点击走 qqqEntitlement.guard(注册表 def.feat)
 //
 // 暴露: window.qqqCenter = { open, close, toggle, isOpen, doSync }
 // ============================================================================
@@ -68,7 +69,8 @@
       '.qc-select:hover, .qc-select.open, .qc-select:focus { outline: none; border-color: var(--primary-color, #b58900); }',
       '.qc-pop { position: fixed; z-index: 99999; background: var(--card-bg, #eee8d5); border: 1px solid var(--border-color, #d3c6aa); border-radius: 6px; box-shadow: 0 6px 22px rgba(0,0,0,0.18); padding: 4px; box-sizing: border-box; font-size: 12px; line-height: 1.4; max-height: 280px; overflow-y: auto; }',
       '.qc-pop-item { display: flex; align-items: flex-start; gap: 7px; padding: 5px 9px; border-radius: 4px; color: var(--text-primary, #656360); white-space: normal; word-break: break-word; }',
-      '.qc-pop-item:hover, .qc-pop-item.act { background: var(--hover-bg, rgba(0,0,0,0.05)); }',
+            '.qc-pop-item:hover, .qc-pop-item.act { background: var(--gold-hover-bg, #ddca88); }',
+      '.qc-pop-item.sel:hover, .qc-pop-item.sel.act { color: var(--text-primary, #656360); }',
       '.qc-pop-item.sel { color: var(--primary-color, #b58900); }',
       '.qc-pop-item .qc-tick { flex-shrink: 0; width: 12px; visibility: hidden; }',
       '.qc-pop-item.sel .qc-tick { visibility: visible; }',
@@ -272,26 +274,19 @@
   // ── 设置描述表（网站「设置」标签全量本地化；主题/语言由客户端既有机器管理不入卡片）──
   // 组内条目 = { k: 注册表键, lab/desc: 完整键字面量 }（★ 键恒静态字面量——审计 ⑦ 动态拼接必须为零）
   var GROUPS = [
-    { title: 'prefs.g.core', fb: '☀️ Kernel 核心', items: [
-      { k: 'performanceMode', lab: 'prefs.lab.performanceMode', desc: 'prefs.desc.performanceMode' },
-      { k: 'ioEngine', lab: 'prefs.lab.ioEngine', desc: 'prefs.desc.ioEngine' },
-      { k: 'transactionLevel', lab: 'prefs.lab.transactionLevel', desc: 'prefs.desc.transactionLevel' },
-    ] },
     { title: 'prefs.g.roam', fb: '🛸 Roam 漫游', items: [
       { k: 'szDisplayMode', lab: 'prefs.lab.szDisplayMode', desc: 'prefs.desc.szDisplayMode' },
       { k: 'sortBy', lab: 'prefs.lab.sortBy', desc: 'prefs.desc.sortBy' },
       { k: 'autoWatchChanges', lab: 'prefs.lab.autoWatchChanges', desc: 'prefs.desc.autoWatchChanges' },
-      { k: 'roamAsStartPage', lab: 'prefs.lab.roamAsStartPage', desc: 'prefs.desc.roamAsStartPage' },
       { k: 'roamName', lab: 'prefs.lab.roamName', desc: 'prefs.desc.roamName' },
     ] },
     { title: 'prefs.g.observe', fb: '👁️ Observer 观察者', items: [
+      { k: 'performanceMode', lab: 'prefs.lab.performanceMode', desc: 'prefs.desc.performanceMode' },
       { k: 'frameSizeMode', lab: 'prefs.lab.frameSizeMode', desc: 'prefs.desc.frameSizeMode' },
-      { k: 'cleanFreak', lab: 'prefs.lab.cleanFreak', desc: 'prefs.desc.cleanFreak' },
       { k: 'enlargeSmallImages', lab: 'prefs.lab.enlargeSmallImages', desc: 'prefs.desc.enlargeSmallImages' },
       { k: 'textSlideColorScheme', lab: 'prefs.lab.textSlideColorScheme', desc: 'prefs.desc.textSlideColorScheme' },
       { k: 'textSlideFontSize', lab: 'prefs.lab.textSlideFontSize', desc: 'prefs.desc.textSlideFontSize' },
       { k: 'codelensLevel', lab: 'prefs.lab.codelensLevel', desc: 'prefs.desc.codelensLevel' },
-      { k: 'takeOverCodelensStyle', lab: 'prefs.lab.takeOverCodelensStyle', desc: 'prefs.desc.takeOverCodelensStyle' },
     ] },
     { title: 'prefs.g.html', fb: '🍌 HTML & Rich Text', items: [
       { k: 'downloadSecurityLevel', lab: 'prefs.lab.downloadSecurityLevel', desc: 'prefs.desc.downloadSecurityLevel' },
@@ -309,47 +304,39 @@
 
   // 枚举选项的中文标签键（值 = 注册表原值）
   var OPTS = {
-    performanceMode: [['extreme', 'prefs.opt.performanceMode.extreme', 'Extreme：仅保留首帧，质量47'], ['accelerated', 'prefs.opt.performanceMode.accelerated', 'Accelerated：动图/视频最多前2秒，7fps，质量47'], ['optmum', 'prefs.opt.performanceMode.optmum', 'Optimum：动图完整时长，视频首/中/尾共4秒，原始fps，质量71']],
-    ioEngine: [['v16  auto', 'prefs.opt.ioEngine.auto', 'v16 auto — 理想搭配'], ['Exclude Python', 'prefs.opt.ioEngine.excludePython', 'Exclude Python — 静默运行，节省约50MB内存']],
-    transactionLevel: [['full', 'prefs.opt.transactionLevel.full', 'Full wrap：所有耗时操作都包装在事务中 — 进度条、撤销支持、异常回滚'], ['half', 'prefs.opt.transactionLevel.half', 'Half wrap：轻量操作使用简单粘贴 — 最快响应，无进度条，无回滚']],
+    performanceMode: [['extreme', 'prefs.opt.performanceMode.extreme', 'Extreme：仅保留首帧，质量47'], ['accelerated', 'prefs.opt.performanceMode.accelerated', 'Accelerated：动图/视频最多前2秒，7fps，质量47'], ['optmum', 'prefs.opt.performanceMode.optmum', 'Optimum：短媒体（<10s）完整时长·原帧率；长媒体首/中/尾共4秒·15fps；质量71']],
     szDisplayMode: [['nothing', 'prefs.opt.szDisplayMode.nothing', '不显示'], ['size', 'prefs.opt.szDisplayMode.size', '显示文件大小'], ['ctime', 'prefs.opt.szDisplayMode.ctime', '显示创建时间'], ['mtime', 'prefs.opt.szDisplayMode.mtime', '显示修改时间']],
     sortBy: [['name', 'prefs.opt.sortBy.name', '按名字排序（文件夹在前）'], ['size', 'prefs.opt.sortBy.size', '按大小排序（文件夹在前，文件按大小降序）'], ['ctime', 'prefs.opt.sortBy.ctime', '按创建时间排序（降序）'], ['mtime', 'prefs.opt.sortBy.mtime', '按修改时间排序（降序）']],
     frameSizeMode: [['large', 'prefs.opt.frameSizeMode.large', '大框架：512×288'], ['small', 'prefs.opt.frameSizeMode.small', '小框架：256×144'], ['fix', 'prefs.opt.frameSizeMode.fix', '自适应：根据图片尺寸自动选择']],
-    cleanFreak: [['never', 'prefs.opt.cleanFreak.never', '不自动整理（仅手动编织）'], ['add', 'prefs.opt.cleanFreak.add', '仅添加：确保空行足够，不删除多余空行'], ['add & remove', 'prefs.opt.cleanFreak.addRemove', '严格整理：恰好足够空行 — 删除多余，添加缺失']],
     textSlideColorScheme: [['light', 'prefs.opt.textSlideColorScheme.light', '浅色'], ['dark', 'prefs.opt.textSlideColorScheme.dark', '深色']],
-    codelensLevel: [['0', 'prefs.opt.codelensLevel.none', '无'], ['1', 'prefs.opt.codelensLevel.open', '仅打开文件'], ['7', 'prefs.opt.codelensLevel.full', '全套：文件夹/重命名/复制/信息行/qode']],
+    codelensLevel: [['0', 'prefs.opt.codelensLevel.none', '无'], ['1', 'prefs.opt.codelensLevel.open', '仅打开文件'], ['7', 'prefs.opt.codelensLevel.full', '全套：文件夹/重命名/复制/信息行/qqqide']],
     downloadSecurityLevel: [['0: 最宽松', 'prefs.opt.downloadSecurityLevel.l0', '0：最宽松 — 全部11个安全开关关闭'], ['1: 平衡', 'prefs.opt.downloadSecurityLevel.l1', '1：平衡 — 4个开关打开，7个关闭'], ['2: 最严格', 'prefs.opt.downloadSecurityLevel.l2', '2：最严格 — 全部11个安全开关打开']],
     docExportImageResolution: [['original', 'prefs.opt.docExportImageResolution.original', '原始分辨率 — 完整精度'], ['frame', 'prefs.opt.docExportImageResolution.frame', '框架分辨率 — 文件更小，缩略图完整对应']],
   };
 
   // 标签/描述的中文回退（i18n 缺键时兜底；zh.json 为唯一真理源）
   var LAB_FB = {
-    performanceMode: 'Performance Mode 性能模式', ioEngine: 'IO Engine', transactionLevel: 'Transaction Level 事务级别',
+    performanceMode: 'Performance Mode 性能模式',
     szDisplayMode: 'sz Column Display', sortBy: 'Sort By 排序', autoWatchChanges: 'Auto Watch Changes',
-    roamAsStartPage: 'Roam as Start Page', roamName: 'Roam Name',
-    frameSizeMode: 'Frame Size Mode', cleanFreak: 'Clean Freak 洁癖', enlargeSmallImages: 'Enlarge Small Images',
+    roamName: 'Roam Name',
+    frameSizeMode: 'Frame Size Mode', enlargeSmallImages: 'Enlarge Small Images',
     textSlideColorScheme: 'Text Slide Color Scheme', textSlideFontSize: 'Text Slide Font Size',
-    codelensLevel: 'CodeLens Level', takeOverCodelensStyle: 'Take Over CodeLens Style',
+    codelensLevel: 'CodeLens Level',
     downloadSecurityLevel: 'Download Security Level', forceTextFlowScheme: 'Force Text Flow Scheme', autoDownload: 'Auto Download',
     docExportImageResolution: 'Image Resolution', docExportIncludeCipher: 'Include Cipher',
     removeWatermark: 'Remove Watermark 消除水印',
   };
   var DESC_FB = {
-    performanceMode: '☀️ 控制预览图的生成质量和速度',
-    ioEngine: '☀️ IO 引擎（取舍见项目文档：IO_ENGINE_v16）',
-    transactionLevel: '☀️ 事务包装级别：决定操作的可靠性与速度',
+    performanceMode: '👁️ 决定「qqq相框」的渲染质量和速度',
     szDisplayMode: '🛸 sz列显示内容',
     sortBy: '🛸 文件列表排序方式',
     autoWatchChanges: '🛸 勾选：外部程序修改当前目录时自动刷新文件列表；不勾选：零性能开销',
-    roamAsStartPage: '🛸 使用 qqq Roam 作为起始页',
-    roamName: '🛸 自定义漫游名字',
+    roamName: '🛸 自定义漫游名字（最多 12 字，显示在 Roam 标签上）',
     frameSizeMode: '👁️ 预览图尺寸模式',
-    cleanFreak: '👁️ 保存前自动确保每个暗号下方有足够空行，防止预览/内容重叠',
     enlargeSmallImages: '👁️ 勾选：小于框架的预览图放大填充；不勾选：保持原尺寸居中',
     textSlideColorScheme: '👁️ 文本胶片底色',
     textSlideFontSize: '👁️ 文本胶片字号（1-218）',
     codelensLevel: '👁️ CodeLens 显示级别',
-    takeOverCodelensStyle: '👁️ 接管 CodeLens 样式：红色，字号13',
     downloadSecurityLevel: '🍌 下载视频失败时，可在此尝试更宽松的策略',
     forceTextFlowScheme: '🍌 强制修复HTML乱码（仅在顽固乱码时勾选，代价是布局精度降低）',
     autoDownload: '🍌 检测到视频时自动下载',
@@ -357,6 +344,12 @@
     docExportIncludeCipher: '📦 导出时包含图片密码串',
     removeWatermark: '💎 取消勾选后将显示水印（如果您想看水印的话）',
   };
+  // 正版门提示文案（每 premium 键一行；guard 特性 id 读注册表 def.feat）
+  var PREMIUM_NEED = {
+    removeWatermark: ['prefs.wmNeed', '水印自定义是正版功能（激活后可用）'],
+    roamName: ['prefs.rnNeed', '自定义漫游名字是正版功能（激活后可用）'],
+  };
+  function _needMsg(key) { var n = PREMIUM_NEED[key] || PREMIUM_NEED.removeWatermark; return _i(n[0], n[1]); }
 
   // ── 数据读写桥（qqqPrefs 未就绪时诚实提示）──
   function _P() { try { return window.qqqPrefs || null; } catch (e) { return null; } }
@@ -376,7 +369,7 @@
     try { ok = P.set(key, val); } catch (e) { ok = false; }
     if (!ok) {
       var def = P.REGISTRY ? P.REGISTRY[key] : null;
-      if (def && def.premium && !_activated()) { _qoast(_i('prefs.wmNeed', '水印自定义是正版功能（激活后可用）'), { type: 'info', duration: 9000 }); }
+      if (def && def.premium && !_activated()) { _qoast(_needMsg(key), { type: 'info', duration: 9000 }); }
       _syncControl(key);
       return;
     }
@@ -614,7 +607,7 @@
     head.appendChild(dEl);
     if (premiumLocked) {
       var lk = _el('span', 'flex-shrink:0;font-size:12px;color:var(--text-dim);', '', '💎');
-      lk.title = _i('prefs.wmNeed', '水印自定义是正版功能（激活后可用）');
+      lk.title = _needMsg(key);
       head.appendChild(lk);
     }
     box.appendChild(head);
@@ -644,6 +637,9 @@
       ctl.type = 'text';
       ctl.value = (_getVal(key) === undefined || _getVal(key) === null) ? '' : String(_getVal(key));
       ctl.style.cssText = 'width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--border-color);border-radius:3px;background:var(--background-color);color:var(--text-primary);box-sizing:border-box;';
+      if (def.maxlen) { ctl.maxLength = def.maxlen; }   // 文本项硬上限（roamName=12；与 qqq-prefs _sanitizeStr 同口径）
+      if (def.placeholder) { ctl.placeholder = def.placeholder; }   // 占位范例（roamName='的梦gaea'——注册表字面量，专名不译）
+      if (premiumLocked) { ctl.disabled = true; }
     }
     if (def.type !== 'enum') { ctl.dataset.qcKey = key; }
     box.appendChild(ctl);
@@ -655,9 +651,9 @@
         e.stopPropagation();
         var ent = null; try { ent = window.qqqEntitlement || null; } catch (err) { ent = null; }
         if (ent && ent.guard) {
-          ent.guard('no-watermark', { onDeny: function () { _qoast(_i('prefs.wmNeed', '水印自定义是正版功能（激活后可用）'), { type: 'info', duration: 9000 }); } });
+          ent.guard(def.feat || 'no-watermark', { onDeny: function () { _qoast(_needMsg(key), { type: 'info', duration: 9000 }); } });
         } else {
-          _qoast(_i('prefs.wmNeed', '水印自定义是正版功能（激活后可用）'), { type: 'info', duration: 9000 });
+          _qoast(_needMsg(key), { type: 'info', duration: 9000 });
         }
       });
     }

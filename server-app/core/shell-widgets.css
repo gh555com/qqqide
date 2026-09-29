@@ -95,7 +95,7 @@
 }
 
 /* ═══ codelens 按钮（q3 FileCodeLensProvider 移植；字号/字体由 qqq-codelens 走 Monaco 选项层）═══ */
-/* takeOverCodelensStyle=true → 主题红（老「红色 13 号」语义）；关闭时不加此类 = Monaco 默认灰 */
+/* codelens 恒红（qqq-codelens 常驻挂载 html.qqq-codelens-style；链接 hover 橙） */
 html.qqq-codelens-style .monaco-editor .codelens-decoration,
 html.qqq-codelens-style .monaco-editor .codelens-decoration > a,
 html.qqq-codelens-style .monaco-editor .codelens-decoration > span {

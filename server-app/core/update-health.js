@@ -371,7 +371,7 @@
     ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:100050;display:flex;align-items:center;justify-content:center;';
     var panel = document.createElement('div');
     panel.className = 'qqq-diag-panel';   // ★ 统一块钩子（滚动条/可选中/拖选色——shell-base.css，铁律 §4.1）
-    panel.style.cssText = 'width:780px;max-width:92vw;max-height:84vh;overflow-y:auto;background:' + th.bg + ';color:' + th.text + ';border:1px solid ' + th.border + ';border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);font-size:13px;';
+    panel.style.cssText = 'width:780px;max-width:92vw;max-height:84vh;overflow-y:auto;background:' + th.bg + ';color:' + th.text + ';border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);font-size:13px;';
     ov.appendChild(panel);
 
     var v = { ov: ov, panel: panel, idx: null, tails: {}, sections: {}, onKey: null };

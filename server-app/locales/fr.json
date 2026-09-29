@@ -39,15 +39,11 @@
         "cancelled": "Annulé"
     },
     "shell": {
-        "title": "qqq",
         "menu": {
             "file": "Fichier",
             "fileNew": "Nouveau",
-            "fileOpen": "Ouvrir",
             "fileNewWindow": "Nouvelle fenêtre",
             "fileExit": "Quitter",
-            "tools": "Outils",
-            "devTools": "Outils de développement",
             "activate": "Activer",
             "activated": "Activé",
             "evangelist": "Mentor",
@@ -56,13 +52,11 @@
         "window": {
             "minimize": "Réduire",
             "maximize": "Agrandir",
-            "restore": "Restaurer",
             "close": "Fermer"
         },
         "zoom": {
-            "in": "Zoom avant (Ctrl+=)",
-            "out": "Zoom arrière (Ctrl+-)",
-            "reset": "Réinitialiser le zoom"
+            "in": "Agrandir la police de l'éditeur (Ctrl+Alt+=)",
+            "out": "Réduire la police de l'éditeur (Ctrl+Alt+-)"
         },
         "theme": {
             "toggle": "Basculer mode clair/sombre",
@@ -71,11 +65,6 @@
         },
         "lang": {
             "switch": "Changer de langue"
-        },
-        "status": {
-            "version": "Version",
-            "engineOn": "Moteur en ligne",
-            "engineOff": "Moteur hors ligne"
         },
         "output": {
             "title": "Sortie",
@@ -104,7 +93,6 @@
             "copyFailed": "Échec de la copie",
             "zoomIn": "Zoom avant",
             "zoomOut": "Zoom arrière",
-            "close": "Fermer (Échap ou clic droit)",
             "resetPosition": "Réinitialiser la position",
             "mem": "Mémoire",
             "file": "Fichier",
@@ -191,8 +179,6 @@
             "removeProject": "Supprimer ce projet",
             "addProject": "Ajouter un dossier de projet à la vue IA",
             "selectFolder": "Sélectionner le dossier à ajouter à la vue IA",
-            "searchFolder": "Rechercher dans ce dossier",
-            "recentFolders": "Dossiers principaux récents",
             "noRecent": "Aucun historique récent, cliquez sur + pour sélectionner un dossier",
             "editx": "Modifier le fichier",
             "openInOs": "Ouvrir dans le système",
@@ -206,7 +192,6 @@
             "openElsewhere": "⚠️ Cet élément est déjà ouvert comme dossier principal dans une autre fenêtre",
             "clearedBusy": "⚠️ Le dossier principal est déjà utilisé par une autre fenêtre, la vue AI a été réinitialisée à une fenêtre vide"
         },
-        "dev": "Mode développeur",
         "gaeaHostLoading": "Chargement de gaea host...",
         "onl": {
             "title": "Utilisateurs en ligne",
@@ -344,8 +329,7 @@
         "bulb": {
             "left": "Panneau IA gauche",
             "right": "Panneau IA droit"
-        },
-        "free": {}
+        }
     },
     "editor": {
         "copyPath": "Copier le chemin",
@@ -402,15 +386,6 @@
             "closeSave": "Enregistrer et fermer",
             "closeDiscard": "Ne pas enregistrer",
             "closeCancel": "Annuler"
-        },
-        "contextMenu": {
-            "cut": "Couper",
-            "copy": "Copier",
-            "paste": "Coller",
-            "selectAll": "Tout sélectionner",
-            "undo": "Annuler",
-            "redo": "Rétablir",
-            "feedToAi": "📎 Envoyer à l'IA"
         },
         "undo": "Annuler (Ctrl+Z)",
         "redo": "Rétablir (Ctrl+Y)",
@@ -594,15 +569,6 @@
         "inputLimitQoastImageSize": "{0} images dépassent la limite de taille par fichier et ont été ignorées",
         "inputSendBusy": "L'IA est en cours de traitement, veuillez patienter…",
         "embedImage": "Intégrer",
-        "level": {
-            "a": "Prudent",
-            "1": "Léger",
-            "2": "Modéré",
-            "3": "Intelligent",
-            "4": "Puissant",
-            "5": "Extrême",
-            "6": "Pro Max"
-        },
         "floor": "Étage",
         "house": "Maison",
         "room": "Pièce",
@@ -613,33 +579,6 @@
         "confirmConnect": "Confirmer la connexion",
         "thinking": "Réflexion en cours...",
         "streaming": "Génération en cours...",
-        "tools": {
-            "readFile": "Lire le fichier",
-            "editFile": "Modifier le fichier",
-            "createFile": "Créer un fichier",
-            "deleteFile": "Supprimer le fichier",
-            "writeFile": "Écrire dans le fichier",
-            "searchText": "Rechercher du texte",
-            "findFiles": "Trouver des fichiers",
-            "listFiles": "Lister les fichiers",
-            "getDiagnostics": "Obtenir le diagnostic",
-            "runCommand": "Exécuter la commande",
-            "fetchWebpage": "Récupérer la page web",
-            "getVision": "Obtenir le contexte visuel"
-        },
-        "output": {
-            "empty": "En attente de saisie...",
-            "compressInProgress": "Compression en cours...",
-            "compressDone": "Compression terminée",
-            "tokenLimit": "Limite de tokens atteinte"
-        },
-        "rules": {
-            "title": "Règles du projet",
-            "edit": "Modifier les règles",
-            "empty": "Aucune règle pour le moment",
-            "globalRule": "Règle globale (.qqq-rules.txt)",
-            "projectRule": "Règle du projet (project.txt)"
-        },
         "quest": {
             "switch": "Changer de projet",
             "newQuest": "Nouvelle conversation",
@@ -894,11 +833,6 @@
             "inputPlaceholder": "Saisissez un fragment de chemin, Entrée pour ouvrir / Échap pour fermer",
             "noRecent": "Aucun fichier récent. Ouvrez d'abord quelques fichiers dans l'arborescence.",
             "noMatch": "Aucun résultat"
-        },
-        "pasteImage": {
-            "saveFailed": "Échec de l'enregistrement de l'image collée",
-            "saved": "Image enregistrée dans",
-            "useCtrlV": "Veuillez utiliser Ctrl+V pour coller l'image"
         },
         "kmd": {
             "namePh": "Nommer ce terminal",
@@ -1302,57 +1236,7 @@
             "macNeedPerm": "macOS nécessite que vous activiez manuellement l'autorisation \"Accessibilité\" pour que cette application fonctionne.\n\n{guide}",
             "macPermGuide": "Veuillez suivre les étapes ci-dessous :\n\n1. Ouvrez [Préférences Système]\n2. Accédez à [Sécurité et confidentialité]\n3. Sélectionnez l'onglet [Confidentialité]\n4. Trouvez [Accessibilité] dans la liste de gauche\n5. Cochez cette application (ou le terminal qui l'exécute) dans la liste de droite\n\nSi l'application n'apparaît pas dans la liste, cliquez sur le bouton + pour l'ajouter manuellement.\n\nVeuillez redémarrer l'application après l'autorisation.",
             "cfgError": "Une erreur s'est produite lors de la {op} de la configuration :\n{err}"
-        },
-        "bar": {},
-        "fileExplorer": {},
-        "wysiwyg": {},
-        "rage": {
-            "clip": {},
-            "captain": {},
-            "search": {}
         }
-    },
-    "dialog": {
-        "about": {
-            "title": "À propos de qqq",
-            "message": "qqq-shell v2",
-            "detail": "Portable / Win7+ / Mise à jour serveur à chaud"
-        },
-        "confirmDelete": {
-            "title": "Confirmer la suppression",
-            "message": "Êtes-vous sûr de vouloir supprimer ? Cette action est irréversible."
-        },
-        "unsaved": {
-            "title": "Modifications non enregistrées",
-            "message": "Des modifications n'ont pas été enregistrées. Voulez-vous les enregistrer avant de fermer ?",
-            "save": "Enregistrer",
-            "discard": "Ignorer",
-            "cancel": "Annuler"
-        }
-    },
-    "shortcuts": {
-        "ctrlS": "Enregistrer",
-        "ctrlZ": "Annuler",
-        "ctrlShiftZ": "Rétablir",
-        "ctrlX": "Couper",
-        "ctrlC": "Copier",
-        "ctrlV": "Coller",
-        "ctrlA": "Tout sélectionner",
-        "ctrlF": "Rechercher",
-        "ctrlH": "Remplacer",
-        "ctrlN": "Nouveau fichier",
-        "ctrlO": "Ouvrir un fichier",
-        "ctrlW": "Fermer l'onglet",
-        "ctrlShiftE": "Afficher l'explorateur de fichiers",
-        "ctrlShiftF": "Rechercher un fichier",
-        "ctrlBackslash": "Fractionner vers la droite",
-        "ctrlPlus": "Zoomer",
-        "ctrlMinus": "Dézoomer",
-        "ctrl0": "Réinitialiser le zoom",
-        "f12": "Outils de développement",
-        "f1": "Palette de commandes",
-        "altLeft": "Précédent",
-        "altRight": "Suivant"
     },
     "wings": {
         "redrawing": "Redessin en cours"
@@ -1693,6 +1577,7 @@
     "prefs": {
         "title": "Paramètres qqq",
         "wmNeed": "La personnalisation du filigrane est une fonctionnalité premium (disponible après activation)",
+        "rnNeed": "Le nom de Roam personnalisé est une fonctionnalité réservée aux utilisateurs sous licence (disponible après activation)",
         "reset": "Restaurer les paramètres par défaut",
         "resetTitle": "Restaurer les paramètres par défaut",
         "resetMsg": "Cela effacera toutes les modifications de paramètres sur cet appareil (si la synchronisation cloud est activée, la configuration cloud sera également effacée). Voulez-vous continuer ?",
@@ -1700,7 +1585,6 @@
         "resetDone": "Paramètres par défaut restaurés",
         "needRefresh": "Module de préférences non prêt (actualisation de la fenêtre requise)",
         "g": {
-            "core": "☀️ Noyau",
             "roam": "🛸 Roam Itinérance",
             "observe": "👁️ Observateur",
             "html": "🍌 HTML & Texte enrichi",
@@ -1709,20 +1593,15 @@
         },
         "lab": {
             "performanceMode": "Mode performance",
-            "ioEngine": "IO Engine",
-            "transactionLevel": "Transaction Level Niveau de transaction",
             "szDisplayMode": "sz Column Display",
             "sortBy": "Trier par",
             "autoWatchChanges": "Auto Watch Changes",
-            "roamAsStartPage": "Roam comme page de démarrage",
             "roamName": "Nom Roam",
             "frameSizeMode": "Mode taille des images",
-            "cleanFreak": "Maniaque de la propreté",
             "enlargeSmallImages": "Agrandir les petites images",
             "textSlideColorScheme": "Text Slide Color Scheme",
             "textSlideFontSize": "Taille de police des diapositives textuelles",
             "codelensLevel": "Niveau CodeLens",
-            "takeOverCodelensStyle": "Prendre le contrôle du style CodeLens",
             "downloadSecurityLevel": "Niveau de sécurité de téléchargement",
             "forceTextFlowScheme": "Force Text Flow Scheme",
             "autoDownload": "Téléchargement automatique",
@@ -1731,21 +1610,16 @@
             "removeWatermark": "Remove Watermark Supprimer le filigrane"
         },
         "desc": {
-            "performanceMode": "☀️ Contrôler la qualité et la vitesse de génération des aperçus",
-            "ioEngine": "☀️ Moteur IO (voir la documentation du projet pour les compromis : IO_ENGINE_v16)",
-            "transactionLevel": "☀️ Niveau d'emballage des transactions : détermine la fiabilité et la vitesse des opérations",
+            "performanceMode": "👁️ Détermine la qualité de rendu et la vitesse du « cadre photo qqq »",
             "szDisplayMode": "🛸 Contenu affiché dans la colonne sz",
             "sortBy": "🛸 Méthode de tri de la liste de fichiers",
             "autoWatchChanges": "🛸 Coché : Actualise automatiquement la liste des fichiers lorsque le répertoire courant est modifié par un programme externe ; Décoché : Aucune perte de performance",
-            "roamAsStartPage": "🛸 Utiliser qqq Roam comme page de démarrage",
-            "roamName": "🛸 Nom de roaming personnalisé",
+            "roamName": "🛸 Nom de Roam personnalisé (max. 12 caractères, affiché sur l'onglet Roam)",
             "frameSizeMode": "👁️ Mode taille des aperçus",
-            "cleanFreak": "👁️ Assurer automatiquement suffisamment de lignes vides sous chaque code avant l'enregistrement, pour éviter le chevauchement de l'aperçu et du contenu",
             "enlargeSmallImages": "👁️ Coché : Agrandir les aperçus plus petits que le cadre pour les remplir ; Décoché : Conserver la taille d'origine et centrer",
             "textSlideColorScheme": "👁️ Couleur de fond des diapositives textuelles",
             "textSlideFontSize": "👁️ Taille de police des diapositives textuelles (1-218)",
             "codelensLevel": "👁️ Niveau d'affichage CodeLens",
-            "takeOverCodelensStyle": "👁️ Prendre le contrôle du style CodeLens : rouge, taille de police 13",
             "downloadSecurityLevel": "🍌 En cas d'échec du téléchargement vidéo, essayez ici une stratégie plus permissive",
             "forceTextFlowScheme": "🍌 Forcer la réparation du HTML corrompu (à cocher uniquement en cas de corruption persistante, au prix d'une précision de mise en page réduite)",
             "autoDownload": "🍌 Télécharger automatiquement lors de la détection de vidéos",
@@ -1757,15 +1631,7 @@
             "performanceMode": {
                 "extreme": "Extrême : conserver uniquement la première image, qualité 47",
                 "accelerated": "Accelerated : GIF/Vidéo limités aux 2 premières secondes, 7 ips, qualité 47",
-                "optmum": "Optimum : Durée complète des GIF, vidéo (début/milieu/fin) totalisant 4 secondes, ips d'origine, qualité 71"
-            },
-            "ioEngine": {
-                "auto": "v16 auto — Combinaison idéale",
-                "excludePython": "Exclude Python — Exécution silencieuse, économise environ 50 Mo de mémoire"
-            },
-            "transactionLevel": {
-                "full": "Emballage complet : toutes les opérations longues sont encapsulées dans des transactions — barre de progression, support d'annulation, rollback en cas d'exception",
-                "half": "Emballage partiel : les opérations légères utilisent un collage simple — réponse la plus rapide, sans barre de progression ni rollback"
+                "optmum": "Optimum : Médias courts (<10s) durée complète · fréquence d'images originale ; Médias longs 4 secondes au total (début/milieu/fin) · 15 ips ; Qualité 71"
             },
             "szDisplayMode": {
                 "nothing": "Ne pas afficher",
@@ -1784,11 +1650,6 @@
                 "small": "Petit cadre : 256×144",
                 "fix": "Adaptatif : sélection automatique selon la taille de l'image"
             },
-            "cleanFreak": {
-                "never": "Pas de réorganisation automatique (uniquement manuel)",
-                "add": "Ajouter uniquement : assurer suffisamment de lignes vides, sans supprimer les lignes excédentaires",
-                "addRemove": "Organisation stricte : juste assez de lignes vides — Supprime les excès, ajoute les manquants"
-            },
             "textSlideColorScheme": {
                 "light": "Clair",
                 "dark": "Sombre"
@@ -1796,7 +1657,7 @@
             "codelensLevel": {
                 "none": "Aucun",
                 "open": "Fichiers ouverts uniquement",
-                "full": "Complet : dossier/renommer/copier/ligne d'info/qode"
+                "full": "Complet : dossier/renommer/copier/ligne d'information/qqqide"
             },
             "downloadSecurityLevel": {
                 "l0": "0 : Le plus permissif — tous les 11 interrupteurs de sécurité désactivés",
@@ -1806,7 +1667,8 @@
             "docExportImageResolution": {
                 "original": "Résolution originale — Précision complète",
                 "frame": "Résolution du cadre — Fichiers plus petits, vignettes parfaitement correspondantes"
-            }
+            },
+            "uiZoom": {}
         }
     },
     "workbench": {
@@ -1816,6 +1678,8 @@
         "durSs": "{0} secondes",
         "exportDocTip": "Exporte le document actuel au format Word : les images et vidéos sont intégrées en tant qu'images, et les autres pièces jointes font l'objet d'une liste. Enregistrement par défaut à côté du document ; la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
         "exportZipTip": "Empaquete le document actuel ainsi que tous les fichiers et répertoires référencés dans une archive ZIP (en conservant la structure des répertoires, compression maximale) ; enregistrement par défaut à côté du document, la boîte de dialogue d'enregistrement n'apparaît que si un fichier du même nom existe déjà.",
+        "exportHingeTip": "Plein = groupe d'édition qui sera exporté (le dernier consulté) ; Creux = autre groupe. Cliquez sur le carré pour changer la cible d'exportation ; lors du survol de la carte d'exportation, la zone d'édition cible sera mise en évidence par un cadre en pointillés violet pâle.",
+        "exportWillExport": "Sur le point d'exporter : {0}",
         "cloudSyncTip": "Synchronisation cloud : ↑ Téléverser = fusionner avec le cloud avant de téléverser (aucune perte de données des deux côtés) ; ↓ Télécharger = fusionner les données du cloud vers l'appareil local. Inclut la configuration roam, les préférences de chaque dossier et l'historique du presse-papiers.",
         "playerTip": "Lecteur : écoutez de la musique ou regardez des vidéos pendant que vous codez (liste de lecture mémorisée entre les redémarrages) ; dans Roam, faites un clic droit sur un média sélectionné et choisissez « Ajouter à la liste de lecture », ou faites-le apparaître depuis la couche flottante ; minimiser = réduire à cette emprise de contrôle.",
         "playerWinTip": "Fenêtre du lecteur flottant indépendant : fenêtre toujours visible — reste visible même lorsque vous passez à d'autres applications (↗)",
@@ -1873,6 +1737,10 @@
         "sfxAll": "Tous",
         "sfxNone": "Aucun",
         "sfxTooltip": "Activer/désactiver les effets sonores individuels",
+        "uiZoom": {
+            "label": "Zoom de l'interface",
+            "desc": "Échelle d'affichage de toute l'interface (indépendante du zoom système ; réduisez-la pour les grands écrans, augmentez-la si le texte est trop petit)"
+        },
         "undoMode": {
             "label": "Mode d'annulation de l'éditeur",
             "desc": "Granularité de l'annulation (Ctrl+Z) dans l'éditeur de code",
@@ -2165,5 +2033,9 @@
         "dropDone": "Dépôt : {ok} réussi(s), {fail} échoué(s)",
         "unknownErr": "Erreur inconnue",
         "unknownErrSave": "Erreur inconnue (sauvegarde sans résultat retourné)"
+    },
+    "uiZoom": {
+        "toast": "Zoom de l'interface {p}% ({k} pour réinitialiser)",
+        "tip": "Ajuster le zoom de l'interface"
     }
 }

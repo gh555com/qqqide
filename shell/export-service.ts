@@ -25,7 +25,7 @@ import { MediaService } from './media-service';
 import { ZipWriter, sanitizeZipName } from './zip-writer';
 import {
     ExportElement, ExportTexts, AttachmentEntry,
-    generateRtfDocument, buildDocxParts, writeDocx, formatBytes,
+    generateRtfDocument, buildDocxParts, writeDocx,
 } from './export-gen';
 
 // ── 渲染层 → 壳层 的元素协议（有序）──
@@ -72,13 +72,6 @@ export interface ExportResult {
 interface JobState {
     canceled: boolean;
     children: Set<cp.ChildProcess>;
-}
-
-const MEDIA_IMAGE_RE = /\.(png|jpe?g|gif|bmp|webp|ico|tiff?|svg|avif)$/i;
-const MEDIA_VIDEO_RE = /\.(mp4|mkv|webm|avi|mov|wmv|flv|rmvb|mpe?g|3gp|m4v|f4v|ts|mts|m2ts|vob)$/i;
-
-function isMediaFile(p: string): boolean {
-    return MEDIA_IMAGE_RE.test(p) || MEDIA_VIDEO_RE.test(p);
 }
 
 export class ExportService {

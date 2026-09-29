@@ -228,6 +228,7 @@ interface RoamDirWatch {
 }
 const _roamWatches = new Map<string, RoamDirWatch>();  // dir → watch 状态 (多窗口同目录共享一个 watcher + 冷却)
 const _roamWinDirs = new Map<number, string>();         // webContents id → dir
+const _roamWinHooked = new Set<number>();                // destroyed 钩子已挂的 webContents id（每 win 只挂一次）
 
 function _isTempDownload(fname: string | null | undefined): boolean {
     if (!fname) return false;
@@ -474,16 +475,24 @@ export function registerRoamIpc(): void {
         return _getAll();
     });
 
-    // ── 自动感知外部变化 (q3 autoWatchChanges 移植, 默认开) ──
+    // ── 自动感知外部变化（设置中心 autoWatchChanges，默认开；dir='' = 关闭 watcher 释放绑定）──
+    //   ★ destroyed 钩子每 win 只挂一次（旧实现每次 watch IPC 都 once 一次 → 导航数百次后 EventEmitter 监听器堆积）；
+    //     释放时按「当前绑定」处置（禁捕获旧 dir——累积的陈旧闭包会用过期目录做处置判定）。
     ipcMain.handle('qqqide:roam:watch', (e, dir: string) => {
         const winId = e.sender.id;
         _watchDir(winId, dir);
-        e.sender.once('destroyed', () => {  // 窗口关闭 → 释放绑定, 无泄漏
-            _roamWinDirs.delete(winId);
-            let used = false;
-            _roamWinDirs.forEach(x => { if (x === dir) used = true; });
-            if (!used) _disposeWatch(dir);
-        });
+        if (!_roamWinHooked.has(winId)) {
+            _roamWinHooked.add(winId);
+            e.sender.once('destroyed', () => {
+                _roamWinHooked.delete(winId);
+                const bound = _roamWinDirs.get(winId);
+                _roamWinDirs.delete(winId);
+                if (!bound) return;
+                let used = false;
+                _roamWinDirs.forEach(x => { if (x === bound) used = true; });
+                if (!used) _disposeWatch(bound);
+            });
+        }
         return true;
     });
 

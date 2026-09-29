@@ -39,15 +39,11 @@
         "cancelled": "已取消"
     },
     "shell": {
-        "title": "qqq",
         "menu": {
             "file": "檔案",
             "fileNew": "新增",
-            "fileOpen": "開啟",
             "fileNewWindow": "開新視窗",
             "fileExit": "結束",
-            "tools": "工具",
-            "devTools": "開發者工具",
             "activate": "啟用",
             "activated": "已啟用",
             "evangelist": "導師",
@@ -56,13 +52,11 @@
         "window": {
             "minimize": "最小化",
             "maximize": "最大化",
-            "restore": "還原",
             "close": "關閉"
         },
         "zoom": {
             "in": "放大介面（Ctrl+=）",
-            "out": "縮小介面（Ctrl+-）",
-            "reset": "重設縮放"
+            "out": "縮小介面（Ctrl+-）"
         },
         "theme": {
             "toggle": "切換亮色/暗色",
@@ -71,11 +65,6 @@
         },
         "lang": {
             "switch": "切換語言"
-        },
-        "status": {
-            "version": "版本",
-            "engineOn": "引擎線上",
-            "engineOff": "引擎離線"
         },
         "output": {
             "title": "輸出",
@@ -104,7 +93,6 @@
             "copyFailed": "複製失敗",
             "zoomIn": "放大",
             "zoomOut": "縮小",
-            "close": "關閉（Esc 或滑鼠右鍵）",
             "resetPosition": "重設位置",
             "mem": "記憶體",
             "file": "檔案",
@@ -191,8 +179,6 @@
             "removeProject": "移除此專案",
             "addProject": "將專案資料夾加入 AI 視窗",
             "selectFolder": "選擇要加入 AI 視窗的資料夾",
-            "searchFolder": "搜尋此資料夾",
-            "recentFolders": "最近開啟的主資料夾",
             "noRecent": "尚無近期記錄，點擊 + 選擇資料夾",
             "editx": "編輯檔案",
             "openInOs": "在系統中開啟",
@@ -206,7 +192,6 @@
             "openElsewhere": "⚠️ 該專案已在另一個視窗作為主資料夾開啟",
             "clearedBusy": "⚠️ 主資料夾已被另一視窗佔用，AI 視窗已清空為乾淨視窗"
         },
-        "dev": "開發模式",
         "gaeaHostLoading": "gaea host 載入中...",
         "onl": {
             "title": "線上人數",
@@ -344,8 +329,7 @@
         "bulb": {
             "left": "左側 AI 面板",
             "right": "右側 AI 面板"
-        },
-        "free": {}
+        }
     },
     "editor": {
         "copyPath": "複製路徑",
@@ -402,15 +386,6 @@
             "closeSave": "儲存並關閉",
             "closeDiscard": "不儲存",
             "closeCancel": "取消"
-        },
-        "contextMenu": {
-            "cut": "剪下",
-            "copy": "複製",
-            "paste": "貼上",
-            "selectAll": "全選",
-            "undo": "復原",
-            "redo": "重做",
-            "feedToAi": "📎 提供給 AI"
         },
         "undo": "復原 (Ctrl+Z)",
         "redo": "重做 (Ctrl+Y)",
@@ -594,15 +569,6 @@
         "inputLimitQoastImageSize": "有 {0} 張圖片超出單張大小上限，已略過",
         "inputSendBusy": "AI 處理中，請稍候…",
         "embedImage": "嵌入",
-        "level": {
-            "a": "保守",
-            "1": "輕度",
-            "2": "中等",
-            "3": "智慧",
-            "4": "強力",
-            "5": "極限",
-            "6": "Pro Max"
-        },
         "floor": "樓層",
         "house": "房子",
         "room": "房間",
@@ -613,33 +579,6 @@
         "confirmConnect": "確認連線",
         "thinking": "思考中...",
         "streaming": "生成中...",
-        "tools": {
-            "readFile": "讀取檔案",
-            "editFile": "編輯檔案",
-            "createFile": "建立檔案",
-            "deleteFile": "刪除檔案",
-            "writeFile": "寫入檔案",
-            "searchText": "搜尋文字",
-            "findFiles": "尋找檔案",
-            "listFiles": "列出檔案",
-            "getDiagnostics": "取得診斷資訊",
-            "runCommand": "執行命令",
-            "fetchWebpage": "擷取網頁",
-            "getVision": "取得視覺上下文"
-        },
-        "output": {
-            "empty": "等待輸入...",
-            "compressInProgress": "壓縮中...",
-            "compressDone": "壓縮完成",
-            "tokenLimit": "已達 Token 上限"
-        },
-        "rules": {
-            "title": "專案規則",
-            "edit": "編輯規則",
-            "empty": "尚無規則",
-            "globalRule": "全域規則 (.qqq-rules.txt)",
-            "projectRule": "專案規則 (project.txt)"
-        },
         "quest": {
             "switch": "切換專案",
             "newQuest": "新增對話",
@@ -894,11 +833,6 @@
             "inputPlaceholder": "輸入路徑片段，按 Enter 開啟 / Esc 關閉",
             "noRecent": "尚無最近使用的檔案，請先在檔案樹狀結構中開啟幾個檔案",
             "noMatch": "無符合項目"
-        },
-        "pasteImage": {
-            "saveFailed": "儲存貼上的圖片失敗",
-            "saved": "圖片已儲存至",
-            "useCtrlV": "請使用 Ctrl+V 貼上圖片"
         },
         "kmd": {
             "namePh": "為此終端機命名",
@@ -1302,57 +1236,7 @@
             "macNeedPerm": "macOS 需要您手動開啟「輔助功能」權限，本程式才能運作。\n\n{guide}",
             "macPermGuide": "請依照以下步驟操作:\n\n1. 開啟 [系統偏好設定]\n2. 進入 [安全性與隱私權]\n3. 選擇 [隱私權] 分頁\n4. 在左側清單中找到 [輔助功能]\n5. 在右側清單中找到本程式 (或執行它的終端機) 並勾選\n\n如果清單中沒有本程式，請點擊 + 號手動新增。\n\n授權後請重新啟動本程式。",
             "cfgError": "設定{op}時發生錯誤:\n{err}"
-        },
-        "bar": {},
-        "fileExplorer": {},
-        "wysiwyg": {},
-        "rage": {
-            "clip": {},
-            "captain": {},
-            "search": {}
         }
-    },
-    "dialog": {
-        "about": {
-            "title": "關於 qqq",
-            "message": "qqq-shell v2",
-            "detail": "免安裝 / Win7+ / 伺服器熱更新"
-        },
-        "confirmDelete": {
-            "title": "確認刪除",
-            "message": "確定要刪除嗎？此操作無法復原。"
-        },
-        "unsaved": {
-            "title": "未儲存的變更",
-            "message": "有未儲存的變更，是否儲存後關閉？",
-            "save": "儲存",
-            "discard": "放棄",
-            "cancel": "取消"
-        }
-    },
-    "shortcuts": {
-        "ctrlS": "儲存",
-        "ctrlZ": "復原",
-        "ctrlShiftZ": "重做",
-        "ctrlX": "剪下",
-        "ctrlC": "複製",
-        "ctrlV": "貼上",
-        "ctrlA": "全選",
-        "ctrlF": "尋找",
-        "ctrlH": "取代",
-        "ctrlN": "新增檔案",
-        "ctrlO": "開啟檔案",
-        "ctrlW": "關閉分頁",
-        "ctrlShiftE": "顯示檔案總管",
-        "ctrlShiftF": "搜尋檔案",
-        "ctrlBackslash": "向右分割",
-        "ctrlPlus": "放大",
-        "ctrlMinus": "縮小",
-        "ctrl0": "重置縮放",
-        "f12": "開發者工具",
-        "f1": "命令面板",
-        "altLeft": "上一頁",
-        "altRight": "下一頁"
     },
     "wings": {
         "redrawing": "重新繪製中"
@@ -1693,6 +1577,7 @@
     "prefs": {
         "title": "qqq 設定",
         "wmNeed": "自訂浮水印為正版功能（啟用後可用）",
+        "rnNeed": "自訂漫遊名稱是正版功能（啟用後可用）",
         "reset": "恢復預設設定",
         "resetTitle": "恢復預設設定",
         "resetMsg": "將清除本機所有設定變更（若已開啟雲端同步，雲端設定也會一併清除）。確定要繼續嗎？",
@@ -1700,7 +1585,6 @@
         "resetDone": "已恢復預設設定",
         "needRefresh": "偏好模組尚未就緒（需重新整理視窗）",
         "g": {
-            "core": "☀️ Kernel 核心",
             "roam": "🛸 Roam 漫遊",
             "observe": "👁️ Observer 觀察者",
             "html": "🍌 HTML & Rich Text",
@@ -1709,20 +1593,15 @@
         },
         "lab": {
             "performanceMode": "效能模式",
-            "ioEngine": "IO Engine",
-            "transactionLevel": "Transaction Level 交易層級",
             "szDisplayMode": "大小欄位顯示",
             "sortBy": "Sort By 排序",
             "autoWatchChanges": "Auto Watch Changes",
-            "roamAsStartPage": "Roam as Start Page",
             "roamName": "Roam Name",
             "frameSizeMode": "Frame Size Mode",
-            "cleanFreak": "Clean Freak 潔癖",
             "enlargeSmallImages": "Enlarge Small Images",
             "textSlideColorScheme": "文字幻燈片配色方案",
             "textSlideFontSize": "文字幻燈片字體大小",
             "codelensLevel": "CodeLens Level",
-            "takeOverCodelensStyle": "接管 CodeLens 樣式",
             "downloadSecurityLevel": "下載安全等級",
             "forceTextFlowScheme": "強制文字流方案",
             "autoDownload": "自動下載",
@@ -1731,21 +1610,16 @@
             "removeWatermark": "Remove Watermark 消除浮水印"
         },
         "desc": {
-            "performanceMode": "☀️ 控制預覽圖的生成品質與速度",
-            "ioEngine": "☀️ IO 引擎（取捨詳見專案文件：IO_ENGINE_v16）",
-            "transactionLevel": "☀️ 交易包裝層級：決定操作的可靠性與速度",
+            "performanceMode": "👁️ 決定「qqq相框」的渲染品質與速度",
             "szDisplayMode": "🛸 sz 欄位顯示內容",
             "sortBy": "🛸 檔案清單排序方式",
             "autoWatchChanges": "🛸 勾選：外部程式修改目前目錄時自動刷新檔案清單；未勾選：零效能開銷",
-            "roamAsStartPage": "🛸 使用 qqq Roam 作為起始頁",
-            "roamName": "🛸 自訂漫遊名稱",
+            "roamName": "🛸 自訂漫遊名稱（最多 12 字，顯示在 Roam 標籤上）",
             "frameSizeMode": "👁️ 預覽圖尺寸模式",
-            "cleanFreak": "👁️ 儲存前自動確保每個暗號下方有足夠空行，防止預覽/內容重疊",
             "enlargeSmallImages": "👁️ 勾選：小於框架的預覽圖放大填滿；未勾選：保持原始尺寸置中",
             "textSlideColorScheme": "👁️ 文字幻燈片底色",
             "textSlideFontSize": "👁️ 文字幻燈片字體大小（1-218）",
             "codelensLevel": "👁️ CodeLens 顯示層級",
-            "takeOverCodelensStyle": "👁️ 接管 CodeLens 樣式：紅色，字號 13",
             "downloadSecurityLevel": "🍌 下載影片失敗時，可在此嘗試較寬鬆的策略",
             "forceTextFlowScheme": "🍌 強制修復 HTML 亂碼（僅在頑固亂碼時勾選，代價是版面配置精度降低）",
             "autoDownload": "🍌 偵測到影片時自動下載",
@@ -1757,15 +1631,7 @@
             "performanceMode": {
                 "extreme": "極致：僅保留首幀，品質 47",
                 "accelerated": "Accelerated：動圖/影片最多前 2 秒，7fps，品質 47",
-                "optmum": "最佳化：動態圖完整時長，影片首/中/尾共 4 秒，原始 fps，品質 71"
-            },
-            "ioEngine": {
-                "auto": "v16 auto — 理想搭配",
-                "excludePython": "Exclude Python — 靜默執行，節省約 50MB 記憶體"
-            },
-            "transactionLevel": {
-                "full": "完整包裝：所有耗時操作皆包裝於交易中 — 含進度條、復原支援、異常回滾",
-                "half": "半包裝：輕量操作使用簡易貼上 — 最快回應，無進度條，無回滾"
+                "optmum": "最佳化：短媒體（<10秒）完整時長·原始幀率；長媒體開頭/中間/結尾共4秒·15fps；品質71"
             },
             "szDisplayMode": {
                 "nothing": "不顯示",
@@ -1784,11 +1650,6 @@
                 "small": "小框架：256×144",
                 "fix": "自適應：根據圖片尺寸自動選擇"
             },
-            "cleanFreak": {
-                "never": "不自動整理（僅手動編織）",
-                "add": "僅新增：確保空行足夠，不刪除多餘空行",
-                "addRemove": "嚴格整理：恰到好處的空白行 — 刪除多餘，補上缺失"
-            },
             "textSlideColorScheme": {
                 "light": "淺色",
                 "dark": "深色"
@@ -1796,7 +1657,7 @@
             "codelensLevel": {
                 "none": "無",
                 "open": "僅開啟檔案",
-                "full": "全套：資料夾/重新命名/複製/資訊行/qode"
+                "full": "全套：資料夾/重新命名/複製/資訊行/qqqide"
             },
             "downloadSecurityLevel": {
                 "l0": "0：最寬鬆 — 全部 11 個安全開關關閉",
@@ -1806,7 +1667,8 @@
             "docExportImageResolution": {
                 "original": "原始解析度 — 完整精度",
                 "frame": "框架解析度 — 檔案較小，縮圖完整對應"
-            }
+            },
+            "uiZoom": {}
         }
     },
     "workbench": {
@@ -1816,6 +1678,8 @@
         "durSs": "{0} 秒",
         "exportDocTip": "將目前文件匯出為 Word 檔案：圖片與影片轉換為內嵌圖片，其他附件生成清單；預設儲存於文件旁，僅當同名檔案已存在時才彈出儲存對話框。",
         "exportZipTip": "將目前文件及其引用的所有檔案、目錄打包成 ZIP（保留目錄結構、最高壓縮）；預設儲存於文件旁，僅當同名檔案已存在時才彈出儲存對話框。",
+        "exportHingeTip": "實心 = 即將被匯出的編輯群組（你最後查看的那個）；空心 = 另一群組。點擊方塊可切換匯出目標；懸停於匯出卡片時，目標編輯區會亮起淡紫色虛線框。",
+        "exportWillExport": "即將匯出：{0}",
         "cloudSyncTip": "雲端同步：↑ 上傳 = 先與雲端合併再上傳（雙方資料皆不會遺失）；↓ 下載 = 將雲端資料合併至本機。包含編輯器設定、各資料夾偏好、剪貼簿歷史。",
         "playerTip": "播放器：寫程式時也能聽歌/看影片（跨重啟記憶播放清單）；在 Roam 中選取媒體右鍵點擊「加入播放清單」，或從懸浮層彈出。",
         "playerWinTip": "獨立懸浮播放器視窗：置頂小視窗——切換到其他程式也看得見（↗）",
@@ -1873,6 +1737,10 @@
         "sfxAll": "全部",
         "sfxNone": "無",
         "sfxTooltip": "個別音效開關",
+        "uiZoom": {
+            "label": "介面縮放",
+            "desc": "整個介面的顯示比例（獨立於系統縮放；螢幕大可調小，字體太小可調大）"
+        },
         "undoMode": {
             "label": "編輯器復原模式",
             "desc": "Ctrl+Z 在程式碼編輯器中復原的粒度",
@@ -2165,5 +2033,9 @@
         "dropDone": "拖放: {ok} 成功, {fail} 失敗",
         "unknownErr": "未知錯誤",
         "unknownErrSave": "未知錯誤（儲存未回傳結果）"
+    },
+    "uiZoom": {
+        "toast": "介面縮放 {p}%（{k} 復原）",
+        "tip": "調整介面縮放"
     }
 }

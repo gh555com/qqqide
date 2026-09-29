@@ -39,15 +39,11 @@
         "cancelled": "キャンセル済み"
     },
     "shell": {
-        "title": "qqq",
         "menu": {
             "file": "ファイル",
             "fileNew": "新規作成",
-            "fileOpen": "開く",
             "fileNewWindow": "新しいウィンドウを開く",
             "fileExit": "終了",
-            "tools": "ツール",
-            "devTools": "開発者ツール",
             "activate": "アクティベート",
             "activated": "有効化済み",
             "evangelist": "導師",
@@ -56,13 +52,11 @@
         "window": {
             "minimize": "最小化",
             "maximize": "最大化",
-            "restore": "元に戻す",
             "close": "閉じる"
         },
         "zoom": {
-            "in": "UIを拡大（Ctrl+=）",
-            "out": "UIを縮小（Ctrl+-）",
-            "reset": "ズームをリセット"
+            "in": "エディタのフォントを拡大（Ctrl+Alt+=）",
+            "out": "エディタのフォントを縮小（Ctrl+Alt+-）"
         },
         "theme": {
             "toggle": "ライト/ダークテーマ切替",
@@ -71,11 +65,6 @@
         },
         "lang": {
             "switch": "言語切替"
-        },
-        "status": {
-            "version": "バージョン",
-            "engineOn": "エンジンオンライン",
-            "engineOff": "エンジンオフライン"
         },
         "output": {
             "title": "出力",
@@ -104,7 +93,6 @@
             "copyFailed": "コピー失敗",
             "zoomIn": "拡大",
             "zoomOut": "縮小",
-            "close": "閉じる (Esc または右クリック)",
             "resetPosition": "位置をリセット",
             "mem": "メモリ",
             "file": "ファイル",
@@ -191,8 +179,6 @@
             "removeProject": "このプロジェクトを削除",
             "addProject": "AI ビューポートにプロジェクトフォルダーを追加",
             "selectFolder": "AI ビューポートに追加するフォルダーを選択",
-            "searchFolder": "このフォルダー内を検索",
-            "recentFolders": "最近開いたメインフォルダー",
             "noRecent": "最近の記録はありません。「+」をクリックしてフォルダーを選択",
             "editx": "ファイルを編集",
             "openInOs": "OS で開く",
@@ -206,7 +192,6 @@
             "openElsewhere": "⚠️ このプロジェクトは別のウィンドウでメインフォルダとして開かれています",
             "clearedBusy": "⚠️ メインフォルダは別のウィンドウで使用されているため、AI ビューポートはクリーンな状態にクリアされました"
         },
-        "dev": "開発者モード",
         "gaeaHostLoading": "gaea host を読み込み中...",
         "onl": {
             "title": "オンライン人数",
@@ -344,8 +329,7 @@
         "bulb": {
             "left": "左AIパネル",
             "right": "右AIパネル"
-        },
-        "free": {}
+        }
     },
     "editor": {
         "copyPath": "パスをコピー",
@@ -402,15 +386,6 @@
             "closeSave": "保存して閉じる",
             "closeDiscard": "不保存",
             "closeCancel": "キャンセル"
-        },
-        "contextMenu": {
-            "cut": "切り取り",
-            "copy": "コピー",
-            "paste": "貼り付け",
-            "selectAll": "すべて選択",
-            "undo": "元に戻す",
-            "redo": "やり直し",
-            "feedToAi": "📎 AI に送信"
         },
         "undo": "元に戻す (Ctrl+Z)",
         "redo": "やり直し (Ctrl+Y)",
@@ -594,15 +569,6 @@
         "inputLimitQoastImageSize": "{0} 枚の画像がサイズ上限を超えているため、スキップしました",
         "inputSendBusy": "AIが処理中です。お待ちください…",
         "embedImage": "埋め込み",
-        "level": {
-            "a": "保守的",
-            "1": "軽度",
-            "2": "中程度",
-            "3": "スマート",
-            "4": "強力",
-            "5": "極限",
-            "6": "Pro Max"
-        },
         "floor": "階層",
         "house": "ハウス",
         "room": "ルーム",
@@ -613,33 +579,6 @@
         "confirmConnect": "接続を確認",
         "thinking": "思考中...",
         "streaming": "生成中...",
-        "tools": {
-            "readFile": "ファイルを読み取る",
-            "editFile": "ファイルを編集",
-            "createFile": "ファイルを作成",
-            "deleteFile": "ファイルを削除",
-            "writeFile": "ファイルに書き込む",
-            "searchText": "テキストを検索",
-            "findFiles": "ファイルを探す",
-            "listFiles": "ファイル一覧",
-            "getDiagnostics": "診断情報を取得",
-            "runCommand": "コマンド実行",
-            "fetchWebpage": "ウェブページを取得",
-            "getVision": "視覚コンテキストを取得"
-        },
-        "output": {
-            "empty": "入力待ち...",
-            "compressInProgress": "圧縮中...",
-            "compressDone": "圧縮完了",
-            "tokenLimit": "トークン上限に達しました"
-        },
-        "rules": {
-            "title": "プロジェクトルール",
-            "edit": "ルールを編集",
-            "empty": "ルールなし",
-            "globalRule": "グローバルルール (.qqq-rules.txt)",
-            "projectRule": "プロジェクトルール (project.txt)"
-        },
         "quest": {
             "switch": "プロジェクトを切り替え",
             "newQuest": "新規チャット",
@@ -894,11 +833,6 @@
             "inputPlaceholder": "パスの一部を入力し、Enterで開く / Escで閉じる",
             "noRecent": "最近のファイルはありません。まずファイルツリーでいくつかのファイルを開いてください",
             "noMatch": "一致する項目なし"
-        },
-        "pasteImage": {
-            "saveFailed": "貼り付けた画像の保存に失敗しました",
-            "saved": "画像を保存しました: ",
-            "useCtrlV": "Ctrl+V を使用して画像を貼り付けてください"
         },
         "kmd": {
             "namePh": "このターミナルに名前を付ける",
@@ -1302,57 +1236,7 @@
             "macNeedPerm": "macOSでは、本プログラムが動作するために「アクセシビリティ」権限を手動で有効にする必要があります。\n\n{guide}",
             "macPermGuide": "以下の手順に従ってください:\n\n1. [システム環境設定]を開く\n2. [セキュリティとプライバシー]に進む\n3. [プライバシー]タブを選択\n4. 左側のリストから[アクセシビリティ]を見つける\n5. 右側のリストで本プログラム（またはそれを実行しているターミナル）を探し、チェックを入れる\n\nリストに本プログラムがない場合は、+ボタンをクリックして手動で追加してください。\n\n承認後、本プログラムを再起動してください。",
             "cfgError": "設定{op}中にエラーが発生しました:\n{err}"
-        },
-        "bar": {},
-        "fileExplorer": {},
-        "wysiwyg": {},
-        "rage": {
-            "clip": {},
-            "captain": {},
-            "search": {}
         }
-    },
-    "dialog": {
-        "about": {
-            "title": "qqq について",
-            "message": "qqq-shell v2",
-            "detail": "ポータブル / Win7+ / サーバーホットアップデート"
-        },
-        "confirmDelete": {
-            "title": "削除の確認",
-            "message": "本当に削除しますか？この操作は元に戻せません。"
-        },
-        "unsaved": {
-            "title": "未保存の変更",
-            "message": "未保存の変更があります。保存して閉じますか？",
-            "save": "保存",
-            "discard": "破棄",
-            "cancel": "キャンセル"
-        }
-    },
-    "shortcuts": {
-        "ctrlS": "保存",
-        "ctrlZ": "元に戻す",
-        "ctrlShiftZ": "やり直し",
-        "ctrlX": "切り取り",
-        "ctrlC": "コピー",
-        "ctrlV": "貼り付け",
-        "ctrlA": "すべて選択",
-        "ctrlF": "検索",
-        "ctrlH": "置換",
-        "ctrlN": "新規ファイル",
-        "ctrlO": "ファイルを開く",
-        "ctrlW": "タブを閉じる",
-        "ctrlShiftE": "ファイルブラウザを表示",
-        "ctrlShiftF": "ファイルを検索",
-        "ctrlBackslash": "右に分割",
-        "ctrlPlus": "拡大",
-        "ctrlMinus": "縮小",
-        "ctrl0": "ズームをリセット",
-        "f12": "開発者ツール",
-        "f1": "コマンドパレット",
-        "altLeft": "戻る",
-        "altRight": "進む"
     },
     "wings": {
         "redrawing": "再描画中"
@@ -1693,6 +1577,7 @@
     "prefs": {
         "title": "qqq 設定",
         "wmNeed": "ウォーターマークのカスタマイズは正規版機能です（アクティベート後に利用可能）",
+        "rnNeed": "カスタムRoam名は正規版機能です（アクティベート後に利用可能）",
         "reset": "デフォルト設定に戻す",
         "resetTitle": "デフォルト設定に戻す",
         "resetMsg": "ローカルのすべての設定変更をクリアします（クラウド同期が有効な場合、クラウドの設定も同時にクリアされます）。続行しますか？",
@@ -1700,7 +1585,6 @@
         "resetDone": "デフォルト設定に戻しました",
         "needRefresh": "設定モジュールが準備できていません（ウィンドウの再読み込みが必要です）",
         "g": {
-            "core": "☀️ Kernel コア",
             "roam": "🛸 Roam 漫游",
             "observe": "👁️ Observer 観察者",
             "html": "🍌 HTML & リッチテキスト",
@@ -1709,20 +1593,15 @@
         },
         "lab": {
             "performanceMode": "パフォーマンスモード",
-            "ioEngine": "IO Engine",
-            "transactionLevel": "Transaction Level トランザクションレベル",
             "szDisplayMode": "sz列の表示",
             "sortBy": "並べ替え",
             "autoWatchChanges": "Auto Watch Changes",
-            "roamAsStartPage": "スタートページとしてRoamを使用",
             "roamName": "Roam名",
             "frameSizeMode": "フレームサイズモード",
-            "cleanFreak": "Clean Freak 潔癖症",
             "enlargeSmallImages": "小さい画像を拡大",
             "textSlideColorScheme": "テキストスライドの配色",
             "textSlideFontSize": "テキストスライドのフォントサイズ",
             "codelensLevel": "CodeLensレベル",
-            "takeOverCodelensStyle": "CodeLensスタイルを引き継ぐ",
             "downloadSecurityLevel": "ダウンロードセキュリティレベル",
             "forceTextFlowScheme": "Force Text Flow Scheme",
             "autoDownload": "自動ダウンロード",
@@ -1731,21 +1610,16 @@
             "removeWatermark": "Remove Watermark ウォーターマークを除去"
         },
         "desc": {
-            "performanceMode": "☀️ プレビュー画像の生成品質と速度を制御",
-            "ioEngine": "☀️ IO エンジン（トレードオフはプロジェクトドキュメント参照：IO_ENGINE_v16）",
-            "transactionLevel": "☀️ トランザクション包装レベル：操作の信頼性と速度を決定",
+            "performanceMode": "👁️ 「qqqフレーム」のレンダリング品質と速度を決定します",
             "szDisplayMode": "🛸 sz列に表示する内容",
             "sortBy": "🛸 ファイルリストの並べ替え方法",
             "autoWatchChanges": "🛸 チェック：外部プログラムによる現在のディレクトリの変更時にファイルリストを自動更新；未チェック：パフォーマンスオーバーヘッドゼロ",
-            "roamAsStartPage": "🛸 qqq Roamを開始ページとして使用",
-            "roamName": "🛸 カスタムRoam名",
+            "roamName": "🛸 カスタムRoam名（最大12文字、Roamタブに表示）",
             "frameSizeMode": "👁️ プレビュー画像サイズモード",
-            "cleanFreak": "👁️ 保存前に各暗号の下に十分な空行を自動的に確保し、プレビューやコンテンツの重なりを防ぐ",
             "enlargeSmallImages": "👁️ チェック：フレームより小さいプレビュー画像を拡大して填充；未チェック：元のサイズで中央配置",
             "textSlideColorScheme": "👁️ テキストスライドの背景色",
             "textSlideFontSize": "👁️ テキストスライドのフォントサイズ（1-218）",
             "codelensLevel": "👁️ CodeLens表示レベル",
-            "takeOverCodelensStyle": "👁️ CodeLensスタイルを引き継ぐ：赤色、フォントサイズ13",
             "downloadSecurityLevel": "🍌 動画のダウンロードに失敗した場合、ここでより緩やかな戦略を試すことができます",
             "forceTextFlowScheme": "🍌 HTML文字化けを強制的に修正（頑固な文字化けの場合のみチェック。レイアウト精度が低下する代价あり）",
             "autoDownload": "🍌 動画検出時に自動ダウンロード",
@@ -1757,15 +1631,7 @@
             "performanceMode": {
                 "extreme": "Extreme：最初のフレームのみ保持、品質47",
                 "accelerated": "Accelerated：アニメーション/動画は最大2秒、7fps、品質47",
-                "optmum": "Optimum：アニメーションは全長、動画は最初・中間・最後の計4秒、元のfps、品質71"
-            },
-            "ioEngine": {
-                "auto": "v16 auto — 理想的な組み合わせ",
-                "excludePython": "Exclude Python — サイレント実行、約50MBのメモリを節約"
-            },
-            "transactionLevel": {
-                "full": "Full wrap：すべての時間がかかる操作をトランザクションで包装 — プログレスバー、元に戻すサポート、例外時のロールバック",
-                "half": "Half wrap：軽量操作には単純な貼り付けを使用 — 最速の応答、プログレスバーなし、ロールバックなし"
+                "optmum": "最適：短いメディア（<10秒）は全長・元のフレームレートで再生；長いメディアは先頭・中央・末尾の合計4秒を15fpsで再生；品質71"
             },
             "szDisplayMode": {
                 "nothing": "表示しない",
@@ -1784,11 +1650,6 @@
                 "small": "小フレーム：256×144",
                 "fix": "自動調整：画像サイズに応じて自動選択"
             },
-            "cleanFreak": {
-                "never": "自動整理しない（手動編成のみ）",
-                "add": "追加のみ：空行が十分であることを確認し、余分な空行は削除しない",
-                "addRemove": "厳密な整理：適切な空行 — 余分なものを削除し、不足しているものを追加"
-            },
             "textSlideColorScheme": {
                 "light": "ライト",
                 "dark": "ダーク"
@@ -1796,7 +1657,7 @@
             "codelensLevel": {
                 "none": "なし",
                 "open": "開いているファイルのみ",
-                "full": "フルセット：フォルダ/名前変更/コピー/情報行/qode"
+                "full": "フルセット：フォルダ/名前変更/コピー/情報行/qqqide"
             },
             "downloadSecurityLevel": {
                 "l0": "0：最も緩やか — 全11のセキュリティスイッチをオフ",
@@ -1806,7 +1667,8 @@
             "docExportImageResolution": {
                 "original": "元の解像度 — 完全な精度",
                 "frame": "フレーム解像度 — ファイルサイズが小さく、サムネイルと完全に対応"
-            }
+            },
+            "uiZoom": {}
         }
     },
     "workbench": {
@@ -1816,6 +1678,8 @@
         "durSs": "{0} 秒",
         "exportDocTip": "現在のドキュメントを Word ファイルとしてエクスポート：画像と動画は画像として埋め込まれ、その他の添付ファイルはリストとして生成されます。デフォルトではドキュメントの隣に保存され、同名のファイルが既に存在する場合のみ保存ダイアログが表示されます。",
         "exportZipTip": "現在のドキュメントと参照されているすべてのファイル・ディレクトリをZIP形式でパッケージ化（ディレクトリ構造を保持、最高圧縮）。デフォルトではドキュメントの隣に保存され、同名ファイルが既に存在する場合のみ保存ダイアログが表示されます。",
+        "exportHingeTip": "塗りつぶし = 現在エクスポート対象の編集グループ（最後に選択したグループ）；枠線のみ = 他のグループ。正方形をクリックしてエクスポート先を切り替え可能；エクスポートカードにカーソルを合わせると、対象の編集エリアに薄い紫の点線枠が表示されます。",
+        "exportWillExport": "エクスポート予定：{0}",
         "cloudSyncTip": "クラウド同期：↑ アップロード = クラウドとマージしてからアップロード（両方のデータを保持）；↓ ダウンロード = クラウドのデータをローカルにマージ。roam設定、各フォルダの設定、クリップボード履歴を含みます。",
         "playerTip": "プレーヤー：コーディング中でも音楽や動画を楽しめます（再起動後もプレイリストを保持）。Roam でメディアを選択し右クリックで「プレイリストに追加」、またはフローティングレイヤーからポップアップ表示可能。最小化すると、このスロットのリモコンとして格納されます。",
         "playerWinTip": "独立したフローティングプレイヤーウィンドウ：常に最前面に表示される小窓——他のアプリに切り替えても表示されます（↗）",
@@ -1873,6 +1737,10 @@
         "sfxAll": "すべて",
         "sfxNone": "なし",
         "sfxTooltip": "個別効果音のオン/オフ",
+        "uiZoom": {
+            "label": "インターフェースのズーム",
+            "desc": "画面全体の表示倍率（システムのズーム設定とは独立；大画面では小さく、文字が小さい場合は大きく調整）"
+        },
         "undoMode": {
             "label": "エディタの取り消しモード",
             "desc": "コードエディタで Ctrl+Z を押した際の取り消し単位",
@@ -2165,5 +2033,9 @@
         "dropDone": "ドラッグ＆ドロップ: {ok} 成功, {fail} 失敗",
         "unknownErr": "不明なエラー",
         "unknownErrSave": "不明なエラー（保存から結果が返されませんでした）"
+    },
+    "uiZoom": {
+        "toast": "UIズーム {p}%（{k} でリセット）",
+        "tip": "インターフェースのズームを調整"
     }
 }

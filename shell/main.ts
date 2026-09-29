@@ -33,7 +33,7 @@ import * as fs from 'fs';
 import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, ensureLocalWebapp, onUiReady, scheduleOldSlotCleanup, BootMode, BootConfig } from './boot';
 import { initMainI18n, refreshMainI18nLang, mi } from './main-i18n';
 import { APP_VERSION, checkForcedUpdate } from './version';
-import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen, setPackRoot, packWsKey } from './window-manager';
+import { editorFontSize, setEditorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen, setPackRoot, packWsKey } from './window-manager';
 import { claimProject, registerProjectLockIpc } from './project-lock';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
@@ -51,6 +51,7 @@ import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers, hardenWebContents } from './shutdown';
 import { crashNetInit } from './crash-net';
+import { isSmokeMode, runSmoke, smokeFailFast } from './smoke';
 import { memMeterInit } from './mem-meter';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broker';
@@ -65,6 +66,7 @@ import { registerSearchStateIpc } from './ipc-search-state';
 import { registerKmdIpc } from './ipc-kmd';
 import { registerQmdIpc } from './ipc-qmd';
 import { registerSysPyIpc } from './ipc-syspy';
+import { initUiZoom, registerUiZoomIpc } from './ui-zoom';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady, setCurrentlyPlaying, triggerPlayingPing, setWqPingStateStore } from './wq-ping';
@@ -105,6 +107,12 @@ import { DownloadService } from './download-service';
 app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
+// ★ Windows 显示缩放无关（恒 100%）：强制 device scale factor = 1 —— 无视系统「显示缩放」百分比，
+//   1 DIP = 1 物理像素 → 逻辑空间 = 物理分辨率（小逻辑屏下三面板可开 + 同屏行数最大化）。
+//   必须在 app.whenReady() 前；仅 win32（mac Retina 缩放语义不同，不适用）。
+if (process.platform === 'win32') {
+    app.commandLine.appendSwitch('force-device-scale-factor', '1');
+}
 // ★ CDP devtools capture: 克隆 DevTools 另存为 100% 输出（Log.entryAdded）
 //   dev 多实例并存（dev 窗口 + 绿色包）时 8315 被占 → 后启动实例调试口静默失效（bind 失败不报错）。
 //   dev（非打包）自动右移到首个空闲端口；打包版恒 8315 原样。
@@ -125,6 +133,9 @@ app.commandLine.appendSwitch('remote-debugging-port', _cdpPort);
 if (app.isPackaged) {
     const ok = app.setAsDefaultProtocolClient('qqqide');
     console.log('[protocol] setAsDefaultProtocolClient (packaged) → ' + (ok ? 'OK' : 'FAILED'));
+} else if (process.argv.includes('--smoke')) {
+    // ★ 冒烟测试: 零注册表写入（CI 完整性；常规 dev 分支不变）
+    console.log('[protocol] smoke: skip setAsDefaultProtocolClient');
 } else {
     const ok = app.setAsDefaultProtocolClient('qqqide', process.execPath, [app.getAppPath()]);
     console.log('[protocol] setAsDefaultProtocolClient (dev, execPath=' + process.execPath + ') → ' + (ok ? 'OK' : 'FAILED'));
@@ -206,6 +217,8 @@ function checkStartupAuthUrl(): void {
 // ── 启动配置 + 标志 ──
 const bootConfig: BootConfig = loadBootConfig(portable.root);
 const { isOffline: isOfflineFlag, isDev: isDevFlag } = extractFlags();
+// ★ 冒烟测试机（--smoke，详 shell/smoke.ts）: 数据目录隔离 + 业务子系统门控 + 起→探→退
+const isSmokeFlag = isSmokeMode();
 
 // ── 单例服务 ──
 
@@ -329,6 +342,7 @@ function registerAllIpc(): void {
     registerSquadIpc();
     registerSecureIpc();
     registerProjectLockIpc();
+    registerUiZoomIpc();
 }
 
 // ── wq 偿还 IPC — Savor 播放状态 → ping playing=true（2026-09-19） ──
@@ -524,6 +538,8 @@ app.whenReady().then(async () => {
 
     // ★ If another instance already holds the lock, quit immediately — don't create windows
     if (_shouldQuitEarly) {
+        // ★ 冒烟测试: 单例锁被占 = 明确失败（exitCode=2，报告照写）——绝不静默退出码 0
+        if (isSmokeFlag) { smokeFailFast(portable.userData, 'single-instance-lock-held', 2); return; }
         app.quit();
         return;
     }
@@ -585,6 +601,17 @@ app.whenReady().then(async () => {
     // ★ 主进程 i18n 语言刷新（state 就绪 → 用户历史选择优先于 OS 语言；boot 面板出现于此之后）
     try { await refreshMainI18nLang(() => stateStore.get('qqq.i18n', 'lang')); } catch { /* ignore */ }
 
+    // ★ 界面缩放机器（应用级 UI scale）：读 qqq.prefs/values.uiZoom → 窗口加载后应用（详 ui-zoom.ts）
+    try { initUiZoom(stateStore); } catch { /* ignore */ }
+
+    // ★ 编辑器字号启动恢复：global.sq3 qqqide/editorFontSize（写路径 = ipc-misc qqqide:zoom:set / ± 按钮 mouseup；
+    //   漏掉本段 = 重启永远回 13——在此窗口创建前完成，渲染层启动即拿到恢复值）
+    try {
+        const fv: any = await stateStore.get('qqqide', 'editorFontSize');
+        const fsz = Math.round(Number(fv && typeof fv === 'object' ? fv.size : fv));
+        if (isFinite(fsz) && fsz >= 1 && fsz <= 128) { setEditorFontSize(fsz); }
+    } catch { /* ignore */ }
+
     // Security hardening
     hardenSession();
 
@@ -593,6 +620,8 @@ app.whenReady().then(async () => {
     //   抢主线程）→ 挪到「UI 就绪」（渲染层可交互，正常 3~10s / 兜底 45s）后 1.5s 开跑；
     //   内部已缓存化+异步化（_dirSizeMB 24h TTL / _cmdOkAsync）→ 常规会话近零成本。
     onUiReady(() => {
+        // ★ 冒烟测试: 组件自检（后台下载）与旧槽清理（扫描包根父目录）在 CI 无意义 → 跳过
+        if (isSmokeFlag) { return; }
         setTimeout(() => { try { checkRank0Components(portable.root); } catch { /* ignore */ } }, 1500);
         // 旧槽异步清理: 交换后 gh555.com-old* 由启动器交换期同步删改为壳层就绪后台删
         scheduleOldSlotCleanup(portable.root);
@@ -610,7 +639,8 @@ app.whenReady().then(async () => {
     }
 
     // ★ Python broker: 仅当已安装时启动（未安装则下次启动自动下载后再启）
-    startPyBroker(portable.root);
+    //   ★ 冒烟测试: 不启动（进程隔离；不与已运行实例争编队热键互斥量）
+    if (!isSmokeFlag) { startPyBroker(portable.root); }
 
     // ★ 编队热键事件（py-broker 常驻 pynput 监听 Space+key）→ 召回成功播放 kj3 音效
     setPyBrokerEventHandler((ev: any) => {
@@ -629,7 +659,8 @@ app.whenReady().then(async () => {
     });
 
     // ★ Gaea process auto-start: 遍历所有注册的 process-type goods
-    (async () => {
+    //   ★ 冒烟测试: 跳过（不得拉起 python goods 子进程；CI 保持零业务进程）
+    if (!isSmokeFlag) (async () => {
         try {
             const processGoods = [
                 { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python', lifecycle: 'independent' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: false },
@@ -704,7 +735,8 @@ app.whenReady().then(async () => {
     registerAllIpc();
 
     // ★ 音频引擎预启动 — 消灭首响延迟（懒启动 Python ~200ms 是慢半拍的第一层）
-    audioEngine.ensure().catch(() => { /* 组件缺失时静默 */ });
+    //   ★ 冒烟测试: 不预热（不 spawn python 音频桥）
+    if (!isSmokeFlag) { audioEngine.ensure().catch(() => { /* 组件缺失时静默 */ }); }
 
     // Register exit handlers
     registerExitHandlers(portable.root, portable.logs, stateStore, bootConfig, _qgfInstances);
@@ -759,6 +791,19 @@ app.whenReady().then(async () => {
         mainWindow, bootConfig, portable.root, portable.cache,
         isDevFlag, isOfflineFlag, setLastBootMode, getLastBootMode
     );
+
+    // ★ 冒烟测试机（--smoke）: 等渲染层就绪 → 经 preload 桥真实 IPC 探活 → 报告 + 退出码
+    if (isSmokeFlag) {
+        runSmoke({
+            root: portable.root,
+            userData: portable.userData,
+            appVersion: APP_VERSION,
+            getWindow: () => mainWindow,
+            getBootMode: () => getLastBootMode(),
+            // app.exit 跳过 before-quit → 音频引擎显式收尾（子进程 stdin EOF 双保险）
+            onBeforeExit: () => { try { audioEngine.stop(); } catch { /* ignore */ } },
+        });
+    }
 
     // ★ 多窗口还原：读取上次退出保存的窗口列表，还原额外窗口
     (async () => {
@@ -888,7 +933,8 @@ app.whenReady().then(async () => {
         fs.appendFileSync(bootLogPath, new Date().toISOString() + ' [main.ts] calling startWqPing userData=' + portable.userData + '\n');
     } catch (_) { }
     try { setWqPingStateStore(stateStore); } catch { /* ignore */ }
-    startWqPing(portable.userData);
+    // ★ 冒烟测试: 不上报（CI 设备不得写入生产遥测）
+    if (!isSmokeFlag) { startWqPing(portable.userData); }
     // ★ 楼层履历离线播种（2026-09-22）：启动 60s 后扫最近项目 _qqq/quests/*/f* 一次性回填「总楼层」
     try { vigStartFloorsSeed(stateStore); } catch { /* ignore */ }
 

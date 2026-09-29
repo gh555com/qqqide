@@ -39,15 +39,11 @@
     "cancelled": "已取消"
   },
   "shell": {
-    "title": "qqq",
     "menu": {
       "file": "文件",
       "fileNew": "新建",
-      "fileOpen": "打开",
       "fileNewWindow": "开新窗口",
       "fileExit": "退出",
-      "tools": "工具",
-      "devTools": "开发者工具",
       "activate": "激活",
       "activated": "已激活",
       "evangelist": "导师",
@@ -56,13 +52,11 @@
     "window": {
       "minimize": "最小化",
       "maximize": "最大化",
-      "restore": "还原",
       "close": "关闭"
     },
     "zoom": {
-      "in": "放大 UI（Ctrl+=）",
-      "out": "缩小 UI（Ctrl+-）",
-      "reset": "重置缩放"
+      "in": "放大编辑器字体（Ctrl+Alt+=）",
+      "out": "缩小编辑器字体（Ctrl+Alt+-）"
     },
     "theme": {
       "toggle": "切换亮色/暗色",
@@ -72,11 +66,8 @@
     "lang": {
       "switch": "切换语言"
     },
-    "status": {
-      "version": "版本",
-      "engineOn": "引擎在线",
-      "engineOff": "引擎离线"
-    },
+
+
     "output": {
       "title": "产出",
       "hide": "隐藏产出"
@@ -104,7 +95,6 @@
       "copyFailed": "复制失败",
       "zoomIn": "放大",
       "zoomOut": "缩小",
-      "close": "关闭(Esc 或 光标右键)",
       "resetPosition": "重置位置",
       "mem": "内存",
       "file": "文件",
@@ -191,8 +181,6 @@
       "removeProject": "移除此项目",
       "addProject": "添加项目文件夹到 AI 视口",
       "selectFolder": "选择要添加到 AI 视口的文件夹",
-      "searchFolder": "搜索此文件夹",
-      "recentFolders": "最近打开的主文件夹",
       "noRecent": "暂无最近记录，点击 + 选择文件夹",
       "editx": "编辑文件",
       "openInOs": "在系统中打开",
@@ -206,7 +194,6 @@
       "openElsewhere": "⚠️ 该项目已在另一个窗口作为主文件夹打开",
       "clearedBusy": "⚠️ 主文件夹已被另一窗口占用，AI 视口已清空为干净窗口"
     },
-    "dev": "开发模式",
     "gaeaHostLoading": "gaea host 加载中...",
     "onl": {
       "title": "在线人数",
@@ -402,15 +389,8 @@
       "closeDiscard": "不保存",
       "closeCancel": "取消"
     },
-    "contextMenu": {
-      "cut": "剪切",
-      "copy": "复制",
-      "paste": "粘贴",
-      "selectAll": "全选",
-      "undo": "撤销",
-      "redo": "重做",
-      "feedToAi": "📎 喂给 AI"
-    },
+
+
     "undo": "撤销 (Ctrl+Z)",
     "redo": "重做 (Ctrl+Y)",
     "unsaved": "未保存",
@@ -593,15 +573,8 @@
     "inputLimitQoastImageSize": "有 {0} 张图片超出单张大小上限，已跳过",
     "inputSendBusy": "AI 正在处理中，请稍候…",
     "embedImage": "嵌入",
-    "level": {
-      "a": "保守",
-      "1": "轻度",
-      "2": "中等",
-      "3": "智能",
-      "4": "强力",
-      "5": "极限",
-      "6": "Pro Max"
-    },
+
+
     "floor": "楼层",
     "house": "房子",
     "room": "房间",
@@ -612,33 +585,10 @@
     "confirmConnect": "确认连接",
     "thinking": "思考中...",
     "streaming": "生成中...",
-    "tools": {
-      "readFile": "读取文件",
-      "editFile": "编辑文件",
-      "createFile": "创建文件",
-      "deleteFile": "删除文件",
-      "writeFile": "写入文件",
-      "searchText": "搜索文本",
-      "findFiles": "查找文件",
-      "listFiles": "列出文件",
-      "getDiagnostics": "获取诊断",
-      "runCommand": "运行命令",
-      "fetchWebpage": "抓取网页",
-      "getVision": "获取视觉上下文"
-    },
-    "output": {
-      "empty": "等待键入...",
-      "compressInProgress": "压缩中...",
-      "compressDone": "压缩完成",
-      "tokenLimit": "达到 Token 上限"
-    },
-    "rules": {
-      "title": "项目规则",
-      "edit": "编辑规则",
-      "empty": "暂无规则",
-      "globalRule": "全局规则 (.qqq-rules.txt)",
-      "projectRule": "项目规则 (project.txt)"
-    },
+
+
+
+
     "quest": {
       "switch": "切换项目",
       "newQuest": "新建对话",
@@ -894,11 +844,8 @@
       "noRecent": "尚无最近文件，先在文件树中打开几个文件",
       "noMatch": "无匹配项"
     },
-    "pasteImage": {
-      "saveFailed": "粘贴图片保存失败",
-      "saved": "已保存图片到",
-      "useCtrlV": "请使用 Ctrl+V 粘贴图片"
-    },
+
+
     "kmd": {
       "namePh": "命名此终端",
       "nameTitle": "命名此终端（实时同步标签标题）",
@@ -1303,48 +1250,10 @@
       "cfgError": "配置{op}时发生错误:\n{err}"
     }
   },
-  "dialog": {
-    "about": {
-      "title": "关于 qqq",
-      "message": "qqq-shell v2",
-      "detail": "便携 / Win7+ / 服务器热更"
-    },
-    "confirmDelete": {
-      "title": "确认删除",
-      "message": "确定要删除吗？此操作未可撤销。"
-    },
-    "unsaved": {
-      "title": "未保存的更改",
-      "message": "有未保存的更改，是否保存后关闭？",
-      "save": "保存",
-      "discard": "放弃",
-      "cancel": "取消"
-    }
-  },
-  "shortcuts": {
-    "ctrlS": "保存",
-    "ctrlZ": "撤销",
-    "ctrlShiftZ": "重做",
-    "ctrlX": "剪切",
-    "ctrlC": "复制",
-    "ctrlV": "粘贴",
-    "ctrlA": "全选",
-    "ctrlF": "查找",
-    "ctrlH": "替换",
-    "ctrlN": "新建文件",
-    "ctrlO": "打开文件",
-    "ctrlW": "关闭标签",
-    "ctrlShiftE": "显示文件浏览器",
-    "ctrlShiftF": "搜索文件",
-    "ctrlBackslash": "向右拆分",
-    "ctrlPlus": "放大",
-    "ctrlMinus": "缩小",
-    "ctrl0": "重置缩放",
-    "f12": "开发者工具",
-    "f1": "命令面板",
-    "altLeft": "后退",
-    "altRight": "前进"
-  },
+
+
+
+
   "wings": {
     "redrawing": "重绘中"
   },
@@ -1684,6 +1593,7 @@
   "prefs": {
     "title": "qqq 设置",
     "wmNeed": "水印自定义是正版功能（激活后可用）",
+    "rnNeed": "自定义漫游名字是正版功能（激活后可用）",
     "reset": "恢复默认设置",
     "resetTitle": "恢复默认设置",
     "resetMsg": "将清除本机全部设置改动（如已开启云同步，云端配置也会一并清除）。确定继续吗？",
@@ -1691,7 +1601,6 @@
     "resetDone": "已恢复默认设置",
     "needRefresh": "偏好模块未就绪（需刷新窗口）",
     "g": {
-      "core": "☀️ Kernel 核心",
       "roam": "🛸 Roam 漫游",
       "observe": "👁️ Observer 观察者",
       "html": "🍌 HTML & Rich Text",
@@ -1700,20 +1609,15 @@
     },
     "lab": {
       "performanceMode": "Performance Mode 性能模式",
-      "ioEngine": "IO Engine",
-      "transactionLevel": "Transaction Level 事务级别",
       "szDisplayMode": "sz Column Display",
       "sortBy": "Sort By 排序",
       "autoWatchChanges": "Auto Watch Changes",
-      "roamAsStartPage": "Roam as Start Page",
       "roamName": "Roam Name",
       "frameSizeMode": "Frame Size Mode",
-      "cleanFreak": "Clean Freak 洁癖",
       "enlargeSmallImages": "Enlarge Small Images",
       "textSlideColorScheme": "Text Slide Color Scheme",
       "textSlideFontSize": "Text Slide Font Size",
       "codelensLevel": "CodeLens Level",
-      "takeOverCodelensStyle": "Take Over CodeLens Style",
       "downloadSecurityLevel": "Download Security Level",
       "forceTextFlowScheme": "Force Text Flow Scheme",
       "autoDownload": "Auto Download",
@@ -1722,21 +1626,16 @@
       "removeWatermark": "Remove Watermark 消除水印"
     },
     "desc": {
-      "performanceMode": "☀️ 控制预览图的生成质量和速度",
-      "ioEngine": "☀️ IO 引擎（取舍见项目文档：IO_ENGINE_v16）",
-      "transactionLevel": "☀️ 事务包装级别：决定操作的可靠性与速度",
+      "performanceMode": "👁️ 决定「qqq相框」的渲染质量和速度",
       "szDisplayMode": "🛸 sz列显示内容",
       "sortBy": "🛸 文件列表排序方式",
       "autoWatchChanges": "🛸 勾选：外部程序修改当前目录时自动刷新文件列表；不勾选：零性能开销",
-      "roamAsStartPage": "🛸 使用 qqq Roam 作为起始页",
-      "roamName": "🛸 自定义漫游名字",
+      "roamName": "🛸 自定义漫游名字（最多 12 字，显示在 Roam 标签上）",
       "frameSizeMode": "👁️ 预览图尺寸模式",
-      "cleanFreak": "👁️ 保存前自动确保每个暗号下方有足够空行，防止预览/内容重叠",
       "enlargeSmallImages": "👁️ 勾选：小于框架的预览图放大填充；不勾选：保持原尺寸居中",
       "textSlideColorScheme": "👁️ 文本胶片底色",
       "textSlideFontSize": "👁️ 文本胶片字号（1-218）",
       "codelensLevel": "👁️ CodeLens 显示级别",
-      "takeOverCodelensStyle": "👁️ 接管 CodeLens 样式：红色，字号13",
       "downloadSecurityLevel": "🍌 下载视频失败时，可在此尝试更宽松的策略",
       "forceTextFlowScheme": "🍌 强制修复HTML乱码（仅在顽固乱码时勾选，代价是布局精度降低）",
       "autoDownload": "🍌 检测到视频时自动下载",
@@ -1748,15 +1647,7 @@
       "performanceMode": {
         "extreme": "Extreme：仅保留首帧，质量47",
         "accelerated": "Accelerated：动图/视频最多前2秒，7fps，质量47",
-        "optmum": "Optimum：动图完整时长，视频首/中/尾共4秒，原始fps，质量71"
-      },
-      "ioEngine": {
-        "auto": "v16 auto — 理想搭配",
-        "excludePython": "Exclude Python — 静默运行，节省约50MB内存"
-      },
-      "transactionLevel": {
-        "full": "Full wrap：所有耗时操作都包装在事务中 — 进度条、撤销支持、异常回滚",
-        "half": "Half wrap：轻量操作使用简单粘贴 — 最快响应，无进度条，无回滚"
+        "optmum": "Optimum：短媒体（<10s）完整时长·原帧率；长媒体首/中/尾共4秒·15fps；质量71"
       },
       "szDisplayMode": {
         "nothing": "不显示",
@@ -1775,11 +1666,6 @@
         "small": "小框架：256×144",
         "fix": "自适应：根据图片尺寸自动选择"
       },
-      "cleanFreak": {
-        "never": "不自动整理（仅手动编织）",
-        "add": "仅添加：确保空行足够，不删除多余空行",
-        "addRemove": "严格整理：恰好足够空行 — 删除多余，添加缺失"
-      },
       "textSlideColorScheme": {
         "light": "浅色",
         "dark": "深色"
@@ -1787,7 +1673,7 @@
       "codelensLevel": {
         "none": "无",
         "open": "仅打开文件",
-        "full": "全套：文件夹/重命名/复制/信息行/qode"
+        "full": "全套：文件夹/重命名/复制/信息行/qqqide"
       },
       "downloadSecurityLevel": {
         "l0": "0：最宽松 — 全部11个安全开关关闭",
@@ -1807,6 +1693,8 @@
     "durSs": "{0} 秒",
     "exportDocTip": "把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
     "exportZipTip": "把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。",
+    "exportHingeTip": "实心 = 即将被导出的编辑分组（你最后在看的那个）；空心 = 另一分组。点方块可切换导出目标；悬停导出卡时，目标编辑区会亮起淡紫虚线框。",
+    "exportWillExport": "即将导出：{0}",
     "cloudSyncTip": "云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含 roam 配置、各文件夹偏好、剪贴板历史。",
        "playerTip": "播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出；最小化 = 收纳到本槽位遥控。",
     "playerWinTip": "独立悬浮播放器窗：置顶小窗——切到别的程序也看得见（↗）",
@@ -1864,6 +1752,10 @@
     "sfxAll": "All",
     "sfxNone": "None",
     "sfxTooltip": "逐个音效开关",
+    "uiZoom": {
+      "label": "界面缩放",
+      "desc": "整个界面的显示比例（独立于系统缩放；屏幕大调小，字小了调大）"
+    },
     "undoMode": {
       "label": "编辑器撤销模式",
       "desc": "Ctrl+Z 在代码编辑器中撤销的粒度",
@@ -2154,5 +2046,9 @@
     "dropDone": "拖放: {ok} 成功, {fail} 失败",
     "unknownErr": "未知错误",
     "unknownErrSave": "未知错误（保存未返回结果）"
+  },
+  "uiZoom": {
+    "toast": "界面缩放 {p}%（{k} 复位）",
+    "tip": "调整界面缩放"
   }
 }

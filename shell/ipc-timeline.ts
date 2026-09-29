@@ -345,7 +345,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
 
     // ★ 宿主窗口定位：diff 窗口创建时带 parent（A4 所在窗口）→ getParentWindow 100% 可靠
     //   （旧 getAllWindows()[0] 在多窗口场景可能取到非主窗口 → executeJavaScript 静默失败 → “点击没用”）
-    function _hostWindow(e: Electron.IpcMainEvent): BrowserWindow | null {
+    function _hostWindow(e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): BrowserWindow | null {
         // ① parent 链（diff 窗口创建时 parent=A4 所在窗口）→ 100% 精确
         const sender = BrowserWindow.fromWebContents(e.sender);
         if (sender && !sender.isDestroyed()) {

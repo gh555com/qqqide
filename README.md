@@ -1,285 +1,109 @@
 <p align="center">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FPXKHX4NKOZJ6.gif" width="100%" alt="qqqide by GH Health">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FPXKHX4NKOZJ6.gif" width="100%" alt="qd (qqqide)">
   © 2005 <a href="https://www.gh555.com">gh555.com</a> All Rights Reserved.
 </p>
 
-# qqqide: Paste Everything into VS Code / Code-OSS / VSCodium (Project started in October 2025)
+# qd (qqqide)
 
-**Download:** <a href="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/ELI4U5GG2NB7K.vsix">v16.5.2 · 2026-05-20</a>
+**A portable AI-powered IDE for Windows 7–11 (x64) and macOS.** Paste anything with WYSIWYG preview, roam any directory, keep every file version in a timeline, and plan / build / review with an integrated AI panel — from a single folder, no installer required.
 
-**Make everything pasteable. Orchestrate ideas. Turn the IDE into an operating system.**
+**Download:** <https://gh555.com/dl/qqqide> ｜ **Website:** <https://gh555.com/qd>
 
-qqqide lets you paste images, screenshots, files, folders, HTML pages, videos, and media directly into **VS Code / Code-OSS / VSCodium** — with **WYSIWYG preview**.
+> **What this repository is.** The client runtime source of qqqide: the Electron shell, the IDE payload, the Rust process-runner sources, the component manifest and the build scripts — published so the code can be read and audited (see `LICENSE`; source-available, not open source).
+>
+> The **VS Code / Code-OSS / VSCodium sibling** — paste-everything and rich-media inside the VS Code family, with roadmap discussions — lives at **[gh555com/qqq](https://github.com/gh555com/qqq)**. Same idea base, two different products: an extension for editors you already run, and a standalone IDE.
 
-qqq turns VS Code, Cursor, Antigravity, Code-OSS, and VSCodium into an all-media paste-friendly notebook and creative workspace.
+## Highlights
 
-## Links
+- **Paste everything, WYSIWYG.** Screenshots, image / video / audio files, folders, HTML pages and clipboard fragments paste straight into any document — `.md`, `.txt`, custom extensions, even extension-less files — and render in place as live frames you can preview, play and export.
+- **Roam file explorer.** Keyboard-first navigation across your whole machine (not just the current project), recent locations, transactional copy / move / delete with resume, and clipboard integration with the OS file manager.
+- **AI panel.** Multi-task chat with floors that persist, context compaction, per-task AI tiers, tool-calling (files, search, terminals, web), and **BYOK** — bring your own API key, direct to the endpoint you configure.
+- **Editor & timeline.** Monaco-based editor with a local file-version timeline (snapshots on edits and on AI/tool-driven writes), side-by-side diffs, and restore.
+- **goods — built-in components.** A component host drives first-party tools (terminal, inbox, search, git, image paste, file explorer, …) with a single registration protocol.
+- **Signed, atomic self-update.** Full-package updates verified with Ed25519 signatures (public key embedded in the launcher) are staged in the background and swapped in atomically at startup. Details in `SECURITY.md`.
+- **Portable by design.** No installer — the app runs from a folder, and project + app data travel with it. A small OS-level state folder (`%LOCALAPPDATA%\qqqide` on Windows) holds cross-window state; see `PRIVACY.md` for the exact list. Win7 SP1 → Win11 supported from one x64 build.
 
-- Project discussion and roadmap: https://github.com/gh555com/qqq/discussions/6
-- Official download: https://www.gh555.com/qqq
-- Source code: https://github.com/gh555com/qqq
-- qqqide Development Progress since 2026.05.16: https://github.com/gh555com/qqq/discussions/7
+## Architecture
 
-Original **name**: qqq [![GitHub stars](https://img.shields.io/github/stars/gh555com/qqq?style=social)](https://github.com/gh555com/qqq)
+qqqide is a four-layer desktop system:
 
-**qqq 16.5.1+ is required for Linux / macOS.** [Details](#how-to-install)
+| Layer | Directory | Role |
+| --- | --- | --- |
+| Launcher | *(separate distribution)* | Tiny native launcher: dispatch, verified atomic self-update |
+| Shell | `shell/` | Electron main process (TypeScript → esbuild): windows, IPC bridge, process & component management |
+| Runner | `ghrun/` | Rust process runner: one process per command, kernel-level resource limits, stall watchdog |
+| Payload | `server-app/` | The IDE itself: UI, editor, AI panel, built-in components (hot-reloadable) |
 
-![](https://gh555.com/px?g=qqq&s=gh555.qqq.readme)
+Electron is pinned at **22.3.27** on purpose — it is the last line that runs on Windows 7 SP1. The trade-offs this implies, and the compensating defenses, are documented in `SECURITY.md`.
 
-## Why qqqide
+## Repository layout
 
-You should not need to open a separate note-taking application just to collect screenshots, images, files, folders, videos, HTML pages, and creative materials.
+```
+shell/            Electron main process sources (TypeScript)
+server-app/       IDE payload: core, AI panel, editor, goods, locales (13 languages)
+ghrun/            Rust process-runner + watchdog sources
+shell-build/      Build scripts: esbuild bundling, dev server, packaging
+engines/          Component manifest + prebuilt binaries (process runner, ripgrep) + Python bridges
+assets/           App-local VC++ runtime DLLs (Windows 7 compatibility)
+ci/               Static checks (node --check) and unit tests (node:test)
+docs/             Glossary and public-facing notes
+.github/          CI workflows
+```
 
-With qqqide, your editor becomes an all-media workspace.
+## Build & test
 
-VS Code / Code-OSS / VSCodium can become a paste-friendly notebook for developers, creators, writers, AI users, and anyone who organizes ideas inside an IDE.
+Requirements: **Node.js ≥ 16** (CI runs on Node 20), npm. The product targets Windows; the build scripts run on Windows, Linux and macOS.
 
-The core workflow is simple:
+```bash
+npm ci              # install dev toolchain (esbuild, TypeScript, …)
+npm run build       # bundle shell/*.ts → shell-out/ (esbuild)
+npm test            # unit tests (node:test) — encoding machine, version compare, cmd tokenizer, …
+npm run check       # full local gate: syntax + types + tests
+npm run smoke       # end-to-end smoke: boot → probe → exit (isolated temp data dir, non-zero on failure)
+npm run dev         # dev loop: esbuild watch + dev server + Electron
+```
 
-**Copy → Paste → Preview → Organize → Continue**
+`npm test` covers the parts where a bug corrupts data rather than merely misbehaving: the text-encoding machine (BOM / strict UTF-8 / GBK), the Windows command tokenizer (quote splitting / array-spawn routing), semantic version comparison, the `.gitignore` probe parser, and the multi-instance merge rules for window squads. CI (`.github/workflows/static-checks.yml`) runs the syntax gate, `tsc --noEmit` and the test suite on every push. `npm run smoke` boots the real shell against the bundled webapp in an isolated temp data directory, waits for the renderer-ready signal, probes the preload bridge over IPC, then exits with a status code — CI (`.github/workflows/smoke.yml`) runs it on every push as well.
 
-## ✦q✦ Ctrl+V: Paste Everything, Anywhere in Any Document
+## What is intentionally not in this repository
 
-qqqide extends paste beyond plain text.
+To keep the published tree reviewable, these parts live outside it:
 
-You can paste screenshots, image files, folders, videos, HTML pages, documents, and media resources directly into the editor.
+| Part | Why |
+| --- | --- |
+| `launcher/` | The native launcher is distributed as a binary; its sources are maintained separately |
+| `op/`, `tools/`, `proxy/` | Internal translation pipeline, release tooling, network helpers |
+| `do/` | Internal engineering documentation |
+| Build outputs | `shell-out/`, packaged packs and release artifacts are never committed |
 
-This works in plain text files, custom file extensions, and even files with no extension.
+Because of that, this repository is not a one-command reproduction of the shipped product — it is the readable, auditable core: shell + payload + runner + build scripts, with the update-integrity paths fully in view.
 
-### Paste screenshots directly into VS Code / Code-OSS / VSCodium
+## Security & privacy
 
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/YBZ5FHDRYKQF2.gif" width="100%" alt="Paste screenshots directly into VS Code with qqqide">
-</p>
+- `SECURITY.md` — threat model, defenses in place (signed updates, navigation hardening, atomic writes), and the known trade-offs (why `webSecurity`/`sandbox` are relaxed for local content; why Electron 22).
+- `PRIVACY.md` — the exact telemetry field classes (aggregate counters and environment only; never file contents, prompts or keystrokes), plus the local-only nature of project and clipboard data.
+- `secret-guard` — an opt-in local scanner that detects well-known credential formats before they get committed.
 
-qqqide lets you paste screenshots directly into any document, including `.txt`, `.1`, custom file extensions, or files with no extension, and preview them with WYSIWYG rendering.
+Security reports are genuinely welcome: see `SECURITY.md` for the private channel.
 
-### Paste image files directly into VS Code / Code-OSS / VSCodium
+## Contributing
 
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/6QEDZULVO33JW.gif" width="100%" alt="Paste image files directly into VS Code with qqqide">
-</p>
+This is not a community project — we are not accepting external pull requests at this time. Bug reports and security reports are welcome; see `CONTRIBUTING.md`.
 
-qqqide lets you paste image files directly into the editor and preview them in place.
+New to the terminology (`floor`, `house`, `goods`, `qgs`, …)? See `docs/GLOSSARY.md`.
 
-### Paste any file, folder, video, PSD, MP3, EXE, or media resource
+## License
 
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/E2ULPGMCYGGFE.gif" width="100%" alt="Paste files folders videos PSD MP3 and media directly into VS Code with qqqide">
-</p>
-
-Via qqq, you can paste `txt`, `exe`, `psd`, `mp3`, folders, `mp4` videos, and many other file types directly into VS Code / Code-OSS / VSCodium with WYSIWYG preview.
-
-Use:
-
-- `Ctrl+V`
-- `F2`
-
-qqq makes paste a universal input action inside the IDE.
-
-You can organize your ideas immediately without leaving the editor.
-
-## ✦q✦ Roam File Explorer for VS Code / Code-OSS / VSCodium
-
-To organize ideas, files, screenshots, folders, videos, and media resources, you also need to jump between arbitrary directories quickly.
-
-qqq includes **Roam**, a fast file explorer for VS Code / Code-OSS / VSCodium.
-
-Invoke Roam with:
-
-- `Tab` when not in editing mode
-- Roam command
-- Roam button
-- `Space + Q`
-
-### Roam file explorer for fast directory navigation
-
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/75T3DXC3XWJB4.gif" width="100%" alt="Roam file explorer for VS Code and qqqide">
-</p>
-
-**Roam**, from qqq, is a file explorer designed for fast navigation, recent locations, keyboard-first workflows, and access to directories outside the current project folder.
-
-### Why Roam matters
-
-1. **Reach any location**
-
-   Roam is not limited to the current project folder. You can jump to any local directory. You can also map remote disks locally and work with them directly.
-
-2. **Fast file browsing**
-
-   Roam is designed for fast directory listing and quick navigation, even on heavy machines, servers, and virtual machines.
-
-3. **Transactional file operations**
-
-   Roam uses transactional file operations to make large-scale file deletion, copying, and organization more reliable.
-
-   For details on VS Code's official file manager limitations, see:
-
-   https://github.com/gh555com/qqq/blob/qq/docs/VS_Code_Official_File_Explorer_Limitations.md
-
-4. **Keyboard-first workflow**
-
-   Roam supports recent visits, quick filtering, keyboard operation, quick file creation, list preferences, sorting preferences, and direct opening of administrator terminals.
-
-   Example workflow:
-
-   `Tab → filename → Enter → new file opens and enters editing mode`
-
-### Select folders and mixed resources in Roam
-
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/5EM6FHVNR4KG2.gif" width="100%" alt="Select folders and mixed files in Roam file explorer with qqqide">
-</p>
-
-With Roam, you can select folders, files, or a mixed set of files and folders to copy, delete, or calculate size in bulk.
-
-### Most visited folders stay close to you
-
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/O4H43QFLJ6WHY.gif" width="100%" alt="Most visited folders in Roam file explorer for qqqide">
-</p>
-
-Roam keeps frequently visited locations close, so you can move between projects, documents, music, videos, games, and media folders faster.
-
-### Roam keyboard shortcuts
-
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/XMTOYSWJPSJYU.gif" width="80%" alt="Roam file explorer keyboard shortcuts in qqqide">
-</p>
-
-Useful Roam shortcuts:
-
-- Press `Space` on a selected item to request its size.
-- Press `1` to scroll to the top of the list.
-- Press `2` to scroll to the bottom of the list.
-- Press `Q` to open selected projects or documents in IDE.
-- Press `W` to open selected music, videos, games, folders, or media resources.
-- Press `Space + Q` to invoke Roam.
-
-
-## ✦q✦ Premium Features: Out of the Box
-
-### Paste HTML directly into VS Code / Code-OSS / VSCodium
-
-qqqide supports sniffing & pasting HTML(Rich Text) into the editor.
-
-Compatibility is best with Chromium-based browsers.
-
-If you copy from some browsers, such as Edge in certain modes, only plain text may be displayed.
-
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/ICFESEED7ARZM.gif" width="100%" alt="Paste HTML pages directly into VS Code with qqqide">
-</p>
-
-Test URL:
-
-https://mbd.baidu.com/newspage/data/landingsuper?context=%7B%22nid%22%3A%22news_9166282253401607575%22%7D&n_type=1
-
-This test page contains a mix of videos, images, and text.
-
-Test objectives:
-
-1. All videos should be downloaded.
-2. The order of text, images, and videos should remain correct.
-3. No garbled characters should appear.
-4. Repeated operations should save identical resources only once.
-5. Identical images and videos should be deduplicated by fingerprinting.
-
-### Export DOC and DOCX from qqqide
-
-qqq supports document export.
-
-`.doc`:
-
-- compatible with Word 2003
-- based on RTF
-- better compatibility for older workflows
-
-`.docx`:
-
-- compatible with Google Docs and Tencent Docs
-- based on Office Open XML
-- stronger structure
-- better compression ratio
-
-### Export ZIP for portable resources
-
-qqq supports ZIP export.
-
-ZIP export is useful for packaging notes, media resources, documents, images, HTML content, and presentation materials into portable archives.
-
-### Paste streaming videos into VS Code / Code-OSS / VSCodium
-
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/W5EEPDRQEO4LO.gif" width="100%" alt="Paste streaming videos into VS Code with qqqide">
-</p>
-
-qqq supports workflows for pasting and organizing streaming video resources inside the editor.
-
-### Clean up orphaned files
-
-qqq can help clean up orphaned resource files that are no longer referenced by your documents.
-
-### Clipboard history cards
-
-qqq includes clipboard-related workflows for managing pasted content and recent resources.
-
-## How to Install
-
-**qqq 16.5.1+** provides a single universal installer for:
-
-- Windows x64
-- Linux x64
-- macOS x64
-- macOS arm
-
-The installer is designed to work across common operating systems and processor architectures.
-
-No installation options or complex choices are required.
-
-One package works for everything.
-
-
-### Switch languages after installation
-
-qqq supports multiple UI languages: zh、zh-tw、en、ja、de、ko、ru、ar、es、fr、pt-BR
-<p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/2JTYBVFI3CWBS.png" alt="Switch qqqide language settings in VS Code">
-</p>
-
-## About qqq Resource Footprint
-
-qqq is built on a highly efficient Rust-based underlying architecture with performance optimization.
-
-Its idle CPU and disk IO overhead are designed to stay close to zero.
-
-Its low memory footprint is especially useful when multiple IDEs are running at the same time, such as:
-
-- VS Code
-- Cursor
-- Antigravity
-- Code-OSS
-- VSCodium
-
-For architecture details:
-
-https://github.com/gh555com/qqq/blob/qq/docs/IO_ENGINE_v16.md
+**Source Code Public & Auditable — not an open-source license.** You may view and clone the code for personal study, research, and security/audit review. Commercial use, redistribution, forks/mirrors, derivative works and imitating the product's UI/trade dress are not permitted. Full terms: [`LICENSE`](LICENSE).
 
 ## Contact
 
-- Repository: https://github.com/gh555com/qqq
-- Issues: https://github.com/gh555com/qqq/issues
-- Official download: https://www.gh555.com/qqq
-- Reply on the same day: ky@gh555.com
+- Official site: <https://www.gh555.com/qd> · Downloads: <https://gh555.com/dl/qqqide>
+- Discussions / roadmap: <https://github.com/gh555com/qqq/discussions>
+- Email: **ky@gh555.com** (general) · **29492511@qq.com** (security)
 
-<a href="https://www.gh555.com">GH Health</a> All Rights Reserved.
+<p align="center">
+Sichuan Dream Technology Co., Ltd. · Chengdu, China
+</p>
 
-
-
-
-
-
-
-
- Keywords: Paste image,File Explorer,Rich Media,WYSIWYG,Preview,Image preview,Navigator,stream detection,html sniffing,粘贴图片,文件管理器,富媒体,所见即所得,预览,图片预览,导航器,流检测,HTML嗅探,画像の貼り付け,ファイルマネージャー,リッチメディア,WYSIWYG,プレビュー,画像プレビュー,ナビゲーター,ストリーム検出,HTMLスニッフィング,Bild einfügen,Dateimanager,Rich-Media,WYSIWYG,Vorschau,Bildvorschau,Navigator,Stream-Erkennung,HTML-Sniffing,이미지 붙여넣기,파일 관리자,리치 미디어,WYSIWYG,미리보기,이미지 미리보기,네비게이터,스트림 감지,HTML 스니핑,Вставить изображение,Диспетчер файлов,Рич-медиа,WYSIWYG,Предварительный просмотр,Предварительный просмотр изображения,Навигатор,обнаружение потока,HTML-анализ,لصق الصورة,مدير الملفات,وسائط غنية,WYSIWYG,معاينة,معاينة الصورة,ملاحظ,كشف التدفق,استكشاف HTML,Pegar imagen,Administrador de archivos,Medios enriquecidos,WYSIWYG,Vista previa,Vista previa de imagen,Navegador,detección de flujo,olfateo HTML,Coller une image,Gestionnaire de fichiers,Médias riches,WYSIWYG,Aperçu,Aperçu de l'image,Navigateur,détection de flux,reniflage HTML,Colar imagem,Gerenciador de arquivos,Mídia rica,WYSIWYG,Pré-visualização,Pré-visualização de imagem,Navegador,detecção de fluxo,farejamento HTML,छवि चिपकाएं,फ़ाइल प्रबंधक,समृद्ध मीडिया,WYSIWYG,पूर्वावलोकन,छवि का पूर्वावलोकन,नेविगेटर,स्ट्रीम का पता लगाना,HTML स्निफिंग,Dán hình ảnh,Trình quản lý tệp,Phương tiện đa dạng,WYSIWYG,Xem trước,Xem trước hình ảnh,Trình điều hướng,phát hiện luồng,ngửi HTML,Incolla immagine,Esplora file,Media ricchi,WYSIWYG,Anteprima,Anteprima immagine,Navigatore,rilevamento di flusso,sniffing HTML
+<sub>Keywords: AI IDE, portable IDE, WYSIWYG paste, paste image, file explorer, rich media, markdown preview, media preview, timeline, diff, encrypted update, Ed25519, editor, Windows 7, 粘贴图片, 文件管理器, 富媒体, 所见即所得, 预览, 时间线, 便携, 画像の貼り付け, ファイルマネージャー, プレビュー, Bild einfügen, Dateimanager, Vorschau, 이미지 붙여넣기, 파일 관리자, 미리보기, Вставить изображение, Проводник, WYSIWYG, Предварительный просмотр, لصق الصورة, مدير الملفات, معاينة, Pegar imagen, Gestor de archivos, Vista previa, Coller une image, Gestionnaire de fichiers, Aperçu, Colar imagem, Gerenciador de arquivos, Pré-visualização, छवि चिपकाएं, फ़ाइल प्रबंधक, पूर्वावलोकन, Dán hình ảnh, Trình quản lý tệp, Xem trước</sub>

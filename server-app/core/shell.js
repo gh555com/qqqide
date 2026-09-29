@@ -509,7 +509,7 @@ function bootZoomButtons() {
     $out.addEventListener('mouseleave', _efsStopRepeat);
   }
 
-  // Listen for changes from keyboard shortcuts (Ctrl+= / Ctrl+- / Ctrl+0)
+  // Listen for changes from keyboard shortcuts (Ctrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0)
   if (bridge.zoom.onChanged) {
     bridge.zoom.onChanged(function (s) {
       applyFontSizeLabel(s);
@@ -535,7 +535,7 @@ function bootTabManager() {
   var xUpper = document.getElementById('qqq-x-upper');
   if (!xUpper || !window.qqqTabs) return;
   window.qqqTabs.init(xUpper);
-  // roam tab is now provided by rage goods (via gaea-host tabs protocol).
+  // roam tab: self-managed by tab-manager (hard-created in init; self-heal on close/resize).
 }
 
 // ---- AI Zone ----

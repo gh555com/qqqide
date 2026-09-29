@@ -46,8 +46,13 @@ export function getHostDir(): string {
     return root;
 }
 
-/** ★ Data 目录唯一真理源。一切 {X}/Data 拼接必须走此函数（禁散落硬编码路径推导）。 */
+/** ★ Data 目录唯一真理源。一切 {X}/Data 拼接必须走此函数（禁散落硬编码路径推导）。
+ *  ★ 冒烟测试（--smoke + QQQIDE_SMOKE_DATA 双条件）→ 重定向到临时目录；
+ *     生产与常规开发缺任一条件即走常规路径（零感知）。 */
 export function getDataDir(): string {
+    if (process.argv.includes('--smoke') && process.env.QQQIDE_SMOKE_DATA) {
+        return path.join(process.env.QQQIDE_SMOKE_DATA, 'Data');
+    }
     return path.join(getHostDir(), 'Data');
 }
 
@@ -55,6 +60,10 @@ export function getDataDir(): string {
  *   win: %LOCALAPPDATA% ｜ mac: ~/Library/Application Support ｜ linux: XDG_DATA_HOME 或 ~/.local/share。
  *   一切 OS 级路径拼接必须走此函数（禁散落硬编码 'AppData/Local'）。 */
 export function getOsBaseDir(): string {
+    // ★ 冒烟测试（--smoke + QQQIDE_SMOKE_OS_DIR 双条件）→ OS 级状态根重定向（同 getDataDir 防卫语义）
+    if (process.argv.includes('--smoke') && process.env.QQQIDE_SMOKE_OS_DIR) {
+        return process.env.QQQIDE_SMOKE_OS_DIR;
+    }
     if (process.platform === 'darwin') {
         return path.join(os.homedir(), 'Library', 'Application Support');
     }

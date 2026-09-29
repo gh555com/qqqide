@@ -7,7 +7,7 @@
 // ============================================================================
 
 import type { WebContents, BrowserWindow } from 'electron';
-import { dialog } from 'electron';
+import { app, dialog } from 'electron';
 import { mi } from './main-i18n';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -297,14 +297,15 @@ function _startPushLoop(wc: WebContents, dwc: WebContents, getText: () => string
         if (diag) {
           const d = JSON.parse(diag);
           try {
-            const outPath = path.join('E:/s/wol/py/qqq-shell-v2/_qqq/logs', 'devtools-diag.json');
-            fs.mkdirSync(path.dirname(outPath), { recursive: true });
+            const diagDir = path.join(app.getAppPath(), '_qqq', 'logs');
+            const outPath = path.join(diagDir, 'devtools-diag.json');
+            fs.mkdirSync(diagDir, { recursive: true });
             fs.writeFileSync(outPath, JSON.stringify(d, null, 2), 'utf-8');
             const keys = ['MSG_STRUCTS','PANEL_INFO','NET_MSGS','CM_STATS','CM_RAW'];
             for (const k of keys) {
               try {
                 const v = await dwc.executeJavaScript('window.__QQQ_'+k+'&&JSON.stringify(window.__QQQ_'+k+')');
-                if (v)fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/_qqq/logs', 'devtools-'+k.toLowerCase().replace(/_/g,'-')+'.json'), v, 'utf-8');;
+                if (v) fs.writeFileSync(path.join(diagDir, 'devtools-'+k.toLowerCase().replace(/_/g,'-')+'.json'), v, 'utf-8');
               } catch {}
             }
           } catch {}

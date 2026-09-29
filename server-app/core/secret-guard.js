@@ -583,7 +583,7 @@
     _panelOv.addEventListener('click', function (e) { if (e.target === _panelOv) _closePanel(); });
     _panelEl = document.createElement('div');
     _panelEl.className = 'qqq-sg-panel';   // ★ 统一块钩子（滚动条/可选中/拖选色——shell-base.css，铁律 §4.1）
-    _panelEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;max-width:92vw;max-height:82vh;overflow-y:auto;z-index:9999;padding:0;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);';
+    _panelEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;max-width:92vw;max-height:82vh;overflow-y:auto;z-index:9999;padding:0;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:var(--card-bg);color:var(--text-primary);';
     _panelOv.appendChild(_panelEl);
     document.body.appendChild(_panelOv);
   }

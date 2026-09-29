@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// qqq-prefs.js — 用户偏好机器（q3 老项目 23 项偏好 100% 移植 + 设置本地化）
+// qqq-prefs.js — 用户偏好机器（注册表 19 项 = q3 老项目移植 + 💎 removeWatermark/roamName + 设置本地化）
 //
 // ★ 语义（2026-09-28 用户定案 · 设置本地化 v2）:
 //   · 本地持久化：所有用户 —— set() 即时生效并落盘 qgs.simple('qqq.prefs')（设备本地，重启保留）
@@ -34,16 +34,6 @@
       enum: ['auto', 'dark', 'solarize light'],
       desc: '👁️ 面板主题：auto=跟随系统；dark=暖色暗色面板；solarize light=经典暖色亮色',
     },
-    'ioEngine': {
-      type: 'enum', default: 'v16  auto',
-      enum: ['v16  auto', 'Exclude Python'],
-      desc: '☀️ IO 引擎（排除 Python = 安静、省约 50MB 内存）',
-    },
-    'transactionLevel': {
-      type: 'enum', default: 'half',
-      enum: ['full', 'half'],
-      desc: '☀️ 事务包裹级别：full=一切耗时操作带进度条+反悔+回滚；half=轻便操作直接粘贴',
-    },
     'guide': {
       type: 'enum', default: '',
       enum: ['', '1', '2', '3'],
@@ -51,10 +41,15 @@
     },
 
     // ── 👁️ 观察 / 相框 / 预览 ──
+    'uiZoom': {
+      type: 'enum', default: '100',
+      enum: ['80', '90', '100', '110', '125', '150', '175', '200'],
+      desc: '👁️ 界面缩放：整个界面的显示比例（独立于系统缩放；屏幕大调小、字小了调大）',
+    },
     'performanceMode': {
       type: 'enum', default: 'optmum',
       enum: ['extreme', 'accelerated', 'optmum'],
-      desc: '☀️ 性能模式：extreme=只保留首帧，质量47；accelerated=动图/视频最多前2秒，7fps，质量47，不显示进度条；optmum=动图保留完整时长，视频截取首中尾共4秒，原始fps，质量71',
+      desc: '👁️ 性能模式：extreme=只保留首帧，质量47；accelerated=动图/视频最多前2秒，7fps，质量47，不显示进度条；optmum=短媒体保留完整时长·原帧率；长媒体截取首中尾共4秒·15fps；质量71',
     },
     'frameSizeMode': {
       type: 'enum', default: 'fix',
@@ -64,11 +59,6 @@
     'enlargeSmallImages': {
       type: 'bool', default: false,
       desc: '👁️ 小于相框的预览图放大以填满相框（不勾选=保持原尺寸居中）',
-    },
-    'cleanFreak': {
-      type: 'enum', default: 'add',
-      enum: ['never', 'add', 'add & remove'],
-      desc: '👁️ 洁癖（防遮挡）：保存文档前自动确保暗号下方有足够空行',
     },
     'textSlideColorScheme': {
       type: 'enum', default: 'light',
@@ -82,35 +72,30 @@
     'codelensLevel': {
       type: 'enum', default: '7',
       enum: ['0', '1', '7'],
-      desc: '👁️ codelens level：0=none；1=open file；7=全套（open folder/rename/copy/open/qode）',
-    },
-    'takeOverCodelensStyle': {
-      type: 'bool', default: true,
-      desc: '👁️ 接管 codelens 样式（红色 13 号大小）',
+      desc: '👁️ codelens level：0=none；1=open file；7=全套（open folder/rename/copy/open/qqqide）',
     },
 
     // ── 🛸 漫游器（roam） ──
     'szDisplayMode': {
       type: 'enum', default: 'nothing',
       enum: ['nothing', 'size', 'ctime', 'mtime'],
+      // 消费方 = roam 全局默认（2026-09-29 接线；侧栏 S/C/M 按钮 = 每目录覆盖 fineScm，覆盖优先）
       desc: '🛸 sz 区显示：文件大小 / 创建时间 / 修改时间',
     },
     'sortBy': {
       type: 'enum', default: 'name',
       enum: ['name', 'size', 'ctime', 'mtime'],
+      // 消费方 = roam 全局默认（2026-09-29 接线；侧栏 N/S/C/M 按钮 = 每目录覆盖 fineScm，覆盖优先）
       desc: '🛸 排序方式',
     },
     'autoWatchChanges': {
-      type: 'bool', default: false,
+      type: 'bool', default: true,   // 2026-09-29 用户定案：默认开；关 = roam 释放 watcher（零性能开销）
       desc: '🛸 自动感知外部变化（外部程序修改当前目录时自动刷新列表）',
     },
-    'roamAsStartPage': {
-      type: 'bool', default: true,
-      desc: '🛸 尝试用 qqq Roam 做开始页面',
-    },
     'roamName': {
-      type: 'string', default: '的梦gaea',
-      desc: '🛸 漫游器命名',
+      type: 'string', default: 'Roam', maxlen: 12, placeholder: '的梦gaea',
+      premium: true, feat: 'roam-name',   // 💎 自定义漫游名字（未激活/未设置恒「Roam」；编辑框占位范例「的梦gaea」；上限 = tab-manager _ROAM_NAME_MAX 同值，两处同改）
+      desc: '🛸 自定义漫游名字（最多 12 字，显示在 Roam 标签上）',
     },
 
     // ── 🍌 html 与富文本 / 下载 ──
@@ -141,7 +126,7 @@
 
     // ── 💎 正版专属（2026-09-28 设置本地化：网站标签移除后接管，正版用户可本地调整） ──
     'removeWatermark': {
-      type: 'bool', default: true, premium: true, free: false,
+      type: 'bool', default: true, premium: true, free: false, feat: 'no-watermark',
       desc: '💎 消除相框水印（正版功能；取消勾选后将显示水印）',
     },
   };
@@ -217,6 +202,23 @@
     return def.default;
   }
 
+  // ═══ 文本项净化（string 类型；唯一消费方 = roamName——上限 maxlen 按码点计，emoji/中文各算 1）═══
+  //   控制符/零宽/HTML 剥除 + 收空白；清空 = 回出厂默认。与 tab-manager.js _ROAM_NAME_MAX 同值（两处同改）
+  function _sanitizeStr(key, value) {
+    var s = String(value == null ? '' : value);
+    s = s.replace(/[\r\n]+/g, ' ');                                  // 换行 → 空格（标签单行显示）
+    s = s.replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, '');  // 控制符 + 零宽字符
+    s = s.replace(/<[^>]*>/g, '');                                   // HTML 标签
+    s = s.replace(/\s+/g, ' ').trim();
+    if (!s) { s = REGISTRY[key].default; }
+    var def = REGISTRY[key];
+    if (def.maxlen) {
+      var cps = Array.from(s);
+      if (cps.length > def.maxlen) { s = cps.slice(0, def.maxlen).join(''); }
+    }
+    return s;
+  }
+
   // ═══ 校验：枚举/类型/范围 ═══
   function _validate(key, value) {
     var def = REGISTRY[key];
@@ -235,7 +237,7 @@
       if (def.enum.indexOf(s) < 0) return { ok: false, reason: 'not-in-enum' };
       return { ok: true, value: s };
     }
-    return { ok: true, value: String(value) };
+    return { ok: true, value: _sanitizeStr(key, value) };
   }
 
   // 老格式归一（网站时代存量值 → 客户端枚举；codelensLevel 老 3 = 全套）

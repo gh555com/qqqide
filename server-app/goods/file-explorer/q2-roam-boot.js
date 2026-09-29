@@ -336,10 +336,18 @@
 	var prefs = await _roamGet('roam.prefs');
 	if (prefs && typeof prefs === 'object') {
 		if (typeof prefs.lineSpacing === 'number') _lineSpacing = prefs.lineSpacing;
-		if (prefs.globalSzMode) _globalSzMode = prefs.globalSzMode;
-		if (prefs.globalSortBy) _globalSortBy = prefs.globalSortBy;
 	}
 	_applyLineSpacing();
+	// ★ 设置中心接线（2026-09-29 · 老 q3 语义）：sz 显示 / 排序 / 自动感知 = qqq-prefs 消费方——
+	//   全局默认即刻生效；订阅变更（设置修改 / 云拉取 / 恢复默认 / 激活）→ 实时重算重渲染。
+	_applyCenterPrefs();
+	try {
+		if (parent && parent.qqqPrefs && parent.qqqPrefs.onChange) {
+			parent.qqqPrefs.onChange(function (key) {
+				if (key === null || key === 'szDisplayMode' || key === 'sortBy' || key === 'autoWatchChanges') { _applyCenterPrefs(); }
+			});
+		}
+	} catch (e) { }
 	try {
 		var sw = await _roamGet('roam.sidebarWidth');
 		if (typeof sw === 'number' && sw > 50 && sw < 500) { sidebarW = sw; applySidebarWidth(); }

@@ -231,8 +231,9 @@ function _aggAdd(streamId: string, total: number): void {
     agg.total += total;
 }
 
-function _aggReport(e: any, streamId: string, force = false): void {
-    const agg = _copyAgg.get(streamId);
+function _aggReport(e: any, streamId: string | undefined, force = false): void {
+    if (!streamId) return;
+    const agg = streamId ? _copyAgg.get(streamId) : undefined;
     if (!agg || agg.total <= 0) return;
     const now = Date.now();
     const last = _aggLastReport.get(streamId) || 0;
@@ -248,11 +249,11 @@ function _aggCleanup(streamId: string): void {
     _aggLastReport.delete(streamId);
 }
 
-function _copyCancelled(streamId: string): boolean {
+function _copyCancelled(streamId: string | undefined): boolean {
     return !!streamId && _copyCancels.has(streamId);
 }
 
-function _cancelErr(streamId: string): Error {
+function _cancelErr(streamId: string | undefined): Error {
     return new Error('copy cancelled (stream ' + streamId + ')');
 }
 
@@ -358,7 +359,7 @@ function _txPersist(): void {
 }
 
 // 惰性创建事务（streamId 首次出现时；targetDir = 粘贴目标）
-function _txEnsure(streamId: string, targetDir: string): void {
+function _txEnsure(streamId: string | undefined, targetDir: string): void {
     if (!streamId) return;
     if (_txStore.has(streamId)) return;
     const now = Date.now();
@@ -377,7 +378,7 @@ function _txEnsure(streamId: string, targetDir: string): void {
 }
 
 // 注册半成品（dest 确定新建后、写流前调用；幂等）
-function _txRegister(streamId: string, filePath: string): void {
+function _txRegister(streamId: string | undefined, filePath: string): void {
     if (!streamId || !filePath) return;
     const tx = _txStore.get(streamId);
     if (!tx) return;
@@ -388,7 +389,7 @@ function _txRegister(streamId: string, filePath: string): void {
 }
 
 // 注册新建目录（目录复制；恢复时仅删空目录）
-function _txRegisterDir(streamId: string, dirPath: string): void {
+function _txRegisterDir(streamId: string | undefined, dirPath: string): void {
     if (!streamId || !dirPath) return;
     const tx = _txStore.get(streamId);
     if (!tx) return;
@@ -399,7 +400,7 @@ function _txRegisterDir(streamId: string, dirPath: string): void {
 }
 
 // 落地：从 tempFiles 移除 dest，landedFiles 追加最终路径（仅新文件；去重命中复用旧文件不记）
-function _txMarkLanded(streamId: string, dest: string, finalPath: string): void {
+function _txMarkLanded(streamId: string | undefined, dest: string, finalPath: string): void {
     if (!streamId) return;
     const tx = _txStore.get(streamId);
     if (!tx) return;
@@ -414,7 +415,7 @@ function _txMarkLanded(streamId: string, dest: string, finalPath: string): void 
 }
 
 // 半成品已删 → 从 tempFiles 移除（取消 unlink 后调用，防恢复时再删一次）
-function _txUnregister(streamId: string, filePath: string): void {
+function _txUnregister(streamId: string | undefined, filePath: string): void {
     if (!streamId || !filePath) return;
     const tx = _txStore.get(streamId);
     if (!tx) return;
@@ -424,7 +425,8 @@ function _txUnregister(streamId: string, filePath: string): void {
 }
 
 // ★ 事务级回滚（替代整树 rm）：tempFiles − landedFiles 精确删 + 空目录清理（从深到浅）
-function _txRollback(streamId: string): void {
+function _txRollback(streamId: string | undefined): void {
+    if (!streamId) return;
     const tx = _txStore.get(streamId);
     if (!tx) return;
     try {
@@ -869,7 +871,7 @@ export function registerFsIpc(cacheStore?: CacheStore): void {
                     writeStream.destroy();
                     return;
                 }
-                const agg = _copyAgg.get(streamId);
+                const agg = streamId ? _copyAgg.get(streamId) : undefined;
                 if (agg) agg.copied += chunk.length;
                 _aggReport(e, streamId);
             });
@@ -976,7 +978,7 @@ export function registerFsIpc(cacheStore?: CacheStore): void {
                         // ★ destroy(error)：无参 destroy 不触发 'error' → promise 永不 settle（实测挂起）
                         if (_copyCancelled(streamId)) { rs.destroy(_cancelErr(streamId)); ws.destroy(); return; }
                         copiedBytes += chunk.length;
-                        const agg = _copyAgg.get(streamId);
+                        const agg = streamId ? _copyAgg.get(streamId) : undefined;
                         if (agg) agg.copied += chunk.length;
                         report();
                     });

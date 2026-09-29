@@ -7,8 +7,8 @@
 // v1 goods (no protoVer) work forever — host maps legacy fields automatically.
 //
 //   window.qqqGaea.register({
-//     id: 'rage',
-//     title: 'rage',
+//     id: 'kope-a',
+//     title: 'kope-a',
 //     version: '1.0.0',
 //     protoVer: 2,   // optional, defaults to 1
 //     type: 'process',           // 'panel' (default) | 'process' (后台进程)
@@ -16,7 +16,7 @@
 //     panel: { build(host, ctx) {} },           // A-zone main panel
 //     tabs: { 'roam': { title:'roam', build(host,ctx){} } },  // X-zone gaea tabs
 //     services: { 'paste': { start(ctx){}, stop(){} } },       // background
-//     commands: ['rage.exportDoc'],
+//     commands: ['kope-a.exportDoc'],
 //     provides: ['audio'],                      // cross-goods exports (reserved)
 //     uses: [],                                 // cross-goods deps (reserved)
 //   })

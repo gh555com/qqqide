@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { ipcMain, WebContents } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, ChildProcessWithoutNullStreams } from 'child_process';
 import { mi } from './main-i18n';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -28,17 +28,24 @@ import * as iconv from 'iconv-lite';
 
 const MAX_SESSIONS = 16; // 会话上限，防进程泄漏
 
+export type KmdShellType = 'cmd' | 'powershell' | 'gitbash' | 'zsh' | 'bash';
+
 export interface KmdSpawnOpts {
     id: string;
-    shellType: 'cmd' | 'powershell' | 'gitbash' | 'zsh' | 'bash';
+    shellType: KmdShellType;
     cwd?: string;
+}
+
+// shell 名归一：仅接受五个合法值，其余回落 'cmd'（与 _resolveShell 默认分支同语义）
+function _normKmdShell(v: string): KmdShellType {
+    return (v === 'powershell' || v === 'gitbash' || v === 'zsh' || v === 'bash') ? v : 'cmd';
 }
 
 interface KmdSession {
     id: string;
     shellType: string;
     cwd: string;
-    proc: ChildProcess;
+    proc: ChildProcessWithoutNullStreams;
     alive: boolean;
     owner: WebContents;
     decoder: TextDecoder;
@@ -128,7 +135,7 @@ export function _probeBash(bashPath: string): Promise<boolean> {
             p = spawn(bashPath, ['--version'], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
         } catch { resolve(false); return; }
         let out = '';
-        p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+        p.stdout!.on('data', (d: Buffer) => { out += d.toString('utf8'); });
         p.on('error', () => resolve(false));
         const t = setTimeout(() => {
             try { p.kill(); } catch { /* ignore */ }
@@ -179,7 +186,7 @@ function _enumChildPidsWin(parentPid: number): Promise<number[]> {
                 p = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
             } catch { res({ ok: false, out: '' }); return; }
             const t = setTimeout(() => { try { p.kill(); } catch { /* ignore */ } }, 4000);
-            p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+            p.stdout!.on('data', (d: Buffer) => { out += d.toString('utf8'); });
             p.on('error', () => { clearTimeout(t); res({ ok: false, out }); });
             p.on('exit', (code) => { clearTimeout(t); res({ ok: code === 0, out }); });
         });
@@ -203,7 +210,7 @@ function _spawnOne(opts: KmdSpawnOpts, appRoot: string, owner: WebContents): Kmd
     let decoder: TextDecoder;
     try { decoder = new TextDecoder(gbk ? 'gbk' : 'utf-8'); } catch { decoder = new TextDecoder('utf-8'); }
 
-    let proc: ChildProcess;
+    let proc: ChildProcessWithoutNullStreams;
     try {
         proc = spawn(res.cmd, res.args, {
             cwd: opts.cwd || undefined,
@@ -272,7 +279,7 @@ export function registerKmdIpc(appRoot: string): void {
     ipcMain.handle('qqqide:kmd:spawn', async (e, opts: any) => {
         const o = opts || {};
         const id = String(o.id || '');
-        const shellType = String(o.shellType || 'cmd');
+        const shellType = _normKmdShell(String(o.shellType || 'cmd'));
         if (!id || sessions.has(id)) return { ok: false, error: 'bad_id' };
         if (sessions.size >= MAX_SESSIONS) return { ok: false, error: 'session_limit' };
         const cwd = String(o.cwd || process.env.USERPROFILE || process.env.HOME || '');
@@ -332,7 +339,7 @@ export function registerKmdIpc(appRoot: string): void {
         const s = sessions.get(sid);
         if (!s) return { ok: false, error: 'not_found' };
         const owner = s.owner;
-        const shellType = s.shellType;
+        const shellType = _normKmdShell(s.shellType);
         const cwd = s.cwd;
         _killTree(s);
         sessions.delete(sid);

@@ -110,50 +110,52 @@ function _loadFresh(): SquadRegistry {
     return _cache;
 }
 
-/** 写前磁盘合并（2026-08-10 F15 缺口2；2026-09-12 回收实时性三律）: 跨实例（dev+绿色包同跑）防互踩 —
- *  重读磁盘 → 槽位级合并，绝不整库覆盖。三律（铁律「释放即真相」）:
- *   ① 双方皆有 → ts 新者胜；胜者已陈旧（pid 亡/心跳超时）→ 直接落 null（陈旧即焚，鬼条目不再永续磁盘）
+/** 槽位级写前合并（合并三律唯一实现；_save 与单元测试共用——isStale/selfPid 注入以便脱离 Electron 测试）:
+ *   ① 双方皆有 → ts 新者胜（平局归我）；胜者已陈旧（pid 亡 / 心跳超时）→ 直接落 null（陈旧即焚）
  *   ② 仅我有（磁盘无）→ 磁盘说该槽无人占 = 唯一真理：本实例活窗条目重新断言（刷心跳）；
  *      其余（他实例已释放残留 / 本实例已死窗口）→ 清除（旧实现此分支不处理 → 他实例释放的槽
  *      被本实例陈旧内存态复活回写 ——「关闭窗口后 w 被占用」实锤根因）
- *   ③ 仅磁盘有 → 他实例条目且未陈旧 → 恢复；本实例条目（已释放）→ 不再复活
+ *   ③ 仅磁盘有 → 他实例条目且未陈旧 → 恢复；本实例条目（已释放）→ 不再复活 */
+export function _mergeSlotsForSave(
+    reg: SquadRegistry,
+    diskRaw: unknown,
+    selfPid: number,
+    isStale: (e: SquadEntry) => boolean
+): void {
+    const j = diskRaw as { version?: number; slots?: Record<string, SquadEntry | null> } | null;
+    if (!(j && j.version === 1 && j.slots && typeof j.slots === 'object')) { return; }
+    for (const k of SQUAD_ORDER) {
+        const mine = reg.slots[k];
+        const theirs = j.slots[k];
+        if (mine && theirs) {
+            const winner = (theirs.ts ?? 0) > (mine.ts ?? 0) ? theirs : mine;
+            reg.slots[k] = isStale(winner) ? null : winner;
+        } else if (mine && !theirs) {
+            if (mine.pid === selfPid && !isStale(mine)) {
+                mine.ts = Date.now();
+                reg.slots[k] = mine;
+            } else {
+                reg.slots[k] = null;
+            }
+        } else if (!mine && theirs) {
+            if (theirs.pid !== selfPid && !isStale(theirs)) {
+                reg.slots[k] = theirs;
+            } else {
+                reg.slots[k] = null;
+            }
+        }
+    }
+}
+
+/** 写前磁盘合并（2026-08-10 F15 缺口2）: 跨实例（dev+绿色包同跑）防互踩 — 重读磁盘 →
+ *  槽位级合并（三律唯一实现 = _mergeSlotsForSave），绝不整库覆盖。
  *  写盘降级链: rename → copyFile → unlink+rename（防 AV/特殊共享句柄令原子替换失败而静默丢更新）。 */
 function _save(): boolean {
     const reg = _load();
     reg.updatedAt = Date.now();
     try {
         const j = JSON.parse(fs.readFileSync(registryPath(), 'utf-8'));
-        if (j && j.version === 1 && j.slots && typeof j.slots === 'object') {
-            for (const k of SQUAD_ORDER) {
-                const mine = reg.slots[k];
-                const theirs = j.slots[k];
-                if (mine && theirs) {
-                    const winner = (theirs.ts ?? 0) > (mine.ts ?? 0) ? theirs : mine;
-                    // ★ 2026-09-12 陈旧即焚: 合并胜者已死（pid 亡 / 心跳超 90s）→ 直接落 null。
-                    //   旧实现无论死活一律 LWW 保留 → 死条目在磁盘永续堆积（实测 49 小时鬼条目）
-                    reg.slots[k] = _isStale(winner) ? null : winner;
-                } else if (mine && !theirs) {
-                    // ★ 2026-09-12 释放即真相（回收实时性核心）: 磁盘已无该槽 = 已被持有者释放 →
-                    //   本实例活窗条目重新断言（刷心跳）；其余一律清除（杀他实例旧态复活）
-                    if (mine.pid === process.pid && !_isStale(mine)) {
-                        mine.ts = Date.now();
-                        reg.slots[k] = mine;
-                    } else {
-                        reg.slots[k] = null;
-                    }
-                } else if (!mine && theirs) {
-                    // 仅当磁盘条目属于其他实例且未陈旧时才恢复（防本实例故意清空的槽位被复活）
-                    // 2026-08-16 bug: 选 none 无效、改槽位后旧槽残留——_save 合并把本实例
-                    // 刚清空的 null 槽用磁盘旧条目填回，导致清除永不生效。
-                    // ★ 2026-08-20: 再叠加 !_isStale——死条目（pid 亡/心跳超时）绝不恢复。
-                    if (theirs.pid !== process.pid && !_isStale(theirs)) {
-                        reg.slots[k] = theirs;
-                    } else {
-                        reg.slots[k] = null;
-                    }
-                }
-            }
-        }
+        _mergeSlotsForSave(reg, j, process.pid, _isStale);
     } catch { /* 磁盘缺失/损坏 → 内存态直写 */ }
     const p = registryPath();
     _rotatePrev(); // 写前轮换 .prev（F18: 保留上一完好版，磁盘损坏可回退）

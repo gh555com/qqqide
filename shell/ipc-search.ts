@@ -363,7 +363,7 @@ function _parseRgJson(
     contextLines: number,
     _searchPath: string,
 ): SearchResult {
-    const fileEntries = new Map<string, Array<{ type: 'match' | 'context'; line: number; col?: number; matchLen?: number; matchText?: string; text: string }>>();
+    const fileEntries = new Map<string, Array<{ type: 'match' | 'context'; file: string; line: number; col?: number; matchLen?: number; matchText?: string; text: string }>>();
     const seenFiles = new Set<string>();
 
     for (const line of raw.split('\n')) {
@@ -512,6 +512,7 @@ export function registerSearchIpc(): void {
         replace?: string;
         useRegex?: boolean;
         caseSensitive?: boolean;
+        wholeWord?: boolean;
       }) => {
         // ★ Regex-based replacement (preferred: handles all matches per file in one pass)
         if (args.find && args.files && args.files.length > 0) {
@@ -627,7 +628,7 @@ export function registerSearchIpc(): void {
         }
 
         // Legacy batch regex replace
-        const { files, find, replace: replaceText, useRegex = false, caseSensitive = false, wholeWord = false } = args;
+        const { files, find, replace: replaceText = '', useRegex = false, caseSensitive = false, wholeWord = false } = args;
         if (!files || !find) return { replaced: 0, files: 0, errors: [] };
 
         let pattern: RegExp;

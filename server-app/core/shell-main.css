@@ -81,9 +81,10 @@
 /* roam 永驻标签 — 窄宽金色文字，枪灰右竖线贯穿到底+2px */
 .qqq-tab-btn.qqq-tab-roam {
   flex: 0 0 auto;
-  width: 58px;
+  width: auto;
   min-width: 44px;
-  max-width: 68px;
+  /* ★ 2026-09-29 自定义漫游名：宽度随名自适应，硬顶 170px（12 字符上限 ≈ ≤168px）——防挤占分组标签区 */
+  max-width: 170px;
   padding: 3px 6px 0 6px;
   justify-content: center;
   font-weight: 700;
@@ -92,9 +93,11 @@
   position: relative;
   overflow: visible;
 }
-/* Roam 标签文字左移 2px（宽度不变，2026-08-20） */
+/* Roam 标签文字左移 2px（2026-08-20）；自定义漫游名超宽 → 省略号（min-width:0 = flex 内截断前置） */
 .qqq-tab-btn.qqq-tab-roam .qqq-tab-name {
   transform: translateX(-2px);
+  min-width: 0;
+  max-width: 100%;
 }
 .qqq-tab-btn.qqq-tab-roam::after {
   content: '';
@@ -569,6 +572,63 @@
 .qqq-wq-btn.qqq-wq-warn { color: var(--yellow); }
 .qqq-wq-btn.qqq-wq-bad { color: var(--red); }
 .qqq-wq-btn.qqq-wq-dim { color: var(--text-dim); }
+
+/* ── 界面缩放徽章（状态栏恒显按钮；非 100% 高亮）+ 八档弹层（core/ui-zoom.js 唯一渲染机）──
+   ★ 类名禁叫 qqq-zoom-btn——已属编辑器字号 ± 按钮（shell-base.css），冲突即双向污染 */
+.qqq-zoom-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 16px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-dim);
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  forced-color-adjust: none;
+}
+.qqq-zoom-badge:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
+.qqq-zoom-badge.qqq-zoom-hot {
+  border-color: var(--primary-color, #b58900);
+  color: var(--primary-color, #b58900);
+  font-weight: bold;
+}
+.qqq-zoom-pop {
+  display: none;
+  position: fixed;
+  z-index: 9997;
+  grid-template-columns: repeat(4, 56px);
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--background-color);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.18);
+}
+.qqq-zoom-pop.qqq-zoom-open { display: grid; }
+.qqq-zoom-opt {
+  padding: 5px 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.qqq-zoom-opt:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.qqq-zoom-opt.qqq-zoom-cur {
+  border-color: var(--primary-color, #b58900);
+  color: var(--primary-color, #b58900);
+  font-weight: bold;
+  background: var(--hover-bg);
+}
 
 /* ★ a 区域（内存图标+内存文字+CPU文字，2026-08-30 合并）：图标/文字同色 --mem-icon，CPU 无图标以文字前缀标识，整体可 hover/点击弹合并卡片 */
 .qqq-mem-block {
@@ -1142,22 +1202,9 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
 }
 
 /* ============================================================================
-   A Zone: gaea panel cards (q4-style)
+   A Zone: gaea panel body
    ============================================================================ */
-.gaea-panel-header {
-  flex: 0 0 28px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-color);
-  font-size: 12px;
-}
 
-.gaea-panel-title {
-  font-weight: 600;
-  color: var(--primary-color);
-}
 
 .gaea-panel-body {
   flex: 1 1 auto;
@@ -1171,112 +1218,6 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   display: none;
 }
 
-.gaea-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  color: var(--text-primary);
-  font-size: 12px;
-  border-bottom: 1px solid var(--border-color);
-  transition: background 80ms;
-  flex-wrap: wrap;
-}
-
-.gaea-card:hover {
-  background: var(--background-color);
-}
-
-.gaea-card-icon {
-  font-size: 14px;
-  flex-shrink: 0;
-  width: 20px;
-  text-align: center;
-}
-
-.gaea-card-text {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.gaea-card-label {
-  white-space: nowrap;
-}
-
-.gaea-card-hint {
-  font-size: 10px;
-  color: var(--base1);
-  white-space: nowrap;
-}
-
-.gaea-card-stats {
-  font-size: 10px;
-  color: var(--base1);
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.gaea-card-input-wrap {
-  flex-basis: 100%;
-  display: flex;
-  gap: 4px;
-  margin-top: 4px;
-  padding-left: 28px;
-}
-
-.gaea-card-input {
-  flex: 1 1 auto;
-  padding: 3px 6px;
-  background: var(--background-color);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  font-size: 11px;
-  outline: none;
-}
-
-.gaea-card-input:focus {
-  border-color: var(--primary-color);
-}
-
-.gaea-card-go {
-  padding: 3px 8px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  border-radius: 2px;
-  font-size: 11px;
-}
-
-.gaea-card-go:hover {
-  background: var(--background-color);
-}
-
-.gaea-search-wrap {
-  flex: 0 0 32px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  border-top: 1px solid var(--border-color);
-  background: var(--background-color);
-}
-
-.gaea-search-input {
-  width: 100%;
-  padding: 4px 6px;
-  background: var(--card-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  font-size: 11px;
-  outline: none;
-}
-
-.gaea-search-input:focus {
-  border-color: var(--primary-color);
-}
 
 /* ============================================================================
    wq 探针 hover 卡片（2026-09-27 改版，core/wq-stats.js）——状态栏按钮上方瞬间弹出

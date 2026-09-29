@@ -329,6 +329,7 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 #btn-row #ctx-btn{position:relative;overflow:hidden;min-width:53px;background:linear-gradient(to right,transparent var(--ctx-pct),var(--card-bg) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #btn-row #ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),var(--base3) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #guide-btn svg,#queue-btn svg{display:block;width:13px;height:13px}
+#guide-btn svg{width:15px;height:15px}
 .tier-group{display:flex;align-items:center;gap:4px;margin-right:12px}
 #btn-row .tier-btn{width:25px;height:25px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);font-size:12px;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1;flex-shrink:0}
 #btn-row .tier-btn:hover{background:var(--base3)}
@@ -653,7 +654,8 @@ var _orig={};
         <button class="tier-btn" data-tier="5">3</button>
       </div>
     </div>
-    <button id="guide-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="2.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="5.5" y="5.5" width="3" height="3" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
+        <!-- ★ 引导按钮图标：正菱形点阵（2026-09-29 用户定案）——顶点落半整数格点 + crispEdges 无抗锯齿（45° 边恒 1px 均匀阶梯；改坐标必须保持半格对齐） -->
+    <button id="guide-btn" disabled><svg width="15" height="15" viewBox="0 0 15 15"><path d="M7.5 1.5L13.5 7.5L7.5 13.5L1.5 7.5Z" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><path d="M7.5 5.5L9.5 7.5L7.5 9.5L5.5 7.5Z" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
     <button id="queue-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="1.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><line x1="2.5" y1="7.5" x2="11.5" y2="7.5" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="2.5" y="9.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
     <button id="ctx-btn">--</button>
     <button id="send-btn">Send</button>

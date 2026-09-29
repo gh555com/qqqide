@@ -743,6 +743,7 @@ if (-not $ok) { throw 'SetFileDropList failed' }
     // ---- wing state: renderer tells main process which wings are open → update min size ----
     ipcMain.handle('qqqide:wing:state', async (e, leftOpen: boolean, rightOpen: boolean) => {
         const win = BrowserWindow.fromWebContents(e.sender);
+        if (!win || win.isDestroyed()) return;
         // ★ 2026-08-09: 同步持久化翼状态（双写 global.sq3 wings_bulbs + ws.sq3 windowWings）
         setWindowWingState(win, leftOpen, rightOpen, stateStore);
     });

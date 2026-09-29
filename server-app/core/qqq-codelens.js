@@ -12,9 +12,9 @@
 //   1 = 仅文件信息行（open file，无 ✎ 前缀）
 //   7 = 全套: [✎(文件夹体积) 🗀qqq] [✎rename] [✎c1 复制路径] [✎c2 复制文件] [✎c3 复制图片二进制*]
 //            + 文件信息行 ✎(体积) {图标} {完整路径} {缩放% 宽x高}
-//            + [✎qode*]     （*c3 仅图片；*qode 仅文本文件 → 在右分组打开）
+//            + [✎qqqide*]   （*c3 仅图片；*qqqide 仅文本文件 → 在右分组打开）
 //
-// 样式接管 takeOverCodelensStyle=true → Tahoma 11 号 + 主题红（老「红色 13 号」，用户定 -1 后再 -1）
+// 样式：恒 Tahoma 11 号 + 主题红（html.qqq-codelens-style 常驻挂载；不设开关）
 //
 // 异步元数据机器（stat / 文件夹体积 / 文本探针 / 媒体探测）：
 //   全部带记忆缓存；任一数据到位 → scheduleRefresh() → Monaco 重拉 provider（按钮渐进补齐）
@@ -42,7 +42,6 @@
     var v = String(_pref('codelensLevel', '7'));
     return (v === '0' || v === '1' || v === '7') ? v : '7';
   }
-  function _takeover() { return _pref('takeOverCodelensStyle', true) !== false; }
 
   // ═══ i18n（键唯一真理源 locales/zh.json；其他语言 ky.py 自动翻译）═══
 //   调用点恒传完整键字面量（editor.codelens.*）——审计 ⑦ 零动态拼接（铁律 §4.4）
@@ -361,10 +360,10 @@
       titlePrefix + '( ' + formatBytes(st.size) + ')' + iconPart + spacePart + path + titleSuffix,
       tooltip, 'qqqide.codelens.open', [path]));
 
-    // ── qode（仅文本文件 + level 7：在右分组打开并进入编辑状态）──
+    // ── qqqide（仅文本文件 + level 7：在右分组打开并进入编辑状态）──
     if (level === '7' && isText) {
-      out.push(_lens(line, '✎qode', _t('editor.codelens.openRight', '在右边分组打开文件并进入编辑状态'),
-        'qqqide.codelens.qode', [path]));
+      out.push(_lens(line, '✎qqqide', _t('editor.codelens.openRight', '在右边分组打开文件并进入编辑状态'),
+        'qqqide.codelens.openRight', [path]));
     }
   }
 
@@ -465,8 +464,8 @@
     });
   }
 
-  // qode → 在右分组打开（老 openFileInRightGroup）
-  function _cmdQode(path) {
+  // qqqide 按钮 → 在右分组打开（老 openFileInRightGroup）
+  function _cmdOpenRight(path) {
     try {
       if (window.qqqTabs && window.qqqTabs.openFileInRightGroup) { window.qqqTabs.openFileInRightGroup(path); return; }
       if (window.qqqTabs && window.qqqTabs.openFile) { window.qqqTabs.openFile(path); }
@@ -624,26 +623,23 @@
   }
 
   // ════════════════════════════════════════════════════════════════════
-  // 样式接管（takeOverCodelensStyle：红色 11 号 = 老 13 号口径 -2；用户两次定 -1）
+  // 样式（恒 Tahoma 11 号 + 主题红；html.qqq-codelens-style 常驻挂载）
   // ════════════════════════════════════════════════════════════════════
   function _applyStyleClass() {
     try {
-      var on = _takeover();
       var el = document.documentElement;
       if (!el) return;
-      if (on) el.classList.add('qqq-codelens-style');
-      else el.classList.remove('qqq-codelens-style');
+      el.classList.add('qqq-codelens-style');
     } catch (e) { /* */ }
   }
 
   function _applyOptions(ed) {
     if (!ed || typeof ed.updateOptions !== 'function') return;
     try {
-      var on = _takeover();
       ed.updateOptions({
         codeLens: _level() !== '0',
-        codeLensFontFamily: on ? 'Tahoma, Liberation Sans, DejaVu Sans, sans-serif' : '',
-        codeLensFontSize: on ? 11 : 0,
+        codeLensFontFamily: 'Tahoma, Liberation Sans, DejaVu Sans, sans-serif',
+        codeLensFontSize: 11,
       });
     } catch (e) { /* */ }
   }
@@ -657,7 +653,7 @@
 
   function _onPrefsChange(key) {
     if (key !== null && key !== undefined) {
-      if (key !== 'codelensLevel' && key !== 'takeOverCodelensStyle') {
+      if (key !== 'codelensLevel') {
         // 其余偏好不改变按钮集合，但可能改变信息行（frameSizeMode/enlargeSmallImages → 缩放%）
         if (key === 'frameSizeMode' || key === 'enlargeSmallImages') refreshNow();
         return;
@@ -688,7 +684,7 @@
     reg('qqqide.codelens.copyPath', _cmdCopyPath);
     reg('qqqide.codelens.copyFile', _cmdCopyFile);
     reg('qqqide.codelens.copyImage', _cmdCopyImage);
-    reg('qqqide.codelens.qode', _cmdQode);
+    reg('qqqide.codelens.openRight', _cmdOpenRight);
     reg('qqqide.codelens.rename', function (arg) {
       if (!arg || !arg.path) return;
       _openRenameModal(arg.path, arg.fileName || '');
@@ -724,7 +720,7 @@
     getLevel: _level,
     openRenameModal: _openRenameModal,
     _state: function () {
-      return { installed: _installed, level: _level(), takeover: _takeover() };
+      return { installed: _installed, level: _level(), takeover: true };
     },
   };
 

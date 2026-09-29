@@ -466,7 +466,7 @@ async function _ensureOne(
     // Platform subdirectory for multi-platform components (ffmpeg etc.)
     const finalDir = def._platform_subdir ? path.join(targetDir, pk) : targetDir;
     const effectiveInstallTo = def._platform_subdir ? (def.install_to + '/' + pk) : def.install_to;
-    const binPath = isFiles ? path.join(finalDir, '__files__') : path.join(finalDir, binRel);
+    const binPath = isFiles ? path.join(finalDir, '__files__') : path.join(finalDir, binRel!);
     const verifyArgs = def.verify_args || ['--version'];
 
     // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
@@ -499,7 +499,7 @@ async function _ensureOne(
     const oldRec = versions[name];
     if (oldRec && oldRec.install_to !== effectiveInstallTo && oldRec.install_to) {
         const oldDir = path.join(enginesDir, oldRec.install_to);
-        const oldBin = path.join(oldDir, binRel);
+        const oldBin = path.join(oldDir, binRel!);
         if (fs.existsSync(oldBin) && (await _cmdOkAsync(oldBin, verifyArgs))) {
             _migrateDir(enginesDir, oldRec.install_to, effectiveInstallTo, name);
             versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };

@@ -261,7 +261,7 @@ export async function decodeFile(p: string): Promise<{ text: string; info: FileE
     let rec = _mem.get(key);
     const pin = _pins.get(key);
     const fresh = !!(rec && st && rec.mtimeMs === st.mtimeMs && rec.size === st.size);
-    if (!fresh) {
+    if (!fresh || !rec) {
         const det = detectEncoding(buf);
         if (pin && pin !== det.enc) _pins.delete(key); // 证据冲突弃固定
         rec = { enc: det.enc, bom: det.bom, pinned: null, mtimeMs: st ? st.mtimeMs : Date.now(), size: buf.length };
@@ -310,7 +310,7 @@ export async function encodeFile(p: string, text: string, forceEnc?: EncName | n
         // 新文件：固定 → 记录 → utf8
         enc = (pin || (rec ? rec.enc : 'utf8')) as EncName;
         bom = pin ? _encDefaultBom(pin) : (rec ? rec.bom : false);
-    } else if (fresh) {
+    } else if (fresh && rec) {
         enc = (pin || rec.enc) as EncName;
         if (pin && pin !== rec.enc && (pin === 'utf16le' || pin === 'utf16be')) {
             bom = _utf16PinBom(pin, await _readHead2(p)); // ★ utf16 固定：BOM 按实际字节（防吃首字符）

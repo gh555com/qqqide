@@ -24,7 +24,8 @@
   var FEATURES = {
     'floor-cap-32': 1,
     'floor-cap-64': 1,
-    'no-watermark': 1   // 消除相框水印（2026-09-28 设置本地化：客户端行为门 = 设置中心 💎 行；真正裁决在服务端计费点）
+    'no-watermark': 1,  // 消除相框水印（2026-09-28 设置本地化：客户端行为门 = 设置中心 💎 行；真正裁决在服务端计费点）
+    'roam-name': 1      // 自定义漫游名字（2026-09-29：Roam 常驻标签标题可改；未激活/未设置恒「Roam」+ set 拒绝）
   };
 
   function _login() { return window.qqqLogin || null; }
