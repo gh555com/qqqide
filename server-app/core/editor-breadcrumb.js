@@ -85,11 +85,57 @@
     if (_repeatInterval) { clearInterval(_repeatInterval); _repeatInterval = null; }
   }
 
+  // ═══ 面包屑即时 hover 文字框（零延迟；多编辑器/多分组共用单例）═══
+  //   用途：Roam 按钮 = 文件大小（Roam 风格千分位原文打印）/ 时间线按钮 = 版本库收录版本数（只打一个数字）
+  //   视觉唯一源 = shell-main.css .qqq-breadcrumb-tip（同「状态栏活动豆腐块」即时框 .qqq-act-tip 同款）
+  var _bcTip = null;        // 单例提示框 element
+  var _bcTipAnchor = null;  // 当前锚点按钮（编辑器/分组重建时防悬停卡死）
+
+  function _ensureBcTip() {
+    if (_bcTip && document.body.contains(_bcTip)) return _bcTip;
+    _bcTip = document.createElement('div');
+    _bcTip.className = 'qqq-breadcrumb-tip';
+    document.body.appendChild(_bcTip);
+    return _bcTip;
+  }
+
+  function _showBcTip(btn, text) {
+    var tip = _ensureBcTip();
+    if (tip.__qqqSig !== text) { tip.textContent = text; tip.__qqqSig = text; }
+    tip.style.display = 'block';            // 先显形再量尺寸（display:none 下 offsetWidth 恒 0）
+    var r = btn.getBoundingClientRect();
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var x = r.left + r.width / 2 - w / 2;
+    var y = r.bottom + 6;                   // 面包屑在顶部：默认按钮下方
+    var vw = window.innerWidth, vh = window.innerHeight;
+    x = Math.max(8, Math.min(vw - w - 8, x));
+    if (y + h > vh - 8) y = Math.max(8, r.top - h - 6);   // 下方放不下 → 翻到按钮上方
+    tip.style.left = Math.round(x) + 'px';
+    tip.style.top = Math.round(y) + 'px';
+    _bcTipAnchor = btn;
+  }
+
+  function _hideBcTip() {
+    if (_bcTip) _bcTip.style.display = 'none';
+    _bcTipAnchor = null;
+  }
+
+  // 千分位（与 Roam addThousandSep 逐字同算法）：字节数 → "1,593,270"
+  function _addThousandSep(num) {
+    var n = Math.floor(Number(num));
+    if (!isFinite(n) || n < 0) n = 0;
+    var s = String(n), parts = [];
+    for (var i = s.length; i > 0; i -= 3) parts.unshift(s.slice(Math.max(0, i - 3), i));
+    return parts.join(',');
+  }
+
   // ── 主入口 ──
   function create(hostPane, filePath, monacoEditor, monaco) {
     // 清理旧元素
     var oldBar = hostPane.querySelector('[data-qqq-editor-breadcrumb]');
     if (oldBar) oldBar.remove();
+    // hover 文字框如锚在被移除的旧按钮上 → 立即收起（防悬停中重建残留）
+    if (_bcTipAnchor && !document.contains(_bcTipAnchor)) _hideBcTip();
     var oldMc = hostPane.querySelector('[data-qqq-editor-monaco]');
     if (oldMc) {
       // 把 Monaco DOM 从旧容器里取回 hostPane（安全）
@@ -174,11 +220,34 @@
     var roamBtn = document.createElement('button');
     roamBtn.className = 'qqq-breadcrumb-roam-btn';
     roamBtn.textContent = 'Roam';
-    roamBtn.title = _i('editor.roamLocate', '在 Roam 中定位该文件');
+    // ★ hover 即时文字框（2026-10-01 q390 用户定案）：只打印当前文件大小（Roam 风格千分位原文，如 1,593,270）
+    //   ——两键原生 title 已删（防与即时框双弹）；显示/定位/隐藏 = _showBcTip / _hideBcTip（同「状态栏活动豆腐块」即时框）
+    var _roamHover = false, _roamSizeCache = null, _roamSizePending = false;
+    function _roamFetchSize() {
+      if (_roamSizePending || !filePath) return;
+      var b = window.qqqideBridge;
+      if (!b || !b.fs || !b.fs.stat) return;
+      _roamSizePending = true;
+      b.fs.stat(filePath).then(function (st) {
+        _roamSizePending = false;
+        if (!st || typeof st.size !== 'number') return;
+        _roamSizeCache = st.size;
+        if (_roamHover) _showBcTip(roamBtn, _addThousandSep(st.size));   // 悬停仍在 → 就位即刷新
+      }).catch(function () { _roamSizePending = false; });
+    }
+    roamBtn.addEventListener('mouseenter', function () {
+      if (!filePath) return;
+      _roamHover = true;
+      if (_roamSizeCache != null) _showBcTip(roamBtn, _addThousandSep(_roamSizeCache));   // 已知值立显（零等待）
+      _roamFetchSize();   // 同时拉磁盘真值（文件可能刚被改）
+    });
+    roamBtn.addEventListener('mouseleave', function () { _roamHover = false; _hideBcTip(); });
     roamBtn.setAttribute('data-no-cd', '');
     roamBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
+      _roamHover = false;   // 点击后即收框（指针仍悬停也不再回弹）
+      _hideBcTip();
       var p = filePath || '';
       if (!p) return;
       try {
@@ -201,15 +270,54 @@
     var tlBtn = document.createElement('button');
     tlBtn.className = 'qqq-breadcrumb-timeline-btn';
     tlBtn.textContent = '\uD83D\uDD58'; // 时钟图标（文字按钮「timeline」太宽，图标化 ≈28px）
-    tlBtn.title = _i('editor.timelineOpen', '在时间线中查看该文件');
+    // ★ hover 即时文字框（2026-10-01 q390 用户定案）：只打印版本时间线库收录的版本数（一个数字）
+    //   根解析沿用 _resolveTimelineRoot（与点击开窗同口径——hover 数 = 该窗口将展示的库存）；原生 title 已删
+    var _tlHover = false, _tlCountCache = null, _tlRootCache = '', _tlPending = false, _tlLastTs = 0;
+    function _tlFetchCount() {
+      if (_tlPending || !filePath) return;
+      var b = window.qqqideBridge;
+      if (!b || !b.timeline || !b.timeline.versions) return;
+      if (_tlCountCache != null && (Date.now() - _tlLastTs) < 3000) return;   // 3s 内复用缓存（版本入库低频，防连悬打 IPC）
+      _tlPending = true;
+      function _done(n) {
+        _tlPending = false;
+        _tlLastTs = Date.now();
+        _tlCountCache = n;
+        if (_tlHover) _showBcTip(tlBtn, _addThousandSep(n));
+      }
+      function _query(root) {
+        if (!root) { _done(0); return; }   // 全链解析失败 = 库存查无版本（点击侧仍会如实 qoast）
+        _tlRootCache = root;
+        b.timeline.versions({ projectRoot: root, filePath: filePath }).then(function (list) {
+          _done((list && list.length) || 0);
+        }).catch(function () { _tlPending = false; });
+      }
+      if (_tlRootCache) _query(_tlRootCache);
+      else _resolveTimelineRoot(filePath, _query);
+    }
+    tlBtn.addEventListener('mouseenter', function () {
+      if (!filePath) return;
+      _tlHover = true;
+      if (_tlCountCache != null) _showBcTip(tlBtn, _addThousandSep(_tlCountCache));
+      _tlFetchCount();
+    });
+    tlBtn.addEventListener('mouseleave', function () { _tlHover = false; _hideBcTip(); });
     tlBtn.setAttribute('data-no-cd', '');
     tlBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
+      _tlHover = false;   // 点击后即收框（指针仍悬停也不再回弹）
+      _hideBcTip();
       var p = filePath || '';
       if (!p) return;
       var b = window.qqqideBridge;
       if (!b || !b.timeline || !b.timeline.openDiffWindow) return;
+      function _tlFailToast() {
+        // 打开链失败必须如实提示（禁静默吞错——「点击零反应」体验根治）
+        try {
+          if (window.qqqideQoast) window.qqqideQoast.show(_i('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { type: 'warn', duration: 5000 });
+        } catch (_) { }
+      }
       _resolveTimelineRoot(p, function (root) {
         if (!root) {
           // 全链解析失败：不开空窗（旧实现带空根开窗 = 空白窗「缺少参数」），如实提示
@@ -220,8 +328,10 @@
         }
         try {
           var r = b.timeline.openDiffWindow({ filePath: p, projectRoot: root });
-          if (r && r.catch) r.catch(function () { });
-        } catch (_) { }
+          if (r && r.then) {
+            r.then(function (res) { if (res && res.ok === false) { _tlFailToast(); } }).catch(_tlFailToast);
+          }
+        } catch (_) { _tlFailToast(); }
       });
     });
     bar.appendChild(tlBtn);

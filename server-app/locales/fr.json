@@ -156,6 +156,7 @@
             "mplDel": "Retirer de la liste de lecture",
             "mpopout": "Ouvrir le lecteur dans une fenêtre indépendante",
             "mpopin": "Ouvrir le lecteur dans la fenêtre",
+            "mstow": "Réduire dans la barre d'état",
             "mdockside": "Changer la position de la liste (gauche / droite)"
         },
         "player": {
@@ -167,9 +168,11 @@
             "empty": "La liste de lecture est vide — Sélectionnez un média dans Roam, faites un clic droit et choisissez « Ajouter à la liste de lecture », ou ouvrez depuis la couche flottante ↗",
             "returnOv": "Retour à la couche flottante",
             "returnFail": "Fenêtre principale introuvable, impossible de revenir à la couche flottante",
-            "minimize": "Réduire dans l'espace de travail qqq",
+            "stowFail": "Fenêtre principale introuvable, impossible de réduire dans la barre d'état",
+            "minimize": "Réduire · Barre d'état ♪ Télécommande",
             "restore": "Développer le lecteur",
-            "stowed": "Réduit dans l'espace de travail qqq"
+            "stowed": "Réduit · Barre d'état ♪ Télécommande",
+            "blockEmpty": "Aucune session de lecture en cours"
         },
         "about": {
             "title": "À propos de qqq",
@@ -339,9 +342,8 @@
     },
     "editor": {
         "copyPath": "Copier le chemin",
-        "roamLocate": "Localiser ce fichier dans Roam",
-        "timelineOpen": "Afficher ce fichier dans la chronologie",
         "timelineNoRoot": "Impossible de déterminer le répertoire racine du projet pour ce fichier, la chronologie n'est pas disponible",
+        "timelineOpenFail": "Échec de l'ouverture de la fenêtre de chronologie, veuillez réessayer ultérieurement",
         "minimap": "Minimap",
         "tabs": {
             "close": "Fermer l'onglet",
@@ -741,7 +743,12 @@
         },
         "gwWait": {
             "title": "⏳ Pas de réponse en amont {0}",
-            "subtitle": "{0} Niveau {1} · {2}",
+            "rowLabel": "{0} Étage {1}",
+            "barMulti": "⏳ {0} étages en attente de réponse amont · Durée max. {1}",
+            "stop": "■ Arrêter",
+            "expand": "Afficher les détails",
+            "collapse": "Réduire",
+            "muteTip": "Ne plus afficher cette alerte pour cette session (les nouveaux étages en attente déclencheront une nouvelle alerte)",
             "serverAck": "En attente de confirmation du serveur",
             "firstToken": "En attente du premier jeton",
             "hangCount": "({0}e tentative)",
@@ -1691,10 +1698,6 @@
         "exportHingeTip": "Plein = groupe d'édition qui sera exporté (le dernier consulté) ; Creux = autre groupe. Cliquez sur le carré pour changer la cible d'exportation ; lors du survol de la carte d'exportation, la zone d'édition cible sera mise en évidence par un cadre en pointillés violet pâle.",
         "exportWillExport": "Sur le point d'exporter : {0}",
         "cloudSyncTip": "Synchronisation cloud : ↑ Téléverser = fusionner avec le cloud avant de téléverser (aucune perte de données des deux côtés) ; ↓ Télécharger = fusionner les données du cloud vers l'appareil local. Inclut la configuration roam, les préférences de chaque dossier et l'historique du presse-papiers.",
-        "playerTip": "Lecteur : écoutez de la musique ou regardez des vidéos pendant que vous codez (liste de lecture mémorisée entre les redémarrages) ; dans Roam, faites un clic droit sur un média sélectionné et choisissez « Ajouter à la liste de lecture », ou faites-le apparaître depuis la couche flottante ; minimiser = réduire à cette emprise de contrôle.",
-        "playerWinTip": "Fenêtre du lecteur flottant indépendant : fenêtre toujours visible — reste visible même lorsque vous passez à d'autres applications (↗)",
-        "playerCardTip": "Lecteur intégré : carte du lecteur flottant dans la fenêtre qqqide — suit cette fenêtre (⧈)",
-        "playerNeedRestart": "Le lecteur flottant nécessite le redémarrage de l'instance pour être disponible",
         "videoUrlTip": "En attente : saisissez l'URL de la vidéo pour la télécharger automatiquement dans le dossier du document et l'insérer dans un cadre.",
         "pasteTip": "En attente : collez le contenu du presse-papiers dans le document en un clic (vous pouvez aussi utiliser Ctrl+V).",
         "pureTip": "En attente : analyse des références du document pour nettoyer les fichiers orphelins non référencés.",

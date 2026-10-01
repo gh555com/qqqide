@@ -266,7 +266,7 @@
     // ★ 身份头（2026-09-16）：BYOK 请求在 index 0 注入最小身份声明——用户模型以
     //   qqq AI 身份服务（与平台通道体验一致）；服务端甲壳绝不经本通道外发（甲壳为服务端
     //   防提取设计 + 用户自付 token，且其平台内部规则与本场景无关）
-    var _ID_PREAMBLE = 'You are qqq AI, the built-in IDE assistant. Help the user with their project using the provided tools. Always reply in the user\'s language. If asked who you are, answer: "I am qqq AI."';
+    var _ID_PREAMBLE = 'You are qqq AI, the built-in IDE assistant of qd (qqqide) — the product you run inside ("qd"/"qqqide" always refers to it). Help the user with their project using the provided tools. Always reply in the user\'s language. If asked who you are, answer: "I am qqq AI."';
 
     // 消息净化：剥离平台内部标记字段（_ 前缀：_persistent/_biscuit/_floor/_dynamic 等），
     // 仅发标准线上字段（role/content/tool_calls/tool_call_id/name/reasoning_content…），

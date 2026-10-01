@@ -6,7 +6,7 @@
 #   省略路径 → 自动取 dist-pack/qqqide-mac-*.tar.gz 中最新修改的一个
 # exit: 0 = PASS / 1 = FAIL（打印全部问题清单）
 #
-# 检查项：sha256 指纹 / 顶层结构 / 残留（pycache·vc_runtime）/ 关键二进制
+# 检查项：sha256 指纹 / 单文件夹容器（qqqide/）/ 顶层结构 / 残留（pycache·vc_runtime）/ 关键二进制
 #         Mach-O 架构 / 符号链接（数量 + 反斜杠）/ Info.plist 契约 / 入口链
 #         pyobjc 完整链（objc/Cocoa/Quartz/CoreText/ApplicationServices）
 # ============================================================================
@@ -69,10 +69,48 @@ sz = os.path.getsize(TAR)
 print('size   : %d bytes (%.1f MB)' % (sz, sz / 1048576.0))
 print('sha256 :', sha256(TAR))
 
-tf = tarfile.open(TAR, 'r:gz')
-names = tf.getnames()
+tf_raw = tarfile.open(TAR, 'r:gz')
+raw_names = tf_raw.getnames()
+raw_tops = {n.split('/')[0] for n in raw_names}
+# ★ 2026-10-01: 分发契约 = 单文件夹容器（qqqide/）——tar 内一切包进一层，任何解压器
+#   任何解压位置恒只出一个文件夹（与 win 的 program/qd 同思路）。质检验证剥壳后的名字。
+CONTAINER = 'qqqide/'
+CONTAINER_OK = (raw_tops == {'qqqide'})
+PREFIX = CONTAINER if CONTAINER_OK else ''
+
+
+def _s(n):
+    return n[len(PREFIX):] if (PREFIX and n.startswith(PREFIX)) else n
+
+
+names = [_s(n) for n in raw_names if _s(n)]
 nameset = set(names)
 print('entries:', len(names))
+
+
+class _TfView:
+    """容器剥离视图：对外以剥壳名工作，getmember/extractfile 自动映射回真实名。"""
+
+    def __init__(self, tf, prefix):
+        self._tf = tf
+        self._p = prefix
+
+    def _real(self, name):
+        return (self._p + name) if self._p else name
+
+    def getmember(self, name):
+        return self._tf.getmember(self._real(name))
+
+    def extractfile(self, name, *a):
+        if isinstance(name, str):
+            name = self._real(name)
+        return self._tf.extractfile(name, *a)
+
+
+tf = _TfView(tf_raw, PREFIX)
+
+# ── 单文件夹容器断言（第一条）──
+check(CONTAINER_OK, 'single-folder container: all entries under qqqide/ (tops=%s)' % sorted(raw_tops)[:6])
 
 EP = 'qqqide.app/Contents/Resources/app/'
 C = 'qqqide.app/Contents/'
@@ -100,7 +138,7 @@ check(count(EP + 'webapp/') > 100, 'webapp bundled (%d entries)' % count(EP + 'w
 check((QD + 'engines/manifest.json') in nameset, 'qqqide-data/engines/manifest.json present')
 
 # ── mac 外置托管根（2026-09-16）：engines 出 bundle + 相对 symlink 桥接 ──
-linkmap = {m.name: m.linkname for m in tf.getmembers() if m.issym()}
+linkmap = {_s(m.name): m.linkname for m in tf_raw.getmembers() if m.issym()}
 eng_link = linkmap.get(EP + 'engines')
 check(eng_link == '../../../../qqqide-data/engines',
       'engines symlink -> ../../../../qqqide-data/engines (got %s)' % eng_link)
@@ -300,7 +338,7 @@ for label, p in bins:
     check(ok, '%s: %s %dB mode=%o' % (label, mg, m.size, m.mode))
 
 # ── symlinks ──
-links = [(m.name, m.linkname) for m in tf.getmembers() if m.issym()]
+links = [(m.name, m.linkname) for m in tf_raw.getmembers() if m.issym()]
 check(len(links) >= 20, 'symlinks: %d (>=20)' % len(links))
 bad = [b for a, b in links if '\\' in b]
 check(len(bad) == 0, 'no backslash in link targets')

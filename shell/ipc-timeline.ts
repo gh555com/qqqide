@@ -304,6 +304,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
     function _setWinBoundsGeo(win: BrowserWindow, b: Electron.Rectangle): void {
         try {
             (win as any).__qqqGeoApplying = true;
+            (win as any).__qqqLastGeo = { x: b.x, y: b.y, width: b.width, height: b.height };
             win.setBounds(b);
         } catch (_) { /* ignore */ } finally {
             setTimeout(() => { try { (win as any).__qqqGeoApplying = false; } catch (_) { } }, 150);
@@ -325,21 +326,20 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
 
     async function _loadDiffUrlWithRetry(win: BrowserWindow, url: string, okSubstr: string): Promise<boolean> {
         for (let i = 0; i < 4; i++) {
+            // 单次加载 15s 兜底（半死服务=连接挂起不归 → retry 永不触发 → 「点击出不来」；超时强断重试）
+            const r: any = await _withTimeout(win.webContents.loadURL(url), 15000);
+            if (r !== null) { return true; }
+            try { win.webContents.stop(); } catch (_) { }
+            // 页面已就位的「中断」不算失败（渲染层自愈 reload 可在初始加载期打断 loadURL promise）
             try {
-                await win.webContents.loadURL(url);
-                return true;
-            } catch (err: any) {
-                // 页面已就位的「中断」不算失败（渲染层自愈 reload 可在初始加载期打断 loadURL promise）
-                try {
-                    if (!win.isDestroyed() && !win.webContents.isLoadingMainFrame() &&
-                        (win.webContents.getURL() || '').indexOf(okSubstr) !== -1) { return true; }
-                } catch (_) { }
-                if (i >= 3) {
-                    console.warn('[diff-window] loadURL failed after retries:', err && err.message);
-                    return false;
-                }
-                await new Promise((r) => setTimeout(r, 400 + i * 700));
+                if (!win.isDestroyed() && !win.webContents.isLoadingMainFrame() &&
+                    (win.webContents.getURL() || '').indexOf(okSubstr) !== -1) { return true; }
+            } catch (_) { }
+            if (i >= 3) {
+                console.warn('[diff-window] loadURL failed after retries: timeout/reject');
+                return false;
             }
+            await new Promise((r2) => setTimeout(r2, 400 + i * 700));
         }
         return false;
     }
@@ -350,8 +350,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         for (const w of _diffWindows.values()) {
             if (!w || w.isDestroyed() || seen.has(w)) { continue; }
             seen.add(w);
-            if ((w as any).__qqqUserMoved) { continue; }
             const ref = _diffRefs.get(w);
+            if ((w as any).__qqqUserMoved) { continue; }
             if (ref && !ref.isDestroyed()) { void _refitDiffWindow(w, ref); }
         }
     });
@@ -384,11 +384,12 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         const mainRect = _picked.rect;
         const zf = _picked.zf;
         const minW = Math.round(1100 * zf), minH = Math.round(800 * zf);
+        const _initW = Math.max(minW, mainRect.width), _initH = Math.max(minH, mainRect.height);
         const diffWin = new BrowserWindow({
             x: mainRect.x,
             y: mainRect.y,
-            width: Math.max(minW, mainRect.width),
-            height: Math.max(minH, mainRect.height),
+            width: _initW,
+            height: _initH,
             minWidth: minW,
             minHeight: minH,
             show: false, // 亮相即成品：加载成功才 show（失败重试/销毁，绝不残留黑窗）
@@ -419,9 +420,20 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         });
         _diffWindows.set(normalizedPath, diffWin);
         if (refWin && !refWin.isDestroyed()) { _diffRefs.set(diffWin, refWin); }
+        // 已知几何记录：系统在 show()/首帧会补发一次「与创建值相同」的 move/resize 噪声——同值绝不算用户动过
+        (diffWin as any).__qqqLastGeo = { x: mainRect.x, y: mainRect.y, width: _initW, height: _initH };
         // 用户手动拖动/缩放 → 接管几何：此后复用点击与缩放变更都不再自动重对齐
         const _markUserMoved = () => {
-            if (!(diffWin as any).__qqqGeoApplying) { (diffWin as any).__qqqUserMoved = true; }
+            if ((diffWin as any).__qqqGeoApplying) { return; }
+            try {
+                const b = diffWin.getBounds();
+                const g = (diffWin as any).__qqqLastGeo;
+                if (g && Math.abs(b.x - g.x) <= 2 && Math.abs(b.y - g.y) <= 2 && Math.abs(b.width - g.width) <= 2 && Math.abs(b.height - g.height) <= 2) {
+                    return;
+                }
+            } catch (_) { }
+
+            (diffWin as any).__qqqUserMoved = true;
         };
         diffWin.on('move', _markUserMoved);
         diffWin.on('resize', _markUserMoved);

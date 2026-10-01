@@ -409,12 +409,20 @@
 			return p.slice(0, 5) + '****' + p.slice(p.length - 4);
 		}
 
-		function fetchMyTotal() {
+		// ★ 节流（2026-10-01）：auth 状态广播（余额/LV 每 60s 刷新）会高频重入本函数——
+		//   该接口为重量级聚合查询，多窗口级联会把服务端放大成 PG 洪峰（事故根因，实测 24.6s/次查询）。
+		//   未显式 force 时 4 分钟内只发一次请求（登录态切换等场景由 5 分钟轮询兜底）。
+		//   注意门序：先算 target（未登录只刷 '--' 不占门），再过节流门——否则登录瞬间的首拉会被吃掉。
+		var _myTotalLastFetch = 0;
+		function fetchMyTotal(force) {
 			if (!$tot) return;
 			var target = '';
 			try { if (window.qqqLogin) target = window.qqqLogin.getPhone() || ''; } catch (e) { }
 			target = maskPhoneLikeServer(target);
 			if (!target) { $tot.textContent = '--'; return; }
+			var _mtNow = Date.now();
+			if (!force && _mtNow - _myTotalLastFetch < 240000) return;
+			_myTotalLastFetch = _mtNow;
 			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache' })
 				.then(function (r) { if (!r.ok) return null; return r.json(); })
 				.then(function (data) {
@@ -429,8 +437,9 @@
 				})
 				.catch(function () { /* 静默 */ });
 		}
-		// 登录状态变化 → 立即刷新（登录/登出都走这里）
-		try { if (window.qqqLogin && window.qqqLogin.onStateChange) window.qqqLogin.onStateChange(fetchMyTotal); } catch (e) { }
+		// 登录状态变化 → 刷新（登录/登出都走这里）；★ 包装吞掉回调参数（onStateChange 会传 loggedIn/phoneTail 等实参——
+		// 直接挂 fetchMyTotal 会把 loggedIn 当作 force=true 绕过节流门，2026-10-01 自审修复）
+		try { if (window.qqqLogin && window.qqqLogin.onStateChange) window.qqqLogin.onStateChange(function () { fetchMyTotal(); }); } catch (e) { }
 
 		// ★ 版本号隐藏链接 — 点击打开更新日志，hover 零外观零 tooltip（与在线人数同款）
 		if ($ver) {

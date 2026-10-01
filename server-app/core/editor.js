@@ -1382,11 +1382,16 @@
     var sides = { diskHash: null, bufHash: null };
     try { sides = await _archiveConflictSides(fp, ed); } catch (_) { }
     try {
-      bridge.timeline.openDiffWindow({
+      var r = bridge.timeline.openDiffWindow({
         filePath: fp, projectRoot: root,
         beforeBlobHash: sides.diskHash || undefined,
         afterBlobHash: sides.bufHash || undefined
-      }).catch(function () { });
+      });
+      if (r && r.then) {
+        r.then(function (res) {
+          if (res && res.ok === false) { _extToast(fp, _extT('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { duration: 5000 }); }
+        }).catch(function () { _extToast(fp, _extT('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { duration: 5000 }); });
+      }
     } catch (_) { }
   }
 

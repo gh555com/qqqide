@@ -9,7 +9,8 @@
 // 数据流：
 //   持久化真理源 = qqq-prefs（全局库 ns 'qqq.prefs' key 'values' → .uiZoom；设置中心/云同步维护）
 //   壳层启动直接读同一库（零渲染层依赖，窗口加载前就位）
-//   渲染层 core/ui-zoom.js 订阅 qqqPrefs.onChange → bridge.uiZoom.set(pct)（修改/云拉取时热应用）
+//   渲染层 core/ui-zoom.js：变更入口（徽章点击/云拉取新值）经闸门上报 bridge.uiZoom.set(pct)；
+//   壳层每次真变化全窗广播 → 各窗同步内存+徽章（★ 多窗口闭环；禁渲染层无条件回推——详 ui-zoom.js 头注释）
 //
 // 应用机制（Electron 22 实测，2026-09-29）：
 //   webContents.setZoomFactor 同源 iframe 统一跟随（AI 三面板/goods 全覆盖）；
@@ -53,6 +54,9 @@ function _clampPct(v: any): number {
 function _applyTo(win: BrowserWindow): void {
     try {
         if (!win || win.isDestroyed() || win.webContents.isDestroyed()) { return; }
+        // ★ 同值零动作：窗口已是目标缩放 → 不碰（防同值 apply 触发布局/回声链）
+        const cur = win.webContents.getZoomFactor();
+        if (typeof cur === 'number' && Math.abs(cur - _factor) < 1e-6) { return; }
         win.webContents.setZoomFactor(_factor);
     } catch { /* ignore */ }
 }
@@ -61,9 +65,10 @@ function _applyAll(): void {
     for (const win of BrowserWindow.getAllWindows()) { _applyTo(win); }
 }
 
-/** 应用新缩放（百分比）——热生效：全部窗口 + 变更钩子 */
+/** 应用新缩放（百分比）——热生效：全部窗口 + 变更钩子；★ 同值零动作（防多窗口回声/风暴） */
 export function setUiZoomPct(pct: any): number {
     const v = _clampPct(pct);
+    if (v === Math.round(_factor * 100)) { return v; }
     _factor = v / 100;
     _applyAll();
     for (const fn of _listeners) { try { fn(); } catch { /* ignore */ } }
@@ -126,10 +131,14 @@ export function initUiZoom(stateStore: StateStore): void {
     } catch { /* ignore */ }
 
     // 新窗口（主窗口/附加窗口/Diff/时间线/播放器统一覆盖）：加载后应用（加载前设置不生效——实测）
+    // ★ 加载完成同时播报当前真值——渲染层据此对齐（防加载期丢广播 → 陈旧内存日后拽值）
     app.on('browser-window-created', (_e, win) => {
         try {
             win.webContents.on('dom-ready', () => _applyTo(win));
-            win.webContents.on('did-finish-load', () => _applyTo(win));
+            win.webContents.on('did-finish-load', () => {
+                _applyTo(win);
+                try { win.webContents.send('qqqide:ui-zoom:changed', { pct: Math.round(_factor * 100), toast: false }); } catch { /* ignore */ }
+            });
         } catch { /* ignore */ }
     });
     _applyAll();
@@ -137,5 +146,14 @@ export function initUiZoom(stateStore: StateStore): void {
 
 export function registerUiZoomIpc(): void {
     ipcMain.handle('qqqide:ui-zoom:get', () => Math.round(_factor * 100));
-    ipcMain.handle('qqqide:ui-zoom:set', (_e, pct: any) => setUiZoomPct(pct));
+    // ★ 渲染层上报入口（用户动作 / 云拉取新值）：真变化才落盘 + 全窗广播（各窗 _adopt 同步）；
+    //   同值 = 零动作（含回声/风暴防护——任意窗口反复推同值时主进程零副作用）
+    ipcMain.handle('qqqide:ui-zoom:set', (_e, pct: any) => {
+        const v = _clampPct(pct);
+        if (v === Math.round(_factor * 100)) { return v; }
+        setUiZoomPct(v);
+        _persistUiZoom(v);
+        _broadcastUiZoom(v, -1);
+        return v;
+    });
 }

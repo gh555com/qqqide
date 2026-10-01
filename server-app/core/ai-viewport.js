@@ -1962,7 +1962,16 @@
     // Row 3: timeline — 时间线
     addRow(window._i('shell.viewport.timeline', '时间线'), function () {
       if (bridge && bridge.timeline && bridge.timeline.openDiffWindow) {
-        bridge.timeline.openDiffWindow({ filePath: filePath, projectRoot: projectRoot });
+        var _tlFail = function () {
+          // 打开链失败必须如实提示（禁静默吞错——「点击零反应」体验根治）
+          try { if (window.qqqideQoast) window.qqqideQoast.show(window._i('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { type: 'warn', duration: 5000 }); } catch (_) { }
+        };
+        try {
+          var r = bridge.timeline.openDiffWindow({ filePath: filePath, projectRoot: projectRoot });
+          if (r && r.then) {
+            r.then(function (res) { if (res && res.ok === false) { _tlFail(); } }).catch(_tlFail);
+          }
+        } catch (_) { _tlFail(); }
       }
     });
 

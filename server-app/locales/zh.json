@@ -119,7 +119,7 @@
       "mpause": "暂停",
       "mmute": "静音",
       "munmute": "取消静音",
-      "mvolume": "音量",
+      "mvolume": "音量（最大可增强至 150%）",
       "mspeed": "倍速播放（点击选择）",
       "mspeedCustom": "自定义倍数",
       "mspeedOk": "确认",
@@ -158,7 +158,7 @@
       "mplDel": "从播放列表移除",
       "mpopout": "弹出独立播放器",
       "mpopin": "在窗内打开播放器",
-      "mdockside": "切换列表位置（左 / 右）"
+      "mstow": "最小化到状态栏"
     },
     "player": {
       "title": "播放器",
@@ -169,9 +169,11 @@
       "empty": "播放列表为空 — 在 Roam 中选中媒体右键「加入播放列表」，或从悬浮层 ↗ 弹出",
       "returnOv": "退回悬浮层",
       "returnFail": "未找到主窗口，无法退回悬浮层",
-      "minimize": "收纳到 qqq 工作台",
+      "stowFail": "未找到主窗口，无法收进状态栏",
+      "minimize": "收纳 · 状态栏 ♪ 遥控",
       "restore": "展开播放器",
-      "stowed": "已收纳到 qqq 工作台"
+      "stowed": "已收纳 · 状态栏 ♪ 遥控",
+      "blockEmpty": "暂无播放会话"
     },
     "about": {
       "title": "关于 qqq",
@@ -341,9 +343,9 @@
   },
   "editor": {
     "copyPath": "复制路径",
-    "roamLocate": "在 Roam 中定位该文件",
-    "timelineOpen": "在时间线中查看该文件",
+
     "timelineNoRoot": "无法确定该文件的项目根目录，时间线不可用",
+    "timelineOpenFail": "时间线窗口打开失败，请稍后重试",
     "minimap": "小地图",
     "tabs": {
       "close": "关闭标签",
@@ -751,7 +753,12 @@
     },
     "gwWait": {
       "title": "⏳ 上游无响应 {0}",
-      "subtitle": "{0} 第 {1} 层 · {2}",
+      "rowLabel": "{0} 第 {1} 层",
+      "barMulti": "⏳ {0} 个楼层等待上游响应 · 最长 {1}",
+      "stop": "■ 停止",
+      "expand": "展开明细",
+      "collapse": "收起",
+      "muteTip": "本次不再提示（出现新的等待楼层会再提示）",
       "serverAck": "服务器确认等待中",
       "firstToken": "等待首字输出",
       "hangCount": "（第 {0} 次）",
@@ -995,11 +1002,18 @@
       "collapseAll": "全部折叠",
       "matchesN": " {0} 个匹配",
       "filesN": " · {0} 个文件 ",
-      "perfStat": "({0}ms / ripgrep / {1} 文件)",
-      "truncated": " · 已截断",
+      "statScanned": " · 扫描 {0} 文件 / {1}",
+      "truncatedBadge": "已截断",
+      "cancelledBadge": "已取消 — 已找到 {0} 条",
+      "timeoutBadge": "⏱ 超时停止 — 已找到 {0} 条",
       "needScope": "⚠️ 请指定搜索范围",
       "invalidRegex": "⚠️ 无效正则: {0}",
       "searching": "🔍 搜索中...",
+      "prep": "准备搜索…",
+      "queued": "排队中…（其他搜索进行中）",
+      "cancelBtn": "取消",
+      "live": "⏱ {0}s · {1} 命中",
+      "scanTimeout": "⚠️ 完整扫描超时",
       "engineNotReady": "⚠️ 搜索引擎未就绪",
       "searchFail": "⚠️ 搜索出错: {0}",
       "noResult": "无匹配结果",
@@ -1706,10 +1720,8 @@
     "exportHingeTip": "实心 = 即将被导出的编辑分组（你最后在看的那个）；空心 = 另一分组。点方块可切换导出目标；悬停导出卡时，目标编辑区会亮起淡紫虚线框。",
     "exportWillExport": "即将导出：{0}",
     "cloudSyncTip": "云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含 roam 配置、各文件夹偏好、剪贴板历史。",
-       "playerTip": "播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出；最小化 = 收纳到本槽位遥控。",
-    "playerWinTip": "独立悬浮播放器窗：置顶小窗——切到别的程序也看得见（↗）",
-    "playerCardTip": "窗内播放器：悬浮在 qqqide 窗口里的播放器卡——跟随本窗口（⧈）",
-    "playerNeedRestart": "悬浮播放器需要重启实例后可用",
+ 
+
     "videoUrlTip": "待移植：输入视频网址，自动下载到文档目录并插入相框。",
     "pasteTip": "待移植：一键把剪贴板内容粘贴到文档（目前用 Ctrl+V 可完成同样操作）。",
     "pureTip": "待移植：扫描文档引用，清理不再被引用的孤儿文件。",
@@ -2016,7 +2028,9 @@
       "rgError": "ripgrep 进程错误: {err}",
       "timeout": "搜索超时",
       "rgExit2": "ripgrep 退出码 2",
-      "noQuery": "缺少搜索关键词或搜索路径"
+      "noQuery": "缺少搜索关键词或搜索路径",
+      "skipBinary": "已跳过二进制文件: {f}",
+      "tooLong": "搜索关键词过长（上限 2000 字符）"
     },
     "term": {
       "noBash": "未找到可用的 Git Bash（git 组件缺失，重启 IDE 自动修复）",

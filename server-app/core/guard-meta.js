@@ -18,8 +18,8 @@
         'https://cnk.gh555.com/api/v3/ai/guard-meta'
     ];
 
-    // ★ 出厂快照：2026-08-10 实测 gaea/guard/system-prompt.txt 字符数（服务端未部署/离线兜底）
-    var FALLBACK_CHARS = 21354; // 2026-08-10 实测（档1损坏修复×4 + E-FLOW 模板 A/B 合并去重后）
+    // ★ 出厂快照：2026-10-01 实测 gaea/guard/system-prompt.txt 字符数（服务端未部署/离线兜底）
+    var FALLBACK_CHARS = 23842; // 2026-10-01 实测（含 AI 产品身份行）
 
     var _chars = 0;      // 拉取成功后的真实值
     var _loading = false;

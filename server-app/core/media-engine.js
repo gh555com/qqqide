@@ -8,9 +8,10 @@
 //   悬浮层与窗内播放器卡同在主动窗口，popOut/popIn/toast/onClose 必须实例隔离（禁共享全局 HOST 串号）。
 //     host = { bridge, rootEl, i18n(k,fb,params), toast(msg,opts), onClose(), reopen(payload),
 //              reveal(path), getLastDir(), onPlayState(playing), onState(), savePref(k,v)?,
-//              popOut(state)?, popIn(state)? }
+//              popOut(state)?, popIn(state)?, stow()? }
 //   popOut → ↗ 弹出独立播放器窗（仅悬浮层提供）；popIn → ⧈ 在窗内打开播放器卡（仅悬浮层提供）；播放器窗/卡不提供。
-//   ★ v5 播放列表 = 侧边常驻 dock（非弹出面板）：列表 n>1 时恒显于播放器左/右侧（⇄ 切换边），n≤1 整体隐藏。
+//   stow → [—] 最小化到状态栏（仅悬浮层提供——隐藏悬浮层、播放不断；遥控/恢复 = 状态栏播放器豆腐块）。
+//   ★ v5 播放列表 = 侧边常驻 dock（非弹出面板）：列表 n>1 时恒显于播放器侧边（边随记忆；⇄ 切边按钮已删 2026-10-01），n≤1 整体隐藏。
 //   mount(opts) → { keys, esc(), destroy(), pause(), isPlaying(), append(items,autoplay), getState() }
 //     opts = { container, mode:'video'|'audio', src, localPath, shotBase, name, list, index, host,
 //              isTx, autoplay, startTime, initial:{rate,loop,shuffle,volume,muted,dockSide} }
@@ -28,7 +29,7 @@
     'box-shadow:0 6px 24px rgba(0,0,0,0.45);user-select:none;font-family:system-ui,-apple-system,sans-serif;' +
     'width:min(760px,94%);box-sizing:border-box}' +
     '.ovmb-inline{position:static;left:auto;bottom:auto;transform:none;width:560px;max-width:100%}' +
-    // ★ 播放列表 dock（2026-09-26 q319 v5 用户定案）：列表 n>1 恒显于播放器左/右侧（侧栏常驻，非弹出面板）；⇄ 切换边
+    // ★ 播放列表 dock（2026-09-26 q319 v5 用户定案）：列表 n>1 恒显于播放器侧边（侧栏常驻，非弹出面板）；边随记忆（⇄ 切边按钮已删 2026-10-01）
     // ★ v6 宽度契约（2026-09-26 用户实测）：旧 150px 下限 → 歌名可见宽仅 10~28px 全截断（「歌名完全看不到」实锤）；
     //   190/38%/300 + 行内空间收窄（padding 3 · gap 5 · mk 9 · idx 12）= 歌名可读；禁改回小下限
     '.ovmb-shell{display:flex;width:100%;height:100%;min-width:0;min-height:0}' +
@@ -38,12 +39,12 @@
     '.ovmb-dhead{display:flex;align-items:center;gap:6px;padding:1px 2px 7px;flex:0 0 auto}' +
     '.ovmb-dtitle{font-size:11px;color:#a8a49b;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.ovmb-dcnt{font-size:11px;color:#a8a49b;flex:0 0 auto}' +
-    '.ovmb-dbtn{display:flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:none;border-radius:6px;background:transparent;color:#b9b5ac;flex:0 0 auto;outline:none;transition:background .12s,color .12s}' +
-    '.ovmb-dbtn:hover{background:rgba(255,255,255,0.14);color:#fff}' +
-    '.ovmb-btn{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:none;' +
-    'border-radius:7px;background:transparent;color:#e8e6e0;flex:0 0 auto;outline:none;transition:background .12s}' +
-    '.ovmb-btn:hover{background:rgba(255,255,255,0.14)}' +
-    '.ovmb-btn.ovmb-on{color:#ffd301;background:rgba(255,211,1,0.16)}' +
+
+    // ★ 可见边界（2026-10-01 q319 用户定案）：底部条按钮恒浅边框 + 淡底色——点选范围一眼可见（禁回 border:none 透明底）
+    '.ovmb-btn{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid rgba(255,255,255,0.16);box-sizing:border-box;' +
+    'border-radius:7px;background:rgba(255,255,255,0.05);color:#e8e6e0;flex:0 0 auto;outline:none;transition:background .12s,border-color .12s}' +
+    '.ovmb-btn:hover{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.28)}' +
+    '.ovmb-btn.ovmb-on{color:#ffd301;background:rgba(255,211,1,0.16);border-color:rgba(255,211,1,0.5)}' +
     '.ovmb-rate{width:auto;min-width:42px;padding:0 6px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}' +
     '.ovmb-time{font-size:12px;color:#cfcbc2;flex:0 0 auto;font-variant-numeric:tabular-nums;text-align:center;min-width:36px}' +
     '.ovmb-seek{position:relative;flex:1 1 auto;height:20px;display:flex;align-items:center;min-width:50px}' +
@@ -52,9 +53,18 @@
     '.ovmb-seek-dot{position:absolute;width:11px;height:11px;border-radius:50%;background:#ffd301;top:50%;left:0%;' +
     'transform:translate(-50%,-50%);opacity:0;transition:opacity .12s}' +
     '.ovmb-seek:hover .ovmb-seek-dot,.ovmb-seek.ovmb-drag .ovmb-seek-dot{opacity:1}' +
+    // ★ 音量增压视觉（2026-10-01 q319 用户定案）：上限 150%——轨道右段 = 增压区（金色淡染）+ 100% 处金色分隔刻度；
+    //   进入增压区滑块加金色光环；拖拽浮读百分比（>100% 金色）——增压段可一眼辨识，无需永久文字
     '.ovmb-vol{-webkit-appearance:none;appearance:none;width:58px;height:4px;border-radius:2px;' +
-    'background:rgba(255,255,255,0.22);outline:none;flex:0 0 auto;margin:0}' +
+    'background:linear-gradient(to right, rgba(255,255,255,0.22) 0 65.5%, rgba(255,211,1,0.6) 65.5% 68.2%, rgba(255,211,1,0.22) 68.2% 100%);outline:none;flex:0 0 auto;margin:0}' +
     '.ovmb-vol::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:11px;height:11px;border-radius:50%;background:#ffd301;border:none}' +
+    '.ovmb-vol.ovmb-vboost::-webkit-slider-thumb{box-shadow:0 0 0 2px rgba(255,211,1,0.30), 0 0 7px rgba(255,211,1,0.55)}' +
+    '.ovmb-volbox{position:relative;display:flex;align-items:center;flex:0 0 auto}' +
+    '.ovmb-voltip{position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);z-index:9;pointer-events:none;' +
+    'padding:2px 7px;border-radius:6px;background:rgba(18,18,18,0.95);border:1px solid rgba(255,255,255,0.2);color:#e8e6e0;' +
+    'font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;transition:opacity .12s}' +
+    '.ovmb-voltip.ovmb-von{opacity:1}' +
+    '.ovmb-voltip.ovmb-vgold{color:#ffd301;border-color:rgba(255,211,1,0.5)}' +
     '.ovmb-shell:fullscreen{width:100%;height:100%;max-width:none;max-height:none;background:#000}' +
     '.ovmb-shell:fullscreen video{max-width:100vw;max-height:100vh}' +
     '.ovmb-ratehost{position:relative;display:flex;flex:0 0 auto}' +
@@ -101,6 +111,9 @@
     'color:#e8e6e0;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;outline:none;transition:background .1s}' +
     '.ovmb-rbtn:hover{background:rgba(255,255,255,0.18)}' +
     '.ovmb-rbtn.ovmb-on{color:#ffd301;background:rgba(255,211,1,0.18)}' +
+    // ★ 倍速 × 标记（2026-10-01 q319 用户定案）：数字右侧 × 加大一号 + 不加粗 + 底对齐（禁上浮小字）
+    '.ovmb-rate-lab{display:inline-block;white-space:nowrap;line-height:1}' +
+    '.ovmb-rate-x{font-size:1.6em;font-weight:400;vertical-align:-0.13em}' +
     '.ovmb-rrow{grid-column:1/-1;display:flex;gap:5px;margin-top:2px}' +
     '.ovmb-rinput{flex:1 1 auto;min-width:0;height:26px;padding:0 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);' +
     'background:rgba(0,0,0,0.4);color:#e8e6e0;font-size:12px;outline:none;box-sizing:border-box}' +
@@ -117,24 +130,53 @@
     '.ovmb-abmark{position:absolute;top:50%;width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translate(-50%,-50%);display:none;pointer-events:none}' +
     '.ovmb-abmark-a{border-left:6px solid #ffd301}' +
     '.ovmb-abmark-b{border-right:6px solid #ffd301}' +
-    // ★ 专属播放控制行 v6（2026-09-30 q319 用户定案）：播放/暂停恒居正中 + 停止（■=暂停并回到开头，无键位）；两翼 逐帧（◀|/|▶ 竖线贴三角平边不贴尖角）→ 4秒（◀◀/▶▶ 双三角重叠）→ 速率（−0.5×/+0.5×）；
-    //   每个非播停按钮旁键帽直显键盘键位（键盘按键 UI）；行/条/间隙整带 no-drag（播放器窗拖拽区挖洞——登记于 player.html）
+    // ★ 专属播放控制行 v7（2026-10-01 q319 用户定案）：按钮上下两段式（上=快捷键字母加大一号 / 下=图标）+ 每钮可见边界（边框+底色）；播放+停止=中央对恒居中（对心对称、左右空白相等）+ 停止（■=暂停并回到开头，无键位）；
+    //   两翼 逐帧（◀|/|▶ 竖线与三角平边隔开一点）→ 4秒（◀◀/▶▶ 双三角重叠）→ 速率（−0.5×/+0.5×）；行/条/间隙整带 no-drag（播放器窗拖拽区挖洞——登记于 player.html）
     '.ovmb-stack{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:5;display:flex;flex-direction:column;align-items:center;gap:8px;width:min(780px,94%);box-sizing:border-box}' +
     '.ovmb-stack .ovmb{position:static;left:auto;bottom:auto;transform:none;width:100%}' +
     '.ovmb-stack-inline{position:static;left:auto;bottom:auto;transform:none;width:auto;max-width:100%}' +
     '.ovmb-stack-inline .ovmb{width:560px;max-width:100%}' +
-    '.ovmb-trx{display:flex;align-items:center;justify-content:center;gap:8px;row-gap:6px;flex-wrap:wrap;width:100%;padding:5px 10px;border-radius:12px;' +
+    '.ovmb-trx{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:nowrap;width:100%;padding:4px 8px;border-radius:12px;' +
     'background:rgba(15,15,15,0.84);border:1px solid rgba(255,255,255,0.14);box-shadow:0 6px 24px rgba(0,0,0,0.45);user-select:none;max-width:100%;box-sizing:border-box}' +
-    // ★ 两翼等基宽（flex:1 1 220px）——基宽相等 → 拿到的自由空间相等 → 播放按钮恒居整行正中；窄于 ~490px 基宽不吞 → 自动换行（零裁切）
-    '.ovmb-trxl,.ovmb-trxr{display:flex;align-items:center;gap:8px;flex:1 1 220px}' +
+    // ★ 两翼等基宽（flex:1 1 0）——基宽相等 → 拿到的自由空间相等 → 播放按钮恒居整行正中；行恒单行（nowrap）
+    //   ★ 2026-10-01 q319 用户定案：窄容器禁换行——按可用宽自动降档收紧尺寸（t1→t3，见下）；两翼均缩不偏心
+    '.ovmb-trxl,.ovmb-trxr{display:flex;align-items:center;gap:6px;flex:1 1 0;min-width:0}' +
     '.ovmb-trxl{justify-content:flex-end}' +
     '.ovmb-trxr{justify-content:flex-start}' +
-    '.ovmb-tbtn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:30px;padding:0 8px;border:none;border-radius:7px;background:transparent;color:#e8e6e0;flex:0 0 auto;outline:none;transition:background .12s}' +
-    '.ovmb-tbtn:hover{background:rgba(255,255,255,0.14)}' +
+    // ★ v7（2026-10-01 q319）：按钮恒有可见边界（边框+底色）+ 上下两段式布局（kcap 上 / tbody 下）；播放/停止无键位（图标垂直居中）
+    '.ovmb-tbtn{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:46px;min-width:36px;padding:3px 7px;border:1px solid rgba(255,255,255,0.22);border-radius:9px;background:rgba(255,255,255,0.05);color:#e8e6e0;flex:0 0 auto;outline:none;box-sizing:border-box;transition:background .12s,border-color .12s}' +
+    '.ovmb-tbtn:hover{background:rgba(255,255,255,0.13);border-color:rgba(255,255,255,0.38)}' +
+    '.ovmb-tbtn:active{background:rgba(255,255,255,0.20)}' +
     '.ovmb-tbtn svg{display:block;pointer-events:none}' +
-    '.ovmb-trx .ovmb-play svg{width:18px;height:18px}' +
+    '.ovmb-tbody{display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none}' +
+    '.ovmb-trx .ovmb-play{width:auto;height:46px;min-width:52px;padding:0 10px;border:1px solid rgba(255,255,255,0.22);border-radius:9px;background:rgba(255,255,255,0.08)}' +
+    '.ovmb-trx .ovmb-play:hover{background:rgba(255,255,255,0.16);border-color:rgba(255,255,255,0.34)}' +
+    '.ovmb-trx .ovmb-play svg{width:20px;height:20px}' +
     '.ovmb-tlab{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;pointer-events:none}' +
-    '.ovmb-kcap{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 3px;border-radius:4px;border:1px solid rgba(255,255,255,0.30);border-bottom-width:2px;background:rgba(255,255,255,0.10);color:#cfcbc2;font-size:9px;font-weight:700;line-height:1;font-family:ui-monospace,Consolas,monospace;pointer-events:none;box-sizing:border-box}';
+    '.ovmb-kcap{display:inline-flex;align-items:center;justify-content:center;min-width:23px;height:17px;padding:0 4px;border-radius:4px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.14);color:#ffd301;font-size:12px;font-weight:400;text-transform:lowercase;line-height:1;font-family:Tahoma,Verdana,sans-serif;pointer-events:none;box-sizing:border-box}' +
+    // ★ 恒单行紧凑三档（2026-10-01 q319 用户定案）：行永不换行——窄容器逐档收紧（base≥410 / t1≥340 / t2≥298 / 其余 t3；阈值按实测需求宽在 _fitTrxRow 选档 + 溢出自动降档）
+    '.ovmb-trx.ovmb-t1{gap:4px;padding:3px 6px}' +
+    '.ovmb-trx.ovmb-t1 .ovmb-trxl,.ovmb-trx.ovmb-t1 .ovmb-trxr{gap:4px}' +
+    '.ovmb-trx.ovmb-t1 .ovmb-tbtn{min-width:32px;padding:3px 5px}' +
+    '.ovmb-trx.ovmb-t1 .ovmb-kcap{padding:0 3px}' +
+    '.ovmb-trx.ovmb-t1 .ovmb-tlab{font-size:10px}' +
+    '.ovmb-trx.ovmb-t1 .ovmb-play{min-width:46px;padding:0 7px}' +
+    '.ovmb-trx.ovmb-t2{gap:3px;padding:3px 4px}' +
+    '.ovmb-trx.ovmb-t2 .ovmb-trxl,.ovmb-trx.ovmb-t2 .ovmb-trxr{gap:3px}' +
+    '.ovmb-trx.ovmb-t2 .ovmb-tbtn{height:42px;min-width:30px;padding:2px 3px}' +
+    '.ovmb-trx.ovmb-t2 .ovmb-kcap{min-width:15px;height:15px;padding:0 2px;font-size:11px}' +
+    '.ovmb-trx.ovmb-t2 .ovmb-tlab{font-size:10px}' +
+    '.ovmb-trx.ovmb-t2 .ovmb-play{min-width:44px;height:42px;padding:0 5px}' +
+    '.ovmb-trx.ovmb-t2 .ovmb-tbtn svg{width:14px;height:14px}' +
+    '.ovmb-trx.ovmb-t2 .ovmb-play svg{width:18px;height:18px}' +
+    '.ovmb-trx.ovmb-t3{gap:2px;padding:2px 3px}' +
+    '.ovmb-trx.ovmb-t3 .ovmb-trxl,.ovmb-trx.ovmb-t3 .ovmb-trxr{gap:2px}' +
+    '.ovmb-trx.ovmb-t3 .ovmb-tbtn{height:38px;min-width:24px;padding:2px 2px}' +
+    '.ovmb-trx.ovmb-t3 .ovmb-kcap{min-width:13px;height:13px;padding:0 1px;font-size:10px}' +
+    '.ovmb-trx.ovmb-t3 .ovmb-tlab{font-size:9px}' +
+    '.ovmb-trx.ovmb-t3 .ovmb-play{min-width:38px;height:38px;padding:0 3px}' +
+    '.ovmb-trx.ovmb-t3 .ovmb-tbtn svg{width:13px;height:13px}' +
+    '.ovmb-trx.ovmb-t3 .ovmb-play svg{width:16px;height:16px}';
   function _ensureMediaCss() {
     try {
       if (document.getElementById('qqq-media-engine-style')) { return; }
@@ -169,6 +211,23 @@
     }
     if (/^[A-Za-z]:[\\/]/.test(src)) return src;
     return null;
+  }
+
+  // ═══ ★ 音量增压机器（2026-10-01 q319 用户定案：音量上限 100%→150%，VLC 式）═══
+  //   合成公式：元素音量 = min(1, v)（≤100% 与历史零差异）；增益 = muted ? 0 : max(1, v)（>100% 段补差）。
+  //   AudioContext 全模块共享、惰性创建——未触发增压的会话零创建零开销。元素经 createMediaElementSource 俘获后
+  //   file:/// 媒体在 webSecurity:false 下实测非静默（探针 raw 实测：RMS 0.021 / 增益 1.5× → 实测放大比 1.503）。
+  var _OV_VOL_MAX = 1.5;   // 音量硬上限（150%；唯一阈值——滑块 max / 键盘步进 / 初值恢复共用）
+  var _ovBoostCtx = null;
+  function _ovBoostCtxEnsure() {
+    if (_ovBoostCtx) { return _ovBoostCtx; }
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { return null; }
+      _ovBoostCtx = new AC();
+      try { if (_ovBoostCtx.state !== 'running') { _ovBoostCtx.resume(); } } catch (_) { }
+    } catch (_) { _ovBoostCtx = null; }
+    return _ovBoostCtx;
   }
 
 // ── 共享状态：v5 起媒体路径/截图基准下沉为 mount 实例局部（_curLocalPath/_curShotBase——同页多实例共存）──
@@ -271,7 +330,7 @@
   //   倍速 = 点击展开面板（0.5~4 预设单按钮网格 + 自定义倍数输入·确认/回车；非 1× 金色高亮）；
   //   循环按钮 = 播放模式入口（点击上展模式面板：循环[关/列表循环/单曲循环] × 随机[关/开] 并列组合；L 键切循环 / R 键切随机）；倍速/播放模式会话内粘性（重开下一个文件保持）；
   //   按钮 data-no-cd 跳过全局冷却护盾（准许连点）；会话清理经 _stopMedia 统一执行（close/切换全覆盖）。
-  var _OV_MEDIA_RATE_PRESETS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];   // 面板预设（每步一个按钮）
+  var _OV_MEDIA_RATE_PRESETS = [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4];   // 面板预设（每步一个按钮；2026-10-01 q319 用户定案：3.5× 移除、0.5~1 间增 0.75×）
   var _ovMediaRate = 1;         // 会话粘性（支持任意自定义值）
   // （逐帧帧率 _ovMediaFps / Esc 前置钩子 _engEscHook —— v5 下沉为控制条实例局部变量，同页多实例互不串号）
   // ★ 播放模式 v2（2026-09-26 q319 用户定案）：循环（关/列表循环/单曲循环）与 随机（关/开）为两个并列独立维度，任意组合
@@ -286,9 +345,11 @@
   function _ovShufName(v) { return v ? _i('shell.overlay.mOn', '开') : _i('shell.overlay.mOff', '关'); }
 
 
+  //   d = 路径片段（自动包 <path>）；以 '<' 开头 = 原始内联标记直通（复合图标：三角 + 字母）
   function _ovMediaIcon(d) {
+    var inner = (typeof d === 'string' && d.charAt(0) === '<') ? d : '<path d="' + d + '"/>';
     return '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" ' +
-      'style="display:block;pointer-events:none"><path d="' + d + '"/></svg>';
+      'style="display:block;pointer-events:none">' + inner + '</svg>';
   }
   var _OV_MEDIA_ICONS = {
     play: 'M8 5v14l11-7z',
@@ -298,6 +359,10 @@
     repeat: 'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z',
     prev: 'M6 6h2v12H6zM9.5 12l8.5 6V6z',
     next: 'M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z',
+    // ★ 上一首/下一首（2026-10-01 q319 用户定案）：竖线改字母——左三角◀+右 P（◀P）/ 左 N+右三角▶（N▶）；平涂笔触（同图标语言）
+    //   逐帧行保留原 |◀/▶| 竖线款（prev/next 键）——底条与逐帧 2026-10-01 起解耦，禁再把两者并称「同款」
+    prevSong: '<path d="M2.6 12l8-6v12z"/><text x="12.4" y="17.4" font-family="Tahoma, Verdana, sans-serif" font-size="15" font-weight="700" fill="currentColor">P</text>',
+    nextSong: '<text x="2.4" y="17.4" font-family="Tahoma, Verdana, sans-serif" font-size="15" font-weight="700" fill="currentColor">N</text><path d="M22 12l-8-6v12z"/>',
     shuffle: 'M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z',
     shot: 'M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z',
     pip: 'M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z',
@@ -305,16 +370,15 @@
     fsExit: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z',
     list: 'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z'
   };
-  // ★ 专属播放控制行图标（2026-09-30 q319）：逐帧 = 竖线贴三角平边（不贴尖角——用户定案画法）；快退/进 = 双三角重叠；停止 = 实心方块
+  // ★ 专属播放控制行图标（v8 2026-10-01 q319 用户定案）：逐帧 = |◀/▶| 竖线+三角（纯色直角——竖线在外、尖角朝竖线；
+  //   该 glyph = _OV_MEDIA_ICONS.prev/next——底条 上一首/下一首 2026-10-01 已改 P/N 字母图标（prevSong/nextSong），逐帧保留竖线款）；快退/进 = 双三角重叠；停止 = 实心方块（直角）
   function _ovRawIcon(inner) {
     return '<svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" style="display:block;pointer-events:none">' + inner + '</svg>';
   }
   var _OV_TRX_ICONS = {
-    stepB: '<path d="M13 4v12L5 10z"/><rect x="13.2" y="4" width="1.8" height="12"/>',
-    stepF: '<path d="M7 4v12L15 10z"/><rect x="5" y="4" width="1.8" height="12"/>',
     seekB: '<path d="M16.5 4v12L8.5 10z"/><path d="M11.5 4v12L3.5 10z"/>',
     seekF: '<path d="M3.5 4v12L11.5 10z"/><path d="M8.5 4v12L16.5 10z"/>',
-    stop: '<rect x="6" y="6" width="8" height="8" rx="1"/>'
+    stop: '<rect x="2.5" y="2.5" width="15" height="15"/>'
   };
   function _ovFmtT(s) {
     if (!isFinite(s) || s < 0) { return '--:--'; }
@@ -368,8 +432,47 @@
     var volB = _mBtn(_OV_MEDIA_ICONS.vol, _i('shell.overlay.mmute', '静音'));
     var volS = document.createElement('input');
     volS.type = 'range'; volS.className = 'ovmb-vol';
-    volS.min = '0'; volS.max = '1'; volS.step = '0.05';
-    volS.tabIndex = -1; volS.title = _i('shell.overlay.mvolume', '音量');
+    volS.min = '0'; volS.max = String(_OV_VOL_MAX); volS.step = '0.05';
+    volS.tabIndex = -1; volS.title = _i('shell.overlay.mvolume', '音量（最大可增强至 150%）');
+    // ★ 音量增压机器（2026-10-01 q319）：_volWant = 有效音量真值（0..1.5）；>1 首次触发 → 惰性建图
+    //   （元素音量钉 ≤1 段 + 共享 ctx 增益补 >1 段）；<100% 用户与历史完全一致（不建 ctx 零开销）；拖拽浮读百分比
+    var _volWant = 1, _boostSrc = null, _boostGain = null, _volTipTimer = 0;
+    var volBox = document.createElement('div'); volBox.className = 'ovmb-volbox';
+    var volTip = document.createElement('span'); volTip.className = 'ovmb-voltip';
+    function _boostKick() {
+      if (_boostGain) { return; }
+      var ctx = _ovBoostCtxEnsure();
+      if (!ctx) { return; }
+      try {
+        _boostSrc = ctx.createMediaElementSource(mEl);
+        _boostGain = ctx.createGain();
+        _boostGain.gain.value = 1;
+        _boostSrc.connect(_boostGain);
+        _boostGain.connect(ctx.destination);
+        mEl.addEventListener('play', function () { try { if (_ovBoostCtx && _ovBoostCtx.state !== 'running') { _ovBoostCtx.resume(); } } catch (_) { } });
+      } catch (_) { _boostSrc = null; _boostGain = null; }
+    }
+    function _volApply() {
+      try { mEl.volume = Math.min(1, Math.max(0, _volWant)); } catch (_) { }
+    }
+    function _setVol(v, silent) {
+      if (!isFinite(v)) { v = 0; }
+      v = Math.round(Math.max(0, Math.min(_OV_VOL_MAX, v)) * 100) / 100;
+      _volWant = v;
+      if (v > 1) { _boostKick(); }   // 进入增压区 → 惰性建图（此后恒存）
+      _volApply();
+      syncVol();
+      if (!silent) { _persistTick(); }
+    }
+    function _volTipShow(ms) {
+      try {
+        volTip.textContent = Math.round(_volWant * 100) + '%';
+        volTip.classList.add('ovmb-von');
+        volTip.classList.toggle('ovmb-vgold', _volWant > 1);
+        if (_volTipTimer) { clearTimeout(_volTipTimer); }
+        _volTipTimer = setTimeout(function () { volTip.classList.remove('ovmb-von'); }, ms || 900);
+      } catch (_) { }
+    }
     var rateHost = document.createElement('div');
     rateHost.className = 'ovmb-ratehost';
     var rateB = document.createElement('button');
@@ -403,6 +506,14 @@
         try { H.popIn(_engState()); } catch (_) { }
       });
     }
+    // ★ [—] 最小化到状态栏（2026-10-01 q319 用户定案）：宿主提供 stow 才出现（仅悬浮层）——隐藏悬浮层、播放不断；
+    //   控制/恢复唯一入口 = 状态栏播放器豆腐块（core/player-block.js ↔ window.qqqOverlayStow）
+    var stowB = null;
+    if (H.stow) {
+      stowB = _mBtn('M5 16h14v2H5z', _i('shell.overlay.mstow', '最小化到状态栏'));
+      stowB.classList.add('ovmb-stow');
+      stowB.addEventListener('click', function () { try { H.stow(); } catch (_) { } });
+    }
     // ★ A-B 循环按钮（2026-09-26 q319）：三态循环——首点标 A → 次点标 B 起循（跳回 A）→ 再点清除；A/B 字各自金色指示状态
     var abB = document.createElement('button');
     abB.className = 'ovmb-btn ovmb-ab';
@@ -413,9 +524,9 @@
     var pipB = null, fsB = null, shotB = null, prevB = null, nextB = null, posT = null;
     // ★ 播放列表控件（2026-09-26 q319）：n>1 才出现——上一个/下一个 + 位置计数（n/N）
     {
-      prevB = _mBtn(_OV_MEDIA_ICONS.prev, _i('shell.overlay.mprev', '上一个'));
+      prevB = _mBtn(_OV_MEDIA_ICONS.prevSong, _i('shell.overlay.mprev', '上一个'));
       prevB.classList.add('ovmb-prev');
-      nextB = _mBtn(_OV_MEDIA_ICONS.next, _i('shell.overlay.mnext', '下一个'));
+      nextB = _mBtn(_OV_MEDIA_ICONS.nextSong, _i('shell.overlay.mnext', '下一个'));
       nextB.classList.add('ovmb-next');
       prevB.addEventListener('click', function () { if (api.onPrev) { api.onPrev(); } });
       nextB.addEventListener('click', function () { if (api.onNext) { api.onNext(); } });
@@ -444,10 +555,12 @@
       playB.title = playing ? _i('shell.overlay.mpause', '暂停') : _i('shell.overlay.mplay', '播放');
     }
     function syncVol() {
-      var m = !!mEl.muted || mEl.volume === 0;
+      var m = !!mEl.muted || _volWant === 0;
       volB.innerHTML = _ovMediaIcon(m ? _OV_MEDIA_ICONS.volMute : _OV_MEDIA_ICONS.vol);
       volB.title = m ? _i('shell.overlay.munmute', '取消静音') : _i('shell.overlay.mmute', '静音');
-      volS.value = String(mEl.volume);
+      volS.value = String(_volWant);
+      volS.classList.toggle('ovmb-vboost', _volWant > 1);
+      try { if (_boostGain) { _boostGain.gain.value = mEl.muted ? 0 : Math.max(1, _volWant); } } catch (_) { }
     }
     function syncProg() {
       var d = mEl.duration, ok = isFinite(d) && d > 0;
@@ -457,9 +570,11 @@
       curT.textContent = _ovFmtT(mEl.currentTime);
       durT.textContent = ok ? _ovFmtT(d) : '--:--';
     }
-    function _ovFmtRate(v) { return String(Math.round(v * 100) / 100) + '\u00D7'; }
+    function _ovFmtRate(v) { return String(Math.round(v * 100) / 100); }
+    // ★ 倍速 × 标记（2026-10-01 q319 用户定案）：加大一号 + 不加粗 + 底对齐（数字恒 600）——芯片/面板同源唯一入口
+    function _ovRateHTML(v) { return '<span class="ovmb-rate-lab">' + _ovFmtRate(v) + '<span class="ovmb-rate-x">\u00D7</span></span>'; }
     function syncRate() {
-      rateB.textContent = _ovFmtRate(_ovMediaRate);
+      rateB.innerHTML = _ovRateHTML(_ovMediaRate);
       rateB.classList.toggle('ovmb-on', _ovMediaRate !== 1);
       if (_panel) {
         var _rpnBtns = _panel.querySelectorAll('.ovmb-rbtn');
@@ -479,6 +594,31 @@
       syncRate();
       _persistTick();
     }
+    // ★ 浮动面板防越界：先量后位——默认 CSS（右缘贴宿主右缘 + 上展）量实后双轴钳制进主列（≥8px）；
+    //   顶越界 → 翻到宿主下方，再越底 → 贴底。边界盒 = 主列（overflow:hidden 的裁剪祖先）；禁按视口/固定偏移公式（主列外部分必被裁）。
+    function _placeFloatPanel(pn, host) {
+      try {
+        var M = 8;
+        var boxEl = (layout && layout.main) || null;
+        var box = boxEl ? boxEl.getBoundingClientRect() :
+          { left: 0, top: 0, right: (window.innerWidth || 0), bottom: (window.innerHeight || 0) };
+        var hr = host.getBoundingClientRect();
+        var pr = pn.getBoundingClientRect();
+        var dx = 0;
+        if (pr.right > box.right - M) { dx = (box.right - M) - pr.right; }
+        if (pr.left + dx < box.left + M) { dx = (box.left + M) - pr.left; }
+        if (dx) { pn.style.right = Math.round(-dx) + 'px'; }
+        if (pr.top < box.top + M) {
+          pn.style.bottom = 'auto';
+          pn.style.top = Math.round(hr.height + 10) + 'px';
+          pr = pn.getBoundingClientRect();
+          if (pr.bottom > box.bottom - M) {
+            pn.style.top = Math.round((box.bottom - M - pr.height) - hr.top) + 'px';
+          }
+        }
+      } catch (_) { }
+    }
+
     function _closeRatePanel() {
       if (_panelDocFn) { document.removeEventListener('pointerdown', _panelDocFn, true); _panelDocFn = null; }
       if (_panel && _panel.parentNode) { _panel.parentNode.removeChild(_panel); }
@@ -495,7 +635,7 @@
         rb.className = 'ovmb-rbtn' + (Math.abs(_OV_MEDIA_RATE_PRESETS[ri] - _ovMediaRate) < 0.001 ? ' ovmb-on' : '');
         rb.tabIndex = -1;
         rb.setAttribute('data-no-cd', '');
-        rb.textContent = _ovFmtRate(_OV_MEDIA_RATE_PRESETS[ri]);
+        rb.innerHTML = _ovRateHTML(_OV_MEDIA_RATE_PRESETS[ri]);
         (function (rv) {
           rb.addEventListener('click', function () { _applyRate(rv); _closeRatePanel(); });
         })(_OV_MEDIA_RATE_PRESETS[ri]);
@@ -519,6 +659,7 @@
       row.appendChild(inp); row.appendChild(okB);
       pn.appendChild(row);
       rateHost.appendChild(pn);
+      _placeFloatPanel(pn, rateHost);
       _panel = pn;
       _panelDocFn = function (e) { if (!rateHost.contains(e.target)) { _closeRatePanel(); } };
       document.addEventListener('pointerdown', _panelDocFn, true);
@@ -610,6 +751,7 @@
         ['shuffle', '1', _i('shell.overlay.mOn', '开')]
       ]));
       modeHost.appendChild(pn);
+      _placeFloatPanel(pn, modeHost);
       _mpanel = pn;
       syncMode();
       _mpanelDocFn = function (e) { if (!modeHost.contains(e.target)) { _closeModePanel(); } };
@@ -625,7 +767,7 @@
       _toast(_i('shell.overlay.mshuflab', '随机') + '：' + _ovShufName(_ovMediaShuffle));
     }
     // ═══ ★ 播放列表面板 → 侧边 dock（v5，2026-09-26 q319 用户定案）：列表 n>1 恒显于播放器左/右侧（侧栏常驻，非弹出面板）；═══
-    //   序号 + 文件名 + 行尾三钮（上移/下移/移除）；拖动 = 指针拖拽重排（阈值 5px，未达阈值零干扰）；⇄ 切左右（宿主 savePref 持久化）；
+    //   序号 + 文件名 + 行尾三钮（上移/下移/移除）；拖动 = 指针拖拽重排（阈值 5px，未达阈值零干扰）；边随记忆（⇄ 已删）；
     //   当前轨 ▶ 金色高亮、自动进位/重排/移除后高亮跟随并滚入视野；点击任意行切轨（拖动余波点击自动抑制）；n≤1 整体隐藏。
     var dockEl = null, _plListEl = null, _dockCntEl = null;
     var _dockSide = ((api && api.dockSide) === 'left') ? 'left' : 'right';
@@ -799,7 +941,7 @@
       if (_plListEl) { _fillPlRows(); setTrack(api.idx || 0); }
     }
     // ── dock 构建（唯一入口：mount 时建一次；此后只做显隐/重排）──
-    function _applyDockSide(side, persist) {
+    function _applyDockSide(side) {
       _dockSide = (side === 'left') ? 'left' : 'right';
       try {
         if (dockEl && layout && layout.shell) {
@@ -808,7 +950,6 @@
         }
       } catch (_) { }
       _ovDockSide = _dockSide;
-      try { if (persist && H.savePref) { H.savePref('dockSide', _dockSide); } } catch (_) { }
     }
     function _buildDock() {
       dockEl = document.createElement('div');
@@ -821,15 +962,8 @@
       _dockCntEl = document.createElement('span');
       _dockCntEl.className = 'ovmb-dcnt';
       _dockCntEl.textContent = String(api ? api.n : 0);
-      var sideB = document.createElement('button');
-      sideB.className = 'ovmb-dbtn';
-      sideB.tabIndex = -1;
-      sideB.setAttribute('data-no-cd', '');
-      sideB.title = _i('shell.overlay.mdockside', '切换列表位置（左 / 右）');
-      sideB.innerHTML = _ovMediaIcon('M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z');
-      sideB.addEventListener('mousedown', function (e) { e.preventDefault(); });
-      sideB.addEventListener('click', function () { _applyDockSide(_dockSide === 'right' ? 'left' : 'right', true); });
-      head.appendChild(ht); head.appendChild(_dockCntEl); head.appendChild(sideB);
+      // ★ 2026-10-01 q319：列表头「⇄ 切边」按钮整体删除（用户判定无用）——停靠边随记忆保持，无手动入口
+      head.appendChild(ht); head.appendChild(_dockCntEl);
       dockEl.appendChild(head);
       _plListEl = document.createElement('div');
       _plListEl.className = 'ovmb-pllist';
@@ -843,7 +977,7 @@
         _plDragAttach();   // 跟随监听挂 document 捕获相位（pointerup 必达；拖动结束自动摘除）
       });
       dockEl.appendChild(_plListEl);
-      _applyDockSide(_dockSide, false);
+      _applyDockSide(_dockSide);
     }
 
     // ═══ ★ A-B 循环（2026-09-26 q319）：A/B 点均存在且在播 → currentTime ≥ B 跳回 A ═══
@@ -939,14 +1073,15 @@
     playB.addEventListener('click', _togglePlay);
     volB.addEventListener('click', function () {
       mEl.muted = !mEl.muted;
-      if (!mEl.muted && mEl.volume === 0) { mEl.volume = 1; }
+      if (!mEl.muted && _volWant === 0) { _setVol(1); }
     });
+    volS.addEventListener('pointerdown', function () { _volTipShow(2500); });
     volS.addEventListener('input', function () {
-      var v = parseFloat(volS.value); if (!isFinite(v)) { v = 0; }
-      v = Math.max(0, Math.min(1, v));
-      mEl.volume = v;
-      mEl.muted = v === 0;
+      _setVol(parseFloat(volS.value));
+      mEl.muted = _volWant === 0;
+      _volTipShow(1200);
     });
+    volS.addEventListener('change', function () { _volTipShow(500); });
     rateB.addEventListener('click', _toggleRatePanel);
     loopB.addEventListener('click', _toggleModePanel);
     if (isVid) {
@@ -1117,15 +1252,15 @@
       }
     }
 
-    // ═══ ★ 专属播放控制行（2026-09-30 q319 用户定案）：播放/暂停恒居正中；两翼 逐帧（◀|/|▶，竖线贴三角平边）→
-    //   4 秒（◀◀/▶▶ 双三角重叠）→ 速率（−0.5×/+0.5×）；停止（■）= 暂停并回到开头；播放/暂停 = 空格（不写键位）；
-    //   停止无键位（低频动作 + 键位簇已完整：空格/QW/12/ZX）；其余按钮旁键帽直显键位。旧条不再含播放/单帧按钮。═══
+    // ═══ ★ 专属播放控制行 v7（2026-10-01 q319 用户定案）：按钮上下两段式（上=快捷键字母加大一号 / 下=图标）+ 每钮可见边界；
+    //   播放+停止=中央对恒居中（左右空白相等）；两翼 逐帧（|◀/▶|——底条 ⏮/⏭ 同款 glyph 直复用，百分百等同下方笔触；v8 2026-10-01 用户定案）→ 4 秒（◀◀/▶▶ 双三角重叠）→ 速率（−0.5×/+0.5×）；
+    //   停止（■）= 暂停并回到开头；播放/暂停 = 空格（不写键位）；停止无键位；键位簇：空格/QW/12/ZX。旧条不再含播放/单帧按钮。═══
     function _tBtn(inner, title, keycap, cls) {
       var b = document.createElement('button');
       b.className = 'ovmb-tbtn' + (cls ? ' ' + cls : '');
       b.tabIndex = -1;
       b.setAttribute('data-no-cd', '');
-      b.innerHTML = inner + (keycap ? '<span class="ovmb-kcap">' + keycap + '</span>' : '');
+      b.innerHTML = (keycap ? '<span class="ovmb-kcap">' + keycap + '</span>' : '') + '<span class="ovmb-tbody">' + inner + '</span>';
       if (title) { b.title = title; }
       b.addEventListener('mousedown', function (e) { e.preventDefault(); });
       return b;
@@ -1151,9 +1286,9 @@
     trxRow.className = 'ovmb-trx';
     var slowB = _tBtn('<span class="ovmb-tlab">\u22120.5\u00D7</span>', _i('shell.overlay.mslow', '减速 0.5×（快捷键 Z）'), 'Z', 'ovmb-slow');
     var seekBB = _tBtn(_ovRawIcon(_OV_TRX_ICONS.seekB), _i('shell.overlay.mseekB', '后退 4 秒（快捷键 Q）'), 'Q', 'ovmb-seekb');
-    var stepBB = _tBtn(_ovRawIcon(_OV_TRX_ICONS.stepB), _i('shell.overlay.mstepB', '后退一帧（快捷键 1）'), '1', 'ovmb-stepb');
+    var stepBB = _tBtn(_ovMediaIcon(_OV_MEDIA_ICONS.prev), _i('shell.overlay.mstepB', '后退一帧（快捷键 1）'), '1', 'ovmb-stepb');
     var stopB = _tBtn(_ovRawIcon(_OV_TRX_ICONS.stop), _i('shell.overlay.mstop', '停止（暂停并回到开头）'), '', 'ovmb-stop');
-    var stepFB = _tBtn(_ovRawIcon(_OV_TRX_ICONS.stepF), _i('shell.overlay.mstepF', '前进一帧（快捷键 2）'), '2', 'ovmb-stepf');
+    var stepFB = _tBtn(_ovMediaIcon(_OV_MEDIA_ICONS.next), _i('shell.overlay.mstepF', '前进一帧（快捷键 2）'), '2', 'ovmb-stepf');
     var seekFB = _tBtn(_ovRawIcon(_OV_TRX_ICONS.seekF), _i('shell.overlay.mseekF', '前进 4 秒（快捷键 W）'), 'W', 'ovmb-seekf');
     var fastB = _tBtn('<span class="ovmb-tlab">+0.5\u00D7</span>', _i('shell.overlay.mfast', '加速 0.5×（快捷键 X）'), 'X', 'ovmb-fast');
     slowB.addEventListener('click', function () { _rateStep(-0.5); });
@@ -1163,13 +1298,15 @@
     stepFB.addEventListener('click', function () { _stepFrame(1); });
     seekFB.addEventListener('click', function () { _seekBy(4); });
     fastB.addEventListener('click', function () { _rateStep(0.5); });
-    // ★ 两翼等宽（flex:1）——播放按钮恒居整行正中；左翼右对齐 / 右翼左对齐（皆紧贴播放）；停止 = 右翼首钮
+    // ★ 两翼等宽（flex:1）——播放+停止 = 中央对恒居整行正中（对心对称）；左翼右对齐 / 右翼左对齐（皆紧贴中央对）
+    //   2026-10-01 q319 定案：停止键自右翼并入中央对 → 两翼内容等宽（Z/Q/1 ↔ 2/W/X）→ 左右空白恒相等（历史 44.5px 左空偏大根治）
     var wingL = document.createElement('div'); wingL.className = 'ovmb-trxl';
     var wingR = document.createElement('div'); wingR.className = 'ovmb-trxr';
     wingL.appendChild(slowB); wingL.appendChild(seekBB); wingL.appendChild(stepBB);
-    wingR.appendChild(stopB); wingR.appendChild(stepFB); wingR.appendChild(seekFB); wingR.appendChild(fastB);
+    wingR.appendChild(stepFB); wingR.appendChild(seekFB); wingR.appendChild(fastB);
     trxRow.appendChild(wingL);
     trxRow.appendChild(playB);   // ★ 旧播放按钮对象整体移入（syncPlay 单源不变）
+    trxRow.appendChild(stopB);   // ★ 中央对 = [播放·停止]——对心对称（行整体居中优先，play 单体不再独占正中）
     trxRow.appendChild(wingR);
 
     if (prevB) { bar.appendChild(prevB); }
@@ -1179,11 +1316,13 @@
     bar.appendChild(durT);
     if (posT) { bar.appendChild(posT); }
     bar.appendChild(volB);
-    bar.appendChild(volS);
+    volBox.appendChild(volS); volBox.appendChild(volTip);
+    bar.appendChild(volBox);
     bar.appendChild(rateHost);
     bar.appendChild(modeHost);
     if (popB) { bar.appendChild(popB); }
     if (popInB) { bar.appendChild(popInB); }
+    if (stowB) { bar.appendChild(stowB); }
     bar.appendChild(abB);
     if (shotB) { bar.appendChild(shotB); }
     if (pipB) { bar.appendChild(pipB); }
@@ -1194,6 +1333,37 @@
     stack.className = 'ovmb-stack' + (isVid ? '' : ' ovmb-stack-inline');
     stack.appendChild(trxRow);
     stack.appendChild(bar);
+
+    // ★ 恒单行紧凑分档（2026-10-01 q319 用户定案）：行永不换行——按可用宽自动选档（t1/t2/t3）
+    //   可用宽 = 容器真实可给宽（视频 = min(780, 94% 主列)；音频轻盒 = 92% 主列——与轻盒样式 max-width 同步，改盒样式必须同改）；
+    //   选档后闭环自检：仍溢出则逐级降档（防字体/界面缩放环境差异）
+    var _trxFitRaf = 0;
+    var _trxRO = null;
+    var _TRX_TIERS = ['', 'ovmb-t1', 'ovmb-t2', 'ovmb-t3'];
+    function _fitTrxRow() {
+      if (_trxFitRaf) { return; }
+      _trxFitRaf = requestAnimationFrame(function () {
+        _trxFitRaf = 0;
+        try {
+          var _mc = (layout && layout.main) ? layout.main.clientWidth : 0;
+          if (!_mc) { return; }
+          var _av = isVid ? Math.min(780, _mc * 0.94) : (_mc * 0.92);
+          var _idx = _av >= 410 ? 0 : (_av >= 340 ? 1 : (_av >= 298 ? 2 : 3));
+          for (var i = _idx; i < _TRX_TIERS.length; i++) {
+            var _cn = 'ovmb-trx' + (_TRX_TIERS[i] ? ' ' + _TRX_TIERS[i] : '');
+            if (trxRow.className !== _cn) { trxRow.className = _cn; }
+            if (trxRow.scrollWidth <= trxRow.clientWidth + 1 || i === _TRX_TIERS.length - 1) { break; }
+          }
+        } catch (_) { }
+      });
+    }
+    try {
+      if (window.ResizeObserver && layout && layout.main) {
+        _trxRO = new ResizeObserver(function () { _fitTrxRow(); });
+        _trxRO.observe(layout.main);
+      }
+    } catch (_) { }
+    _fitTrxRow();
 
     // 键盘（空格/1/2/Q/W/Z/X/←→/↑↓/M/L/R/A/S/F——经 api.keys 由宿主全局 keydown 派发）
     function keys(e) {
@@ -1214,10 +1384,12 @@
       } else if (k === 'ArrowUp') {
         e.preventDefault();
         mEl.muted = false;
-        mEl.volume = Math.min(1, Math.round((mEl.volume + 0.05) * 100) / 100);
+        _setVol(Math.round((_volWant + 0.05) * 100) / 100);
+        _volTipShow(900);
       } else if (k === 'ArrowDown') {
         e.preventDefault();
-        mEl.volume = Math.max(0, Math.round((mEl.volume - 0.05) * 100) / 100);
+        _setVol(Math.round((_volWant - 0.05) * 100) / 100);
+        _volTipShow(900);
       } else if (k === 'm' || k === 'M') {
         mEl.muted = !mEl.muted;
       } else if (k === 'l' || k === 'L') {
@@ -1247,6 +1419,12 @@
 
     function cleanup() {
       try { _abStop(); } catch (_) { }
+      // ★ 增压图卸载（2026-10-01 q319）：断开增益/源——防共享 ctx 经 destination 强引用链保活（节点泄漏）
+      try { if (_volTipTimer) { clearTimeout(_volTipTimer); _volTipTimer = 0; } } catch (_) { }
+      try { if (_boostGain) { _boostGain.disconnect(); _boostGain = null; } } catch (_) { }
+      try { if (_boostSrc) { _boostSrc.disconnect(); _boostSrc = null; } } catch (_) { }
+      try { if (_trxFitRaf) { cancelAnimationFrame(_trxFitRaf); _trxFitRaf = 0; } } catch (_) { }
+      try { if (_trxRO) { _trxRO.disconnect(); _trxRO = null; } } catch (_) { }
       try { _closeRatePanel(); } catch (_) { }
       try { _closeModePanel(); } catch (_) { }
       try { _plDragClear(); } catch (_) { }
@@ -1269,7 +1447,7 @@
     _buildDock();       // dock 一次性构建（挂入壳层行；显隐由 onListChanged 管）
     onListChanged();    // 初始显隐/行渲染（n>1 → dock 立即可见）
 
-    return { bar: stack, cleanup: cleanup, keys: keys, esc: function () { try { return _engEscHook ? !!_engEscHook() : false; } catch (_) { return false; } }, setTrack: setTrack, resetAB: resetAB, onListChanged: onListChanged, syncPlay: syncPlay };
+    return { bar: stack, cleanup: cleanup, keys: keys, esc: function () { try { return _engEscHook ? !!_engEscHook() : false; } catch (_) { return false; } }, setTrack: setTrack, resetAB: resetAB, onListChanged: onListChanged, syncPlay: syncPlay, setVol: _setVol, getVol: function () { return _volWant; } };
   }
 
 
@@ -1333,7 +1511,7 @@ function mount(opts) {
         _aBox = document.createElement('div');
         _aBox.style.cssText = 'position:relative; display:flex; flex-direction:column; align-items:center; gap:18px; ' +
           'background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:12px; ' +
-          'padding:30px 40px; max-width:80%;';
+          'padding:30px 24px; max-width:92%;';   // ★ 2026-10-01：盒放宽（80%→92% + 内边距 40→24）——给专属播放控制行留出单行空间（_fitTrxRow 公式同步）
         var _aGlyph = document.createElement('div');
         _aGlyph.textContent = '\u266A';
         _aGlyph.style.cssText = 'font-size:38px; line-height:1; color:#ffd301;';
@@ -1355,8 +1533,8 @@ function mount(opts) {
 
   // ★ 开局暂停语义（播放器窗恢复场景）：元素 autoplay 属性会被 src 赋值旁路触发 → 显式关掉
   if (!_autoPlay) { try { _mEl.autoplay = false; } catch (_) { } }
-  // 音量/静音初值（恢复场景）
-  if (typeof _init.volume === 'number') { try { _mEl.volume = Math.max(0, Math.min(1, _init.volume)); } catch (_) { } }
+  // 音量/静音初值（恢复场景；★ 2026-10-01：volume 支持 >1——经增压机器还原，≤1 与历史零差异）
+  if (typeof _init.volume === 'number') { try { _barApi.setVol(_init.volume, true); } catch (_) { } }
   if (typeof _init.muted === 'boolean') { try { _mEl.muted = _init.muted; } catch (_) { } }
 
       var _txKind = _isVid ? 'video' : 'audio';
@@ -1572,7 +1750,7 @@ function mount(opts) {
         src: _mEl.src || '',
         localPath: (_plList[_plIdx] && _plList[_plIdx].localPath) || _curLocalPath || null,
         time: _mEl.currentTime || 0, paused: !!_mEl.paused,
-        volume: _mEl.volume, muted: !!_mEl.muted,
+        volume: _barApi.getVol(), muted: !!_mEl.muted,
         rate: _ovMediaRate, loop: _ovMediaLoop, shuffle: _ovMediaShuffle,
         dockSide: _ovDockSide || 'right'
       };

@@ -7,8 +7,13 @@
 //   hover 显快捷键组 tooltip；点击弹八档点选层 → qqqPrefs.set → onChange → 壳层热应用。
 // 其余输入（统一收敛到 qqq-prefs / 壳层）：
 //   ① 应急快捷键 Ctrl+= / Ctrl+- / Ctrl+0（壳层主进程直控）→ bridge.uiZoom.onChanged
-//      → 回写 qqq-prefs 内存（保持徽章一致 + 云同步标记）+ 发起窗口 toast
-//   ② 云拉取 / 恢复默认 → qqqPrefs.onChange → 同上
+//      → _adopt 同步内存 + 徽章 + 发起窗口 toast
+//   ② 云拉取 / 恢复默认新值 → qqqPrefs.onChange → 闸门上报壳层
+// ★ 多窗口闭环（唯一语义 = 单值全窗同步；此前多窗口 90/100 互踢的根治）：
+//   真相唯一 = 壳层 _factor；变更唯一来源 = 用户动作（徽章/快捷键）或云拉取新值；
+//   壳层每次真变化全窗广播 'qqqide:ui-zoom:changed' → 各窗 _adopt()（同步内存+徽章，绝不回写上报）；
+//   上报闸门 = _pushIfChanged：值相对 _lastSeen 无变化 → 零动作（陈旧窗口收到任意跨窗事件
+//   读到旧内存值也绝不回推——禁恢复「无条件 _push」）。
 // 渲染：徽章 + tooltip + 弹层（八档与 qqq-prefs 'uiZoom' enum 严格同值——两处同改）。
 // 依赖：qqq-prefs.js（先行加载）。
 // ============================================================================
@@ -34,6 +39,8 @@
     } catch (e) { /* ignore */ }
   }
 
+  var _lastSeen = null;   // 本窗口认定的全局真值（pct）；null = 尚未与壳层对齐（启动瞬间）
+
   function _curPct() {
     try {
       var P = window.qqqPrefs;
@@ -42,11 +49,27 @@
     } catch (e) { return 100; }
   }
 
-  function _push() {
+  // ★ 上报闸门（多窗口互踢根治）：只有「本窗口认定的值」相对 _lastSeen 真变化才上报壳层。
+  //   陈旧窗口收到任意跨窗事件（登录/权益/云同步全量 emit）读到旧内存值 → 与 _lastSeen 相同 → 零动作。
+  function _pushIfChanged() {
     try {
       var pct = _curPct();
+      if (_lastSeen === null) { _refreshBadge(pct); return; }                  // 未对齐 → 等 get 对齐，不上报
+      if (String(pct) === String(_lastSeen)) { _refreshBadge(pct); return; }   // 零变化 → 零动作
+      _lastSeen = pct;
       var b = window.qqqideBridge;
       if (b && b.uiZoom && b.uiZoom.set) { b.uiZoom.set(pct); }
+      _refreshBadge(pct);
+    } catch (e) { /* ignore */ }
+  }
+
+  // ★ 采用壳层真值（启动对齐 / 全窗广播）：同步偏好内存 + 徽章；绝不回写上报（防回声）。
+  function _adopt(pct) {
+    try {
+      if (typeof pct !== 'number' || !isFinite(pct)) { return; }
+      _lastSeen = pct;
+      var P = window.qqqPrefs;
+      if (P && P.get && P.set && String(P.get('uiZoom')) !== String(pct)) { P.set('uiZoom', String(pct)); }
       _refreshBadge(pct);
     } catch (e) { /* ignore */ }
   }
@@ -231,33 +254,39 @@
   }
 
   function _boot() {
-    // ① 徽章 / 云拉取 / 恢复默认 → 推壳层热应用 + 徽章刷新
+    var b = window.qqqideBridge;
+    // ① 偏好变化（云拉取新值 / 恢复默认 / 徽章点击本地 set）→ 闸门上报（零变化零动作）
     try {
       var P = window.qqqPrefs;
       if (P && P.onChange) {
         P.onChange(function (key) {
-          if (key === null || key === 'uiZoom') { _push(); }
+          if (key === null || key === 'uiZoom') { _pushIfChanged(); }
         });
       }
     } catch (e) { /* ignore */ }
-    // ② 应急快捷键（壳层主进程直控）→ 同步偏好内存 + 发起窗 toast
+    // ② 壳层广播（每次真变化全窗同步 + 快捷键 toast）→ 采用真值（内存 + 徽章，不回写）
     try {
-      var b = window.qqqideBridge;
       if (b && b.uiZoom && b.uiZoom.onChanged) {
         b.uiZoom.onChanged(function (payload) {
           if (!payload || typeof payload.pct !== 'number' || !isFinite(payload.pct)) { return; }
-          try {
-            var P2 = window.qqqPrefs;
-            if (P2 && String(P2.get('uiZoom')) !== String(payload.pct)) {
-              P2.set('uiZoom', String(payload.pct));
-            }
-          } catch (e2) { /* ignore */ }
-          _refreshBadge(payload.pct);
+          _adopt(payload.pct);
           if (payload.toast) { _toast(payload.pct); }
         });
       }
     } catch (e) { /* ignore */ }
-    // ③ 状态栏徽章（恒显）
+    // ③ 启动对齐：读壳层真值（_factor 唯一权威）——防加载期错位 / 丢广播
+    try {
+      if (b && b.uiZoom && b.uiZoom.get) {
+        var p = b.uiZoom.get();
+        if (p && p.then) {
+          p.then(function (v) {
+            var n = parseInt(v, 10);
+            if (isFinite(n) && _lastSeen === null) { _adopt(n); }
+          }).catch(function () { /* ignore */ });
+        }
+      }
+    } catch (e) { /* ignore */ }
+    // ④ 状态栏徽章（恒显）
     _ensureBadge();
   }
 

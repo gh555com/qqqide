@@ -611,6 +611,11 @@ async function _openImagePreview(filePath) {
     return true;
 }
 
+// ---- 时间线打开链失败如实提示（唯一通道 = parent qoast；禁静默吞错——「点击零反应」体验根治） ----
+function _a4Qoast(msg) {
+    try { if (window.parent && window.parent.qqqideQoast) { window.parent.qqqideQoast.show(msg, { type: 'warn', duration: 5000 }); } } catch (_) { }
+}
+
 // ---- 打开 diff 查看器（独立 BrowserWindow）----
 // ★ 同时传 beforeBlobHash + afterBlobHash：左右各精确选中对应版本
 async function _a4OpenDiff(snap) {
@@ -623,7 +628,11 @@ async function _a4OpenDiff(snap) {
     var bridge = _getBridge();
     if (bridge && bridge.timeline) {
         var root = await _resolveProjectRoot(snap.path); // ★ 文件自寻主
-        if (!root) return;
+        if (!root) {
+            // 全链解析失败：不开空窗（旧行为 = 静默零反应），如实提示
+            _a4Qoast(_qq('editor.timelineNoRoot', '无法确定该文件的项目根目录，时间线不可用'));
+            return;
+        }
         var beforeHash = snap.beforeBlobHash || undefined;
         var afterHash = snap.afterBlobHash || undefined;
         console.log('[a4] openDiff path=' + snap.path + ' before=' + (beforeHash || '').substring(0, 16) + ' after=' + (afterHash || '').substring(0, 16) + ' same=' + (beforeHash === afterHash));
@@ -632,7 +641,11 @@ async function _a4OpenDiff(snap) {
             projectRoot: root,
             beforeBlobHash: beforeHash,
             afterBlobHash: afterHash
-        }).catch(function () { });
+        }).then(function (r) {
+            if (r && r.ok === false) { _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试')); }
+        }).catch(function () {
+            _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'));
+        });
     }
 }
 
@@ -774,15 +787,23 @@ async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
     var bridge = getBridge();
     var root = await _resolveProjectRoot(meta.path); // ★ 文件自寻主
 
-    if (root && bridge && bridge.timeline) {
+    if (!root) {
+        // 全链解析失败：不开空窗（旧行为 = 静默零反应），如实提示
+        _a4Qoast(_qq('editor.timelineNoRoot', '无法确定该文件的项目根目录，时间线不可用'));
+        return;
+    }
+    if (bridge && bridge.timeline) {
         try {
-            await bridge.timeline.openDiffWindow({
+            var r = await bridge.timeline.openDiffWindow({
                 filePath: meta.path,
                 projectRoot: root,
                 beforeBlobHash: meta.before_blob_hash || undefined,
                 afterBlobHash: meta.blob_hash || undefined
             });
-        } catch (_) { }
+            if (r && r.ok === false) { _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试')); }
+        } catch (_) {
+            _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'));
+        }
     }
 }
 

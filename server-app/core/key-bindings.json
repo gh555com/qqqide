@@ -45,7 +45,7 @@
     },
     {
       "id": "window.activateKmd",
-      "accel": "x",
+      "accel": "X",
       "scope": "window",
       "when": "noEditing"
     },

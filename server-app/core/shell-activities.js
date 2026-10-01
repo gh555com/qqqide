@@ -43,7 +43,7 @@ function bootActivities(boot) {
     if (lastErr) console.warn('[activities] _apiFetch all lines failed:', path, lastErr);
     return null;
   }
-  var POLL_MS = 60000;
+  var POLL_MS = 120000; // ★ 2026-10-01 请求治理：60s→120s（消费变动由 billing tick 节流刷新兜底，静态时段不再每分钟每窗口打一次）
   var QQ_GROUP = '524906522';
 
   var _data = null;        // 服务端活动状态
@@ -912,12 +912,12 @@ function bootActivities(boot) {
   var _vibeFree = null;
   var _vibeLastFetch = 0;
 
-  // force=true 忽略 30s 冷却（弹窗打开时强制拉最新，含前8次窗口历史）
+  // force=true 忽略 60s 冷却（弹窗打开时强制拉最新，含前8次窗口历史）
   function fetchVibeBudget(force) {
     var token = authToken();
     if (!token) return Promise.resolve(null);
     var now = Date.now();
-    if (!force && now - _vibeLastFetch < 30000) return Promise.resolve(null);
+    if (!force && now - _vibeLastFetch < 60000) return Promise.resolve(null);
     _vibeLastFetch = now;
     return fetch('https://direct-cn.gh555.com/api/qqq/free-budget', {
       headers: { 'Authorization': 'Bearer ' + token },
@@ -1145,7 +1145,7 @@ function bootActivities(boot) {
   if ($vibe) {
     $vibe.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openVibePopup(); });
     fetchVibeBudget();
-    setInterval(fetchVibeBudget, 30000);
+    setInterval(fetchVibeBudget, 60000);
     // ★ 2026-09-03: 每次进入免费时段（白嫖时间滴起点）→ 木鱼报喜。
     //   仅实时跨边沿进入才响——启动时已在免费段内不响（那不是「进入」）；与 renderVibe 合并同一 1s 滴答
     var _vibeWasFree = isFreeWindow(vibeUtcNow());
@@ -1165,9 +1165,15 @@ function bootActivities(boot) {
     }
   } catch (e) { }
 
-  // 建楼计费事件 → 立即刷新（消费实时变化）
+  // 建楼计费事件 → 立即刷新（消费实时变化；≥60s 节流防高频计费连打——服务端洪峰二次治理）
+  var _tickLastTs = 0;
   window.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'qqq-lv-tick') { fetchStatus(true); fetchVibeBudget(); }
+    if (e.data && e.data.type === 'qqq-lv-tick') {
+      var _now = Date.now();
+      if (_now - _tickLastTs < 60000) return;
+      _tickLastTs = _now;
+      fetchStatus(true); fetchVibeBudget();
+    }
   });
 
   // 定时轮询

@@ -6,29 +6,25 @@
 // 依赖：AgentLoop（由 agent-loop.js 定义），GATEWAY_URL（由 system-prompt.js 定义）
 // ============================================================================
 
-// ═══ 上游等待可视化（2026-09-06 B 方案）═══
+// ═══ 上游等待可视化（2026-10-01 A 方案：聚合细条）═══
 // 背景：上游高峰期 TTFB 可达 15min，服务器每 25s 心跳保活 → 客户端三道防线全被合法绕过
 //   → 楼层"假死"：钟在走、无报错、无输出（多客户机实锤）。本模块纯展示零副作用：
-//   - 请求发出 → 1s 检查链；90s 无任何首字输出 → 任务坞亮卡（⏳ 上游无响应 mm:ss）
-//   - 首字输出（agent-sse 置 _gwGotContent）/ 流结束 / 任何出口（_gwEndWait）→ 摘卡自停
+//   - 请求发出 → 1s 检查链；120s 无任何首字输出 → 任务坞亮「聚合等待细条」（N 个楼层只出一条，
+//     展开明细逐行 ■ 停止 = 真停该楼层；✕ = 本轮静默，出现新等待楼层才再提示）
+//   - 首字输出（agent-sse 置 _gwGotContent）/ 流结束 / 任何出口（_gwEndWait）→ 摘条自停
 //   - 服务器 B+（qwait 心跳）部署后 _upstreamWaitSec = 上游权威等待秒数（取大显示）
 //   不声称"排队"（证据不足）——"无响应"在任何真实原因下都成立，零误报。
-var GW_WAIT_SHOW_SEC = 90;
+var GW_WAIT_SHOW_SEC = 120;
 
 function _gwCardId(ag) {
     return 'gw-wait-' + (ag._questId || 'q') + '-' + (ag._currentFloorNum || 'f');
 }
 
-function _gwDur(s) {
-    s = Math.max(0, Math.floor(s || 0));
-    var m = Math.floor(s / 60);
-    return m + 'm' + (s % 60 < 10 ? '0' : '') + (s % 60) + 's';
-}
-
 function _gwRemoveCard(ag) {
     if (!ag || !ag._gwCardShown) return;
     try {
-        if (window.parent && window.parent.qqqideIoast) window.parent.qqqideIoast.remove(_gwCardId(ag));
+        var io = window.parent && window.parent.qqqideIoast;
+        if (io && io.waitBar) io.waitBar.clear(_gwCardId(ag));
     } catch (_) { }
     ag._gwCardShown = false;
 }
@@ -54,10 +50,12 @@ function _gwWaitTick(ag) {
     }
     try {
         var io = window.parent && window.parent.qqqideIoast;
-        if (!io || !io.task) return;
-        io.task(_gwCardId(ag), {
-            title: _qq('ai.gwWait.title', '⏳ 上游无响应 {0}', { 0: _gwDur(waitS) }),
-            subtitle: _qq('ai.gwWait.subtitle', '{0} 第 {1} 层 · {2}', { 0: (ag._questId || '?'), 1: (ag._currentFloorNum || '?'), 2: (ag._upstreamWaitSec > 0 ? _qq('ai.gwWait.serverAck', '服务器确认等待中') : _qq('ai.gwWait.firstToken', '等待首字输出')) })
+        if (!io || !io.waitBar) return;
+        io.waitBar.set(_gwCardId(ag), {
+            text: _qq('ai.gwWait.rowLabel', '{0} 第 {1} 层', { 0: (ag._questId || '?'), 1: (ag._currentFloorNum || '?') }),
+            durS: waitS,
+            note: ag._upstreamWaitSec > 0 ? _qq('ai.gwWait.serverAck', '服务器确认等待中') : _qq('ai.gwWait.firstToken', '等待首字输出'),
+            onStop: function () { try { ag.stop(); } catch (_) { } }
         });
         ag._gwCardShown = true;
     } catch (_) { }

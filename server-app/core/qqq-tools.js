@@ -9,7 +9,7 @@
 //   │  [✎ export doc]        [🗜 export Zip]                │
 //   │  [ .doc ][ .docx ]                                    │
 //   │  [↑][↓]           ⚙ 居中（点击开设置中心）             │  ← [↑][↓] 云同步（老 qqq AQ 100%）+ 齿轮开「qqq 设置中心」
-//   │  [⏮][⏯][⏭] Player · 轨名 n/N            [−][✕]        │  ← 播放槽（空闲=[↗][⧈]；活跃=控制台）
+
 //   │  [▶ Video Url] [✎ Paste] [✦ Pure]                     │  ← 占位（待移植）
 //   └───────────────────────────────────────────────────────┘
 //   2026-09-22 二次改版: 移除 SOUND/EXPORT/DATA/SOON 分割行——纯卡片连续流。
@@ -36,8 +36,7 @@
 //   export Zip   整卡点击 → window.qqqExport.zip()
 //   云同步+齿轮  [↑][↓] = 上传/下载（桥 window.qqqCenter.doSync——机械在 qqq-center.js）；齿轮（原文字位）
 //               = 点击打开「qqq 设置中心」（core/qqq-center.js：设置全量本地化）
-//   Player       空闲 = [↗ 独立窗][⧈ 窗内]；会话活跃（卡可见/被收纳）= 播放控制台（[⏮][⏯][⏭] + 轨名 + [收纳/展开][✕]）
-//                ——收纳态（卡.stow）下本槽 = 播放器唯一遥控入口（qqq 按钮 ♪ 徽标）；状态存 player-state.json card.stow
+
 //   Video Url / Paste / Pure → 占位 chips（点击提示待移植）
 //
 // 交互: hover 进入展开（250ms 延迟关闭）；Esc / 点别处 / resize 即关；零自定义 cursor（铁律 §4.3）。
@@ -86,10 +85,7 @@
     s.textContent = [
       '.qqq-tools-btn:hover, .qqq-tools-btn.qqq-tools-open { background: var(--background-color) !important; opacity: .85; }',
       '.qqq-tools-btn { position: relative; }',
-      '.qqq-tools-btn.qqq-player-stowed::after { content: "♪"; position: absolute; top: -5px; right: -2px; font-size: 9px; line-height: 1; color: var(--primary-color, #b58900); pointer-events: none; }',
-      '.qqq-player-row .qqq-tools-card-body { display: flex; align-items: center; min-width: 0; }',
-      '.qqq-player-row .qqq-tools-card-title { flex: 1 1 auto; min-width: 0; }',
-      '.qqq-pl-count { flex: 0 0 auto; margin-left: 6px; font-size: 11px; color: var(--text-secondary, #93a1a1); }',
+
       '.qqq-tools-menu {',
       '  position: fixed; z-index: 999999;',
       '  width: ' + PANEL_W + 'px; max-width: calc(100vw - 16px);',
@@ -575,175 +571,6 @@
     return c;
   }
 
-  // ★ 播放槽（2026-09-28 q319 v7）：空闲 = [↗] 独立悬浮播放器窗（A）/ [⧈] 窗内播放器卡（B）双入口（二选一，共用同一播放会话）；
-  //   会话活跃（卡可见/被收纳）= 播放控制台 [⏮][⏯][⏭] + 轨名 n/N + [收纳/展开][✕]——收纳态下 = 播放器唯一遥控入口
-  var _PL_SVG_WIN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>';
-  var _PL_SVG_CARD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H5V8h14v10z"/></svg>';
-  var _PL_SVG_PREV = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 6h2v12H6z"/><path d="M9.5 12l8.5 6V6z"/></svg>';
-  var _PL_SVG_NEXT = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M16 6h2v12h-2z"/><path d="M6 6l8.5 6L6 18z"/></svg>';
-  var _PL_SVG_PLAY = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-  var _PL_SVG_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
-  var _PL_SVG_MIN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 19h12v2H6z"/></svg>';
-  var _PL_SVG_REST = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M21 11V3h-8v2h4.59L12 10.59l1.41 1.41L19 6.41V11h2zM3 13v8h8v-2H6.41L12 13.41l-1.41-1.41L5 17.59V13H3z"/></svg>';
-  var _PL_SVG_CLOSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
-  var _plRowEl = null, _plRowMode = '';
-  var _plTitleEl = null, _plCountEl = null, _plPrevB = null, _plPlayB = null, _plNextB = null, _plToggleB = null;
-  var _plEvtBound = false;
-
-  function _plInfo() {
-    try { return (window.qqqPlayerCard && window.qqqPlayerCard.getInfo) ? window.qqqPlayerCard.getInfo() : null; } catch (e) { return null; }
-  }
-  function _plCmd(a) {
-    try { if (window.qqqPlayerCard && window.qqqPlayerCard.cmd) { window.qqqPlayerCard.cmd(a); } } catch (e) { }
-  }
-  function _onPlayerState() { if (_plRowEl) { _renderPlayerRow(); } }
-  function _bindPlayerState() { if (_plEvtBound) { return; } _plEvtBound = true; window.addEventListener('qqq-player-state', _onPlayerState); }
-  function _unbindPlayerState() { if (!_plEvtBound) { return; } _plEvtBound = false; window.removeEventListener('qqq-player-state', _onPlayerState); }
-
-  function _plMiniBtn(svg, title, cls) {
-    var b = _syncBtn(svg, title);
-    if (cls) { b.classList.add(cls); }
-    return b;
-  }
-  // ★ 动态图标按钮（2026-09-28 q319 v7）：预建全部图标槽，仅切 display——禁 innerHTML 换节点
-  //   （探针实锤：鼠标跨入 Player 行触发 mouseenter 重渲染换节点时，紧随其后的整串点击事件被输入管线吞掉——ZERO 事件）
-  function _plIconBtn(icons, title, cls) {
-    var b = document.createElement('button');
-    b.className = 'qqq-tools-mini-btn';
-    if (cls) { b.classList.add(cls); }
-    b.title = title || '';
-    for (var i = 0; i < icons.length; i++) {
-      var ic = document.createElement('span');
-      ic.className = 'qqq-tools-ico-svg';
-      if (i > 0) { ic.style.display = 'none'; }
-      ic.innerHTML = icons[i];
-      b.appendChild(ic);
-    }
-    return b;
-  }
-  function _plSetIcon(btn, idx) {
-    if (!btn) { return; }
-    var kids = btn.children;
-    for (var i = 0; i < kids.length; i++) {
-      try { kids[i].style.display = (i === idx) ? '' : 'none'; } catch (e) { }
-    }
-  }
-  function _buildPlayerIdle(c) {
-    var grp = document.createElement('div');
-    grp.className = 'qqq-tools-btns';
-    var bWin = _syncBtn(_PL_SVG_WIN, _i('workbench.playerWinTip', '独立悬浮播放器窗：置顶小窗——切到别的程序也看得见（↗）'));
-    var bCard = _syncBtn(_PL_SVG_CARD, _i('workbench.playerCardTip', '窗内播放器：悬浮在 qqqide 窗口里的播放器卡——跟随本窗口（⧈）'));
-    bWin.addEventListener('click', function (e) {
-      e.stopPropagation();
-      _closeAll();
-      try {
-        var b = window.qqqideBridge;
-        if (b && b.player && b.player.open) { b.player.open(); }
-        else { _qoast(_i('workbench.playerNeedRestart', '悬浮播放器需要重启实例后可用'), { type: 'info', duration: 4000 }); }
-      } catch (err) { }
-    });
-    bCard.addEventListener('click', function (e) {
-      e.stopPropagation();
-      _closeAll();
-      try {
-        if (window.qqqPlayerCard) { window.qqqPlayerCard.open(); }
-        else { _qoast(_i('workbench.playerNeedRestart', '悬浮播放器需要重启实例后可用'), { type: 'info', duration: 4000 }); }
-      } catch (err) { }
-    });
-    grp.appendChild(bWin);
-    grp.appendChild(bCard);
-    var body = document.createElement('div');
-    body.className = 'qqq-tools-card-body';
-    var t = document.createElement('div');
-    t.className = 'qqq-tools-card-title';
-    t.textContent = 'Player';
-    body.appendChild(t);
-    c.appendChild(grp);
-    c.appendChild(body);
-  }
-  function _buildPlayerConsole(c) {
-    var grp = document.createElement('div');
-    grp.className = 'qqq-tools-btns';
-    _plPrevB = _plMiniBtn(_PL_SVG_PREV, _i('shell.overlay.mprev', '上一个'), 'qqq-pl-prev');
-    _plPlayB = _plIconBtn([_PL_SVG_PAUSE, _PL_SVG_PLAY], _i('shell.overlay.mpause', '暂停'), 'qqq-pl-play');   // 0=暂停图标(在播) / 1=播放图标
-    _plNextB = _plMiniBtn(_PL_SVG_NEXT, _i('shell.overlay.mnext', '下一个'), 'qqq-pl-next');
-    _plPrevB.addEventListener('click', function (e) { e.stopPropagation(); _plCmd('prev'); });
-    _plPlayB.addEventListener('click', function (e) { e.stopPropagation(); _plCmd('toggle'); });
-    _plNextB.addEventListener('click', function (e) { e.stopPropagation(); _plCmd('next'); });
-    grp.appendChild(_plPrevB);
-    grp.appendChild(_plPlayB);
-    grp.appendChild(_plNextB);
-    var body = document.createElement('div');
-    body.className = 'qqq-tools-card-body';
-    _plTitleEl = document.createElement('div');
-    _plTitleEl.className = 'qqq-tools-card-title';
-    _plCountEl = document.createElement('span');
-    _plCountEl.className = 'qqq-pl-count';
-    body.appendChild(_plTitleEl);
-    body.appendChild(_plCountEl);
-    body.addEventListener('click', function (e) {   // 点文字 = 展开（与 Savor「点文字=主操作」同规）
-      e.stopPropagation();
-      var inf = _plInfo();
-      if (inf && inf.stow && window.qqqPlayerCard) { try { window.qqqPlayerCard.stow(false); } catch (err) { } }
-    });
-    var grp2 = document.createElement('div');
-    grp2.className = 'qqq-tools-btns';
-    _plToggleB = _plIconBtn([_PL_SVG_MIN, _PL_SVG_REST], _i('shell.player.minimize', '收纳到 qqq 工作台'), 'qqq-pl-stow');   // 0=收纳 / 1=展开
-    var bClose = _plMiniBtn(_PL_SVG_CLOSE, _i('common.close', '关闭'), 'qqq-pl-close');
-    _plToggleB.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var inf = _plInfo();
-      if (window.qqqPlayerCard && window.qqqPlayerCard.stow) { try { window.qqqPlayerCard.stow(!(inf && inf.stow)); } catch (err) { } }
-    });
-    bClose.addEventListener('click', function (e) {
-      e.stopPropagation();
-      if (window.qqqPlayerCard) { try { window.qqqPlayerCard.close(); } catch (err) { } }
-    });
-    grp2.appendChild(_plToggleB);
-    grp2.appendChild(bClose);
-    c.appendChild(grp);
-    c.appendChild(body);
-    c.appendChild(grp2);
-  }
-  function _renderPlayerRow() {
-    var c = _plRowEl;
-    if (!c) { return; }
-    var info = _plInfo();
-    var mode = (info && info.open) ? 'console' : 'idle';
-    if (_plRowMode !== mode) {
-      _plRowMode = mode;
-      try { c.innerHTML = ''; } catch (e) { }
-      _plTitleEl = null; _plCountEl = null; _plPrevB = null; _plPlayB = null; _plNextB = null; _plToggleB = null;
-      if (mode === 'console') { _buildPlayerConsole(c); } else { _buildPlayerIdle(c); }
-    }
-    if (mode !== 'console' || !info) { return; }
-    var label = 'Player';
-    if (info.name) { label += ' · ' + info.name; }
-    if (_plTitleEl) { _plTitleEl.textContent = label; }
-    if (_plCountEl) { _plCountEl.textContent = (info.total > 1) ? ((info.index + 1) + '/' + info.total) : ''; }   // 计数独立不随名字截断（flex 0 0 auto）
-    if (_plPrevB) { _plPrevB.disabled = info.total < 2; }
-    if (_plNextB) { _plNextB.disabled = info.total < 2; }
-    if (_plPlayB) {
-      _plSetIcon(_plPlayB, info.paused ? 1 : 0);   // 图标恒切 display（禁 innerHTML 换节点——换节点会吞紧随点击）
-      _plPlayB.title = info.paused ? _i('shell.overlay.mplay', '播放') : _i('shell.overlay.mpause', '暂停');
-      _plPlayB.disabled = !info.total;
-    }
-    if (_plToggleB) {
-      _plSetIcon(_plToggleB, info.stow ? 1 : 0);
-      _plToggleB.title = info.stow ? _i('shell.player.restore', '展开播放器') : _i('shell.player.minimize', '收纳到 qqq 工作台');
-    }
-  }
-  function _buildPlayerCard() {
-    var c = document.createElement('div');
-    c.className = 'qqq-tools-card wide qqq-tools-flex qqq-player-row';
-    c.title = _i('workbench.playerTip', '播放器：写代码时也能听歌/看视频（跨重启记忆播放列表）；Roam 中选中媒体右键「加入播放列表」，或从悬浮层弹出；最小化 = 收纳到本槽位遥控。');
-    c.addEventListener('mouseenter', _renderPlayerRow);
-    _plRowEl = c;
-    _plRowMode = '';
-    _renderPlayerRow();
-    _bindPlayerState();
-    return c;
-  }
 
   function _buildSoonRow() {
     var row = document.createElement('div');
@@ -778,7 +605,6 @@
     grid.appendChild(_buildDocCard());
     grid.appendChild(_buildZipCard());
     grid.appendChild(_buildGearCard());
-    grid.appendChild(_buildPlayerCard());
     grid.appendChild(_buildSoonRow());
 
     _refreshExportCards();   // 合页指示器 + 「即将导出」tooltip（打开即对齐当前目标）
@@ -812,12 +638,8 @@
   function _removeRoot() {
     if (_rootEl) { try { _rootEl.remove(); } catch (e) { } _rootEl = null; }
     _unbindSavorState();
-    _unbindPlayerState();
     _savorCardEl = null;
     _savorLabelEl = null;
-    _plRowEl = null;
-    _plRowMode = '';
-    _plTitleEl = null; _plCountEl = null; _plPrevB = null; _plPlayB = null; _plNextB = null; _plToggleB = null;
     _expCards = [];
     _hingeEls = [];
     _expOvHide();
@@ -847,15 +669,7 @@
     btn.addEventListener('mouseleave', _scheduleAll);
     tabBarEl.appendChild(btn);
     _btnEl = btn;
-    _setPlayerBadge(!!window.__qqqPlayerStowed);
   }
 
-  // ★ 播放器收纳徽标（qqq 按钮 ♪）：player-card 在收纳/展开/关闭时调用；挂载时按全局真值补挂
-  var _playerBadge = false;
-  function _setPlayerBadge(on) {
-    _playerBadge = !!on;
-    if (_btnEl) { try { _btnEl.classList.toggle('qqq-player-stowed', _playerBadge); } catch (e) { } }
-  }
-
-  window.qqqToolsMenu = { mount: mount, close: _closeAll, setPlayerBadge: _setPlayerBadge, expTarget: _expState };
+  window.qqqToolsMenu = { mount: mount, close: _closeAll, expTarget: _expState };
 })();

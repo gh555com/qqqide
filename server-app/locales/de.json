@@ -156,6 +156,7 @@
             "mplDel": "Aus Wiedergabeliste entfernen",
             "mpopout": "Eigenständigen Player ausdocken",
             "mpopin": "Player im Fenster öffnen",
+            "mstow": "In die Taskleiste minimieren",
             "mdockside": "Listenposition wechseln (links / rechts)"
         },
         "player": {
@@ -167,9 +168,11 @@
             "empty": "Playlist ist leer – Wähle Medien in Roam aus und klicke mit der rechten Maustaste auf „Zur Playlist hinzufügen“ oder docke sie aus der Overlay-Ebene aus (↗).",
             "returnOv": "Zurück zur Overlay-Ebene",
             "returnFail": "Hauptfenster nicht gefunden, Rückkehr zur Schwebeschicht nicht möglich",
-            "minimize": "In qqq Arbeitsbereich minimieren",
+            "stowFail": "Hauptfenster nicht gefunden, kann nicht in die Taskleiste minimiert werden",
+            "minimize": "Minimieren · Taskleiste ♪ Fernbedienung",
             "restore": "Player erweitern",
-            "stowed": "In qqq Arbeitsbereich minimiert"
+            "stowed": "Minimiert · Taskleiste ♪ Fernbedienung",
+            "blockEmpty": "Keine aktive Wiedergabesitzung"
         },
         "about": {
             "title": "Über qqq",
@@ -339,9 +342,8 @@
     },
     "editor": {
         "copyPath": "Pfad kopieren",
-        "roamLocate": "Diese Datei in Roam lokalisieren",
-        "timelineOpen": "Diese Datei in der Zeitleiste anzeigen",
         "timelineNoRoot": "Das Projekt-Stammverzeichnis dieser Datei kann nicht ermittelt werden, die Zeitleiste ist nicht verfügbar",
+        "timelineOpenFail": "Fehler beim Öffnen des Zeitachsenfensters, bitte versuchen Sie es später erneut",
         "minimap": "Minikarte",
         "tabs": {
             "close": "Tab schließen",
@@ -741,7 +743,12 @@
         },
         "gwWait": {
             "title": "⏳ Upstream antwortet nicht {0}",
-            "subtitle": "{0} Ebene {1} · {2}",
+            "rowLabel": "{0} Ebene {1}",
+            "barMulti": "⏳ {0} Ebenen warten auf Antwort von oben · Maximal {1}",
+            "stop": "■ Stoppen",
+            "expand": "Details anzeigen",
+            "collapse": "Einklappen",
+            "muteTip": "Diesmal nicht mehr hinweisen (neue wartende Ebenen werden erneut angezeigt)",
             "serverAck": "Warten auf Serverbestätigung",
             "firstToken": "Warten auf das erste Ausgabezeichen",
             "hangCount": "({0}. Versuch)",
@@ -1691,10 +1698,6 @@
         "exportHingeTip": "Ausgefüllt = Die Bearbeitungsgruppe, die als Nächstes exportiert wird (die zuletzt angezeigte); Hohlraster = Eine andere Gruppe. Klicken Sie auf das Quadrat, um das Exportziel zu wechseln; Wenn Sie die Exportkarte mit der Maus überfahren, wird der Zielbearbeitungsbereich mit einem blassvioletten gestrichelten Rahmen hervorgehoben.",
         "exportWillExport": "Wird exportiert: {0}",
         "cloudSyncTip": "Cloud-Synchronisierung: ↑ Hochladen = Erst mit der Cloud zusammenführen, dann hochladen (keine Datenverluste auf beiden Seiten); ↓ Herunterladen = Cloud-Daten in den lokalen Speicher zusammenführen. Enthält Roam-Konfigurationen, Ordnerpräferenzen und Zwischenablageverlauf.",
-        "playerTip": "Player: Hören Sie Musik oder schauen Sie Videos beim Coden (Wiedergabelisten bleiben auch nach Neustarts erhalten); Wählen Sie Medien in Roam aus und klicken Sie mit der rechten Maustaste auf „Zur Wiedergabeliste hinzufügen“, oder rufen Sie sie über das Overlay auf; Minimieren = In diesen Slot als Fernbedienung ablegen.",
-        "playerWinTip": "Eigenständiges schwebendes Player-Fenster: Immer im Vordergrund – bleibt auch beim Wechsel zu anderen Programmen sichtbar (↗)",
-        "playerCardTip": "Player im Fenster: Player-Karte schwebt im qqqide-Fenster – folgt diesem Fenster (⧈)",
-        "playerNeedRestart": "Schwebender Player erfordert Neustart der Instanz",
         "videoUrlTip": "To-Do: Video-URL eingeben, automatisch in den Dokumentordner herunterladen und in einen Bildrahmen einfügen.",
         "pasteTip": "To-Do: Inhalt der Zwischenablage mit einem Klick in das Dokument einfügen (derzeit kann derselbe Vorgang mit Ctrl+V durchgeführt werden).",
         "pureTip": "Ausstehend: Dokumentreferenzen scannen und nicht mehr referenzierte verwaiste Dateien bereinigen.",

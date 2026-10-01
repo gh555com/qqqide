@@ -60,6 +60,8 @@
 <div id="pl-chrome">
   <!-- ★ 退回悬浮层（v6）：↙ 恒显示——整体交接回主窗口悬浮层（列表+进度+模式），主进程发事件后本窗自关；失败 → toast -->
   <button class="pl-cbtn" id="pl-ret" title="退回悬浮层"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="display:block;pointer-events:none"><path d="M20 5.41L18.59 4 7 15.59V9H5v10h10v-2H8.41L20 5.41z"/></svg></button>
+  <!-- ★ 收进状态栏（2026-10-01）：整机交接 → 主窗播放器卡收纳态 → 状态栏 ♪ 豆腐块遥控/展开；本窗随交接自关 -->
+  <button class="pl-cbtn" id="pl-stow" title="Stow"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="display:block;pointer-events:none"><path d="M5 16h14v2H5z"/></svg></button>
   <button class="pl-cbtn" id="pl-pin" title="Pin">&#128204;</button>
   <button class="pl-cbtn pl-close" id="pl-close" title="Close">&#10005;</button>
 </div>
@@ -225,6 +227,29 @@
         try { st = (eng && eng.getState) ? eng.getState() : null; } catch (_) { st = null; }
         if (!st || !st.list || !st.list.length) { _fail(); return; }
         bridge.player.returnOverlay(st).then(function (r) {
+          if (!r || !r.ok) { _fail(); }
+        }).catch(_fail);
+      } catch (_) { }
+    });
+  })();
+
+  // ★ 收进状态栏（2026-10-01 q319 用户定案）：整机交接 → 主窗口播放器卡（收纳态）→ 状态栏 ♪ 豆腐块遥控；
+  //   主进程发 cardHandoff 后本窗自关（交接未达 → toast，本窗不动、声音不断）。
+  (function () {
+    var stowBtn = document.getElementById('pl-stow');
+    if (!stowBtn) { return; }
+    try { stowBtn.title = _tt('shell.player.minimize', '收纳 · 状态栏 ♪ 遥控'); } catch (_) { }
+    stowBtn.addEventListener('click', function () {
+      var _fail = function () { _toast(_tt('shell.player.stowFail', '未找到主窗口，无法收进状态栏')); };
+      try {
+        if (!bridge || !bridge.player || !bridge.player.stowToCard) {
+          _toast(_tt('shell.player.needRestart', '播放器需要重启实例后可用'));
+          return;
+        }
+        var st = null;
+        try { st = (eng && eng.getState) ? eng.getState() : null; } catch (_) { st = null; }
+        if (!st || !st.list || !st.list.length) { _toast(_tt('shell.player.blockEmpty', '暂无播放会话')); return; }
+        bridge.player.stowToCard(st).then(function (r) {
           if (!r || !r.ok) { _fail(); }
         }).catch(_fail);
       } catch (_) { }

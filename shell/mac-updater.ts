@@ -774,7 +774,28 @@ async function extractStaging(ctx: MacCtx, tarPath: string): Promise<boolean> {
     try { fs.rmSync(staging, { recursive: true, force: true }); } catch (_) { }
     return false;
   }
+  unwrapStagingContainer(ctx, staging);
   return true;
+}
+
+// ★ 2026-10-01: 分发包自带单文件夹容器（qqqide/，任何解压器解压恒得一个文件夹——与 win 的
+//   program/qd 同契约）。更新器统一剥壳：新包（容器）与老包（扁平）双向兼容——
+//   两态判据 = staging 根有无 qqqide.app；剥壳失败不动现场，交由结构门统一裁决。
+function unwrapStagingContainer(ctx: MacCtx, staging: string): void {
+  try {
+    if (fs.existsSync(path.join(staging, 'qqqide.app'))) return;            // 老扁平包
+    const inner = path.join(staging, 'qqqide');
+    if (!fs.existsSync(path.join(inner, 'qqqide.app'))) return;             // 非容器 → 结构门拒
+    for (const name of fs.readdirSync(inner)) {
+      const to = path.join(staging, name);
+      try { fs.rmSync(to, { recursive: true, force: true }); } catch (_) { }
+      fs.renameSync(path.join(inner, name), to);
+    }
+    try { fs.rmSync(inner, { recursive: true, force: true }); } catch (_) { }
+    log(ctx, 'update: container unwrapped (qqqide/ -> staging root)');
+  } catch (e: any) {
+    log(ctx, 'update: container unwrap skipped: %s', (e && e.message) || String(e));
+  }
 }
 
 function keychainPath(): string {

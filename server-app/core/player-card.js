@@ -5,13 +5,14 @@
 //   定位：主窗口内的悬浮播放器卡（与 A=独立悬浮播放器窗 player/player.html 二选一使用）。
 //   媒体行为 100% 共享 core/media-engine.js（禁第二套实现）；本文件只是第三个宿主：
 //   卡片 DOM/拖拽/缩放/持久化/交接/出声独占 + 引擎挂载。
-//   入口：悬浮层 ⧈ / 工作台 Player 卡的「窗内」按钮 / Roam ➕（卡开着时）/ 启动恢复（card.open）。
+//   入口：悬浮层 ⧈ / Roam ➕（卡开着时）/ 状态栏播放器豆腐块（core/player-block.js）/ 启动恢复（card.open）。
 //   持久化（OS 级 player-state.json，与独立窗共用同一会话字段——两宿主互通、二选一不丢列表）：
 //     card = { open, dockSide, stow, video:{x,y,w,h}, audio:{x,y,w,h} }（几何按媒体类型各记一套；stow = 收纳态）
 //     会话 = { list, index, rate, loop, shuffle, volume, muted, dockSide }（写入即与 A 窗互通）
 //   出声独占：卡起播 → claim('card')；他处起播 → 卡自动暂停。
-//   ★ 最小化（2026-09-28 q319 v7）= 收纳（stow）：头部 — → 整卡隐藏、播放不断（仅隐 UI 不碰引擎）；
-//    控制 / 展开唯一入口 = qqq 工作台 Player 槽（会话活跃时该槽渲染播放控制台；收纳态 qqq 按钮带 ♪ 徽标）；
+//   ★ 最小化（2026-09-28 q319 v7 / 2026-10-01 改指）= 收纳（stow）：头部 — → 整卡隐藏、播放不断（仅隐 UI 不碰引擎）；
+//    控制 / 展开唯一入口 = 状态栏播放器豆腐块（core/player-block.js；qqq 工作台 Player 行已废除、禁加回）；
+//   ★ 独立窗 [—] 收进状态区（2026-10-01）：窗侧 stowToCard → qqqide:player:cardHandoff → openFromHandoff({stow:true}) 静默收纳（同上入口遥控）。
 //    stow 随 card 段持久化（壳层 ipc-player.ts 合并，跨重启保持）——禁再引入任何独立悬浮迷你条。
 //   生命周期：不入编队/项目锁/窗口恢复；最后一个 qd 窗口关闭随实例退；Ctrl+R 重载后自动恢复（暂停态）。
 // ============================================================================
@@ -65,7 +66,7 @@
       '.qpc-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;z-index:6;touch-action:none;' +
       'background:linear-gradient(135deg,rgba(255,255,255,0) 46%,rgba(255,255,255,0.38) 50%,rgba(255,255,255,0) 54%),' +
       'linear-gradient(135deg,rgba(255,255,255,0) 62%,rgba(255,255,255,0.28) 66%,rgba(255,255,255,0) 70%)}' +
-      // ★ 收纳（2026-09-28 q319 v7）：整卡隐藏、播放不断（display:none 不中断解码）；控制/展开 = qqq 工作台 Player 槽
+      // ★ 收纳（2026-09-28 q319 v7 / 2026-10-01 改指）：整卡隐藏、播放不断（display:none 不中断解码）；控制/展开 = 状态栏播放器豆腐块（core/player-block.js）
       '#qqq-player-card.qpc-stow{display:none!important}';
     (document.head || document.documentElement).appendChild(st);
   }
@@ -85,7 +86,7 @@
     minB.className = 'qpc-hbtn qpc-min-btn';
     minB.tabIndex = -1;
     minB.setAttribute('data-no-cd', '');
-    minB.title = _i('shell.player.minimize', '收纳到 qqq 工作台');
+    minB.title = _i('shell.player.minimize', '收纳 · 状态栏 ♪ 遥控');
     minB.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="display:block;pointer-events:none"><path d="M6 19h12v2H6z"/></svg>';
     minB.addEventListener('click', function () { _setStow(true); });
     var popB = document.createElement('button');
@@ -132,7 +133,54 @@
 
   function _showEmpty(on) { try { emptyEl.style.display = on ? 'flex' : 'none'; } catch (_) { } }
 
-  // ── 拖拽（头部长条；跟随监听挂 document 捕获相位——指针移出头部/视口外 event 也不丢，pointerup 必达）──
+  // ── 拖拽/缩放防丢机器（2026-10-01 q319 用户实锤「拖丢/甩不掉」）──
+  //   机制：快速拖动时指针会越过同窗 iframe——裸 document 监听收不到其后的 move/up（卡冻结 = 拖丢；
+  //   松手无收尾 = 光标像一直按着卡 = 甩不掉）。三层修复：① 拖拽期全窗透明盾（z 顶格盖住一切 iframe——事件恒达主文档）
+  //   ② pointermove 见 buttons===0 即补收尾（释放事件丢在窗外的找回）③ 窗口失焦 / pointercancel / Esc 三路兜底。
+  //   盾内禁设 cursor（铁律：全项目禁改 cursor）。
+  var shieldEl = null;
+  function _shieldOn() {
+    if (shieldEl) { return; }
+    shieldEl = document.createElement('div');
+    shieldEl.id = 'qpc-drag-shield';
+    shieldEl.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:100000;background:transparent;' +
+      'touch-action:none;-webkit-user-select:none;user-select:none';
+    (document.body || document.documentElement).appendChild(shieldEl);
+  }
+  function _shieldOff() {
+    if (!shieldEl) { return; }
+    try { shieldEl.parentNode.removeChild(shieldEl); } catch (_) { }
+    shieldEl = null;
+  }
+  // 指针跟随公共件：onMove 处理移动；onEnd 收尾（几何落盘）；返回 stop()（幂等）
+  function _followPointer(onMove, onEnd) {
+    _shieldOn();
+    var done = false;
+    function stop() {
+      if (done) { return; }
+      done = true;
+      document.removeEventListener('pointermove', mv, true);
+      document.removeEventListener('pointerup', stop, true);
+      document.removeEventListener('pointercancel', stop, true);
+      window.removeEventListener('blur', stop, true);
+      document.removeEventListener('keydown', esc, true);
+      _shieldOff();
+      try { onEnd(); } catch (_) { }
+    }
+    function mv(e) {
+      if (e.buttons === 0) { stop(); return; }   // 释放丢在窗外/iframe 的补收尾（防拖拽态粘死）
+      try { onMove(e); } catch (_) { }
+    }
+    function esc(e) { if (e.key === 'Escape') { stop(); } }
+    document.addEventListener('pointermove', mv, true);
+    document.addEventListener('pointerup', stop, true);
+    document.addEventListener('pointercancel', stop, true);
+    window.addEventListener('blur', stop, true);
+    document.addEventListener('keydown', esc, true);
+    return stop;
+  }
+
+  // ── 拖拽（头部长条）──
   function _hookDrag() {
     var drag = null;
     function _mv(e) {
@@ -144,55 +192,41 @@
       cardEl.style.left = x + 'px';
       cardEl.style.top = y + 'px';
     }
-    function _up() {
+    function _end() {
       if (!drag) { return; }
       drag = null;
-      document.removeEventListener('pointermove', _mv, true);
-      document.removeEventListener('pointerup', _up, true);
-      document.removeEventListener('pointercancel', _up, true);
       _saveGeom();
     }
-    function _bind(el) {
-      if (!el) { return; }
-      el.addEventListener('pointerdown', function (e) {
-        if (e.button !== 0) { return; }
-        if (e.target && e.target.closest && e.target.closest('.qpc-hbtn')) { return; }
-        var r = cardEl.getBoundingClientRect();
-        drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY };
-        document.addEventListener('pointermove', _mv, true);
-        document.addEventListener('pointerup', _up, true);
-        document.addEventListener('pointercancel', _up, true);
-        e.preventDefault();
-      });
-    }
-    _bind(headEl);
+    headEl.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) { return; }
+      if (e.target && e.target.closest && e.target.closest('.qpc-hbtn')) { return; }
+      var r = cardEl.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      _followPointer(_mv, _end);
+      e.preventDefault();
+    });
   }
 
-  // ── 右下角缩放（跟随监听挂 document 捕获相位——手柄仅 16px，光标必然逸出，靠捕获必达）──
+  // ── 右下角缩放（手柄仅 16px，光标必然逸出——同走拖拽盾公共件）──
   function _hookResize() {
     var rs = null;
     function _mv(e) {
       if (!rs) { return; }
-      var w = Math.max(320, Math.min(rs.w0 + (e.clientX - rs.x0), window.innerWidth - 24));
+      var w = Math.max(_minW(), Math.min(rs.w0 + (e.clientX - rs.x0), window.innerWidth - 24));
       var h = Math.max(120, Math.min(rs.h0 + (e.clientY - rs.y0), window.innerHeight - 24));
       cardEl.style.width = w + 'px';
       cardEl.style.height = h + 'px';
     }
-    function _up() {
+    function _end() {
       if (!rs) { return; }
       rs = null;
-      document.removeEventListener('pointermove', _mv, true);
-      document.removeEventListener('pointerup', _up, true);
-      document.removeEventListener('pointercancel', _up, true);
       _saveGeom();
     }
     resizeEl.addEventListener('pointerdown', function (e) {
       if (e.button !== 0) { return; }
       var r = cardEl.getBoundingClientRect();
       rs = { x0: e.clientX, y0: e.clientY, w0: r.width, h0: r.height };
-      document.addEventListener('pointermove', _mv, true);
-      document.addEventListener('pointerup', _up, true);
-      document.addEventListener('pointercancel', _up, true);
+      _followPointer(_mv, _end);
       e.preventDefault();
       e.stopPropagation();
     });
@@ -200,6 +234,11 @@
 
   // ── 几何（按媒体类型各一套；缺值取默认——右下角起浮）──
   function _geomKey() { return curKind === 'audio' ? 'audio' : 'video'; }
+  // ★ 最小宽地板（2026-10-01 q319）：dock 在屏时「行禁换行」需要主列 + dock 同厅——地板抬到 500（否则专属控制行被挤成溢出）
+  function _dockShown() {
+    try { var dk = cardEl && cardEl.querySelector('.ovmb-dock'); return !!(dk && dk.offsetWidth > 0); } catch (_) { return false; }
+  }
+  function _minW() { return _dockShown() ? 500 : 320; }
   function _applyGeom() {
     try {
       var key = _geomKey();
@@ -207,9 +246,9 @@
       var d = DEF_GEO[key];
       var w = (g && g.w) ? g.w : d.w;
       var h = (g && g.h) ? g.h : d.h;
-      w = Math.max(320, Math.min(w, Math.max(320, window.innerWidth - 24)));
+      w = Math.max(_minW(), Math.min(w, Math.max(_minW(), window.innerWidth - 24)));
       h = Math.max(120, Math.min(h, Math.max(120, window.innerHeight - 24)));
-      if (key === 'audio') { h = Math.max(h, 286); }   // ★ 专属播放控制行（2026-09-30）：内容变高——存量小几何自愈（旧默认 210 实测已裁 13px，行加入后实测需 ≥286）
+      if (key === 'audio') { h = Math.max(h, 330); }   // ★ 专属播放控制行 v7（2026-10-01）：按钮加高 + 携带 dock 时控制行双行——存量几何自愈（探针实测：286 时底部裁 21px，330 零裁切）
       var x = (g && typeof g.x === 'number') ? g.x : Math.max(16, window.innerWidth - w - 24);
       var y = (g && typeof g.y === 'number') ? g.y : Math.max(16, window.innerHeight - h - 84);
       x = Math.max(-(w - 80), Math.min(x, window.innerWidth - 80));
@@ -227,7 +266,7 @@
     } catch (_) { }
     _saveCardSoon();
   }
-  // ── 收纳 / 展开（唯一入口；收纳仅隐 UI——不碰引擎，播放不断；控制/展开入口 = qqq 工作台 Player 槽）──
+  // ── 收纳 / 展开（唯一入口；收纳仅隐 UI——不碰引擎，播放不断；控制/展开入口 = 状态栏播放器豆腐块）──
   function _setStow(on) {
     if (!cardEl) { return; }
     on = !!on;
@@ -241,21 +280,13 @@
     card.stow = on;
     try { cardEl.classList.toggle('qpc-stow', on); } catch (_) { }
     if (!on) { _applyGeom(); }
-    if (on) { _toast(_i('shell.player.stowed', '已收纳到 qqq 工作台'), { type: 'info', duration: 2600 }); }
+    if (on) { _toast(_i('shell.player.stowed', '已收纳 · 状态栏 ♪ 遥控'), { type: 'info', duration: 2600 }); }
     _saveCardNow();
     _emit();
   }
-  // ── 状态广播（收纳/展开/播放态/会话变化 → 工作台 Player 槽与 qqq 按钮 ♪ 徽标实时刷新）──
+  // ── 状态广播（收纳/展开/播放态/会话变化 → 状态栏播放器豆腐块实时刷新；core/player-block.js 监听）──
   function _emit() {
     try { window.dispatchEvent(new CustomEvent('qqq-player-state')); } catch (_) { }
-    _updateBadge();
-  }
-  function _updateBadge() {
-    try {
-      var stowed = !!(card.open && card.stow);
-      window.__qqqPlayerStowed = stowed;
-      if (window.qqqToolsMenu && window.qqqToolsMenu.setPlayerBadge) { window.qqqToolsMenu.setPlayerBadge(stowed); }
-    } catch (_) { }
   }
 
   // ── 持久化（OS 级 player-state.json：card 段 + 会话段——与独立窗互通）──
@@ -361,6 +392,7 @@
         dockSide: card.dockSide
       }
     }) : null;
+    try { _applyGeom(); } catch (_) { }   // ★ 2026-10-01：引擎挂载后（dock 可能已现）再钳一次——最小宽地板随 dock 变化
     _saveSession();
     _emit();
   }
@@ -374,6 +406,7 @@
       var h = (handoff && handoff.list && handoff.list.length) ? handoff : null;
       cardEl.classList.add('qpc-open');
       card.open = true;
+      if (h && h.stow) { card.stow = true; }   // ★ 独立窗 [—] 收进状态栏（2026-10-01）：交接即收纳态（静默——不弹收纳 toast）
       if (h && (h.dockSide === 'left' || h.dockSide === 'right')) { card.dockSide = h.dockSide; }
       var list = h ? h.list : ((st && Array.isArray(st.list)) ? st.list : []);
       var index = h ? (h.index || 0) : ((st && st.index) || 0);
@@ -429,8 +462,10 @@
   }
 
   function isOpen() { try { return !!(cardEl && cardEl.classList.contains('qpc-open')); } catch (_) { return false; } }
+  // ★ 键盘独占判定（2026-10-01 q319）：卡展开在屏（未收纳）——shell.js __qqqPlayerKeysBusy 消费（X 归倍速，kmd 呈递让路）
+  function isActive() { try { return !!(cardEl && cardEl.classList.contains('qpc-open') && !cardEl.classList.contains('qpc-stow')); } catch (_) { return false; } }
 
-  // ── 状态快照（qqq 工作台 Player 槽消费：open/stow/轨名/计数/播放态）──
+  // ── 状态快照（状态栏播放器豆腐块消费：open/stow/轨名/计数/播放态）──
   function _info() {
     var st = null;
     try { st = eng ? eng.getState() : null; } catch (_) { st = null; }
@@ -448,7 +483,7 @@
       paused: st ? !!st.paused : true
     };
   }
-  // ── 播控（qqq 工作台 Player 槽唯一入口：播放开关 / 切轨）──
+  // ── 播控（状态栏播放器豆腐块唯一入口：播放开关 / 切轨）──
   function _cmd(a) {
     try {
       if (!eng) { return; }
@@ -507,6 +542,7 @@
   function _hookKeys() {
     document.addEventListener('keydown', function (e) {
       if (!eng || !cardEl || !cardEl.classList.contains('qpc-open')) { return; }
+      if (cardEl.classList.contains('qpc-stow')) { return; }   // ★ 收纳态 = 无键盘面（2026-10-01 q319）
       if (_overlayVisible()) { return; }
       if (e.key === 'Escape') { try { if (eng.esc()) { e.stopPropagation(); } } catch (_) { } return; }
       try { eng.keys(e); } catch (_) { }
@@ -548,13 +584,24 @@
     openFromHandoff: openFromHandoff,
     close: close,
     isOpen: isOpen,
+    isActive: isActive,
     appendPaths: appendPaths,
     stow: _setStow,
     cmd: _cmd,
     getInfo: _info
   };
 
+  // ── 独立播放器窗 [—]「收进状态栏」交接（2026-10-01 q319）：整机状态 → 本卡 + 收纳态（播放不断；状态栏 ♪ 遥控）──
+  function _hookCardHandoff() {
+    try {
+      if (bridge && bridge.player && bridge.player.onCardHandoff) {
+        bridge.player.onCardHandoff(function (h) { try { openFromHandoff(h); } catch (_) { } });
+      }
+    } catch (_) { }
+  }
+
   _hookKeys();
   _hookClaim();
+  _hookCardHandoff();
   try { setTimeout(_bootRestore, 900); } catch (_) { }
 })();

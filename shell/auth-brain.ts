@@ -102,6 +102,9 @@ class AuthBrain {
     private listeners: Set<AuthListener> = new Set();
     private balanceTimer: ReturnType<typeof setInterval> | null = null;
     private lvTimer: ReturnType<typeof setInterval> | null = null;
+    private _balanceRefetchTimer: ReturnType<typeof setTimeout> | null = null;
+    private _lastBalanceFetchAt = 0;
+    private _lastLvFetchAt = 0;
     private authFile: string;
     private _sessionId: string | null = null;
     private _sessionPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -207,7 +210,10 @@ class AuthBrain {
             this.lvData.progress_pct = (wge % WL) / WL * 100;
         }
         this._broadcast('billing');
-        await this._fetchLv();
+        // ★ 2026-10-01：billing 后合并式补拉余额（服务端真值）→ 广播全窗口——
+        //   替代渲染层「整数余额 − 小数费用」本地扣减（曾致 373/374 反复横跳）；钱花掉 ≤2s 全窗口同步
+        this._scheduleBalanceRefetch();
+        this._fetchLvThrottled();
     }
 
     // ═══ 登录 — 外部浏览器 + OS 协议回调 + 轮询兜底 ═══
@@ -337,6 +343,7 @@ class AuthBrain {
 
     private async _fetchBalance(): Promise<void> {
         if (!this.authData?.token) return;
+        this._lastBalanceFetchAt = Date.now();
         try {
             const resp = await _apiGetJson(API_BASE + '/wallet/balance', {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
@@ -355,6 +362,7 @@ class AuthBrain {
 
     private async _fetchLv(): Promise<void> {
         if (!this.authData?.token) return;
+        this._lastLvFetchAt = Date.now();
         try {
             const resp = await _apiGetJson(API_BASE + '/qqq/lv', {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
@@ -384,6 +392,23 @@ class AuthBrain {
                 await this.clearAuth();
             }
         } catch { /* ignore */ }
+    }
+
+    // ★ 2026-10-01 请求治理：billing 触发的补拉必须合并 + 限频
+    //   （高频计费 × 多窗口曾把 balance/lv 拉成全站 Top1/Top2 流量——渲染层已停自拉，此处兜住主进程侧）
+    private _scheduleBalanceRefetch(): void {
+        if (this._balanceRefetchTimer) return;
+        const since = Date.now() - this._lastBalanceFetchAt;
+        const delay = since < 20_000 ? (20_000 - since) : 1_500;
+        this._balanceRefetchTimer = setTimeout(() => {
+            this._balanceRefetchTimer = null;
+            this._fetchBalance();
+        }, delay);
+    }
+
+    private _fetchLvThrottled(): void {
+        if (Date.now() - this._lastLvFetchAt < 60_000) return;
+        this._fetchLv();
     }
 
 }

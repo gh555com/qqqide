@@ -156,6 +156,7 @@
             "mplDel": "Eliminar de la lista de reproducción",
             "mpopout": "Abrir reproductor independiente",
             "mpopin": "Abrir reproductor dentro de la ventana",
+            "mstow": "Minimizar a la barra de estado",
             "mdockside": "Cambiar posición de la lista (izquierda / derecha)"
         },
         "player": {
@@ -167,9 +168,11 @@
             "empty": "La lista de reproducción está vacía: selecciona medios en Roam, haz clic derecho y elige «Añadir a la lista de reproducción», o expándela desde la capa flotante ↗",
             "returnOv": "Volver a la capa flotante",
             "returnFail": "No se encontró la ventana principal, no se puede volver a la capa flotante",
-            "minimize": "Minimizar al área de trabajo de qqq",
+            "stowFail": "No se encontró la ventana principal, no se puede minimizar a la barra de estado",
+            "minimize": "Minimizar · Barra de estado ♪ Control remoto",
             "restore": "Expandir reproductor",
-            "stowed": "Minimizado al área de trabajo de qqq"
+            "stowed": "Minimizado · Barra de estado ♪ Control remoto",
+            "blockEmpty": "No hay sesiones de reproducción"
         },
         "about": {
             "title": "Acerca de qqq",
@@ -339,9 +342,8 @@
     },
     "editor": {
         "copyPath": "Copiar ruta",
-        "roamLocate": "Localizar este archivo en Roam",
-        "timelineOpen": "Ver este archivo en la línea de tiempo",
         "timelineNoRoot": "No se puede determinar el directorio raíz del proyecto para este archivo; la línea de tiempo no está disponible",
+        "timelineOpenFail": "Error al abrir la ventana de línea de tiempo. Inténtalo de nuevo más tarde.",
         "minimap": "Minimapa",
         "tabs": {
             "close": "Cerrar pestaña",
@@ -741,7 +743,12 @@
         },
         "gwWait": {
             "title": "⏳ Sin respuesta del upstream {0}",
-            "subtitle": "{0} Nivel {1} · {2}",
+            "rowLabel": "{0} Piso {1}",
+            "barMulti": "⏳ {0} pisos esperando respuesta del nivel superior · Máximo {1}",
+            "stop": "■ Detener",
+            "expand": "Mostrar detalles",
+            "collapse": "Ocultar",
+            "muteTip": "No volver a mostrar esta alerta (se notificará cuando aparezcan nuevos pisos en espera)",
             "serverAck": "Esperando confirmación del servidor",
             "firstToken": "Esperando la salida del primer carácter",
             "hangCount": "(Intento número {0})",
@@ -1691,10 +1698,6 @@
         "exportHingeTip": "Sólido = grupo de edición que se exportará (el último que viste); hueco = otro grupo. Haz clic en el cuadrado para cambiar el destino de exportación; al pasar el cursor sobre la tarjeta de exportación, el área de edición de destino se resaltará con un marco discontinuo de color lila claro.",
         "exportWillExport": "Próximo a exportar: {0}",
         "cloudSyncTip": "Sincronización en la nube: ↑ Subir = fusionar primero con la nube y luego subir (sin pérdida de datos en ninguno de los dos lados); ↓ Descargar = fusionar los datos de la nube en el dispositivo local. Incluye configuración de roam, preferencias de cada carpeta e historial del portapapeles.",
-        "playerTip": "Reproductor: escucha música o ve vídeos mientras codificas (la lista de reproducción se recuerda entre reinicios); en Roam, haz clic derecho en un medio seleccionado y elige «Añadir a la lista de reproducción», o expándelo desde la capa flotante. Minimizar = guardar en esta ranura para control remoto.",
-        "playerWinTip": "Ventana de reproductor flotante independiente: ventana siempre visible, accesible incluso al cambiar a otras aplicaciones (↗)",
-        "playerCardTip": "Reproductor en ventana: tarjeta de reproductor flotante dentro de la ventana de qqqide — sigue a esta ventana (⧈)",
-        "playerNeedRestart": "El reproductor flotante requiere reiniciar la instancia para estar disponible",
         "videoUrlTip": "Pendiente de pegar: Introduce la URL del vídeo para descargarlo automáticamente en la carpeta del documento e insertarlo en un marco.",
         "pasteTip": "Pendiente de pegar: Pega el contenido del portapapeles en el documento con un solo clic (actualmente puedes lograr lo mismo con Ctrl+V).",
         "pureTip": "Pendiente: escanea las referencias del documento para limpiar archivos huérfanos que ya no están siendo utilizados.",

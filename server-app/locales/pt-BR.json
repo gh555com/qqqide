@@ -156,6 +156,7 @@
             "mplDel": "Remover da lista de reprodução",
             "mpopout": "Abrir player independente",
             "mpopin": "Abrir player dentro da janela",
+            "mstow": "Minimizar para a barra de status",
             "mdockside": "Alternar posição da lista (Esquerda / Direita)"
         },
         "player": {
@@ -167,9 +168,11 @@
             "empty": "Lista de reprodução vazia — selecione mídia no Roam, clique com o botão direito e escolha \"Adicionar à lista de reprodução\", ou abra a partir da camada flutuante ↗",
             "returnOv": "Retornar à camada flutuante",
             "returnFail": "Janela principal não encontrada, impossível retornar à camada flutuante",
+            "stowFail": "Janela principal não encontrada, impossível minimizar para a barra de status",
             "minimize": "Minimizar para a área de trabalho do qqq",
             "restore": "Expandir o player",
-            "stowed": "Minimizado para a área de trabalho do qqq"
+            "stowed": "Minimizado para a área de trabalho do qqq",
+            "blockEmpty": "Nenhuma sessão de reprodução no momento"
         },
         "about": {
             "title": "Sobre o qqq",
@@ -339,9 +342,8 @@
     },
     "editor": {
         "copyPath": "Copiar caminho",
-        "roamLocate": "Localizar este arquivo no Roam",
-        "timelineOpen": "Visualizar este arquivo na linha do tempo",
         "timelineNoRoot": "Não foi possível determinar o diretório raiz do projeto para este arquivo. A linha do tempo não está disponível.",
+        "timelineOpenFail": "Falha ao abrir a janela da linha do tempo. Tente novamente mais tarde.",
         "minimap": "Minimapa",
         "tabs": {
             "close": "Fechar aba",
@@ -741,7 +743,12 @@
         },
         "gwWait": {
             "title": "⏳ Sem resposta da origem {0}",
-            "subtitle": "{0} Camada {1} · {2}",
+            "rowLabel": "{0} Camada {1}",
+            "barMulti": "⏳ {0} andares aguardando resposta upstream · Máximo {1}",
+            "stop": "■ Parar",
+            "expand": "Expandir detalhes",
+            "collapse": "Recolher",
+            "muteTip": "Não alertar novamente nesta sessão (novos andares em espera serão alertados)",
             "serverAck": "Aguardando confirmação do servidor",
             "firstToken": "Aguardando o primeiro caractere",
             "hangCount": "(tentativa {0})",
@@ -1691,10 +1698,6 @@
         "exportHingeTip": "Sólido = grupo de edição prestes a ser exportado (o último que você visualizou); Vazio = outro grupo. Clique no quadrado para alternar o destino da exportação; ao passar o mouse sobre o cartão de exportação, a área de edição de destino será destacada com uma borda tracejada roxa clara.",
         "exportWillExport": "Prestes a exportar: {0}",
         "cloudSyncTip": "Sincronização em nuvem: ↑ Enviar = mesclar com a nuvem antes de enviar (nenhum dado é perdido em nenhum lado); ↓ Baixar = mesclar dados da nuvem com os locais. Inclui configurações do editor, preferências de cada pasta e histórico da área de transferência.",
-        "playerTip": "Player: ouça músicas/assista vídeos enquanto codifica (a lista de reprodução persiste entre reinicializações); no Roam, selecione mídia, clique com o botão direito e escolha \"Adicionar à lista de reprodução\", ou abra a partir da camada flutuante.",
-        "playerWinTip": "Janela flutuante independente do player: janela sempre visível — permanece visível mesmo ao alternar para outros aplicativos (↗)",
-        "playerCardTip": "Player na janela: Cartão do player flutuante dentro da janela qqqide — segue esta janela (⧈)",
-        "playerNeedRestart": "O player flutuante precisa ser reiniciado para ficar disponível",
         "videoUrlTip": "Pendente: insira a URL do vídeo, ele será baixado automaticamente para o diretório do documento e inserido em um quadro.",
         "pasteTip": "Colar pendente: Cole o conteúdo da área de transferência no documento com um clique (atualmente, Ctrl+V realiza a mesma ação).",
         "pureTip": "Pendente: escanear referências do documento e limpar arquivos órfãos que não são mais referenciados.",

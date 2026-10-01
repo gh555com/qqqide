@@ -321,10 +321,16 @@ const QQQ = {    // ---- app info ----
             ipcRenderer.on('qqqide:lsp:diagnostics', handler);
             return () => ipcRenderer.removeListener('qqqide:lsp:diagnostics', handler);
         },
-    },
-
-    // ---- search (高性能项目搜索引擎) ----
-    search: {
+    },    // ---- search (高性能项目搜索引擎 v2: 流式 start/cancel + 兼容 query/replace) ----
+    search: {
+        // v2 流式：start 立即返回 {ok, reqId}，结果经 onStream 事件（batch/meta/done/phase）推送
+        start: (opts: { clientId: string; reqId: number; query: string; searchPath: string; isRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; includePattern?: string; excludePattern?: string; maxResults?: number; timeoutMs?: number; respectGitignore?: boolean; matchFilenames?: boolean; listFiles?: boolean }) => ipcRenderer.invoke('qqqide:search:start', opts),
+        cancel: (opts: { clientId: string }) => ipcRenderer.invoke('qqqide:search:cancel', opts),
+        onStream: (cb: (msg: any) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[search.onStream]', err); } };
+            ipcRenderer.on('qqqide:search:stream', handler);
+            return () => ipcRenderer.removeListener('qqqide:search:stream', handler);
+        },
         query: (opts: { query: string; searchPath: string; isRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; includePattern?: string; excludePattern?: string; contextLines?: number; maxResults?: number; timeoutMs?: number; respectGitignore?: boolean }) => ipcRenderer.invoke('qqqide:search:query', opts),
         replace: (opts: { replacements?: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }>; files?: string[]; find?: string; replace?: string; useRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; searchPath?: string; onProgress?: (data: { current: number; total: number; file: string; replaced: number; errors: string[] }) => void }) => {
             const { onProgress } = opts;
@@ -799,6 +805,8 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
         reveal: (p: string) => ipcRenderer.invoke('qqqide:player:reveal', p),
         close: () => ipcRenderer.invoke('qqqide:player:close'),
         returnOverlay: (s: any) => ipcRenderer.invoke('qqqide:player:returnOverlay', s),
+        // ★ 独立窗 [—]「收进状态栏」（2026-10-01 q319）：整机交接 → 主窗播放器卡收纳态 → 状态栏 ♪ 遥控
+        stowToCard: (s: any) => ipcRenderer.invoke('qqqide:player:stowToCard', s),
         onClaim: (cb: (from: string) => void) => {
             const handler = (_e: any, from: string) => { try { cb(from); } catch (err) { console.warn('[player.onClaim]', err); } };
             ipcRenderer.on('qqqide:player:claim', handler);
@@ -819,6 +827,12 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
             const handler = (_e: any, h: any) => { try { cb(h); } catch (err) { console.warn('[player.onReturn]', err); } };
             ipcRenderer.on('qqqide:player:return', handler);
             return () => ipcRenderer.removeListener('qqqide:player:return', handler);
+        },
+        // ★ v8：独立窗 [—]「收进状态栏」→ 主窗口播放器卡收纳态（core/player-card.js 消费）
+        onCardHandoff: (cb: (h: any) => void) => {
+            const handler = (_e: any, h: any) => { try { cb(h); } catch (err) { console.warn('[player.onCardHandoff]', err); } };
+            ipcRenderer.on('qqqide:player:cardHandoff', handler);
+            return () => ipcRenderer.removeListener('qqqide:player:cardHandoff', handler);
         },
     },
 

@@ -1602,6 +1602,54 @@ function find7z() {
   return null;
 }
 
+// ★ 2026-10-01: win zip 归档注释（解压引导）——GBK 编码（中文 Windows 解压软件按本地 ANSI
+//   读注释：WinRAR/好压/360 等显示正确；7-Zip 等现代工具亦可）。文本实时经 python 现场编码
+//   （打包环境必有 python；失败仅告警不阻断打包）。EOCD 原位改写——零重压、逐字节可回读验证。
+const ZIP_COMMENT_TEXT = '请解压到磁盘根目录（如 D:\\）——即得 D:\\program\\qd\\，双击 qqqide.exe 即可';
+
+function addZipComment(zipPath, text) {
+  let comment;
+  try {
+    const r = cp.spawnSync('python', ['-c',
+      'import sys,base64;sys.stdout.write(base64.b64encode(sys.stdin.buffer.read().decode("utf-8").encode("gbk")).decode())'],
+      { input: Buffer.from(text, 'utf8'), encoding: 'utf8' });
+    if (r.status !== 0 || !r.stdout) { throw new Error('gbk encode exit=' + r.status); }
+    comment = Buffer.from(String(r.stdout).trim(), 'base64');
+  } catch (e) {
+    console.warn('[pack] zip comment skipped (gbk encode failed):', e.message);
+    return false;
+  }
+  const fd = fs.openSync(zipPath, 'r+');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const tailLen = Math.min(size, 22 + 65535);
+    const tail = Buffer.alloc(tailLen);
+    fs.readSync(fd, tail, 0, tailLen, size - tailLen);
+    let eocd = -1;
+    for (let i = tail.length - 22; i >= 0; i--) {
+      if (tail.readUInt32LE(i) === 0x06054b50 && i + 22 + tail.readUInt16LE(i + 20) === tail.length) {
+        eocd = i; break;
+      }
+    }
+    if (eocd < 0) { throw new Error('EOCD not found'); }
+    // ★ tail 索引 → 文件偏移（tail 只是尾部窗口；大文件时二者不等——曾因此截断产物）
+    const eocdPos = size - tailLen + eocd;
+    fs.writeSync(fd, comment, 0, comment.length, eocdPos + 22);
+    fs.ftruncateSync(fd, eocdPos + 22 + comment.length);
+    const lb = Buffer.alloc(2); lb.writeUInt16LE(comment.length, 0);
+    fs.writeSync(fd, lb, 0, 2, eocdPos + 20);
+    const chk = Buffer.alloc(comment.length);
+    fs.readSync(fd, chk, 0, comment.length, eocdPos + 22);
+    const lbChk = Buffer.alloc(2); fs.readSync(fd, lbChk, 0, 2, eocdPos + 20);
+    if (!chk.equals(comment) || lbChk.readUInt16LE(0) !== comment.length
+        || fs.fstatSync(fd).size !== eocdPos + 22 + comment.length) {
+      throw new Error('verify failed (comment/size mismatch)');
+    }
+  } finally { fs.closeSync(fd); }
+  console.log('[pack] zip comment added:', comment.length, 'bytes (GBK) ->', path.basename(zipPath));
+  return true;
+}
+
 function compileLauncher() {
   if (!target.startsWith('win-')) return;
   const gccCandidates = [
@@ -1670,7 +1718,14 @@ function packDir(unpacked, flatOnly) {
   //   ELF / shebang → 0755; symlinks preserved as real tar symlink entries.
   if (cfg.tarExt === '.tar.gz') {
     console.log('[pack] compressing (tar.gz mode-aware)', path.basename(unpacked), '->', out);
-    run('python', [path.join(ROOT, 'shell-build', '_tar_worker.py'), unpacked, out]);
+    // ★ 2026-10-01 定案（用户拍板）: mac 分发契约 = 单文件夹容器——tar 内一切包进 qqqide/
+    //   一层（从 Archive Utility 到 Keka/终端 tar，任何解压器任何解压位置恒只出一个文件夹；
+    //   qqqide.app 与 qqqide-data 永不散落）。与 win 的 program/qd 同思路。
+    //   消费侧三同步点: mac-updater.ts extractStaging 剥壳 / gaea/cf/up/mac_units.py 剥离前缀 /
+    //   _verify_mac.py 容器断言。linux 目标未分发，维持扁平（不动）。
+    const twArgs = [path.join(ROOT, 'shell-build', '_tar_worker.py'), unpacked, out];
+    if (baseTarget.startsWith('mac-')) { twArgs.push('qqqide'); }
+    run('python', twArgs);
     return;
   }
 
@@ -1704,6 +1759,7 @@ print('[pack] python zip done:', out)
       try { run('python', [scriptPath]); }
       finally { try { fs.rmSync(scriptPath); } catch (_) { } }
     }
+    if (cfg.tarExt === '.zip' && isWin) { addZipComment(out, ZIP_COMMENT_TEXT); }
     fs.rmSync(stageDirFlat, { recursive: true, force: true });
     return;
   }
@@ -1758,13 +1814,15 @@ print('[pack] python zip done:', out)
   }
 
   fs.rmSync(stageDir, { recursive: true, force: true });
+  if (cfg.tarExt === '.zip') { addZipComment(out, ZIP_COMMENT_TEXT); }
   const finalMb = Math.round(fs.statSync(out).size / 1024 / 1024);
   console.log('[pack] two-layer done:', finalMb, 'MB ->', out);
 }
 
-// 4b) SFX self-extracting exe — single-file distribution
-// 4b) SFX — 2-file zip (qqqide.exe + r) renamed to .exe
-//     r = 7zCon.sfx + payload.7z, C launcher runs "r -y" for silent extract
+// 4b) SFX 自解压单 exe（单文件分发）
+//     = 7zCon.sfx + payload.7z（内含 program/qd/{qqqide.exe, r}）
+//     双击 → 就地解压出 program/qd/ → 双击其中的 qqqide.exe 启动
+//     （★ 2026-10-01 修复：旧实现为 zip 改名 .exe——不可运行且无容器层）
 function packSfx(unpacked) {
   const distRoot = path.join(ROOT, 'dist-pack');
   const outName = `qqqide_${baseTarget.replace(/-/g, '_')}.exe`;  // ★ 2026-10-01 下划线命名
@@ -1801,18 +1859,27 @@ function packSfx(unpacked) {
   // ★ 单元增量产物（B 方案传输层）
   buildUnits(unpacked, rFile);
 
-  // stage: qqqide.exe + r → zip → rename to .exe
+  // stage: program/qd/{qqqide.exe, r}（★ 与 zip 同容器层）
   const stage = path.join(distRoot, '_sfx');
   if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true });
-  fs.mkdirSync(stage, { recursive: true });
+  const stageInner = path.join(stage, 'program', 'qd');
+  fs.mkdirSync(stageInner, { recursive: true });
   const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
-  if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stage, 'qqqide.exe'));
-  fs.copyFileSync(rFile, path.join(stage, 'r'));
+  if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stageInner, 'qqqide.exe'));
+  fs.copyFileSync(rFile, path.join(stageInner, 'r'));
 
-  console.log('[pack]   deflate zip → .exe');
-  const rz = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', '-mfb=258', '-mpass=15', out, '.'],
-    { stdio: 'inherit', cwd: stage });
-  if (rz.status !== 0) throw new Error('7z zip failed');
+  // payload.7z（含 program/ 路径）→ 7zCon.sfx + payload = 真自解压 exe
+  const p7zb = path.join(distRoot, '_sfx_p.7z');
+  if (fs.existsSync(p7zb)) fs.rmSync(p7zb);
+  console.log('[pack]   sfx payload LZMA2 (program/qd/ 容器)...');
+  {
+    const r7 = cp.spawnSync(sz7, ['a', '-t7z', '-mx=9', '-md=128m', '-mmt=off', '-ms=on', p7zb, '.'],
+      { stdio: 'inherit', cwd: stage });
+    if (r7.status !== 0) throw new Error('7z sfx payload failed');
+  }
+  console.log('[pack]   assembling sfx (7zCon.sfx + payload)...');
+  cp.spawnSync('cmd', ['/c', 'copy', '/b', sfxCon, '+', p7zb, out], { stdio: 'inherit' });
+  fs.rmSync(p7zb);
   fs.rmSync(stage, { recursive: true, force: true });
   console.log('[pack] SFX done:', Math.round(fs.statSync(out).size / 1024 / 1024), 'MB ->', out);
 }

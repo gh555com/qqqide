@@ -156,6 +156,7 @@
             "mplDel": "Remove from Playlist",
             "mpopout": "Pop out independent player",
             "mpopin": "Open player in window",
+            "mstow": "Minimize to System Tray",
             "mdockside": "Toggle list position (Left / Right)"
         },
         "player": {
@@ -167,9 +168,11 @@
             "empty": "Playlist is empty — Select media in Roam and right-click \"Add to Playlist\", or pop out from the overlay ↗",
             "returnOv": "Return to Overlay",
             "returnFail": "Main window not found; cannot return to floating layer",
-            "minimize": "Minimize to qqq workbench",
+            "stowFail": "Main window not found, cannot minimize to system tray",
+            "minimize": "Minimize to System Tray ♪ Remote",
             "restore": "Expand player",
-            "stowed": "Minimized to qqq workbench"
+            "stowed": "Minimized to System Tray ♪ Remote",
+            "blockEmpty": "No active playback session"
         },
         "about": {
             "title": "About qqq",
@@ -339,9 +342,8 @@
     },
     "editor": {
         "copyPath": "Copy Path",
-        "roamLocate": "Locate this file in Roam",
-        "timelineOpen": "View this file in the timeline",
         "timelineNoRoot": "Unable to determine the project root directory for this file; timeline is unavailable",
+        "timelineOpenFail": "Failed to open the timeline window. Please try again later.",
         "minimap": "Minimap",
         "tabs": {
             "close": "Close Tab",
@@ -741,7 +743,12 @@
         },
         "gwWait": {
             "title": "⏳ Upstream unresponsive {0}",
-            "subtitle": "{0} Layer {1} · {2}",
+            "rowLabel": "{0} Floor {1}",
+            "barMulti": "⏳ {0} floors awaiting upstream response · up to {1}",
+            "stop": "■ Stop",
+            "expand": "Expand Details",
+            "collapse": "Collapse",
+            "muteTip": "Do not prompt again for this session (new waiting floors will still trigger a prompt)",
             "serverAck": "Awaiting server acknowledgment",
             "firstToken": "Waiting for first token output",
             "hangCount": "(Attempt {0})",
@@ -1691,10 +1698,6 @@
         "exportHingeTip": "Solid = the edit group to be exported (the last one you viewed); Hollow = another group. Click the square to switch the export target; when hovering over the export card, the target edit area will highlight with a light purple dashed border.",
         "exportWillExport": "About to export: {0}",
         "cloudSyncTip": "Cloud Sync: ↑ Upload = Merge with cloud before uploading (no data loss on either side); ↓ Download = Merge cloud data into local. Includes roam settings, folder preferences, and clipboard history.",
-        "playerTip": "Player: Listen to music or watch videos while coding (playlist persists across restarts). In Roam, right-click selected media and choose \"Add to Playlist,\" or pop it out from the overlay. Minimizing docks it to this slot for remote control.",
-        "playerWinTip": "Independent Floating Player Window: Always-on-top mini-window—visible even when switching to other apps (↗)",
-        "playerCardTip": "In-Window Player: A player card floating within the qqqide window—follows this window (⧈)",
-        "playerNeedRestart": "Floating player requires instance restart to become available",
         "videoUrlTip": "Pending Video: Enter a video URL to automatically download it to the document directory and insert it into a frame.",
         "pasteTip": "Pending Paste: One-click paste from clipboard to document (Ctrl+V achieves the same result).",
         "pureTip": "Pending: Scan document references to clean up orphaned files that are no longer referenced.",

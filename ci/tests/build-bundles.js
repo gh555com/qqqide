@@ -14,6 +14,7 @@ const STUB = path.join(__dirname, 'stubs', 'electron.js');
 const ENTRIES = [
   { name: 'file-encoding', src: path.join(ROOT, 'shell', 'file-encoding.ts') },
   { name: 'squad-manager', src: path.join(ROOT, 'shell', 'squad-manager.ts') },
+  { name: 'search-proto', src: path.join(ROOT, 'shell', 'search-proto.ts') },
 ];
 
 async function buildAll() {

@@ -7,7 +7,9 @@
 # shebang) and writes 0755 for executables, 0644 for plain files, 0755 for
 # dirs. Symlinks are preserved as real tar symlink entries (relative targets).
 #
-# usage: python shell-build/_tar_worker.py <src_dir> <out.tar.gz>
+# usage: python shell-build/_tar_worker.py <src_dir> <out.tar.gz> [container_dir]
+#   container_dir 可选: 所有顶层条目包进 <container_dir>/ 一层（mac 分发契约 =
+#   单文件夹容器 qqqide/——任何解压器任何解压位置恒只出一个文件夹；详 pack.js）
 # ============================================================================
 import os
 import sys
@@ -72,15 +74,24 @@ def _add(tf, full, arc):
 
 def main():
     if len(sys.argv) < 3:
-        print('usage: _tar_worker.py <src_dir> <out.tar.gz>')
+        print('usage: _tar_worker.py <src_dir> <out.tar.gz> [container_dir]')
         sys.exit(2)
     src, out = sys.argv[1], sys.argv[2]
+    container = sys.argv[3].strip('/') if len(sys.argv) > 3 and sys.argv[3].strip() else None
     if os.path.exists(out):
         os.remove(out)
     with tarfile.open(out, 'w:gz', format=tarfile.PAX_FORMAT) as tf:
+        if container:
+            # 容器目录条目（children 自动成 <container>/... ；相对 symlink 目标不受影响）
+            ti = tarfile.TarInfo(container + '/')
+            ti.type = tarfile.DIRTYPE
+            ti.mode = 0o755
+            ti.mtime = int(os.path.getmtime(src))
+            tf.addfile(ti)
         for name in sorted(os.listdir(src)):
-            _add(tf, os.path.join(src, name), name)
-    print('[tar-worker] %s -> %d bytes' % (out, os.path.getsize(out)))
+            _add(tf, os.path.join(src, name), (container + '/' + name) if container else name)
+    print('[tar-worker] %s -> %d bytes%s' % (out, os.path.getsize(out),
+          (' [container: %s/]' % container) if container else ''))
 
 
 main()

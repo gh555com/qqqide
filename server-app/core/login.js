@@ -30,6 +30,8 @@
   var _$lvLevel = null;
   var _balanceGe = null;
   var _balanceLastFetch = 0;
+  var _lastBalanceSnapTs = 0;   // ★ 2026-10-01：中心大脑最近一次送达新鲜余额的时间（150s 内 → 渲染层免自拉）
+  var _lastLvSnapTs = 0;        // ★ 2026-10-01：同上（LV）——多窗口共用主进程单次拉取，防每窗口重复打服务器
   var _phoneDropdownCloser = null; // ★ 手机号下拉的全局 closer，用于 toggle 时清理
   var _balanceTimer = null;
   var _lvData = null;
@@ -245,10 +247,37 @@
     if (_lvPollTimer) { clearInterval(_lvPollTimer); _lvPollTimer = null; }
   }
 
+  // ★ 2026-10-01 请求治理辅助（billing 高频路径的合并/节流）
+  var _balanceRefreshTimer = null;
+  function _scheduleBalanceRefresh() {          // 旧壳层/大脑断供兜底：billing 后自拉余额（合并 2s 防连发）
+    if (_balanceRefreshTimer) return;
+    _balanceRefreshTimer = setTimeout(function () {
+      _balanceRefreshTimer = null;
+      _fetchBalance(true);
+    }, 2000);
+  }
+  var _lvTickLastTs = 0;
+  function _fetchLvTick() {                     // billing → LV 拉取 ≥60s 节流
+    var now = Date.now();
+    if (now - _lvTickLastTs < 60000) return;
+    _lvTickLastTs = now;
+    _fetchLv();
+  }
+  var _fbTickLastTs = 0;
+  function _fetchFreeBudgetTick() {             // billing → 免费预算拉取 ≥60s 节流
+    var now = Date.now();
+    if (now - _fbTickLastTs < 60000) return;
+    _fbTickLastTs = now;
+    if (typeof fetchFreeBudget === 'function') fetchFreeBudget();
+  }
+
   async function _fetchBalance(force) {
     if (!_authData || !_authData.token) return;
     var now = Date.now();
     if (!force && now - _balanceLastFetch < BALANCE_POLL_MS) return;
+    // ★ 2026-10-01 请求治理：中心大脑 150s 内送过新鲜余额 → 渲染层免自拉
+    //   （多窗口共用主进程单次拉取；大脑断供/旧壳层 → 心跳过期自动回落本层自拉）
+    if (now - _lastBalanceSnapTs < 150000) { _balanceLastFetch = now; return; }
     _balanceLastFetch = now;
     try {
       var resp = await _apiFetch('/wallet/balance', {
@@ -286,10 +315,13 @@
         var isFree = !!e.data.freeWindow;
         if (costWge > 0) {
           _lvLastBillingTs = Date.now();
-          var costGe = costWge / 10000;
-          if (_balanceGe !== null && _balanceGe !== undefined && costGe > 0) {
-            _balanceGe = Math.max(0, _balanceGe - costGe);
-            _updateGeLabel();
+          // ★ 2026-10-01 修复「ge 余额 373/374 反复横跳」：禁止渲染层「整数余额 − 小数费用」本地扣减——
+          //   服务端余额 = 取整整数，本地再扣 0.5+ ge 会比真值低 1 ge，而主进程广播又把整数拉回
+          //   → 两个写者互拍 = 数字在 373/374 之间反复闪。余额刷新统一走主进程 onBillingEvent
+          //   （拉服务器真值 → 广播全窗口同源）；旧壳层无中心大脑 / 大脑 150s 未送新鲜值 → 本层兜底。
+          if (!(window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.notifyBilling) ||
+              Date.now() - _lastBalanceSnapTs > 150000) {
+            _scheduleBalanceRefresh();
           }
           if (_lvAccWge !== null) {
             _lvPushWhite(_lvAccWge + costWge, true);   // ★ 白层权威推进（单调），褐层自动追赶  fromBilling=true
@@ -301,10 +333,10 @@
             window.qqqideBridge.auth.notifyBilling(costWge);
           }
         } catch (_) { }
-        // 本地拉取 LV（兼容旧版无中心大脑时）
-        _fetchLv();
+        // 本地拉取 LV（兼容旧版无中心大脑时；≥60s 节流——高频计费不再每笔打服务器）
+        _fetchLvTick();
         if (isFree) {
-          try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (_) { }
+          try { _fetchFreeBudgetTick(); } catch (_) { }
         }
       }
     });
@@ -312,6 +344,8 @@
 
   async function _fetchLv() {
     if (!_authData || !_authData.token) return;
+    // ★ 2026-10-01 请求治理：中心大脑 150s 内送过新鲜 LV → 渲染层免自拉（同上）
+    if (Date.now() - _lastLvSnapTs < 150000) return;
     try {
       var resp = await _apiFetch('/qqq/lv', {
         headers: { 'Authorization': 'Bearer ' + _authData.token }
@@ -1104,6 +1138,11 @@
     }
   }
 
+  // ★ 广播级联节流状态（2026-10-01）：auth 广播（余额/LV 每 60s 刷新推送）高频重入
+  //   _notifyStateChange → 原来每次都重启轮询器 + 强制拉余额/LV/免费预算，多窗口级联放大成服务端洪峰（事故根因）。
+  var _cascadeLastTs = 0;
+  var _cascadeWasLoggedIn = false;
+
   function _notifyStateChange() {
     var loggedIn = !!(_authData && _authData.token);
     var phoneTail = loggedIn && _authData.phone ? _authData.phone.slice(-4) : '';
@@ -1115,13 +1154,20 @@
       //   渲染层 fetch 与登录页同栈，双通道兜底，查询接口不扣费。
       // ★ 错峰调用：CF Free 套餐对瞬时并发请求敏感（≥3 并发触发 429），
       //   间隔 200ms 发送避免被当作请求爆发。
-      _startBalancePoll();
-      _startLvPoll();       // ★ LV 周期刷新（挂机陪伴折算可见）
-      setTimeout(function () { _fetchLv(); }, 200);
-      // 触发状态栏免费预算刷新
-      setTimeout(function () {
-        try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
-      }, 400);
+      // ★ 节流（2026-10-01）：仅登录态真切换或距上次 ≥120s 才执行级联（否则广播风暴会反复重启轮询+强制拉取）
+      var _cascNow = Date.now();
+      var _cascTransition = !_cascadeWasLoggedIn;
+      _cascadeWasLoggedIn = true;
+      if (_cascTransition || _cascNow - _cascadeLastTs > 120000) {
+        _cascadeLastTs = _cascNow;
+        _startBalancePoll();
+        _startLvPoll();       // ★ LV 周期刷新（挂机陪伴折算可见）
+        setTimeout(function () { _fetchLv(); }, 200);
+        // 触发状态栏免费预算刷新（≥60s 节流）
+        setTimeout(function () {
+          try { _fetchFreeBudgetTick(); } catch (e) { }
+        }, 400);
+      }
       try {
         if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
           window.qqqideBridge.cloud.setAuth({ phone: _authData.phone, token: _authData.token, device_name: _authData.device_name });
@@ -1133,6 +1179,8 @@
       _balanceGe = null;
       _lvData = null;
       _updateGeLabel();
+      _cascadeWasLoggedIn = false;
+      _cascadeLastTs = 0;
       // ★ 登出：隐藏 LV 区域
       if (_$lvBar) _$lvBar.style.display = 'none';
       _lvAccWge = null;
@@ -1418,8 +1466,10 @@
             }
             if (snap.balanceGe !== null && snap.balanceGe !== undefined) {
               _balanceGe = snap.balanceGe;
+              _lastBalanceSnapTs = Date.now();   // ★ 中心大脑新鲜度心跳（渲染层免自拉的依据）
             }
             if (snap.lvData) {
+              _lastLvSnapTs = Date.now();        // ★ 同上（LV）
               _lvData = snap.lvData;
               var WL = 10 * 10000;
               var servWge = (_lvData.level_floor || 0) * WL + ((_lvData.progress_pct || 0) / 100) * WL;

@@ -4,6 +4,7 @@
 // ipc-player.ts — 独立悬浮播放器窗（qd 播放器，2026-09-26 q319 v6）
 //   打开三路：悬浮层 ↗ 弹出 / Roam ➕「加入播放列表」/ 工作台 Player 行。
 //   退回一路（v6）：窗内 ↙「退回悬浮层」→ returnOverlay 整体交接回主窗悬浮层（主窗收 qqqide:player:return 后开层，本窗自关）。
+//   收进状态栏一路（v8，2026-10-01）：窗内 [—] → stowToCard 整体交接 → 主窗播放器卡收纳态（cardHandoff → openFromHandoff({stow:true})），本窗自关。
 //   状态 OS 级持久化 player-state.json（列表/当前轨/模式/倍速/音量/窗口几何/置顶）；
 //   出声独占：claim 广播（悬浮层 ↔ 播放器窗互相自动暂停——各自渲染层监听自理）；
 //   生命周期：不入编队（不 claimSquad）/ 不入项目锁 / 不入窗口恢复（无项目文件夹注册）；
@@ -322,6 +323,41 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
                 volume: st.volume, muted: st.muted, dockSide: st.dockSide,
             });
             // 交接已送达主窗 → 本窗稍后自关（声音由悬浮层接管）
+            setTimeout(() => { try { if (_playerWin && !_playerWin.isDestroyed()) { _playerWin.close(); } } catch { /* ignore */ } }, 80);
+            return { ok: true };
+        } catch { return { ok: false }; }
+    });
+
+    // ★ 独立窗 [—]「收进状态栏」（v8，2026-10-01 q319 用户定案）：整机交接 → 主窗口播放器卡（收纳态 stow:true）——
+    //   卡隐藏播放不断、状态栏 ♪ 豆腐块遥控/展开（core/player-card.js 收 qqqide:player:cardHandoff）；交接送达后本窗自关。
+    //   失败（无主窗/空列表）→ { ok:false }（渲染层 toast，本窗不动、声音不断）。
+    ipcMain.handle('qqqide:player:stowToCard', (_e, state: any) => {
+        try {
+            const st = _loadState();
+            if (state && typeof state === 'object') {
+                if (Array.isArray(state.list)) { st.list = state.list.slice(0, 2000); }
+                if (typeof state.index === 'number') { st.index = Math.max(0, state.index | 0); }
+                if (typeof state.rate === 'number') { st.rate = state.rate; }
+                if (state.loop === 'off' || state.loop === 'all' || state.loop === 'one') { st.loop = state.loop; }
+                if (typeof state.shuffle === 'boolean') { st.shuffle = state.shuffle; }
+                if (typeof state.volume === 'number') { st.volume = Math.max(0, Math.min(1, state.volume)); }
+                if (typeof state.muted === 'boolean') { st.muted = state.muted; }
+                if (state.dockSide === 'left' || state.dockSide === 'right') { st.dockSide = state.dockSide; }
+                _saveStateNow();
+            }
+            if (!Array.isArray(st.list) || !st.list.length) { return { ok: false, reason: 'empty' }; }
+            const mains = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w !== _playerWin);
+            const mw = mains.find((w) => (w.webContents.getURL() || '').indexOf('/qqqide/') !== -1);
+            if (!mw) { return { ok: false, reason: 'no-main' }; }
+            mw.webContents.send('qqqide:player:cardHandoff', {
+                list: st.list, index: st.index,
+                time: (state && typeof state.time === 'number' && isFinite(state.time)) ? Math.max(0, state.time) : 0,
+                paused: !!(state && state.paused),
+                rate: st.rate, loop: st.loop, shuffle: st.shuffle,
+                volume: st.volume, muted: st.muted, dockSide: st.dockSide,
+                stow: true,
+            });
+            // 交接已送达主窗 → 本窗稍后自关（声音由播放器卡接管）
             setTimeout(() => { try { if (_playerWin && !_playerWin.isDestroyed()) { _playerWin.close(); } } catch { /* ignore */ } }, 80);
             return { ok: true };
         } catch { return { ok: false }; }

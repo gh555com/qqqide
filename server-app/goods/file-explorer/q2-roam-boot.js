@@ -397,6 +397,10 @@
 			parts.push(key);
 			var accel = parts.join('+');
 
+			// ★ 播放器键盘独占配套（2026-10-01）：X 由 Roam 本地呈递机器独占（自带路径/文件名）——
+			//   禁转发父窗口（防双开 kmd + 父机器残臂）；F2/Tab 照常转发
+			if (accel === 'X') { return; }
+
 			// 转发给父窗口 key-hook dispatching（处理 Q/W/Space/1/2 等快捷键）
 			try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: scope }, '*'); } catch(_) {}
 

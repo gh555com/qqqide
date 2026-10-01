@@ -156,6 +156,7 @@
             "mplDel": "Xóa khỏi danh sách phát",
             "mpopout": "Mở trình phát độc lập",
             "mpopin": "Mở trình phát trong cửa sổ",
+            "mstow": "Thu nhỏ vào thanh trạng thái",
             "mdockside": "Chuyển vị trí danh sách (Trái / Phải)"
         },
         "player": {
@@ -167,9 +168,11 @@
             "empty": "Danh sách phát trống — Trong Roam, chọn phương tiện, nhấp chuột phải và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ.",
             "returnOv": "Quay lại lớp nổi",
             "returnFail": "Không tìm thấy cửa sổ chính, không thể quay lại lớp phủ",
+            "stowFail": "Không tìm thấy cửa sổ chính, không thể thu nhỏ vào thanh trạng thái",
             "minimize": "Thu gọn vào bàn làm việc qqq",
             "restore": "Mở rộng trình phát",
-            "stowed": "Đã thu gọn vào bàn làm việc qqq"
+            "stowed": "Đã thu gọn vào bàn làm việc qqq",
+            "blockEmpty": "Chưa có phiên phát"
         },
         "about": {
             "title": "Giới thiệu về qqq",
@@ -339,9 +342,8 @@
     },
     "editor": {
         "copyPath": "Sao chép đường dẫn",
-        "roamLocate": "Định vị tệp này trong Roam",
-        "timelineOpen": "Xem tệp này trong dòng thời gian",
         "timelineNoRoot": "Không thể xác định thư mục gốc của dự án cho tệp này, dòng thời gian không khả dụng",
+        "timelineOpenFail": "Không thể mở cửa sổ dòng thời gian, vui lòng thử lại sau",
         "minimap": "Bản đồ nhỏ",
         "tabs": {
             "close": "Đóng tab",
@@ -741,7 +743,12 @@
         },
         "gwWait": {
             "title": "⏳ Không phản hồi từ upstream {0}",
-            "subtitle": "{0} Tầng {1} · {2}",
+            "rowLabel": "{0} Tầng {1}",
+            "barMulti": "⏳ {0} tầng đang chờ phản hồi từ thượng nguồn · Tối đa {1}",
+            "stop": "■ Dừng",
+            "expand": "Xem chi tiết",
+            "collapse": "Thu gọn",
+            "muteTip": "Không nhắc lại trong lần này (sẽ nhắc lại khi có tầng chờ mới)",
             "serverAck": "Đang chờ xác nhận từ máy chủ",
             "firstToken": "Đang chờ ký tự đầu tiên xuất hiện",
             "hangCount": "(Lần thứ {0})",
@@ -1691,10 +1698,6 @@
         "exportHingeTip": "Đặc = Nhóm chỉnh sửa sẽ được xuất (nhóm bạn đang xem cuối cùng); Rỗng = Nhóm khác. Nhấp vào ô vuông để chuyển đổi mục tiêu xuất; khi di chuột qua thẻ xuất, vùng chỉnh sửa mục tiêu sẽ hiển thị khung nét đứt màu tím nhạt.",
         "exportWillExport": "Sắp xuất: {0}",
         "cloudSyncTip": "Đồng bộ đám mây: ↑ Tải lên = Hợp nhất với đám mây rồi tải lên (không mất dữ liệu ở cả hai bên); ↓ Tải xuống = Hợp nhất dữ liệu đám mây vào máy cục bộ. Bao gồm cấu hình trình soạn thảo, tùy chọn cho từng thư mục và lịch sử clipboard.",
-        "playerTip": "Trình phát: Nghe nhạc/xem video khi viết code (ghi nhớ danh sách phát sau khi khởi động lại); Trong Roam, nhấp chuột phải vào phương tiện đã chọn và chọn «Thêm vào danh sách phát», hoặc bật lên từ lớp phủ; Thu nhỏ = Thu gọn vào khe này để điều khiển từ xa.",
-        "playerWinTip": "Cửa sổ trình phát nổi độc lập: Cửa sổ nhỏ luôn hiển thị trên cùng — vẫn nhìn thấy được khi chuyển sang chương trình khác (↗)",
-        "playerCardTip": "Trình phát trong cửa sổ: Thẻ trình phát nổi trong cửa sổ qqqide – đi kèm với cửa sổ này (⧈)",
-        "playerNeedRestart": "Cần khởi động lại phiên bản để trình phát nổi hoạt động",
         "videoUrlTip": "Sắp ra mắt: Nhập URL video, tự động tải xuống thư mục tài liệu và chèn vào khung hình.",
         "pasteTip": "Chờ dán: Dán nội dung clipboard vào tài liệu chỉ với một cú nhấp chuột (hiện tại bạn cũng có thể dùng Ctrl+V để thực hiện thao tác tương tự).",
         "pureTip": "Sắp ra mắt: Quét các tham chiếu trong tài liệu, dọn dẹp các tệp mồ côi không còn được tham chiếu.",
