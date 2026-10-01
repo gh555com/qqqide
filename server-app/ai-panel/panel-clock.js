@@ -497,6 +497,7 @@ var _questDropLimit = 20;
 var _questSearchFocused = false;  // ★ 搜索框焦点追踪
 var _questDropPinned = false;     // ★ 点击钉住（2026-09-26）：单击豆腐块区（改名笔以左）= 打开且永不自动关闭，收起仅认显式手势
 var _q2PinSuppressUntil = 0;      // ★ 改名提交收尾窗（2026-09-28）：改名完成后同一次点击不重开/不翻转钉住（350ms）
+var _q2PenGhostClick = false;     // ★ 笔区点击隔离（2026-09-30）：笔在 mousedown 即隐藏 → 其 click 目标漂移到豆腐块祖先——本标记识别幽灵 click 并整击忽略（点笔 = 纯改名：不钉住/不重开/不弹提示）
 function closeQuestDrop() {
     clearTimeout(_questDropTimer);
     if (_questDrop) { _questDrop.remove(); _questDrop = null; }
@@ -528,7 +529,11 @@ document.documentElement.addEventListener('mouseenter', function () {
 });
 // ★ 最近一次 mousedown 落点（2026-09-28）：改名提交时判定「点在下拉内/外」——下拉内部点按不因改名收下拉
 var _q2LastMdown = { t: 0, target: null };
-document.addEventListener('mousedown', function (e) { _q2LastMdown = { t: Date.now(), target: e.target }; }, true);
+document.addEventListener('mousedown', function (e) {
+    _q2LastMdown = { t: Date.now(), target: e.target };
+    // ★ 笔区幽灵 click 守卫（2026-09-30）：非笔落点的 mousedown 一律作废未消费的标记——守卫精准绑定「笔 mousedown → 其幽灵 click」这一对，绝不悬挂吃掉后续点击
+    if (!(e.target && e.target.closest && e.target.closest('.quest-tofu-pen'))) _q2PenGhostClick = false;
+}, true);
 function _q2InRect(x, y, r, tol) {
     return !!(r && x >= r.left - tol && x <= r.right + tol && y >= r.top - tol && y <= r.bottom + tol);
 }
@@ -1032,6 +1037,8 @@ var _q2HintEl = null;
 var _q2HintTimer = null;
 function _q2ShowPinHint() {
     try {
+        // ★ 改名在途零提示（2026-09-30 用户定案）：点笔改名期间绝不弹「点我关闭」（双保险）
+        if (_q2EditActive()) return;
         var tofu = document.getElementById('quest-tofu');
         if (!tofu) return;
         var rT = tofu.getBoundingClientRect();
@@ -1084,13 +1091,17 @@ function _q2ShowPinHint() {
         //   收起只认显式手势：本区再点 / 选条目 / 点加号 / Esc。
         //   ★ 钉住态点区域外不收（2026-09-26 用户定案）——留白可截图/长时间浏览；
         //     悬停态点区域外立即收（见文件底部 mousedown 捕捉处理器）。
-        //   ★ 改名流程例外（2026-09-28）：笔区不参与钉住开关；笔触发的改名在途时钉住豁免失效——
+        //   ★ 改名流程例外（2026-09-28 / 2026-09-30）：笔区不参与钉住开关——点笔 = 纯改名零干扰
+        //     （幽灵 click 整击忽略：不钉住/不重开/不弹提示）；改名在途时钉住豁免失效——
         //     改名完成（回车/点区域外）立即收（唯一除外：mousedown 落点在下拉内部）。
         //   悬停已开时首击 = 钉住（绝不误关）；已钉住时再点 = 收起。
         //   ★ 钉住开启提示（2026-09-28）：钉住成功即在「笔以左」区域蒙「点我关闭」提示 1 秒（教关法）。
         bar.addEventListener('click', function (e) {
             var t = e.target;
             if (t && t.closest && (t.closest('.quest-tofu-pen') || t.closest('.quest-tofu-edit') || t.closest('.quest-drop'))) return;
+            // ★ 笔区点击隔离（2026-09-30 用户定案）：笔在 mousedown 即隐藏（进入编辑态）→ click 目标漂移到豆腐块祖先。
+            //   本标记 = 本次点击起自笔区 → 整击忽略：点笔 = 只改名，不钉住 / 不重开 / 不弹「点我关闭」提示（干干净净零干扰）。
+            if (_q2PenGhostClick) { _q2PenGhostClick = false; return; }
             e.stopPropagation();
             if (Date.now() < _q2PinSuppressUntil) { _q2PinSuppressUntil = 0; return; }   // ★ 改名提交收尾窗：完成改名的同一次点击不重开/不翻转钉住
             clearTimeout(_questDropTimer);
@@ -1112,6 +1123,7 @@ function _q2ShowPinHint() {
         pen.addEventListener('mousedown', function (e) {
             e.stopPropagation();
             e.preventDefault();
+            _q2PenGhostClick = true;   // ★ 笔区点击隔离（2026-09-30）：本次点击起自笔区——其幽灵 click 被 bar 处理器整击忽略（纯改名零干扰）
             _tofuStartEdit();
         });
         pen.addEventListener('click', function (e) {

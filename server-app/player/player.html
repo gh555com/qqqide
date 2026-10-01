@@ -17,6 +17,7 @@
   #pl-root{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:10px;overflow:hidden;box-sizing:border-box;-webkit-app-region:no-drag;}
   #pl-root .ovmb-maincol{-webkit-app-region:drag;}
   #pl-root .ovmb, #pl-root .ovmb *{-webkit-app-region:no-drag;}
+  #pl-root .ovmb-stack, #pl-root .ovmb-stack *{-webkit-app-region:no-drag;}
   #pl-root video, #pl-root audio{-webkit-app-region:no-drag;}
   #pl-root .ovmb-txbar{-webkit-app-region:no-drag;}
   /* 拖拽条（无边框窗：顶部隐形拖区；窗控钮 z 更高且 no-drag） */
@@ -33,7 +34,7 @@
   #pl-empty *{-webkit-app-region:drag;}
   #pl-empty .pl-note{font-size:26px;line-height:1;color:#ffd301;opacity:.75;}
   /* 迷你 toast（引擎宿主适配：与悬浮层 qoast 同语义） */
-  .pl-toast-wrap{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;max-width:92%;-webkit-app-region:no-drag;}
+  .pl-toast-wrap{position:absolute;left:50%;bottom:124px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;max-width:92%;-webkit-app-region:no-drag;}
   .pl-toast-wrap *{-webkit-app-region:no-drag;}
   .pl-toast{background:rgba(20,20,20,0.95);border:1px solid rgba(255,255,255,0.18);color:#e8e6e0;font:12px/1.5 system-ui,-apple-system,sans-serif;border-radius:8px;padding:7px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 18px rgba(0,0,0,0.5);pointer-events:auto;max-width:100%;box-sizing:border-box;}
   .pl-toast button{border:1px solid rgba(255,211,1,0.5);background:rgba(255,211,1,0.14);color:#ffd301;border-radius:6px;padding:2px 8px;font-size:12px;flex:0 0 auto;cursor:pointer;}

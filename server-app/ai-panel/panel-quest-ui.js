@@ -853,7 +853,7 @@ function renderCtxBreakdown() {
     _placeFloatingCard(bd, $ctxBtn, { scrollEl: rowsEl });
 }
 function showCtxBreakdown() {
-    if (!_activeAgent || !_activeAgent.conversation) return;
+    if (!_ctxHasFloors()) return;   // ★ 空背包门槛：与按钮禁用同判（-- 状态无图解可看）
     clearTimeout(_ctxBreakdownTimer);
     _ctxBreakdownTimer = setTimeout(function () {
         var bd = document.getElementById('ctx-breakdown');
@@ -871,13 +871,20 @@ function hideCtxBreakdown() {
 }
 
 // ── 上下文按钮 ──
+// ★ 空背包门槛（2026-09-30 用户定案）：至少一楼（活跃 quest + conversation 非空）才可用——
+//   无楼层时按钮恒 -- 且禁用（空背包下管理面板内快照/管理/独立压缩全是空转），hover 图解/点击/管理三处同门槛。
+function _ctxHasFloors() {
+    return !!(_activeAgent && _activeAgent.conversation && _activeAgent.conversation.length > 0);
+}
+
 function updateCtxBtn() {
-    if (!_activeAgent || !_activeAgent.conversation) {
+    var _hasFloors = _ctxHasFloors();
+    $ctxBtn.disabled = !_hasFloors;
+    if (!_hasFloors) {
         $ctxBtn.textContent = '--';
         $ctxBtn.style.setProperty('--ctx-pct', '0%');
         return;
     }
-    if (!_activeAgent.conversation.length) { console.warn('[ctx-btn] _activeAgent.conversation is EMPTY ARRAY, agent._floorId=' + (_activeAgent._floorId || '?')); }
     var _ag = _activeAgent;
     var used = _estimateTokensFull();
     if (used === 0 && _ag.conversation && _ag.conversation.length) { console.warn('[ctx-btn] used=0 convLen=' + _ag.conversation.length + ' _floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
@@ -892,6 +899,7 @@ function updateCtxBtn() {
     } catch (_) { }
 }
 $ctxBtn.onclick = function () {
+    if (!_ctxHasFloors()) return;   // ★ 防御面：空背包不开面板（disabled 属性已挡原生点击）
     hideCtxBreakdown();
     document.getElementById('ctx-panel').style.display = 'flex';
     _ctxPerqRender();
@@ -1028,7 +1036,7 @@ if (_ctxManageBtn) {
             var p = window.parent;
             if (!p) return;
             var qid = questActiveId || '';
-            if (!qid) return;
+            if (!qid || _isDraft(qid)) return;   // ★ 草稿（_draft_pN）无 quest 目录：绝不创建背包标签
             var panelId = (typeof _panelId !== 'undefined') ? _panelId : 1;
             var gaeaId = 'conv-' + qid;
 
@@ -1494,6 +1502,8 @@ $guideBtn.onclick = async function () {
     // ═══ 铁律：仅建楼中可用（_sending||streaming），闲置时按钮灰色禁用由 updateGuideBtn 控制 ═══
     if (_switching) return;
     if (!(_sending || streaming)) return;
+    // ★ 2026-09-30：粘贴/拖放处理中拦下（图尚未入条，此刻引导会漏图——与发送入口同规）
+    if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
 
     var text = getInputText().trim();
     if (!text && pendingImages.length === 0) return;
@@ -1533,6 +1543,16 @@ $guideBtn.onclick = async function () {
         }
     }
 
+    // ★ 2026-09-30 引导视觉费即时归账：_visionCostWge 是「已发生未入账」暂存，正常排水只发生在
+    //   下一次带图发送的 agent.send 内——引导不经该路径，滞留会错记到未来某层、或永不显示。
+    //   服务端账本已按 floorId 归到当前在建楼层 → 客户端同步并入该楼层费用，展示与账本一致。
+    try {
+        if (_activeAgent && _activeAgent._visionCostWge > 0) {
+            _activeAgent._floorCostWge = (_activeAgent._floorCostWge || 0) + _activeAgent._visionCostWge;
+            _activeAgent._visionCostWge = 0;
+        }
+    } catch (_) { }
+
     var hasImages = capturedImages.length > 0;
     var guideText = text + (visionText || '');
 
@@ -1549,7 +1569,11 @@ $guideBtn.onclick = async function () {
         guideBlock.className = 'msg-flow-guide-inject';
         var guideHtml = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> \u5f15\u5bfc\u4fe1\u606f</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
         if (hasImages) {
-            guideHtml += '<div style="margin-top:4px;font-size:10px;color:var(--text-secondary);">\ud83d\udcf7 ' + capturedImages.length + ' \u5f20\u56fe\u7247\uff08\u5df2\u5206\u6790\uff09</div>';
+            // ★ 2026-09-30 诚实标注：视觉分析失败/未登录降级时不再谎称「已分析」（旧实现恒标已分析）
+            var _gImgNote = visionText
+                ? _qq('ai.guideImagesAnalyzed', '\ud83d\udcf7 {0} 张图片（已分析）', { 0: capturedImages.length })
+                : _qq('ai.guideImagesPending', '\ud83d\udcf7 {0} 张图片（视觉分析未完成）', { 0: capturedImages.length });
+            guideHtml += '<div style="margin-top:4px;font-size:10px;color:var(--text-secondary);">' + _gImgNote + '</div>';
         }
         guideBlock.innerHTML = guideHtml;
         _aiDiv._contentWrap.appendChild(guideBlock);
@@ -1793,6 +1817,8 @@ function renderQueueStrip() {
 
 $queueBtn.onclick = function () {
     if (_switching) return;
+    // ★ 2026-09-30：粘贴/拖放处理中拦下（图尚未入条，此刻入队会漏图——与发送入口同规）
+    if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
     if (!_activeAgent) {
         var _noAgentMsg = (typeof _i === 'function') ? _i('ai.error.noActiveAgent', '请先发送一条消息创建对话') : '请先发送一条消息创建对话';
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_noAgentMsg, { type: 'warning', duration: 4000 }); } catch (_) { }

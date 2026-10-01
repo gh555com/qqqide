@@ -1654,7 +1654,10 @@ function compileLauncher() {
 
 function packDir(unpacked, flatOnly) {
   const distRoot = path.join(ROOT, 'dist-pack');
-  const outName = `qqqide-${baseTarget}${cfg.tarExt}`;
+  // ★ 2026-10-01 定案: win 分发 zip 改下划线命名（qqqide_win_x64.zip）；mac/linux 维持连字符
+  const outName = isWin
+    ? `qqqide_${baseTarget.replace(/-/g, '_')}${cfg.tarExt}`
+    : `qqqide-${baseTarget}${cfg.tarExt}`;
   const out = path.join(distRoot, outName);
   if (fs.existsSync(out)) { fs.rmSync(out); }
 
@@ -1672,21 +1675,28 @@ function packDir(unpacked, flatOnly) {
   }
 
   if (flatOnly || !sz7 || !isWin) {
-    // single-layer (flat or fallback)
+    // single-layer (flat or fallback) — ★ 2026-10-01: 与两层包同容器层
+    //   先克隆到 _stage_flat/program/qd/ 再压缩 → 解压到任意位置（含盘根）都是 <目标>/program/qd/
+    const stageDirFlat = path.join(distRoot, '_stage_flat');
+    const stagedRoot = path.join(stageDirFlat, 'program', 'qd');
+    if (fs.existsSync(stageDirFlat)) fs.rmSync(stageDirFlat, { recursive: true, force: true });
+    fs.mkdirSync(path.join(stageDirFlat, 'program'), { recursive: true });
+    console.log('[pack] staging single-layer -> program/qd/ ...');
+    fs.cpSync(unpacked, stagedRoot, { recursive: true });
     console.log('[pack] compressing (single-layer deflate mx=9)', path.basename(unpacked), '->', out);
     if (sz7 && cfg.tarExt === '.zip') {
-      const r7 = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', '-mfb=258', '-mpass=15', out, '.'], { stdio: 'inherit', cwd: unpacked });
+      const r7 = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', '-mfb=258', '-mpass=15', out, '.'], { stdio: 'inherit', cwd: stageDirFlat });
       if (r7.status !== 0) throw new Error('7z failed: ' + r7.status);
     } else {
       const scriptPath = path.join(ROOT, 'shell-build', '_zip_worker.py');
       const script = `import zipfile, os
-srcdir = r'${unpacked.replace(/\\/g, '\\\\')}'
+srcdir = r'${stageDirFlat.replace(/\\/g, '\\\\')}'
 out = r'${out.replace(/\\/g, '\\\\')}'
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as z:
     for root, dirs, files in os.walk(srcdir):
         for f in files:
             fp = os.path.join(root, f)
-            arc = os.path.relpath(fp, srcdir)
+            arc = os.path.relpath(fp, srcdir).replace(os.sep, '/')
             z.write(fp, arc)
 print('[pack] python zip done:', out)
 `;
@@ -1694,6 +1704,7 @@ print('[pack] python zip done:', out)
       try { run('python', [scriptPath]); }
       finally { try { fs.rmSync(scriptPath); } catch (_) { } }
     }
+    fs.rmSync(stageDirFlat, { recursive: true, force: true });
     return;
   }
 
@@ -1728,13 +1739,15 @@ print('[pack] python zip done:', out)
   // ★ 单元增量产物（B 方案传输层）
   buildUnits(unpacked, rFile);
 
-  // Stage: qqqide.exe + r
+  // Stage: program/qd/{qqqide.exe, r} — ★ 2026-10-01 定案：zip 自带容器层
+  //   解压到任意位置（含盘根）都是 <目标>/program/qd/，两文件永不散落目标目录
   const stageDir = path.join(distRoot, '_stage');
   if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true });
-  fs.mkdirSync(stageDir, { recursive: true });
+  const stageInner = path.join(stageDir, 'program', 'qd');
+  fs.mkdirSync(stageInner, { recursive: true });
   const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
-  if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stageDir, 'qqqide.exe'));
-  fs.copyFileSync(rFile, path.join(stageDir, 'r'));
+  if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stageInner, 'qqqide.exe'));
+  fs.copyFileSync(rFile, path.join(stageInner, 'r'));
 
   // outer zip: deflate mx=9
   console.log('[pack]   outer zip (deflate mx=9)...');
@@ -1754,7 +1767,7 @@ print('[pack] python zip done:', out)
 //     r = 7zCon.sfx + payload.7z, C launcher runs "r -y" for silent extract
 function packSfx(unpacked) {
   const distRoot = path.join(ROOT, 'dist-pack');
-  const outName = `qqqide-${baseTarget}.exe`;
+  const outName = `qqqide_${baseTarget.replace(/-/g, '_')}.exe`;  // ★ 2026-10-01 下划线命名
   const out = path.join(distRoot, outName);
   if (fs.existsSync(out)) fs.rmSync(out);
 

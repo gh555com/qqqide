@@ -169,8 +169,11 @@ function _buildSendIntent(questId, content, opts) {
     opts = opts || {};
     return {
         questId: questId,
-        content: content,
-        images: opts.images || null,
+        content: content,        images: opts.images || null,
+        // ★ 2026-10-01：冻结气泡/图行引用随 intent 随身（旧全局槽在多 quest 并行链下会被后一次
+        //   冻结覆盖 → 本条预建气泡变孤儿 + 重复新建；随身引用天然归属本意图，零串号）
+        bubbleEl: opts.bubbleEl || null,
+        bubbleImgRow: opts.bubbleImgRow || null,
         tierIndex: opts.tierIndex != null ? opts.tierIndex : selectedTier,
         type: opts.type || 'normal',
         isRecovery: opts.isRecovery || false,
@@ -180,10 +183,83 @@ function _buildSendIntent(questId, content, opts) {
         forceFloorNum: opts.forceFloorNum || 0,  // ★ 0-house 同层重试：跳过 nextFloorNum，复用旧楼层
         fromQueue: opts.fromQueue || false,  // ★ 队列直通（2026-08-20）：发送不清空编辑框/图片条
     };
-}
-
-// ── 执行管线 ──
-// 从 sendMessage 提取核心逻辑，接收 intent 而非读全局
+}
+// ═══ 用户气泡图片行（唯一渲染机；2026-09-30 提取自 _executeSend）═══
+// 两位调用方：① 发送入口「按下即冻结」（panel-input.js，气泡+图行即时回显）
+//             ② _executeSend 兜底（队列直通/恢复楼等无预建气泡的路径）。
+// badge 点击惰性解析归属（楼层号 dataset.fn / quest dataset.qid 由 _executeSend 楼层落定后回填）
+// ——按下时草稿 id/楼层号未定，闭包绝不捕获快照。
+function _renderBubbleImgRow(userMsgEl, imgs) {
+    if (!userMsgEl || !imgs || imgs.length === 0) return null;
+    var imgRow = document.createElement('div');
+    imgRow.style.cssText = 'margin-top:6px;';
+    imgs.forEach(function (img) {
+        var wrap = document.createElement('span');
+        wrap.className = 'msg-img-wrap';
+        var imgEl = document.createElement('img');
+        imgEl.src = img.dataUrl;
+        imgEl.dataset.base64 = img.base64;
+        wrap.appendChild(imgEl);
+        var badge = document.createElement('span');
+        badge.className = 'msg-img-badge';
+        badge.textContent = '#' + img.id;
+        badge.onclick = function () {
+            // ★ 发送时图片已写盘楼层目录（img_N.png）→ 动态解析本地路径传给 overlay
+            //   （dataUrl 缩略图场景文件/路径按钮依赖；解析失败回退纯 dataUrl）
+            // ★ 惰性解析（2026-09-30）：questId/楼层号从行 dataset 读（_executeSend 落定后回填），
+            //   兜底读当前活跃 agent——旧实现点击时读「当前楼层」会把旧楼层图片解析到新楼层目录。
+            var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+            var _qid = (imgRow.dataset && imgRow.dataset.qid) || ((typeof questActiveId !== 'undefined') ? questActiveId : '');
+            var _fLv = parseInt((imgRow.dataset && imgRow.dataset.fn) || '', 10) || (_ag ? (_ag._currentFloorNum || (_ag._ctx && _ag._ctx.totalFloors) || 0) : 0);
+            if (img.fileName && window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
+                window.questStore.resolveFloorDir(_qid, _fLv).then(function (_fDir) {
+                    openLightbox(img.dataUrl, img.base64, _fDir ? _fDir + img.fileName : null);
+                }).catch(function () { openLightbox(img.dataUrl, img.base64); });
+            } else {
+                openLightbox(img.dataUrl, img.base64);
+            }
+        };
+        wrap.appendChild(badge);
+        imgRow.appendChild(wrap);
+    });
+    userMsgEl.appendChild(imgRow);
+    return imgRow;
+}
+
+// ═══ 图片回条（2026-09-30「按下即冻结」配套）═══
+// 发送被拒/失败（楼层未建成）时，把手动发送冻结的图片放回编辑条——图仍有重发途径。
+// 编号规则：编辑条空 → 原样恢复原编号（气泡/恢复文本里的 [img:N] 令牌直接可用）；
+// 非空 → 接续当前最大编号追加（不与既有图冲突，与 addImage 的 length+1 编号自然衔接）。
+// 满槽（MAX_IMAGES）→ 放弃多余（图仍在气泡可见）。返回 true = 确实回滚。
+function _restoreImagesToStrip(imgs) {
+    try {
+        if (!imgs || imgs.length === 0) return false;
+        if (typeof pendingImages === 'undefined' || typeof MAX_IMAGES === 'undefined') return false;
+        var _space = MAX_IMAGES - pendingImages.length;
+        if (_space <= 0) return false;
+        var _stripEmpty = pendingImages.length === 0;
+        var _maxId = 0;
+        for (var i = 0; i < pendingImages.length; i++) {
+            if (pendingImages[i].id > _maxId) _maxId = pendingImages[i].id;
+        }
+        var _n = Math.min(imgs.length, _space);
+        for (var j = 0; j < _n; j++) {
+            var _img = imgs[j];
+            pendingImages.push({
+                id: _stripEmpty ? _img.id : (++_maxId),
+                base64: _img.base64,
+                dataUrl: _img.dataUrl,
+                fileName: _img.fileName || ''
+            });
+        }
+        if (typeof renderImageStrip === 'function') renderImageStrip();
+        if (typeof _scheduleDraftSave === 'function') _scheduleDraftSave(true);
+        return true;
+    } catch (_) { return false; }
+}
+
+// ── 执行管线 ──
+// 从 sendMessage 提取核心逻辑，接收 intent 而非读全局
 async function _executeSend(intent) {
     var questId = intent.questId;
     var content = intent.content;
@@ -233,12 +309,27 @@ async function _executeSend(intent) {
         } catch (_eRq) { }
         _queueBusy = false;  // ★ 复位排水锁（防永久卡死）
     };
+    // ★ 2026-09-30「按下即冻结」配套：发送在楼层建成前被拒/失败时的统一回滚——
+    //   手动消息（normal 且非队列直通）的冻结图片放回编辑条（图仍有重发途径；旧实现删图窗口让图彻底蒸发）；
+    //   仅在面板仍停留于该 quest 时回滚图片——切走后触碰编辑条会跨 quest 污染。
+    //   ★ 2026-10-01：气泡/图行引用改随 intent 随身（bubbleEl/bubbleImgRow）——旧全局槽在多 quest
+    //   并行链下会被后一次冻结覆盖；随身引用天然归属本意图，此处无需任何全局清理。
+    var _pressRejectRollback = function () {
+        try {
+            if (sendType !== 'normal' || intent.fromQueue) return false;
+            if (!images || images.length === 0) return false;
+            if (questId !== questActiveId) return false;
+            return _restoreImagesToStrip(images);
+        } catch (_) { return false; }
+    };
     if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery && !_isCompress) {
         if (intent.fromQueue) _requeueFromQueue();
+        _pressRejectRollback();
         return;
     }
     if (_activeAgent && _activeAgent._stopState === 'stopping') {
         if (intent.fromQueue) _requeueFromQueue();
+        _pressRejectRollback();
         return;
     }
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !isRecovery) {
@@ -253,6 +344,7 @@ async function _executeSend(intent) {
             } catch (_e2) { }
             return;
         }
+        _pressRejectRollback();
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.taskInterrupted', '该任务已中断，请点击楼层红框「继续任务」恢复'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
         return;
     }
@@ -260,12 +352,14 @@ async function _executeSend(intent) {
     //   此前这些闸门直接 return → 队列直通消息已 shift 出队 → 静默蒸发（用户无任何恢复途径）
     if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') {
         if (intent.fromQueue) _requeueFromQueue();
+        _pressRejectRollback();
         return;
     }
-    if (!_hasMainProject()) { if (intent.fromQueue) _requeueFromQueue(); _triggerSelectMainProject(); return; }
+    if (!_hasMainProject()) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); _triggerSelectMainProject(); return; }
     // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
     if (!_isLoggedIn()) {
         if (intent.fromQueue) _requeueFromQueue();
+        _pressRejectRollback();
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
         return;
     }
@@ -289,13 +383,14 @@ async function _executeSend(intent) {
     //   若发生他 Enter（q184 双发根因窗口），_sendActive 据此拦截
     if (_isDraft(questId)) {
         _markPromoting();
-        var _dText = content || '';
-        var _dChips = getInputChipPaths ? getInputChipPaths(_dText) : [];  // ★ 2026-08-14: 从捕获文本解析，$input 已被 Enter 立即反馈清空
-        if (!_dText && _dChips.length === 0) { _clearPromoting(); return; }
+        var _dText = content || '';
+        var _dChips = getInputChipPaths ? getInputChipPaths(_dText) : [];  // ★ 2026-08-14: 从捕获文本解析，$input 已被发送入口清空
+        // ★ 2026-09-30：空白文本（`' '`）不得晋升建 quest（旧实现留下无楼层的空 quest）；纯图片消息（无文字）合法
+        if ((!_dText || !_dText.trim()) && _dChips.length === 0 && (!images || images.length === 0)) { _clearPromoting(); return; }
         try {
             var _dOldId = questId;
-            var _dQid = await questStore.create('');
-            if (!_dQid) { _clearPromoting(); return; }
+            var _dQid = await questStore.create('');
+            if (!_dQid) { _clearPromoting(); _pressRejectRollback(); return; }
             _setPromotingTarget(_dQid);  // ★ create 已返回：锁定目标（此后仅拦同 quest）
             questActiveId = _dQid;
             if (questUIStates[_dOldId] && typeof questUIStates[_dOldId].selectedTier === 'number') {
@@ -360,15 +455,16 @@ async function _executeSend(intent) {
             if (parent.__qqq_agentPool && parent.__qqq_agentPool[_dOldId]) {
                 parent.__qqq_agentPool[_dOldId]._queue = [];
             }
-        } catch (_dErr) {
-            console.warn('[pipeline] draft creation failed:', _dErr && _dErr.message);
-            addMessageEl('error', _qq('ai.pipeline.questFail', '创建 Quest 失败：{0}', { 0: ((_dErr && _dErr.message) || _qq('ai.errUnknown', '未知错误')) }));
-            _clearPromoting();
-            return;
+        } catch (_dErr) {
+            console.warn('[pipeline] draft creation failed:', _dErr && _dErr.message);
+            addMessageEl('error', _qq('ai.pipeline.questFail', '创建 Quest 失败：{0}', { 0: ((_dErr && _dErr.message) || _qq('ai.errUnknown', '未知错误')) }));
+            _clearPromoting();
+            _pressRejectRollback();
+            return;
         }
     }
 
-    if (!_activeAgent) { _clearPromoting(); return; }
+    if (!_activeAgent) { _clearPromoting(); _pressRejectRollback(); return; }
     if (!_isDraft(questId) && parent && parent.__qqq_agentPool && parent.__qqq_agentPool[questId] !== _activeAgent) {
         console.warn('[pipeline] _activeAgent stale');
     }
@@ -395,6 +491,7 @@ async function _executeSend(intent) {
                 try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.onlyfactsBusy', 'only facts：该任务正在其他面板处理，请切换到对应面板或稍后再试'), { type: 'warning', duration: 5000 }); } catch (_e8) { }
             }
             if (intent.fromQueue) _requeueFromQueue();  // ★ 2026-09-26: 出队必达或必还（补全遗漏闸门）
+            _pressRejectRollback();                     // ★ 2026-09-30: 手动消息冻结图片回条
             _setPanelFocus(false);
             _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
             agent.setStopState('idle');
@@ -410,10 +507,10 @@ async function _executeSend(intent) {
     updateQueueBtn();
 
     // ★ 内容验证（显式传入，不读 $input）    var text = (content || '').trim();
-    if (!text && (!images || images.length === 0)) { if (intent.fromQueue) _requeueFromQueue(); agent.setStopState('idle'); updateQueueBtn(); return; }
+    if (!text && (!images || images.length === 0)) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); agent.setStopState('idle'); updateQueueBtn(); return; }
     // ★ 2026-08-17 F51: compress 楼层不受面板 streaming 拦截（目标 agent 已由上方解析，
     //   streaming proxy = 目标 agent 的 _streaming；双保险豁免机器触发的压缩楼层）
-    if (streaming && !_isCompress) { if (intent.fromQueue) _requeueFromQueue(); agent.setStopState('idle'); updateQueueBtn(); return; }
+    if (streaming && !_isCompress) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); agent.setStopState('idle'); updateQueueBtn(); return; }
     // ★ 2026-09-26：记录本层原始用户消息——0-house「继续任务」（_retrySameFloor）靠它重发。
     //   过去仅磁盘恢复路径（panel-floor B3 僵尸检测）赋值 → 活会话里恒 undefined →
     //   0-house 点「继续任务」静默失效（还白扣重试次数，3 次后永久封顶）。
@@ -481,77 +578,43 @@ async function _executeSend(intent) {
         agent._deferredUserEl = null;
         agent._deferredUserText = _qq('ai.recovery.bubble', '继续');  // ★ B2: 恢复消息气泡只显示「继续」
     } else {
-        // ★ 2026-08-10: Enter 已同步插入气泡（立即反馈）→ 复用不重复插入
-        if (window.__qqq_userBubbleEl && window.__qqq_userBubbleEl.isConnected) {
-            userMsgEl = window.__qqq_userBubbleEl;
-            window.__qqq_userBubbleEl = null;
-        } else {
-            window.__qqq_userBubbleEl = null;
-            userMsgEl = addMessageEl('user', text);
+        // ★ 2026-08-10: 发送入口已同步插入气泡（立即反馈）→ 复用不重复插入
+        // ★ 2026-10-01：引用随 intent 随身（bubbleEl）——旧全局槽在多 quest 并行链下会被后一次
+        //   冻结覆盖（本条预建气泡变孤儿 + 重复新建）；随身引用天然归属本意图，零串号。
+        //   失联（脱离 DOM/未预建）一律弃用新建。
+        if (intent.bubbleEl && intent.bubbleEl.isConnected) {
+            userMsgEl = intent.bubbleEl;
+            intent.bubbleEl = null;   // 消费指针（防悬挂复用）
+        } else {
+            userMsgEl = addMessageEl('user', text);
         }
         if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
     }
-    // ★ 图片源（2026-08-20；2026-09-26 修复「队列消息偷走编辑框草稿图片」）：
-    //   编辑框草稿（pendingImages）仅属于「手动发送」= normal 类型且非队列直通。
-    //   ① 队列直通（fromQueue）恒用 intent.images 快照——无图 = 无图。旧实现的空回落
-    //      `(pendingImages || [])` 会在队列消息无图时偷走编辑框里正在编辑的图片（图片被写进
-    //      该楼层 + 发往 AI，而 fromQueue 不清理编辑框 → 同一张图双发）
-    //   ② recovery / compress(only facts) 机器楼层同样绝不携带用户草稿图
-    var _useDraftImgs = (sendType === 'normal') && !intent.fromQueue;
-    var _srcImgs = (intent.images && intent.images.length > 0)
-        ? intent.images
-        : (_useDraftImgs ? (pendingImages || []) : []);
-    if (_srcImgs.length > 0 && userMsgEl) {
-        var imgRow = document.createElement('div');
-        imgRow.style.cssText = 'margin-top:6px;';
-        _srcImgs.forEach(function (img) {
-            var wrap = document.createElement('span');
-            wrap.className = 'msg-img-wrap';
-            var imgEl = document.createElement('img');
-            imgEl.src = img.dataUrl;
-            imgEl.dataset.base64 = img.base64;
-            wrap.appendChild(imgEl);
-            var badge = document.createElement('span');
-            badge.className = 'msg-img-badge';
-            badge.textContent = '#' + img.id;
-            badge.onclick = function () {
-                // ★ 发送时图片已写盘楼层目录（img_N.png）→ 动态解析本地路径传给 overlay
-                //   （dataUrl 缩略图场景文件/路径按钮依赖；解析失败回退纯 dataUrl）
-                // ★ 2026-09-26 双修：① 楼层号读 imgRow.dataset.fn（楼层分配后回填的真实号）——
-                //   旧实现点击时读「当前楼层」→ 点旧楼层图片会解析到新楼层目录（路径不存在）
-                //   ② img.fileName 由写盘循环同步回本闭包对象（_images 与 _srcImgs 是两套对象，
-                //   旧实现恒读不到 fileName → 文件/路径按钮 localPath 恒 null）
-                var _fLv = parseInt((imgRow && imgRow.dataset.fn) || '', 10) || (agent._currentFloorNum || agent._ctx.totalFloors || 0);
-                if (img.fileName && window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
-                    window.questStore.resolveFloorDir(qid, _fLv).then(function (_fDir) {
-                        openLightbox(img.dataUrl, img.base64, _fDir ? _fDir + img.fileName : null);
-                    }).catch(function () { openLightbox(img.dataUrl, img.base64); });
-                } else {
-                    openLightbox(img.dataUrl, img.base64);
-                }
-            };
-            wrap.appendChild(badge);
-            imgRow.appendChild(wrap);
-        });
-        userMsgEl.appendChild(imgRow);
+    // ★ 图片源（2026-09-30「按下即冻结」）：唯一来源 = intent.images 快照。
+    //   发送入口（Enter/发送按钮）在按下的同一同步段冻结 pendingImages 并清空编辑条——本条消息只读快照，
+    //   编辑条留给下一条。旧实现的「手动发送活读回落 pendingImages」是竞态温床（q386 f1 实锤）：
+    //   晋升/附件处理窗口内点 ✕ 删图 = 静默丢图；窗口内新贴的图会被本条顺走；窗口内打字被迟到清理擦除。
+    //   （队列直通/0-house 重试本就显式传快照；recovery/compress 机器楼层恒无用户草稿图。）
+    var _srcImgs = (intent.images && intent.images.length > 0) ? intent.images : [];
+    // ★ 图片行（2026-09-30）：按下即冻结路径已在发送入口建好行（即时回显）——此处复用同一行
+    //   （楼层号/quest 回填依赖同一 imgRow 引用）；队列直通/恢复楼等无预建行路径照旧在此创建（唯一渲染机）。
+    //   ★ 2026-10-01：引用随 intent 随身（消费即置空）——旧全局槽会被后一次冻结覆盖。
+    var imgRow = intent.bubbleImgRow || null;
+    intent.bubbleImgRow = null;   // 消费指针（随 intent 随身，归属本意图）
+    if (imgRow && (!imgRow.isConnected || !userMsgEl || !_srcImgs.length || imgRow.parentNode !== userMsgEl)) imgRow = null;
+    if (_srcImgs.length > 0 && userMsgEl && !imgRow) {
+        imgRow = (typeof _renderBubbleImgRow === 'function') ? _renderBubbleImgRow(userMsgEl, _srcImgs) : null;
     }
 
     var _images = _srcImgs.length > 0 ? _srcImgs.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; }) : null;
-
-    // ★ $input 清理：仅 normal 类型、当前活跃 quest、非队列直通才清除——
-    //   队列直通（fromQueue）绝不触碰编辑框/图片条（那是用户草稿，2026-08-20 定案）；
-    //   compress 类型不清理（机器生成的楼层，不影响用户编辑状态）
-    if (sendType === 'normal' && qid === questActiveId && !intent.fromQueue) {
-        $input.value = '';
-        $input._resetUndo();
-        pendingImages = [];
-        renderImageStrip();
-        $input.focus();
-        // ★ 豆沙包：发送后清除当前 quest 的草稿标记
-        if (parent && parent.__qqq_draftFlags && parent.__qqq_draftFlags[qid]) {
-            delete parent.__qqq_draftFlags[qid];
-            if (typeof _broadcast === 'function') _broadcast('draft-changed', qid);
-        }
+    // ★ 编辑框/图片条清理由「按下即冻结」发送入口同步完成（panel-input.js _freezeAndSendFromInput）——
+    //   此处不再迟到清理（2026-09-30）：旧实现在晋升/附件处理窗口之后清空编辑框，会擦掉窗口内用户新键入的
+    //   草稿并抢走窗口内新贴的图片；图片也不再活读，此处无清理对象。仅保留豆沙包草稿标记清除。
+    if (sendType === 'normal' && qid === questActiveId && !intent.fromQueue) {
+        if (parent && parent.__qqq_draftFlags && parent.__qqq_draftFlags[qid]) {
+            delete parent.__qqq_draftFlags[qid];
+            if (typeof _broadcast === 'function') _broadcast('draft-changed', qid);
+        }
     }
 
     // ── 楼层分配 ── (recovery 和 normal 都走新楼层)
@@ -559,9 +622,22 @@ async function _executeSend(intent) {
     //   mkdir 抛错 → 楼层号永久蒸发 + 发送静默死亡（用户只见气泡不见任何错误）→ 显式报错）
     var floorNum;
     var root2 = questStore.getProjectRoot();
-    try {
-        var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
-        // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
+    try {        var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
+        // ★ 2026-10-01 forceFloorNum（0-house 同层重试）：解析原楼层目录用于复用——
+        //   旧实现跳过 !forceFloorNum 分支后，qDirName2/fDirName2 恒 undefined →
+        //   _allTxtDirLocal 拼出 root/_qqq/quests/// 垃圾路径 + 图片不写盘（_ensured undefined）。
+        //   优先内存 _floorMeta[forceFloorNum]（上次发送已记正确目录），兜底磁盘解析。
+        var _retryFDir = '';
+        if (forceFloorNum) {
+            try {
+                var _pfm = agent._floorMeta && agent._floorMeta[forceFloorNum];
+                if (_pfm && _pfm._fDir && _pfm._fDir.indexOf('///') === -1) _retryFDir = _pfm._fDir;
+            } catch (_) { }
+            if (!_retryFDir) {
+                try { _retryFDir = (await questStore.resolveFloorDir(qid, forceFloorNum)) || ''; } catch (_) { }
+            }
+        }
+        // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
         floorNum = forceFloorNum || await questStore.nextFloorNum(qid);
         if (!forceFloorNum && root2 && floorNum > 0) {
             var userQuestion = _isCompress ? 'only facts' : (text || (userContent || '').split('\n')[0]);
@@ -612,13 +688,32 @@ async function _executeSend(intent) {
                             //   map 副本，两套对象；旧实现只写 _images → badge 闭包读 _srcImgs 的
                             //   img.fileName 恒空 → overlay「文件/路径」按钮的 localPath 恒 null。
                             //   仅补空值（不覆盖既有），队列快照对象是丢弃品 / 编辑框对象随即被清，无副作用
-                            if (_srcImgs && _srcImgs[_imi] && !_srcImgs[_imi].fileName) _srcImgs[_imi].fileName = _fileName;
-                        } catch (_imgSaveErr) { console.warn('[img-save] failed:', _imgSaveErr); }
-                    }
-                }
-            }
-        }
-
+                             if (_srcImgs && _srcImgs[_imi] && !_srcImgs[_imi].fileName) _srcImgs[_imi].fileName = _fileName;
+                        } catch (_imgSaveErr) { console.warn('[img-save] failed:', _imgSaveErr); }
+                    }
+                }
+            }
+        }
+
+        // ★ 2026-10-01 forceFloorNum（0-house 同层重试）图片补写盘：复用原楼层目录——
+        //   旧实现写盘块在 !forceFloorNum 分支内且依赖 _ensured（force 时 undefined）→
+        //   重试携带的图只在内存参与视觉分析、磁盘无文件（PASTED IMAGES 路径全失效）。
+        //   写盘名与正常路径同规（img_{id}.png），重试重复写同图 = 幂等覆盖。
+        if (forceFloorNum && _retryFDir && _images && _images.length > 0) {
+            var _bridgeF = window.parent && window.parent.qqqideBridge;
+            if (_bridgeF && _bridgeF.fs) {
+                for (var _imf = 0; _imf < _images.length; _imf++) {
+                    var _pimgF = _images[_imf];
+                    var _fileNameF = 'img_' + _pimgF.id + '.png';
+                    try {
+                        await _bridgeF.fs.writeBase64(_retryFDir + _fileNameF, _pimgF.base64);
+                        _pimgF.fileName = _fileNameF;
+                        if (_srcImgs && _srcImgs[_imf] && !_srcImgs[_imf].fileName) _srcImgs[_imf].fileName = _fileNameF;
+                    } catch (_imgSaveErrF) { console.warn('[img-save] retry failed:', _imgSaveErrF); }
+                }
+            }
+        }
+
         // ★ recovery 楼层也需要设 _floorStartIdx（修复重启后楼层数据全部丢失的严重 bug）
         //   否则 recovery 楼层始终沿用旧值 0 → all.json 保存整个 conversation → 重启后重复拼接 → 数据损坏
         var _floorStartIdx = agent.conversation.length;
@@ -640,15 +735,18 @@ async function _executeSend(intent) {
             agent._passbyBaseFloorNum = _oldFloorNum2;
         }        agent._currentFloorNum = floorNum;
         // ★ 2026-09-26：图片 badge 楼层号回填（闭包点击时读 dataset.fn 取真实楼层——防解析到新楼层目录）
-        try { if (imgRow) imgRow.dataset.fn = String(floorNum); } catch (_) { }
+        // ★ 2026-09-30：questId 同步回填（按下即冻结路径建行时草稿 id 未定，badge 点击惰性读 dataset.qid）
+        try { if (imgRow) { imgRow.dataset.fn = String(floorNum); imgRow.dataset.qid = String(qid || ''); } } catch (_) { }
         agent._houses = [];
         agent._a4Snapshots = {};
         agent._lastAutoSaveLen = 0;
         agent._lastFloorTimingRecord = null;
-        if (!agent._floorMeta) agent._floorMeta = {};
-        var _projectRoot = root2 || questStore.getProjectRoot();
-        if (!_allTxtDirLocal && _projectRoot) {
-            _allTxtDirLocal = _projectRoot + '/_qqq/quests/' + (typeof qDirName2 !== 'undefined' ? qDirName2 : '') + '/' + (typeof fDirName2 !== 'undefined' ? fDirName2 : '') + '/';
+        if (!agent._floorMeta) agent._floorMeta = {};        var _projectRoot = root2 || questStore.getProjectRoot();
+        if (!_allTxtDirLocal && _retryFDir) {
+            // ★ 2026-10-01：forceFloorNum 重试复用原楼层目录（旧实现此路径拼垃圾 + 写错位）
+            _allTxtDirLocal = _retryFDir;
+        } else if (!_allTxtDirLocal && _projectRoot) {
+            _allTxtDirLocal = _projectRoot + '/_qqq/quests/' + (typeof qDirName2 !== 'undefined' ? qDirName2 : '') + '/' + (typeof fDirName2 !== 'undefined' ? fDirName2 : '') + '/';
         }
         if (!_allTxtPathLocal) _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
         agent._allTxtPath = _allTxtPathLocal;
@@ -661,9 +759,8 @@ async function _executeSend(intent) {
         };
         var _bridgeMk = window.parent && window.parent.qqqideBridge;
         if (_bridgeMk && _allTxtDirLocal) { try { await _bridgeMk.fs.mkdir(_allTxtDirLocal); } catch (_) { } }
-
-        var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
-        if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }  // ★ 链 finally 自动复位 _chainBusy
+        var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
+        if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); _pressRejectRollback(); return; }  // ★ 链 finally 自动复位 _chainBusy
     } catch (_allocErr) {
         // ★ 2026-08-11: 楼层物化失败（f28 类事故）→ 不静默：显式 qoast
         // ★ 2026-08-14 三补（gaea q145 f2/f4 事故）：① 号不再蒸发（探号零写入，未落号）；
@@ -702,6 +799,10 @@ async function _executeSend(intent) {
                     _qoastTail = _qq('ai.pipeline.allocShown', '——未发出的内容已显示在上方消息区');
                 }
             } catch (_) { }
+        }
+        // ★ 2026-09-30：图片随文本同规恢复（纯图片消息不进文本分支）——冻结图放回编辑条
+        if (_pressRejectRollback() && !_qoastTail) {
+            _qoastTail = _qq('ai.pipeline.allocImgsRestored', '——图片已放回编辑条，请重试');
         }
         try {
             if (window.parent && window.parent.qqqideQoast) {

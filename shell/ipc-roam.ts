@@ -12,7 +12,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, app } from 'electron';
 import { getOsBaseDir } from './portable-paths';
 
 const initSqlJs = require('sql.js');
@@ -248,15 +248,18 @@ function _broadcastFsChanged(dir: string): void {
 function _smartRefresh(dir: string): void {
     const st = _roamWatches.get(dir);
     if (!st) return;
-    const now = Date.now();
-    if (now - st.lastRefresh < WATCH_COOLDOWN_MS) return;  // 冷却期内忽略
-    // ★ 2026-08-09 突发合并: Windows 一次真实变更常连发多个事件(rename+change 对、重复事件) → 250ms 尾随合并为一次广播
+    // ★ 2026-09-30 修复「有时灵有时不灵」: 冷却窗内事件不再丢弃（旧实现直接 return 吞掉——
+    //   外部变更恰好落在自刷冷却窗内 → 该事件永不广播、roam 永不刷新, 用户实测「粘贴后看不到变化」）。
+    //   现语义 = 6s 节流: 冷却内推迟到冷却结束、冷却外 250ms 尾随合并; 两路径都保证最终广播一次。
+    const remain = st.lastRefresh + WATCH_COOLDOWN_MS - Date.now();
+    const delay = remain > 250 ? remain : 250;
+    // ★ 2026-08-09 突发合并: Windows 一次真实变更常连发多个事件(rename+change 对、重复事件) → 合并为一次广播
     if (st.burstTimer) clearTimeout(st.burstTimer);
     st.burstTimer = setTimeout(() => {
         st.burstTimer = null;
         st.lastRefresh = Date.now();  // 冷却从实际广播时刻起算 (q3 语义: cooldown 从 refresh 起)
         _broadcastFsChanged(dir);
-    }, 250);
+    }, delay);
 }
 
 function _forceRefresh(dir: string): void {
@@ -276,9 +279,8 @@ function _scheduleDownloadCompleteRefresh(dir: string): void {
     }, DOWNLOAD_COMPLETE_DELAY_MS);
 }
 
-function _createWatch(dir: string): void {
-    const st: RoamDirWatch = { watcher: null, lastRefresh: 0, pendingTimer: null, burstTimer: null };
-    _roamWatches.set(dir, st);
+// fs.watch 句柄挂载（新建/焦点重挂共用；状态对象由调用方持有——重挂不丢冷却与在途广播）
+function _attachWatcher(st: RoamDirWatch, dir: string): void {
     try {
         st.watcher = fs.watch(dir, { persistent: false }, (eventType, filename) => {
             if (eventType === 'rename') {
@@ -303,6 +305,22 @@ function _createWatch(dir: string): void {
     }
 }
 
+function _createWatch(dir: string): void {
+    const st: RoamDirWatch = { watcher: null, lastRefresh: 0, pendingTimer: null, burstTimer: null };
+    _roamWatches.set(dir, st);
+    _attachWatcher(st, dir);
+}
+
+// ★ 2026-09-30 焦点重挂: 休眠恢复/杀软干扰后 fs.watch 可能静默僵尸（句柄活着但不再派发事件）。
+//   窗口获焦时原位换新句柄（状态对象保留——冷却与在途推迟广播不受影响），回到前台即自愈。
+function _renewWatch(dir: string): void {
+    const st = _roamWatches.get(dir);
+    if (!st || !st.watcher) return;   // 无句柄（死亡条目）→ 走 _watchDir / 焦点补建路径
+    try { st.watcher.close(); } catch { /* ignore */ }
+    st.watcher = null;
+    _attachWatcher(st, dir);
+}
+
 function _disposeWatch(dir: string): void {
     const st = _roamWatches.get(dir);
     if (!st) return;
@@ -317,23 +335,29 @@ function _disposeWatch(dir: string): void {
 
 function _watchDir(winId: number, dir: string): void {
     const old = _roamWinDirs.get(winId);
-    if (old === dir) return;
-    if (old) {
-        _roamWinDirs.delete(winId);
-        let used = false;
-        _roamWinDirs.forEach(d => { if (d === old) used = true; });
-        if (!used) _disposeWatch(old);
+    if (old !== dir) {
+        if (old) {
+            _roamWinDirs.delete(winId);
+            let used = false;
+            _roamWinDirs.forEach(d => { if (d === old) used = true; });
+            if (!used) _disposeWatch(old);
+        }
+        if (!dir) return;
+        _roamWinDirs.set(winId, dir);
+    } else if (!dir) {
+        return;
     }
-    if (!dir) return;
-    _roamWinDirs.set(winId, dir);
-    if (!_roamWatches.has(dir)) _createWatch(dir);
+    // ★ 2026-09-30 修复: 缺失或死亡条目（watcher=null——建句柄时目录不存在/权限失败、error 后重建失败）
+    //   → 补建/重建。旧实现只查「map 有无条目」→ 死亡条目永久卡死, 该目录自动感知全程失效, 重绑也救不回。
+    const ex = _roamWatches.get(dir);
+    if (!ex || !ex.watcher) _createWatch(dir);
 }
 
 function _watchMark(winId: number): void {
     const dir = _roamWinDirs.get(winId);
     if (!dir) return;
     const st = _roamWatches.get(dir);
-    if (st) st.lastRefresh = Date.now();  // roam 手动刷新后 6s 内 watcher 事件忽略 → 自身操作不双刷
+    if (st) st.lastRefresh = Date.now();  // roam 手动刷新后武装 6s 节流窗（窗内事件推迟不丢）→ 自身操作不双刷
 }
 
 // ── 跨实例秒级同步 (2026-09-08 定案) ──
@@ -499,5 +523,16 @@ export function registerRoamIpc(): void {
     ipcMain.handle('qqqide:roam:watch-mark', (e) => {
         _watchMark(e.sender.id);
         return true;
+    });
+
+    // ★ 2026-09-30 焦点重挂（治静默僵尸 watcher）: 窗口获焦 → 其绑定目录的 watcher 换新句柄（约百微秒开销）。
+    //   死亡条目（watcher=null）顺带补建；无绑定（autoWatch 关 / 无 roam）跳过——零行为变化。
+    app.on('browser-window-focus', (_e, win) => {
+        if (!win || win.isDestroyed()) return;
+        const dir = _roamWinDirs.get(win.webContents.id);
+        if (!dir) return;
+        const st = _roamWatches.get(dir);
+        if (!st || !st.watcher) { _createWatch(dir); return; }
+        _renewWatch(dir);
     });
 }

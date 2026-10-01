@@ -265,6 +265,8 @@ function _limitQoast(reason, args) {
         msg = _i18nQ('ai.inputLimitQoastImageSize', '有 {0} 张图片超出单张大小上限，已跳过');
     } else if (reason === 'send-busy') {
         msg = _i18nQ('ai.inputSendBusy', 'AI 正在处理中，请稍候…');
+    } else if (reason === 'paste-busy') {
+        msg = _i18nQ('ai.inputPasteBusy', '粘贴处理中，请稍候再发送');
     } else {
         msg = _i18nQ('ai.inputLimitQoastCap', '已达编辑框字符上限（约 {0}K 字符，非文件字节）');
         msg = msg.replace('{0}', (INPUT_CAP_CHARS / 1000).toFixed(1));
@@ -291,6 +293,54 @@ $input.addEventListener('keydown', function (e) {
     }
 }, true);
 
+// ═══ 按下即冻结发送（Enter 与发送按钮共用唯一入口；2026-09-30）═══
+// 核心语义：按下的那一瞬，编辑框全部内容（文字 + pendingImages 快照）就地冻结成消息，编辑条同步清空——
+// 此后窗口内的一切操作（删图/贴新图/打字/切 quest）都与本条消息无关：本条用快照，编辑条留给下一条。
+// 失败回滚（管线拒绝/楼层创建失败）由 panel-pipeline._restoreImagesToStrip 把图片放回编辑条。
+function _freezeAndSendFromInput() {
+    var _txtNow = $input.value;
+    var _imgsNow = (typeof pendingImages !== 'undefined' && pendingImages.length > 0)
+        ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; })
+        : [];
+    var _hasText = !!(_txtNow && _txtNow.trim());
+    // 空消息（无文字无图）→ 零副作用（不消费/不建楼；旧路径被管线空值校验静默丢弃）
+    if (!_hasText && _imgsNow.length === 0) return;
+    // ① 气泡 + 图行即时回显（零 IPC；渲染异常整步回滚，编辑框/图片条零损失）
+    var _bubble = null;
+    var _rowEl = null;
+    try {
+        _bubble = addMessageEl('user', _txtNow);
+        if (_bubble && _imgsNow.length > 0 && typeof _renderBubbleImgRow === 'function') {
+            _rowEl = _renderBubbleImgRow(_bubble, _imgsNow);
+        }
+    } catch (_fb) {
+        try { if (_bubble && _bubble.remove) _bubble.remove(); } catch (_) { }
+        try { if (_rowEl && _rowEl.parentNode) _rowEl.parentNode.removeChild(_rowEl); } catch (_) { }
+        if ($input.value !== _txtNow) $input.value = _txtNow;
+        return;
+    }
+    // （2026-10-01 修订）气泡/图行引用不再走全局槽——随 sendMessage 载荷随身传入（见下方 ③）。
+    //   旧全局槽（__qqq_userBubbleEl/ImgRow/Q）在多 quest 并行链下会被后一次冻结覆盖 →
+    //   本条预建气泡变孤儿 + 重复新建；随身引用天然归属本意图，零串号。
+    // ② 同步清空编辑框 + 图片条（内容已移入消息；图片条清空 = 「✕ 删掉在飞图片」的竞态窗口结构性闭合）
+    if (_txtNow !== '') $input.value = '';
+    _clearDraftTextNow(questActiveId);  // 发送即清高频草稿键（防断电窗口旧文本复活）
+    if ($input._resetUndo) $input._resetUndo();
+    if (_imgsNow.length > 0) {
+        pendingImages = [];
+        renderImageStrip();
+    }
+    if (typeof autoResizeInput === 'function') autoResizeInput();
+    if (typeof updateQueueBtn === 'function') updateQueueBtn();
+    if (typeof $input.focus === 'function') $input.focus();
+    // ③ 入链（快照 + 气泡/图行引用随行——管线只管用快照，永不再读编辑条）
+    sendMessage(_txtNow, {
+        images: (_imgsNow.length > 0) ? _imgsNow : null,
+        bubbleEl: _bubble || null,        // ★ 2026-10-01 随身引用：跨 quest 并行链零串号（替代旧全局槽）
+        bubbleImgRow: _rowEl || null
+    });
+}
+
 // Enter to send
 $input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -311,32 +361,14 @@ $input.addEventListener('keydown', function (e) {
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
             return;
         }
-        // ★ 立即反馈前置：发送意图经 sendMessage → _enqueueSend 入链（同步段完成，任何 await 之前）
-        //   竞态语义：同 quest 忙时 _sendActive 已拦（编辑框内容保留零丢失）；
-        //   通过后链追加原子 → 本意图必被执行，无双发可能
-        // ★ 立即反馈（2026-08-10）：同步插入用户气泡 + 清空编辑框（零 IPC 等待）
-        //   旧行为：draft 晋升（create/rename/mkdir 多条慢 IPC）后才清空编辑框 →
-        //   用户感知"按了回车没反应"（5-15 秒）→ 窗口内重复按 Enter → 并发发送 → 多层楼
-        var _txtNow = $input.value;
-        if (_txtNow && _txtNow.trim()) {
-            try {
-                var _bubble = addMessageEl('user', _txtNow);
-                if (_bubble) {
-                    window.__qqq_userBubbleEl = _bubble;
-                    if (typeof scrollToBottom === 'function') scrollToBottom(true);
-                }
-            } catch (_fb) {
-                // 渲染异常（如绑定中 cardPool 未就绪）→ 恢复编辑框，内容零丢失（链无需释放，无锁）
-                $input.value = _txtNow;
-                return;
-            }
-            $input.value = '';
-            _clearDraftTextNow(questActiveId);  // ★ 发送即清高频草稿键（防断电窗口旧文本复活）
-            if ($input._resetUndo) $input._resetUndo();
-            if (typeof autoResizeInput === 'function') autoResizeInput();
-            if (typeof updateQueueBtn === 'function') updateQueueBtn();
-        }
-        sendMessage(_txtNow);
+        // ★ 粘贴在飞拦截（2026-09-30）：大图/剪贴板读取处理中按回车 → 图尚未入条，本条会静默漏图。
+        //   同步拦下（内容零消费），处理完成后再发送即可带上图片。
+        if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
+        // ★ 按下即冻结（2026-09-30 重构）：文本+图片在按下的同一同步段冻结为消息快照 → 气泡（含图行）即时回显
+        //   → 同步清空编辑框/图片条 → 快照随 intent 入链。管线阶段永不再读编辑条。
+        //   旧缺陷（q386 f1 实锤）：图片不冻结、留给 _executeSend 在晋升/附件处理之后「活读」→
+        //   窗口内点 ✕ 删图 = 静默丢图；窗口内贴新图被本条顺走；窗口内打字被迟到清理擦除。
+        _freezeAndSendFromInput();
     }
 });
 // ══ 字符级 Undo/Redo（唯一真理逐字回退机器接管）══
@@ -371,11 +403,27 @@ var MAX_SINGLE_IMAGE_BYTES = 30 * 1024 * 1024; // 单张硬帽：FileReader 全�
 var MAX_IMG_EDGE = 4096;                       // 像素保护边：<2MB 但像素爆炸图（纯色大 PNG）→ canvas 崩溃点
 var COMPRESS_EDGE = 2048;                      // >2MB 压缩目标最长边（原行为：2048 宽）
 var _pasteChain = Promise.resolve();           // 粘贴串行队列：防快速连按 Ctrl+V 并发乱序
+var _pasteInFlight = 0;                        // ★ 2026-09-30：粘贴/拖放处理在飞计数（>0 时发送入口一律拦下——内容尚未入条）
 
 // 粘贴队列入口：所有异步粘贴路径（Ctrl+V / 右键菜单）串行执行
 function _enqueuePaste(fn) {
     _pasteChain = _pasteChain.then(fn, fn);
     return _pasteChain;
+}
+
+// ★ 处理在飞包装（唯一实现，2026-09-30）：粘贴/拖放处理期间 _pasteInFlight > 0，
+//   发送入口（Enter/发送按钮/队列/引导）据此拦下——图/文件尚未入条时发送会静默漏内容。
+//   成功/失败/同步抛错三路径都保证计数归还。
+function _enqueuePasteBusy(fn) {
+    return _enqueuePaste(function () {
+        _pasteInFlight++;
+        var _p;
+        try { _p = fn(); } catch (e) { _pasteInFlight = Math.max(0, _pasteInFlight - 1); throw e; }
+        return Promise.resolve(_p).then(
+            function (r) { _pasteInFlight = Math.max(0, _pasteInFlight - 1); return r; },
+            function (e) { _pasteInFlight = Math.max(0, _pasteInFlight - 1); throw e; }
+        );
+    });
 }
 
 function _readAsDataURL(blob) {
@@ -458,10 +506,45 @@ function addImage(dataUrl, base64) {
 }
 
 function removeImage(idx) {
+    var _removedId = (pendingImages[idx] && typeof pendingImages[idx].id === 'number') ? pendingImages[idx].id : null;
     pendingImages.splice(idx, 1);
     pendingImages.forEach(function (img, i) { img.id = i + 1; });
+    // ★ 2026-09-30 令牌同步：删除的图 → 编辑框里它的 [img:N] 令牌一并移除；其余图前移重编号 → 令牌改指新号。
+    //   否则残留令牌指向不存在的图（AI 收到暗号白找）或错指别的图（删图后序号重排）。
+    if (_removedId != null) _syncImgTokensAfterRemove(_removedId);
     renderImageStrip();
     _scheduleDraftSave(true);  // ★ 图片变更 → 完整快照（低频，1.2s 合并）
+}
+
+// 删除图 N 后的令牌校正（唯一实现）：[img:N] 移除；[img:M>N] → [img:M-1]。光标按替换量平移，零落点跳变。
+function _syncImgTokensAfterRemove(removedId) {
+    try {
+        var _nativeGet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').get;
+        var _nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+        var _cur = _nativeGet.call($input);
+        if (!_cur || _cur.indexOf('[img:') === -1) return;
+        var _sel = ($input.selectionStart === null || $input.selectionStart === undefined) ? _cur.length : $input.selectionStart;
+        var _delta = 0;
+        var _newVal = _cur.replace(/\[img:(\d+)\]/g, function (m, d, off) {
+            var _d = parseInt(d, 10);
+            if (_d === removedId) {
+                if (off < _sel) _delta -= m.length;
+                return '';
+            }
+            if (_d > removedId) {
+                var _nm = '[img:' + (_d - 1) + ']';
+                if (off < _sel) _delta += (_nm.length - m.length);
+                return _nm;
+            }
+            return m;
+        });
+        if (_newVal === _cur) return;
+        _nativeSet.call($input, _newVal);
+        var _newSel = Math.max(0, Math.min(_newVal.length, _sel + _delta));
+        try { $input.setSelectionRange(_newSel, _newSel); } catch (_) { }
+        if (typeof autoResizeInput === 'function') autoResizeInput();
+        if ($input._resetUndo) $input._resetUndo();
+    } catch (_) { }
 }
 
 function renderImageStrip() {
@@ -533,8 +616,8 @@ $input.addEventListener('paste', function (e) {
         }
     } catch (_) { return; }
 
-    // ★ 串行队列：快速连按 Ctrl+V 时逐次处理，防并发乱序/超限
-    _enqueuePaste(async function () {
+    // ★ 串行队列：快速连按 Ctrl+V 时逐次处理，防并发乱序/超限（busy 包装：处理期间发送入口拦截）
+    _enqueuePasteBusy(async function () {
         // 图片分支：串行处理保序，三重硬帽（30MB / 4096px / 20张槽位）
         if (imageFiles.length > 0) {
             await _pasteImages(imageFiles);
@@ -608,8 +691,8 @@ $input.addEventListener('contextmenu', function (e) {
 
     _addRow('Ctrl+V', function () {
         $input.focus();
-        // ★ 串行队列：与 Ctrl+V 共用同一队列，防并发乱序
-        _enqueuePaste(async function () {
+        // ★ 串行队列：与 Ctrl+V 共用同一队列，防并发乱序（busy 包装：处理期间发送入口拦截）
+        _enqueuePasteBusy(async function () {
         // ★ 先尝试读剪贴板图片（navigator.clipboard.read 支持 text+image）
         var imageBlobs = [], txt = '';
         try {
@@ -694,7 +777,15 @@ $sendBtn.onclick = function () {
             _limitQoast('send-busy');  // ★ 2026-08-11: 拦截 → 节流提示
             return;
         }
-        sendMessage();
+        // ★ 登录闸门（2026-09-30）：按下即冻结会消费编辑框——未登录必须在冻结前拦截（与 Enter 同规）
+        if (!_isLoggedIn()) {
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
+            return;
+        }
+        // ★ 粘贴在飞拦截（2026-09-30，与 Enter 同规）：处理中不消费
+        if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
+        // ★ 按下即冻结（与 Enter 共用唯一入口）
+        _freezeAndSendFromInput();
     }
 };
 

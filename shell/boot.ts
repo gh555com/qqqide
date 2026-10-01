@@ -201,10 +201,9 @@ export function healthCheck(urlStr: string, timeoutMs: number, isOffline: boolea
     });
 }
 
-// ═══ 启动进度报告 — C 语言启动器通过此文件读取进度 ═══
-// portableRoot = {extractRoot}/gh555.com/ (绿色包 Electron 的 app root)
-// C 启动器读取: {extractRoot}/gh555.com/loading-status
-// 因此: path.join(portableRoot, 'loading-status') = C 启动器读的路径 ✅
+// ═══ 启动进度诊断文件 ═══
+// 路径: {extractRoot}/gh555.com/loading-status（启动器 cleanupRootJunk 启动时清残留）
+// 现状: C 启动器已不消费（2026-08-31 架构后它只认「joker 主窗口可见」）——纯诊断留痕
 // 格式: "N|文字" (进度%|阶段描述) 或 "ready" (启动完成)
 function writeBootStatus(portableRoot: string, line: string): void {
     if (!portableRoot) return;
@@ -524,11 +523,11 @@ export async function loadRemoteWithCacheGuard(
                 font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif}
                 #__qqq_boot_panel .wrap{text-align:center;max-width:420px;padding:32px}
                 #__qqq_boot_panel .spinner{width:36px;height:36px;margin:0 auto 20px;
-                border:3px solid #eee8d5;border-top-color:#268bd2;border-radius:50%;
+                border:3px solid #eee8d5;border-top-color:#e69f00;border-radius:50%;
                 animation:__qqq_spin .8s linear infinite}
                 #__qqq_boot_panel .stage{color:#586e75;font-size:14px;margin-bottom:20px;min-height:20px}
                 #__qqq_boot_panel .bar-bg{background:#eee8d5;border-radius:8px;height:8px;overflow:hidden}
-                #__qqq_boot_panel .bar-fg{background:linear-gradient(90deg,#268bd2,#2aa198);height:100%;width:0%;transition:width .3s ease}
+                #__qqq_boot_panel .bar-fg{background:linear-gradient(90deg,#e69f00,#cb4b16);height:100%;width:0%;transition:width .3s ease}
                 #__qqq_boot_panel .pct{color:#93a1a1;font-size:12px;margin-top:8px}
                 @keyframes __qqq_spin{to{transform:rotate(360deg)}}
             `.replace(/\n\s*/g, '');
@@ -562,15 +561,34 @@ export async function loadRemoteWithCacheGuard(
                 }catch(_){}
             `.replace(/\n\s*/g, '')).catch(() => { });
         };
-        const removeLoadingPanel = () => {
+        const removeLoadingPanel = (): Promise<void> => {
             if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; }
             if (progressTickId) { clearInterval(progressTickId); progressTickId = null; }
-            wc.executeJavaScript(`
+            return wc.executeJavaScript(`
                 try{
                     var p=document.getElementById("__qqq_boot_panel");if(p)p.remove();
                     var h=document.getElementById("__qqq_boot_hide");if(h)h.remove();
                 }catch(_){}
             `).catch(() => { });
+        };
+        // ★ 亮相通道（2026-09-30 方案 3）: 窗口自创建起保持隐藏（window-manager show:false），
+        //   本函数 = 唯一 show 通道。先等渲染层真正抹掉遮罩（removeLoadingPanel 是异步
+        //   executeJavaScript，不等则首帧可能闪现加载面板）→ 再 show；400ms 竞态保护
+        //  （渲染层忙碌时不无限拖亮相，照常 show）。就绪信号 / 25s 超时 / 渲染崩溃 /
+        //   fallback / 10min 兜底，全部收敛于此。
+        const _revealWindow = () => {
+            Promise.race([
+                removeLoadingPanel(),
+                new Promise<void>(resolve => setTimeout(resolve, 400)),
+            ]).then(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    if (!mainWindow.isVisible()) { mainWindow.show(); }
+                    // ★ 方案 3 配套: 亮相后恢复默认后台节流（隐藏期在 window-manager 关闭
+                    //   节流保初始化全速）——此后窗口后台/最小化的能耗语义与旧版一致。
+                    try { mainWindow.webContents.setBackgroundThrottling(true); } catch (_) { }
+                    try { mainWindow.focus(); } catch (_) { }
+                }
+            });
         };
         const updateProgress = () => {
             const total = pendingReqs + doneReqs;
@@ -601,11 +619,9 @@ export async function loadRemoteWithCacheGuard(
             try { ipcMain.removeListener('qqqide:renderer-ready', _onRendererReady); } catch (_) { }
             try { wc.removeListener('render-process-gone', _onRenderGone); } catch (_) { }
             bootLog('reveal: ' + reason + ' — boot panel removed');
-            removeLoadingPanel();
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                if (!mainWindow.isVisible()) { mainWindow.show(); }
-                try { mainWindow.focus(); } catch (_) { }
-            }
+            // ★ 方案 3: 窗口自创建起隐藏，唯一亮相点 = 此处（就绪信号 / 25s 超时 / 渲染
+            //   崩溃三兜底同收敛）→ 亮相即成品（隐藏期等待观感由 C 启动器小窗承担）。
+            _revealWindow();
             _fireUiReady(reason);
         };
         const _onRendererReady = (e: any) => {
@@ -645,15 +661,9 @@ export async function loadRemoteWithCacheGuard(
             // ★ 重要：resolve Promise，否则 30s 超时会把 fallback 盖到 IDE 上
             finish(true, 'live');
             _bootReady = true;
-            setTimeout(() => {
-                // ★ 显示 Electron 窗口 — 此前一直隐藏，launcher 用小窗口展示进度；
-                //   窗口出现后 boot 面板继续覆盖（100% 正在启动 IDE…），等渲染层就绪再揭幕
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.show();
-                    mainWindow.focus();
-                }
-                bootLog('remote: window shown (boot panel remains until renderer-ready)');
-            }, 400);  // 短暂延迟让用户看到 100%
+            // ★ 方案 3（2026-09-30）: 资源加载完不再提前 show——窗口保持隐藏，等渲染层
+            //   UI 就绪信号由 _revealNow 唯一亮相（launcher 只认「joker 主窗口可见」，
+            //   就绪亮相瞬间 C 小窗同步退场；大窗第一帧即完全可交互的成品界面）。
             armRevealGate();
         };
 
@@ -678,11 +688,8 @@ export async function loadRemoteWithCacheGuard(
                 wc.removeListener('did-finish-load', onFinish);
                 wc.removeListener('did-stop-loading', onStopLoading);
                 wc.removeListener('did-fail-load', onFail);
-                removeLoadingPanel();
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.show();
-                    mainWindow.focus();
-                }
+                // ★ 方案 3: 窗口可能从未显示过 → 走统一亮相通道（先抹遮罩再 show）
+                _revealWindow();
                 try { wc.stop(); } catch (_) { }
             }
             bootLog('remote: ' + (ok ? 'LOADED' : 'FAILED') + ' mode=' + mode);
@@ -721,12 +728,8 @@ export async function loadRemoteWithCacheGuard(
                 panelTimer = setTimeout(() => {
                     bootLog('remote: ultimate fallback after 10min — force show (pending=' + pendingReqs + ' done=' + doneReqs + ')');
                     updateLoadingPanel(mi('main.boot.almost'), 95);
-                    writeLoadingStatus('ready');  // ★ 告知 C 启动器可以关了
-                    removeLoadingPanel();
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.show();
-                        mainWindow.focus();
-                    }
+                    writeLoadingStatus('ready');
+                    _revealWindow();
                 }, 600000);
                 finish(true, 'live');
             } else {

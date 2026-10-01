@@ -84,14 +84,14 @@
       else others.push(f);
     }
 
-    // 图片 → 多图粘贴管线（串行保序 + 三重硬帽）
+    // 图片 → 多图粘贴管线（串行保序 + 三重硬帽；busy 包装：处理期间发送入口拦截）
     if (imgs.length > 0) {
-      _enqueuePaste(function () { return _pasteImages(imgs); });
+      _enqueuePasteBusy(function () { return _pasteImages(imgs); });
     }
 
-    // 其余（文件/文件夹）→ 📎 锚点喂 AI；stat 判定目录（比扩展名启发式更准）
+    // 其余（文件/文件夹）→ 📎 锚点喂 AI；stat 判定目录（比扩展名启发式更准；busy 包装同规）
     if (others.length > 0) {
-      _enqueuePaste(function () {
+      _enqueuePasteBusy(function () {
         var chain = Promise.resolve();
         others.forEach(function (f) {
           chain = chain.then(function () {

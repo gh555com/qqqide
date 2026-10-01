@@ -447,6 +447,11 @@ app.on('browser-window-created', (_e, w) => {
             sandbox: false,
             webSecurity: false,
             spellcheck: false,
+            // ★ 启动隐藏期不节流（2026-09-30 方案 3 配套）: 主窗口自创建起隐藏、待渲染层
+            //   就绪才由 boot.ts 亮相；Chromium 对 hidden 页会节流 timer/rAF（1s 级），
+            //   会拖慢隐藏期初始化（AI 恢复等）。false = 隐藏期页面视作前台全速初始化；
+            //   首次亮相后由 boot.ts 恢复 true（运行时后台节流语义零变化）。
+            backgroundThrottling: false,
             additionalArguments: [
                 `--qqqide-root=${portableRoot}`,
                 `--qqqide-version=${appVersion}`,

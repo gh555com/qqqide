@@ -73,7 +73,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
   background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.02) 40%,rgba(255,255,255,.05) 46%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.05) 54%,rgba(255,255,255,.02) 60%,transparent 75%);
 }
 /* ── 钉住开启提示：「点我关闭」不透明蒙层——出现 1 秒即散（教关法）；纯提示层 pointer-events:none 不挡操作 ── */
-.quest-pin-hint{position:fixed;z-index:99998;display:flex;align-items:center;justify-content:center;background:#e8a030;color:#211f1c;font-size:15px;font-weight:700;letter-spacing:1px;pointer-events:none;opacity:0;transition:opacity .18s ease;user-select:none}
+/* ★ 鎏金牌配色（2026-09-30 用户定案）：浅主题暖金渐变 + 深棕字；暗主题深铜底 + 亮金字 + 金边——与 qd 金饰系统同族；
+   box-sizing:border-box 保 JS 写入宽高即外框尺寸（几何不变量，禁删）；letter-spacing 恒 1px（长译防挤压） */
+.quest-pin-hint{position:fixed;z-index:99998;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:1px solid rgba(139,102,8,.38);background:radial-gradient(140% 90% at 50% -25%,rgba(255,255,255,.6),transparent 62%),linear-gradient(180deg,#f6dc92 0%,#e5bc57 58%,#d7a63e 100%);color:#5a4210;font-size:15px;font-weight:700;letter-spacing:1px;text-shadow:0 1px 0 rgba(255,255,255,.35);box-shadow:inset 0 1px 0 rgba(255,255,255,.65),inset 0 -1px 0 rgba(120,80,0,.2),0 2px 10px rgba(90,60,0,.28);pointer-events:none;opacity:0;transition:opacity .18s ease;user-select:none}
+[data-theme="dark"] .quest-pin-hint{border-color:rgba(212,160,23,.55);background:radial-gradient(140% 90% at 50% -25%,rgba(255,224,130,.18),transparent 62%),linear-gradient(180deg,#4c3e1f 0%,#332a10 100%);color:#edcf72;text-shadow:0 1px 0 rgba(0,0,0,.45);box-shadow:inset 0 1px 0 rgba(255,235,170,.16),inset 0 -1px 0 rgba(0,0,0,.4),0 2px 12px rgba(0,0,0,.5)}
 .quest-pin-hint.show{opacity:1}
 #quest-bar.quest-expanded .quest-drop{
   top:100%;
@@ -330,6 +333,9 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 #btn-row #ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),var(--base3) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #guide-btn svg,#queue-btn svg{display:block;width:13px;height:13px}
 #guide-btn svg{width:15px;height:15px}
+/* ★ 引导菱形加深（2026-09-30 用户定案）：浅主题纯黑（原随按钮 --text-primary 灰调）；暗主题保持浅色可读 */
+#guide-btn svg{color:#000}
+[data-theme="dark"] #guide-btn svg{color:var(--text-primary)}
 .tier-group{display:flex;align-items:center;gap:4px;margin-right:12px}
 #btn-row .tier-btn{width:25px;height:25px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);font-size:12px;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1;flex-shrink:0}
 #btn-row .tier-btn:hover{background:var(--base3)}
@@ -657,7 +663,7 @@ var _orig={};
         <!-- ★ 引导按钮图标：正菱形点阵（2026-09-29 用户定案）——顶点落半整数格点 + crispEdges 无抗锯齿（45° 边恒 1px 均匀阶梯；改坐标必须保持半格对齐） -->
     <button id="guide-btn" disabled><svg width="15" height="15" viewBox="0 0 15 15"><path d="M7.5 1.5L13.5 7.5L7.5 13.5L1.5 7.5Z" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><path d="M7.5 5.5L9.5 7.5L7.5 9.5L5.5 7.5Z" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
     <button id="queue-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="1.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><line x1="2.5" y1="7.5" x2="11.5" y2="7.5" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="2.5" y="9.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
-    <button id="ctx-btn">--</button>
+    <button id="ctx-btn" disabled>--</button>
     <button id="send-btn">Send</button>
   </div>
 </div>

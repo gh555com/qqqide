@@ -26,7 +26,7 @@
   var card = { open: false, dockSide: 'right', video: null, audio: null, stow: false };
   var curKind = 'video';
   var saveTimer = 0, sessTimer = 0;
-  var DEF_GEO = { video: { w: 760, h: 440 }, audio: { w: 680, h: 210 } };
+  var DEF_GEO = { video: { w: 760, h: 440 }, audio: { w: 680, h: 288 } };
 
   function _i(k, fb, p) { try { return window._i(k, fb, p); } catch (_) { return fb || k; } }
   function _toast(m, o) { try { if (window.qqqideQoast) { window.qqqideQoast.show(m, o || {}); } } catch (_) { } }
@@ -209,6 +209,7 @@
       var h = (g && g.h) ? g.h : d.h;
       w = Math.max(320, Math.min(w, Math.max(320, window.innerWidth - 24)));
       h = Math.max(120, Math.min(h, Math.max(120, window.innerHeight - 24)));
+      if (key === 'audio') { h = Math.max(h, 286); }   // ★ 专属播放控制行（2026-09-30）：内容变高——存量小几何自愈（旧默认 210 实测已裁 13px，行加入后实测需 ≥286）
       var x = (g && typeof g.x === 'number') ? g.x : Math.max(16, window.innerWidth - w - 24);
       var y = (g && typeof g.y === 'number') ? g.y : Math.max(16, window.innerHeight - h - 84);
       x = Math.max(-(w - 80), Math.min(x, window.innerWidth - 80));
@@ -502,7 +503,7 @@
     } catch (_) { }
   }
 
-  // ── 键盘（卡开着且悬浮层未开时接管：空格/←→/↑↓/M/L/R/A/S/F/./,）──
+  // ── 键盘（卡开着且悬浮层未开时接管：空格/1/2/Q/W/Z/X/←→/↑↓/M/L/R/A/S/F）──
   function _hookKeys() {
     document.addEventListener('keydown', function (e) {
       if (!eng || !cardEl || !cardEl.classList.contains('qpc-open')) { return; }

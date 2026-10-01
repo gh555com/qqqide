@@ -1161,7 +1161,7 @@ function _szSigKey(e) {
 	return '';
 }
 async function loadFileList(p) {
-	// ★ 重置主进程 watcher 冷却 — 自身操作/刚刷新后 6s 内 watcher 事件忽略, 防双刷 (q3 markWatcherRefreshTime 同语义)
+	// ★ 重置主进程 watcher 节流窗 — 自身操作/刚刷新后 6s 内 watcher 事件【推迟不丢弃】(q3 markWatcherRefreshTime 同语义; 旧丢弃式会吞外部变更), 防双刷
 	rpc('roam.watchMark').catch(function(){});
 	// ★ q3 对齐: Space 强制尺寸仅会话内有效 — 切换目录或 SCM 模式 → 立即丢失强制
 	if (p !== _lastRenderedDir || szMode !== _lastRenderSzMode) {

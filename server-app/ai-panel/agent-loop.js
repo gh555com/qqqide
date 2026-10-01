@@ -458,14 +458,15 @@ var AgentLoop = (function () {
         if (images && images.length > 0) {
             var _hints = [];
             // 从 _floorMeta 获取楼层目录，用来拼完整路径
+            // ★ 2026-10-01 修复：必须取当前楼层——旧实现 for...in 遍历（整数键升序）恒命中最小楼层号
+            //   （最早楼层，通常 f1），多楼层会话把 PASTED IMAGES 路径指到旧楼层目录 →
+            //   AI 工具（analyze_image/remove_background）对旧图操作或找不到图（数据实锤：39/47 错位）。
+            //   _floorMeta[_currentFloorNum] 由 _executeSend 在 agent.send 前写入，正常路径必命中。
             var _fDir = '';
             try {
                 var _fm = self._floorMeta;
-                if (_fm) {
-                    for (var _fk in _fm) {
-                        if (_fm[_fk] && _fm[_fk]._fDir) { _fDir = _fm[_fk]._fDir; break; }
-                    }
-                }
+                var _cfm = (_fm && self._currentFloorNum) ? _fm[self._currentFloorNum] : null;
+                if (_cfm && _cfm._fDir) _fDir = _cfm._fDir;
             } catch (_) { }
             for (var _ii = 0; _ii < images.length; _ii++) {
                 var _im = images[_ii];
