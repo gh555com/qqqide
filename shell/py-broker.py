@@ -6,6 +6,9 @@
 职责:
   1. DevTools 窗口改名 (Win: ctypes / Mac: osascript / Linux: wmctrl)
   2. ★ 窗口编队热键 (Win: GetAsyncKeyState 轮询 / mac: pynput 钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+     ★ 和弦唯一语义（2026-10-02 q319 定案）：空格必须先按下且持续按住（物理键态·心跳续期）→ 槽位键按下才召唤；
+       反向/就近时间窗/Alt 修饰键/聚焦声明全部不存在——「没有其他任何逻辑」；目标已在最前 → 跳过。
+       播放器窗侧配合：空格按住期间槽位键由其引擎全屏蔽 + 空格松键才切换（响应延迟换和弦纯净，详 core/media-engine.js）
      Truth: %LOCALAPPDATA%/qqqide/squads.json (Electron 主进程唯一写入者, 本进程只读)
      → 召回结果以 {type:"event", event:"summon"} 主动上报主进程 (播放音效反馈)
 日志: 写入 {appRoot}/Data/Logs/_py_broker.log
@@ -442,7 +445,8 @@ def _linux_rename_devtools(new_title: str) -> dict:
 #   Truth: %LOCALAPPDATA%/qqqide/squads.json (Electron 主进程唯一写入者, 本进程只读)
 # =============================================================================
 _SQUAD_ORDER = ["1", "2", "q", "w", "a", "s", "z", "x"]
-_SQUAD_CHARS = set(_SQUAD_ORDER)
+# ★ 和弦裁决（2026-10-02 q319）：只在「槽位键按下」时裁决——空格必须已按住（反向/Alt 修饰键/聚焦声明全部废除）。
+_SQUAD_CHAR_NORMS = set("char:" + c for c in _SQUAD_ORDER)
 _HOTKEY_LISTENER = None
 _HOTKEY_PRESSED_KEYS = {}  # {normalized_key_str: press_timestamp_ms}
 _HOTKEY_LOCK = threading.Lock()
@@ -502,9 +506,10 @@ def _normalize_key(key):
     ★ mac: space 可能以 KeyCode(char=' ') 到达 → 先于 name 判定并转 special:space"""
     try:
         if hasattr(key, 'char') and key.char:
-            if key.char == ' ':
+            c = key.char.lower()
+            if c == ' ':
                 return "special:space"
-            return "char:" + key.char.lower()
+            return "char:" + c
         if hasattr(key, 'name') and key.name:
             return "special:" + key.name
         if hasattr(key, 'vk') and key.vk is not None:
@@ -517,12 +522,19 @@ def _normalize_key(key):
 
 
 def _activate_window(hwnd):
-    """还原最小化 + 绕过前台锁置前 + 聚焦"""
+    """还原最小化 + 绕过前台锁置前 + 聚焦
+    ★ 只置前不改窗口状态（2026-10-02 q319）：SW_RESTORE 仅在最小化时——无条件 SW_RESTORE 会把
+      最大化窗口还原成普通尺寸（召回 ≠ 改变窗口形态；目标已是前台时 _squad_summon 早已提前跳过）。"""
     import ctypes
     user32 = ctypes.windll.user32
     if not user32.IsWindow(hwnd):
         return
-    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE（仅最小化窗口）
+        _log(f"[Squad] activate {hwnd} iconic->restore")
+    elif not user32.IsWindowVisible(hwnd):
+        user32.ShowWindow(hwnd, 5)  # SW_SHOW（隐藏窗口显示；最大化态不动）
+        _log(f"[Squad] activate {hwnd} hidden->show")
     user32.keybd_event(0x12, 0, 0, 0)  # Alt down (bypass foreground lock)
     user32.SetForegroundWindow(hwnd)
     user32.keybd_event(0x12, 0, 2, 0)  # Alt up
@@ -676,6 +688,14 @@ def _poll_hotkey_loop():
                         _hotkey_note_press(norm)
                     else:
                         _hotkey_note_release(norm)
+            # ★ 存活心跳（2026-10-02 q319）：「空格一直按住不放」恒有效——物理按住期间逐 tick 刷新时间戳；
+            #   TTL 仅用于清理「漏 release 的陈旧键」（无心跳续期者自然过期）。
+            _held = [n for v, n in _POLL_VK_MAP.items() if prev.get(v)]
+            if _held:
+                _now_ms = time.time() * 1000
+                with _HOTKEY_LOCK:
+                    for _n in _held:
+                        _HOTKEY_PRESSED_KEYS[_n] = _now_ms
         except Exception:
             err_n += 1
             if err_n <= 3:  # ★ 前 3 次落日志（键态读取若持续失败，现场要能从日志看出来）
@@ -695,7 +715,12 @@ def _fire_squad_summon(ch):
 
 
 def _hotkey_note_press(norm):
-    """按下入账 + Space+编队键触发（pynput / 轮询双源共用同一状态机）"""
+    """按下入账 + 槽位键按下时裁决召回和弦（pynput / 轮询双源共用同一状态机）
+    ★ 2026-10-02 q319 和弦唯一语义（用户定案）:
+      ① 只在「槽位键按下」时裁决，且空格必须先按下并持续按住（物理键态；轮询心跳续期 → 超长按恒有效）
+         反向（先槽位后空格）永不触发、无任何就近时间窗——「没有其他任何逻辑」
+      ② 空格式唯一修饰键（Alt 修饰键 + 聚焦声明机制已整体废除）
+      ③ 空格单独按下永不触发（无槽位键不裁决）；目标已在最前 → _squad_summon 提前跳过"""
     global _HOTKEY_PRESSED_KEYS, _HOTKEY_LAST_TRIGGER
     if not _HOTKEY_ENABLED:
         return
@@ -705,22 +730,21 @@ def _hotkey_note_press(norm):
         stale_cutoff = now - _HOTKEY_KEY_TTL_MS
         for k in [k for k, ts in _HOTKEY_PRESSED_KEYS.items() if ts < stale_cutoff]:
             del _HOTKEY_PRESSED_KEYS[k]
-        space_ts = _HOTKEY_PRESSED_KEYS.get("special:space")
-        if not space_ts:
+        if norm not in _SQUAD_CHAR_NORMS:
             return
-        for ch in _SQUAD_CHARS:
-            ch_ts = _HOTKEY_PRESSED_KEYS.get("char:" + ch)
-            if not ch_ts:
-                continue
-            if abs(space_ts - ch_ts) > _HOTKEY_KEY_TTL_MS:
-                continue
-            if now - _HOTKEY_LAST_TRIGGER < _HOTKEY_DEBOUNCE_MS:
-                return
-            _HOTKEY_LAST_TRIGGER = now
-            _HOTKEY_PRESSED_KEYS.pop("special:space", None)
-            _HOTKEY_PRESSED_KEYS.pop("char:" + ch, None)
-            threading.Thread(target=_fire_squad_summon, args=(ch,), daemon=True).start()
+        # 快速通道：空格不在按（普通打字/单键）→ 零代价直接返回
+        if "special:space" not in _HOTKEY_PRESSED_KEYS:
             return
+        mod_ts = _HOTKEY_PRESSED_KEYS.get("special:space")
+        if not mod_ts or (now - mod_ts) > _HOTKEY_KEY_TTL_MS:
+            return
+        if now - _HOTKEY_LAST_TRIGGER < _HOTKEY_DEBOUNCE_MS:
+            return
+        ch = norm[5:]
+        _HOTKEY_LAST_TRIGGER = now
+        _HOTKEY_PRESSED_KEYS.pop("special:space", None)
+        _HOTKEY_PRESSED_KEYS.pop(norm, None)
+        threading.Thread(target=_fire_squad_summon, args=(ch,), daemon=True).start()
 
 
 def _hotkey_note_release(norm):

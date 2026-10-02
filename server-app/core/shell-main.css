@@ -563,9 +563,8 @@
 }
 
 /* ★ 2026-10-01 用户定案（状态区空气墙治理 + 陪伴时间入时间区）：
-   ① 播放器豆腐块/wq 间距 16→6px（贴紧——禁回 16px 空气墙）；
+   ① wq 间距 6px（贴紧——禁回 16px 空气墙；原播放器豆腐块已随单宿主大整改整体废除 2026-10-02）；
    ② 累计陪伴 736h 移入时间区——时间分割线改挂其左侧边（clock 不再画线，ui-zoom 徽章仍插 mem 后） */
-#qqq-status-player { margin-right: 6px; }
 #qqq-status-wq { margin-right: 6px; }
 #qqq-status-total { margin-right: 10px; border-left: 1px solid var(--border-color); padding-left: 12px; }
 
@@ -599,31 +598,6 @@
 .qqq-wq-btn.qqq-wq-bad { color: var(--red); }
 .qqq-wq-btn.qqq-wq-dim { color: var(--text-dim); }
 
-/* ── 播放器豆腐块（2026-10-01 q319 定案）：状态栏播控中心——固定宽 64px（♪/播放均衡条 + n/N），hover 上弹播放控制卡；
-      对齐 wq 豆腐块节奏；卡未开=暗色空闲态；禁独立悬浮迷你条（qqq 工作台 Player 行已废除）── */
-.qqq-pl-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  width: 64px;
-  flex: 0 0 auto;
-  font-family: Consolas, monospace;
-  font-size: 11px;
-  line-height: 1;
-  white-space: nowrap;
-  -webkit-app-region: no-drag;
-  forced-color-adjust: none;
-  color: var(--text-dim);
-}
-/* ★ 图标 = 静音符号 ♪ + 播放三角 ▶ 静态组合（2026-10-01 用户定案：跳动柱已废除——禁加回动画）；
-   状态只靠颜色区分：暗=空闲 / 次色=已暂停 / 金=播放中 */
-.qqq-pl-btn .qqq-pl-ico { display: block; flex: 0 0 auto; }
-.qqq-pl-btn .qqq-pl-tri { opacity: 0.85; }
-.qqq-pl-btn .qqq-pl-val { min-width: 28px; text-align: left; overflow: hidden; }
-.qqq-pl-btn.qqq-pl-dim { color: var(--text-dim); opacity: 0.75; }
-.qqq-pl-btn.qqq-pl-paused { color: var(--text-secondary); }
-.qqq-pl-btn.qqq-pl-playing { color: var(--yellow); }
 
 /* ── 界面缩放徽章（状态栏恒显按钮，位于 CPU 核数右侧；非 100% 高亮）+ 快捷键组 tooltip + 八档弹层（core/ui-zoom.js 唯一渲染机）──
    ★ 类名禁叫 qqq-zoom-btn——已属编辑器字号 ± 按钮（shell-base.css），冲突即双向污染 */
@@ -794,7 +768,6 @@
 /* ── 窄窗口退避：状态区恒一行，宽度变窄逐级隐藏非核心区块（shell-statusbar.js 加类） ── */
 .qqq-status-area.qqq-dense-1 .qqq-status-sponsor { display: none; }
 .qqq-status-area.qqq-dense-2 .qqq-act-name { display: none; }
-.qqq-status-area.qqq-dense-3 #qqq-status-player,
 .qqq-status-area.qqq-dense-3 #qqq-status-wq,
 .qqq-status-area.qqq-dense-3 #qqq-status-version,
 .qqq-status-area.qqq-dense-3 #qqq-status-total,
@@ -1499,117 +1472,6 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
 }
 .qqq-wq-hover-cmeta .qqq-wq-broken { color: var(--red); }
 
-/* ============================================================================
-   播放器豆腐块 hover 播放控制卡（2026-10-01 q319，core/player-block.js）
-   对齐 wq 卡片语言：鎏金渐变环 + 上弹；hover 即弹 / 点击钉住 / 点外（含 iframe）关 / Esc 关
-   ============================================================================ */
-.qqq-pl-hover {
-  position: fixed;
-  z-index: 2147483000;
-  width: 252px;
-  display: flex;
-  flex-direction: column;
-  padding: 9px 12px 10px;
-  border-radius: 10px;
-  background: var(--card-bg);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  transform: translateY(5px) scale(0.985);
-  pointer-events: none;
-  user-select: none;
-  transition: opacity 100ms ease-out, transform 100ms ease-out;
-  border: 1px solid transparent;
-  background-clip: padding-box;
-  overflow: hidden;
-}
-.qqq-pl-hover::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  padding: 1px;
-  background: linear-gradient(135deg, var(--cyan), transparent 38%, var(--green));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-.qqq-pl-hover::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 12px;
-  right: 12px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-  opacity: 0.5;
-  pointer-events: none;
-}
-.qqq-pl-hover-show { opacity: 1; transform: translateY(0) scale(1); }
-.qqq-pl-hover.qqq-pl-hover-pinned {
-  pointer-events: auto;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(181, 137, 0, 0.4);
-}
-.qqq-pl-hover-pinned::before { background: linear-gradient(135deg, var(--cyan), transparent 38%, #b58900); }
-.qqq-pl-hover-pinned::after { background: linear-gradient(90deg, transparent, #b58900, transparent); opacity: 0.8; }
-.qqq-pl-hover-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-.qqq-pl-hover-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: Consolas, monospace;
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: var(--text-secondary);
-  font-weight: bold;
-}
-.qqq-pl-hover-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
-.qqq-pl-hover-show .qqq-pl-hover-dot { animation: qqq-pl-live 2s ease-in-out infinite; }
-@keyframes qqq-pl-live {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); opacity: 1; }
-  50% { box-shadow: 0 0 6px 1px var(--green); opacity: 0.75; }
-}
-.qqq-pl-hover-cnt { font-family: Consolas, monospace; font-size: 11px; color: var(--text-dim); }
-.qqq-pl-hover-name {
-  font-family: Consolas, monospace;
-  font-size: 12px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.qqq-pl-hover-ctl {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 9px;
-  padding-top: 9px;
-  border-top: 1px solid var(--border-color);
-}
-.qqq-pl-ctl-gap { flex: 1 1 auto; }
-.qqq-pl-cbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-secondary);
-  outline: none;
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
-}
-.qqq-pl-cbtn:hover { border-color: var(--border-strong); color: var(--text-primary); background: var(--hover-bg); }
-.qqq-pl-cbtn:disabled { opacity: 0.35; }
-.qqq-pl-cbtn:disabled:hover { border-color: var(--border-color); color: var(--text-secondary); background: transparent; }
 
 /* ============================================================================
    MEM 24H hover 面板 — 启动包内存曲线（shell-mem-hover.js，2026-08-29）

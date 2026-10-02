@@ -4,76 +4,149 @@
 <meta charset="UTF-8">
 <title>qd (qqqide) Player</title>
 <style>
-  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0b0b0b;color:#dcd8d0;}
-  /* ── 拖拽区契约（v6：2026-09-26 修复「任意区拖窗→控件点不中」）─────────────
-     拖拽区 = OS 层 HTCAPTION：区内元素收不到任何鼠标事件（点击被吞）。
-     底座 #pl-root 恒 no-drag；仅三处「非交互区」可拖窗：
-       ① 顶部隐形条 #pl-dragtop  ② 空态整面 #pl-empty  ③ 播放区空背景 .ovmb-maincol
-     引擎 UI（控制条/面板/dock/媒体/转码条）与 toast 恒 no-drag（从拖拽区挖洞）。
-     ★ 新增任何悬浮元素必须同步登记 no-drag，否则点击被拖拽区吞掉。
-     ★ DOM 序 = 覆盖序：逐像素按文档序改写拖拽态（后代盖祖先、后兄弟盖前兄弟；
-       computed=none 不写）；故 no-drag 控件必须排在覆盖它的 drag 元素之后
-       （#pl-chrome 必须排在 #pl-empty 后；引擎动态追加的转码条/toast 天然在尾=安全）。 */
-  #pl-root{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:10px;overflow:hidden;box-sizing:border-box;-webkit-app-region:no-drag;}
-  #pl-root .ovmb-maincol{-webkit-app-region:drag;}
-  #pl-root .ovmb, #pl-root .ovmb *{-webkit-app-region:no-drag;}
-  #pl-root .ovmb-stack, #pl-root .ovmb-stack *{-webkit-app-region:no-drag;}
-  #pl-root video, #pl-root audio{-webkit-app-region:no-drag;}
-  #pl-root .ovmb-txbar{-webkit-app-region:no-drag;}
-  /* 拖拽条（无边框窗：顶部隐形拖区；窗控钮 z 更高且 no-drag） */
-  #pl-dragtop{position:absolute;top:0;left:0;right:0;height:18px;-webkit-app-region:drag;z-index:40;}
-  /* 迷你窗控（右上角）：置顶 / 关闭 */
-  #pl-chrome{position:absolute;top:6px;right:6px;z-index:50;display:flex;gap:4px;-webkit-app-region:no-drag;opacity:.55;transition:opacity .15s;}
-  #pl-chrome:hover{opacity:1;}
-  .pl-cbtn{width:22px;height:22px;padding:0;border:none;border-radius:6px;background:rgba(255,255,255,0.10);color:#cfcbc2;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;cursor:pointer;}
-  .pl-cbtn:hover{background:rgba(255,255,255,0.22);color:#fff;}
-  .pl-cbtn.pl-pin-on{color:#ffd301;background:rgba(255,211,1,0.16);}
-  .pl-cbtn.pl-close:hover{background:rgba(220,50,47,0.6);color:#fff;}
-  /* 空态 */
-  #pl-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;color:#8f8b83;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.7;-webkit-app-region:drag;}
-  #pl-empty *{-webkit-app-region:drag;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;color:#dcd8d0;}
+  /* ── 编队按钮调色（core/squad-btn.js 复用：主窗变量名同源——本窗为深色独立主题） ── */
+  :root{--border-color:#3a3a3a;--text-primary:#e8e8e0;--text-secondary:#9a958c;--background-color:#161616;--gold-hover-bg:rgba(255,211,1,0.15);}
+  /* ───────────────────────────────────────────────────────────────────────
+     播放器窗外观 = 内置播放器卡同款（2026-10-02 q319 定案）：
+     30px 头部条（logo + 轨名 + [Default默认播放器][编队][📌置顶][—最小化][▢最大化/还原][✕关闭]）+ body = 引擎壳层；窗头即拖拽带。
+     ★ v12（2026-10-02）：头部最左加 qd logo（唯一源 ../assets/qqqide.png 16×16 + invert(1)——与 IDE 左上角
+     「qd (qqqide)」菜单文字前同款；纯装饰 pointer-events:none、随拖拽带）；头部五钮恒直角（无圆角——边界清晰）。
+     ─────────────────────────────────────────────────────────────────────── */
+  /* ★ 窗口外观（2026-10-02 q319 定案；v16 直角）：零圆角（IDE 传统 100% 直角）+ 橙色渐变环——播放器 = IDE 之外滴独立窗口序列，
+     环配色用橙调（IDE 面板环=青绿调，一眼区分）；与暗主题内置面板同原语（shell-base.css「内嵌弹窗统一边界块」技法：
+     内层 padding-box 铺面板本色 + 外层 border-box 铺渐变 + 1px 透明边框露环）；圆角已全废（真机探针实证：radius 0 时
+     系统不叠加圆角——背窗取色法，corner 恒方；禁回圆角）。 */
+  #pl-root{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;-webkit-app-region:no-drag;
+    border-radius:0;border:1px solid transparent;
+    background:linear-gradient(#0b0b0b,#0b0b0b) padding-box, linear-gradient(135deg,#ffa02a,transparent 38%,#ff6a00) border-box;}
+  /* ── 拖拽区契约（2026-10-02 v9）：底座恒 no-drag；仅两处可拖窗——
+     ① 头部条 #pl-head ② 播放区空背景 .ovmb-maincol。引擎 UI（控制条/dock/弹面板/媒体/转码条）恒 no-drag。
+     ★ DOM 序 = 覆盖序：no-drag 控件必须排在覆盖它的 drag 元素之后（后兄弟/后代恒赢）；
+       新增任何悬浮元素必须同步登记 no-drag，否则点击被拖拽区吞掉（WM_NCHITTEST 验证法）。 ── */
+  #pl-head{display:flex;align-items:center;gap:6px;height:30px;padding:0 8px 0 10px;flex:0 0 auto;
+    background:rgba(255,255,255,0.06);border-bottom:1px solid rgba(255,255,255,0.09);user-select:none;-webkit-app-region:drag;}
+  /* ★ qd logo（v12）：头部最左、一切标题文字之前——与 IDE 左上角同款（同源文件 + 暗色 invert(1)）；纯装饰（不进 no-drag 登记面） */
+  #pl-logo{width:16px;height:16px;flex:0 0 auto;object-fit:contain;filter:invert(1);pointer-events:none;}
+  #pl-title{flex:1 1 auto;min-width:0;font-size:12px;color:#cfcbc2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;}
+  #pl-tools{display:flex;align-items:center;gap:4px;flex:0 0 auto;-webkit-app-region:no-drag;}
+  #pl-tools *{-webkit-app-region:no-drag;}
+  /* ★ 直角定案（v12）：头部五钮（编队/置顶/—/▢/✕）恒直角——禁回圆角（边界清晰，用户定案） */
+  .pl-hbtn{width:22px;height:22px;padding:0;border:none;border-radius:0;background:rgba(255,255,255,0.08);color:#cfcbc2;
+    font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;flex:0 0 auto;
+    position:relative;transition:background .12s,color .12s;}
+  .pl-hbtn:hover{background:rgba(255,255,255,0.22);color:#fff;}
+  .pl-hbtn.pl-close:hover{background:rgba(220,50,47,0.6);color:#fff;}
+  /* ★ 置顶状态 = 右下角打勾（2026-10-02 用户定案）：按钮本体零颜色变化，仅角标——无勾 = 未置顶 */
+  #pl-pin::after{content:'\2713';position:absolute;right:-2px;bottom:-3px;font-size:10px;font-weight:700;line-height:1;color:#ffd301;display:none;text-shadow:0 0 2px rgba(0,0,0,.85);pointer-events:none;}
+  #pl-pin.pl-pin-on::after{display:block;}
+  /* ★ Default 按钮（2026-10-02 v17）：设为系统默认播放器——文字钮（恒字「Default」）+ 右下角勾（手动确认态） */
+  .pl-htxt{width:auto;min-width:52px;height:22px;padding:0 9px;border:none;border-radius:0;background:rgba(255,255,255,0.08);color:#cfcbc2;
+    font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;flex:0 0 auto;
+    position:relative;transition:background .12s,color .12s;font-family:Tahoma,system-ui,sans-serif;}
+  .pl-htxt:hover{background:rgba(255,255,255,0.22);color:#fff;}
+  .pl-htxt:disabled{opacity:.55;}
+  #pl-def::after{content:'\2713';position:absolute;right:-2px;bottom:-3px;font-size:10px;font-weight:700;line-height:1;color:#ffd301;display:none;text-shadow:0 0 2px rgba(0,0,0,.85);pointer-events:none;}
+  #pl-def.pl-def-on::after{display:block;}
+  /* ★ 确认框（Default）：暗色卡片 + 主操作右；遮罩/Esc/点外 = 取消；开框期拖拽带让路（no-drag） */
+  .pl-ask-wrap{position:absolute;inset:0;z-index:99995;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);-webkit-app-region:no-drag;}
+  .pl-ask-wrap.pl-ask-show{display:flex;}
+  .pl-ask-wrap *{-webkit-app-region:no-drag;}
+  .pl-ask{width:min(430px,86vw);background:#141414;border:1px solid rgba(255,160,42,0.55);box-shadow:0 10px 40px rgba(0,0,0,0.6);
+    padding:16px 16px 12px;box-sizing:border-box;font:13px/1.65 system-ui,-apple-system,'Segoe UI',sans-serif;color:#e8e6e0;user-select:text;}
+  .pl-ask h3{margin:0 0 8px;font-size:14px;color:#ffd301;font-weight:600;}
+  .pl-ask .pl-ask-body{white-space:pre-line;color:#c9c5bc;font-size:12.5px;}
+  .pl-ask .pl-ask-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+  .pl-ask button{border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.07);color:#e8e6e0;font-size:12.5px;padding:5px 14px;cursor:pointer;font-family:inherit;}
+  .pl-ask button:hover{background:rgba(255,255,255,0.16);}
+  .pl-ask button.pl-ask-primary{border-color:rgba(255,211,1,0.55);background:rgba(255,211,1,0.14);color:#ffd301;}
+  .pl-ask button.pl-ask-primary:hover{background:rgba(255,211,1,0.28);}
+  .pl-ask button:disabled{opacity:.5;}
+  /* 最大化 ⇄ 还原 双图标（display 切换，禁换节点——换 innerHTML 会吞点击） */
+  #pl-min svg,#pl-max svg{display:block;pointer-events:none;}
+  #pl-max .pl-ic-restore{display:none;}
+  #pl-max.pl-maxed .pl-ic-max{display:none;}
+  #pl-max.pl-maxed .pl-ic-restore{display:block;}
+  /* 编队按钮槽（squad-btn.js 注入；按钮自带内联样式） */
+  #pl-squad{display:inline-flex;align-items:center;flex:0 0 auto;-webkit-app-region:no-drag;}
+  #pl-squad .qqq-squad-btn{border-radius:0 !important;}   /* v12 直角：收编 squad-btn 内联 4px 圆角（仅本窗生效，IDE 主窗不受影响） */
+  #pl-body{position:relative;flex:1 1 auto;min-height:0;display:flex;}
+  #pl-body .ovmb-maincol{-webkit-app-region:drag;}   /* 播放区空背景可拖窗（v15 后 = 音频盒四周；视频满铺 → 拖窗走头部条） */
+  #pl-body .ovmb, #pl-body .ovmb *{-webkit-app-region:no-drag;}
+  #pl-body .ovmb-stack, #pl-body .ovmb-stack *{-webkit-app-region:no-drag;}
+  #pl-body video, #pl-body audio{-webkit-app-region:no-drag;}
+  #pl-body .ovmb-txbar{-webkit-app-region:no-drag;}
+  /* ★ 弹面板开启期拖拽带让路（2026-10-02）：面板开着时头部条/播放区空背景临时 no-drag——
+     OS 层才能把点击送达 DOM（拖拽带被当标题栏会吞点击，「点面板外关闭」在它上面失效）；
+     类由 squad-btn（squad-dd-open）与引擎浮层（ovmb-floatopen）维护，面板关闭即复位。 */
+  html.ovmb-floatopen #pl-head, html.ovmb-floatopen #pl-body .ovmb-maincol,
+  html.squad-dd-open #pl-head, html.squad-dd-open #pl-body .ovmb-maincol{-webkit-app-region:no-drag;}
+  /* 空态（异常兜底：会话为空时） */
+  #pl-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;color:#8f8b83;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.7;}
   #pl-empty .pl-note{font-size:26px;line-height:1;color:#ffd301;opacity:.75;}
-  /* 迷你 toast（引擎宿主适配：与悬浮层 qoast 同语义） */
-  .pl-toast-wrap{position:absolute;left:50%;bottom:124px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;max-width:92%;-webkit-app-region:no-drag;}
+  /* 迷你 toast（引擎宿主适配：与主窗 qoast 同语义） */
+  .pl-toast-wrap{position:absolute;left:50%;bottom:124px;transform:translateX(-50%);z-index:99990;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;max-width:92%;-webkit-app-region:no-drag;}
   .pl-toast-wrap *{-webkit-app-region:no-drag;}
   .pl-toast{background:rgba(20,20,20,0.95);border:1px solid rgba(255,255,255,0.18);color:#e8e6e0;font:12px/1.5 system-ui,-apple-system,sans-serif;border-radius:8px;padding:7px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 18px rgba(0,0,0,0.5);pointer-events:auto;max-width:100%;box-sizing:border-box;}
   .pl-toast button{border:1px solid rgba(255,211,1,0.5);background:rgba(255,211,1,0.14);color:#ffd301;border-radius:6px;padding:2px 8px;font-size:12px;flex:0 0 auto;cursor:pointer;}
   .pl-toast button:hover{background:rgba(255,211,1,0.3);}
-  /* ── qd 无轨滚动条（shell-base.css「内嵌弹窗统一块」同标准——本窗为独立文档镜像，同 goods mdview 先例；2026-09-28 q319）
+  /* ── qd 无轨滚动条（shell-base.css「内嵌弹窗统一块」同标准——本窗为独立文档镜像，同 goods mdview 先例）
      5px / 轨道透明 / thumb rgba(128,128,128,.35) 圆角 / hover .55 / corner 透明——禁改数值（改 = 与统一块脱钩） ── */
   ::-webkit-scrollbar{width:5px;height:5px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.35);border-radius:3px;}
   ::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.55);}
   ::-webkit-scrollbar-corner{background:transparent;}
+  /* ★ 播放列表滚动块 = 引擎自定义滚动块（media-engine.js「qh 滚动真理机器」接入：ovmb-plsb 8px 滑轨 + 2px 细条 + hover 变粗贴边 + 点击即跳，
+     2026-10-02 q319 定案）——原生态滚动条已隐藏，本窗禁再做局部覆盖（旧局部提亮规则随机器接入废除） */
 </style>
 </head>
 <body>
-<div id="pl-root"></div>
-<div id="pl-dragtop"></div>
-<div id="pl-empty">
-  <div class="pl-note">&#9834;</div>
-  <div id="pl-empty-text"></div>
+<div id="pl-root">
+  <div id="pl-head">
+    <img id="pl-logo" src="../assets/qqqide.png" alt="" draggable="false" aria-hidden="true">
+    <span id="pl-title"></span>
+    <span id="pl-tools">
+      <button class="pl-htxt" id="pl-def" title="Default">Default</button>
+      <span id="pl-squad"></span>
+      <button class="pl-hbtn" id="pl-pin" title="Pin">&#128204;</button>
+      <button class="pl-hbtn" id="pl-min" title="Minimize"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></button>
+      <button class="pl-hbtn" id="pl-max" title="Maximize"><svg class="pl-ic-max" width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" stroke="currentColor" stroke-width="1.3" fill="none"/></svg><svg class="pl-ic-restore" width="12" height="12" viewBox="0 0 12 12"><rect x="1.8" y="3.6" width="6.6" height="6.6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M4.2 3.6V2.4h6v6H8.9" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></button>
+      <button class="pl-hbtn pl-close" id="pl-close" title="Close">&#10005;</button>
+    </span>
+  </div>
+  <div id="pl-body"></div>
+  <div id="pl-empty">
+    <div class="pl-note">&#9834;</div>
+    <div id="pl-empty-text"></div>
+  </div>
 </div>
-<!-- ★ #pl-chrome 必须排在 #pl-empty 之后：拖拽态按 DOM 序逐像素覆盖（后兄弟盖前兄弟）——
-     空态整面 drag 若排在后面会把窗控钮重新盖成拖拽区（吞点击），实测实锤 -->
-<div id="pl-chrome">
-  <!-- ★ 退回悬浮层（v6）：↙ 恒显示——整体交接回主窗口悬浮层（列表+进度+模式），主进程发事件后本窗自关；失败 → toast -->
-  <button class="pl-cbtn" id="pl-ret" title="退回悬浮层"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="display:block;pointer-events:none"><path d="M20 5.41L18.59 4 7 15.59V9H5v10h10v-2H8.41L20 5.41z"/></svg></button>
-  <!-- ★ 收进状态栏（2026-10-01）：整机交接 → 主窗播放器卡收纳态 → 状态栏 ♪ 豆腐块遥控/展开；本窗随交接自关 -->
-  <button class="pl-cbtn" id="pl-stow" title="Stow"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="display:block;pointer-events:none"><path d="M5 16h14v2H5z"/></svg></button>
-  <button class="pl-cbtn" id="pl-pin" title="Pin">&#128204;</button>
-  <button class="pl-cbtn pl-close" id="pl-close" title="Close">&#10005;</button>
+<div class="pl-ask-wrap" id="pl-defask">
+  <div class="pl-ask">
+    <h3 id="pl-defask-title"></h3>
+    <div class="pl-ask-body" id="pl-defask-body"></div>
+    <div class="pl-ask-btns">
+      <button id="pl-defask-no"></button>
+      <button class="pl-ask-primary" id="pl-defask-yes"></button>
+    </div>
+  </div>
 </div>
 <div class="pl-toast-wrap" id="pl-toasts"></div>
 
 <script src="../core/i18n.js"></script>
 <script src="../core/media-engine.js"></script>
 <script>
+  // ★ 编队按钮挂载点（core/squad-btn.js 唯一实现复用——须先于 squad-btn.js 读取；2026-10-02 单宿主大整改）
+  window.__qqqSquadMount = function () { try { return document.getElementById('pl-squad'); } catch (_) { return null; } };
+</script>
+<script src="../core/squad-btn.js"></script>
+<script>
 (function () {
   'use strict';
   var bridge = window.qqqideBridge;
   var rootEl = document.getElementById('pl-root');
+  var bodyEl = document.getElementById('pl-body');
+  var titleEl = document.getElementById('pl-title');
   var toastWrap = document.getElementById('pl-toasts');
   var emptyEl = document.getElementById('pl-empty');
   var emptyTextEl = document.getElementById('pl-empty-text');
@@ -81,6 +154,7 @@
   var eng = null;
   var cur = { list: [], index: 0 };
   var pinned = true;
+  var curTitle = '';
   var saveTimer = 0;
 
   function _tt(k, fb, p) { try { return window._i(k, fb, p); } catch (_) { return fb || k; } }
@@ -105,17 +179,34 @@
       setTimeout(function () { try { el.remove(); } catch (_) { } }, dur);
     } catch (_) { }
   }
+  // squad-btn 反馈兜底（占用提示 toast / 主窗 qoast 同语义——独立窗无 qoast 时不留空反馈）
+  try { if (!window.qqqideQoast) { window.qqqideQoast = { show: function (m, o) { _toast(m, o); } }; } } catch (_) { }
 
+  function _setTitle(t) {
+    t = String(t || '');
+    if (t === curTitle) { return; }
+    curTitle = t;
+    try { titleEl.textContent = t; } catch (_) { }
+  }
+
+  // 会话回写（主进程按 e.sender 归属本窗）+ 标题（当前轨名 → 编队标题联动）
   function _save(immediate) {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = 0; }
     var doSave = function () {
       try {
-        if (!eng || !bridge || !bridge.player || !bridge.player.setState) { return; }
+        if (!eng || !bridge || !bridge.player || !bridge.player.setSession) { return; }
         var st = eng.getState();
-        bridge.player.setState({
+        bridge.player.setSession({
           list: st.list, index: st.index, rate: st.rate, loop: st.loop,
-          shuffle: st.shuffle, volume: st.volume, muted: st.muted, dockSide: st.dockSide
+          shuffle: st.shuffle, follow: st.follow, volume: st.volume, muted: st.muted, dockSide: st.dockSide
         });
+        var it = (st.list && st.list[st.index]) || null;
+        var nm = it ? String(it.name || it.localPath || '') : '';
+        if (nm) { nm = nm.split(/[\\/]/).pop(); }
+        if (nm && nm !== curTitle) {
+          _setTitle(nm);
+          try { bridge.player.setTitle(nm); } catch (_) { }
+        }
       } catch (_) { }
     };
     if (immediate) { doSave(); } else { saveTimer = setTimeout(doSave, 700); }
@@ -127,28 +218,29 @@
     i18n: _tt,
     toast: _toast,
     onClose: function () { try { if (bridge && bridge.player && bridge.player.close) { bridge.player.close(); } } catch (_) { } },
+    // ★ 整体重建（转码回灌 / 跨类型切轨共用）——isTx/播放意图/状态全量透传（禁再硬编码 isTx:true + play:true）
     reopen: function (p) {
       openMedia({
         src: p.src, localPath: p.localPath,
         list: p.list || cur.list, index: (typeof p.index === 'number') ? p.index : cur.index,
-        isTx: true, play: true
+        isTx: !!p.isTx, play: p.paused !== true,
+        time: (typeof p.time === 'number') ? p.time : 0,
+        rate: p.rate, loop: p.loop, shuffle: p.shuffle, follow: p.follow,
+        volume: p.volume, muted: p.muted
       });
     },
     reveal: function (p) { try { if (bridge && bridge.player && bridge.player.reveal) { bridge.player.reveal(p); } } catch (_) { } },
     getLastDir: function () { return ''; },
-    onPlayState: function (playing) {
-      if (!playing) { return; }
-      try { if (bridge && bridge.player && bridge.player.claim) { bridge.player.claim('player'); } } catch (_) { }
-    },
+    onPlayState: function () { },
     onState: function () { _save(false); },
     savePref: function (k, v) {
-      if (k === 'dockSide') { try { if (bridge && bridge.player && bridge.player.setState) { bridge.player.setState({ dockSide: v }); } } catch (_) { } }
+      if (k === 'dockSide') { _save(false); }
     }
   }) : null;
 
   function _showEmpty(on) {
     emptyEl.style.display = on ? 'flex' : 'none';
-    emptyTextEl.textContent = _tt('shell.player.empty', '播放列表为空 — 在 Roam 中选中媒体右键「加入播放列表」，或从悬浮层 ↗ 弹出');
+    emptyTextEl.textContent = _tt('shell.player.empty', '播放列表为空');
   }
 
   function openMedia(o) {
@@ -158,12 +250,12 @@
     var idx = (typeof o.index === 'number' && o.index >= 0 && o.index < list.length) ? o.index : 0;
     try { if (eng) { eng.destroy(); } } catch (_) { }
     eng = null;
-    try { rootEl.innerHTML = ''; } catch (_) { }
+    try { bodyEl.innerHTML = ''; } catch (_) { }
     cur.list = list; cur.index = idx;
     _showEmpty(false);
     var item = list[idx] || {};
     eng = ME ? ME.mount({
-      container: rootEl, rootEl: rootEl,
+      container: bodyEl, rootEl: rootEl,
       mode: ME.kindOf(item.localPath || o.localPath || o.src || ''),
       src: o.src || item.src || '',
       localPath: item.localPath || o.localPath || null,
@@ -175,162 +267,208 @@
       startTime: o.time || 0,
       initial: {
         rate: (typeof o.rate === 'number') ? o.rate : undefined,
-        loop: o.loop, shuffle: o.shuffle,
+        loop: o.loop, shuffle: o.shuffle, follow: o.follow,
         volume: (typeof o.volume === 'number') ? o.volume : undefined,
         muted: (typeof o.muted === 'boolean') ? o.muted : undefined,
         dockSide: o.dockSide
       }
     }) : null;
+    // 标题立即对齐当前轨（编队标题联动；后续 _save 持续校正）
+    var _nm0 = String(item.name || item.localPath || '').split(/[\\/]/).pop() || '';
+    if (_nm0) { _setTitle(_nm0); try { bridge.player.setTitle(_nm0); } catch (_) { } }
     _save(true);
   }
 
-  function _itemsToTracks(items) {
-    var out = [];
-    for (var i = 0; i < (items || []).length; i++) {
-      var it = items[i] || {};
-      if (!it.localPath) { continue; }
-      out.push({ src: it.src || ('file:///' + it.localPath), localPath: it.localPath, name: it.name || String(it.localPath).split('/').pop() || '' });
-    }
-    return out;
-  }
-
-  // ── 引擎键盘派发（同悬浮层语义：Esc 先关面板，其余走 keys）──
+  // ── 引擎键盘派发（Esc 先关面板，其余走 keys；keyup 走 keysUp = 编队和弦机器——空格松键生效）──
+  //   ★ 确认框优先（v17）：开框期键盘全归确认框（Esc=取消、其余吞掉——防空格误触播放）
   document.addEventListener('keydown', function (e) {
+    if (defAskEl && defAskEl.classList.contains('pl-ask-show')) {
+      if (e.key === 'Escape') { try { _defCloseAsk(); } catch (_) { } }
+      return;
+    }
     if (!eng) { return; }
     if (e.key === 'Escape') { try { eng.esc(); } catch (_) { } return; }
     try { eng.keys(e); } catch (_) { }
   });
+  document.addEventListener('keyup', function (e) {
+    if (!eng) { return; }
+    try { eng.keysUp(e); } catch (_) { }
+  });
 
-  // ── 窗控 ──
+  // ── 窗控（2026-10-02 v10）：[置顶📌][—最小化][▢最大化/还原][✕关闭]；置顶状态 = 右下角打勾（零颜色变化）──
+  // ★ 焦点卫生：全部头部按钮 mousedown preventDefault——点后不留焦点（防 Space 激活按钮吞快捷键，2026-10-02）
+  var minBtn = document.getElementById('pl-min');
+  var maxBtn = document.getElementById('pl-max');
+  var closeBtn = document.getElementById('pl-close');
+  var _hbtns = document.querySelectorAll('.pl-hbtn');
+  for (var _hi = 0; _hi < _hbtns.length; _hi++) {
+    _hbtns[_hi].addEventListener('mousedown', function (e) { e.preventDefault(); });
+  }
+  function _maxUI(on) {
+    maxBtn.classList.toggle('pl-maxed', !!on);
+    try { maxBtn.title = _tt(on ? 'shell.player.restore' : 'shell.player.maximize', on ? '还原' : '最大化'); } catch (_) { }
+  }
+  pinBtn.title = _tt('shell.player.pin', '置顶');
+  minBtn.title = _tt('shell.player.minimize', '最小化');
+  closeBtn.title = _tt('shell.player.close', '关闭');
+  _maxUI(false);
   pinBtn.addEventListener('click', function () {
     pinned = !pinned;
     pinBtn.classList.toggle('pl-pin-on', pinned);
-    try { if (bridge && bridge.player && bridge.player.setState) { bridge.player.setState({ pinned: pinned }); } } catch (_) { }
+    try { if (bridge && bridge.player && bridge.player.setPin) { bridge.player.setPin(pinned); } } catch (_) { }
   });
-  document.getElementById('pl-close').addEventListener('click', function () {
+  minBtn.addEventListener('click', function () {
+    try { if (bridge && bridge.player && bridge.player.minimize) { bridge.player.minimize(); } } catch (_) { }
+  });
+  maxBtn.addEventListener('click', function () {
+    try {
+      if (bridge && bridge.player && bridge.player.maximize) {
+        bridge.player.maximize().then(function (r) { _maxUI(!!(r && r.maximized)); }).catch(function () { });
+      }
+    } catch (_) { }
+  });
+  closeBtn.addEventListener('click', function () {
     try { if (bridge && bridge.player && bridge.player.close) { bridge.player.close(); } } catch (_) { }
   });
-  // ★ 退回悬浮层（v6，2026-09-26 q319）：整体交接回主窗口悬浮层（列表+进度+模式还原）→ 主进程发事件后本窗自关；
-  //   失败（无主窗口 / 旧壳层无 returnOverlay / 空列表）→ toast 提示，本窗不动、声音不断（交接成功才随窗关闭停）
-  (function () {
-    var retBtn = document.getElementById('pl-ret');
-    if (!retBtn) { return; }
-    try { retBtn.title = _tt('shell.player.returnOv', '退回悬浮层'); } catch (_) { }
-    retBtn.addEventListener('click', function () {
-      var _fail = function () { _toast(_tt('shell.player.returnFail', '未找到主窗口，无法退回悬浮层')); };
-      try {
-        if (!bridge || !bridge.player || !bridge.player.returnOverlay) {
-          _toast(_tt('shell.player.needRestart', '播放器需要重启实例后可用'));
-          return;
-        }
-        var st = null;
-        try { st = (eng && eng.getState) ? eng.getState() : null; } catch (_) { st = null; }
-        if (!st || !st.list || !st.list.length) { _fail(); return; }
-        bridge.player.returnOverlay(st).then(function (r) {
-          if (!r || !r.ok) { _fail(); }
-        }).catch(_fail);
-      } catch (_) { }
-    });
-  })();
+  try {
+    if (bridge && bridge.player && bridge.player.onMaxState) { bridge.player.onMaxState(function (on) { _maxUI(!!on); }); }
+  } catch (_) { }
 
-  // ★ 收进状态栏（2026-10-01 q319 用户定案）：整机交接 → 主窗口播放器卡（收纳态）→ 状态栏 ♪ 豆腐块遥控；
-  //   主进程发 cardHandoff 后本窗自关（交接未达 → toast，本窗不动、声音不断）。
-  (function () {
-    var stowBtn = document.getElementById('pl-stow');
-    if (!stowBtn) { return; }
-    try { stowBtn.title = _tt('shell.player.minimize', '收纳 · 状态栏 ♪ 遥控'); } catch (_) { }
-    stowBtn.addEventListener('click', function () {
-      var _fail = function () { _toast(_tt('shell.player.stowFail', '未找到主窗口，无法收进状态栏')); };
-      try {
-        if (!bridge || !bridge.player || !bridge.player.stowToCard) {
-          _toast(_tt('shell.player.needRestart', '播放器需要重启实例后可用'));
-          return;
-        }
-        var st = null;
-        try { st = (eng && eng.getState) ? eng.getState() : null; } catch (_) { st = null; }
-        if (!st || !st.list || !st.list.length) { _toast(_tt('shell.player.blockEmpty', '暂无播放会话')); return; }
-        bridge.player.stowToCard(st).then(function (r) {
-          if (!r || !r.ok) { _fail(); }
-        }).catch(_fail);
-      } catch (_) { }
-    });
-  })();
+  // ── 系统默认播放器（2026-10-02 v17）：「Default」→ 确认框 → 全量接管（apply）/纯清空解除（remove）──
+  //   接管范围 = 一切媒体（一切可播音视频格式）；✓ 角标 = 当前已接管（手动确认态）。
+  var defAskEl = document.getElementById('pl-defask');
+  var defAskTitle = document.getElementById('pl-defask-title');
+  var defAskBody = document.getElementById('pl-defask-body');
+  var defAskYes = document.getElementById('pl-defask-yes');
+  var defAskNo = document.getElementById('pl-defask-no');
+  var defState = false;   // 已接管（✓ 角标）
+  var defBusy = false;
+  var defAskMode = '';
 
-  // ── 主题（跟随 qqq.theme.v1 镜像；播放器恒深色基调，仅标注主题态供未来样式）──
+  function _defBadge(on) { defState = !!on; try { defBtn.classList.toggle('pl-def-on', defState); } catch (_) { } }
+  function _defRefresh() {
+    try {
+      if (bridge && bridge.fileAssoc && bridge.fileAssoc.check) {
+        bridge.fileAssoc.check().then(function (r) { if (r && r.ok) { _defBadge(r.ours > 0); } }).catch(function () { });
+      }
+    } catch (_) { }
+  }
+  function _defCloseAsk() { try { defAskEl.classList.remove('pl-ask-show'); } catch (_) { } defAskMode = ''; }
+  function _defOpenAsk(mode) {
+    defAskMode = mode;
+    try {
+      if (mode === 'on') {
+        defAskTitle.textContent = _tt('shell.player.defAskTitle', '是否作为系统默认播放器？');
+        defAskBody.textContent = _tt('shell.player.defAskBody', '将接管本机全部音视频格式的默认打开方式：双击媒体文件直接用 qd 播放器打开。\n可随时再点 Default 取消。');
+        defAskYes.textContent = _tt('shell.player.defYes', '是，接管');
+      } else {
+        defAskTitle.textContent = _tt('shell.player.defOffTitle', '取消作为系统默认播放器？');
+        defAskBody.textContent = _tt('shell.player.defOffBody', '将移除 qd 的默认关联（清空白板化，不恢复之前的设置）。');
+        defAskYes.textContent = _tt('shell.player.defOffYes', '是，取消');
+      }
+      defAskNo.textContent = _tt('shell.player.defNo', '取消');
+      defAskEl.classList.add('pl-ask-show');
+    } catch (_) { }
+  }
+  function _defBusyDone() {
+    defBusy = false;
+    try { defAskYes.disabled = false; defBtn.disabled = false; defBtn.textContent = 'Default'; } catch (_) { }
+  }
+  function _defRun(mode) {
+    if (defBusy) { return; }
+    if (!bridge || !bridge.fileAssoc || !bridge.fileAssoc.apply) {
+      _toast(_tt('shell.player.needRestart', '播放器需要重启实例后可用'), { type: 'error' });
+      return;
+    }
+    defBusy = true;
+    try { defAskYes.disabled = true; defBtn.disabled = true; defBtn.textContent = '\u2026'; } catch (_) { }
+    var call = (mode === 'on') ? bridge.fileAssoc.apply() : bridge.fileAssoc.remove();
+    call.then(function (r) {
+      _defBusyDone();
+      if (!r || !r.ok) {
+        if (r && r.code === 'unsupported') { _toast(_tt('shell.player.defUnsupported', '当前系统暂不支持此功能'), { type: 'error' }); }
+        else { _toast(_tt('shell.player.defFail', '操作失败：{e}', { e: (r && (r.code || r.reason)) || '?' }), { type: 'error' }); }
+        return;
+      }
+      if (mode === 'on') {
+        var taken = r.taken || 0, total = r.total || 0;
+        if (total > 0 && taken >= total) {
+          _toast(_tt('shell.player.defDoneAll', '全部 {n} 类媒体文件已接管 ✓', { n: total }));
+        } else {
+          _toast(_tt('shell.player.defPartial', '已接管 {n}/{m} 类；其余被系统保护拦截', { n: taken, m: total }), {
+            type: 'warn', duration: 6000,
+            action: { label: _tt('shell.player.defSettings', '打开系统设置'), onClick: function () { try { bridge.fileAssoc.settings(); } catch (_) { } } }
+          });
+        }
+        _defBadge(true);
+      } else {
+        _toast(_tt('shell.player.defRemoved', '已取消系统默认播放器'));
+        _defBadge(false);
+      }
+    }).catch(function () {
+      _defBusyDone();
+      _toast(_tt('shell.player.defFail', '操作失败：{e}', { e: 'bridge' }), { type: 'error' });
+    });
+  }
+  var defBtn = document.getElementById('pl-def');
+  try { defBtn.addEventListener('mousedown', function (e) { e.preventDefault(); }); } catch (_) { }   // 焦点卫生（同头部钮）
+  try {
+    defBtn.addEventListener('click', function () { _defOpenAsk(defState ? 'off' : 'on'); });
+    defAskYes.addEventListener('click', function () { var m = defAskMode; _defCloseAsk(); if (m) { _defRun(m); } });
+    defAskNo.addEventListener('click', function () { _defCloseAsk(); });
+    defAskEl.addEventListener('click', function (e) { if (e.target === defAskEl) { _defCloseAsk(); } });
+  } catch (_) { }
+
+  // ── 主题（跟随 qqq.theme.v1 镜像；播放器恒深色基调）──
   try {
     var th = localStorage.getItem('qqq.theme.v1');
-    document.documentElement.setAttribute('data-theme', /dark/i.test(String(th)) ? 'dark' : (/light/i.test(String(th)) ? 'light' : 'dark'));
+    document.documentElement.setAttribute('data-theme', /light/i.test(String(th)) ? 'light' : 'dark');
   } catch (_) { document.documentElement.setAttribute('data-theme', 'dark'); }
 
-  if (!bridge || !bridge.player || !ME) {
+  if (!bridge || !bridge.player || !bridge.player.getSession || !ME) {
+    _setTitle(_tt('shell.player.title', '播放器'));
     _showEmpty(true);
+    emptyTextEl.textContent = _tt('shell.player.needRestart', '播放器需要重启实例后可用');
     return;
   }
 
-  // ── 出声独占：悬浮层起播 → 播放器自动暂停 ──
-  try {
-    bridge.player.onClaim(function (from) {
-      if (from === 'player') { return; }
-      try { if (eng) { eng.pause(); } } catch (_) { }
-    });
-  } catch (_) { }
+  // Default 角标初始态（fileAssoc 缺失 = 旧壳层 → 静默零角标）
+  _defRefresh();
 
-  // ── 交接（悬浮层 ↗ / Roam 建窗携列表）──
+  // ★ 加入播放列表（2026-10-02 q319）：主进程推送（Roam 右键行 → 本窗为最近活跃目标）→ 引擎纯追加
+  //   不动当前轨、不打断播放（append autoplay 恒 false）；追加后立即落盘（防断电丢新项）
   try {
-    bridge.player.onHandoff(function (h) {
-      if (!h || !h.list || !h.list.length) { return; }
-      openMedia({
-        list: h.list, index: h.index || 0,
-        play: h.play !== false, time: h.time || 0,
-        rate: h.rate, loop: h.loop, shuffle: h.shuffle,
-        volume: h.volume, muted: h.muted, dockSide: h.dockSide
+    if (bridge.player.onAppend) {
+      bridge.player.onAppend(function (payload) {
+        try {
+          if (!eng) { return; }   // 会话装载中：主进程已先行入档，getSession 自然带上（禁回写防覆盖）
+          var items = (payload && payload.items) || [];
+          if (!items.length) { return; }
+          eng.append(items, false);
+          _save(true);
+        } catch (_) { }
       });
-    });
+    }
   } catch (_) { }
 
-  // ── 追加（已开窗时 Roam ➕）：播放中不打断；空闲则起播首个新增 ──
-  try {
-    bridge.player.onQueue(function () {
-      bridge.player.getState().then(function (r) {
-        var list = (r && r.state && r.state.list) || [];
-        if (!list.length) { return; }
-        var tracks = _itemsToTracks(list);
-        if (!eng || !cur.list.length) { openMedia({ list: tracks, index: r.state.index || 0, play: true }); return; }
-        var known = {};
-        for (var i = 0; i < cur.list.length; i++) { if (cur.list[i] && cur.list[i].localPath) { known[cur.list[i].localPath] = 1; } }
-        var fresh = [];
-        for (var j = 0; j < tracks.length; j++) { if (!known[tracks[j].localPath]) { fresh.push(tracks[j]); } }
-        if (fresh.length) { try { eng.append(fresh, true); } catch (_) { } cur.list = cur.list.concat(fresh); }
-      }).catch(function () { });
-    });
-  } catch (_) { }
-
-  // ── 启动：恢复状态（列表存 → 暂停态显示；handoff 在轮询应答里）──
-  bridge.player.getState().then(function (r) {
-    var st = (r && r.state) || {};
+  // ── 启动：取本窗会话（autoplay = 全新打开 true / 启动恢复 false——恢复恒暂停态）──
+  bridge.player.getSession().then(function (r) {
+    var st = (r && r.session) || {};
+    var list = Array.isArray(st.list) ? st.list : [];
     pinned = st.pinned !== false;
     pinBtn.classList.toggle('pl-pin-on', pinned);
-    var h = r && r.handoff;
-    if (h && h.list && h.list.length) {
-      openMedia({
-        list: h.list, index: h.index || 0,
-        play: h.play !== false, time: h.time || 0,
-        rate: h.rate, loop: h.loop, shuffle: h.shuffle,
-        volume: h.volume, muted: h.muted, dockSide: h.dockSide
-      });
-      return;
-    }
-    var list = Array.isArray(st.list) ? st.list : [];
     if (list.length) {
       openMedia({
-        list: list, index: st.index || 0, play: false,
-        rate: st.rate, loop: st.loop, shuffle: st.shuffle,
+        list: list, index: st.index || 0,
+        play: !!(r && r.autoplay),
+        rate: st.rate, loop: st.loop, shuffle: st.shuffle, follow: st.follow,
         volume: st.volume, muted: st.muted, dockSide: st.dockSide
       });
     } else {
+      _setTitle(_tt('shell.player.title', '播放器'));
       _showEmpty(true);
     }
-  }).catch(function () { _showEmpty(true); });
+  }).catch(function () { _setTitle(_tt('shell.player.title', '播放器')); _showEmpty(true); });
 })();
 </script>
 </body>

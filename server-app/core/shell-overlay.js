@@ -2,6 +2,9 @@
 
 // ============================================================================
 // shell-overlay.js — AI 悬浮预览层（图片 + 表格，全窗口）（从 shell.js 拆分）
+//   ★ 2026-10-02 单宿主大整改：播放器已独立成窗（player/player.html，Roam Q 直开）——
+//     本层不再承载任何媒体（open-video/open-audio/stow/交接全删）；仅保留图片/表格预览，
+//     并借用共享引擎的转码工具（psd/tif 图片 → ffmpeg 抽帧）与 Roam 定位引擎。
 // 依赖: window.qqqideBridge, window._i, window.qqqideTheme
 // ============================================================================
 
@@ -29,9 +32,6 @@ function bootAiOverlay() {
     'display:none; outline:none; position:absolute; inset:0; z-index:99999; ' +
     'background:rgba(0,0,0,0.88);';
 
-  // ★ 播放器键盘独占（2026-10-01 q319 用户定案）：悬浮层可见（任何内容）= 模态层在顶 —— X 归媒体（倍速），
-  //   kmd/qmd 呈递机器让路（shell.js __qqqPlayerKeysBusy / key-hook.js 转发两处消费）
-  window.__qqqOverlayVisible = function () { try { return overlay.style.display !== 'none'; } catch (_) { return false; } };
 
   // ── 滚动条/拖选色由 shell-base.css「内嵌弹窗统一块」提供（铁律 §4.1 单源——原自注入已迁删）──
 
@@ -99,8 +99,6 @@ function bootAiOverlay() {
   var _ovLastMatchText = '';
   // ★ 图片本地路径（open-image 消息 localPath 透传；dataUrl 缩略图场景的文件/路径按钮靠它）
   var _ovLocalPath = null;
-  // ★ 媒体截图落盘基准（原始文件路径；转码回放时 _ovLocalPath 指向 Cache 产物 → 截图必须落原始文件目录）
-  var _ovShotBase = null;
 
   function _ovApplyHighlights(text) {
     _ovClearHighlights();
@@ -232,48 +230,10 @@ function bootAiOverlay() {
   var fileBtn = tbBtn(window._i('shell.overlay.file', '文件'), window._i('shell.overlay.fileTitle', '复制图片文件，可粘贴到聊天/Roam/资源管理器'));
   var pathBtn = tbBtn(window._i('shell.overlay.path', '路径'), window._i('shell.overlay.pathTitle', '复制图片路径'));
 
-  // 当前 overlay 媒体元素（视频/音频预览存在 <video>/<audio>）
-  function _ovMediaEl() {
-    return contentEl.querySelector('video') || contentEl.querySelector('audio');
-  }
-  // 关闭/切换/重开前停止媒体播放（Element 从 DOM 移除不保证停播——必须显式 pause+卸载，防「关了还在响」）
-  // ★ 2026-09-26：并执行媒体会话清理钩子（控制条监听/键盘钩子/全屏退出）——open-image/open-table 直切不经 close 包装器也必清
-  var _ovMediaCleanup = null;
-  function _stopMedia() {
-    try {
-      var m = _ovMediaEl();
-      if (m) { m.pause(); m.removeAttribute('src'); m.load(); }
-    } catch (_) { }
-    if (_ovMediaCleanup) { var _mc = _ovMediaCleanup; _ovMediaCleanup = null; try { _mc(); } catch (_) { } }
-    _mediaEng = null;
-    _ovMediaKeysFn = null;
-    _ovMediaEscapeFn = null;
-  }
-
-  // ═══ ★ 最小化到状态栏（stow，2026-10-01 q319 用户定案）：隐藏悬浮层、播放不断 ═══
-  //   控制/恢复唯一入口 = 状态栏播放器豆腐块（core/player-block.js 消费 window.qqqOverlayStow；禁第二实现）。
-  //   任何媒体打开 / close() 立即失效（_ovResetStow）；不随重启持久化（悬浮层本为瞬时层）。
-  var _ovStowed = false;
-  function _ovEmitState() { try { window.dispatchEvent(new CustomEvent('qqq-player-state')); } catch (_) { } }
-  function _ovSetStowed(on) {
-    on = !!on;
-    if (on === _ovStowed) { return; }
-    _ovStowed = on;
-    try { overlay.style.display = on ? 'none' : 'block'; } catch (_) { }
-    if (!on) { try { overlay.focus(); } catch (_) { } }
-    _ovEmitState();
-  }
-  function _ovResetStow() {
-    if (!_ovStowed) { return; }
-    _ovStowed = false;
-    _ovEmitState();
-  }
-  // 当前 overlay 主体 src（图片优先；媒体兜底——文件/路径按钮对两者通用）
+  // 当前 overlay 主体 src（图片）
   function _currentOverlayImgSrc() {
     var img = contentEl.querySelector('img');
-    if (img) return img.src;
-    var m = _ovMediaEl();
-    return m ? m.src : null;
+    return img ? img.src : null;
   }
   // src → 本地文件路径：file:/// URL 解码 / 裸盘符路径（A4/徽章/灯箱直传形态）直接收
   function _localPathFromSrc(src) {
@@ -290,12 +250,9 @@ function bootAiOverlay() {
     if (window.qqqideQoast) window.qqqideQoast.show(msg, { type: type || 'info', duration: 2500 });
   }
 
-  // ═══ ★ 共享媒体引擎接线（2026-09-26 q319 v4）：core/media-engine.js 双宿主同源 ═══
-  //   悬浮层（本文件）与独立播放器窗（player/player.html）共用同一引擎；禁第二套实现（防漂移）。
-  //   转码工具（open-image psd/tif 直转码用）与媒体键盘/Esc 钩子全部经此接线保留原语义。
-  var _ME = null, _mediaEng = null;
-  var _ovMediaKeysFn = null;    // 媒体键盘钩子（悬浮层全局 keydown 派发）
-  var _ovMediaEscapeFn = null;  // Esc 前置钩子（倍速/模式/列表面板打开时先关面板，不关悬浮层）
+  // ═══ ★ 共享媒体引擎（2026-10-02 单宿主后）：悬浮层只借用「转码工具」（open-image psd/tif 直转码） ═══
+  //   媒体播放本体已全部移交独立播放器窗（player/player.html，Roam Q 直开），本文件不再 mount 任何媒体。
+  var _ME = null;
   if (window.QQQMediaEngine) {
     _ME = window.QQQMediaEngine.configure({
       bridge: bridge,
@@ -308,114 +265,15 @@ function bootAiOverlay() {
           if (window.qqqideQoast) { window.qqqideQoast.show(m, op); }
         } catch (_) { }
       },
-      onClose: function () { try { close(); } catch (_) { } },
-      reopen: function (p) {
-        try {
-          window.postMessage({
-            type: 'qqqide-overlay', action: (p.mode === 'audio' ? 'open-audio' : 'open-video'),
-            src: p.src, localPath: p.localPath, _tx: 1, list: p.list, index: p.index
-          }, '*');
-        } catch (_) { }
-      },
-      reveal: function (p) {
-        try { if (typeof window.__qqq_roamRevealPath === 'function') { window.__qqq_roamRevealPath(p); return; } } catch (_) { }
-        try { if (bridge && bridge.shell && bridge.shell.showItemInFolder) { bridge.shell.showItemInFolder(p); } } catch (_) { }
-      },
-      getLastDir: function () {
-        try { return (window.qqqideDownload && window.qqqideDownload.getLastDir) ? window.qqqideDownload.getLastDir() : ''; } catch (_) { return ''; }
-      },
-      onPlayState: function (playing) {
-        if (!playing) { return; }
-        try { if (bridge && bridge.player && bridge.player.claim) { bridge.player.claim('overlay'); } } catch (_) { }
-      },
-      popOut: function (st) {
-        try {
-          if (!bridge || !bridge.player || !bridge.player.popOut) { return; }
-          bridge.player.popOut(st).then(function (r) { if (r && r.ok) { try { close(); } catch (_) { } } });
-        } catch (_) { }
-      },
-      // ★ 窗内播放器（2026-09-26 q319 v5）：⧈ → 主窗口悬浮播放器卡（core/player-card.js）整体交接；卡未加载 → 回退独立窗
-      popIn: function (st) {
-        try {
-          if (window.qqqPlayerCard && window.qqqPlayerCard.openFromHandoff) {
-            window.qqqPlayerCard.openFromHandoff(st);
-            try { close(); } catch (_) { }
-            return;
-          }
-          if (bridge && bridge.player && bridge.player.popOut) {
-            bridge.player.popOut(st).then(function (r) { if (r && r.ok) { try { close(); } catch (_) { } } });
-          }
-        } catch (_) { }
-      },
-      // ★ 最小化到状态栏（2026-10-01 q319 用户定案）：控制条 [—]（引擎 H.stow 能力位）→ 隐藏悬浮层、播放不断
-      stow: function () {
-        try {
-          if (!_mediaEng) { return; }
-          _ovSetStowed(true);
-          _ovToast(window._i('shell.player.stowed', '已收纳 · 状态栏 ♪ 遥控'), 'info');
-        } catch (_) { }
-      },
-      // 状态变化（引擎 _persistTick）→ 广播给状态栏播放器豆腐块实时刷新
-      onState: function () { _ovEmitState(); }
+      onClose: function () { try { close(); } catch (_) { } }
     });
   }
   // ★ 转码工具别名（open-image psd/tif 直转码 + close 清理共用；实现 = 引擎）
   function _ovTxExt(p) { return _ME ? _ME.extOf(p) : ''; }
   function _ovTxRun(f, k, ok, fail) { if (_ME) { _ME.txRun(f, k, ok, fail); } else { try { if (fail) { fail(); } } catch (_) { } } }
   function _ovTxAbort() { try { if (_ME) { _ME.txAbort(); } } catch (_) { } }
-  // ★ 出声独占（claim 广播）：播放器窗起播 → 悬浮层自动暂停（反向 = 播放器页自理）
-  try {
-    if (bridge && bridge.player && bridge.player.onClaim) {
-      bridge.player.onClaim(function (from) {
-        if (from === 'overlay') { return; }
-        try { if (_mediaEng) { _mediaEng.pause(); } } catch (_) { }
-      });
-    }
-  } catch (_) { }
-  // ★ 播放器窗 ↙「退回悬浮层」（v6，2026-09-26 q319）：整体交接回本窗悬浮层（列表+进度+模式还原）——
-  //   主窗收 qqqide:player:return → 同域 postMessage 复灌 open-video/open-audio（time/paused/initial 全量回灌）；播放器窗随后自关
-  try {
-    if (bridge && bridge.player && bridge.player.onReturn) {
-      bridge.player.onReturn(function (h) {
-        try {
-          if (!h || !h.list || !h.list.length) { return; }
-          var _ri = Math.max(0, Math.min(h.list.length - 1, (typeof h.index === 'number') ? h.index : 0));
-          var _rit = h.list[_ri] || {};
-          var _rk = (_ME && _ME.kindOf) ? _ME.kindOf(_rit.localPath || '') : 'video';
-          window.postMessage({
-            type: 'qqqide-overlay', action: (_rk === 'audio' ? 'open-audio' : 'open-video'),
-            src: _rit.src || ('file:///' + _rit.localPath), localPath: _rit.localPath || null,
-            list: h.list, index: _ri,
-            time: (typeof h.time === 'number') ? h.time : 0, paused: !!h.paused,
-            rate: h.rate, loop: h.loop, shuffle: h.shuffle,
-            volume: h.volume, muted: h.muted, dockSide: h.dockSide
-          }, '*');
-        } catch (_) { }
-      });
-    }
-  } catch (_) { }
-  // ★ Roam ➕「加入播放列表」（roam iframe postMessage；独立 type——不触碰 qqqide-overlay 协议与跨窗广播）
-  //   v5 路由：窗内播放器卡开着 → 追加进卡；否则 → 独立播放器窗（bridge.player.add）
-  window.addEventListener('message', function (e) {
-    if (!e.data || e.data.type !== 'qqq-player-add') { return; }
-    var _paths = (e.data.paths && e.data.paths.length) ? e.data.paths : [];
-    if (!_paths.length) { return; }
-    try {
-      if (window.qqqPlayerCard && window.qqqPlayerCard.isOpen && window.qqqPlayerCard.isOpen()) {
-        window.qqqPlayerCard.appendPaths(_paths);
-        return;
-      }
-      if (!bridge || !bridge.player || !bridge.player.add) { return; }
-      bridge.player.add(_paths).then(function (r) {
-        if (!r || !r.ok) { return; }
-        var _msg;
-        if (r.added > 0 && r.ignored > 0) { _msg = window._i('shell.player.addedIgnored', '已加入播放列表：{n} 个 · 忽略 {m} 个', { n: r.added, m: r.ignored }); }
-        else if (r.added > 0) { _msg = window._i('shell.player.added', '已加入播放列表：{n} 个', { n: r.added }); }
-        else { _msg = window._i('shell.player.addNone', '没有可加入的媒体文件'); }
-        if (window.qqqideQoast) { window.qqqideQoast.show(_msg, { type: r.added > 0 ? 'success' : 'info', duration: 3500 }); }
-      });
-    } catch (_) { }
-  });
+
+
   // 内存 — 图片进剪贴板（图像数据），可直接粘贴到聊天/画布
   memBtn.addEventListener('click', function () {
     var src = _currentOverlayImgSrc();
@@ -528,9 +386,7 @@ function bootAiOverlay() {
 
   function close() {
     _ovLocalPath = null;
-    _ovStowed = false;
     try { _stopRepeat(); } catch (_) { }
-    try { _stopMedia(); } catch (_) { }
     try { _ovTxAbort(); } catch (_) { }
     try { _ovClearHighlights(); } catch (_) { }
     _closeTt.style.display = 'none';
@@ -540,37 +396,9 @@ function bootAiOverlay() {
     contentEl.style.overflow = '';
     zoomScale = 1.0;
     _dragX = 0; _dragY = 0;
-    _ovEmitState();   // 状态栏播放器豆腐块实时退回空闲/卡片态
   }
   var _baseClose = close;  // 保存原始 close，用于恢复
 
-  // ★ 状态栏播放器豆腐块消费面（2026-10-01 q319）：悬浮层「最小化」后的遥控/恢复入口——
-  //   仅收纳态有效（active() 自检：已隐 + 引擎在活）；任何媒体打开 / close() 立即失效
-  window.qqqOverlayStow = {
-    active: function () { try { return !!(_ovStowed && _mediaEng && overlay.style.display === 'none'); } catch (_) { return false; } },
-    info: function () {
-      try {
-        if (!_mediaEng) { return null; }
-        var st = _mediaEng.getState();
-        var list = st.list || []; var idx = (typeof st.index === 'number') ? st.index : 0;
-        var it = list[idx] || null;
-        var name = '';
-        if (it) { name = String(it.name || it.localPath || ''); if (name) { name = name.split(/[\\/]/).pop(); } }
-        return { open: true, stow: true, total: list.length, index: idx, name: name, paused: !!st.paused };
-      } catch (_) { return null; }
-    },
-    cmd: function (a) {
-      try {
-        if (!_mediaEng) { return; }
-        if (a === 'toggle') { _mediaEng.toggle(); }
-        else if (a === 'next') { _mediaEng.next(); }
-        else if (a === 'prev') { _mediaEng.prev(); }
-        _ovEmitState();
-      } catch (_) { }
-    },
-    restore: function () { _ovSetStowed(false); },
-    closeSession: function () { try { close(); } catch (_) { } }
-  };
 
   overlay.addEventListener('click', function (e) {
     if (e.target === overlay) close();
@@ -581,14 +409,7 @@ function bootAiOverlay() {
   //    Escape 仍然手动处理
   document.addEventListener('keydown', function (e) {
     if (overlay.style.display === 'none') return;
-    if (e.key === 'Escape') {
-      // ★ 倍速面板打开 → Esc 先关面板（2026-09-26 v2）
-      if (_ovMediaEscapeFn) { try { if (_ovMediaEscapeFn()) return; } catch (_) { } }
-      // ★ 全屏中 Esc 先退全屏（浏览器原生处理），不关悬浮层（2026-09-26 自建控制条配套）
-      if (document.fullscreenElement) return;
-      close(); return;
-    }
-    if (_ovMediaKeysFn) { try { _ovMediaKeysFn(e); } catch (_) { } }
+    if (e.key === 'Escape') { close(); return; }
   });
 
   // ── 选中高亮全文匹配（CSS Highlight API）──
@@ -727,10 +548,8 @@ function bootAiOverlay() {
     if (e.data.action === 'open-image') {
       // 强制清理上一轮残留状态（含 close 函数恢复）
       close = _baseClose;
-      _ovResetStow();
       _ovLocalPath = e.data.localPath || null;
       _stopRepeat();
-      _stopMedia();
       _ovTxAbort();
       overlay.style.display = 'none';
       contentEl.innerHTML = '';
@@ -851,9 +670,7 @@ function bootAiOverlay() {
       try {
         // 强制清理上一轮残留状态（含 close 函数恢复）
         close = _baseClose;
-        _ovResetStow();
         _stopRepeat();
-        _stopMedia();
         _ovTxAbort();
         overlay.style.display = 'none';
         contentEl.innerHTML = '';
@@ -974,70 +791,6 @@ function bootAiOverlay() {
       }
     }
 
-    // ★ 媒体直开（2026-09-21；2026-09-26 v4 共享引擎）：视频/音频 → 内置播放器（media-engine.js 双宿主同源）
-    if (e.data.action === 'open-video' || e.data.action === 'open-audio') {
-      var _isVid = e.data.action === 'open-video';
-      close = _baseClose;
-      _ovResetStow();
-      _ovLocalPath = e.data.localPath || null;
-      // ★ 截图基准 = 原始文件路径（转码回放 _tx 时 _ovLocalPath 指向 Cache 产物 → 截图仍落原始文件目录）
-      if (!e.data._tx) { _ovShotBase = e.data.localPath || _localPathFromSrc(e.data.src) || null; }
-      // ═══ ★ 播放列表（2026-09-26 q319）：roam 多选媒体 → { list, index } 载荷；≥2 项 = 列表模式 ═══
-      var _plList = (e.data.list && e.data.list.length > 1) ? e.data.list : null;
-      var _plN = _plList ? _plList.length : 1;
-      var _plIdx = (_plList && typeof e.data.index === 'number' && e.data.index >= 0 && e.data.index < _plN) ? e.data.index : 0;
-      var _actItem = _plList ? _plList[_plIdx] : null;
-      if (_plList) {
-        // 列表模式：截图基准/本地路径恒取轨原始文件（_tx 重开时 e.data.localPath 是 Cache 产物 → 必须忽略）
-        _ovLocalPath = _actItem.localPath || null;
-        _ovShotBase = _actItem.localPath || null;
-      }
-      _stopRepeat();
-      _stopMedia();
-      _ovTxAbort();
-      overlay.style.display = 'none';
-      contentEl.innerHTML = '';
-      contentEl.style.overflow = 'hidden';
-      zoomScale = 1.0;
-      _dragX = 0; _dragY = 0;
-      overlay.style.display = 'block';
-      // ★ 打开即聚焦主文档（2026-09-26 v2）：roam q 场景焦点留在 iframe → 主窗口 keydown 收不到（空格/F/Esc 全哑）→ 播放器接管键盘
-      try { overlay.focus(); } catch (_) { }
-      // ★ 共享引擎挂载（media-engine.js）：一切媒体行为（转码/控制条/列表/A-B/倍速/截图/键盘）由引擎承担
-      _mediaEng = _ME ? _ME.mount({
-        container: contentEl, rootEl: overlay,
-        mode: _isVid ? 'video' : 'audio',
-        src: e.data.src,
-        localPath: _ovLocalPath,
-        shotBase: _ovShotBase,
-        list: _plList || [{ src: e.data.src, localPath: (e.data.localPath || _localPathFromSrc(e.data.src) || null), name: (e.data.localPath || '').split(/[\\/]/).pop() || '' }],
-        index: _plIdx,
-        isTx: !!e.data._tx,
-        // ★ v6 交接回灌（播放器窗 ↙ 退回）：进度/播放态/模式初值整体还原；普通打开零字段 = 原语义（autoplay 默认开）
-        startTime: (typeof e.data.time === 'number' && e.data.time > 0) ? e.data.time : 0,
-        autoplay: e.data.paused !== true,
-        initial: {
-          rate: (typeof e.data.rate === 'number') ? e.data.rate : undefined,
-          loop: e.data.loop, shuffle: e.data.shuffle,
-          volume: (typeof e.data.volume === 'number') ? e.data.volume : undefined,
-          muted: (typeof e.data.muted === 'boolean') ? e.data.muted : undefined,
-          dockSide: e.data.dockSide
-        }
-      }) : null;
-      if (_mediaEng) {
-        _ovMediaKeysFn = _mediaEng.keys;
-        _ovMediaEscapeFn = _mediaEng.esc;
-        _ovMediaCleanup = _mediaEng.destroy;
-      }
-      // ★ 媒体模式：自适应无需缩放——藏缩放/D-pad/复制/内存按钮，留文件/路径/关闭
-      dpad.style.display = 'none';
-      copyBtn.style.display = 'none';
-      memBtn.style.display = 'none';
-      fileBtn.style.display = '';
-      pathBtn.style.display = '';
-      zoomOutBtn.style.display = 'none';
-      zoomInBtn.style.display = 'none';
-    }
 
     // ★ AI 面板图片 hover「Roam」按钮：激活 roam tab + 聚焦 + 跳到目录选中文件
     if (e.data.action === 'reveal-in-roam') {

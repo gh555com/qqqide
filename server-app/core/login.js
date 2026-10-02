@@ -30,8 +30,8 @@
   var _$lvLevel = null;
   var _balanceGe = null;
   var _balanceLastFetch = 0;
-  var _lastBalanceSnapTs = 0;   // ★ 2026-10-01：中心大脑最近一次送达新鲜余额的时间（150s 内 → 渲染层免自拉）
-  var _lastLvSnapTs = 0;        // ★ 2026-10-01：同上（LV）——多窗口共用主进程单次拉取，防每窗口重复打服务器
+  var _lastBalanceSnapTs = 0;   // ★ 中心大脑最近一次送达新鲜余额的时间（300s 内 → 渲染层免自拉；大脑轮询 180s）
+  var _lastLvSnapTs = 0;        // ★ 同上（LV）——多窗口共用主进程单次拉取，防每窗口重复打服务器
   var _phoneDropdownCloser = null; // ★ 手机号下拉的全局 closer，用于 toggle 时清理
   var _balanceTimer = null;
   var _lvData = null;
@@ -275,9 +275,9 @@
     if (!_authData || !_authData.token) return;
     var now = Date.now();
     if (!force && now - _balanceLastFetch < BALANCE_POLL_MS) return;
-    // ★ 2026-10-01 请求治理：中心大脑 150s 内送过新鲜余额 → 渲染层免自拉
+    // ★ 请求治理：中心大脑 300s 内送过新鲜余额 → 渲染层免自拉（大脑后台轮询 180s）
     //   （多窗口共用主进程单次拉取；大脑断供/旧壳层 → 心跳过期自动回落本层自拉）
-    if (now - _lastBalanceSnapTs < 150000) { _balanceLastFetch = now; return; }
+    if (now - _lastBalanceSnapTs < 300000) { _balanceLastFetch = now; return; }
     _balanceLastFetch = now;
     try {
       var resp = await _apiFetch('/wallet/balance', {
@@ -318,9 +318,9 @@
           // ★ 2026-10-01 修复「ge 余额 373/374 反复横跳」：禁止渲染层「整数余额 − 小数费用」本地扣减——
           //   服务端余额 = 取整整数，本地再扣 0.5+ ge 会比真值低 1 ge，而主进程广播又把整数拉回
           //   → 两个写者互拍 = 数字在 373/374 之间反复闪。余额刷新统一走主进程 onBillingEvent
-          //   （拉服务器真值 → 广播全窗口同源）；旧壳层无中心大脑 / 大脑 150s 未送新鲜值 → 本层兜底。
+          //   （拉服务器真值 → 广播全窗口同源）；旧壳层无中心大脑 / 大脑 300s 未送新鲜值 → 本层兜底。
           if (!(window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.notifyBilling) ||
-              Date.now() - _lastBalanceSnapTs > 150000) {
+              Date.now() - _lastBalanceSnapTs > 300000) {
             _scheduleBalanceRefresh();
           }
           if (_lvAccWge !== null) {
@@ -344,8 +344,8 @@
 
   async function _fetchLv() {
     if (!_authData || !_authData.token) return;
-    // ★ 2026-10-01 请求治理：中心大脑 150s 内送过新鲜 LV → 渲染层免自拉（同上）
-    if (Date.now() - _lastLvSnapTs < 150000) return;
+    // ★ 请求治理：中心大脑 300s 内送过新鲜 LV → 渲染层免自拉（同上；留足大脑 180s 节拍余量）
+    if (Date.now() - _lastLvSnapTs < 300000) return;
     try {
       var resp = await _apiFetch('/qqq/lv', {
         headers: { 'Authorization': 'Bearer ' + _authData.token }

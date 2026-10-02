@@ -55,6 +55,12 @@ interface SquadRegistry {
 let _cache: SquadRegistry | null = null;
 
 function registryPath(): string {
+    // ★ 探针/测试覆盖（QQQIDE_COPY_TX 同款先例）：QQQIDE_SQUADS_FILE 指向替身文件时零污染真实注册表
+    const ov = process.env.QQQIDE_SQUADS_FILE;
+    if (ov) {
+        try { fs.mkdirSync(path.dirname(ov), { recursive: true }); } catch { /* ignore */ }
+        return ov;
+    }
     const dir = path.join(getOsBaseDir(), 'qqqide');
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
     return path.join(dir, 'squads.json');

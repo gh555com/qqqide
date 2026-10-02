@@ -1144,8 +1144,12 @@ function bootActivities(boot) {
 
   if ($vibe) {
     $vibe.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); hideTip(); openVibePopup(); });
-    fetchVibeBudget();
-    setInterval(fetchVibeBudget, 60000);
+    // ★ 2026-10-02 请求治理：动态节奏——免费窗口内 60s（剩余预算展示需要）/ 非免费 300s
+    //   （非免费时段倒计时由客户端本地推算，无需高频拉服务器；计费事件与登录变化仍即时补拉）
+    (function _vibeTick() {
+      fetchVibeBudget();
+      setTimeout(_vibeTick, vibeState(vibeUtcNow()).free ? 60000 : 300000);
+    })();
     // ★ 2026-09-03: 每次进入免费时段（白嫖时间滴起点）→ 木鱼报喜。
     //   仅实时跨边沿进入才响——启动时已在免费段内不响（那不是「进入」）；与 renderVibe 合并同一 1s 滴答
     var _vibeWasFree = isFreeWindow(vibeUtcNow());

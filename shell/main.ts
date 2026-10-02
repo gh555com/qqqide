@@ -22,7 +22,10 @@ process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 // ============================================================================
 
 import { applyPortablePaths, getAppRoot } from './portable-paths';
-const portable = applyPortablePaths();
+// ★ 播放器宿主域（--qqqide-play）：独立 userData（Data/player-host）→ 独立 SingletonLock，
+//   与 IDE 域互不夺锁（双击媒体/IDE 转发均可直启；详 shell/player-host.ts）
+const _playHostMode = process.argv.some((a: string) => a === '--qqqide-play' || a.indexOf('--qqqide-play=') === 0);
+const portable = applyPortablePaths(_playHostMode ? { sessionDir: 'player-host' } : undefined);
 
 import { app, BrowserWindow, dialog, protocol, nativeTheme, safeStorage, ipcMain, shell } from 'electron';
 import * as path from 'path';
@@ -43,7 +46,9 @@ import { registerSearchIpc } from './ipc-search';
 import { registerEditIpc } from './ipc-edit';
 import { registerMiscIpc } from './ipc-misc';
 import { registerMediaIpc } from './ipc-media';
-import { registerPlayerIpc } from './ipc-player';
+import { registerPlayerIpc, kickPlayerHostForRestore } from './ipc-player';
+import { parsePlayFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc } from './player-host';
+import { registerFileAssocIpc } from './ipc-fileassoc';
 import { registerExportIpc } from './ipc-export';
 import { registerTimelineIpc } from './ipc-timeline';
 import { registerGitDiffIpc } from './ipc-git-diff';
@@ -130,7 +135,11 @@ app.commandLine.appendSwitch('remote-debugging-port', _cdpPort);
 // ── 自定义协议 qqqide:// — 浏览器登录成功后 push token 回 IDE（2026-06-29） ──
 // dev 模式必须传 app path（否则 Electron 启动默认 app→把 URL 当模块路径→炸）
 // prod 打包后 qqqide.exe 自带 app path，不需要
-if (app.isPackaged) {
+// ★ 播放器宿主域跳过（2026-10-02 v17 补）：协议关联 = IDE/登录域职责——宿主无 authBrain（open-url/second-instance
+//   在宿主域零登录处理）；且 dev 宿主会把 qqqide:// 关联重写为 dev electron.exe → 跨包污染绿色包用户的登录回调。
+if (_playHostMode) {
+    console.log('[protocol] player-host: skip setAsDefaultProtocolClient (login-domain only)');
+} else if (app.isPackaged) {
     const ok = app.setAsDefaultProtocolClient('qqqide');
     console.log('[protocol] setAsDefaultProtocolClient (packaged) → ' + (ok ? 'OK' : 'FAILED'));
 } else if (process.argv.includes('--smoke')) {
@@ -167,6 +176,18 @@ app.on('certificate-error', (event, _webContents, _url, _error, certificate, cal
 
 // ── 自定义协议 qqqide:// — 外部浏览器登录回调（2026-07-31 T6 主通道） ──
 app.on('second-instance', (_event, argv) => {
+    // ★ 播放器宿主域：第二实例 = 又一次「用 qd 播放」请求（双击/关联多选）→ 收文件开新窗；
+    //   其余第二实例语义（登录回调/拾回焦点）只在 IDE 域处理。
+    if (_playHostMode) {
+        try {
+            const files = parsePlayFiles((argv || []) as string[]);
+            console.log('[player-host] second-instance, argv=' + (argv || []).length + ' files=' + files.length);
+            if (files.length) { ingestExternalFiles(files); }
+        } catch (e: any) {
+            console.log('[player-host] second-instance handler error: ' + ((e && e.message) || e));
+        }
+        return;
+    }
     console.log('[protocol] second-instance fired, argv count=' + argv.length);
     const url = argv.find((a: string) => a.startsWith('qqqide://'));
     console.log('[protocol] second-instance url=' + (url || 'NONE'));
@@ -179,6 +200,7 @@ app.on('second-instance', (_event, argv) => {
 
 app.on('open-url', (event, url) => {
     event.preventDefault();
+    if (_playHostMode) { return; }   // 宿主域无登录/无 authBrain——qqqide:// 回调只归 IDE 域
     console.log('[protocol] open-url fired, url=' + url);
     handleLegacyAuthProtocolUrl(url);
 });
@@ -523,6 +545,44 @@ app.whenReady().then(async () => {
             if (probeOut) fs.writeFileSync(probeOut, (probeOk ? 'ok ' : 'fail ') + probeNote + ' ' + APP_VERSION, 'utf8');
         } catch { /* ignore */ }
         app.exit(probeOk ? 0 : 1);
+        return;
+    }
+
+    // ═══ 播放器宿主域（--qqqide-play；2026-10-02 v17 单宿主域）════════════════════════
+    //   极简启动链：便携域 → 安全加固 → 资产协议 → 播放器/编队/媒体/文件系统 IPC →
+    //   py-broker（编队热键独立——无 IDE 也能召回）→ 播放器运行时（恢复/argv/队列/零窗自退）。
+    //   跳过面（刻意）：强制更新弹窗 / 组件自检 / gaea goods / wq-ping / 遥测 / 自动更新器
+    //   （更新是 IDE/启动器职责）。第二实例（锁败者）：argv 已被持锁宿主 second-instance 接管 → 静默退。
+    if (_playHostMode) {
+        if (!gotTheLock) { app.quit(); return; }
+        // ★ 退出语义补全（2026-10-02 v17）：最后窗关闭 → 显式退出（双平台一致——mac 默认不退会致宿主零窗常驻；
+        //   py-broker 收尾与心跳清理在 ipc-player 的 before-quit 里）。
+        app.on('window-all-closed', () => {
+            try { console.log('[player-host] window-all-closed → quit'); app.quit(); } catch { /* ignore */ }
+        });
+        try {
+            injectHostRuntimePath(portable.root);
+            hardenSession();
+            hardenWebContents(bootConfig);
+            initAssetProtocol(portable.root, portable.cache, portable.userData);
+            if (!isDevFlag) { try { await ensureLocalWebapp(portable.root); } catch { /* 失败不阻塞 */ } }
+            registerFsIpc(cacheStore);
+            registerMediaIpc(mediaService);
+            registerHostShellIpc();
+            registerFileAssocIpc(portable.root);
+            registerSquadIpc();
+            if (!isSmokeFlag) { startPyBroker(portable.root); }
+            setPyBrokerEventHandler((ev: any) => {
+                if (!ev || ev.event !== 'summon' || !ev.ok) { return; }
+                // ★ mac 兜底：NSRunningApplication 激活无法还原最小化窗口 → 本实例直接 restore/focus
+                //   （Windows 不走此路径——py-broker SetForegroundWindow 已覆盖；宿主不发召回音效/不上报履历）
+                if (process.platform === 'darwin') { try { focusWindowBySlot(String(ev.squad || '')); } catch { /* ignore */ } }
+            });
+            registerPlayerIpc(portable.root, bootConfig.url, APP_VERSION);   // 宿主域内部启动运行时
+        } catch (e: any) {
+            try { console.warn('[player-host] boot failed:', (e && e.message) || e); } catch { /* ignore */ }
+            try { app.quit(); } catch { /* ignore */ }
+        }
         return;
     }
 
@@ -914,6 +974,9 @@ app.whenReady().then(async () => {
             console.warn('[restore] multi-window restore failed:', e);
         }
     })();
+
+    // ★ 播放器会话恢复（2026-10-02 v17 单宿主域）：有未关窗 → 拉起宿主（宿主自恢复，暂停态；按包分槽）
+    try { kickPlayerHostForRestore(); } catch { /* ignore */ }
 
     // ★ 认证中心大脑恢复登录态（2026-07-31 T3）
     // auth-brain.restore() 内建 safeStorage + phone.txt 双路径兜底

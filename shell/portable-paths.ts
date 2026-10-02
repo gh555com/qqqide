@@ -123,17 +123,20 @@ function migrateMacLegacyData(): void {
     }
 }
 
-/** Apply portable redirects. Call this BEFORE app.whenReady(). */
-export function applyPortablePaths(): { root: string; userData: string; cache: string; logs: string } {
+/** Apply portable redirects. Call this BEFORE app.whenReady().
+ *  ★ 播放器宿主域（2026-10-02）：opts.sessionDir = 'player-host' → userData 独立子目录
+ *  （独立 SingletonLock → 与 IDE 域互不夺锁；Cache/Temp/Logs 仍共享 Data 根）。 */
+export function applyPortablePaths(opts?: { sessionDir?: string }): { root: string; userData: string; cache: string; logs: string } {
     const root = getAppRoot();
     migrateMacLegacyData();
     migrateMacOsDirs();
-    const userData = getDataDir();
-    // ★ 所有运行时目录收进 userData/，根目录保持干净
-    const cache = path.join(userData, 'Cache');
-    const temp = path.join(userData, 'Temp');
-    const logs = path.join(userData, 'Logs');
-    const crashDumps = path.join(userData, 'CrashDumps');
+    const baseData = getDataDir();
+    const userData = (opts && opts.sessionDir) ? path.join(baseData, opts.sessionDir) : baseData;
+    // ★ 所有运行时目录收进 userData/，根目录保持干净（宿主域 Cache/Temp/Logs 仍挂共享 Data 根）
+    const cache = path.join(baseData, 'Cache');
+    const temp = path.join(baseData, 'Temp');
+    const logs = path.join(baseData, 'Logs');
+    const crashDumps = path.join(baseData, 'CrashDumps');
 
     // ★★★ 第一步：覆盖 TEMP/TMP 环境变量（必须在任何文件操作之前）
     // 这是最关键的一步。Chromium 子进程(GPU/Network/Renderer)和 Node.js

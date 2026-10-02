@@ -177,7 +177,7 @@ export interface UpdateDiagIndex {
 
 const DIAG_TAIL_BYTES = 16384;   // 单文件尾段上限（IPC 单条 64KB 上限内）
 
-// 9 个核心失败/更新日志（顺序 = 排查优先级）
+// 10 个核心失败/更新诊断文件（顺序 = 排查优先级；末位 = 系统解释器失败报告，2026-10-02）
 function _diagTargetList(r: HostRoots): { id: string; name: string; p: string }[] {
     const d = r.dataDir;
     return [
@@ -190,6 +190,7 @@ function _diagTargetList(r: HostRoots): { id: string; name: string; p: string }[
         { id: 'render', name: 'render-crash.log', p: path.join(d, 'alphal', 'render-crash.log') },
         { id: 'crash', name: 'crash-net/events.log', p: path.join(d, 'alphal', 'crash-net', 'events.log') },
         { id: 'recovery', name: 'crash-net/recovery-report.json', p: path.join(d, 'alphal', 'crash-net', 'recovery-report.json') },
+        { id: 'syspy', name: 'syspy-report.json', p: path.join(d, 'alphal', 'syspy-report.json') },
     ];
 }
 

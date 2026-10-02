@@ -165,8 +165,6 @@ var _orig={};
           <a class="qqq-sponsor-link" id="qqq-sponsor-link" href="http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1">知佳</a>
         </span>
         <span class="qqq-spacer"></span>
-        <!-- ★ 播放器豆腐块（2026-10-01 q319 定案）：状态栏播控中心——窗内播放器卡会话遥控（固定宽 ♪/均衡条 + n/N，hover 上弹播放控制卡；qqq 工作台 Player 行已废除）；渲染 = core/player-block.js -->
-        <span class="qqq-status-item qqq-pl-btn" id="qqq-status-player" aria-label="player"></span>
         <!-- ★ wq 探针（所见即所得粘贴探针 + 缓存读数，2026-09-27 改版）：固定宽按钮（迷你柱状图 + 均值）hover 弹卡片——宽度恒定不吞食状态区；渲染 = core/wq-stats.js -->
         <span class="qqq-status-item qqq-wq-btn" id="qqq-status-wq" aria-label="wq"></span>
         <!-- ★ 启动包监控 a 区域（2026-08-30 合并定案）：内存图标 + 内存占用 + CPU 占用（CPU 图标已移除），hover/点击弹合并卡片（MEM+CPU 双段 + 共用进程列表），一包多窗口恒同值 -->
@@ -298,10 +296,6 @@ var _orig={};
 <!-- ★ 共享媒体引擎（2026-09-26 q319 v4）：悬浮层 + 独立播放器窗双宿主同源——必须先于 shell-overlay 加载 -->
 <script src="core/media-engine.js"></script>
 <script src="core/shell-overlay.js"></script>
-<!-- ★ 窗内播放器卡（2026-09-26 q319 v5，B 方案）：主窗口悬浮播放器卡——引擎第三宿主（逐实例 host） -->
-<script src="core/player-card.js"></script>
-<!-- ★ 播放器豆腐块（2026-10-01 q319）：状态栏播控中心——窗内卡会话遥控（hover 弹卡；须在 player-card 后） -->
-<script src="core/player-block.js"></script>
 <script src="core/shell-statusbar.js"></script>
 <!-- MEM 24H 曲线 hover 面板（数据源 mem-meter 主进程真理机器广播；须在 statusbar 后加载） -->
 <script src="core/shell-mem-hover.js"></script>

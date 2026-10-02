@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// squad-btn.js — 窗口编队按钮（菜单行2，LV 进度条左侧）
+// squad-btn.js — 窗口编队按钮（主窗口=菜单行2 LV 左侧；独立播放器窗=窗头 #pl-squad 槽——window.__qqqSquadMount 提供，2026-10-02）
 //   · 按钮显示当前窗口编队字符（1 2 q w a s z x 之一）；无编队（>8 窗口）显示暗化 ■
 //   · 按钮样式: 原版透明底 + 主题色文字；仅最外层按钮文字加粗，下拉列表行不粗体（2026-09-12 用户定案，对色方案已还原）
 //   · ★ 按钮文字必须挂独立 label span——_render 写 _btn.textContent 会清空子节点，把挂在按钮内的下拉一起抹掉
@@ -36,22 +36,30 @@
     return window.qqqideBridge && window.qqqideBridge.squad;
   }
 
-  // ── 注入：等 login.js 注入 LV 条之后，插到其左侧 ──
+  // ── 注入：默认插到主窗口 LV 条左侧；独立播放器窗经 window.__qqqSquadMount() 提供挂载槽（2026-10-02）──
   function _inject() {
     if (_btn) return;
     if (!_bridge()) { if (++_retries <= 20) setTimeout(_inject, 400); return; }
-    var $lv = document.querySelector('.qqq-lv-bar');
-    if (!$lv) { if (++_retries <= 20) setTimeout(_inject, 400); return; }
+    var slot = null;
+    try { slot = window.__qqqSquadMount ? window.__qqqSquadMount() : null; } catch (_) { slot = null; }
+    var $lv = null;
+    if (!slot) {
+      $lv = document.querySelector('.qqq-lv-bar');
+      if (!$lv) { if (++_retries <= 20) setTimeout(_inject, 400); return; }
+    }
 
     _btn = document.createElement('button');
     _btn.className = 'qqq-squad-btn';
-    _btn.style.cssText = _NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;cursor:pointer;padding:0 10px;height:24px;font-size:16px;font-weight:bold;margin-right:6px;position:relative;font-variant-numeric:tabular-nums;white-space:nowrap;';
+    _btn.style.cssText = _NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;cursor:pointer;padding:0 10px;height:24px;font-size:16px;font-weight:bold;' + (slot ? '' : 'margin-right:6px;') + 'position:relative;font-variant-numeric:tabular-nums;white-space:nowrap;';
     // ★ 2026-09-12 下拉瞬灭实锤: 文字改挂 label span——旧实现 _render 直写 _btn.textContent 会清空按钮
     //   全部子节点，而 _dd 挂在按钮内部 → 展开瞬间被 refresh 回调抹掉（点了闪一下就没），必须只更新 label。
     _label = document.createElement('span');
     _btn.appendChild(_label);
     _btn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); _toggle(); });
-    $lv.parentNode.insertBefore(_btn, $lv);
+    // ★ 焦点卫生（2026-10-02）：点后不留焦点——Space 恒归播放器（旧行为：焦点滞留按钮 → 空格重开下拉 + 全套快捷键静默死）
+    _btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    if (slot) { slot.appendChild(_btn); }
+    else { $lv.parentNode.insertBefore(_btn, $lv); }
 
     _refresh();
     try { _unsub = _bridge().onChanged(function () { _refresh(); }); } catch (_) { }
@@ -96,9 +104,14 @@
     _refresh();
     _dd = document.createElement('div');
     _dd.className = 'qqq-squad-dropdown';
-    _dd.style.cssText = 'position:absolute;top:calc(100% + 2px);left:0;background:var(--background-color);color:var(--text-primary,#e8e8e8);border:2px dashed var(--border-color);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:180px;max-width:320px;padding:4px 0;';
+    // ★ 2026-10-02: 靠右缘的宿主（播放器窗头）自动右对齐展开——防下拉出窗被裁
+    var _ddRight = false;
+    try { var _br = _btn.getBoundingClientRect(); if (window.innerWidth - _br.right < 220) { _ddRight = true; } } catch (_) { }
+    _dd.style.cssText = 'position:absolute;top:calc(100% + 2px);' + (_ddRight ? 'right:0;' : 'left:0;') + 'background:var(--background-color);color:var(--text-primary,#e8e8e8);border:2px dashed var(--border-color);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:180px;max-width:320px;padding:4px 0;';
     _renderDd();
     _btn.appendChild(_dd);
+    // ★ 下拉开启期拖拽带让路（2026-10-02）：宿主（播放器窗）据此把头/空背景临时 no-drag——点击才能送达 DOM（外点关闭）
+    try { document.documentElement.classList.add('squad-dd-open'); } catch (_) { }
     setTimeout(function () {
       document.addEventListener('mousedown', _onDocDown, true);
       window.addEventListener('blur', _onWinBlur);
@@ -201,6 +214,7 @@
   function _onWinBlur() { _close(); }
 
   function _close() {
+    try { document.documentElement.classList.remove('squad-dd-open'); } catch (_) { }
     document.removeEventListener('mousedown', _onDocDown, true);
     window.removeEventListener('blur', _onWinBlur);
     if (_dd) { try { _dd.remove(); } catch (_) { } }

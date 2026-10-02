@@ -34,6 +34,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { getComponentBin } from './component-checker';
 import { getHostDir } from './portable-paths';
+import * as syspyReport from './syspy-report';
+import { notifySyspyFailed } from './wq-ping';
 
 // ── PS 脚本（公共头：C# 算法 + 辅助函数） ──
 const PS_HEAD = String.raw`
@@ -54,6 +56,7 @@ $wrap = $env:QQQIDE_SYSPY_WRAP
 if ($null -eq $wrap) { $wrap = '' }
 $ucPath = 'Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $ext + '\UserChoice'
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$script:aqRc = -1
 function OutKV([string]$k, [string]$v) { Write-Output ('QQQIDE_SYSPY_' + $k + '=' + $v) }
 function B64([string]$s) { if ($null -eq $s) { $s = '' }; return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s)) }
 
@@ -146,6 +149,7 @@ function Get-AssocCmd([string]$e) {
   $sb = New-Object System.Text.StringBuilder 4096
   $n = 4096
   $rc = [QS]::AssocQueryString(0, 1, $e, 'open', $sb, [ref]$n)
+  $script:aqRc = $rc
   if ($rc -ne 0) { return '' }
   return $sb.ToString()
 }
@@ -186,29 +190,55 @@ if ($mode -eq 'check') {
   if ($exe -and (Test-Path $exe)) { $exeOk = $true }
   $aq = Get-AssocCmd $ext
   $ucProgId = Read-Value $ucPath 'ProgId'
-  $clsCmd = Read-Value ('Software\Classes\' + $progId + '\shell\open\command')
-  $pathRaw = ''
-  try {
-    $ek = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
-    if ($ek) { $pathRaw = [string]$ek.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $ek.Close() }
-  } catch { }
-  $hasPathPy = $false
-  foreach ($p in ($pathRaw -split ';')) { if ($p -match ('(?i)' + $match)) { $hasPathPy = $true } }
-  $aqHasOurs = $false
-  if ($exeOk -and $aq -ne '') { $aqHasOurs = $aq.ToLower().Contains($exe.ToLower()) }
-  $hasAny = ($aq -ne '') -or ($ucProgId -ne '') -or ($clsCmd -ne '') -or $hasPathPy
+  $uclProgId = Read-Value ('Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $ext + '\UserChoiceLatest\ProgId') 'ProgId'
+  # Classification semantics (2026-10-02): mode reflects what the system REALLY resolves.
+  # System-level defaults (exe under %SystemRoot% / OpenWith.exe / dead path) are NOT an
+  # "existing interpreter" -> none (no bogus overwrite confirmation); only a real
+  # third-party handler -> other. Our own leftover registration never counts as other.
+  $aqL = $aq.ToLower()
+  $exeL = ''
+  if ($exe) { $exeL = $exe.ToLower() }
+  $ours = $false
+  if ($exeOk -and $aq -ne '') {
+    if ($aqL.Contains($exeL)) { $ours = $true }
+    elseif ($aqL -match '\\engines\\(python|node)\\') { $ours = $true }
+  }
   $code = 'none'
-  if ($aqHasOurs) { $code = 'ours' } elseif ($hasAny) { $code = 'other' }
+  if ($ours) { $code = 'ours' }
+  elseif ($aq -ne '') {
+    $aqExe = ''
+    if ($aq -match '^\s*"([^"]+\.exe)"') { $aqExe = $Matches[1] }
+    elseif ($aq -match '^\s*([^\s"]+\.exe)') { $aqExe = $Matches[1] }
+    if ($aqExe -ne '') {
+      $aqExeL = $aqExe.ToLower()
+      $isSys = $false
+      if ($env:SystemRoot -and $aqExeL.StartsWith(($env:SystemRoot.ToLower() + '\'))) { $isSys = $true }
+      if ($aqExeL.EndsWith('openwith.exe')) { $isSys = $true }
+      if (-not (Test-Path $aqExe)) { $isSys = $true }
+      if (-not $isSys) { $code = 'other' }
+    }
+  }
   OutKV 'OK' '1'
   OutKV 'CODE' $code
   OutKV 'EXE_OK' $(if ($exeOk) { '1' } else { '0' })
   OutKV 'AQ' (B64 $aq)
+  OutKV 'AQRC' ([string]$script:aqRc)
+  $ucEx = '0'
+  try { $uk = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($ucPath); if ($uk) { $ucEx = '1'; $uk.Close() } } catch { }
+  OutKV 'UC_EXISTS' $ucEx
+  $uclEx = '0'
+  try { $uk2 = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $ext + '\UserChoiceLatest'); if ($uk2) { $uclEx = '1'; $uk2.Close() } } catch { }
+  OutKV 'UCL_EXISTS' $uclEx
+  $ucOut = $uclProgId
+  if (-not $ucOut) { $ucOut = $ucProgId }
+  OutKV 'UC_PROGID' (B64 $ucOut)
   exit 0
 }
 
 if ($mode -eq 'apply') {
   # 0. bundled python existence
   if (-not ($exe -and (Test-Path $exe))) { OutKV 'OK' '0'; OutKV 'CODE' 'no-python'; exit 0 }
+  $blocked = $false
   $mid = ''
   if ($flags -ne '') { $mid = ' ' + $flags }
   $cmdline = '"' + $exe + '"' + $mid + ' "%1" %*'
@@ -329,6 +359,20 @@ if ($mode -eq 'apply') {
   }
 
   if (-not $pass) {
+    # fallback 2.9 (2026-10-02): system user-choice protection (Win11) - our full HKCU state is
+    # in place yet the system ignores it (.js on 25H2): a UAC/HKLM write is lower-priority and
+    # equally useless -> skip it, flag blocked, let the guided flow ask the user to pick once.
+    $cmdNow = Read-Value ('Software\Classes\' + $progId + '\shell\open\command') ''
+    $defNow = Read-Value ('Software\Classes\' + $ext) ''
+    $buildN = 0
+    try { $buildN = [int][Environment]::OSVersion.Version.Build } catch { }
+    if (($cmdNow -eq $cmdline) -and ($defNow -eq $progId) -and ($buildN -ge 22000)) {
+      $blocked = $true
+      $vc = 'blocked'
+    }
+  }
+
+  if (-not $pass -and -not $blocked) {
     # fallback 3: UAC -> HKLM (machine-wide assoc incl. default value + OpenWithProgids)
     $vc = 'hklm'
     $tmpReg = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), ('qqqide-syspy-' + $PID + '.reg'))
@@ -337,13 +381,20 @@ if ($mode -eq 'apply') {
     $q = [string][char]34
     $regText = 'Windows Registry Editor Version 5.00' + $crlf + $crlf + '[HKEY_LOCAL_MACHINE\Software\Classes\' + $progId + '\shell\open\command]' + $crlf + '@=' + $q + $esc + $q + $crlf + $crlf + '[HKEY_LOCAL_MACHINE\Software\Classes\' + $ext + ']' + $crlf + '@=' + $q + $progId + $q + $crlf + $crlf + '[HKEY_LOCAL_MACHINE\Software\Classes\' + $ext + '\OpenWithProgids]' + $crlf + $q + $progId + $q + '=hex(0):' + $crlf
     $regText | Out-File -FilePath $tmpReg -Encoding Unicode
-    $uacOk = $false
+    $uacRc = -1
     try {
       $uac = Start-Process -FilePath 'reg.exe' -ArgumentList @('import', ('"' + $tmpReg + '"')) -Verb RunAs -Wait -PassThru
-      if ($uac -and $uac.ExitCode -eq 0) { $uacOk = $true }
-    } catch { $uacOk = $false }
+      if ($uac) { try { $ec = $uac.ExitCode; if ($null -ne $ec) { $uacRc = [int]$ec } } catch { } }
+    } catch { $uacRc = -2 }
     Remove-Item $tmpReg -ErrorAction SilentlyContinue
-    if (-not $uacOk) { OutKV 'OK' '0'; OutKV 'CODE' 'uac-cancelled'; exit 0 }
+    # UAC truth readback (2026-10-02): RunAs+PassThru ExitCode may be unavailable (null) -- HKLM command already written => treat as authorized (read-back truth, zero false positive)
+    if ($uacRc -ne 0) {
+      $hklmNow = ''
+      try { $hk = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('Software\Classes\' + $progId + '\shell\open\command'); if ($hk) { $hklmNow = [string]$hk.GetValue(''); $hk.Close() } } catch { }
+      if ($hklmNow -eq $cmdline) { $uacRc = 0 }
+    }
+    OutKV 'UAC_RC' ([string]$uacRc)
+    if ($uacRc -ne 0) { OutKV 'OK' '0'; OutKV 'CODE' 'uac-cancelled'; exit 0 }
     [QS]::BroadcastEnv()
     $aq = Get-AssocCmd $ext
     $pass = ($aq -ne '') -and ($aq.ToLower().Contains($exeLower))
@@ -354,7 +405,151 @@ if ($mode -eq 'apply') {
   OutKV 'OK' $(if ($pass) { '1' } else { '0' })
   OutKV 'CODE' $(if ($pass) { 'ok' } else { 'verify-failed' })
   OutKV 'VIA' $vc
+  OutKV 'BLOCKED' $(if ($blocked) { '1' } else { '0' })
   OutKV 'AQ' (B64 $aq)
+  OutKV 'AQRC' ([string]$script:aqRc)
+  OutKV 'UC_PROGID2' (B64 (Read-Value $ucPath 'ProgId'))
+  $hh = '0'
+  if ((Read-Value $ucPath 'Hash') -ne '') { $hh = '1' }
+  OutKV 'UC_HASH2' $hh
+  OutKV 'EXT_DEF2' (B64 (Read-Value ('Software\Classes\' + $ext) ''))
+  if ($Error.Count -gt 0) { OutKV 'PSERR' (B64 (($Error | Select-Object -First 3 | ForEach-Object { $_.ToString() }) -join ' | ')) }
+  exit 0
+}
+
+if ($mode -eq 'picker' -or $mode -eq 'finalize') {
+  # Guided flow (2026-10-02): register the app so it is visible in the system picker, then either
+  # open the picker (mode=picker) or only re-normalize our registration (mode=finalize, idempotent).
+  if (-not ($exe -and (Test-Path $exe))) { OutKV 'OK' '0'; OutKV 'CODE' 'no-python'; exit 0 }
+  $mid = ''
+  if ($flags -ne '') { $mid = ' ' + $flags }
+  $cmdline = '"' + $exe + '"' + $mid + ' "%1" %*'
+  if ($wrap -eq 'pause') { $cmdline = 'cmd.exe /d /s /c "' + '"' + $exe + '"' + $mid + ' "%1" %* & pause"' }
+  # Visibility rule (2026-10-02, isolated via the OS recommended-handlers API): the system picker
+  # only lists a DIRECT command; a cmd-wrapped command hides the whole entry from the user.
+  # So the picker phase writes the direct form (visible to the user) and finalize then normalizes
+  # back to the wrapped form (run-window stays open). The association only points at this key, so
+  # the rewrite after the user's pick is honored (verified on a real 25H2 machine).
+  $cmdDirect = '"' + $exe + '"' + $mid + ' "%1" %*'
+  $appCmd = $cmdline
+  if ($mode -eq 'picker') { $appCmd = $cmdDirect }
+  $appName = $env:QQQIDE_SYSPY_APPNAME
+  if (-not $appName) { $appName = 'Node (qd)' }
+  $appDesc = $env:QQQIDE_SYSPY_APPDESC
+  if (-not $appDesc) { $appDesc = 'Run scripts with the built-in interpreter of qd (qqqide)' }
+  $appKey = [System.IO.Path]::GetFileName($exe)
+  $allex = @()
+  if ($env:QQQIDE_SYSPY_ALLEXT) { foreach ($e2 in ($env:QQQIDE_SYSPY_ALLEXT -split ';')) { if ($e2) { $allex += $e2 } } }
+  if ($allex.Count -eq 0) { $allex = @($ext) }
+  $cr = [Microsoft.Win32.Registry]::CurrentUser
+  try {
+    $k = $cr.CreateSubKey('Software\Classes\Applications\' + $appKey)
+    $k.SetValue('', $appName, 'String')
+    $k.SetValue('FriendlyAppName', $appName, 'String')
+    $k.Close()
+  } catch { }
+  try {
+    $k = $cr.CreateSubKey('Software\Classes\Applications\' + $appKey + '\DefaultIcon')
+    $k.SetValue('', ('"' + $exe + '",0'), 'String')
+    $k.Close()
+  } catch { }
+  try {
+    $k = $cr.CreateSubKey('Software\Classes\Applications\' + $appKey + '\shell\open\command')
+    $k.SetValue('', $appCmd, 'String')
+    $k.Close()
+  } catch { }
+  try {
+    $k = $cr.CreateSubKey('Software\Classes\Applications\' + $appKey + '\SupportedTypes')
+    foreach ($e2 in $allex) { $k.SetValue($e2, '', 'String') }
+    $k.Close()
+  } catch { }
+  try {
+    $k = $cr.CreateSubKey('Software\qqqide\Capabilities')
+    $k.SetValue('ApplicationName', $appName, 'String')
+    $k.SetValue('ApplicationDescription', $appDesc, 'String')
+    $k.Close()
+  } catch { }
+  try {
+    $k = $cr.CreateSubKey('Software\qqqide\Capabilities\FileAssociations')
+    foreach ($e2 in $allex) { $k.SetValue($e2, $progId, 'String') }
+    $k.Close()
+  } catch { }
+  try {
+    $k = $cr.CreateSubKey('Software\RegisteredApplications')
+    $k.SetValue($appName, 'Software\qqqide\Capabilities', 'String')
+    $k.Close()
+  } catch { }
+  try {
+    $lk = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey('Software\RegisteredApplications')
+    $lk.SetValue($appName, 'Software\qqqide\Capabilities', 'String')
+    $lk.Close()
+  } catch { }
+  foreach ($e2 in $allex) {
+    try {
+      $k = $cr.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $e2 + '\OpenWithList')
+      $names = $k.GetValueNames()
+      $mru = ''
+      $exists = $false
+      $used = @{}
+      foreach ($n in $names) {
+        if ($n -eq 'MRUList') { $mru = [string]$k.GetValue('MRUList', ''); continue }
+        $used[$n] = $true
+        $v = [string]$k.GetValue($n, '')
+        if ($v -ieq $appKey) { $exists = $true }
+      }
+      if (-not $exists) {
+        $letter = ''
+        foreach ($c in [char[]]'abcdefghijklmnopqrstuvwxyz') { if (-not $used.ContainsKey([string]$c)) { $letter = [string]$c; break } }
+        if ($letter -ne '') {
+          $k.SetValue($letter, $appKey, 'String')
+          $k.SetValue('MRUList', ($letter + $mru), 'String')
+        }
+      }
+      $k.Close()
+    } catch { }
+  }
+  [QS]::NotifyAssocChanged()
+  OutKV 'APPS' '1'
+  if ($mode -eq 'picker') {
+    # Sample goes to the DESKTOP (findable by the user): once the OS protects the extension a real
+    # user double-click is the only reliable way to raise the picker; the auto-launch below is a
+    # best-effort bonus (invisible on protected 25H2 builds, harmless everywhere else).
+    $sampleDir = ''
+    try { $sampleDir = [Environment]::GetFolderPath('Desktop') } catch { }
+    if (-not $sampleDir -or -not (Test-Path $sampleDir)) { $sampleDir = $env:TEMP }
+    $sample = Join-Path $sampleDir ('qqqide-setup' + $ext)
+    $crlf2 = [string][char]13 + [string][char]10
+    $content = "console.log('qqqide node is ready.');" + $crlf2
+    if ($ext -eq '.py') { $content = "print('qqqide python is ready.')" + $crlf2 }
+    try { [System.IO.File]::WriteAllText($sample, $content); OutKV 'SAMPLE' (B64 $sample) } catch { OutKV 'SAMPLE' '' }
+    $launch = 'none'
+    try {
+      $ow = Join-Path $env:SystemRoot 'System32\OpenWith.exe'
+      if (Test-Path $ow) {
+        Start-Process -FilePath $ow -ArgumentList ('"' + $sample + '"') | Out-Null
+        $launch = 'openwith'
+      } else {
+        Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\rundll32.exe') -ArgumentList @('shell32.dll,OpenAs_RunDLL', ('"' + $sample + '"')) | Out-Null
+        $launch = 'rundll32'
+      }
+    } catch { }
+    OutKV 'LAUNCH' $launch
+    OutKV 'EXE' (B64 $exe)
+  } else {
+    $dirs2 = @()
+    try { $d2 = [Environment]::GetFolderPath('Desktop'); if ($d2) { $dirs2 += $d2 } } catch { }
+    if ($env:TEMP) { $dirs2 += $env:TEMP }
+    foreach ($d3 in $dirs2) {
+      foreach ($e3 in ($allex + @($ext))) {
+        try {
+          $s2 = Join-Path $d3 ('qqqide-setup' + $e3)
+          if (Test-Path $s2) { Remove-Item $s2 -Force -ErrorAction SilentlyContinue }
+        } catch { }
+      }
+    }
+  }
+  OutKV 'OK' '1'
+  OutKV 'CODE' 'ok'
   exit 0
 }
 
@@ -383,6 +578,67 @@ if ($mode -eq 'remove') {
       try { $k.DeleteValue('Hash', $false) } catch { }
       $k.Close()
       $clean = $clean + 'uc-clr;'
+    }
+  }
+  # 1b) UserChoiceLatest (Win11 user-choice protection carrier - the entry the user picked by hand;
+  #     best effort delete, never blocks)
+  $fxPathR = 'Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $ext
+  try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($fxPathR + '\UserChoiceLatest'); $clean = $clean + 'ucl;' } catch { }
+  # 1c) Applications\<exe> app registration + RegisteredApplications/Capabilities + OpenWithList
+  #     (the "xx (qd)" entries shown in the system picker)
+  $appKeyR = ''
+  if ($exe) { $appKeyR = [System.IO.Path]::GetFileName($exe) }
+  $appNameR = $env:QQQIDE_SYSPY_APPNAME
+  if (-not $appNameR) { $appNameR = 'Node (qd)' }
+  if ($appKeyR -ne '') {
+    $appCmdR = Read-Value ('Software\Classes\Applications\' + $appKeyR + '\shell\open\command') ''
+    if (($exeLower -ne '') -and ($appCmdR -ne '') -and $appCmdR.ToLower().Contains($exeLower)) {
+      try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree('Software\Classes\Applications\' + $appKeyR); $clean = $clean + 'apps;' } catch { }
+    }
+    foreach ($e3 in ($env:QQQIDE_SYSPY_ALLEXT -split ';')) {
+      if (-not $e3) { continue }
+      try {
+        $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\' + $e3 + '\OpenWithList', $true)
+        if ($k) {
+          $rmN = @()
+          foreach ($n in $k.GetValueNames()) {
+            if ($n -eq 'MRUList') { continue }
+            if ([string]$k.GetValue($n, '') -ieq $appKeyR) { $rmN += $n }
+          }
+          foreach ($n in $rmN) { try { $k.DeleteValue($n, $false); $clean = $clean + 'owl;' } catch { } }
+          if ($rmN.Count -gt 0) {
+            $mruR = [string]$k.GetValue('MRUList', '')
+            foreach ($n in $rmN) { $mruR = $mruR.Replace($n, '') }
+            $k.SetValue('MRUList', $mruR, 'String')
+          }
+          $k.Close()
+        }
+      } catch { }
+    }
+  }
+  $raVal = Read-Value 'Software\RegisteredApplications' $appNameR
+  if ($raVal -ne '') {
+    try { $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\RegisteredApplications', $true); if ($k) { $k.DeleteValue($appNameR, $false); $k.Close(); $clean = $clean + 'ra;' } } catch { }
+  }
+  try {
+    $lkR = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('Software\RegisteredApplications', $true)
+    if ($lkR) {
+      if ($lkR.GetValue($appNameR) -ne $null) { $lkR.DeleteValue($appNameR, $false); $clean = $clean + 'ra-hk;' }
+      $lkR.Close()
+    }
+  } catch { }
+  try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree('Software\qqqide\Capabilities'); $clean = $clean + 'cap;' } catch { }
+  # 1d) guided-flow sample files (desktop + temp) - clean back to a blank slate
+  $dirsR = @()
+  try { $dR = [Environment]::GetFolderPath('Desktop'); if ($dR) { $dirsR += $dR } } catch { }
+  if ($env:TEMP) { $dirsR += $env:TEMP }
+  foreach ($dR2 in $dirsR) {
+    foreach ($eR in ($env:QQQIDE_SYSPY_ALLEXT -split ';')) {
+      if (-not $eR) { continue }
+      try {
+        $sR = Join-Path $dR2 ('qqqide-setup' + $eR)
+        if (Test-Path $sR) { Remove-Item $sR -Force -ErrorAction SilentlyContinue; $clean = $clean + 'smp;' }
+      } catch { }
     }
   }
   # 2) HKCU Classes: our command/icon values (fingerprint) + ext default (== progId) + own progId tree (qqqide.*)
@@ -495,7 +751,7 @@ interface PsResult {
     raw: string;
 }
 
-function runPs(script: string, env: Record<string, string>, timeoutMs: number): Promise<PsResult> {
+export function runPs(script: string, env: Record<string, string>, timeoutMs: number, prefix: string = 'QQQIDE_SYSPY_'): Promise<PsResult> {
     return new Promise((resolve) => {
         let child: ChildProcessWithoutNullStreams;
         try {
@@ -529,8 +785,9 @@ function runPs(script: string, env: Record<string, string>, timeoutMs: number): 
             settled = true;
             clearTimeout(timer);
             const fields: Record<string, string> = {};
+            const re = new RegExp('^' + prefix + '([A-Z0-9_]+)=(.*)$');
             for (const line of stdout.split(/\r?\n/)) {
-                const m = /^QQQIDE_SYSPY_([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+                const m = re.exec(line.trim());
                 if (m) fields[m[1]] = m[2];
             }
             if (!fields.CODE && stderr) fields.ERR = stderr.slice(0, 400);
@@ -540,9 +797,15 @@ function runPs(script: string, env: Record<string, string>, timeoutMs: number): 
     });
 }
 
-function b64d(v: string | undefined): string {
+export function b64d(v: string | undefined): string {
     if (!v) return '';
     try { return Buffer.from(v, 'base64').toString('utf8'); } catch { return ''; }
+}
+
+/** PS 数字字段 → number（缺省/非法 → -1）。 */
+function pi(v: string | undefined): number {
+    const n = parseInt(String(v === undefined || v === '' ? '-1' : v), 10);
+    return Number.isFinite(n) ? n : -1;
 }
 
 // ── Node 门面（静态资产 engines/node/，随引擎发布；win=node.exe C 小启动器 / mac=node sh 脚本）──
@@ -573,12 +836,14 @@ function nodeEnv(facade: string, ext: string): Record<string, string> {
         QQQIDE_SYSPY_FLAGS: 'none',
         QQQIDE_SYSPY_MATCH: 'node',
         QQQIDE_SYSPY_WRAP: 'pause',
+        QQQIDE_SYSPY_APPNAME: 'Node (qd)',
+        QQQIDE_SYSPY_ALLEXT: '.js;.mjs;.cjs',
     };
 }
 
 // Windows node apply：门面预检 → sidecar（目标 = 运行中的 Electron 本体，搬迁失效回退相对路径）→
 // PS 主通（.js）→ .mjs/.cjs 尽力而为 → 首写备份（sysnode-backup.json）
-async function winNodeApply(portableRoot: string): Promise<{ ok: boolean; code: string; via?: string }> {
+async function winNodeApply(portableRoot: string): Promise<{ ok: boolean; code: string; via?: string; blocked?: boolean; aq?: string; aqRc?: number; uc?: string; err?: string }> {
     const facade = nodeFacadePath(portableRoot);
     if (!facade || !fs.existsSync(facade)) return { ok: false, code: 'no-node' };
     try { fs.writeFileSync(path.join(path.dirname(facade), 'node-target.txt'), process.execPath + '\n', 'utf8'); } catch { /* 容错 */ }
@@ -602,10 +867,20 @@ async function winNodeApply(portableRoot: string): Promise<{ ok: boolean; code: 
             fs.writeFileSync(bakPath, JSON.stringify(bak, null, 2), 'utf8');
         }
     } catch { /* 备份失败不影响主流程 */ }
-    if (r.ok) return { ok: true, code: 'ok', via: r.fields.VIA || '' };
+    if (r.ok) {
+        return {
+            ok: true, code: 'ok', via: r.fields.VIA || '',
+            aq: b64d(r.fields.AQ), aqRc: pi(r.fields.AQRC), uc: b64d(r.fields.UC_PROGID2),
+        };
+    }
     const code = r.fields.CODE === 'no-python' ? 'no-node' : (r.fields.CODE || 'verify-failed');
     console.warn('[syspy] node apply fail:', r.fields.CODE, (r.fields.ERR || '').slice(0, 300));
-    return { ok: false, code };
+    return {
+        ok: false, code, via: r.fields.VIA || '',
+        blocked: r.fields.BLOCKED === '1',
+        aq: b64d(r.fields.AQ), aqRc: pi(r.fields.AQRC), uc: b64d(r.fields.UC_PROGID2),
+        err: (b64d(r.fields.PSERR) || r.fields.ERR || '').slice(0, 400),
+    };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -932,6 +1207,8 @@ function pyEnv(exe: string | null, ext: string, progId: string, flags: string): 
         QQQIDE_SYSPY_EXT: ext,
         QQQIDE_SYSPY_PROGID: progId,
         QQQIDE_SYSPY_FLAGS: flags,
+        QQQIDE_SYSPY_APPNAME: 'Python (qd)',
+        QQQIDE_SYSPY_ALLEXT: '.py;.pyw',
     };
 }
 
@@ -1029,7 +1306,7 @@ async function macSysInterpRemove(portableRoot: string, target: 'python' | 'node
 }
 
 // Windows 解除：python = .py + .pyw 两遍；node = .js + .mjs/.cjs 尽力而为
-async function winSysInterpRemove(portableRoot: string, target: 'python' | 'node'): Promise<{ ok: boolean; code: string }> {
+async function winSysInterpRemove(portableRoot: string, target: 'python' | 'node'): Promise<{ ok: boolean; code: string; err?: string }> {
     if (target === 'node') {
         const facade = nodeFacadePath(portableRoot);
         const exeArg = (facade && fs.existsSync(facade)) ? facade : '';
@@ -1042,7 +1319,7 @@ async function winSysInterpRemove(portableRoot: string, target: 'python' | 'node
         }
         if (r.fields.OK === '1') return { ok: true, code: 'ok' };
         console.warn('[syspy] node remove fail:', r.fields.CODE, (r.fields.ERR || '').slice(0, 300));
-        return { ok: false, code: r.fields.CODE || 'remove-failed' };
+        return { ok: false, code: r.fields.CODE || 'remove-failed', err: (r.fields.ERR || '').slice(0, 300) };
     }
     let exe = '';
     try { exe = getComponentBin(portableRoot, 'python') || ''; } catch { exe = ''; }
@@ -1055,7 +1332,55 @@ async function winSysInterpRemove(portableRoot: string, target: 'python' | 'node
     } catch { /* 尽力而为 */ }
     if (r1.fields.OK === '1') return { ok: true, code: 'ok' };
     console.warn('[syspy] remove fail:', r1.fields.CODE, (r1.fields.ERR || '').slice(0, 300));
-    return { ok: false, code: r1.fields.CODE || 'remove-failed' };
+    return { ok: false, code: r1.fields.CODE || 'remove-failed', err: (r1.fields.ERR || '').slice(0, 300) };
+}
+
+// ── 失败遥测（2026-10-02）: check/apply/remove 结果采样 → syspy-report.json + ping 搭车诊断 ──
+//   失败现场三件套: via（卡在哪级）/ aq（系统最终解析成什么）/ err（被吞掉的真报错）
+function buildSyspyEnv(portableRoot: string, t: 'python' | 'node'): syspyReport.SyspyEnv {
+    const env: syspyReport.SyspyEnv = {};
+    try {
+        const engRoot = resolveEnginesRoot(portableRoot);
+        env.eng = engRoot && fs.existsSync(engRoot) ? 1 : 0;
+        env.man = engRoot && fs.existsSync(path.join(engRoot, 'manifest.json')) ? 1 : 0;
+        let exe: string | null = null;
+        if (t === 'node') exe = nodeFacadePath(portableRoot);
+        else { try { exe = getComponentBin(portableRoot, 'python'); } catch { exe = null; } }
+        env.fac = exe && fs.existsSync(exe) ? 1 : 0;
+        if (exe) env.facPath = exe;
+    } catch { /* ignore */ }
+    return env;
+}
+
+function noteSyspyOutcome(portableRoot: string, t: 'python' | 'node', op: 'check' | 'apply' | 'remove', res: any): void {
+    try {
+        if (!res || typeof res !== 'object') return;
+        if (res.code === 'busy' || res.code === 'unsupported') return;
+        let failCode = '';
+        if (op === 'check') {
+            if (!res.ok) failCode = String(res.code || 'check-failed');
+            else if (res.exeOk === false) failCode = (t === 'node') ? 'no-node' : 'no-python';
+        } else if (!res.ok) {
+            failCode = String(res.code || (op === 'apply' ? 'verify-failed' : 'remove-failed'));
+            if (t === 'node' && failCode === 'no-python') failCode = 'no-node';
+        }
+        const ok = !failCode;
+        let viaStr = res.via ? String(res.via) : '';
+        if (res.blocked) viaStr += '+blk';
+        const evt: syspyReport.SyspyEvent = {
+            tg: t, op, ok,
+            code: failCode || String(res.code || 'ok'),
+            via: viaStr,
+            err: res.err ? String(res.err) : '',
+            aq: res.aq ? String(res.aq) : '',
+            aqRc: (typeof res.aqRc === 'number' && Number.isFinite(res.aqRc)) ? res.aqRc : undefined,
+            uc: res.uc ? String(res.uc) : '',
+            exeOk: (typeof res.exeOk === 'boolean') ? res.exeOk : undefined,
+            env: ok ? undefined : buildSyspyEnv(portableRoot, t),
+        };
+        try { syspyReport.recordSyspyEvent(path.join(portableRoot, 'Data'), evt); } catch { /* ignore */ }
+        if (!ok) { try { notifySyspyFailed(); } catch { /* ignore */ } }
+    } catch { /* 遥测绝不影响主流程 */ }
 }
 
 // ── IPC 注册 ──
@@ -1071,7 +1396,7 @@ export function registerSysPyIpc(portableRoot: string): void {
         if (process.platform === 'darwin') {
             if (_inFlight) return { ok: false, code: 'busy' };
             _inFlight = true;
-            try { return await macSysInterpCheck(portableRoot, t); }
+            try { const out = await macSysInterpCheck(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'check', out); return out; }
             catch (e: any) { console.warn('[syspy] mac check err:', (e && e.message) || e); return { ok: false, code: 'check-failed' }; }
             finally { _inFlight = false; }
         }
@@ -1085,14 +1410,20 @@ export function registerSysPyIpc(portableRoot: string): void {
             const r = await runPs(PS_HEAD + PS_BODY, { ...env, QQQIDE_SYSPY_MODE: 'check' }, 60000);
             if (!r.fields.CODE) {
                 console.warn('[syspy] check raw:', r.raw.slice(0, 600));
-                return { ok: false, code: 'check-failed' };
+                const out = { ok: false, code: 'check-failed', err: String(r.fields.ERR || r.raw || '').slice(0, 400) };
+                noteSyspyOutcome(portableRoot, t, 'check', out);
+                return out;
             }
-            return {
+            const out = {
                 ok: true,
                 mode: r.fields.CODE,                       // 'none' | 'other' | 'ours'
                 exeOk: r.fields.EXE_OK === '1',
                 aq: b64d(r.fields.AQ),
+                aqRc: pi(r.fields.AQRC),
+                ucProgId: b64d(r.fields.UC_PROGID),
             };
+            noteSyspyOutcome(portableRoot, t, 'check', out);
+            return out;
         } finally {
             _inFlight = false;
         }
@@ -1103,7 +1434,7 @@ export function registerSysPyIpc(portableRoot: string): void {
         if (process.platform === 'darwin') {
             if (_inFlight) return { ok: false, code: 'busy' };
             _inFlight = true;
-            try { return await macSysInterpApply(portableRoot, t); }
+            try { const out = await macSysInterpApply(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'apply', out); return out; }
             catch (e: any) { console.warn('[syspy] mac apply err:', (e && e.message) || e); return { ok: false, code: 'verify-failed' }; }
             finally { _inFlight = false; }
         }
@@ -1111,9 +1442,17 @@ export function registerSysPyIpc(portableRoot: string): void {
         if (_inFlight) return { ok: false, code: 'busy' };
         _inFlight = true;
         try {
-            if (t === 'node') return await winNodeApply(portableRoot);
+            if (t === 'node') {
+                const out = await winNodeApply(portableRoot);
+                noteSyspyOutcome(portableRoot, t, 'apply', out);
+                return out;
+            }
             const exe = resolvePython();
-            if (!exe) return { ok: false, code: 'no-python' };
+            if (!exe) {
+                const out = { ok: false, code: 'no-python' };
+                noteSyspyOutcome(portableRoot, t, 'apply', out);
+                return out;
+            }
             const r = await runPs(PS_HEAD + PS_BODY, { ...pyEnv(exe, '.py', 'Python.File', '-i'), QQQIDE_SYSPY_MODE: 'apply' }, 300000);
             // ★ .pyw 第二遍（Python.NoConFile + pythonw，无控制台——与 python.org 官方语义一致）
             //   尽力而为：只记日志，不影响 .py 主结论
@@ -1153,11 +1492,64 @@ export function registerSysPyIpc(portableRoot: string): void {
                     fs.writeFileSync(bakPath, JSON.stringify(bak, null, 2), 'utf8');
                 }
             } catch { /* 备份失败不影响主流程 */ }
-            if (r.ok) return { ok: true, code: 'ok', via: r.fields.VIA || '' };
-            console.warn('[syspy] apply fail:', r.fields.CODE, (r.fields.ERR || '').slice(0, 300));
-            return { ok: false, code: r.fields.CODE || 'verify-failed' };
+            const out = {
+                ok: r.ok,
+                code: r.ok ? 'ok' : (r.fields.CODE || 'verify-failed'),
+                via: r.fields.VIA || '',
+                blocked: r.fields.BLOCKED === '1',
+                aq: b64d(r.fields.AQ),
+                aqRc: pi(r.fields.AQRC),
+                uc: b64d(r.fields.UC_PROGID2),
+                err: (b64d(r.fields.PSERR) || r.fields.ERR || '').slice(0, 400),
+            };
+            if (!r.ok) console.warn('[syspy] apply fail:', r.fields.CODE, (r.fields.ERR || '').slice(0, 300));
+            noteSyspyOutcome(portableRoot, t, 'apply', out);
+            return out;
         } finally {
             _inFlight = false;
+        }
+    });
+
+    // ★ picker / finalize（2026-10-02 引导流）——系统「用户选择保护」（Win11 25H2 .js）下
+    //   picker = 直连式注册（选择窗口可见性铁律：cmd 包裹式会被系统从列表隐藏）+ 桌面样例文件
+    //   + best-effort 拉起窗口；finalize = 归一包裹式（窗口不关）+ 清样例。幂等注册，不做 _inFlight
+    ipcMain.handle('qqqide:syspy:picker', async (_e: any, target?: string) => {
+        const t: 'python' | 'node' = target === 'node' ? 'node' : 'python';
+        if (process.platform !== 'win32') return { ok: false, code: 'unsupported' };
+        try {
+            if (t === 'node') {
+                const facade = nodeFacadePath(portableRoot);
+                if (!facade || !fs.existsSync(facade)) return { ok: false, code: 'no-node' };
+                const r = await runPs(PS_HEAD + PS_BODY, { ...nodeEnv(facade, '.js'), QQQIDE_SYSPY_MODE: 'picker' }, 60000);
+                return { ok: r.ok, code: r.ok ? 'ok' : (r.fields.CODE || 'picker-failed'), sample: b64d(r.fields.SAMPLE), launch: r.fields.LAUNCH || '', exePath: b64d(r.fields.EXE) };
+            }
+            const exe = resolvePython();
+            if (!exe) return { ok: false, code: 'no-python' };
+            const r = await runPs(PS_HEAD + PS_BODY, { ...pyEnv(exe, '.py', 'Python.File', '-i'), QQQIDE_SYSPY_MODE: 'picker' }, 60000);
+            return { ok: r.ok, code: r.ok ? 'ok' : (r.fields.CODE || 'picker-failed'), sample: b64d(r.fields.SAMPLE), launch: r.fields.LAUNCH || '', exePath: b64d(r.fields.EXE) };
+        } catch (e: any) {
+            console.warn('[syspy] picker err:', (e && e.message) || e);
+            return { ok: false, code: 'picker-failed' };
+        }
+    });
+
+    ipcMain.handle('qqqide:syspy:finalize', async (_e: any, target?: string) => {
+        const t: 'python' | 'node' = target === 'node' ? 'node' : 'python';
+        if (process.platform !== 'win32') return { ok: false, code: 'unsupported' };
+        try {
+            if (t === 'node') {
+                const facade = nodeFacadePath(portableRoot);
+                if (!facade || !fs.existsSync(facade)) return { ok: false, code: 'no-node' };
+                const r = await runPs(PS_HEAD + PS_BODY, { ...nodeEnv(facade, '.js'), QQQIDE_SYSPY_MODE: 'finalize' }, 60000);
+                return { ok: r.ok, code: r.ok ? 'ok' : (r.fields.CODE || 'finalize-failed') };
+            }
+            const exe = resolvePython();
+            if (!exe) return { ok: false, code: 'no-python' };
+            const r = await runPs(PS_HEAD + PS_BODY, { ...pyEnv(exe, '.py', 'Python.File', '-i'), QQQIDE_SYSPY_MODE: 'finalize' }, 60000);
+            return { ok: r.ok, code: r.ok ? 'ok' : (r.fields.CODE || 'finalize-failed') };
+        } catch (e: any) {
+            console.warn('[syspy] finalize err:', (e && e.message) || e);
+            return { ok: false, code: 'finalize-failed' };
         }
     });
 
@@ -1167,14 +1559,14 @@ export function registerSysPyIpc(portableRoot: string): void {
         if (process.platform === 'darwin') {
             if (_inFlight) return { ok: false, code: 'busy' };
             _inFlight = true;
-            try { return await macSysInterpRemove(portableRoot, t); }
+            try { const out = await macSysInterpRemove(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'remove', out); return out; }
             catch (e: any) { console.warn('[syspy] mac remove err:', (e && e.message) || e); return { ok: false, code: 'remove-failed' }; }
             finally { _inFlight = false; }
         }
         if (process.platform !== 'win32') return { ok: false, code: 'unsupported' };
         if (_inFlight) return { ok: false, code: 'busy' };
         _inFlight = true;
-        try { return await winSysInterpRemove(portableRoot, t); }
+        try { const out = await winSysInterpRemove(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'remove', out); return out; }
         catch (e: any) { console.warn('[syspy] remove err:', (e && e.message) || e); return { ok: false, code: 'remove-failed' }; }
         finally { _inFlight = false; }
     });

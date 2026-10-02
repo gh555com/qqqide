@@ -106,9 +106,6 @@ function bootRoamKeyFallback() {
     // ★ 2026-08-18 / 2026-09-27: x 键兜底直连——非编辑态交给 x 键呈递机器
     //   （短按 <600ms 抬起 → kmd；长按 ≥600ms → qmd；key-hook 配置链再坏也不静默）
     if (e.key === 'x') {
-      // ★ 播放器键盘独占（2026-10-01 q319 用户定案）：悬浮层/窗内卡在屏 → X 归倍速——
-      //   不打扰呈递机器，且不吞事件（放行给引擎键盘派发）
-      if (window.__qqqPlayerKeysBusy && window.__qqqPlayerKeysBusy()) { return; }
       if (e.repeat) { e.preventDefault(); e.stopPropagation(); return; } // 按住自动重复：忽略（计时只认第一次按下）
       console.log('[shell] kmd-key fallback: x');
       if (window.__qqqXPress && window.__qqqXPress.down) { window.__qqqXPress.down(null); }
@@ -141,18 +138,10 @@ function bootRoamKeyFallback() {
 //       派发 qqq-key-up DOM 事件 → up()
 //   ★ Roam iframe 内同款机器在 goods/file-explorer/q2-roam-ui.js（自带选区路径/文件名）——改阈值两处必须同改。
 //
-// ★ 播放器键盘独占（2026-10-01 q319 用户定案）：悬浮层可见（任何内容）/ 窗内卡展开（未收纳）→ X 恒归播放器
-//   （+0.5×）——kmd/qmd 呈递机器全线让路（key-hook 绑定 / 本文件兜底键链 / down() 三重防线；iframe 转发 = key-hook.js）
-window.__qqqPlayerKeysBusy = function () {
-  try { if (window.__qqqOverlayVisible && window.__qqqOverlayVisible()) return true; } catch (_) { }
-  try { if (window.qqqPlayerCard && window.qqqPlayerCard.isActive && window.qqqPlayerCard.isActive()) return true; } catch (_) { }
-  return false;
-};
 function bootXKeyMachine() {
   var HOLD_MS = 600;
   var st = { armed: false, longFired: false, path: null, timer: null };
   function down(path) {
-    if (window.__qqqPlayerKeysBusy && window.__qqqPlayerKeysBusy()) { return; } // ★ 播放器键盘独占（2026-10-01）：X 归倍速
     if (st.armed) { if (path && !st.path) st.path = path; return; } // 重复按下：只补路径，不重置计时
     st.armed = true; st.longFired = false; st.path = path || null;
     st.timer = setTimeout(function () {

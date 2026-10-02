@@ -1177,6 +1177,16 @@ async function executeSysPython(args) {
             out += '\n- one-time setup: if the installation is moved later, run apply once more to refresh';
             return out;
         }
+        if (res && res.blocked && sysPy.picker) {
+            // ★ 引导流（2026-10-02）：Windows 用户选择保护拦截——自动拉起系统选择窗口并给出指引
+            var pkP = null;
+            try { pkP = await sysPy.picker('python'); } catch (_p) { pkP = null; }
+            var msgP = 'sys_python apply: result=blocked-by-system';
+            msgP += '\n- This Windows version protects .py file associations (user-choice protection): a programmatic write cannot take effect, and only a one-time manual pick by the user is accepted.';
+            if (pkP && pkP.ok) msgP += '\n- A system window ("How do you want to open this file?") has just been opened on the user\'s screen: ask the user to choose "Python (qd)" and click Always. The choice is permanent (one-time action).';
+            else msgP += '\n- Open the Settings panel (General tab) and click the "Set as System Python Interpreter" button to trigger the one-time system window.';
+            return msgP;
+        }
         return 'Error: sys_python setup failed — ' + _codeText(res && res.code);
     }
 
@@ -1281,6 +1291,16 @@ async function executeSysNode(args) {
             if (st.mode === 'other') out += '\n- the previous handler was replaced (original values backed up to Data/alphal/sysnode-backup.json)';
             out += '\n- one-time setup: if the installation is moved later, run apply once more to refresh';
             return out;
+        }
+        if (res && res.blocked && sysPy.picker) {
+            // ★ 引导流（2026-10-02）：Windows 用户选择保护拦截（.js 已知）——自动拉起系统选择窗口并给出指引
+            var pkN = null;
+            try { pkN = await sysPy.picker('node'); } catch (_pn) { pkN = null; }
+            var msgN = 'sys_node apply: result=blocked-by-system';
+            msgN += '\n- This Windows version protects .js file associations (user-choice protection): a programmatic write cannot take effect, and only a one-time manual pick by the user is accepted.';
+            if (pkN && pkN.ok) msgN += '\n- A system window ("How do you want to open this file?") has just been opened on the user\'s screen: ask the user to choose "Node (qd)" and click Always. The choice is permanent (one-time action).';
+            else msgN += '\n- Open the Settings panel (General tab) and click the "Set as System Node Interpreter" button to trigger the one-time system window.';
+            return msgN;
         }
         return 'Error: sys_node setup failed — ' + _codeText(res && res.code);
     }

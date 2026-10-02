@@ -493,8 +493,10 @@ export class MediaService {
     //   Chromium 原生解不了的格式（avi/wmv/flv/rmvb/prores-mov/psd/tiff…）→ ffmpeg 转浏览器可播产物：
     //   ① 视频智能快路径：编码已支持（h264/hevc/av1/vp8/vp9）→ -c copy 重封装（秒级零损失）
     //   ② 编码不支持 → libx264 重编码（veryfast/crf23/yuv420p + aac）
-    //   ③ 音频：aac/mp3 copy，其余转 aac ④ 图片（psd/tiff）：抽单帧 png
-    //   独立缓存区 {cache}/play（2GB 上限 LRU）+ -progress 文件轮询进度 + 可取消 + broken 熔断
+    //   ③ 音频：aac copy；mp3 一律重编码 aac——2026-10-02 实证：Chromium 严格解码（脏 mp3 bitstream 一包解码失败
+    //      即整体拒播；ffmpeg CLI 容错跳过 vs Chromium 零容忍），老 AVI（Nandub/DivX 时代）mp3 常态带病，copy 必炸
+    //   ④ 图片（psd/tiff）：抽单帧 png
+    //   独立缓存区 {cache}/play（2GB 上限 LRU；产物名 = stat 指纹 + 方案版本 PLAY_PLAN_VER）+ -progress 文件轮询进度 + 可取消 + broken 熔断
     // =========================================================================
 
     private _playInflight = new Map<string, Promise<PlayableResult>>();
@@ -502,6 +504,8 @@ export class MediaService {
     private _playCancelled = new Set<string>();
     private static readonly PLAY_CACHE_MAX = 2 * 1073741824;
     private static readonly PLAY_CACHE_TARGET = 1536 * 1048576;
+    /** 产物方案版本：转码规则变更必须 bump——旧规则产物自动失效（禁复用旧规则产物） */
+    private static readonly PLAY_PLAN_VER = '_p2';
 
     private _playDir(): string {
         const d = path.join(this.cache.root, 'play');
@@ -565,17 +569,14 @@ export class MediaService {
             const a4 = (o: number): string => b.toString('ascii', o, o + 4);
             if (ext === 'mp4' || ext === 'm4a') { return a4(4) === 'ftyp'; }
             if (ext === 'webm') { return b[0] === 0x1A && b[1] === 0x45 && b[2] === 0xDF && b[3] === 0xA3; }
-            // ★ 魔数逐字节（2026-09-21 修复）：a4() 固定读 4 字符——"PNG"/"ID3" 是 3 字符前缀，
-            //   旧式 a4(1)==='PNG' 实为 "PNG\r"≠"PNG" 恒假 → 合法产物被误删+熔断（psd 打不开实锤；
-            //   mp3 带 ID3v2 头同款误杀）。mp4/webm 比较的是 4 字符字面量，本就正确。
+            // 魔数必逐字节（a4() 固定读 4 字符对 "PNG" 这类 3 字符前缀恒假——误删合法产物实锤坑）
             if (ext === 'png') { return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47; }
-            if (ext === 'mp3') { return (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xFF && (b[1] & 0xE0) === 0xE0); }
             return true;
         } catch { return false; }
     }
 
-    /** 双流探测（视频+音频编码 / 时长）——ffprobe JSON 优先，ffmpeg -i 解析兜底 */
-    private async _probeStreams(src: string): Promise<{ vcodec: string; acodec: string; duration: number } | null> {
+    /** 双流探测（视频+音频编码 / 时长 / 宽高）——ffprobe JSON 优先，ffmpeg -i 解析兜底 */
+    private async _probeStreams(src: string): Promise<{ vcodec: string; acodec: string; duration: number; w: number; h: number } | null> {
         this.ensureResolved();
         if (this._ffprobePath) {
             const r = await this.qz.spawn({
@@ -594,6 +595,8 @@ export class MediaService {
                         vcodec: String(v.codec_name || '').toLowerCase(),
                         acodec: String(a.codec_name || '').toLowerCase(),
                         duration: isFinite(dur) ? dur : 0,
+                        w: Number(v.width) || 0,
+                        h: Number(v.height) || 0,
                     };
                 } catch { /* fall through */ }
             }
@@ -608,29 +611,33 @@ export class MediaService {
             const ma = txt.match(/Stream #\d+:\d+.*?: Audio: ([A-Za-z0-9_]+)/);
             if (mv || ma) {
                 const md = txt.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+                const mr = txt.match(/Stream #\d+:\d+.*?: Video: .*?\b(\d{2,5})x(\d{2,5})\b/);
                 return {
                     vcodec: mv ? mv[1].toLowerCase() : '',
                     acodec: ma ? ma[1].toLowerCase() : '',
                     duration: md ? (Number(md[1]) * 3600 + Number(md[2]) * 60 + Number(md[3])) : 0,
+                    w: mr ? Number(mr[1]) : 0,
+                    h: mr ? Number(mr[2]) : 0,
                 };
             }
         }
         return null;
     }
 
-    /** 转码方案决策（快路径 = 同编码 copy 重封装；不可 copy 才重编码） */
-    private _planPlayable(kind: 'video' | 'audio' | 'image', meta: { vcodec: string; acodec: string }): { ext: string; args: string[] } {
+    /** 转码方案决策（快路径 = 同编码 copy 重封装；不可 copy 才重编码）
+     *  ★ 2026-10-02：mp3 音轨一律重编码 aac（Chromium 严格解码——脏 mp3 流一包解码失败即整体拒播；
+     *    老 AVI〔Nandub/DivX 时代〕mp3 常态带病：copy 进 mp4/mkv 均被 PIPELINE_ERROR_DECODE 拒绝，实锤）。
+     *  ★ 奇偶守卫：重编码目标 yuv420p 要求偶数边长——源为奇数宽高时加整像素安全缩放（源不为奇数则零开销）。 */
+    private _planPlayable(kind: 'video' | 'audio' | 'image', meta: { vcodec: string; acodec: string; w?: number; h?: number }): { ext: string; args: string[] } {
         if (kind === 'image') {
             return { ext: 'png', args: ['-frames:v', '1', '-c:v', 'png', '-update', '1'] };
         }
         const a = meta.acodec, v = meta.vcodec;
-        const aCopyMp4 = (a === 'aac' || a === 'mp3');
         if (kind === 'audio' || !v) {
-            if (a === 'mp3') { return { ext: 'mp3', args: ['-vn', '-c:a', 'copy'] }; }
             if (a === 'aac') { return { ext: 'm4a', args: ['-vn', '-c:a', 'copy'] }; }
             return { ext: 'm4a', args: ['-vn', '-c:a', 'aac', '-b:a', '192k'] };
         }
-        const aArgs = a ? (aCopyMp4 ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k']) : ['-an'];
+        const aArgs = a ? (a === 'aac' ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k']) : ['-an'];
         const mapArgs = ['-map', '0:v:0'].concat(a ? ['-map', '0:a:0'] : []);
         if (v === 'h264' || v === 'hevc' || v === 'av1') {
             return { ext: 'mp4', args: mapArgs.concat(['-c:v', 'copy'], aArgs) };
@@ -638,9 +645,13 @@ export class MediaService {
         if ((v === 'vp8' || v === 'vp9') && (!a || a === 'opus' || a === 'vorbis')) {
             return { ext: 'webm', args: mapArgs.concat(['-c:v', 'copy'], a ? ['-c:a', 'copy'] : ['-an']) };
         }
+        const vArgs = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'];
+        if ((meta.w && meta.w % 2) || (meta.h && meta.h % 2)) {
+            vArgs.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
+        }
         return {
             ext: 'mp4',
-            args: mapArgs.concat(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'], aArgs),
+            args: mapArgs.concat(vArgs, aArgs),
         };
     }
 
@@ -656,12 +667,13 @@ export class MediaService {
         if (!st) { return { ok: false, error: 'src_missing' }; }
         if (await this._brokenHit(st)) { return { ok: false, error: 'known_broken' }; }
 
-        // ★ 缓存快路径（2026-09-21，零风险纯收益）：产物名 = stat 指纹（路径|mtime|size）——同 sig 必同源同方案
+        // ★ 缓存快路径（2026-09-21，零风险纯收益）：产物名 = stat 指纹（路径|mtime|size）+ 方案版本（PLAY_PLAN_VER）
+        //   ——同 sig 必同源同方案；★ 方案版本（2026-10-02）：转码规则变更 bump 版本 → 旧规则产物自动失效（禁复用）
         //   命中直返，跳过 ffprobe 进程（~100-300ms/次）；产物落盘均经校验，坏产物从不落盘。
         //   下方 probe→plan→dst 检查保留为兜底（方案漂移等边界）。
-        const _fastExts: string[] = kind === 'image' ? ['png'] : ['mp4', 'webm', 'm4a', 'mp3'];
+        const _fastExts: string[] = kind === 'image' ? ['png'] : ['mp4', 'webm', 'm4a'];
         for (const _fe of _fastExts) {
-            const _fp = path.join(this._playDir(), st.sig + '.' + _fe);
+            const _fp = path.join(this._playDir(), st.sig + MediaService.PLAY_PLAN_VER + '.' + _fe);
             if (fs.existsSync(_fp)) {
                 try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
                 try { const now = new Date(); fs.utimesSync(_fp, now, now); } catch { /* ignore */ }
@@ -673,7 +685,7 @@ export class MediaService {
         if (!meta || (!meta.vcodec && !meta.acodec)) { return { ok: false, error: 'probe_failed' }; }
 
         const plan = this._planPlayable(kind, meta);
-        const dst = path.join(this._playDir(), st.sig + '.' + plan.ext);
+        const dst = path.join(this._playDir(), st.sig + MediaService.PLAY_PLAN_VER + '.' + plan.ext);
         if (fs.existsSync(dst)) {
             try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
             try { const now = new Date(); fs.utimesSync(dst, now, now); } catch { /* ignore */ }

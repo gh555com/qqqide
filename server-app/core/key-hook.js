@@ -181,10 +181,6 @@
     const accel = canonAccel(e);
     if (!accel) return;
 
-    // ★ 播放器键盘独占（2026-10-01 q319 用户定案）：播放面板在屏（悬浮层/窗内卡）→ X 归倍速——
-    //   不派发 kmd 呈递（放行事件给引擎键盘派发）
-    if (accel === 'X' && window.__qqqPlayerKeysBusy && window.__qqqPlayerKeysBusy()) { return; }
-
     // Try chord first (renderer-side; global chord handled by globalShortcut)
     const chord = tryChord(accel);
     if (chord && dispatch(chord, 'window', e)) {
@@ -212,8 +208,6 @@
     const scope = ev.data.scope || 'iframe:unknown';
     if (!accel) return;
     refreshImplicit();
-    // ★ 播放器键盘独占配套（2026-10-01）：悬浮层可见（模态层）→ 转发 X 也不进呈递机器
-    if (accel === 'X' && window.__qqqOverlayVisible && window.__qqqOverlayVisible()) { return; }
     // ★ 2026-08-18: iframe 可携带 path（kmd 自转发带自身 cwd）→ 透传给 handler
     const extra = ev.data.path ? { path: ev.data.path } : null;
     dispatch(accel, scope, null, extra);

@@ -609,6 +609,8 @@ const QQQ = {    // ---- app info ----
         check: (target?: string) => ipcRenderer.invoke('qqqide:syspy:check', target),
         apply: (target?: string) => ipcRenderer.invoke('qqqide:syspy:apply', target),
         remove: (target?: string) => ipcRenderer.invoke('qqqide:syspy:remove', target),
+        picker: (target?: string) => ipcRenderer.invoke('qqqide:syspy:picker', target),
+        finalize: (target?: string) => ipcRenderer.invoke('qqqide:syspy:finalize', target),
     },
 
     // ---- kope (剪贴板历史, sql.js 直接读写 kope.sq3) ----
@@ -793,47 +795,39 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
         decrypt: (b64: string) => ipcRenderer.invoke('qqqide:secure:decrypt', b64),
     },
 
-    // ---- player（独立悬浮播放器窗，2026-09-26 q319 v4）----
-    //   悬浮层 ↗ 弹出 / Roam ➕ 加入 / 工作台 Player 行共用；状态 OS 级 player-state.json 持久化
+    // ---- player（独立播放器窗，2026-10-02 q319 单宿主大整改 v9）----
+    //   唯一打开入口 = Roam Q（shell-rpc 泛化转发 bridge.player.open）；每窗独立会话（主进程按 e.sender 归属）；
+    //   stow/return/cardHandoff/handoff/queue/claim 等旧多宿主机制已全部删除（禁加回）
     player: {
-        open: () => ipcRenderer.invoke('qqqide:player:open'),
-        getState: () => ipcRenderer.invoke('qqqide:player:getState'),
-        setState: (s: any) => ipcRenderer.invoke('qqqide:player:setState', s),
-        popOut: (s: any) => ipcRenderer.invoke('qqqide:player:popOut', s),
-        add: (paths: string[]) => ipcRenderer.invoke('qqqide:player:add', paths),
-        claim: (from: string) => ipcRenderer.send('qqqide:player:claim', from),
+        open: (payload?: any) => ipcRenderer.invoke('qqqide:player:open', payload),
+        append: (payload?: any) => ipcRenderer.invoke('qqqide:player:append', payload),
+        getSession: () => ipcRenderer.invoke('qqqide:player:session'),
+        setSession: (s: any) => ipcRenderer.invoke('qqqide:player:setSession', s),
+        setTitle: (name: string) => ipcRenderer.invoke('qqqide:player:setTitle', name),
+        setPin: (on: boolean) => ipcRenderer.invoke('qqqide:player:setPin', on),
+        minimize: () => ipcRenderer.invoke('qqqide:player:minimize'),
+        maximize: () => ipcRenderer.invoke('qqqide:player:maximize'),
+        onMaxState: (cb: (maxed: boolean) => void) => {
+            const handler = (_e: unknown, maxed: any) => { try { cb(!!maxed); } catch (err) { console.warn('[player.onMaxState]', err); } };
+            ipcRenderer.on('qqqide:player:maxstate', handler);
+            return () => ipcRenderer.removeListener('qqqide:player:maxstate', handler);
+        },
+        onAppend: (cb: (payload: any) => void) => {
+            const handler = (_e: unknown, payload: any) => { try { cb(payload); } catch (err) { console.warn('[player.onAppend]', err); } };
+            ipcRenderer.on('qqqide:player:append', handler);
+            return () => ipcRenderer.removeListener('qqqide:player:append', handler);
+        },
         reveal: (p: string) => ipcRenderer.invoke('qqqide:player:reveal', p),
         close: () => ipcRenderer.invoke('qqqide:player:close'),
-        returnOverlay: (s: any) => ipcRenderer.invoke('qqqide:player:returnOverlay', s),
-        // ★ 独立窗 [—]「收进状态栏」（2026-10-01 q319）：整机交接 → 主窗播放器卡收纳态 → 状态栏 ♪ 遥控
-        stowToCard: (s: any) => ipcRenderer.invoke('qqqide:player:stowToCard', s),
-        onClaim: (cb: (from: string) => void) => {
-            const handler = (_e: any, from: string) => { try { cb(from); } catch (err) { console.warn('[player.onClaim]', err); } };
-            ipcRenderer.on('qqqide:player:claim', handler);
-            return () => ipcRenderer.removeListener('qqqide:player:claim', handler);
-        },
-        onHandoff: (cb: (h: any) => void) => {
-            const handler = (_e: any, h: any) => { try { cb(h); } catch (err) { console.warn('[player.onHandoff]', err); } };
-            ipcRenderer.on('qqqide:player:handoff', handler);
-            return () => ipcRenderer.removeListener('qqqide:player:handoff', handler);
-        },
-        onQueue: (cb: (q: any) => void) => {
-            const handler = (_e: any, q: any) => { try { cb(q); } catch (err) { console.warn('[player.onQueue]', err); } };
-            ipcRenderer.on('qqqide:player:queue', handler);
-            return () => ipcRenderer.removeListener('qqqide:player:queue', handler);
-        },
-        // ★ v6：播放器窗 ↙「退回悬浮层」→ 主窗口开悬浮层（列表+进度+模式回灌），本窗自关
-        onReturn: (cb: (h: any) => void) => {
-            const handler = (_e: any, h: any) => { try { cb(h); } catch (err) { console.warn('[player.onReturn]', err); } };
-            ipcRenderer.on('qqqide:player:return', handler);
-            return () => ipcRenderer.removeListener('qqqide:player:return', handler);
-        },
-        // ★ v8：独立窗 [—]「收进状态栏」→ 主窗口播放器卡收纳态（core/player-card.js 消费）
-        onCardHandoff: (cb: (h: any) => void) => {
-            const handler = (_e: any, h: any) => { try { cb(h); } catch (err) { console.warn('[player.onCardHandoff]', err); } };
-            ipcRenderer.on('qqqide:player:cardHandoff', handler);
-            return () => ipcRenderer.removeListener('qqqide:player:cardHandoff', handler);
-        },
+    },
+
+    // ---- fileAssoc（系统默认播放器 — 播放器窗头部「Default」按钮，2026-10-02 v17）----
+    //   apply/remove = 全量接管/纯清空（一切媒体 37 类；仅 Windows；设置数据全在 HKCU）
+    fileAssoc: {
+        check: () => ipcRenderer.invoke('qqqide:fileassoc:check'),
+        apply: () => ipcRenderer.invoke('qqqide:fileassoc:apply'),
+        remove: () => ipcRenderer.invoke('qqqide:fileassoc:remove'),
+        settings: () => ipcRenderer.invoke('qqqide:fileassoc:settings'),
     },
 
 };

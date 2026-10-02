@@ -111,8 +111,8 @@ off). No module talks to the OS any other way.
 
 | File | Role |
 | --- | --- |
-| media-engine.js | Shared media player engine (three hosts) |
-| player-card.js | In-window player card host |
+| media-engine.js | Shared media player engine (single host: player window) |
+
 | shell-overlay.js | Overlay host (lightboxes, previews) |
 | wq-stats.js | Status-bar probe widget + cache card |
 
@@ -265,7 +265,7 @@ build on; **internal intrinsics** (`__qqq*`) — cross-frame plumbing that lives
 | qqqExport / qqqideDownload | core/export-machine.js / -download-machine.js | Export / download entries |
 | qqqidePanel | ai-panel/ai-panel.js | AI panel API (per panel) |
 | qqqideSash / qqqLayout | core/sash.js | Sash & layout APIs |
-| qqqPlayerCard | core/player-card.js | In-window player card control |
+
 | qqqSysInterpAsk (+ compat aliases) | core/settings.js | System-interpreter confirm dialog |
 | qqqToolsMenu / qqqHelpMenu | core/qqq-tools.js / -help-menu.js | Workbench / help menus |
 | qqqSavor | core/savor.js | Savor control |
@@ -296,7 +296,7 @@ build on; **internal intrinsics** (`__qqq*`) — cross-frame plumbing that lives
 | __qqqLastKeyPath / __qqqXPress | x-key handoff state |
 | __qqqImgSizes | Image size cache |
 | _qqqEnoentCache / _qqqPathResolve / _qqqReadFilesThisFloor / _qqqToolCacheThisFloor | Tool-loop caches |
-| __qqqQmdOpen / __qqqPlayerStowed | Window-stack hooks |
+| __qqqQmdOpen | Window-stack hooks |
 | _initA1Block / _initClockBlock / _initA4Block | Floor-block initializers |
 | __qqq_getQuestOwner / __qqq_questIndex | Favourites ↔ quest-ownership bridge |
 | __qqqHealth / __qqqUpdHealthRefresh | Health hooks |
@@ -321,7 +321,7 @@ channel is `shell/preload.ts`.
 | --- | --- |
 | qqq-lang-change | Language switched; every iframe re-renders |
 | qqqide-theme-change | Theme switched (`dark` boolean) |
-| qqqide-overlay | Open the shared lightbox/overlay (media, tables, images) |
+| qqqide-overlay | Open the shared lightbox/overlay (tables, images) |
 | qqq-sfx | Play a sound effect through the shell audio engine |
 | qqq-fav-open / qqq-fav-state / qqq-fav-query / qqq-fav-jump | Floor favourites (panels ⇄ main window) |
 | qqq-ai-ready → qqqide:renderer-ready | Boot readiness handshake that controls the splash screen |

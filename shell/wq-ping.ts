@@ -29,6 +29,7 @@ import { getComponentBin } from './component-checker';
 import { vigSnapshot, vigSet, winthereExternal } from './vig';
 import { crashNetSummary } from './crash-net';
 import * as remoteCmd from './remote-cmd'; // ★ 2026-09-28 设备级指令通道（执行/回执/诊断）
+import * as syspyReport from './syspy-report'; // ★ 2026-10-02 系统解释器失败遥测（pending 搭车 upd_diag）
 import { kopeStatsSync, kopeWarmup } from './ipc-kope';
 import { getMainLang } from './main-i18n';
 import type { StateStore } from './state-sqlite';
@@ -52,12 +53,15 @@ let _sessionStartedAt = Date.now();  // 本次进程启动时间
 let _stopped = false;
 let _retryDelayMs = RETRY_MIN_MS;
 let _lastFailNotifyAt = 0;      // ★ 升级失败即时补发节流（30min）
+let _lastSyspyNotifyAt = 0;     // ★ 系统解释器失败即时补发节流（10min）
 let _updHealthCache: Record<string, unknown> | null | undefined; // undefined=未探测
 // ★ 偿还（playing）状态（Savor 移植 2026-09-19）：播放中 → ping 携带 playing=true
 let _isCurrentlyPlaying = false;
 let _lastPlayingPingTime = 0;   // playing ping 5min 防抖（与服务器限速同口径）
 let _lastSentAckIds: string[] = [];  // ★ 本次 ping 已发出的指令回执 id（服务端确认后清）
 let _diagIncluded = false;           // ★ 本次 ping 是否携带扩展诊断
+let _diagBase = '';                  // ★ 本次携带诊断的 Data 根（syspy pending 清理用）
+let _diagSpy = false;                // ★ 本次诊断由系统解释器失败触发（服务端确认后清 pending）
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _userDataPath = '';              // ★ portable.userData，启动时注入
 let _stateStore: StateStore | null = null; // ★ 全局状态库（main.ts 注入；读 UI 主题镜像）
@@ -393,7 +397,12 @@ async function collectPingBody(): Promise<string> {
         }
     } catch { /* ignore */ }
     try {
-        if (remoteCmd.isDiagWanted()) {
+        // ★ 系统解释器失败遥测（2026-10-02）: 失败 pending 或运维 diag 指令 → 携带扩展诊断
+        const _dgBase = _userDataPath || getDataDir();
+        const spyWanted = syspyReport.syspyPendingWanted(_dgBase);
+        if (remoteCmd.isDiagWanted() || spyWanted) {
+            _diagBase = _dgBase;
+            _diagSpy = spyWanted;
             const dg = buildDiag();
             if (dg) { body.upd_diag = dg; _diagIncluded = true; }
         }
@@ -409,6 +418,10 @@ function buildDiag(): string {
         const liveDir = path.dirname(base);
         const packRoot = path.dirname(liveDir);
         const parts: string[] = [];
+        try {
+            const spy = syspyReport.buildSpyTokens(base);
+            if (spy) parts.push(spy);        // ★ 置首位（480 截断永不吞系统解释器现场）
+        } catch { /* ignore */ }
         const rf = (p: string): string => { try { return fs.readFileSync(p, 'utf8').trim(); } catch { return ''; } };
         const sz = (p: string): number => { try { return fs.statSync(p).size; } catch { return -1; } };
         const sha8 = (p: string): string => {
@@ -507,11 +520,15 @@ function afterPingResult(res: { ok: boolean; commands?: unknown; cmdsOk?: boolea
     try {
         if (res.cmdsOk) {
             if (_lastSentAckIds.length > 0) remoteCmd.markAcksSent(_lastSentAckIds);
-            if (_diagIncluded) remoteCmd.clearDiagWantSent();
+            if (_diagIncluded) {
+                remoteCmd.clearDiagWantSent();
+                if (_diagSpy && _diagBase) { try { syspyReport.clearSyspyPending(_diagBase); } catch { /* ignore */ } }
+            }
         }
     } catch { /* ignore */ }
     _lastSentAckIds = [];
     _diagIncluded = false;
+    _diagSpy = false;
     try {
         if (Array.isArray(res.commands) && res.commands.length > 0) {
             void remoteCmd.handleIncomingCommands(res.commands).then((processed: boolean) => {
@@ -597,6 +614,18 @@ export function notifyUpdateFailed(): void {
   _retryDelayMs = RETRY_MIN_MS;
   if (_timer) clearTimeout(_timer);
   _timer = setTimeout(pingCycle, 2_000); // 2s 后发，等状态文件落盘
+}
+
+/** 系统解释器失败即时补发（ipc-syspy 失败时调用）: 10min 节流后立即 ping 一次（诊断搭车上报）。 */
+export function notifySyspyFailed(): void {
+    if (_stopped || !_deviceId) return;
+    const nowMs = Date.now();
+    if (nowMs - _lastSyspyNotifyAt < 10 * 60 * 1000) return;
+    _lastSyspyNotifyAt = nowMs;
+    pingLog('notifySyspyFailed -> quick ping');
+    _retryDelayMs = RETRY_MIN_MS;
+    if (_timer) clearTimeout(_timer);
+    _timer = setTimeout(pingCycle, 3_000);
 }
 
 /** ★ 设置当前是否在播放（Savor）：使后续常规 ping 携带 playing=true。 */

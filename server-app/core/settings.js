@@ -421,6 +421,95 @@
     return _i(pfx + 'failRemove', (t === 'node') ? '❌ Node 解除失败：' : '❌ Python 解除失败：');
   }
 
+  // ── ★ 失败 qoast（2026-10-02 用户定案）：Node/Python 一切失败恒带「一键复制错误信息」按钮 ──
+  //   复制内容 = 机器可读失败现场（target/op/code/via/aq/uc/err/mode/exeOk/msg/time）
+  //   + 本地采样文件尾段（syspy-report.json，壳层 shell/syspy-report.ts 采集；读不到则只复制现场字段）
+  //   客户一键复制 → 直接粘贴发给管理员即可远程定位
+  function _interpClipWrite(text, onDone) {
+    function _legacy() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = String(text == null ? '' : text);
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+        document.body.removeChild(ta);
+        onDone(!!ok);
+      } catch (e3) { onDone(false); }
+    }
+    try {
+      var b = window.qqqideBridge;
+      if (b && b.clipboard && typeof b.clipboard.writeText === 'function') {
+        Promise.resolve(b.clipboard.writeText(text)).then(function () { onDone(true); }, function () { _legacy(); });
+        return;
+      }
+    } catch (e) { /* fallthrough */ }
+    _legacy();
+  }
+
+  function _interpFmtTime() {
+    var d = new Date();
+    var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' +
+      p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+  }
+
+  function _interpFailReport(t, op, msg, res) {
+    var L = ['[qqqide sys-interp fail]'];
+    L.push('target: ' + t);
+    L.push('op: ' + op);
+    if (res && res.code) L.push('code: ' + res.code);
+    if (res && res.mode) L.push('mode: ' + res.mode);
+    if (res && res.via) L.push('via: ' + res.via);
+    if (res && res.aq) L.push('aq: ' + res.aq);
+    if (res && typeof res.aqRc === 'number') L.push('aqRc: ' + res.aqRc);
+    var uc = res && (res.uc || res.ucProgId);
+    if (uc) L.push('uc: ' + uc);
+    if (res && typeof res.exeOk === 'boolean') L.push('exeOk: ' + res.exeOk);
+    if (res && res.err) L.push('err: ' + res.err);
+    L.push('time: ' + _interpFmtTime());
+    L.push('msg: ' + msg);
+    return L.join('\n');
+  }
+
+  function _interpCopyFail(t, op, msg, res) {
+    var base = _interpFailReport(t, op, msg, res);
+    var done = function (ok) {
+      _pyQoast(ok
+        ? _i('settings.sysInterp.copied', '已复制到剪贴板，可粘贴发送给管理员')
+        : _i('settings.sysInterp.copyFail', '复制失败，请截图反馈'), ok ? 'success' : 'error');
+    };
+    var p = null;
+    try {
+      var b = window.qqqideBridge;
+      if (b && b.update && typeof b.update.diagFile === 'function') p = b.update.diagFile('syspy');
+    } catch (e) { p = null; }
+    if (!p) { _interpClipWrite(base, done); return; }
+    Promise.resolve(p).then(function (r) {
+      var tail = (r && r.ok && typeof r.tail === 'string' && r.tail.trim()) ? r.tail.trim() : '';
+      _interpClipWrite(tail ? (base + '\n\n--- syspy-report.json ---\n' + tail) : base, done);
+    }, function () { _interpClipWrite(base, done); });
+  }
+
+  // 失败 qoast 唯一出口：常驻（duration 0，等用户处置/复制）+ 复制按钮
+  // （busy = 转瞬即逝的占位失败，不给按钮；无按钮时形态与旧版一致）
+  function _interpFailQoast(t, op, msg, res) {
+    var acts = null;
+    if (!(res && res.code === 'busy')) {
+      acts = [{
+        label: _i('settings.sysInterp.copyErr', '一键复制错误信息'),
+        onClick: function () { _interpCopyFail(t, op, msg, res); }
+      }];
+    }
+    try {
+      if (window.qqqideQoast && window.qqqideQoast.show) {
+        window.qqqideQoast.show(msg, { type: 'error', duration: 0, actions: acts });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   // ★ 串行操作链：静默探测（打开面板复查徽章真值）与点击流共用——绝不并发撞壳层 _inFlight
   var _interpOpChain = Promise.resolve();
 
@@ -436,6 +525,14 @@
           if (st.mode !== next) {
             st.mode = next;
             if (_$panel && _$overlay && _$overlay.style.display !== 'none') _renderPanel();
+          }
+          // ★ 兜底归一（2026-10-02）：用户选完「始终」但引导轮询已过期（未走 finalize）→
+          //   命令仍是直连式（窗口不关特性缺失）→ 静默补一次 finalize（幂等；包裹式含 cmd.exe 即跳过）
+          if (next === 'ours' && t === 'node'
+            && typeof res.aq === 'string' && res.aq.length > 0
+            && res.aq.toLowerCase().indexOf('cmd.exe') < 0
+            && bridge.finalize) {
+            try { Promise.resolve(bridge.finalize('node')).then(function () { }, function () { }); } catch (e2) { /* ignore */ }
           }
         }
       }, function () { /* silent */ });
@@ -456,14 +553,14 @@
     try { bridge = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { /* ignore */ }
     if (!bridge || !bridge.check || !bridge.apply || !bridge.remove) {
       _interpSetState(t, false, 'idle');
-      _pyQoast(_i(pfx + 'errBridge', (t === 'node') ? '需重启本窗口后可用（Node）' : '需重启本窗口后可用（Python）'), 'error');
+      _interpFailQoast(t, 'bridge', _i(pfx + 'errBridge', (t === 'node') ? '需重启本窗口后可用（Node）' : '需重启本窗口后可用（Python）'), null);
       return;
     }
     _interpSetState(t, true, 'checking');
     // ★ 零边界漏洞（2026-09-26）：同步异常也复位 busy + 可见失败——操作链绝不粘死
     var _guarded = function () {
       try { return _interpClickFlow(bridge, t); }
-      catch (e) { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error'); return null; }
+      catch (e) { _interpSetState(t, false, 'idle'); _interpFailQoast(t, 'flow', _interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), null); return null; }
     };
     _interpOpChain = _interpOpChain.then(_guarded, _guarded);
   }
@@ -472,9 +569,9 @@
     var st = _interpState[t];
     var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
     return bridge.check(t).then(function (res) {
-      if (!res || !res.ok) { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _interpErrText(t, res && res.code), 'error'); return; }
+      if (!res || !res.ok) { _interpSetState(t, false, 'idle'); _interpFailQoast(t, 'check', _interpFailPre(t) + _interpErrText(t, res && res.code), res); return; }
       if (res.mode) st.mode = res.mode;
-      if (res.mode === 'unsupported') { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _interpErrText(t, 'unsupported'), 'error'); return; }
+      if (res.mode === 'unsupported') { _interpSetState(t, false, 'idle'); _interpFailQoast(t, 'check', _interpFailPre(t) + _interpErrText(t, 'unsupported'), res); return; }
       // 已是我们的（选中态）→ 解除流程：必出「取消作为系统 xx 解释器」确认 → 纯清空
       if (res.mode === 'ours') {
         // ★ 链式串行（2026-09-26）：确认框与解除执行全部 return 入链——等待期间任何新操作排队，零并发
@@ -483,7 +580,7 @@
           return _interpRemove(bridge, t);
         });
       }
-      if (!res.exeOk) { _interpSetState(t, false, 'idle'); _pyQoast(_i(pfx + (t === 'node' ? 'errNoNode' : 'errNoPython'), t === 'node' ? '内置 Node 未就绪' : '内置 Python 未就绪'), 'error'); return; }
+      if (!res.exeOk) { _interpSetState(t, false, 'idle'); _interpFailQoast(t, 'check', _i(pfx + (t === 'node' ? 'errNoNode' : 'errNoPython'), t === 'node' ? '内置 Node 未就绪' : '内置 Python 未就绪'), res); return; }
       // 系统已有其他解释器（已设过 PATH / 已能双击打开）→ 二次确认「将覆盖」；否则直接干
       if (res.mode === 'other') {
         return _interpAsk(t, 'override').then(function (go) {
@@ -492,7 +589,7 @@
         });
       }
       return _interpApply(bridge, t, res.mode);
-    }, function () { _interpSetState(t, false, 'idle'); _pyQoast(_interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error'); });
+    }, function () { _interpSetState(t, false, 'idle'); _interpFailQoast(t, 'check', _interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), null); });
   }
 
   function _interpRemove(bridge, t) {
@@ -507,11 +604,11 @@
         _interpSilentProbe();   // 真值复查（徽章/状态随真值收敛）
       } else {
         _interpSetState(t, false, 'idle');
-        _pyQoast(_interpRemPre(t) + _interpErrText(t, res && res.code), 'error');
+        _interpFailQoast(t, 'remove', _interpRemPre(t) + _interpErrText(t, res && res.code), res);
       }
     }, function () {
       _interpSetState(t, false, 'idle');
-      _pyQoast(_interpRemPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error');
+      _interpFailQoast(t, 'remove', _interpRemPre(t) + _i(pfx + 'errGeneric', '未知错误'), null);
     });
   }
 
@@ -530,12 +627,146 @@
         _pyQoast(okMsg, 'success');
         _interpSilentProbe();   // 真值复查（徽章随真值收敛）
       } else {
+        // ★ 引导流（2026-10-02）：系统「用户选择保护」拦截（Win11 .js 实测）→ 自动注册 + 拉起系统选择窗口 + 轮询自动检测
+        if (res && res.blocked && bridge.picker) { return _interpGuide(bridge, t); }
         _interpSetState(t, false, 'idle');
-        _pyQoast(_interpFailPre(t) + _interpErrText(t, res && res.code), 'error');
+        _interpFailQoast(t, 'apply', _interpFailPre(t) + _interpErrText(t, res && res.code), res);
       }
     }, function () {
       _interpSetState(t, false, 'idle');
-      _pyQoast(_interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), 'error');
+      _interpFailQoast(t, 'apply', _interpFailPre(t) + _i(pfx + 'errGeneric', '未知错误'), null);
+    });
+  }
+
+  // ── ★ 引导流（2026-10-02 用户定案）——系统级「用户选择保护」拦截时的唯一出路 ──
+  //   Win11 25H2 起部分扩展名（.js 实测）受 Windows 用户选择保护：程序写入一律被系统无视
+  //   （UAC 亦无意义），只有用户亲手在系统窗口里选一次才永久生效——无法绕过，禁尝试伪造。
+  //   本流把一切自动化到极限：注册系统级应用（选择窗口里可见「Node (qd)」/「Python (qd)」）
+  //   → 自动拉起系统选择窗口 → 常驻指引（选它 → 点「始终」）→ 轮询自动检测 → 完工 finalize 命令归一。
+  var _interpGuideTimer = { python: null, node: null };
+  var _interpGuideToast = { python: null, node: null };
+  var _interpGuideInfo = { python: null, node: null };   // picker 返回：{ sample（桌面样例路径）, exe（解释器路径） }
+
+  function _interpGuideDismiss(t) {
+    var q = _interpGuideToast[t];
+    if (q && typeof q.dismiss === 'function') { try { q.dismiss(); } catch (e) { /* ignore */ } }
+    _interpGuideToast[t] = null;
+  }
+
+  function _interpGuideToastShow(t, isWait) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    var isNode = (t === 'node');
+    var txt;
+    if (isWait) {
+      txt = _i(pfx + 'guideWait', isNode
+        ? '还没检测到完成：双击桌面「qqqide-setup.js」→ 选「Node (qd)」→ 点「始终」。列表里没有它？点「在电脑上选择应用」→ 点「复制路径」→ 粘贴 → 回车'
+        : '还没检测到完成：双击桌面「qqqide-setup.py」→ 选「Python (qd)」→ 点「始终」。列表里没有它？点「在电脑上选择应用」→ 点「复制路径」→ 粘贴 → 回车');
+    } else {
+      txt = _i(pfx + 'guide', isNode
+        ? '🛡️ 系统保护机制：双击桌面上的「qqqide-setup.js」→ 在窗口里选「Node (qd)」→ 点「始终」（只此一次，永久生效）'
+        : '🛡️ 系统保护机制：双击桌面上的「qqqide-setup.py」→ 在窗口里选「Python (qd)」→ 点「始终」（只此一次，永久生效）');
+    }
+    _interpGuideDismiss(t);
+    try {
+      if (window.qqqideQoast && window.qqqideQoast.show) {
+        _interpGuideToast[t] = window.qqqideQoast.show(txt, {
+          type: 'info',
+          duration: 0,
+          actions: [{
+            label: _i('settings.sysInterp.guideCopy', '复制路径'),
+            onClick: function () { _interpGuideCopyPath(t); }
+          }, {
+            label: _i('settings.sysInterp.guideRecheck', '重新检查'),
+            onClick: function () { _interpGuideRecheck(t); }
+          }]
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function _interpGuideStop(t) {
+    if (_interpGuideTimer[t]) { clearInterval(_interpGuideTimer[t]); _interpGuideTimer[t] = null; }
+  }
+
+  function _interpGuideFail(t, res) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    _interpGuideStop(t);
+    _interpSetState(t, false, 'idle');
+    var manual = _i(pfx + 'errGuide', (t === 'node')
+      ? '无法自动打开系统选择窗口——请双击桌面上的「qqqide-setup.js」，选「Node (qd)」并点「始终」'
+      : '无法自动打开系统选择窗口——请双击桌面上的「qqqide-setup.py」，选「Python (qd)」并点「始终」');
+    _interpFailQoast(t, 'picker', _interpFailPre(t) + manual, res || null);
+  }
+
+  function _interpPickOpen(bridge, t) {
+    if (!bridge || !bridge.picker) { _interpGuideFail(t, null); return Promise.resolve(); }
+    var p = null;
+    try { p = bridge.picker(t); } catch (e) { p = null; }
+    return Promise.resolve(p).then(function (res) {
+      if (res && res.ok) {
+        _interpGuideInfo[t] = { sample: String(res.sample || ''), exe: String(res.exePath || '') };
+        _interpGuideToastShow(t, false);
+      }
+      else { _interpGuideFail(t, res); }
+    }, function () { _interpGuideFail(t, null); });
+  }
+
+  function _interpGuidePoll(t, bridge) {
+    var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
+    var isNode = (t === 'node');
+    _interpGuideStop(t);
+    var deadline = Date.now() + 150000;
+    _interpGuideTimer[t] = setInterval(function () {
+      if (Date.now() > deadline) {
+        _interpGuideStop(t);
+        _interpSetState(t, false, 'idle');
+        _interpGuideToastShow(t, true);
+        return;
+      }
+      Promise.resolve().then(function () { return bridge.check(t); }).then(function (res) {
+        if (res && res.ok && res.mode === 'ours') {
+          _interpGuideStop(t);
+          _interpState[t].mode = 'ours';
+          _interpGuideDismiss(t);
+          try {
+            if (bridge.finalize) Promise.resolve(bridge.finalize(t)).then(function () { }, function () { });
+          } catch (e2) { /* ignore */ }
+          _interpSetState(t, false, 'idle');
+          _pyQoast(_i(pfx + 'ok', isNode ? '✅ 已设置：双击 .js 由内置 Node 运行' : '✅ 已设置：双击 .py 由内置 Python 运行'), 'success');
+          _interpSilentProbe();
+        }
+      }, function () { /* ignore */ });
+    }, 2200);
+  }
+
+  function _interpGuide(bridge, t) {
+    _interpSetState(t, true, 'guiding');
+    _interpGuidePoll(t, bridge);
+    return _interpPickOpen(bridge, t);
+  }
+
+  // 行动按钮「重新检查」= 重新起一段轮询等待（不重拉系统窗口——程序化拉起在受保护系统上不会显示，
+  // 真实入口 = 桌面样例文件双击；重拉只会制造隐藏窗口噪声）
+  function _interpGuideRecheck(t) {
+    var b = null;
+    try { b = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { b = null; }
+    if (!b || !b.check) { return; }
+    _interpSetState(t, true, 'guiding');
+    _interpGuidePoll(t, b);
+  }
+
+  // 行动按钮「复制路径」= 复制内置解释器 exe 路径（用户在系统窗口走「在电脑上选择应用」时粘贴用）
+  function _interpGuideCopyPath(t) {
+    var info = _interpGuideInfo[t];
+    var exe = (info && info.exe) ? String(info.exe) : '';
+    if (!exe) {
+      _pyQoast(_i('settings.sysInterp.copyFail', '复制失败，请截图反馈'), 'error');
+      return;
+    }
+    _interpClipWrite(exe, function (ok) {
+      _pyQoast(ok
+        ? _i('settings.sysInterp.pathCopied', '已复制解释器路径——粘贴到「在电脑上选择应用」的文件名框即可')
+        : _i('settings.sysInterp.copyFail', '复制失败，请截图反馈'), ok ? 'success' : 'error');
     });
   }
 
@@ -821,8 +1052,11 @@
           var _st = _interpState[_t];
           var _pfx = 'settings.' + (_t === 'node' ? 'nodeInterp.' : 'pyInterp.');
           var _skin = _interpSkins[_ic];
-          var _busyKey = (_st.phase === 'checking') ? 'busyChecking' : (_st.phase === 'removing' ? 'busyRemoving' : 'busyApplying');
-          var _busyFb = (_st.phase === 'checking') ? '正在检查…' : (_st.phase === 'removing' ? '正在解除…' : '正在设置…');
+          var _busyKey = 'busyApplying';
+          var _busyFb = '正在设置…';
+          if (_st.phase === 'checking') { _busyKey = 'busyChecking'; _busyFb = '正在检查…'; }
+          else if (_st.phase === 'removing') { _busyKey = 'busyRemoving'; _busyFb = '正在解除…'; }
+          else if (_st.phase === 'guiding') { _busyKey = 'busyGuiding'; _busyFb = '等待你操作…'; }
           var _btnText = _st.busy
             ? _i(_pfx + _busyKey, _busyFb)
             : _i(_pfx + 'btn', _t === 'node' ? '做系统 Node 解释器' : '做系统 Python 解释器');

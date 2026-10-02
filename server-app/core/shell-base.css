@@ -732,9 +732,7 @@ body {
 .qqq-sg-panel::-webkit-scrollbar,
 .qqq-sg-body::-webkit-scrollbar,
 .qqq-fav-panel::-webkit-scrollbar,
-.qqq-fav-panel ::-webkit-scrollbar,
-#qqq-player-card::-webkit-scrollbar,
-#qqq-player-card ::-webkit-scrollbar {
+.qqq-fav-panel ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
@@ -760,9 +758,7 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-track,
 .qqq-sg-body::-webkit-scrollbar-track,
 .qqq-fav-panel::-webkit-scrollbar-track,
-.qqq-fav-panel ::-webkit-scrollbar-track,
-#qqq-player-card::-webkit-scrollbar-track,
-#qqq-player-card ::-webkit-scrollbar-track {
+.qqq-fav-panel ::-webkit-scrollbar-track {
   background: transparent;
 }
 .qqq-zoom-pop::-webkit-scrollbar-thumb,
@@ -787,9 +783,7 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-thumb,
 .qqq-sg-body::-webkit-scrollbar-thumb,
 .qqq-fav-panel::-webkit-scrollbar-thumb,
-.qqq-fav-panel ::-webkit-scrollbar-thumb,
-#qqq-player-card::-webkit-scrollbar-thumb,
-#qqq-player-card ::-webkit-scrollbar-thumb {
+.qqq-fav-panel ::-webkit-scrollbar-thumb {
   background: rgba(128, 128, 128, 0.35);
   border-radius: 3px;
 }
@@ -815,9 +809,7 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-thumb:hover,
 .qqq-sg-body::-webkit-scrollbar-thumb:hover,
 .qqq-fav-panel::-webkit-scrollbar-thumb:hover,
-.qqq-fav-panel ::-webkit-scrollbar-thumb:hover,
-#qqq-player-card::-webkit-scrollbar-thumb:hover,
-#qqq-player-card ::-webkit-scrollbar-thumb:hover {
+.qqq-fav-panel ::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.55);
 }
 .qqq-zoom-pop::-webkit-scrollbar-corner,
@@ -842,9 +834,7 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-corner,
 .qqq-sg-body::-webkit-scrollbar-corner,
 .qqq-fav-panel::-webkit-scrollbar-corner,
-.qqq-fav-panel ::-webkit-scrollbar-corner,
-#qqq-player-card::-webkit-scrollbar-corner,
-#qqq-player-card ::-webkit-scrollbar-corner {
+.qqq-fav-panel ::-webkit-scrollbar-corner {
   background: transparent;
 }
 /* 悬浮预览层直系 div 滚动条隐藏（外层为主体滚动区；原 shell-overlay.js 自注入迁入） */
@@ -870,8 +860,7 @@ body {
 .qqq-notice-modal,
 .qqq-fav-panel,
 .qqq-fav-modal,
-.qqq-sg-panel,
-#qqq-player-card {
+.qqq-sg-panel {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -891,8 +880,7 @@ body {
 .qqq-sg-panel::selection, .qqq-sg-panel ::selection,
 .qqq-fav-panel::selection, .qqq-fav-panel ::selection,
 .qqq-fav-modal::selection, .qqq-fav-modal ::selection,
-#qqq-ai-overlay-content::selection, #qqq-ai-overlay-content ::selection,
-#qqq-player-card::selection, #qqq-player-card ::selection {
+#qqq-ai-overlay-content::selection, #qqq-ai-overlay-content ::selection {
   background: var(--selection-bg, #e8a090);
   color: var(--selection-text, #000000);
 }

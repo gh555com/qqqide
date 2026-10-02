@@ -9,8 +9,8 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 		var action = el.dataset.action;
 		hideAllContextMenus();
 		if (!ctxTarget) return;
-		if (selectedItems.length > 1 && action !== 'copyPath' && action !== 'delete' && action !== 'open') {
-			// Multi-select: copyPath / delete / open 为多选感知；其余动作作用于被点击项
+		if (selectedItems.length > 1 && action !== 'copyPath' && action !== 'delete' && action !== 'open' && action !== 'queue') {
+			// Multi-select: copyPath / delete / open / queue 为多选感知；其余动作作用于被点击项
 		}
 		var item = ctxEntry ? { path: ctxTarget, name: ctxEntry.name, type: ctxEntry.isDir ? 'folder' : 'file' } : { path: ctxTarget, name: baseName(ctxTarget), type: 'file' };
 		if (item.name === '..' && (action === 'rename' || action === 'delete' || action === 'ai')) return;
@@ -21,7 +21,8 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 			case 'delete': performDeleteAction(item); break;
 			case 'rename': performEditAction(item); break;
 			case 'copyPath': performCopyPathAction(); break;
-			case 'queue': _playerQueueSelected(); break;
+			case 'queue': _playlistAddFromMenu(); break;
+			case 'search': _openSearchAt(ctxTarget); break;
 		}
 	});
 });

@@ -20,7 +20,8 @@
 	if ($onl) $onl.textContent = '0';
 		// ═══ 赞助商轮换（状态栏左下角）— 大20s/中10s/小5s，瞬间替换文字（无滚动动画，防视觉分散）═══
 	// 数据源: GET /api/sponsor/current（三档位当前小时胜出者；无人竞拍 → 默认成都知佳）
-	// 拉取限频 1 次/分钟（轮播完刷新与失败重试共用）；失败保持默认品牌；点击打开当前品牌超链接
+	// ★ 2026-10-02 请求治理：拉取限频 10 分钟（数据每整点才轮换，60s→10min；"成功才计门"——
+	//   失败重试仍 1 分钟级不受阻碍）；失败保持默认品牌；点击打开当前品牌超链接
 	// ★ 版本分流（2026-09-08）：请求带 ?app_ver=本地版本 → 服务端对 ≥eol_min 的客户端返回正常广告轮播；
 	//   无版本参数（旧客户端代码）一律被服务端视为 EOL → 恒显官方升级公告。
 	(function () {
@@ -38,11 +39,10 @@
 			$link.href = item.url || DEFAULT_URL;
 		}
 
-		var _lastFetchAt = 0;
+		var _lastOkAt = 0; // 上次成功拉取时间（失败不计门 → 失败重试仍 1 分钟级，成功刷新 ≥10 分钟）
 		function fetchCurrent() {
 			var now = Date.now();
-			if (now - _lastFetchAt < 60000) return Promise.resolve(); // 限频 1 次/分钟
-			_lastFetchAt = now;
+			if (now - _lastOkAt < 600000) return Promise.resolve(); // ★ 成功限频 10 分钟（数据整点才换）
 			var _verQ = (boot && boot.version && boot.version !== '?') ? ('?app_ver=' + encodeURIComponent(String(boot.version).replace(/^v/i, ''))) : '';
 			return fetch('https://direct-cn.gh555.com/api/sponsor/current' + _verQ, { cache: 'no-cache' })
 				.then(function (r) { if (!r.ok) return null; return r.json(); })
@@ -50,6 +50,7 @@
 					if (d && d.ok && d.items && d.items.length) {
 						items = d.items;
 						idx = -1;
+						_lastOkAt = Date.now(); // 仅成功计门
 					}
 				})
 				.catch(function () { /* 静默 */ });
@@ -66,7 +67,7 @@
 			} else {
 				timer = setTimeout(function () {
 					fetchCurrent().then(scheduleNext);
-				}, 60000); // 失败重试 60s（与限频同频）
+				}, 60000); // 无数据（失败/首拉）→ 60s 重试（成功才计门，失败重试不受 10min 限频阻碍）
 			}
 		}
 
@@ -325,6 +326,8 @@
 				var indPaidGe = typeof u.independent_consumed === 'number' ? u.independent_consumed : 0;
 				var indFreeGe = typeof u.independent_free === 'number' ? u.independent_free : 0;
 				var indGeStr = indPaidGe + '+' + indFreeGe;
+				// 独立列括号 = 本次独立距上次最后在线的小时数（服务端 independent_gap_h 四舍五入取整；0/缺省不显示括号）
+				var indGapTxt = (typeof u.independent_gap_h === 'number' && u.independent_gap_h > 0) ? '(' + u.independent_gap_h + ')' : '';
 				var balCell = _onlShowBal ? '<td class="r mono">' + (typeof u.balance_ge === 'number' ? u.balance_ge : '-') + '</td>' : '';
 				html += '<tr>' +
 					'<td class="mono">' + u.phone + '</td>' +
@@ -334,7 +337,7 @@
 					'<td class="r mono">' + indGeStr + '</td>' +
 					'<td class="r mono sm">' + timeStr + '</td>' +
 					'<td class="r mono">' + contStr + '</td>' +
-					'<td class="r mono">' + (typeof u.independent === 'number' ? u.independent : '-') + '</td>' +
+					'<td class="r mono">' + (typeof u.independent === 'number' ? u.independent : '-') + indGapTxt + '</td>' +
 					'<td class="r mono xs">' + ver + '</td>' +
 					'<td class="r mono">' + totalStr + '</td>' +
 					'</tr>';

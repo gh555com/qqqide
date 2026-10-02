@@ -70,8 +70,12 @@ const AUTH_FILE = 'auth.enc';
 //   direct-cn 灰云域名在部分客户网络（运营商污染/DNS 问题）不通，导致余额/LV 永远拉不到。
 const API_BASE = 'https://gh555.com/api';
 const LOGIN_URL = 'https://gh555.com/login';
-const BALANCE_INTERVAL = 60_000;
-const LV_INTERVAL = 60_000;
+// ★ 2026-10-02 请求治理：余额/LV 后台轮询 60s → 180s。即时性不靠轮询——
+//   每笔计费由 onBillingEvent 合并式补拉（≤2s 广播全窗口），渲染层已停自拉（300s 心跳门）；
+//   后台轮询只兜日常闲变（收礼/推荐奖励/陪伴折算），3 分钟节拍无感。
+//   多实例 × 多窗口常驻轮询总量砍 2/3（实测 fleet 峰值 lv≈26/分、balance≈22/分）。
+const BALANCE_INTERVAL = 180_000;
+const LV_INTERVAL = 180_000;
 const SESSION_POLL_MS = 3_000;
 
 // ★ HTTP JSON 拉取（GET）：Electron 22.3.27 的 net 模块无 fetch（该版源码仅 request/isOnline）——

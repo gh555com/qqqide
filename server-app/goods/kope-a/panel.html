@@ -140,7 +140,17 @@ body {
 .scrollbar-inner-thumb { position: absolute; right: -4px; width: 6px; background: var(--red) !important; border-radius: 3px; opacity: 0.5; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease; }
 .scrollbar-inner-thumb:hover { width: 8px; right: -5px; opacity: 1; }
 
-.empty-hint { text-align: center; padding: 20px; opacity: 0.5; }
+/* kope-a 未启动横幅「启动」小按钮（黑白单色低调款；1px 边框恒可见为按钮） */
+.kope-offline-start-btn {
+    margin-left: 8px; padding: 0 8px; font-size: 11px; font-family: Tahoma, sans-serif;
+    color: var(--text-primary); background: transparent;
+    border: 1px solid var(--text-primary); border-radius: 3px;
+    line-height: 16px; vertical-align: baseline;
+    transition: background 0.15s;
+}
+.kope-offline-start-btn:hover { background: rgba(0, 0, 0, 0.08); }
+[data-theme="dark"] .kope-offline-start-btn:hover { background: rgba(255, 255, 255, 0.10); }
+.kope-offline-start-btn:disabled { opacity: 0.4; }
 
 .history-dropdown {
     display: none;
@@ -183,9 +193,7 @@ body {
             <div id="searchHistoryDropdown" class="history-dropdown"></div>
         </div>
         <div class="history-container" id="historyContainer">
-            <div class="history-list" id="historyList">
-                <div class="empty-hint">Clipboard history will appear here</div>
-            </div>
+            <div class="history-list" id="historyList"></div>
             <div class="scrollbar-inner" id="innerScrollbar"><div class="scrollbar-inner-thumb" id="innerThumb"></div></div>
         </div>
     </div>
@@ -358,7 +366,38 @@ body {
         var banner = document.createElement('div');
         banner.className = 'kope-offline-banner';
         banner.style.cssText = 'text-align:center;padding:5px 10px;margin:3px 8px;color:var(--text-secondary);font-size:11px;background:var(--base2);border-radius:4px;opacity:0.8;cursor:default;';
-        banner.textContent = _kk('goods.kopea.offline', '当前面板：kope-a 未启动');
+        var offLabel = document.createElement('span');
+        offLabel.textContent = _kk('goods.kopea.offline', '当前面板：kope-a 未启动');
+        banner.appendChild(offLabel);
+        // ★ 「启动」小按钮（黑白单色低调款）：一按 = 启动 kope-a + 打开自启动（自动拉起）
+        var br = getBridge();
+        if (br && br.gaeaProcess && br.gaeaProcess.setAutoStart) {
+            var startBtn = document.createElement('button');
+            startBtn.type = 'button';
+            startBtn.className = 'kope-offline-start-btn';
+            startBtn.textContent = _kk('shell.gp.start', '启动');
+            startBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                startBtn.disabled = true;
+                try {
+                    var p = br.gaeaProcess.setAutoStart('kope-a', true, {
+                        scriptPath: 'goods/kope-a/q3.py',
+                        runtime: 'python',
+                        lifecycle: 'independent',
+                        allowMultiple: false
+                    });
+                    if (p && typeof p.catch === 'function') p.catch(function() {});
+                } catch (_e) {}
+                // 立即重试连接（不等退避定时器）；进程起来后 SSE 连通 → 横幅自动消失
+                _reconnectDelayMs = 1000;
+                if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+                connectApi();
+                // 4s 后恢复可点（未连通 = 可重按；已连通 = 横幅已消失）
+                setTimeout(function() { startBtn.disabled = false; }, 4000);
+            });
+            banner.appendChild(startBtn);
+        }
         el.historyContainer.insertBefore(banner, el.historyList);
     }
 
@@ -463,9 +502,6 @@ body {
         el.tooltip.style.display = 'none';
 
         if (newHistory.length === 0) {
-            if (!_offlineBanner) {
-                el.historyList.innerHTML = '<div class="empty-hint">Clipboard history will appear here</div>';
-            }
             selectedId = '';
             setTimeout(updateAllScrollbars, 50);
             return;

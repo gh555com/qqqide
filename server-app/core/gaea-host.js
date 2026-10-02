@@ -654,7 +654,8 @@
   function _inboxStartBgPoll() {
     _inboxStopBgPoll();
     _inboxBgPoll();
-    _inboxBgPollTimer = setInterval(_inboxBgPoll, 60000);
+    // ★ 2026-10-02 请求治理：后台轮询 60s→120s（未读徽章 2 分钟精度足够；多后台窗口请求量减半）
+    _inboxBgPollTimer = setInterval(_inboxBgPoll, 120000);
   }
   function _inboxStopBgPoll() {
     if (_inboxBgPollTimer) { clearInterval(_inboxBgPollTimer); _inboxBgPollTimer = null; }
@@ -663,6 +664,26 @@
     var token = '';
     try { if (window.qqqLogin && window.qqqLogin.getAuthToken) token = window.qqqLogin.getAuthToken(); } catch (_) {}
     if (!token) return;
+    // ★ 2026-10-02 请求治理：私聊+群未读聚合为一发（/api/dm/inbox）；服务端未升级（404）自动回退老两发
+    fetch('https://cnk.gh555.com/api/dm/inbox', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function (r) {
+        if (r.status === 404) throw new Error('legacy');
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d) return;
+        var sum = 0;
+        if (d.conversations) d.conversations.forEach(function (cv) { sum += (cv.unread_count || 0); });
+        if (d.groups) d.groups.forEach(function (g) { sum += (g.unread_count || 0); });
+        _inboxUnread = sum;
+        _updateInboxBadge();
+      })
+      .catch(function (e) {
+        if (e && e.message === 'legacy') _inboxBgPollLegacy(token);
+      });
+  }
+  // 旧服务端回退路径（/api/dm/inbox 未上线时）：私聊、群各一发
+  function _inboxBgPollLegacy(token) {
     fetch('https://cnk.gh555.com/api/dm/conversations', { headers: { 'Authorization': 'Bearer ' + token } })
       .then(function (r) { return r.json(); })
       .then(function (d) {

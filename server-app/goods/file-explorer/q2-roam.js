@@ -986,8 +986,8 @@ function buildQqiqItem(item) {
 		el.appendChild(text);
 		el.addEventListener('click', function() {
 			_vigBump('roam', { k: 1 });
-			// ★ 2026-09-26: 融入 Q 键打开逻辑（唯一路由 = performCodeAction）——图片/视频/音频 → 悬浮预览层
-			//   （psd/avi 等转码兜底）；文本 → 编辑器；其余二进制 → 错误音效。
+			// ★ 融入 Q 键打开逻辑（唯一路由 = performCodeAction）——图片 → 悬浮预览层（psd/tif 转码兜底）；
+			//   视频/音频 → 新播放器窗（2026-10-02 单宿主）；文本 → 编辑器；其余二进制 → 错误音效。
 			//   旧实现恒发 qqq-file-open → mp3 等被编辑器二进制门槛拦截（「二进制文件，无法在编辑器中打开」）。
 			performCodeAction({ name: fileName, type: 'file', path: item.path });
 		});
@@ -1626,8 +1626,9 @@ function _openQqqideWindowForFolder(folderPath) {
 	}
 }
 
-// ★ Q 键多选媒体（2026-09-26 q319）：选中 ≥2 个「与列表序第一个媒体同类」的文件 → 悬浮层播放列表
-//   起播 = 列表序第一个（用户定案）；队列保序；忽略项（非媒体/另一媒体类型）>0 时 toast 报数；返回 true = 已消费
+// ★ Q 键多选媒体（2026-09-26 q319；2026-10-02 混合解禁 + 单宿主）：选中 ≥2 个媒体文件（音/视频可混合）→ 新播放器窗（从不复用）
+//   起播 = 列表序第一个（用户定案）；队列保序；忽略项（非媒体文件）>0 时 toast 报数；返回 true = 已消费
+//   ★ 混合播放：类型随轨切换由引擎负责（跨类型切轨 = 宿主重建，core/media-engine.js）——此处不再按类型过滤
 function _qBatchMediaPlaylist() {
 	if (typeof selectedItems === 'undefined' || !selectedItems || selectedItems.length < 2) return false;
 	var sel = selectedItems.filter(function(s) { return s && s.type === 'file' && s.name && s.name !== '..'; });
@@ -1638,58 +1639,24 @@ function _qBatchMediaPlaylist() {
 		var k = _OVERLAY_VIDEO_EXTS[ext] ? 'video' : (_OVERLAY_AUDIO_EXTS[ext] ? 'audio' : null);
 		if (!k) { ignored++; return; }
 		if (!kind) kind = k;
-		if (k !== kind) { ignored++; return; }
 		var p = String(s.path).replace(/\\/g, '/');
 		list.push({ src: 'file:///' + p, localPath: p, name: s.name, path: s.path });
 	});
 	if (!kind || list.length < 2) return false;
-	parent.postMessage({ type: 'qqqide-overlay', action: (kind === 'video' ? 'open-video' : 'open-audio'),
-		src: list[0].src, localPath: list[0].localPath, list: list, index: 0 }, '*');
+	// ★ 2026-10-02 单宿主大整改：恒开新播放器窗（从不复用；起播 = 列表序第一个）——shell-rpc 泛化转发 bridge.player.open
+	try { rpc('player.open', { list: list, index: 0 }).catch(function(){ }); } catch (_) {}
 	recordFileHistory(list[0].path);
 	_playSfx('enter');
 	if (ignored > 0) {
 		try {
 			if (parent && parent.qqqideQoast) {
-				parent.qqqideQoast.show(_kk('goods.roam.qBatchIgnore', 'Q 播放列表：已加入 {0} 个 · 忽略 {1} 个（类型不同）', list.length, ignored), { duration: 4000, type: 'info' });
+				parent.qqqideQoast.show(_kk('goods.roam.qBatchIgnore', 'Q 播放列表：已加入 {0} 个 · 忽略 {1} 个（非媒体）', list.length, ignored), { duration: 4000, type: 'info' });
 			}
 		} catch (_) {}
 	}
 	return true;
 }
 
-// ★ 右键「加入播放列表」（2026-09-26 q319 v4）：选中（多选感知）媒体 → 独立悬浮播放器窗（bridge.player.add）
-//   与 Q 键同源过滤（video/audio 白名单）；无媒体 → toast 报空；成功计数由主窗口回执 toast
-function _playerQueueSelected() {
-	var list = [];
-	try {
-		if (typeof selectedItems !== 'undefined' && selectedItems && selectedItems.length > 1) {
-			list = selectedItems.slice();
-		} else if (typeof selectedItem !== 'undefined' && selectedItem && selectedItem.name && selectedItem.name !== '..') {
-			list = [selectedItem];
-		} else if (typeof ctxTarget !== 'undefined' && ctxTarget) {
-			list = [{ path: ctxTarget, name: (typeof baseName === 'function' ? baseName(ctxTarget) : String(ctxTarget).split(/[\\/]/).pop()), type: (ctxEntry && ctxEntry.isDir) ? 'folder' : 'file' }];
-		}
-	} catch (_) {}
-	var paths = [];
-	for (var i = 0; i < list.length; i++) {
-		var it = list[i] || {};
-		if (it.type === 'folder' || !it.path) { continue; }
-		var ext = _overlayExtOf(it.name || it.path || '');
-		if (!_OVERLAY_VIDEO_EXTS[ext] && !_OVERLAY_AUDIO_EXTS[ext]) { continue; }
-		paths.push(String(it.path).replace(/\\/g, '/'));
-	}
-	if (!paths.length) {
-		try {
-			if (parent && parent.qqqideQoast) {
-				parent.qqqideQoast.show(_kk('goods.roam.mplNone', '没有可加入播放列表的媒体文件'), { duration: 3000, type: 'info' });
-			}
-		} catch (_) {}
-		_playSfx('error');
-		return;
-	}
-	try { parent.postMessage({ type: 'qqq-player-add', paths: paths }, '*'); } catch (_) {}
-	_playSfx('enter');
-}
 
 function performCodeAction(item, opts) {
 	if (!item) return;
@@ -1712,17 +1679,12 @@ function performCodeAction(item, opts) {
 		_playSfx('enter');
 		return;
 	}
-	// ★ Q 键（视频/音频文件）：悬浮层内置播放器（2026-09-21）——原生控件播放，关闭即停
-	//   原生组（mp4/mkv/mov/mp3...）+ 转码兜底组（avi/wmv/flv/rmvb/wma/ape...）——转码在壳层后台执行，悬浮层显示进度
+	// ★ Q 键（视频/音频文件）：独立播放器窗（2026-10-02 单宿主大整改）——恒开新窗、从不复用；
+	//   原生组 + 转码兜底组（avi/wmv/flv/rmvb/wma/ape...）转码在壳层后台执行、窗内显示进度
 	var _oe = _overlayExtOf(item.name);
 	if (_OVERLAY_VIDEO_EXTS[_oe] || _OVERLAY_AUDIO_EXTS[_oe]) {
 		var _mp = String(item.path).replace(/\\/g, '/');
-		parent.postMessage({
-			type: 'qqqide-overlay',
-			action: (_OVERLAY_VIDEO_EXTS[_oe] ? 'open-video' : 'open-audio'),
-			src: 'file:///' + _mp,
-			localPath: _mp
-		}, '*');
+		try { rpc('player.open', { list: [{ src: 'file:///' + _mp, localPath: _mp, name: item.name }], index: 0 }).catch(function(){ }); } catch (_) {}
 		recordFileHistory(item.path);
 		_playSfx('enter');
 		return;
@@ -1891,6 +1853,13 @@ function showContextMenu(x, y, path, entry) {
 	// ★ AI 项标签 = 当前焦点面板（父窗口 __qqq_aiTarget: 0左/1中/2右）
 	//    左: ←AI · 中: AI · 右: AI→ — 让用户清楚喂给哪一个面板
 	_updateAiMenuItem();
+	// ★ search 行只对文件夹出现（点击打开搜索卡 + 该文件夹为搜索范围）；定位前先定行集——量高度必须含最终可见行
+	var _searchRow = ctxMenu.querySelector('[data-action="search"]');
+	if (_searchRow) _searchRow.style.display = (entry && entry.isDir) ? '' : 'none';
+	// ★ 加入播放列表行（2026-10-02）：文件夹恒显（禁探测——递归扫描会卡菜单弹出；死行兜底=点击后提示）；
+	//   文件侧仅目标集含媒体时显（扩展名判断零成本）；同样在定位前定妥
+	var _mplRow = ctxMenu.querySelector('[data-action="queue"]');
+	if (_mplRow) _mplRow.style.display = _mplShowable() ? '' : 'none';
 	// ★ 菜单定位唯一入口（先量后位 + 视口钳制/上翻 + 贴边）——详 _placeFixedMenu
 	_placeFixedMenu(ctxMenu, x, y);
 }
@@ -1962,6 +1931,72 @@ function _openKmdAt(p, fileName) {
 function _openQmdAt(p, fileName) {
 	try { window.parent.postMessage({ type: 'qqq-roam-open-qmd', path: p, fileName: fileName || undefined }, '*'); } catch (_) { }
 	_playSfx('terminal');
+}
+
+// ★ 右键「search」专用（文件夹）：打开搜索卡 + 该文件夹为搜索范围
+//   唯一入口 = 主窗口 window.qqqideOpenSearch（goods/search/search.js；第二参 true = 新卡多实例）
+function _openSearchAt(p) {
+	if (!p) return;
+	try {
+		var w = (window.parent && typeof window.parent.qqqideOpenSearch === 'function') ? window.parent
+			: (typeof window.qqqideOpenSearch === 'function' ? window : null);
+		if (w) w.qqqideOpenSearch(p, true);
+	} catch (_) { }
+	_playSfx('enter');
+}
+
+// ★ 右键「加入播放列表」目标集（2026-10-02 q319）：多选（右键项在选中集内）→ 全选中集；否则仅被点击项
+function _mplTargets() {
+	var out = [];
+	try {
+		if (selectedItems.length > 1 && ctxTarget) {
+			var inSel = selectedItems.some(function(s) { return s && s.path === ctxTarget; });
+			if (inSel) {
+				selectedItems.forEach(function(s) { if (s && s.name !== '..') out.push({ path: s.path, isDir: s.type === 'folder' }); });
+				return out;
+			}
+		}
+		if (ctxTarget && ctxEntry && ctxEntry.name !== '..') out.push({ path: ctxTarget, isDir: !!ctxEntry.isDir });
+	} catch (_) { }
+	return out;
+}
+// 行可见性：文件夹恒显；文件侧 = 目标集含媒体（扩展名判断零成本；内容探测不做——探测=递归扫描，会卡菜单弹出）
+function _mplShowable() {
+	var ts = _mplTargets();
+	for (var i = 0; i < ts.length; i++) {
+		if (ts[i].isDir) return true;
+		var ext = _overlayExtOf(String(ts[i].path).split(/[\\/]/).pop() || '');
+		if (_OVERLAY_VIDEO_EXTS[ext] || _OVERLAY_AUDIO_EXTS[ext]) return true;
+	}
+	return false;
+}
+// ★ 右键「加入播放列表」（2026-10-02 q319）：壳层 qqqide:player:append 全权处理——
+//   文件夹递归收集（上限 500）/ 非媒体忽略报数 / 目标 = 最近活跃播放器窗纯追加（重复跳过），无窗新建（暂停态）
+function _playlistAddFromMenu() {
+	var ts = _mplTargets();
+	if (!ts.length) return;
+	rpc('player.append', { paths: ts.map(function(t) { return t.path; }) }).then(function(r) {
+		if (!r || !r.ok) {
+			if (r && r.reason === 'none') { _roamToast(_kk('goods.roam.mplNone', '没有可加入的媒体文件'), 'error'); _playSfx('error'); }
+			else { _roamToast(_kk('goods.roam.mplFail', '加入播放列表失败'), 'error'); }
+			return;
+		}
+		var added = r.added || 0, dup = r.dup || 0, ignored = r.ignored || 0;
+		if (added > 0) {
+			var msg = _kk('goods.roam.mplAdded', '已加入 {0} 首 ▶ {1}', added, r.title || '');
+			if (ignored > 0) { msg += _kk('goods.roam.mplIgnored', '（忽略 {0} 个非媒体）', ignored); }
+			if (r.truncated) { msg += _kk('goods.roam.mplTrunc', '（已达上限）'); }
+			_roamToast(msg, 'info');
+			_playSfx('enter');
+		} else if (dup > 0) {
+			_roamToast(_kk('goods.roam.mplExist', '已在播放列表中'), 'info');
+		} else {
+			_roamToast(_kk('goods.roam.mplNone', '没有可加入的媒体文件'), 'error');
+			_playSfx('error');
+		}
+	}).catch(function() {
+		_roamToast(_kk('goods.roam.mplFail', '加入播放列表失败'), 'error');
+	});
 }
 
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; var e = document.getElementById('emptyContextMenu'); if (e) e.style.display = 'none'; });
