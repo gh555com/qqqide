@@ -350,8 +350,14 @@
   color: var(--text-primary);
 }
 
+/* ★ 时间线按钮内嵌版本数（2026-10-02 q390 用户定案）：时钟右侧恒显版本库收录版本数（Roam 风格千分位原文；未知态留空）；
+   字号/颜色随按钮继承，仅补 4px 左间距（:not(:empty) 保证空态零占位） */
+.qqq-breadcrumb-timeline-btn .qqq-bc-tl-count:not(:empty) {
+  margin-left: 4px;
+}
+
 /* ★ 面包屑即时 hover 文字框（2026-10-01 q390 用户定案；零延迟，Roam/时间线按钮专用）：
-   Roam = 文件大小（Roam 风格千分位原文）/ 时间线 = 版本库收录版本数——内容恒为纯数字（零 i18n）；
+   Roam = 文件大小（Roam 风格千分位原文）/ 时间线 = 最近一次快照时间（版本数恒显按钮本体，见上方内嵌计数规则）——内容恒为纯数字/时间戳（零 i18n）；
    视觉同「状态栏活动豆腐块」即时框（.qqq-act-tip）；定位恒按钮下方居中、先显形后量体（core/editor-breadcrumb.js _showBcTip） */
 .qqq-breadcrumb-tip {
   position: fixed;
@@ -562,11 +568,12 @@
   margin-right: 16px;
 }
 
-/* ★ 2026-10-01 用户定案（状态区空气墙治理 + 陪伴时间入时间区）：
-   ① wq 间距 6px（贴紧——禁回 16px 空气墙；原播放器豆腐块已随单宿主大整改整体废除 2026-10-02）；
-   ② 累计陪伴 736h 移入时间区——时间分割线改挂其左侧边（clock 不再画线，ui-zoom 徽章仍插 mem 后） */
+/* ★ 2026-10-02 用户定案（陪伴 736h 字号 +1 / 时间分割线整体废除 / 时间区空气墙收窄）：
+   ① total 无边框无左内距，736h 与时钟直接相邻——徽章→736h→时钟 间隙恒 10px；
+   ② wq 间距 6px（贴紧——禁回 16px 空气墙；原播放器豆腐块已随单宿主大整改整体废除 2026-10-02） */
 #qqq-status-wq { margin-right: 6px; }
-#qqq-status-total { margin-right: 10px; border-left: 1px solid var(--border-color); padding-left: 12px; }
+#qqq-status-zoom { margin-right: 10px; }
+#qqq-status-total { margin-right: 10px; }
 
 /* ── wq 探针按钮（2026-09-27 改版定案）：固定宽 64px（迷你柱状图 + 均值）——任何语言/任何
       数字恒固定宽度，永不吞食状态区；hover 弹卡片（详下方 .qqq-wq-hover 块）。
@@ -682,11 +689,7 @@
   -webkit-app-region: no-drag;
 }
 
-/* 时间分割线 = #qqq-status-total 左侧边（2026-10-01 用户定案：736h 入时间区——[736h][时间] 同区）；
-   分割线以左依次为 CPU 核数与界面缩放徽章（ui-zoom.js 插在 mem 块之后） */
-#qqq-status-clock {
-  padding-left: 12px;
-}
+/* 736h / 时钟 / 缩放徽章 = 时间区（徽章由 ui-zoom.js 插在 mem 块之后；间距见上方 #qqq-status-* 规则组） */
 .qqq-mem-block .qqq-cpu-val {
   margin-left: 12px;
 }
@@ -765,15 +768,21 @@
 
 
 
-/* ── 窄窗口退避：状态区恒一行，宽度变窄逐级隐藏非核心区块（shell-statusbar.js 加类） ── */
+/* ── 窄窗口退避：状态区恒一行，宽度变窄逐级隐藏非核心区块（shell-statusbar.js 加类；2026-10-02 = 8 级 + 增量重算） ──
+   L1 赞助商 → L2 活动名 → L3 wq+陪伴+内存 → L4 在线 → L5 vibe → L6 原料 → L7 眼睛 → L8 清爽
+   ★ 驻留集（永不退避）：版本号+通知点（通知中心永远可达）/ 时钟 / 缩放徽章（唯一可见入口）；再窄 = 应用物理下限（≈640 CSS px，兜底裁切）
+   ★ 豆腐块级恒 !important 收编（#qqq-act-eye 的 display 由 shell-activities.js 内联自管，普通类规则盖不动） ── */
 .qqq-status-area.qqq-dense-1 .qqq-status-sponsor { display: none; }
 .qqq-status-area.qqq-dense-2 .qqq-act-name { display: none; }
 .qqq-status-area.qqq-dense-3 #qqq-status-wq,
-.qqq-status-area.qqq-dense-3 #qqq-status-version,
 .qqq-status-area.qqq-dense-3 #qqq-status-total,
 .qqq-status-area.qqq-dense-3 #qqq-status-mem,
 .qqq-status-area.qqq-dense-3 .qqq-mem-icon { display: none; } /* 2026-08-30: a 区域容器隐藏整体（含 CPU 文字），cpu 图标已移除 */
 .qqq-status-area.qqq-dense-4 #qqq-status-online { display: none; }
+.qqq-status-area.qqq-dense-5 #qqq-act-vibe { display: none !important; }
+.qqq-status-area.qqq-dense-6 #qqq-act-ge50 { display: none !important; }
+.qqq-status-area.qqq-dense-7 #qqq-act-eye { display: none !important; }
+.qqq-status-area.qqq-dense-8 #qqq-act-cool { display: none !important; }
 
 /* ── 活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding） ── */
 .qqq-act-widget {
@@ -2075,6 +2084,38 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   margin-right: 6px; /* CPU 列整体往左移 6px（右缘离容器右缘 6px） */
 }
 
+/* ★ ⟳ 刷新释放（2026-10-02 定案）：窗口渲染进程行尾孔——点击 = 该窗口 webContents.reload()（内存全回收，
+   楼层/编辑态均已持久化）；非窗口行恒留空槽位（列对齐零漂移） */
+.qqq-mem-hover-prow .qqq-mem-hover-prelslot {
+  flex: 0 0 auto;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qqq-mem-hover-prel {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+.qqq-mem-hover-prel:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+.qqq-mem-hover-prel:disabled {
+  opacity: 0.35;
+}
+
 /* ============================================================================
    峰值/谷值 hover 时间戳（v11: 简介行不再打印 [MM-DD HH:MM]，hover 自定义瞬间弹出）
    ============================================================================ */
@@ -2125,8 +2166,6 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 .qqq-notice-dot.ring.lv-info     { background: transparent; border-color: var(--text-dim); }
 .qqq-notice-dot.ring.lv-warn     { background: transparent; border-color: var(--orange); }
 .qqq-notice-dot.ring.lv-critical { background: transparent; border-color: var(--red); }
-.qqq-status-area.qqq-dense-3 #qqq-notice-dot { display: none; } /* 与版本号同进退（20 宽） */
-
 .qqq-notice-panel {
   width: 460px; max-width: 94vw; max-height: 76vh; box-sizing: border-box;
   background: var(--background-color); color: var(--text-primary);

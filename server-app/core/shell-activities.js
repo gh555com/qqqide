@@ -150,6 +150,7 @@ function bootActivities(boot) {
   // ── 数据拉取 ──────────────────────────────────────────────────────────────
   function fetchStatus(force) {
     var now = Date.now();
+    if (!force && document.hidden) return null; // ★ 2026-10-02 请求治理：隐藏窗零请求（回前台 visibilitychange 补拉）
     if (!force && now - _lastFetch < POLL_MS) return null;
     if (_fetchPromise) return _fetchPromise; // 进行中 → 合并等它（领取判定前 await 刷新零并发）
     _lastFetch = now;
@@ -949,9 +950,10 @@ function bootActivities(boot) {
     //   非免费 / 未登录 / 余额未拉到 → 显示回活动名
     if (!$vibeName) $vibeName = $vibe.querySelector('.qqq-act-name');
     if ($vibeName) {
-      $vibeName.textContent = (st.free && b.valid)
+      var _vn = (st.free && b.valid)
         ? fmt1(b.rem) + ' / ' + fmt1(b.bud)
         : t('act.vibe.name', '2026, 我, vibe coding');
+      if ($vibeName.textContent !== _vn) $vibeName.textContent = _vn; // ★ 值同零写（2026-10-02 审计）
     }
 
     // ★ 统一：免费中「剩」+ 倒计时，非免费「距下次」+ 倒计时（不再需要点开弹窗才看到剩余时间）
@@ -963,8 +965,10 @@ function bootActivities(boot) {
       $vibePrefix.className = 'qqq-act-txt';
       $vibe.insertBefore($vibePrefix, $vibeNum);
     }
-    $vibePrefix.textContent = prefix + ' ';
-    $vibeNum.textContent = fmtHMS(st.remaining);
+    var _vp = prefix + ' ';
+    if ($vibePrefix.textContent !== _vp) $vibePrefix.textContent = _vp;
+    var _vt = fmtHMS(st.remaining);
+    if ($vibeNum.textContent !== _vt) $vibeNum.textContent = _vt; // ★ 值同零写（2026-10-02 审计）
     if ($vibeFill) {
       if (st.free && b.valid) {
         $vibeFill.style.width = Math.max(0, Math.min(100, b.bud > 0 ? b.rem / b.bud * 100 : 100)) + '%';
@@ -1147,19 +1151,29 @@ function bootActivities(boot) {
     // ★ 2026-10-02 请求治理：动态节奏——免费窗口内 60s（剩余预算展示需要）/ 非免费 300s
     //   （非免费时段倒计时由客户端本地推算，无需高频拉服务器；计费事件与登录变化仍即时补拉）
     (function _vibeTick() {
-      fetchVibeBudget();
+      if (!document.hidden) fetchVibeBudget(); // ★ 2026-10-02: 隐藏窗跳过（回前台 visibilitychange 补拉）
       setTimeout(_vibeTick, vibeState(vibeUtcNow()).free ? 60000 : 300000);
     })();
     // ★ 2026-09-03: 每次进入免费时段（白嫖时间滴起点）→ 木鱼报喜。
     //   仅实时跨边沿进入才响——启动时已在免费段内不响（那不是「进入」）；与 renderVibe 合并同一 1s 滴答
     var _vibeWasFree = isFreeWindow(vibeUtcNow());
+    var _vibeDirty = false;
     setInterval(function () {
       var _vibeNowFree = isFreeWindow(vibeUtcNow());
-      if (_vibeNowFree && !_vibeWasFree) _vibeMuyu();
+      if (_vibeNowFree && !_vibeWasFree) _vibeMuyu(); // 木鱼边缘检测照常（跨边沿报喜不因隐藏丢）
       _vibeWasFree = _vibeNowFree;
+      // ★ 2026-10-02 性能审计：隐藏窗零 DOM 写（省每秒布局链）——回前台补渲染
+      if (document.hidden) { _vibeDirty = true; return; }
       renderVibe();
     }, 1000);
     renderVibe();
+    // ★ 2026-10-02 请求治理：隐藏期间被跳过的轮询/渲染，回前台一次补齐
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      if (_vibeDirty) { _vibeDirty = false; renderVibe(); }
+      fetchStatus(false);
+      fetchVibeBudget();
+    });
   }
 
   // 登录状态变化 → 立即刷新

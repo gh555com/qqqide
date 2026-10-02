@@ -518,6 +518,17 @@ const QQQ = {    // ---- app info ----
             ipcRenderer.on('qqqide:media:playable:progress', handler);
             return () => ipcRenderer.removeListener('qqqide:media:playable:progress', handler);
         },
+        // ★ 渐进转码（MSE 边转边播；2026-10-02）：启动返回 {mode:'stream',codec,duration} 后，分片经事件流式下送；
+        //   渲染层按 seq 喂 MediaSource；ack 供主进程流控（大文件背压）；终局 = done/fail 事件。
+        playableStream: (opts: any) => ipcRenderer.invoke('qqqide:media:playableStream', opts),
+        playableStreamAck: (reqId: string, bytes: number) => {
+            try { ipcRenderer.send('qqqide:media:playableStreamAck', reqId, bytes); } catch { /* ignore */ }
+        },
+        onPlayableStreamEvent: (cb: (m: any) => void) => {
+            const handler = (_e: any, m: any) => { try { cb(m); } catch { /* ignore */ } };
+            ipcRenderer.on('qqqide:media:playableStreamEvent', handler);
+            return () => ipcRenderer.removeListener('qqqide:media:playableStreamEvent', handler);
+        },
     },
 
     // ---- key (global shortcut bridge; per-window/iframe handled in renderer) ----
@@ -772,6 +783,8 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
         history: () => ipcRenderer.invoke('qqqide:mem:history'),
         // v13: 清除曲线脏历史——scope 'mem'/'cpu'/'all'（v7 定案各区独立 reset），广播全窗口同步
         reset: (scope?: string) => ipcRenderer.invoke('qqqide:mem:reset', scope),
+        // ★ 刷新释放（2026-10-02）：按渲染进程 pid → 对应窗口 webContents.reload()（回收该窗口内存）
+        release: (pid: number) => ipcRenderer.invoke('qqqide:mem:release', pid),
         onReset: (cb: (scope?: string) => void) => {
             const handler = (_e: unknown, data: any) => { try { cb(data && data.scope); } catch (err) { console.warn('[mem.onReset]', err); } };
             ipcRenderer.on('qqqide:mem:reset', handler);

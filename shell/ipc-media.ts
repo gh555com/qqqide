@@ -84,4 +84,28 @@ export function registerMediaIpc(mediaService: MediaService): void {
     ipcMain.handle('qqqide:media:playableCancel', async (_e, reqId: string) => {
         try { return { ok: mediaService.cancelPlayable(reqId) }; } catch { return { ok: false }; }
     });
+
+    // ★ 渐进转码（MSE 边转边播；2026-10-02「闪电」核心）：启动结果即回（moov 解析后 = codec/duration）；
+    //   分片经事件同窗口流式下送（e.sender 定向——禁全窗口广播：大分片对无关窗口是纯负担）。
+    ipcMain.handle('qqqide:media:playableStream', async (e, opts: any) => {
+        try {
+            const send = (evt: any): void => {
+                try { if (!e.sender.isDestroyed()) { e.sender.send('qqqide:media:playableStreamEvent', evt); } } catch { /* ignore */ }
+            };
+            return await mediaService.playableStream(opts, send, (pct: number) => {
+                try {
+                    if (!e.sender.isDestroyed()) {
+                        e.sender.send('qqqide:media:playable:progress', { reqId: opts && opts.reqId, pct });
+                    }
+                } catch { /* ignore */ }
+            });
+        } catch (err: any) {
+            return { ok: false, error: (err && err.message) || 'playableStream_exception' };
+        }
+    });
+
+    // ack 背压（高频轻量 → send 频道；主进程据在途字节量暂停/恢复 ffmpeg stdout）
+    ipcMain.on('qqqide:media:playableStreamAck', (_e, reqId: string, bytes: number) => {
+        try { mediaService.streamAck(String(reqId || ''), Number(bytes) || 0); } catch { /* ignore */ }
+    });
 }

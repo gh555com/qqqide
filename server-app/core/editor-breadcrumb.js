@@ -86,7 +86,7 @@
   }
 
   // ═══ 面包屑即时 hover 文字框（零延迟；多编辑器/多分组共用单例）═══
-  //   用途：Roam 按钮 = 文件大小（Roam 风格千分位原文打印）/ 时间线按钮 = 版本库收录版本数（只打一个数字）
+  //   用途：Roam 按钮 = 文件大小（Roam 风格千分位原文打印）/ 时间线按钮 = 最近一次快照时间（版本数恒显按钮本体——见 tlBtn 内嵌计数）
   //   视觉唯一源 = shell-main.css .qqq-breadcrumb-tip（同「状态栏活动豆腐块」即时框 .qqq-act-tip 同款）
   var _bcTip = null;        // 单例提示框 element
   var _bcTipAnchor = null;  // 当前锚点按钮（编辑器/分组重建时防悬停卡死）
@@ -127,6 +127,15 @@
     var s = String(n), parts = [];
     for (var i = s.length; i > 0; i -= 3) parts.unshift(s.slice(Math.max(0, i - 3), i));
     return parts.join(',');
+  }
+
+  // 时间戳格式化（时间线 hover 框用）：ms epoch → 本地 "YYYY-MM-DD HH:mm:ss"（零 i18n——纯数字）
+  function _fmtTs(ms) {
+    var d = new Date(Number(ms));
+    if (!isFinite(d.getTime())) return '';
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
   }
 
   // ── 主入口 ──
@@ -270,26 +279,33 @@
     var tlBtn = document.createElement('button');
     tlBtn.className = 'qqq-breadcrumb-timeline-btn';
     tlBtn.textContent = '\uD83D\uDD58'; // 时钟图标（文字按钮「timeline」太宽，图标化 ≈28px）
-    // ★ hover 即时文字框（2026-10-01 q390 用户定案）：只打印版本时间线库收录的版本数（一个数字）
-    //   根解析沿用 _resolveTimelineRoot（与点击开窗同口径——hover 数 = 该窗口将展示的库存）；原生 title 已删
-    var _tlHover = false, _tlCountCache = null, _tlRootCache = '', _tlPending = false, _tlLastTs = 0;
-    function _tlFetchCount() {
+    // ★ 版本数恒显（2026-10-02 q390 用户定案）：时钟右侧直接打印版本库收录版本数（Roam 风格千分位原文；未知态留空）
+    var tlCountEl = document.createElement('span');
+    tlCountEl.className = 'qqq-bc-tl-count';
+    tlBtn.appendChild(tlCountEl);
+    // ★ hover 即时文字框（2026-10-02 q390 用户定案）：只打印「最近一次快照时间」（无版本不弹框）
+    //   根解析沿用 _resolveTimelineRoot（与点击开窗同口径——时间取该窗口库存末条，列表恒 oldest→newest）；原生 title 已删
+    var _tlHover = false, _tlLast = null, _tlRootCache = '', _tlPending = false, _tlLastTs = 0;
+    function _tlFetchInfo() {
       if (_tlPending || !filePath) return;
       var b = window.qqqideBridge;
       if (!b || !b.timeline || !b.timeline.versions) return;
-      if (_tlCountCache != null && (Date.now() - _tlLastTs) < 3000) return;   // 3s 内复用缓存（版本入库低频，防连悬打 IPC）
+      if (_tlLast && (Date.now() - _tlLastTs) < 3000) return;   // 3s 内复用缓存（版本入库低频，防连悬打 IPC）
       _tlPending = true;
-      function _done(n) {
+      function _done(n, lastTs) {
         _tlPending = false;
         _tlLastTs = Date.now();
-        _tlCountCache = n;
-        if (_tlHover) _showBcTip(tlBtn, _addThousandSep(n));
+        _tlLast = { n: n, ts: lastTs || null };
+        tlCountEl.textContent = _addThousandSep(n);   // 版本数恒显按钮本体
+        if (_tlHover && _tlLast.ts) _showBcTip(tlBtn, _fmtTs(_tlLast.ts));   // 悬停仍在 → 就位即刷新
       }
       function _query(root) {
-        if (!root) { _done(0); return; }   // 全链解析失败 = 库存查无版本（点击侧仍会如实 qoast）
+        if (!root) { _done(0, null); return; }   // 全链解析失败 = 库存查无版本（点击侧仍会如实 qoast）
         _tlRootCache = root;
         b.timeline.versions({ projectRoot: root, filePath: filePath }).then(function (list) {
-          _done((list && list.length) || 0);
+          var arr = list || [];
+          var last = arr.length ? arr[arr.length - 1] : null;   // 末条 = 最近一次快照（db ORDER BY id ASC）
+          _done(arr.length, last && last.ts ? last.ts : null);
         }).catch(function () { _tlPending = false; });
       }
       if (_tlRootCache) _query(_tlRootCache);
@@ -298,10 +314,11 @@
     tlBtn.addEventListener('mouseenter', function () {
       if (!filePath) return;
       _tlHover = true;
-      if (_tlCountCache != null) _showBcTip(tlBtn, _addThousandSep(_tlCountCache));
-      _tlFetchCount();
+      if (_tlLast && _tlLast.ts) _showBcTip(tlBtn, _fmtTs(_tlLast.ts));   // 已知时间立显（零等待）
+      _tlFetchInfo();   // 同时拉库存真值（时间/版本数可能已更新）
     });
     tlBtn.addEventListener('mouseleave', function () { _tlHover = false; _hideBcTip(); });
+    _tlFetchInfo();   // 创建即拉取——版本数直接上按钮（2026-10-02 用户定案）
     tlBtn.setAttribute('data-no-cd', '');
     tlBtn.addEventListener('click', function (e) {
       e.preventDefault();

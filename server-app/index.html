@@ -169,9 +169,8 @@ var _orig={};
         <span class="qqq-status-item qqq-wq-btn" id="qqq-status-wq" aria-label="wq"></span>
         <!-- ★ 启动包监控 a 区域（2026-08-30 合并定案）：内存图标 + 内存占用 + CPU 占用（CPU 图标已移除），hover/点击弹合并卡片（MEM+CPU 双段 + 共用进程列表），一包多窗口恒同值 -->
         <span id="qqq-status-mem" class="qqq-mem-block" style="font-family:Consolas,monospace;font-size:12px;"><span class="qqq-mem-icon" aria-hidden="true"></span><span class="qqq-mem-val">--</span><span class="qqq-cpu-val">--</span></span>
-        <!-- ★ 总在线时间（累计陪伴 736h）：服务器 wq.doer_state.companion_seconds 权威值——2026-10-01 用户定案移入时间区
-             （时间分割线挂其左侧边 #qqq-status-total border-left；时间在其右；客户端零记录直接打印） -->
-        <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace;font-size:11px;">--</span>
+        <!-- ★ 总在线时间（累计陪伴 736h）：服务器 wq.doer_state.companion_seconds 权威值——2026-10-02 用户定案：字号 12px、与时钟直接相邻（无分割线；客户端零记录直接打印） -->
+        <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace;font-size:12px;">--</span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
         <!-- ★ 三活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding）→ core/shell-activities.js -->
         <span class="qqq-act-widget qqq-act-cool" id="qqq-act-cool" title="">
@@ -224,6 +223,8 @@ var _orig={};
 <script src="core/gaea-host.js"></script>
 <!-- ★ 菜单行2 help 按钮（inbox 右边）— hover 三行菜单 contact / video / community，须在 gaea-host 后壳层 build 前 -->
 <script src="core/help-menu.js"></script>
+<!-- ★ 菜单行2 宽度自适应「⋯ 收纳机器」（2026-10-02 q397）— 右组冻结/密度一档/优先级收纳 + help 子菜单收纳实验（core/shell-menu-fit.js） -->
+<script src="core/shell-menu-fit.js"></script>
 <!-- ============ 菜单行2 qqq 按钮（help 左边）：老项目侧边按钮组（export doc / export Zip / 占位） ============ -->
 <script src="core/savor.js"></script>
 <script src="core/qqq-tools.js"></script>

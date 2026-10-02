@@ -25,7 +25,7 @@ const EVENTS_MAX_BYTES = 8 * 1024 * 1024;
 // ── 内存看门狗 (2026-08-20 F51 性能审计落地) ──
 const MEM_HISTORY_MS = 5 * 60 * 1000;         // mem.log 历史序列周期 (定位涨速)
 const MEM_HISTORY_MAX_BYTES = 256 * 1024;     // mem.log 上限 (events.log 同款轮转)
-const MEM_WARN_HEAP_MB = 1536;                // heapUsed 告警阈值 (1.5GB)
+const MEM_WARN_HEAP_MB = 1024;                // heapUsed 告警阈值（2026-10-02 下调 1536→1024：实测 52h 重窗活堆仅 ~245MB——1GB 已属异常涨势信号，尽早提示刷新释放）
 const MEM_WARN_COOLDOWN_MS = 60 * 60 * 1000;  // 告警冷却 (1h 防轰炸)
 
 let _dir = '';

@@ -398,7 +398,21 @@
     }
     hookFrames();
     if (document.body && typeof MutationObserver !== 'undefined') {
-      new MutationObserver(hookFrames).observe(document.body, { childList: true, subtree: true });
+      // ★ 2026-10-02 性能审计：body 级 childList 观察此前对一切文本/元素变更空跑（含每秒 tick 的
+      //   文本节点替换）→ 过滤为「真含 iframe 的新增元素」才重扫 + rAF 合并同帧多次
+      var _qfRaf = null;
+      new MutationObserver(function (recs) {
+        var hit = false;
+        for (var i = 0; i < recs.length && !hit; i++) {
+          var ns = recs[i].addedNodes;
+          for (var j = 0; j < ns.length; j++) {
+            var n = ns[j];
+            if (n.nodeType === 1 && (n.tagName === 'IFRAME' || (n.querySelector && n.querySelector('iframe')))) { hit = true; break; }
+          }
+        }
+        if (!hit || _qfRaf) return;
+        _qfRaf = requestAnimationFrame(function () { _qfRaf = null; hookFrames(); });
+      }).observe(document.body, { childList: true, subtree: true });
     }
 
     // 窗口 resize 跟随定位

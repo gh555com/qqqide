@@ -69,13 +69,17 @@ function _scheduleRestart(reason: string): void {
 function _spawn(): void {
     if (_shuttingDown || _proc || !_portableRoot) return;
 
-    const pyExe = getComponentBin(_portableRoot, 'python');
-    if (!pyExe) {
+    const pyExe0 = getComponentBin(_portableRoot, 'python');
+    if (!pyExe0) {
         console.log('[py-broker] Python not installed yet, retry scheduled (rank0 auto-install)');
         _readyError = 'python not installed';
         _scheduleRestart('python-not-installed');
         return;
     }
+    // ★ conhost 根治（2026-10-02）：python.exe 即便 stdio 全管道 + windowsHide 仍会创建 conhost.exe
+    //   （~5MB 常驻/实例，实测 py-broker + miniaudio 各拖一个）；pythonw.exe（GUI 子系统）零控制台。
+    //   JSON 行协议 / pynput 热键 / NtQuery 快照全部走管道与 API，不受 GUI 子系统影响。
+    const pyExe = toPythonwExe(pyExe0);
 
     const scriptPath = path.join(__dirname, 'py-broker.py');
 
@@ -291,6 +295,17 @@ export function resolvePythonPath(portableRoot: string): string | null {
     }
 
     return null;
+}
+
+/** python.exe → pythonw.exe（Windows GUI 子系统：结构性零 conhost；缺失/非 python.exe 回退原路径） */
+export function toPythonwExe(p: string): string {
+    try {
+        if (process.platform === 'win32' && /python\.exe$/i.test(p)) {
+            const w = p.replace(/python\.exe$/i, 'pythonw.exe');
+            if (fs.existsSync(w)) { return w; }
+        }
+    } catch { /* ignore */ }
+    return p;
 }
 
 /** 获取绿色包 Python 安装目录（用于 PATH 注入） */

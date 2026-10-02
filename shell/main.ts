@@ -46,8 +46,8 @@ import { registerSearchIpc } from './ipc-search';
 import { registerEditIpc } from './ipc-edit';
 import { registerMiscIpc } from './ipc-misc';
 import { registerMediaIpc } from './ipc-media';
-import { registerPlayerIpc, kickPlayerHostForRestore } from './ipc-player';
-import { parsePlayFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc } from './player-host';
+import { registerPlayerIpc, kickPlayerHostForRestore, noteHostAllWindowsClosed } from './ipc-player';
+import { parsePlayFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc, startIdeKeepalive } from './player-host';
 import { registerFileAssocIpc } from './ipc-fileassoc';
 import { registerExportIpc } from './ipc-export';
 import { registerTimelineIpc } from './ipc-timeline';
@@ -555,11 +555,16 @@ app.whenReady().then(async () => {
     //   （更新是 IDE/启动器职责）。第二实例（锁败者）：argv 已被持锁宿主 second-instance 接管 → 静默退。
     if (_playHostMode) {
         if (!gotTheLock) { app.quit(); return; }
-        // ★ 退出语义补全（2026-10-02 v17）：最后窗关闭 → 显式退出（双平台一致——mac 默认不退会致宿主零窗常驻；
-        //   py-broker 收尾与心跳清理在 ipc-player 的 before-quit 里）。
+        // ★ 退出语义（2026-10-02 v18 秒开修复 + v19 常温）：最后窗关闭 → 温水滞留（期内新窗即取消；到期 IDE 心跳存活即续期；空启立即退）
+        //   ——滞留/退出唯一裁决 = ipc-player.noteHostAllWindowsClosed（末窗 closed 与 window-all-closed 双挂点，
+        //   初启空窗 900ms 兜底自退）；双平台一致（mac 默认不退会致宿主零窗常驻）；
+        //   py-broker 收尾与心跳清理在 ipc-player 的 before-quit 里。
         app.on('window-all-closed', () => {
-            try { console.log('[player-host] window-all-closed → quit'); app.quit(); } catch { /* ignore */ }
+            try { noteHostAllWindowsClosed(); } catch { /* ignore */ }
         });
+        // ★ 冷启打点（2026-10-02）：分段落盘玩家日志（player-host.log）——测速与回归审计现场
+        const _phT0 = Date.now();
+        const _phMark = (m: string): void => { try { console.log('[player-host] boot +' + (Date.now() - _phT0) + 'ms ' + m); } catch { /* ignore */ } };
         try {
             injectHostRuntimePath(portable.root);
             hardenSession();
@@ -571,14 +576,21 @@ app.whenReady().then(async () => {
             registerHostShellIpc();
             registerFileAssocIpc(portable.root);
             registerSquadIpc();
-            if (!isSmokeFlag) { startPyBroker(portable.root); }
-            setPyBrokerEventHandler((ev: any) => {
+            _phMark('ipc ready');
+            registerPlayerIpc(portable.root, bootConfig.url, APP_VERSION);   // 宿主域内部启动运行时（窗口先行）
+            _phMark('runtime started');
+            // ★ 冷启重排（2026-10-02）：py-broker（Python 冷启 + 磁盘）后置到窗口创建之后——
+            //   首帧不再与 Python 冷启动争主线程/磁盘；热键就绪延后 ~1s 对首发体验无感。
+            setImmediate(() => {
+                if (!isSmokeFlag) { startPyBroker(portable.root); }
+                setPyBrokerEventHandler((ev: any) => {
                 if (!ev || ev.event !== 'summon' || !ev.ok) { return; }
                 // ★ mac 兜底：NSRunningApplication 激活无法还原最小化窗口 → 本实例直接 restore/focus
                 //   （Windows 不走此路径——py-broker SetForegroundWindow 已覆盖；宿主不发召回音效/不上报履历）
                 if (process.platform === 'darwin') { try { focusWindowBySlot(String(ev.squad || '')); } catch { /* ignore */ } }
+                });
+                _phMark('py-broker scheduled');
             });
-            registerPlayerIpc(portable.root, bootConfig.url, APP_VERSION);   // 宿主域内部启动运行时
         } catch (e: any) {
             try { console.warn('[player-host] boot failed:', (e && e.message) || e); } catch { /* ignore */ }
             try { app.quit(); } catch { /* ignore */ }
@@ -794,9 +806,10 @@ app.whenReady().then(async () => {
     // Register IPC (after window exists)
     registerAllIpc();
 
-    // ★ 音频引擎预启动 — 消灭首响延迟（懒启动 Python ~200ms 是慢半拍的第一层）
-    //   ★ 冒烟测试: 不预热（不 spawn python 音频桥）
-    if (!isSmokeFlag) { audioEngine.ensure().catch(() => { /* 组件缺失时静默 */ }); }
+    // ★ 音频桥懒启动（2026-10-02 定案·极限低资源）：不再启动即 ensure——首个真实播放请求
+    //   （qqqide:audio:play / play_music，engine.invoke 内部按需拉起）才拉起；整会话零声音 →
+    //   零音频进程（-37MB）。首响代价 = 一次性拉起耗时（仅首个声音，此后全程热）。
+    //   （历史「启动预启动消灭首响延迟」已删；冒烟同旧规：零业务进程。）
 
     // Register exit handlers
     registerExitHandlers(portable.root, portable.logs, stateStore, bootConfig, _qgfInstances);
@@ -977,6 +990,9 @@ app.whenReady().then(async () => {
 
     // ★ 播放器会话恢复（2026-10-02 v17 单宿主域）：有未关窗 → 拉起宿主（宿主自恢复，暂停态；按包分槽）
     try { kickPlayerHostForRestore(); } catch { /* ignore */ }
+
+    // ★ IDE 存活心跳（2026-10-02 v19 常温）：60s 续写 ide-alive.json——宿主温水期据此续期（IDE 存活期恒温秒开）
+    try { startIdeKeepalive(); } catch { /* ignore */ }
 
     // ★ 认证中心大脑恢复登录态（2026-07-31 T3）
     // auth-brain.restore() 内建 safeStorage + phone.txt 双路径兜底

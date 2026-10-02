@@ -16,6 +16,9 @@
 // 打开方式: 一律系统外部浏览器（bridge.shell.openExternal，window.open 兜底）
 // 交互: 纯 hover（进入即展开，250ms 延迟关闭）；Esc / 点击别处 / 窗口 resize 即关；
 //       全按钮与菜单行零自定义 cursor（光标铁律）
+// ★ openAt(anchorEl)（2026-10-02）: 菜单重锚入口——「⋯ 收纳机器」（core/shell-menu-fit.js）
+//   的 help 行 hover 级联调用；锚定为菜单行按钮（缺省）时行为零变化，锚定其它元素时
+//   改「行右侧级联」定位并返回根元素（菜单本体 100% 复用，禁第二实现）
 // ============================================================================
 
 ; (function () {
@@ -45,6 +48,7 @@
   var HOVER_CLOSE_DELAY = 250;
 
   var _btnEl = null;
+  var _anchorEl = null;     // 动态锚点（openAt 用；缺省 = _btnEl）
   var _rootEl = null;       // 三行主菜单
   var _rootRowEls = [];     // [{key, el}] 主菜单行（高亮管理）
   var _subEl = null;        // 右侧子菜单
@@ -112,6 +116,7 @@
     if (_rootEl && _rootEl.contains(t)) return true;
     if (_subEl && _subEl.contains(t)) return true;
     if (_btnEl && _btnEl.contains(t)) return true;
+    if (_anchorEl && _anchorEl.contains(t)) return true;
     return false;
   }
   function _onDocClick(e) {
@@ -168,27 +173,55 @@
     return root;
   }
 
+  function _anchorCur() { return _anchorEl || _btnEl; }
+
+  // 定位：菜单行按钮（缺省）→ 按钮下方；⋯ 收纳行动态锚点 → 行右侧级联（放不下翻左/上收）
+  function _positionRoot() {
+    var anchor = _anchorCur();
+    if (!_rootEl || !anchor) return;
+    var r = anchor.getBoundingClientRect();
+    var w = _rootEl.offsetWidth || 148, h = _rootEl.offsetHeight || 100;
+    var left, top;
+    if (anchor === _btnEl) {
+      left = r.left;
+      if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8;
+      if (left < 8) left = 8;
+      top = r.bottom + 4;
+      if (top + h > window.innerHeight - 8) top = Math.max(4, r.top - h - 4);
+    } else {
+      left = r.right + 4;
+      if (left + w > window.innerWidth - 8) left = r.left - w - 4;
+      if (left < 8) left = 8;
+      top = r.top;
+      if (top + h > window.innerHeight - 8) top = Math.max(4, window.innerHeight - h - 8);
+    }
+    _rootEl.style.left = left + 'px';
+    _rootEl.style.top = top + 'px';
+  }
+
   function _showRoot() {
-    if (_rootEl && _rootEl.parentNode) return;
-    if (!_btnEl) return;
+    var anchor = _anchorCur();
+    if (!anchor) return;
+    if (_rootEl && _rootEl.parentNode) { _positionRoot(); return; } // 已开：重定位（⋯ 行间切换复用）
     _ensureStyle();
     _removeRoot();
     var root = _buildRoot();
     document.body.appendChild(root);
     _rootEl = root;
-    // 定位：按钮下方，右缘/下缘防出界
-    var r = _btnEl.getBoundingClientRect();
-    var w = root.offsetWidth || 148, h = root.offsetHeight || 100;
-    var left = r.left;
-    if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8;
-    if (left < 8) left = 8;
-    var top = r.bottom + 4;
-    if (top + h > window.innerHeight - 8) top = Math.max(4, r.top - h - 4);
-    root.style.left = left + 'px';
-    root.style.top = top + 'px';
+    _positionRoot();
     requestAnimationFrame(function () { if (_rootEl) _rootEl.classList.add('open'); });
-    if (_btnEl) _btnEl.classList.add('qqq-help-open');
+    try { anchor.classList.add('qqq-help-open'); } catch (e) { }
     _bindGlobal();
+  }
+
+  // ★ ⋯ 收纳机器唯一外接口: 重锚到任意元素打开（返回根元素；重复调用 = 重定位复用）
+  function openAt(anchorEl) {
+    if (!anchorEl) return null;
+    if (_anchorEl && _anchorEl !== anchorEl) { try { _anchorEl.classList.remove('qqq-help-open'); } catch (e) { } }
+    _anchorEl = anchorEl;
+    _clearTimers();
+    _showRoot();
+    return _rootEl;
   }
 
   function _removeRoot() {
@@ -294,7 +327,9 @@
     _clearTimers();
     _removeSub();
     _removeRoot();
-    if (_btnEl) { try { _btnEl.classList.remove('qqq-help-open'); } catch (e) { } }
+    var a = _anchorCur();
+    if (a) { try { a.classList.remove('qqq-help-open'); } catch (e) { } }
+    _anchorEl = null;
     _unbindGlobal();
   }
 
@@ -358,11 +393,11 @@
       'height:22px; padding:0 10px; margin:0 1px; border:1px solid var(--border-color); border-radius:3px;' +
       'background:transparent; color:var(--text-primary); font-size:12px;' +
       'transition: background 0.15s;';
-    btn.addEventListener('mouseenter', function () { _clearTimers(); _showRoot(); });
+    btn.addEventListener('mouseenter', function () { _anchorEl = null; _clearTimers(); _showRoot(); });
     btn.addEventListener('mouseleave', _scheduleAll);
     tabBarEl.appendChild(btn);
     _btnEl = btn;
   }
 
-  window.qqqHelpMenu = { mount: mount, close: _closeAll };
+  window.qqqHelpMenu = { mount: mount, close: _closeAll, openAt: openAt };
 })();

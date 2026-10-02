@@ -1521,6 +1521,45 @@
     _feedToAiPanel(filePath, isDir, null);
   }
 
+  // ═══ ★ qh 滑条拖拽真理机（2026-10-02 泄漏根治）：全局唯一 document 监听 + 全局唯一主题观察 ═══
+  //   历史实锤（只读探针）：每容器各挂 2 个 document 监听 + 1 个 documentElement MutationObserver——
+  //   活体节点上的 observer 被永久注册表保活 → 回调闭包反向拖住整棵下拉树（97 份树/6830 行泄漏实锤）。
+  //   约定：拖拽状态全局单份（同时只会拖一个滑条）；主题切换只扫活体 .qh-scroll-thumb。
+  var _qhDrag = null;
+  var _qhDocBound = false;
+  function _qhBindDocOnce() {
+    if (_qhDocBound) { return; }
+    _qhDocBound = true;
+    document.addEventListener('mousemove', function (e) {
+      var d = _qhDrag;
+      if (!d) { return; }
+      var sh = d.inner.scrollHeight, ch = d.inner.clientHeight;
+      if (sh <= ch) { return; }
+      var thumbH = Math.max(24, (ch / sh) * ch);
+      var ratio = (e.clientY - d.startY) / Math.max(1, (ch - thumbH));
+      d.inner.scrollTop = Math.max(0, Math.min(sh - ch, d.startScroll + ratio * (sh - ch)));
+    });
+    document.addEventListener('mouseup', function (e) {
+      var d = _qhDrag;
+      if (!d) { return; }
+      _qhDrag = null;
+      var at = (e && e.clientX != null) ? document.elementFromPoint(e.clientX, e.clientY) : null;
+      if (at && d.track.contains(at)) {
+        d.thumb.style.width = '12px'; d.thumb.style.right = '0';
+      } else {
+        d.thumb.style.width = '2px'; d.thumb.style.right = '10px';
+      }
+    });
+    try {
+      new MutationObserver(function () {
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        var c = isDark ? '#fff' : '#000';
+        var list = document.querySelectorAll('.qh-scroll-thumb');
+        for (var i = 0; i < list.length; i++) { try { list[i].style.background = c; } catch (_) { } }
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    } catch (_) { }
+  }
+
   // ---- 滚动容器包装：外层不滚 + 自定义变形滚动条（照抄 q3 roam）----
   function _wrapScrollContainer(outer, depth) {
     // 外层禁止滚动（覆盖 CSS !important）
@@ -1556,13 +1595,13 @@
     sbThumb.style.cssText = 'position:absolute; right:10px; width:2px; min-height:24px; border-radius:0; ' +
       'display:none; background:' + _co.c + '; cursor:pointer; opacity:0.6; forced-color-adjust:none; pointer-events:auto; ' +
       'transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease;';
-    var _sbDragging = false;   // ★ F107: 拖拽期间保持粗态，光标移出滑轨 x 范围也不收缩
+    _qhBindDocOnce();   // ★ 全局单份拖拽/主题机制（每容器零 document 级残留——泄漏根治）
     // ★ 颜色恒定（2026-09-16）: hover/拖拽只变宽绝不加深——对齐 roam / AI 面板聊天区（曾升 opacity 1 = 纯黑条，白主题视觉过重）
     sbOuter.addEventListener('mouseenter', function () {
       sbThumb.style.width = '12px'; sbThumb.style.right = '0';
     });
     sbOuter.addEventListener('mouseleave', function () {
-      if (_sbDragging) return;
+      if (_qhDrag && _qhDrag.thumb === sbThumb) { return; }
       sbThumb.style.width = '2px'; sbThumb.style.right = '10px';
     });
     function _syncSB() {
@@ -1596,42 +1635,18 @@
       inner.scrollTop += d;
       e.preventDefault();
     }, { passive: false });
-    var _dr = false, _dsY = 0, _dsS = 0;
+    // ★ 拖拽：只挂自身 mousedown，移动/松开统一由全局机派发（禁用每容器 document 监听——泄漏根因）
     sbThumb.addEventListener('mousedown', function (e) {
       if (e.button !== 0) return;
-      _dr = true; _dsY = e.clientY; _dsS = inner.scrollTop;
-      _sbDragging = true;   // ★ F107: 抓住即粗
-      sbThumb.style.width = '12px'; sbThumb.style.right = '0';
+      _qhDrag = { inner: inner, thumb: sbThumb, track: sbOuter, startY: e.clientY, startScroll: inner.scrollTop };
+      sbThumb.style.width = '12px'; sbThumb.style.right = '0';   // ★ F107: 抓住即粗
       e.preventDefault(); e.stopPropagation();
-    });
-    document.addEventListener('mousemove', function (e) {
-      if (!_dr) return;
-      var sh = inner.scrollHeight, ch = inner.clientHeight;
-      if (sh <= ch) return;
-      var thumbH = Math.max(24, (ch / sh) * ch);
-      var ratio = (e.clientY - _dsY) / (ch - thumbH);
-      inner.scrollTop = Math.max(0, Math.min(sh - ch, _dsS + ratio * (sh - ch)));
-    });
-    document.addEventListener('mouseup', function (e) {
-      if (!_dr) return;
-      _dr = false; _sbDragging = false;
-      // 松开：光标仍落在滑轨上 → 保持粗态；已离开 → 收缩
-      var at = (e && e.clientX != null) ? document.elementFromPoint(e.clientX, e.clientY) : null;
-      if (at && sbOuter.contains(at)) {
-        sbThumb.style.width = '12px'; sbThumb.style.right = '0';
-      } else {
-        sbThumb.style.width = '2px'; sbThumb.style.right = '10px';
-      }
     });
     setTimeout(_syncSB, 50);
     // 仅监听直接子节点变更（行平铺无嵌套），subtree:false 省去递归遍历开销
+    // （observer↔自容器 自成一体：容器被释放时二者成闭包环可回收——外部零挂靠才是关键）
     var _sbObs = new MutationObserver(function () { setTimeout(_syncSB, 30); });
     _sbObs.observe(inner, { childList: true });
-    var _themeObs = new MutationObserver(function () {
-      var co3 = _qhCol();
-      sbThumb.style.background = co3.c;
-    });
-    _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     sbOuter.appendChild(sbThumb);
     outer.appendChild(sbOuter);

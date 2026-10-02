@@ -683,6 +683,16 @@ var AgentLoop = (function () {
                     }
                     // 确认回合结束 → 恢复被延迟的最终回复（若有）
                     onGuideAckDone();
+                    // ★ 引导模式主动解除：确认处理完毕必须恢复普通流式渲染，否则 _doStreamRender 的
+                    //   _guideMode 分支会丢弃后续所有段落 → UI 冻结至楼层完结（与渲染端自动解除双保险；
+                    //   abortedForGuide 路径不走此处——由接管的新引导走完确认后解除）。
+                    try {
+                        if (self._activeAiDiv) { self._activeAiDiv._guideMode = false; self._activeAiDiv._guideModeSince = 0; }
+                        // ★ 续渲净化：引导窗口内的流式残料按「丢弃」设计不再回补——清空渲染缓冲，
+                        //   下一段正文从干净状态开始（与 onDone 收尾同款清法；_streamFullText 保留不动）。
+                        self._streamBuf = ''; self._streamSplitCursor = 0; self._streamParas = [];
+                        self._streamRenderedCount = 0; self._streamCodeFenceOpen = false;
+                    } catch (_gd) { }
                     if (self._deferredFinalMsg) {
                         var _restoredContent = self._deferredFinalMsg.content;
                         self.conversation.push(self._deferredFinalMsg);
@@ -1387,10 +1397,22 @@ var AgentLoop = (function () {
         if (!aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
         aiDiv._renderScheduled = false;
         if (aiDiv._guideMode) {
-            this._streamRenderedCount = (this._streamParas || []).length;
-            for (var _gpi = 0; _gpi < (this._streamParas || []).length; _gpi++) this._streamParas[_gpi] = null;
-            aiDiv._dirty = false;
-            return;
+            // ★ 引导渲染模式解除（双条件）：① 确认回合已处理完——唯一真相源 = `_guideMarker` 已被
+            //   agent-loop 引导段三处清 null（成功/异常/超时任一分支）；② 兜底保险丝——进入引导
+            //   模式超 90s 未解除（防任何漏清路径把流式渲染吞到楼层完结）。历史 bug：漏解除 →
+            //   引导后所有流式段落被丢弃不渲染 → UI 冻结至 onDone/onError（长楼层 = 用户视角「假死」）。
+            var _gDone = aiDiv._guideMarker == null;
+            var _gAge = aiDiv._guideModeSince ? (Date.now() - aiDiv._guideModeSince) : 0;
+            if (_gDone || _gAge > 90000) {
+                aiDiv._guideMode = false;
+                aiDiv._guideModeSince = 0;
+                // 解除后落入下方正常渲染流程（引导时刻被丢弃的旧缓冲按设计保持弃用）
+            } else {
+                this._streamRenderedCount = (this._streamParas || []).length;
+                for (var _gpi = 0; _gpi < (this._streamParas || []).length; _gpi++) this._streamParas[_gpi] = null;
+                aiDiv._dirty = false;
+                return;
+            }
         }
         var rendered = this._streamRenderedCount || 0;
         var paras = this._streamParas || [];

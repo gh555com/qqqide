@@ -8,7 +8,7 @@
 //   同款模式）转发给宿主；双击媒体文件 = 文件关联直启宿主（或转发给在跑宿主）。
 //   进程域隔离：宿主 userData = Data/player-host（独立 SingletonLock，与 IDE 互不夺锁——
 //   见 portable-paths.applyPortablePaths(sessionDir)）。IDE 退出/崩溃与播放无关；
-//   宿主最后一个播放器窗关闭 → 进程自然退（零常驻）。
+//   宿主最后一个播放器窗关闭 → 温水滞留（IDE 存活期恒温——ide-alive 心跳续期；IDE 退出/崩溃后按温水期真退）。
 //   宿主自恢复：启动时把「上次未关闭」的会话原样拉起（暂停态；host.json 失活 = 崩溃/重启后）。
 //   编队独立：宿主自拉起 py-broker（互斥量让位设计——与 IDE 同跑时自动降级 rename-only，
 //   IDE 不在时成为热键监听者）→ 无 IDE 也能量招募回。
@@ -18,6 +18,7 @@
 //   host.json      宿主存活心跳 {pid, ts, ver}（4s 刷；IDE 侧 15s 失活 + pid 存活双条件判定）
 //   requests/      请求队列目录（IDE 写 req-*；宿主 rename 认领 processing-* 处理后删；
 //                  reply 请求回写 res-<id>.json 供 IDE 轮询）
+//   ide-alive.json IDE 存活心跳 {pid, ts}（IDE 主进程 60s 刷；宿主滞留到期读——存活即续期＝常温）
 // ============================================================================
 import { app, ipcMain, shell } from 'electron';
 import { spawn } from 'child_process';
@@ -64,6 +65,41 @@ function _writeHostState(): void {
 }
 export function clearPlayerHostState(): void {
     try { fs.unlinkSync(_stateFile()); } catch { /* ignore */ }
+}
+
+// ── IDE 存活心跳（IDE 写 / 宿主读；2026-10-02 v19 常温） ──
+//   语义：IDE 存活 ⇒ 宿主零窗不真退（温水到期续期＝全程恒温秒开，免「每 IDE 会话一次冷启」）；
+//   IDE 退出/崩溃 ⇒ 心跳断供（ts 陈旧或 pid 亡）⇒ 宿主按温水期正常退。IDE 主进程启动即起 60s 续写。
+function _ideAliveFile(): string { return path.join(playerHostDataDir(), 'ide-alive.json'); }
+export function writeIdeKeepalive(): void {
+    try {
+        const f = _ideAliveFile();
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        const tmp = f + '.' + process.pid + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify({ pid: process.pid, ts: Date.now() }), 'utf8');
+        fs.renameSync(tmp, f);
+    } catch { /* 下次再写 */ }
+}
+let _ideKeepaliveTimer: any = null;
+/** IDE 域启动调用（宿主域 no-op）：先写一次 + 60s 续写——宿主温水期据此续期。 */
+export function startIdeKeepalive(): void {
+    if (isPlayerHostMode()) { return; }
+    if (_ideKeepaliveTimer) { return; }
+    writeIdeKeepalive();
+    _ideKeepaliveTimer = setInterval(writeIdeKeepalive, 60000);
+    if (typeof (_ideKeepaliveTimer as any).unref === 'function') { (_ideKeepaliveTimer as any).unref(); }
+}
+/** 宿主域读：IDE 心跳新鲜？（ts ≤180s + pid 存活双条件——IDE 崩溃即断供；EPERM 视为存活防误杀） */
+export function ideKeepaliveFresh(): boolean {
+    try {
+        const o = JSON.parse(fs.readFileSync(_ideAliveFile(), 'utf8'));
+        if (!o || typeof o.ts !== 'number') { return false; }
+        if (Date.now() - o.ts > 180000) { return false; }
+        if (typeof o.pid === 'number' && o.pid > 0) {
+            try { process.kill(o.pid, 0); } catch (e: any) { if (!e || e.code !== 'EPERM') { return false; } }
+        }
+        return true;
+    } catch { return false; }
 }
 
 // ── IDE 侧：拉起宿主（detached 子进程；失活检查 + 2.5s 静默窗防连发） ──
@@ -208,14 +244,14 @@ export function startPlayerHostLoop(dispatch: (req: any) => any): void {
     // 周期心跳 + 队列兜底清扫（watch 静默死亡也有界收敛）
     const tick = setInterval(() => { _writeHostState(); _sweepRequests(dispatch); }, 4000);
     if (typeof (tick as any).unref === 'function') { (tick as any).unref(); }
-    // 目录监听（200ms 防抖）+ error 自愈重绑（30s 间隔重试）
+    // 目录监听（60ms 防抖——秒开：写入→开窗时延；请求写盘为 tmp+rename 原子，无半截风险）+ error 自愈重绑（30s 间隔重试）
     let watcher: fs.FSWatcher | null = null;
     let debounce: any = null;
     const startWatch = (): void => {
         try {
             watcher = fs.watch(dir, () => {
                 if (debounce) { clearTimeout(debounce); }
-                debounce = setTimeout(() => { debounce = null; _sweepRequests(dispatch); }, 150);
+                debounce = setTimeout(() => { debounce = null; _sweepRequests(dispatch); }, 60);
             });
             watcher.on('error', () => { try { watcher?.close(); } catch { /* ignore */ } watcher = null; });
         } catch { watcher = null; }

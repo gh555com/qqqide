@@ -3,7 +3,7 @@
 // ============================================================================
 // ui-zoom.js — 应用级界面缩放机器（qqq-prefs 'uiZoom' → 壳层 webContents zoom）
 //
-// 唯一可见入口 = 状态栏缩放徽章（CPU 与时间分割线之间；恒显，非 100% 高亮）：
+// 唯一可见入口 = 状态栏缩放徽章（CPU 核数右侧、mem 块后；恒显，非 100% 高亮）：
 //   hover 显快捷键组 tooltip；点击弹八档点选层 → qqqPrefs.set → onChange → 壳层热应用。
 // 其余输入（统一收敛到 qqq-prefs / 壳层）：
 //   ① 应急快捷键 Ctrl+= / Ctrl+- / Ctrl+0（壳层主进程直控）→ bridge.uiZoom.onChanged
@@ -74,7 +74,7 @@
     } catch (e) { /* ignore */ }
   }
 
-  // ═══ 状态栏徽章（恒显按钮；非 100% 高亮；位于 CPU 与时间分割线之间——分割线由 shell-main.css 落在时钟左侧）═══
+  // ═══ 状态栏徽章（恒显按钮；非 100% 高亮；位于 CPU 核数右侧——ui-zoom 插在 mem 块之后、736h 之前）═══
   var _badge = null;
 
   function _ensureBadge() {

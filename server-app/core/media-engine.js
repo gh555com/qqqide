@@ -300,6 +300,7 @@
     }
     _ovTxReqId = null;
     _ovTxBarShow(false);
+    try { _ovStreamTeardown(true); } catch (_) { }   // ★ 渐进转码（MSE）同链收尾：取消桥端 + 摘监听 + revoke blob
   }
   // 启动转码：成功后回调 onOk(正斜杠产物路径)；失败/取消回调 onFail()；H = 归属宿主（缺省全局 HOST）
   function _ovTxRun(filePath, kind, onOk, onFail, H) {
@@ -339,6 +340,102 @@
       _ovTxBarShow(false);
       try { onFail(); } catch (_) { }
     });
+  }
+
+  // ═══ ★ 渐进转码（MSE 边转边播；2026-10-02 q319 定案·「闪电」核心）═══
+  //   桥有 playableStream → ffmpeg 产出 fMP4 分片经事件实时喂 MediaSource（首帧秒出，不等全量转码）；
+  //   任何失败 → 回退经典全量转码（_ovTxRun）。产物同落转码缓存（二次打开 = 原生直放）。
+  var _ovStream = null;   // { rid, H, el, barApi, ms, sb, url, q[], idx, done, failed, ended, wantPlay, started, ackAcc, fallback, fail, … }
+  function _ovB64ToBytes(b64) {
+    try {
+      var bin = atob(String(b64 || ''));
+      var n = bin.length;
+      var u8 = new Uint8Array(n);
+      for (var bi = 0; bi < n; bi++) { u8[bi] = bin.charCodeAt(bi); }
+      return u8;
+    } catch (_) { return null; }
+  }
+  function _ovStreamDetach(s, cancel) {
+    if (!s) { return; }
+    if (_ovStream === s) { _ovStream = null; }
+    try {
+      var bm = s.H && s.H.bridge && s.H.bridge.media;
+      if (cancel && bm && bm.playableCancel) { bm.playableCancel(s.rid); }
+    } catch (_) { }
+    try { if (s.unsubEvt) { s.unsubEvt(); } } catch (_) { }
+    s.unsubEvt = null;
+    try { if (s.unsubProg) { s.unsubProg(); } } catch (_) { }
+    s.unsubProg = null;
+    try { if (s.onElErr) { s.el.removeEventListener('error', s.onElErr); } } catch (_) { }
+    try { if (s.onSeeking) { s.el.removeEventListener('seeking', s.onSeeking); } } catch (_) { }
+    if (cancel) { try { if (s.url) { URL.revokeObjectURL(s.url); } } catch (_) { } }
+  }
+  function _ovStreamTeardown(cancel) { _ovStreamDetach(_ovStream, cancel); }
+  function _ovStreamPump() {
+    var s = _ovStream;
+    if (!s || s.failed || !s.sb) { return; }
+    try {
+      if (!s.sb.updating && s.idx < s.q.length) { s.sb.appendBuffer(s.q[s.idx++]); }
+    } catch (e) { _ovStreamFail(s, 'append'); return; }
+    try {
+      if (s.wantPlay && !s.started && s.sb.buffered && s.sb.buffered.length > 0) {
+        s.started = true;
+        try { var p = s.el.play(); if (p && p.catch) { p.catch(function () { }); } } catch (_) { }
+        try { if (s.barApi && s.barApi.syncPlay) { s.barApi.syncPlay(); } } catch (_) { }
+      }
+    } catch (_) { }
+    try {
+      if (s.done && s.sb && !s.sb.updating && s.idx >= s.q.length && s.ms && s.ms.readyState === 'open' && !s.ended) {
+        s.ended = true;
+        try { s.ms.endOfStream(); } catch (_) { }
+      }
+    } catch (_) { }
+  }
+  function _ovStreamFail(s, why) {
+    if (!s || s.failed) { return; }
+    s.failed = true;
+    _ovStreamDetach(s, true);
+    try { _ovTxBarShow(false); } catch (_) { }
+    if (_ovTxReqId === s.rid) { _ovTxReqId = null; }
+    // 回退 = 经典全量转码（同轨同宿主；再失败才走调用方兑底）
+    try { if (s.fallback) { s.fallback(); return; } } catch (_) { }
+    try { if (s.fail) { s.fail(); } } catch (_) { }
+  }
+  function _ovStreamOnEvent(ev) {
+    var s = _ovStream;
+    if (!s || !ev || String(ev.token || '') !== s.rid) { return; }
+    try {
+      if (ev.kind === 'init' || ev.kind === 'seg') {
+        var bytes = _ovB64ToBytes(ev.b64);
+        if (!bytes) { _ovStreamFail(s, 'b64'); return; }
+        s.q.push(bytes);
+        s.ackAcc += bytes.byteLength;
+        if (s.ackAcc >= 524288) {
+          var n = s.ackAcc;
+          s.ackAcc = 0;
+          try {
+            var bm = s.H.bridge && s.H.bridge.media;
+            if (bm && bm.playableStreamAck) { bm.playableStreamAck(s.rid, n); }
+          } catch (_) { }
+        }
+        _ovStreamPump();
+        return;
+      }
+      if (ev.kind === 'done') {
+        s.done = true;
+        s.ackAcc = 0;
+        try { if (s.unsubProg) { s.unsubProg(); } } catch (_) { }
+        s.unsubProg = null;
+        try { _ovTxBarShow(false); } catch (_) { }
+        if (_ovTxReqId === s.rid) { _ovTxReqId = null; }
+        _ovStreamPump();
+        return;
+      }
+      if (ev.kind === 'fail') {
+        if (ev.cancelled) { return; }   // 用户主动取消：abort 路径已拆，静默
+        _ovStreamFail(s, ev.error || 'stream-fail');
+      }
+    } catch (_) { }
   }
 
 
@@ -1771,19 +1868,118 @@ function mount(opts) {
         _toast(_i('shell.overlay.mediaFailed', '媒体加载失败，可能格式不受支持或文件已损坏'), 'error');
         try { _closeHost(); } catch (_) { }
       };
+      // ★ 转码产物重开（2026-10-02 抽共用）：经典路径 / 渐进 cache 快路径共用——isTx 显式 + 播放意图/倍速/模式/音量/dock 边全量回灌
+      function _reopenTxResult(newPath) {
+        _reopenHost({
+          mode: _txKind, src: 'file:///' + newPath, localPath: newPath, list: _plList, index: _plIdx, isTx: true,
+          paused: !_playIntent,
+          rate: _ovMediaRate, loop: _ovMediaLoop, shuffle: _ovMediaShuffle, follow: _ovMediaFollow,
+          volume: (_barApi && _barApi.getVol) ? _barApi.getVol() : 1, muted: !!_mEl.muted, dockSide: _ovDockSide || 'right'
+        });
+      }
+      // ★ 渐进转码（MSE 边转边播；2026-10-02）：桥有 playableStream → 分片喂 MediaSource，首帧秒出；
+      //   不支持/失败 → 经典全量转码回退。产物同落转码缓存（二次打开 = 原生直放）。
+      function _ovStreamRun(filePath, kind) {
+        var bm = (H.bridge && H.bridge.media) || null;
+        var rid = 'ovs-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+        _ovTxReqId = rid;
+        _ovTxLastHost = H;
+        _ovTxBarShow(true);
+        var s = {
+          rid: rid, H: H, el: _mEl, barApi: _barApi, fail: _ovMediaFail, fallback: null,
+          ms: null, sb: null, url: null, q: [], idx: 0, done: false, failed: false, ended: false,
+          wantPlay: _playIntent, started: false, ackAcc: 0, seekToast: false,
+          unsubEvt: null, unsubProg: null, onElErr: null, onSeeking: null
+        };
+        s.fallback = function () {
+          _ovTxRun(filePath, kind, function (newPath) { _reopenTxResult(newPath); }, _ovMediaFail, H);
+        };
+        if (bm.onPlayableProgress) {
+          try {
+            s.unsubProg = bm.onPlayableProgress(function (m) {
+              if (!m || m.reqId !== rid || !_ovTxBarText) { return; }
+              var base = _i('shell.overlay.txStreaming', '边转边播 · 正在转码…');
+              _ovTxBarText.textContent = (m.pct != null && m.pct >= 0) ? (base + ' ' + m.pct + '%') : base;
+            });
+          } catch (_) { }
+        }
+        // 事件订阅必须先于 invoke（分片绝不丢）
+        try {
+          s.unsubEvt = bm.onPlayableStreamEvent(function (ev) { _ovStreamOnEvent(ev); });
+        } catch (_) { }
+        s.onElErr = function () { if (_ovStream === s && !s.done) { _ovStreamFail(s, 'element-error'); } };
+        try { _mEl.addEventListener('error', s.onElErr); } catch (_) { }
+        s.onSeeking = function () {
+          if (_ovStream !== s || !s.sb || s.done) { return; }
+          try {
+            var bu = s.sb.buffered.length ? s.sb.buffered.end(s.sb.buffered.length - 1) : 0;
+            if (_mEl.currentTime > bu + 0.35) {
+              _mEl.currentTime = Math.max(0, bu - 0.25);
+              if (!s.seekToast) { s.seekToast = true; _toast(_i('shell.overlay.txSeekWait', '转码缓冲中，稍后可任意跳转'), { type: 'info', duration: 4000 }); }
+            }
+          } catch (_) { }
+        };
+        try { _mEl.addEventListener('seeking', s.onSeeking); } catch (_) { }
+        _ovStream = s;
+        bm.playableStream({ src: filePath, kind: kind, reqId: rid, token: rid }).then(function (r) {
+          if (_ovStream !== s) { return; }   // 已取消/换代 → 丢弃
+          if (r && r.ok && r.mode === 'stream' && r.codec) {
+            try {
+              var ms = new MediaSource();
+              s.ms = ms;
+              s.url = URL.createObjectURL(ms);
+              ms.addEventListener('sourceopen', function () {
+                if (_ovStream !== s) { return; }
+                try {
+                  // ★ addSourceBuffer 要全 MIME（含 codecs= 引号）——探针实锤：只传 codec 串必 NotSupportedError 回退经典
+                  var _mime = (r.isVideo !== false ? 'video/mp4' : 'audio/mp4') + '; codecs="' + r.codec + '"';
+                  s.sb = ms.addSourceBuffer(_mime);
+                  s.sb.addEventListener('updateend', function () { _ovStreamPump(); });
+                  try { if (r.duration > 0) { ms.duration = r.duration; } } catch (_) { }
+                  _ovStreamPump();
+                } catch (e) { _ovStreamFail(s, 'sb'); }
+              });
+              if (!s.wantPlay) { try { _mEl.autoplay = false; } catch (_) { } try { _mEl.pause(); } catch (_) { } }
+              _mEl.src = s.url;
+              if (s.wantPlay) {
+                try { var pp = _mEl.play(); if (pp && pp.catch) { pp.catch(function () { }); } } catch (_) { }
+                s.started = true;
+              }
+              try { if (_barApi.syncPlay) { _barApi.syncPlay(); } } catch (_) { }
+            } catch (e) { _ovStreamFail(s, 'ms'); }
+            return;
+          }
+          if (r && r.ok && r.mode === 'cache' && r.path) {
+            // 桥内快路径（缓存命中 / copy 重封装）：等价经典产物 → 走经典重开（禁拆在播内容）
+            _ovStreamDetach(s, false);
+            _ovTxReqId = null;
+            _ovTxBarShow(false);
+            _reopenTxResult(String(r.path).replace(/\\/g, '/'));
+            return;
+          }
+          _ovStreamFail(s, (r && r.error) || 'refused');
+        }).catch(function () {
+          if (_ovStream === s) { _ovStreamFail(s, 'invoke'); }
+        });
+      }
       var _ovMediaTx = function () {
         var _file = _curLocal();
-        if (_txTried || !_file) { _ovMediaFail(); return; }
-          _txTried = true;
-        _ovTxRun(_file, _txKind, function (newPath) {
-          // ★ 2026-10-02：转码重开携全量状态（isTx 显式——历史由宿主硬编码；播放意图/倍速/模式/音量/dock 边回灌——历史遗漏致重开后音量/暂停态丢失）
-          _reopenHost({
-            mode: _txKind, src: 'file:///' + newPath, localPath: newPath, list: _plList, index: _plIdx, isTx: true,
-            paused: !_playIntent,
-            rate: _ovMediaRate, loop: _ovMediaLoop, shuffle: _ovMediaShuffle, follow: _ovMediaFollow,
-            volume: (_barApi && _barApi.getVol) ? _barApi.getVol() : 1, muted: !!_mEl.muted, dockSide: _ovDockSide || 'right'
-          });
-        }, _ovMediaFail, H);     };
+        if (!_file) { _ovMediaFail(); return; }
+        // ★ 重入护栏（2026-10-02）：已在转码/回退链中 → 重复 error 事件一律忽略。
+        //   旧实现此处直接骤判失败（_ovMediaFail）——转码 >8s 的慢文件必被后续 error/定时器误伤。
+        if (_txTried) { return; }
+        _txTried = true;
+        // ★ 8s 静默卡死兑底定时器必须熄火（2026-10-02）：旧实现遗留——若不熄，它到点会 removeAttribute('src')
+        //   把在飞的 MSE 流源拆掉（经典路径同隐患，纯收益修复）。
+        if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; }
+        var _bm = (H.bridge && H.bridge.media) || null;
+        // ★ 渐进转码优先（MSE 边转边播）；桥不支持 → 经典全量转码
+        if (_bm && typeof _bm.playableStream === 'function' && typeof _bm.onPlayableStreamEvent === 'function') {
+          _ovStreamRun(_file, _txKind);
+          return;
+        }
+        _ovTxRun(_file, _txKind, function (newPath) { _reopenTxResult(newPath); }, _ovMediaFail, H);
+      };
       // ★ 播放意图显式化（2026-09-28 q319 修复「切歌即暂停/列表循环停摆/按钮态错乱」）：wantPlay 由动作语义传入
       //   —— mount 期冻结的 _autoPlay 只决定「首载」（恢复场景安静启动）；此后一切切轨（点击列表/⏮⏭/播完进位/
       //   跳过坏轨/追加起播）恒续播。图标对齐：Chromium 重设 src 打断播放只发 abort/emptied、不发 pause（探针实锤）
@@ -1956,6 +2152,7 @@ function mount(opts) {
     keysUp: _barApi.keysUp,
     esc: _barApi.esc,
     destroy: function () {
+      try { _ovTxAbort(); } catch (_) { }   // ★ 在飞转码（经典/渐进流）随挂载销毁同链收尾
       try { if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; } } catch (_) { }
       try { _barApi.cleanup(); } catch (_) { }
       try { _mEl.pause(); _mEl.removeAttribute('src'); _mEl.load(); } catch (_) { }

@@ -142,6 +142,13 @@ export function hardenSession(): void {
     ses.setPermissionRequestHandler((_wc, permission, callback) => callback(_PERM_ALLOW.has(permission)));
     ses.setPermissionCheckHandler((_wc, permission) => _PERM_ALLOW.has(permission));
 
+    // ★ 拼写检查总闸（长跑内存治理）：Windows SpellcheckService 在每次页面/Frame 初始化时枚举
+    //   HKCU\SOFTWARE\Microsoft\Spelling\Dictionaries 且不释放句柄——实测每次页面加载 +9~18 个
+    //   Key 句柄（长跑实测主进程句柄 84% 为该注册表键残柄，内存随之膨胀）。webPreferences
+    //   spellcheck:false 只关渲染侧请求、挡不住该枚举；session 级关闭是唯一总闸
+    //   （运行时实测：关闭后同条件 reload 句柄零增长）。qd 全功能不依赖拼写检查，零能力影响。
+    try { ses.setSpellCheckerEnabled(false); } catch { /* 旧内核无此 API */ }
+
     ses.webRequest.onHeadersReceived((details, cb) => {
         const headers = details.responseHeaders || {};
         delete headers['x-frame-options'];

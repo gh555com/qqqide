@@ -58,6 +58,25 @@ function resolveSfxPath(appRoot: string, file: string): string {
 }
 
 export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
+    // ★ 懒启配套预热（2026-10-02）：yz 音效解码缓存预热——禁为「预热」主动拉起引擎
+    //   （旧实现 = 3s 定时 invoke → 隐式 spawn → 整会话常驻）；仅引擎已存活时预热 + 首次真实播放后补一次。
+    let _yzPrimed = false;
+    // ★ 懒启配套（2026-10-02）：引擎未存活时收到的电台状态缓存（引擎拉起的首个真实播放前重放）
+    let _pendingRadio: any = null;
+    const _primeYzSfx = (): void => {
+        if (_yzPrimed) { return; }
+        try {
+            const wd = resolveWebappDir(appRoot);
+            if (!wd) { return; }
+            const yzDir = path.join(wd, 'assets', 'yz');
+            if (!fs.existsSync(yzDir)) { return; }
+            const files = fs.readdirSync(yzDir).filter(f => /\.mp3$/i.test(f));
+            if (files.length === 0) { return; }
+            _yzPrimed = true;
+            engine.invoke('prime_sfx', { paths: files.map(f => path.join(yzDir, f)) }, 10000).catch(() => { /* ignore */ });
+        } catch { /* ignore */ }
+    };
+
     // ★ 引擎主动事件广播（Savor 2026-09-19）: audio_state_changed / audio_finished → 全窗口
     engine.onEvent((evt: any) => {
         try {
@@ -76,7 +95,9 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
             const abs = resolveSfxPath(appRoot, f);
             if (!abs) { return { ok: false, error: 'empty_path' }; }
             const vol = opts && typeof opts.volume === 'number' ? opts.volume : 1.0;
-            return await engine.invoke('play_sfx', { path: abs, volume: vol }, 5000);
+            const _r = await engine.invoke('play_sfx', { path: abs, volume: vol }, 5000);
+            _primeYzSfx();   // 首次真实播放后补预热（懒启配套；否则永不预热）
+            return _r;
         } catch (err: any) {
             return { ok: false, error: String((err && err.message) || err) };
         }
@@ -100,13 +121,27 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
             _sfxDisabledPatterns = pats.map((p: any) => String(p)).filter(Boolean);
             return { ok: true };
         }
+        // ★ 懒启铁律（2026-10-02 实锤：savor 启动同步 get_audio_state → 隐式 spawn → 懒启被击穿）：
+        //   只读/状态类调用禁拉起引擎——未存活即如实返回（引擎在首个真实播放时自然拉起，状态由事件自然对齐）。
+        
+        if (!engine.isAlive()) {
+            if (String(action || '') === 'get_audio_state') { return { ok: true, playing: false, alive: false }; }
+            if (String(action || '') === 'set_radio_status') { _pendingRadio = { ...(params || {}) }; return { ok: true, deferred: true }; }
+        }
         // ★ Savor 音乐：路径经统一解析（'assets/savor/x.mp3' → webapp 绝对路径，同 play 语义）
+        // ★ 电台状态重放（懒启配套）：引擎即将拉起 → 先补送先前缓存的电台状态（防首播误走本地）
+        if (_pendingRadio) {
+            try { await engine.invoke('set_radio_status', _pendingRadio, 5000); } catch { /* ignore */ }
+            _pendingRadio = null;
+        }
         if (String(action || '') === 'play_music') {
             try {
                 const p: any = { ...(params || {}) };
                 if (p.path) { p.path = resolveSfxPath(appRoot, String(p.path)); }
                 if (p.intro) { p.intro = resolveSfxPath(appRoot, String(p.intro)); }
-                return await engine.invoke('play_music', p, 15000);
+                const _r2 = await engine.invoke('play_music', p, 15000);
+                _primeYzSfx();   // 懒启配套
+                return _r2;
             } catch (err: any) {
                 return { ok: false, error: String((err && err.message) || err) };
             }
@@ -131,17 +166,9 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
         }
     });
 
-    // ★ 预热 yz 音效解码缓存 — 首响零延迟 (性能优化, 启动 3s 后静默执行)
+    // ★ 旧「启动 3s 预热」已废（懒启配套）——仅在引擎已存活时预热；否则等首个真实播放后补。
     setTimeout(() => {
-        try {
-            const wd = resolveWebappDir(appRoot);
-            if (!wd) { return; }
-            const yzDir = path.join(wd, 'assets', 'yz');
-            if (!fs.existsSync(yzDir)) { return; }
-            const files = fs.readdirSync(yzDir).filter(f => /\.mp3$/i.test(f));
-            if (files.length === 0) { return; }
-            engine.invoke('prime_sfx', { paths: files.map(f => path.join(yzDir, f)) }, 10000).catch(() => { /* ignore */ });
-        } catch { /* ignore */ }
+        try { if (engine.isAlive()) { _primeYzSfx(); } } catch { /* ignore */ }
     }, 3000);
 }
 

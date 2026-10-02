@@ -120,6 +120,7 @@
 		var _onlQAt = 0;
 
 		function fetchOnline(force) {
+			if (!force && document.hidden) return; // ★ 2026-10-02: 隐藏窗零请求（回前台 visibilitychange 补拉）
 			var now = Date.now();
 			if (!force && now - _onlLastFetch < 240000) return;
 			_onlLastFetch = now;
@@ -128,7 +129,8 @@
 				.then(function (data) {
 					if (!data || !data.ok) return;
 					if (typeof data.total === 'number') {
-						$onl.textContent = data.total > 0 ? data.total.toLocaleString() : '0';
+						var _ot = data.total > 0 ? data.total.toLocaleString() : '0';
+						if ($onl.textContent !== _ot) $onl.textContent = _ot; // ★ 值同零写（2026-10-02 审计）
 					}
 					// ★ 弹窗首行：当前人数（与左下角同值）+ ※最近24小时平均
 					var $now = document.getElementById('qqq-onl-now');
@@ -298,7 +300,10 @@
 			// ★ 统计在线人数，同步更新左下角（比 online-total 缓存更实时）
 			var onlineCount = 0;
 			for (var j = 0; j < users.length; j++) { if (users[j].online) onlineCount++; }
-			if ($onl) $onl.textContent = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
+			if ($onl) {
+				var _oc = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
+				if ($onl.textContent !== _oc) $onl.textContent = _oc; // ★ 值同零写（2026-10-02 审计）
+			}
 			// 弹窗首行当前人数与左下角恒同值（同源更新，防两数字打架）
 			var $now = document.getElementById('qqq-onl-now');
 			if ($now && $onl) $now.textContent = $onl.textContent || '0';
@@ -405,6 +410,8 @@
 		// 数据源: /api/qqqide/online-users 当前用户行 total_m（分钟，服务端 companion_seconds 权威累计）
 		// 口径: Math.round(total_m/60)+'h' 与在线面板「累计(h)」完全一致；客户端零记录，直接打印服务器值
 		var $tot = document.getElementById('qqq-status-total');
+		// ★ 值同零写（2026-10-02 审计）：减少文本节点替换 → 状态区实测退避零多余触发
+		function _setTot(txt) { if ($tot && $tot.textContent !== txt) $tot.textContent = txt; }
 
 		// 与服务端 maskPhone 同款（phone[:5] + **** + 后4位）
 		function maskPhoneLikeServer(p) {
@@ -422,7 +429,8 @@
 			var target = '';
 			try { if (window.qqqLogin) target = window.qqqLogin.getPhone() || ''; } catch (e) { }
 			target = maskPhoneLikeServer(target);
-			if (!target) { $tot.textContent = '--'; return; }
+			if (!target) { _setTot('--'); return; }
+			if (!force && document.hidden) return; // ★ 2026-10-02: 隐藏窗零请求（回前台 visibilitychange 补拉）
 			var _mtNow = Date.now();
 			if (!force && _mtNow - _myTotalLastFetch < 240000) return;
 			_myTotalLastFetch = _mtNow;
@@ -432,11 +440,11 @@
 					if (!data || !data.ok || !data.users || !data.users.length) return;
 					for (var i = 0; i < data.users.length; i++) {
 						if (data.users[i].phone === target && typeof data.users[i].total_m === 'number') {
-							$tot.textContent = Math.round(data.users[i].total_m / 60) + 'h';
+							_setTot(Math.round(data.users[i].total_m / 60) + 'h');
 							return;
 						}
 					}
-					$tot.textContent = '--';
+					_setTot('--');
 				})
 				.catch(function () { /* 静默 */ });
 		}
@@ -455,12 +463,20 @@
 					window.open(url, '_blank');
 				}
 			});
-		}
-
-		fetchOnline();
+		}		fetchOnline();
 		fetchMyTotal();
-		setInterval(fetchOnline, 300000);
-		setInterval(fetchMyTotal, 300000);
+		// ★ 2026-10-02 请求治理：两轮询合一（同 5 分钟节拍）+ 隐藏窗零请求 —— 回前台经 visibilitychange
+		//   立即补拉（两函数各自 4 分钟门防抖）；多窗口后台驻留不再把重量级在线接口放大成服务端洪峰
+		setInterval(function () {
+			if (document.hidden) return;
+			fetchOnline();
+			fetchMyTotal();
+		}, 300000);
+		document.addEventListener('visibilitychange', function () {
+			if (document.hidden) return;
+			fetchOnline();
+			fetchMyTotal();
+		});
 	})();
 
   // ═══ 单调时钟锚点（变速齿轮免疫，三保险） ═══
@@ -483,12 +499,11 @@
   // 从公共时间服务器获取 UTC 时间（不请求我们服务器）
   function calibrateFromPublicTime() {
     // 首先检查是否有新的 SSE 锚点（最高优先级）
-    pollSseAnchor();
-
-    // 如果已有 SSE 锚点且不超过 10 分钟，跳过公共校准
-    if (_timeAnchor && _timeAnchor.source === 'sse') {
-      var age = performance.now() - _timeAnchor.perfNow;
-      if (age < 600000) return; // SSE 锚点 < 10 分钟，够新鲜
+    pollSseAnchor();    // ★ 2026-10-02 请求治理：任何来源新鲜锚点（<10 分钟）→ 跳过公共校准
+    //   （旧实现只认 'sse' 源 → 无 SSE 时每分钟重拉一次 cloudflare trace；单调钟漂移可忽略）
+    if (_timeAnchor && _timeAnchor.perfNow) {
+      var age = performance.now() - _timeAnchor.perfNow;
+      if (age < 600000) return; // 锚点 < 10 分钟，够新鲜
     }
 
     // 主：Cloudflare trace（全球 CDN，含中国）→ 解析 ts=Unix秒
@@ -552,14 +567,21 @@
     setInterval(tick, 1000);
   }
 
-  // ═══ 窄窗口退避（实测级联）══════════════════════════════════════════════
-  // 旧固定宽度阈值只对中文宽度成立：长译语言（fr/de/es/ru…）活动名/赞助商实测挤出裁切
-  // （实测 fr 1100px 窗口内容超界 377px）。改为「实测内容宽 vs 可用宽」逐级隐藏——语言无关、
-  // 自适应未来新增区块；4 级语义不变：1 赞助商 → 2 活动名 → 3 wq+版本+total+mem → 4 在线。
+  // ═══ 窄窗口退避（实测级联 v2 · 2026-10-02：4 级 → 8 级 + 增量重算，稳态零 DOM 写）═══════════
+  // 旧固定宽度阈值只对中文宽度成立（fr 1100px 超界 377px 实锤）→ 改「实测内容宽 vs 可用宽」逐级隐藏。
+  // 级序: 1 赞助商 → 2 活动名 → 3 wq+陪伴+内存 → 4 在线 → 5 vibe → 6 原料 → 7 眼睛 → 8 清爽；
+  // 版本号+通知点永驻（通知中心永远可达）；时钟/缩放徽章天然豁免；再窄 = 应用物理下限（兜底裁切）。
+  // ★ 性能（q397 审计）：旧实现每次触发「全移除→逐级重加」= 5~9 次强制回流，且被时钟/vibe
+  //   每秒文本 tick 打一次；v2 增量重算——稳态只做 1 次实测零 DOM 写；释放试放由「受阻水位」
+  //   门控（余量增长 >4px 才再试），文本 tick 不再产生 class 抖动。诊断 = window.qqqStatusFit.stats()
   var $statusArea = document.querySelector('.qqq-status-area');
-  var STATUS_DENSE_LEVELS = ['qqq-dense-1', 'qqq-dense-2', 'qqq-dense-3', 'qqq-dense-4'];
+  var STATUS_DENSE_LEVELS = ['qqq-dense-1', 'qqq-dense-2', 'qqq-dense-3', 'qqq-dense-4', 'qqq-dense-5', 'qqq-dense-6', 'qqq-dense-7', 'qqq-dense-8'];
+  var _sdLvl = 0;           // 当前密度级（增量重算锚）
+  var _sdBlockSlack = -1;   // 释放受阻水位（上次试放失败时的余量；-1 = 无阻碍）
+  var _sdRaf = null;
+  function _sdRow() { return $statusArea ? $statusArea.querySelector('.qqq-status-row') : null; }
   function _statusRowFits() {
-    var row = $statusArea.querySelector('.qqq-status-row');
+    var row = _sdRow();
     if (!row) return true;
     var lim = row.getBoundingClientRect().right - (parseFloat(getComputedStyle(row).paddingRight) || 0);
     var kids = row.children, maxRight = -Infinity;
@@ -569,21 +591,48 @@
     }
     return maxRight <= lim + 0.5;
   }
-  function updateStatusDensity() {
+  function _sdSlack() {
+    var row = _sdRow();
+    if (!row) return 0;
+    var s = row.clientWidth - row.scrollWidth; // 整数口径，仅作释放门控
+    return s > 0 ? s : 0;
+  }
+  function _sdApply() {
     if (!$statusArea) return;
-    for (var i = 0; i < STATUS_DENSE_LEVELS.length; i++) $statusArea.classList.remove(STATUS_DENSE_LEVELS[i]);
-    if (_statusRowFits()) return;
-    for (var j = 0; j < STATUS_DENSE_LEVELS.length; j++) {
-      $statusArea.classList.add(STATUS_DENSE_LEVELS[j]);
-      if (_statusRowFits()) break;
+    for (var i = 0; i < STATUS_DENSE_LEVELS.length; i++) {
+      $statusArea.classList.toggle(STATUS_DENSE_LEVELS[i], i < _sdLvl);
     }
   }
-  window.addEventListener('resize', updateStatusDensity);
+  function updateStatusDensity() {
+    if (!$statusArea) return;
+    var fits = _statusRowFits();
+    if (fits) {
+      if (_sdLvl === 0) return; // 稳态：仅 1 次实测，零 DOM 写
+      var sl = _sdSlack();
+      if (_sdBlockSlack >= 0 && sl <= _sdBlockSlack + 4) return; // 余量未涨 → 不试放（防抖）
+      while (_sdLvl > 0) {
+        _sdLvl--; _sdApply();
+        if (!_statusRowFits()) { _sdLvl++; _sdApply(); _sdBlockSlack = _sdSlack(); return; }
+      }
+      _sdBlockSlack = -1; // 全释放
+    } else {
+      while (_sdLvl < STATUS_DENSE_LEVELS.length) {
+        _sdLvl++; _sdApply();
+        if (_statusRowFits()) break;
+      }
+      _sdBlockSlack = _sdSlack(); // 刚装下 → 试放必失败，先钉水位（防下次 tick 空试放）
+    }
+  }
+  function _scheduleStatusDensity() {
+    if (_sdRaf) return;
+    _sdRaf = requestAnimationFrame(function () { _sdRaf = null; updateStatusDensity(); });
+  }
+  window.addEventListener('resize', _scheduleStatusDensity);
   updateStatusDensity();
   // 文本动态变化（i18n 切换 / 活动名换字 / 版本号到位）后重算 —— 防首次判定后长译挤出裁切
   window.addEventListener('qqq-lang-change', function () { setTimeout(updateStatusDensity, 60); });
   (function () {
-    var row = $statusArea && $statusArea.querySelector('.qqq-status-row');
+    var row = _sdRow();
     if (!row || typeof MutationObserver === 'undefined') return;
     var t = null;
     new MutationObserver(function () {
@@ -591,5 +640,11 @@
       t = setTimeout(function () { t = null; updateStatusDensity(); }, 400);
     }).observe(row, { subtree: true, childList: true, characterData: true });
   })();
-  // ═══ 窄窗口退避（实测级联）END ═══
+  try {
+    window.qqqStatusFit = {
+      refresh: _scheduleStatusDensity,
+      stats: function () { return { lvl: _sdLvl, blockSlack: _sdBlockSlack, fits: _statusRowFits() }; }
+    };
+  } catch (e) { }
+  // ═══ 窄窗口退避（实测级联 v2）END ═══
 }

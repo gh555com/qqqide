@@ -58,6 +58,7 @@
       "in": "放大编辑器字体（Ctrl+Alt+=）",
       "out": "缩小编辑器字体（Ctrl+Alt+-）"
     },
+    "moreBtn": "更多按钮（窗口过窄时收纳于此）",
     "theme": {
       "toggle": "切换亮色/暗色",
       "switchToLight": "切换到亮色",
@@ -115,6 +116,8 @@
       "loadFailed": "图片加载失败，无法预览",
       "mediaFailed": "媒体加载失败，可能格式不受支持或文件已损坏",
       "transcoding": "正在转码预览…",
+      "txStreaming": "边转边播 · 正在转码…",
+      "txSeekWait": "转码缓冲中，稍后可任意跳转",
       "mplay": "播放",
       "mpause": "暂停",
       "mmute": "静音",
@@ -238,6 +241,9 @@
       "coresUnit": "核",
       "resetMem": "清除内存曲线历史，从零重记（删 mem-curve.log，不影响 CPU 曲线）",
       "resetCpu": "清除 CPU 曲线历史，从零重记（删 cpu-curve.log）",
+      "releaseTitle": "刷新该窗口以释放内存（会中断窗口内进行中的操作）",
+      "releaseDone": "已刷新窗口，正在回收内存…",
+      "releaseFail": "该进程不是窗口，无法刷新",
       "cpuSoloUnit": "CPU单核时间",
       "plistTitle": "qqqide 专用工作集（本包进程）",
       "winUnit": "窗口",

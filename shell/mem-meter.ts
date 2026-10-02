@@ -43,7 +43,7 @@ const CURVE_FILE_MAX = 512 * 1024;
 let _userData = '';
 let _label = ''; // v13: 启动包标识 = 含 qqqide.exe 的包根目录完整路径（绿色包 E:\s\w\qqqide-win-x64 / dev 项目根），qoast 文案用
 let _timer: ReturnType<typeof setInterval> | null = null;
-let _last: any = { ts: 0, mb: 0, procs: 0, win: 0, rows: [] as { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[] }; // 最新广播快照（成功值 / 失败保留旧值）
+let _last: any = { ts: 0, mb: 0, procs: 0, win: 0, rows: [] as { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number; wid?: number }[] }; // 最新广播快照（成功值 / 失败保留旧值）
 // ★ v29 通道绝缘（2026-09-09 f76 定案）：统计 = 纯血缘进程树（受管圈）。v28 分类层
 // （own/external exe 路径判定 + 外圈雷达 + ·外 显示）已整体废弃——win32 打开通道
 // （openExternal/openPath）relay 化后外部程序血缘结构性不可达，无类可分。
@@ -256,7 +256,7 @@ async function _snapshot(): Promise<void> {
       const wall = _cpuPrev ? now - _cpuPrev.ts : 0;
       if (typeof r.ncpu === 'number' && r.ncpu > 0) _ncpu = r.ncpu;
       // 行级差分（用旧基线）+ 树级求和（同分母，Σ行级核数 = 树级占用核数）
-      const rows: { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number }[] = [];
+      const rows: { pid: number; ppid: number; ws: number; n?: string; cpu?: number | null; cs?: number; wid?: number }[] = [];
       let coresSum = 0, coresCnt = 0;
       for (const row of (r.rows || []) as { pid: number; ppid: number; ws: number; n?: string; ut: number; kt: number }[]) {
         const c = _rowCpu(row.pid, row.ut || 0, row.kt || 0, wall);
@@ -265,6 +265,14 @@ async function _snapshot(): Promise<void> {
       }
       const cores = coresCnt > 0 ? Math.min(coresSum, _ncpu || coresSum) : null; // 树级瞬时核数（顶封 ncpu 防尖峰）
       if (cores !== null) { _cpuAccSum += cores; _cpuAccCnt++; }
+      // ★ 窗口归属标注（2026-10-02）：pid → winId 映射——渲染进程行据此显示「⟳ 刷新释放」按钮
+      try {
+        const pidToWin = new Map<number, number>();
+        for (const w of BrowserWindow.getAllWindows()) {
+          try { if (!w.isDestroyed()) { pidToWin.set(w.webContents.getOSProcessId(), w.id); } } catch { /* ignore */ }
+        }
+        for (const row of rows) { const wid = pidToWin.get(row.pid); if (wid !== undefined) { row.wid = wid; } }
+      } catch { /* ignore */ }
       // v14: 窗口数 = py-broker EnumWindows 顶层可见窗口计数（IDE 窗 + DevTools 独立窗，用户可见口径）；
       // 非正数/缺失（枚举失败）→ 保留上次值
       _last = { ts: now, mb, procs: r.nodes || 0, win: (typeof r.nwin === 'number' && r.nwin > 0) ? r.nwin : _last.win, rows };
@@ -341,6 +349,22 @@ export function memMeterInit(userData: string): void {
   _userData = userData;
   try { _label = _resolveLabel(); } catch { _label = 'qqqide'; }
   ipcMain.handle('qqqide:mem:get-metrics', () => ({ mb: _last.mb, procs: _last.procs, win: _last.win, bootAt: _bootAt, rows: _last.rows, label: _label, cpu: _cpuMsg(), ncpu: _ncpu }));
+  // ★ 刷新释放（2026-10-02）：按渲染进程 pid 找到对应窗口 → webContents.reload()（软刷新 = 该窗口内存全回收，
+  //   恢复零损——楼层/编辑态均持久化）；非窗口进程（主/GPU/工具）如实报 not_found。
+  ipcMain.handle('qqqide:mem:release', (_e, pid: number) => {
+    try {
+      for (const w of BrowserWindow.getAllWindows()) {
+        try {
+          if (w.isDestroyed()) { continue; }
+          if (w.webContents.getOSProcessId() === pid) {
+            w.webContents.reload();
+            return { ok: true, winId: w.id };
+          }
+        } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
+    return { ok: false, reason: 'not_found' };
+  });
   ipcMain.handle('qqqide:mem:history', () => {
     // v7: 双流返回（memPts 内存曲线 / cpuPts CPU 曲线，渲染层按 ts 独立合并去重）
     const memPts: { t: number; v: number; n?: number }[] = [];

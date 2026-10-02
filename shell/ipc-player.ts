@@ -8,7 +8,8 @@
 //   ★ v17 单宿主域（2026-10-02 q319 定案）: 一切播放器窗只活在宿主进程（joker.exe --qqqide-play）——
 //   IDE 进程不再自建播放器窗；Q/右键加入/恢复 = 请求队列转发（player-host.ts 文件系统 IPC；宿主独立
 //   userData=Data/player-host 独立单例锁）；双击媒体 = 文件关联直启宿主/转发。IDE 退出与播放无关；
-//   宿主最后窗关闭即退（零常驻）。本模块在宿主域 = 执行面（建窗/恢复/追加全功能）；IDE 域 = 转发面。
+//   宿主最后窗关闭 → 温水滞留 30 分钟（2026-10-02 秒开修复 + v19 常温：期内新窗即取消；到期读 IDE 心跳——IDE 存活即续期〔IDE 存活期恒温〕；IDE 退出/崩溃按温水期真退；空启不滞留）。
+//   本模块在宿主域 = 执行面（建窗/恢复/追加全功能）；IDE 域 = 转发面（会话写方唯一 = 宿主——IDE 域 _persist no-op）。
 //   编队一等公民：开窗即 claimSquad 默认槽 + 标题 {槽}■{当前轨名}（轨变即刷，refreshWindowEntry）；
 //   关窗即 releaseSquad；热键可召回。不隶属任何 IDE 窗口（无 parent/无项目锁）——
 //   其他 IDE 窗口关完与它无关；全部窗口（IDE+播放器）都关完才随实例退。
@@ -31,7 +32,7 @@ import * as fs from 'fs';
 import { getOsBaseDir } from './portable-paths';
 import { claimSquad, releaseSquad, refreshWindowEntry, broadcastSquadState } from './squad-manager';
 import { getWebappBaseUrl } from './boot';
-import { isPlayerHostMode, queuePlayerRequest, startPlayerHostLoop, filesToItems, parsePlayFiles, clearPlayerHostState, playerHostAlive, ensurePlayerHostAlive, touchPlayerHostState } from './player-host';
+import { isPlayerHostMode, queuePlayerRequest, startPlayerHostLoop, filesToItems, parsePlayFiles, clearPlayerHostState, playerHostAlive, ensurePlayerHostAlive, touchPlayerHostState, ideKeepaliveFresh } from './player-host';
 import { stopPyBroker } from './py-broker';
 
 // 音频扩展名（仅用于开窗默认尺寸/最小高判定；与引擎 _AUDIO_EXTS / roam 白名单同口径）
@@ -55,6 +56,8 @@ interface PSession {
 }
 interface PWin { win: BrowserWindow; session: PSession; autoplay: boolean; saveTimer: any; boundsTimer: any; lastActive: number; }
 
+// ★ 秒开诊断打点（2026-10-02）：窗创建/亮相/滞留事件时刻（相对本模块求值）→ player-host.log
+const _modT0 = Date.now();
 let _packRoot = '';
 let _bootUrl = '';
 let _appVersion = '';
@@ -90,6 +93,9 @@ function _listSessions(): PSession[] {
 }
 let _restoring = false;   // 恢复批次进行中：抑制落盘（防「恢复 3 窗只开 1 窗」的半截列表覆写完整列表）
 function _persist(): void {
+    // ★ 会话写方唯一 = 宿主（2026-10-02）：IDE 域 _wins 恒空——旧行为在 IDE 退出时以空列表覆写本包槽，
+    //   会把宿主「仍打开的窗」快照清掉（下次启动恢复失效）；IDE 域一律 no-op。
+    if (!isPlayerHostMode()) { return; }
     if (_restoring) { return; }
     try {
         const fresh = _readStore();   // 磁盘最新（其他实例/包的槽保留——只换本包槽；tmp+rename 原子）
@@ -244,11 +250,60 @@ function _resolveOpenGeom(kind: string): any {
     return { x: px, y: py, w, h };
 }
 
+// ═══ 宿主温水期（2026-10-02 秒开修复；v19 常温升级）═══
+//   语义：宿主最后窗关闭后不立即退——滞留 HOST_LINGER_MS 供下次 Q/双击秒开（冷启 ≈ 进程冷启 ~0.9s
+//   + 窗口渲染；温水 = 仅窗口渲染）。期内任何新窗即取消滞留；到期复查：零窗且 IDE 心跳断供才真退。
+//   ★ 常温（v19）：到期读 ide-alive.json（IDE 主进程 60s 续写）——IDE 存活即续期＝IDE 全存活期恒温
+//   （免「每 IDE 会话一次冷启」）；IDE 退出/崩溃 → 心跳断供 → 按温水期正常退（零常驻语义恢复）。
+//   从未建窗（空启）不享受温水——维持零常驻（防 requestless 拉起残留）。
+const HOST_LINGER_MS = (() => {
+    const v = parseInt(String(process.env.QQQIDE_PLAYER_LINGER_MS || ''), 10);
+    return (isFinite(v) && v > 0) ? v : 30 * 60 * 1000;   // 探针可覆盖（QQQIDE_PLAYER_LINGER_MS）
+})();
+let _hadWindow = false;
+let _lingerTimer: any = null;
+function _cancelHostLinger(why: string): void {
+    if (_lingerTimer) {
+        clearTimeout(_lingerTimer);
+        _lingerTimer = null;
+        console.log('[player-host] idle linger canceled (' + why + ')');
+    }
+}
+/** 武装/续期温水计时器（到期：零窗 + IDE 心跳断供 → 真退；IDE 存活 → 续期）。 */
+function _armHostLinger(): void {
+    if (_lingerTimer) { return; }
+    console.log('[player-host] idle linger started (+' + Math.round(HOST_LINGER_MS / 1000) + 's; warm for next open)');
+    _lingerTimer = setTimeout(() => {
+        _lingerTimer = null;
+        try {
+            if (_quitting || _wins.size > 0) { return; }
+            if (ideKeepaliveFresh()) {                  // ★ IDE 存活 → 续期（常温：IDE 在跑 = 宿主不退）
+                console.log('[player-host] linger extended (ide alive)');
+                _armHostLinger();
+                return;
+            }
+            console.log('[player-host] linger expired → quit');
+            app.quit();
+        } catch { /* ignore */ }
+    }, HOST_LINGER_MS);
+}
+/** window-all-closed / 末窗 closed 汇入点（双挂点——事件顺序任一可靠即达）：有窗史 → 温水滞留；空启 → 立即退。 */
+export function noteHostAllWindowsClosed(): void {
+    try {
+        if (_quitting) { return; }
+        if (_wins.size > 0) { return; }                 // 防御：仍有窗（理论不可达）
+        if (!_hadWindow) { app.quit(); return; }        // 空启（从未建窗）——零常驻
+        _armHostLinger();
+    } catch { /* ignore */ }
+}
+
 /** 打开新播放器窗（从不复用——每次 Q 都是新窗口；restore=true = 启动恢复（暂停态））。 */
 export function openPlayerWindow(payload?: any): { ok: boolean; winId?: number; reason?: string } {
     const p = (payload && typeof payload === 'object') ? payload : {};
     const sess = _normSession(p.restore ? p.session : p);
     if (!sess.list.length) { return { ok: false, reason: 'empty' }; }
+    _hadWindow = true;
+    _cancelHostLinger('new window');
     const kind = _kindOf(sess.list[sess.index] || sess.list[0]);
     const geom = sess.bounds || _resolveOpenGeom(kind);
     const win = new BrowserWindow({
@@ -275,6 +330,7 @@ export function openPlayerWindow(payload?: any): { ok: boolean; winId?: number; 
     (win as any).__qqqPlayerWin = true;
     const entry: PWin = { win, session: sess, autoplay: p.restore ? false : (p.play !== false), saveTimer: null, boundsTimer: null, lastActive: Date.now() };
     _wins.set(win.id, entry);
+    try { console.log('[player-host] win created +' + (Date.now() - _modT0) + 'ms (id=' + win.id + ')'); } catch { /* ignore */ }
     win.on('focus', () => { entry.lastActive = Date.now(); });
     // 编队：开窗即认领默认槽位 + 标题 {槽}■{轨名}（编队标题唯一权威 = squad-manager）
     try {
@@ -306,6 +362,7 @@ export function openPlayerWindow(payload?: any): { ok: boolean; winId?: number; 
     win.on('close', () => { try { _normAtClose = win.getNormalBounds(); } catch { /* ignore */ } });
     win.on('closed', () => {
         _wins.delete(winId);
+        if (_wins.size === 0) { noteHostAllWindowsClosed(); }   // 温水滞留（与 window-all-closed 双挂点）
         try { releaseSquad(winId); broadcastSquadState(); } catch { /* ignore */ }
         // ★ lastPos 写入（v13）：任何关闭（含退出时）都记位置；主动关闭才收敛会话（退出中保留供下次恢复）
         try {
@@ -315,7 +372,10 @@ export function openPlayerWindow(payload?: any): { ok: boolean; winId?: number; 
             _writeStore(fresh);
         } catch { /* ignore */ }
     });
-    win.once('ready-to-show', () => { try { win.show(); win.focus(); } catch { /* ignore */ } });
+    win.once('ready-to-show', () => {
+        try { console.log('[player-host] win shown +' + (Date.now() - _modT0) + 'ms (id=' + winId + ')'); } catch { /* ignore */ }
+        try { win.show(); win.focus(); } catch { /* ignore */ }
+    });
     win.loadURL(_pageUrl()).catch(() => {
         console.warn('[player] loadURL failed');
         try { win.close(); } catch { /* ignore */ }
@@ -398,7 +458,7 @@ function _openExternalFiles(items: any[]): any {
 // ═══ 宿主运行时（--qqqide-play；2026-10-02 v17 单宿主域）═══
 //   启动序（禁乱序）：① 先写心跳（防 IDE 误判失活重复拉启）② 恢复上次未关会话（暂停态）
 //   ③ 本进程 argv 文件（双击/多选直启）④ 队列循环入位（watch + 启动清扫 + 二实例早到批次）
-//   ⑤ 零窗自退（既无会话也无请求 = 空启，不当常驻）。
+//   ⑤ 零窗自退（既无会话也无请求 = 空启，不当常驻）——有窗史则走温水滞留（详上「宿主温水期」）。
 //   ★ 禁把④（含启动清扫）排到②之前：清扫开窗会先落盘一笔会话，②再读盘恢复 → 同窗双开（探针实锤）。
 function _dispatchRequest(req: any): any {
     if (!req || typeof req !== 'object') { return { ok: false, reason: 'bad_request' }; }
@@ -419,7 +479,8 @@ function _startHostRuntime(): void {
     } catch { /* ignore */ }                                   // ③ argv 直启
     startPlayerHostLoop((req: any) => _dispatchRequest(req));  // ④ 队列循环（watch + 启动清扫）
     const emptyTimer = setTimeout(() => {
-        try { if (_wins.size === 0 && !_quitting) { app.quit(); } } catch { /* ignore */ }
+        // ★ 零窗自退（空启：既无会话也无请求 = 不当常驻）；已进入温水滞留的宿主不在此列（滞留自有到期退出）
+        try { if (_wins.size === 0 && !_quitting && !_lingerTimer) { app.quit(); } } catch { /* ignore */ }
     }, 900);
     if (typeof (emptyTimer as any).unref === 'function') { (emptyTimer as any).unref(); }
 }

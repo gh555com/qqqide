@@ -24,6 +24,8 @@
 //
 // PS2.0 兼容（Win7 出厂）：不用 ConvertTo-Json，输出 QQQIDE_SYSPY_* 行协议；
 // 脚本经 stdin（-Command -）传入，全程 ASCII，零临时脚本文件（UAC 兜底除外）。
+// CLR2 铁律（PS2 引擎 = CLR2）：禁用 PS3.0+ 构造（PSTypeName 等）；禁用 .NET4 API（RegistryKey.Handle
+// 等）——注册表 FT 读取走原生 RegOpenKeyExW（QS.GetKeyFT）。实测 PS2 下 -Command - 正常执行并退出。
 //
 // IPC：qqqide:syspy:check / qqqide:syspy:apply → preload bridge.sysPy
 
@@ -119,6 +121,22 @@ public static class QS {
   }
   [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
   public static extern int RegQueryInfoKey(IntPtr hKey, IntPtr a, IntPtr b, IntPtr c, IntPtr d, IntPtr e, IntPtr f, IntPtr g, IntPtr h, IntPtr i, IntPtr j, out long ft);
+  [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+  public static extern int RegOpenKeyExW(IntPtr hKey, string lpSubKey, int ulOptions, int samDesired, out IntPtr phkResult);
+  [DllImport("advapi32.dll")]
+  public static extern int RegCloseKey(IntPtr hKey);
+  public static int Ping() { return 1; }
+  // Key last-write FILETIME via native open (CLR2-safe: RegistryKey.Handle is .NET 4.0-only and
+  // breaks under Windows PowerShell 2.0 / Win7 in-box).
+  public static long GetKeyFT(string subKey) {
+    IntPtr hk = IntPtr.Zero;
+    int rc = RegOpenKeyExW(new IntPtr(unchecked((int)0x80000001)), subKey, 0, 0x20019, out hk);
+    if (rc != 0) { return 0; }
+    long ft = 0;
+    RegQueryInfoKey(hk, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out ft);
+    RegCloseKey(hk);
+    return ft;
+  }
   [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
   public static extern int AssocQueryString(int flags, int str, string assoc, string extra, StringBuilder outBuf, ref int outLen);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -134,16 +152,13 @@ public static class QS {
   }
 }
 '@
-if (-not ([System.Management.Automation.PSTypeName]'QS').Type) { OutKV 'OK' '0'; OutKV 'CODE' 'ps-init-failed'; exit 0 }
+$qsOk = $true
+try { $null = [QS]::Ping() } catch { $qsOk = $false }
+if (-not $qsOk) { OutKV 'OK' '0'; OutKV 'CODE' 'ps-init-failed'; exit 0 }
 
 function Get-KeyFT([string]$p) {
-  $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($p)
-  if (-not $k) { return [long]0 }
-  $ft = [long]0
-  $rc = [QS]::RegQueryInfoKey($k.Handle.DangerousGetHandle(), [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$ft)
-  $k.Close()
-  if ($rc -ne 0) { return [long]0 }
-  return $ft
+  try { return [QS]::GetKeyFT($p) } catch { }
+  return [long]0
 }
 function Get-AssocCmd([string]$e) {
   $sb = New-Object System.Text.StringBuilder 4096
@@ -271,6 +286,7 @@ if ($mode -eq 'apply') {
   $hOk = $false
   for ($i = 0; $i -lt 4; $i++) {
     $ft = Get-KeyFT $ucPath
+    if ($ft -le 0) { $vc = 'no-ft'; break }
     $h = [QS]::HashString([QS]::FmtV1($ext, $sid, $progId, $ft))
     $k = Open-UcWrite
     if (-not $k) { break }
@@ -284,7 +300,7 @@ if ($mode -eq 'apply') {
     $k.SetValue('ProgId', $progId, 'String')
     $k.Close()
   }
-  if (-not $hOk) { $vc = 'v1-retry-fail' }
+  if (-not $hOk -and $vc -eq 'v1') { $vc = 'v1-retry-fail' }
 
   # 3. HKCU PATH prepend (dedupe -> front; idempotent)
   $pathRaw = ''
@@ -359,14 +375,17 @@ if ($mode -eq 'apply') {
   }
 
   if (-not $pass) {
-    # fallback 2.9 (2026-10-02): system user-choice protection (Win11) - our full HKCU state is
-    # in place yet the system ignores it (.js on 25H2): a UAC/HKLM write is lower-priority and
-    # equally useless -> skip it, flag blocked, let the guided flow ask the user to pick once.
+    # fallback 2.9 (2026-10-02): system user-choice protection - our full HKCU state is in place
+    # yet the system ignores it (.js on Win11 25H2; also Win10 builds carrying the UCPD back-port):
+    # a UAC/HKLM write is lower-priority and equally useless -> skip it, flag blocked, let the
+    # guided flow ask the user to pick once.
     $cmdNow = Read-Value ('Software\Classes\' + $progId + '\shell\open\command') ''
     $defNow = Read-Value ('Software\Classes\' + $ext) ''
     $buildN = 0
     try { $buildN = [int][Environment]::OSVersion.Version.Build } catch { }
-    if (($cmdNow -eq $cmdline) -and ($defNow -eq $progId) -and ($buildN -ge 22000)) {
+    $ucpd = $false
+    try { if ($env:SystemRoot) { $ucpd = Test-Path ($env:SystemRoot + '\System32\drivers\UCPD.sys') } } catch { }
+    if (($cmdNow -eq $cmdline) -and ($defNow -eq $progId) -and (($buildN -ge 22000) -or $ucpd)) {
       $blocked = $true
       $vc = 'blocked'
     }
@@ -413,7 +432,7 @@ if ($mode -eq 'apply') {
   if ((Read-Value $ucPath 'Hash') -ne '') { $hh = '1' }
   OutKV 'UC_HASH2' $hh
   OutKV 'EXT_DEF2' (B64 (Read-Value ('Software\Classes\' + $ext) ''))
-  if ($Error.Count -gt 0) { OutKV 'PSERR' (B64 (($Error | Select-Object -First 3 | ForEach-Object { $_.ToString() }) -join ' | ')) }
+  if ($Error.Count -gt 0) { OutKV 'PSERR' (B64 (($Error | Where-Object { $_.ToString() -notmatch 'DeleteSubKeyTree|ReadLine|IncompleteParseException' } | Select-Object -First 3 | ForEach-Object { $_.ToString() }) -join ' | ')) }
   exit 0
 }
 
@@ -751,11 +770,21 @@ interface PsResult {
     raw: string;
 }
 
+// Windows PowerShell 解析：优先绝对路径（SystemRoot\System32\WindowsPowerShell\v1.0——PATH 被裁剪的
+// 机器/绿色包环境也稳）；缺失回落裸名。产品调用恒为 stdin（-Command -）：实测 PS2 引擎仅此模式正常
+// 执行并退出（-File / 内联 -Command 在管道 stdin 下不退出，禁改用）。
+const PS_EXE = (() => {
+    try {
+        const abs = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+        return fs.existsSync(abs) ? abs : 'powershell.exe';
+    } catch { return 'powershell.exe'; }
+})();
+
 export function runPs(script: string, env: Record<string, string>, timeoutMs: number, prefix: string = 'QQQIDE_SYSPY_'): Promise<PsResult> {
     return new Promise((resolve) => {
         let child: ChildProcessWithoutNullStreams;
         try {
-            child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '-'], {
+            child = spawn(PS_EXE, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '-'], {
                 env: { ...process.env, ...env } as NodeJS.ProcessEnv,
                 windowsHide: true,
             });
@@ -787,7 +816,7 @@ export function runPs(script: string, env: Record<string, string>, timeoutMs: nu
             const fields: Record<string, string> = {};
             const re = new RegExp('^' + prefix + '([A-Z0-9_]+)=(.*)$');
             for (const line of stdout.split(/\r?\n/)) {
-                const m = re.exec(line.trim());
+                const m = re.exec(line.trim().replace(/^\uFEFF/, ''));
                 if (m) fields[m[1]] = m[2];
             }
             if (!fields.CODE && stderr) fields.ERR = stderr.slice(0, 400);
@@ -1369,7 +1398,7 @@ function noteSyspyOutcome(portableRoot: string, t: 'python' | 'node', op: 'check
         if (res.blocked) viaStr += '+blk';
         const evt: syspyReport.SyspyEvent = {
             tg: t, op, ok,
-            code: failCode || String(res.code || 'ok'),
+            code: failCode || String(res.code || res.mode || 'ok'),
             via: viaStr,
             err: res.err ? String(res.err) : '',
             aq: res.aq ? String(res.aq) : '',

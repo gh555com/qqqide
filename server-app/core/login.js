@@ -230,7 +230,8 @@
   function _startBalancePoll() {
     _stopBalancePoll();
     _fetchBalance(true);
-    _balanceTimer = setInterval(function () { _fetchBalance(false); }, BALANCE_POLL_MS);
+    // ★ 2026-10-02 性能审计：隐藏窗跳过轮询（回前台 visibilitychange 补拉；函数内自带节流门）
+    _balanceTimer = setInterval(function () { if (!document.hidden) _fetchBalance(false); }, BALANCE_POLL_MS);
   }
 
   function _stopBalancePoll() {
@@ -241,11 +242,18 @@
   var _lvPollTimer = null;
   function _startLvPoll() {
     _stopLvPoll();
-    _lvPollTimer = setInterval(function () { _fetchLv(); }, LV_POLL_MS);
+    // ★ 2026-10-02 性能审计：隐藏窗跳过轮询（回前台 visibilitychange 补拉；函数内自带节流门）
+    _lvPollTimer = setInterval(function () { if (!document.hidden) _fetchLv(); }, LV_POLL_MS);
   }
   function _stopLvPoll() {
     if (_lvPollTimer) { clearInterval(_lvPollTimer); _lvPollTimer = null; }
   }
+  // ★ 2026-10-02 性能审计：隐藏期间被跳过的余额/LV 轮询，回前台一次补拉（两函数自带节流门）
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    try { _fetchBalance(false); } catch (e) { }
+    try { _fetchLv(); } catch (e) { }
+  });
 
   // ★ 2026-10-01 请求治理辅助（billing 高频路径的合并/节流）
   var _balanceRefreshTimer = null;

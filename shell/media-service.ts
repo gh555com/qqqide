@@ -63,6 +63,77 @@ export interface PlayableResult {
     stderr?: string;
 }
 
+// ── 渐进转码（MSE 边转边播；2026-10-02：「闪电」核心）───────────────────────
+export interface PlayableStreamOpts {
+    src: string;
+    kind?: 'video' | 'audio';           // image 不走流（经典路径）
+    reqId?: string;                     // 取消/进度关联（与经典共一取消入口）
+    token?: string;                     // 事件流归属令牌（渲染层生成；缺省 = reqId）
+}
+export interface PlayableStreamStart {
+    ok: boolean;
+    mode?: 'stream' | 'cache';
+    codec?: string;                     // MSE codecs 串（如 avc1.64001F,mp4a.40.2）
+    duration?: number;
+    isVideo?: boolean;
+    path?: string;                      // mode:'cache' 时直接可用产物
+    ext?: string;
+    cached?: boolean;
+    cancelled?: boolean;
+    error?: string;
+}
+
+/** fMP4 顶层 box 枚举（[start,end) 内连续 box → {t:类型, ps/pe:负载区间}）。 */
+function _topBoxes(buf: Buffer, start: number, end: number): Array<{ t: string; ps: number; pe: number }> {
+    const out: Array<{ t: string; ps: number; pe: number }> = [];
+    let o = start;
+    while (o + 8 <= end) {
+        let size = buf.readUInt32BE(o);
+        let hs = 8;
+        if (size === 1) { if (o + 16 > end) { break; } size = Number(buf.readBigUInt64BE(o + 8)); hs = 16; }
+        if (size < hs || o + size > end) { break; }
+        out.push({ t: buf.toString('ascii', o + 4, o + 8), ps: o + hs, pe: o + size });
+        o += size;
+    }
+    return out;
+}
+function _pickBox(buf: Buffer, start: number, end: number, type: string): { t: string; ps: number; pe: number } | null {
+    for (const b of _topBoxes(buf, start, end)) { if (b.t === type) { return b; } }
+    return null;
+}
+/** fMP4 初始段 → MSE 编解码串（moov→trak→mdia→stsd 首条目；avc1→avcC 三字节 / mp4a→.40.2）。 */
+function _parseFmp4Codec(init: Buffer): { video?: string; audio?: string } {
+    const out: { video?: string; audio?: string } = {};
+    const moov = _pickBox(init, 0, init.length, 'moov');
+    if (!moov) { return out; }
+    for (const trak of _topBoxes(init, moov.ps, moov.pe)) {
+        if (trak.t !== 'trak') { continue; }
+        const mdia = _pickBox(init, trak.ps, trak.pe, 'mdia'); if (!mdia) { continue; }
+        const hdlr = _pickBox(init, mdia.ps, mdia.pe, 'hdlr');
+        const minf = _pickBox(init, mdia.ps, mdia.pe, 'minf');
+        if (!hdlr || !minf || hdlr.ps + 12 > hdlr.pe) { continue; }
+        const htype = init.toString('ascii', hdlr.ps + 8, hdlr.ps + 12);
+        const stbl = _pickBox(init, minf.ps, minf.pe, 'stbl'); if (!stbl) { continue; }
+        const stsd = _pickBox(init, stbl.ps, stbl.pe, 'stsd'); if (!stsd) { continue; }
+        const entries = _topBoxes(init, stsd.ps + 8, stsd.pe);
+        if (!entries.length) { continue; }
+        const e = entries[0];
+        if (htype === 'vide' && e.t === 'avc1') {
+            // ★ 探针实锤（2026-10-02）：VisualSampleEntry 负载有 78 字节定长头（reserved/dataref/宽高/压缩名…）——
+            //   子 box（avcC）从 e.ps+78 才开始；从 e.ps 直扫会把定长头当 box 头误读 → avcC 恒 null（视频 codec 丢失实锤）。
+            const _vstart = Math.min(e.pe, e.ps + 78);
+            const avcC = _pickBox(init, _vstart, e.pe, 'avcC');
+            if (avcC && avcC.ps + 4 <= avcC.pe) {
+                const hx = (n: number): string => ('0' + n.toString(16).toUpperCase()).slice(-2);
+                out.video = 'avc1.' + hx(init[avcC.ps + 1]) + hx(init[avcC.ps + 2]) + hx(init[avcC.ps + 3]);
+            }
+        } else if (htype === 'soun' && e.t === 'mp4a') {
+            out.audio = 'mp4a.40.2';
+        }
+    }
+    return out;
+}
+
 export interface MediaResult {
     ok: boolean;
     path?: string;
@@ -502,6 +573,8 @@ export class MediaService {
     private _playInflight = new Map<string, Promise<PlayableResult>>();
     private _playLive = new Map<string, { kill: () => void }>();
     private _playCancelled = new Set<string>();
+    // ★ 渐进转码会话表（2026-10-02）：reqId → { pending（ack 前在途字节）, paused, ctl（stdout 背压）, kill }
+    private _streamLive = new Map<string, { pending: number; paused: boolean; ctl: { pause: () => void; resume: () => void } | null; kill: (() => void) | null }>();
     private static readonly PLAY_CACHE_MAX = 2 * 1073741824;
     private static readonly PLAY_CACHE_TARGET = 1536 * 1048576;
     /** 产物方案版本：转码规则变更必须 bump——旧规则产物自动失效（禁复用旧规则产物） */
@@ -778,7 +851,7 @@ export class MediaService {
         }
     }
 
-    /** 取消：树杀在飞 ffmpeg + 标记（结果返回 cancelled，不写 broken） */
+    /** 取消：树杀在飞 ffmpeg + 标记（结果返回 cancelled，不写 broken）；经典与渐进流共用。 */
     cancelPlayable(reqId: string): boolean {
         if (!reqId) { return false; }
         try { this._playCancelled.add(reqId); } catch { /* ignore */ }
@@ -786,6 +859,262 @@ export class MediaService {
         const h = this._playLive.get(reqId);
         if (h) { try { h.kill(); } catch { /* ignore */ } return true; }
         return false;
+    }
+
+    // =========================================================================
+    // playableStream — 渐进转码（MSE 边转边播；2026-10-02「闪电」核心）
+    //   重编码类文件不再等全量转码完成：ffmpeg 产出 fMP4（frag_keyframe+empty_moov）经 stdout 实时回传，
+    //   渲染层按 seq 喂 MediaSource —— 首帧 ≈ 秒出（旧路径 = 全量转码 6s 后才开播）。
+    //   字节同步镜像落盘 → 完成后校验 rename 为同一缓存产物（dst 命名与经典路径完全同源——
+    //   渐进产物二次打开 = 原生直放；copy 快路径/图片/缓存命中在内部直接走经典并当 cache 返回）。
+    //   流控：渲染层周期性 ack；在途 >32MB 暂停 ffmpeg stdout，回落到 <12MB 恢复；
+    //   停顿看门狗 = -progress 文件 3min 零推进树杀（与经典同口径）。
+    //   终局经 send({token, kind:'done'|'fail'}) 事件；本函数返回值 = 启动结果（moov 解析后即回）。
+    //   ★ 渐进路径不写 broken 熔断（解析/流失败一律由回退的经典路径裁决，防误禁）。
+    // =========================================================================
+    async playableStream(opts: PlayableStreamOpts, send: (evt: any) => void, onProgress?: (pct: number) => void): Promise<PlayableStreamStart> {
+        if (!opts || !opts.src) { return { ok: false, error: 'no_src' }; }
+        if (!fs.existsSync(opts.src)) { return { ok: false, error: 'src_missing' }; }
+        this.ensureResolved();
+        if (!this._ffmpegPath) { return { ok: false, error: 'ffmpeg_not_found' }; }
+        const kind: 'video' | 'audio' = (opts.kind === 'audio') ? 'audio' : 'video';
+        const reqId = String(opts.reqId || '');
+        const token = String(opts.token || reqId || '');
+        if (!token) { return { ok: false, error: 'no_token' }; }
+        const st = await this._srcStat(opts.src);
+        if (!st) { return { ok: false, error: 'src_missing' }; }
+        if (await this._brokenHit(st)) { return { ok: false, error: 'known_broken' }; }
+        // 缓存快路径（与经典同命名——命中即直放；零 ffprobe 进程）
+        const _fastExts: string[] = kind === 'audio' ? ['m4a', 'mp4'] : ['mp4'];
+        for (const _fe of _fastExts) {
+            const _fp = path.join(this._playDir(), st.sig + MediaService.PLAY_PLAN_VER + '.' + _fe);
+            if (fs.existsSync(_fp)) {
+                try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
+                try { const now = new Date(); fs.utimesSync(_fp, now, now); } catch { /* ignore */ }
+                return { ok: true, mode: 'cache', path: _fp, ext: _fe, cached: true };
+            }
+        }
+        const meta = await this._probeStreams(opts.src);
+        if (!meta || (!meta.vcodec && !meta.acodec)) { return { ok: false, error: 'probe_failed' }; }
+        const plan = this._planPlayable(kind, meta);
+        const dst = path.join(this._playDir(), st.sig + MediaService.PLAY_PLAN_VER + '.' + plan.ext);
+        if (fs.existsSync(dst)) {
+            try { vigBump('cache', { hit: 1 }); } catch { /* ignore */ }
+            try { const now = new Date(); fs.utimesSync(dst, now, now); } catch { /* ignore */ }
+            return { ok: true, mode: 'cache', path: dst, ext: plan.ext, duration: meta.duration, cached: true };
+        }
+        // 非重编码方案（copy 重封装）/图片 → 经典全量（秒级）当缓存命中返回
+        const isEncode = plan.args.indexOf('libx264') !== -1 || (kind === 'audio' && meta.acodec !== 'aac');
+        if (!isEncode) {
+            try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
+            const r = await this.playable({ src: opts.src, kind, reqId: reqId || undefined }, onProgress);
+            if (r.ok && r.path) { return { ok: true, mode: 'cache', path: r.path, ext: r.ext, duration: r.duration || meta.duration, cached: !!r.cached }; }
+            return { ok: false, cancelled: r.cancelled, error: r.error || 'classic_failed' };
+        }
+        try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
+        return await this._openStreamJob(opts.src, plan, dst, st, meta, reqId, token, send, onProgress);
+    }
+
+    /** ack 背压通道：渲染层每消费一批字节回执；解除暂停阈值 <12MB。 */
+    streamAck(reqId: string, bytes: number): boolean {
+        const s = reqId ? this._streamLive.get(reqId) : null;
+        if (!s) { return false; }
+        s.pending = Math.max(0, s.pending - Math.max(0, bytes | 0));
+        if (s.paused && s.pending < 12 * 1048576 && s.ctl) {
+            s.paused = false;
+            try { s.ctl.resume(); } catch { /* ignore */ }
+        }
+        return true;
+    }
+
+    private _openStreamJob(src: string, plan: { ext: string; args: string[] }, dst: string,
+        st: { sig: string; mtimeMs: number; size: number },
+        meta: { vcodec: string; acodec: string; duration: number; w: number; h: number },
+        reqId: string, token: string, send: (evt: any) => void, onProgress?: (pct: number) => void): Promise<PlayableStreamStart> {
+        return new Promise<PlayableStreamStart>((resolveStart) => {
+            let startResolved = false;
+            let startOk = false;
+            const resolveOnce = (r: PlayableStreamStart): void => { if (!startResolved) { startResolved = true; resolveStart(r); } };
+            (async () => {
+                const ext = plan.ext;
+                const tmp = dst.replace(new RegExp('\\.' + ext + '$'), '.part.stream' + (reqId ? '-' + reqId : '') + '.' + ext);
+                const prog = dst + '.prog';
+                try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
+                try { if (fs.existsSync(prog)) { fs.rmSync(prog, { force: true }); } } catch { /* ignore */ }
+                let ws: fs.WriteStream | null = null;
+                try { ws = fs.createWriteStream(tmp, { flags: 'w' }); } catch { ws = null; }
+                // 写流收尾器（★ 顺序铁律）：成功路径必须先 flush 全部字节再校验/rename（否则 rename 拿到半截文件）；
+                // 失败路径必须先 destroy 释放句柄再 rm tmp（Windows 对打开中的文件 rm 会失败 → 残件泄露）。幂等。
+                let wsClosed = false;
+                const closeWs = async (flush: boolean): Promise<void> => {
+                    if (wsClosed) { return; }
+                    wsClosed = true;
+                    const w = ws; ws = null;
+                    if (!w) { return; }
+                    try {
+                        if (flush) {
+                            w.end();
+                            await new Promise<void>((res) => { try { w.once('close', () => res()); } catch { res(); } setTimeout(res, 4000); });
+                        } else {
+                            w.destroy();
+                            await new Promise<void>((res) => { try { w.once('close', () => res()); } catch { res(); } setTimeout(res, 500); });
+                        }
+                    } catch { /* ignore */ }
+                };
+                const live: { pending: number; paused: boolean; ctl: { pause: () => void; resume: () => void } | null; kill: (() => void) | null } =
+                    { pending: 0, paused: false, ctl: null, kill: null };
+                if (reqId) { this._streamLive.set(reqId, live); }
+
+                // ── 字节流处理：镜像落盘 + 顶层 box 分帧（init=ftyp+moov；seg=moof+mdat 对）──
+                let acc: Buffer = Buffer.alloc(0);
+                let initDone = false;
+                let initBuf: Buffer = Buffer.alloc(0);
+                let segCur: Buffer[] | null = null;
+                let segBytes = 0;
+                let seq = 0;
+                const sendUnit = (kit: 'init' | 'seg', buf: Buffer): void => {
+                    if (!buf || !buf.length) { return; }
+                    seq++;
+                    try { send({ token, seq, kind: kit, b64: buf.toString('base64') }); } catch { /* ignore */ }
+                    live.pending += buf.length;
+                    if (live.pending > 32 * 1048576 && !live.paused && live.ctl) {
+                        live.paused = true;
+                        try { live.ctl.pause(); } catch { /* ignore */ }
+                    }
+                };
+                const flushSegment = (): void => {
+                    if (!segCur || !segCur.length) { segCur = null; segBytes = 0; return; }
+                    const buf = segCur.length === 1 ? segCur[0] : Buffer.concat(segCur, segBytes);
+                    segCur = null; segBytes = 0;
+                    sendUnit('seg', buf);
+                };
+                const feed = (d: Buffer): void => {
+                    try { if (ws) { ws.write(d); } } catch { /* ignore */ }
+                    acc = acc.length ? Buffer.concat([acc, d]) : d;
+                    while (acc.length >= 8) {
+                        let size = acc.readUInt32BE(0);
+                        let hs = 8;
+                        if (size === 1) { if (acc.length < 16) { break; } size = Number(acc.readBigUInt64BE(8)); hs = 16; }
+                        if (size < hs) { acc = Buffer.alloc(0); break; }          // 结构损坏——停帧（终局由 exit 码裁决）
+                        if (acc.length < size) { break; }
+                        const type = acc.toString('ascii', 4, 8);
+                        const box = Buffer.from(acc.subarray(0, size));
+                        acc = acc.subarray(size);
+                        if (!initDone) {
+                            if (type === 'ftyp' || type === 'moov' || type === 'free' || type === 'skip') {
+                                initBuf = initBuf.length ? Buffer.concat([initBuf, box]) : box;
+                            }
+                            if (type === 'moov') {
+                                initDone = true;
+                                const parsed = _parseFmp4Codec(initBuf);
+                                const codecStr = parsed.video && parsed.audio ? (parsed.video + ',' + parsed.audio) : (parsed.video || parsed.audio || '');
+                                if (!codecStr) {
+                                    resolveOnce({ ok: false, error: 'codec_parse_failed' });
+                                    try { if (live.kill) { live.kill(); } } catch { /* ignore */ }
+                                    break;
+                                }
+                                startOk = true;
+                                resolveOnce({ ok: true, mode: 'stream', codec: codecStr, duration: meta.duration, isVideo: !!meta.vcodec });
+                                sendUnit('init', initBuf);
+                            }
+                            continue;
+                        }
+                        if (type === 'moof') { flushSegment(); segCur = [box]; segBytes = box.length; }
+                        else if (type === 'mdat') { if (!segCur) { segCur = []; segBytes = 0; } segCur.push(box); segBytes += box.length; flushSegment(); }
+                        else if (segCur) { segCur.push(box); segBytes += box.length; }
+                    }
+                };
+
+                // 进度轮询 + 停顿看门狗（与经典同口径：progress 文件 3min 零推进 → 树杀）
+                let lastProgAt = Date.now();
+                let lastPct = -1;
+                let stalled = false;
+                const timer = setInterval(() => {
+                    if (stalled) { return; }
+                    try {
+                        if (fs.existsSync(prog)) {
+                            const pst = fs.statSync(prog);
+                            if (pst.mtimeMs > lastProgAt) { lastProgAt = pst.mtimeMs; }
+                            const txt = fs.readFileSync(prog, 'utf8');
+                            const us = MediaService._parseProgUs(txt);
+                            if (us != null && meta.duration > 0.2 && onProgress) {
+                                const pct = Math.max(0, Math.min(99, Math.round((us / 1e6) / meta.duration * 100)));
+                                if (pct !== lastPct) { lastPct = pct; try { onProgress(pct); } catch { /* ignore */ } }
+                            }
+                        }
+                    } catch { /* ignore */ }
+                    if (Date.now() - lastProgAt > 180_000) {
+                        stalled = true;
+                        try { if (live.kill) { live.kill(); } } catch { /* ignore */ }
+                    }
+                }, 600);
+                try { if ((timer as any).unref) { (timer as any).unref(); } } catch { /* ignore */ }
+
+                try {
+                    const isVideo = !!meta.vcodec;
+                    const extra = ['-movflags', 'frag_keyframe+empty_moov+default_base_moof'];
+                    const gop = isVideo ? ['-g', '48', '-keyint_min', '48', '-sc_threshold', '0'] : [];
+                    const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-progress', prog, '-i', src]
+                        .concat(plan.args, gop, extra, ['-f', 'mp4', 'pipe:1']);
+                    const r = await this.qz.spawn({
+                        cmd: this._ffmpegPath!,
+                        args,
+                        timeout: 2 * 3600_000,
+                        stallMs: 0,
+                        captureOutput: true,
+                        onStdoutChunk: (d: Buffer, ctl: { pause: () => void; resume: () => void }) => { live.ctl = ctl; feed(d); },
+                        onProc: (h: { pid?: number; kill: () => void }) => { live.kill = h.kill; if (reqId) { this._playLive.set(reqId, h); } },
+                    });
+                    if (reqId) { this._playLive.delete(reqId); }
+                    const cancelled = reqId ? (this._playCancelled.has(reqId) ? (this._playCancelled.delete(reqId), true) : false) : false;
+                    if (cancelled) {
+                        await closeWs(false);
+                        try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
+                        if (startResolved && startOk) { try { send({ token, kind: 'fail', cancelled: true }); } catch { /* ignore */ } }
+                        resolveOnce({ ok: false, cancelled: true, error: 'cancelled' });
+                        return;
+                    }
+                    if (stalled || r.exitCode !== 0 || !fs.existsSync(tmp)) {
+                        await closeWs(false);
+                        try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
+                        if (startResolved && startOk) { try { send({ token, kind: 'fail', error: stalled ? 'stalled' : 'ffmpeg_failed' }); } catch { /* ignore */ } }
+                        resolveOnce({ ok: false, error: stalled ? 'stalled' : 'ffmpeg_failed' });
+                        return;
+                    }
+                    await closeWs(true);   // ★ 全量字节落盘后才校验/rename（顺序反了 = rename 拿到半截文件）
+                    if (!MediaService._isValidPlayableOut(tmp, ext)) {
+                        try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
+                        if (startResolved && startOk) { try { send({ token, kind: 'fail', error: 'invalid_output' }); } catch { /* ignore */ } }
+                        resolveOnce({ ok: false, error: 'invalid_output' });
+                        return;
+                    }
+                    try { if (fs.existsSync(dst)) { fs.rmSync(dst, { force: true }); } } catch { /* ignore */ }
+                    try { fs.renameSync(tmp, dst); } catch {
+                        try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
+                        if (startResolved && startOk) { try { send({ token, kind: 'fail', error: 'rename_failed' }); } catch { /* ignore */ } }
+                        resolveOnce({ ok: false, error: 'rename_failed' });
+                        return;
+                    }
+                    await this._brokenClear(st.sig);
+                    try { onProgress && onProgress(100); } catch { /* ignore */ }
+                    setImmediate(() => { try { this._playSweep(); } catch { /* ignore */ } });
+                    if (startResolved && startOk) { try { send({ token, kind: 'done' }); } catch { /* ignore */ } }
+                    resolveOnce({ ok: false, error: 'already-finished' });   // 理论不可达（保底：永不悬挂）
+                } catch (e: any) {
+                    await closeWs(false);
+                    try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
+                    if (startResolved && startOk) { try { send({ token, kind: 'fail', error: 'stream_error' }); } catch { /* ignore */ } }
+                    resolveOnce({ ok: false, error: 'stream_error: ' + ((e && e.message) || e) });
+                } finally {
+                    clearInterval(timer);
+                    if (reqId) { this._playLive.delete(reqId); this._streamLive.delete(reqId); }
+                    await closeWs(false);   // 幂等兑底（已收尾则零动作）
+                    try { if (fs.existsSync(prog)) { fs.rmSync(prog, { force: true }); } } catch { /* ignore */ }
+                }
+            })().catch((e: any) => {
+                resolveOnce({ ok: false, error: 'stream_job_error: ' + ((e && e.message) || e) });
+            });
+        });
     }
 
     // -------------------------------------------------------------------------

@@ -5,12 +5,16 @@
 // Spawns engines/miniaudio_bridge.py as a child process and exposes JSON-line
 // stdio RPC (action-based: {"_id", "action", ...params}).
 // Lazy-started: only spawns when first qqq:audio:* IPC arrives.
+// ★ 2026-10-02 微刀：① 懒启落实——main.ts 启动即 ensure() 已删（IP 桥 3s 预热亦改「仅存活时预热」），
+//   整会话零声音 = 零音频进程（-37MB）；② Windows 恒 pythonw.exe——python.exe 即使管道 + windowsHide
+//   也会创建 conhost.exe（~5MB 常驻），pythonw（GUI 子系统）结构性零控制台。
 // ============================================================================
 
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as readline from 'readline';
+import { toPythonwExe } from './py-broker';
 
 interface PendingCall {
     resolve: (v: any) => void;
@@ -76,7 +80,7 @@ export class AudioEngine {
             console.warn('[audio] miniaudio_bridge.py not found, audio disabled');
             return false;
         }
-        const py = this.resolvePython();
+        const py = toPythonwExe(this.resolvePython());   // ★ 2026-10-02：pythonw 根治 conhost（管道协议零影响）
         try {
             const proc = spawn(py, ['-u', script], {
                 stdio: ['pipe', 'pipe', 'pipe'],

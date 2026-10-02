@@ -208,6 +208,10 @@
     if (window.qqqHelpMenu && typeof window.qqqHelpMenu.mount === 'function') {
       window.qqqHelpMenu.mount(_tabBarEl);
     }
+
+    // ★ 菜单行2 收纳机器联动（core/shell-menu-fit.js）：重建后重同步
+    //   （已收纳项重新隐藏 + ⋯ 重挂定位于 ★ 前——innerHTML 清空会带走 ⋯ 节点）
+    if (window.qqqMenuFit && typeof window.qqqMenuFit.refresh === 'function') window.qqqMenuFit.refresh();
   }
 
   // ═══════════════════════════════════════════════════════════════

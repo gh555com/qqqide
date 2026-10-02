@@ -223,6 +223,7 @@
     $plist = $panel.querySelector('.qqq-mem-hover-plist');
     buildFrame();
     wireReset();
+    wireRelease();
     wireStatsTip($stats);
     wireStatsTip($cStats);
     wireCrosshair();
@@ -690,10 +691,15 @@
       r = rows[i];
       var name = (r.n && r.n.length ? r.n : 'pid ' + r.pid);
       var mb = Math.max(1, Math.round(r.ws / 1024));
+      // ★ ⟳ 刷新释放槽（2026-10-02）：仅窗口渲染进程行显示按钮；无按钮行以占位保持列对齐
+      var rel = (typeof r.wid === 'number')
+        ? '<button class="qqq-mem-hover-prel" data-pid="' + r.pid + '" title="' + _T('shell.mem.releaseTitle', '刷新该窗口以释放内存（会中断窗口内进行中的操作）') + '">\u21BB</button>'
+        : '';
       html += '<div class="qqq-mem-hover-prow' + (i === 0 ? ' root' : '') + '">' +
         '<span class="qqq-mem-hover-pname" style="padding-left:' + (lvl[r.pid] * 12) + 'px">' + name + '</span>' +
         '<span class="qqq-mem-hover-pmb">' + mb + ' MB</span>' +
-        '<span class="qqq-mem-hover-pcpu">' + fmtRowTime(r.cs) + '</span></div>';
+        '<span class="qqq-mem-hover-pcpu">' + fmtRowTime(r.cs) + '</span>' +
+        '<span class="qqq-mem-hover-prelslot">' + rel + '</span></div>';
     }
     $plist.innerHTML = html;
   }
@@ -764,8 +770,10 @@
     if (!m) return;
     if (typeof m.mb === 'number' && m.mb > 0) {
       latest.mb = m.mb;
-      if ($val) $val.textContent = m.mb;
-      $memVal.textContent = m.mb + ' MB';
+      var _mbA = String(m.mb);
+      if ($val && $val.textContent !== _mbA) $val.textContent = _mbA;
+      var _mbB = m.mb + ' MB';
+      if ($memVal.textContent !== _mbB) $memVal.textContent = _mbB; // ★ 值同零写（2026-10-02 审计）
       checkCurThreshold(); // 推 3 点平滑窗 → 1.5GB 暴涨告警
 
     }
@@ -784,7 +792,8 @@
       latest.cores = m.cpu.cores;
       coresSmooth.push(m.cpu.cores);
       if (coresSmooth.length > 3) coresSmooth.shift();
-      $cpuVal.textContent = 'CPU ' + fmtCores(smoothCores());
+      var _cv = 'CPU ' + fmtCores(smoothCores());
+      if ($cpuVal.textContent !== _cv) $cpuVal.textContent = _cv;
 
     }
     if (m.cpu && typeof m.cpu.totalSec === 'number') {
@@ -946,6 +955,30 @@
   }
   if (bridge.mem.onReset) bridge.mem.onReset(function (scope) { resetLocal(scope || 'all'); });
 
+  // ── ⟳ 刷新释放（2026-10-02 定案）：仅渲染进程行（r.wid）有按钮——点击 = 刷新该窗口回收内存。
+  //   事件委托挂容器（innerHTML 每轮重建行，委托天然存活）；失败（非窗口/桥缺失）如实提示。
+  function wireRelease() {
+    if (!$plist) { return; }
+    $plist.addEventListener('click', function (e) {
+      var t = e.target;
+      var btn = (t && t.closest) ? t.closest('.qqq-mem-hover-prel') : null;
+      if (!btn || btn.disabled) { return; }
+      var pid = parseInt(btn.getAttribute('data-pid') || '0', 10) || 0;
+      if (!pid) { return; }
+      btn.disabled = true;
+      var pr = (bridge.mem && bridge.mem.release) ? bridge.mem.release(pid) : Promise.resolve({ ok: false });
+      pr.then(function (r) {
+        if (r && r.ok) {
+          if (window.qqqideQoast) { window.qqqideQoast.show(_T('shell.mem.releaseDone', '已刷新窗口，正在回收内存…'), { type: 'info' }); }
+          /* 窗口重载中——按钮随重建自然恢复 */
+        } else {
+          if (window.qqqideQoast) { window.qqqideQoast.show(_T('shell.mem.releaseFail', '该进程不是窗口，无法刷新'), { type: 'warning' }); }
+          btn.disabled = false;
+        }
+      }).catch(function () { btn.disabled = false; });
+    });
+  }
+
   // ── 进程数显示：当前 N 进程（窗口内峰值 M 进程）——峰值 = max(曲线点 n, 当前瞬时) ──
   function peakProcs() {
     var mx = latest.procs;
@@ -1081,7 +1114,21 @@
   }
   hookFrames();
   if (document.body) {
-    new MutationObserver(hookFrames).observe(document.body, { childList: true, subtree: true });
+    // ★ 2026-10-02 性能审计：body 级 childList 观察此前对一切文本/元素变更空跑（含每秒 tick 的
+    //   文本节点替换）→ 过滤为「真含 iframe 的新增元素」才重扫 + rAF 合并同帧多次
+    var _qfRaf = null;
+    new MutationObserver(function (recs) {
+      var hit = false;
+      for (var i = 0; i < recs.length && !hit; i++) {
+        var ns = recs[i].addedNodes;
+        for (var j = 0; j < ns.length; j++) {
+          var n = ns[j];
+          if (n.nodeType === 1 && (n.tagName === 'IFRAME' || (n.querySelector && n.querySelector('iframe')))) { hit = true; break; }
+        }
+      }
+      if (!hit || _qfRaf) return;
+      _qfRaf = requestAnimationFrame(function () { _qfRaf = null; hookFrames(); });
+    }).observe(document.body, { childList: true, subtree: true });
   }
   // 窗口 resize / 滚动时跟随定位
   window.addEventListener('resize', function () { if (shown) position(); });

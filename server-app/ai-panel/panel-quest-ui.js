@@ -1564,6 +1564,7 @@ $guideBtn.onclick = async function () {
         _aiDiv._dirty = false;
         _aiDiv._lastParaEl = null;
         _aiDiv._guideMode = true;
+        _aiDiv._guideModeSince = Date.now();  // ★ 保险丝计时起点（agent-loop 渲染端超时兜底解除）
 
         var guideBlock = document.createElement('div');
         guideBlock.className = 'msg-flow-guide-inject';

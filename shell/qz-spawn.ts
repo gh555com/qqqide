@@ -170,6 +170,9 @@ export interface SpawnBrief {
     inheritEnv?: boolean;      // merge process.env (default true)
     /** ★ 外部取消钩子（2026-09-21）：spawn 成功即回调持有 {pid,kill}——长任务（ffmpeg 转码等）可中途树杀 */
     onProc?: (h: { pid?: number; kill: () => void }) => void;
+    /** ★ 流式 stdout（2026-10-02）：逐块回传（不缓冲不截断）+ pause/resume 背压句柄；
+     *  存在本钩子时强制 nodeTier（ghrun 只有终局整包，无逐块回传）。stdout 结果恒为空串。 */
+    onStdoutChunk?: (d: Buffer, ctl: { pause: () => void; resume: () => void }) => void;
 }
 
 export interface SpawnResult {
@@ -333,8 +336,21 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
             try { brief.onProc({ pid: proc.pid, kill: killTree }); } catch { /* ignore */ }
         }
 
-        if (capture && proc.stdout) {
-            proc.stdout.on('data', (d: Buffer) => { stdoutBuf.push(d); lastIOAt = Date.now(); });
+        if (proc.stdout) {
+            if (brief.onStdoutChunk) {
+                // ★ 流式模式：逐块回传（不落 stdoutBuf——大产物零内存堆积）；ctl 供消费方背压暂停/恢复
+                proc.stdout.on('data', (d: Buffer) => {
+                    lastIOAt = Date.now();
+                    try {
+                        brief.onStdoutChunk!(d, {
+                            pause: () => { try { proc.stdout!.pause(); } catch { /* ignore */ } },
+                            resume: () => { try { proc.stdout!.resume(); } catch { /* ignore */ } },
+                        });
+                    } catch { /* 消费方异常不影响进程 */ }
+                });
+            } else if (capture) {
+                proc.stdout.on('data', (d: Buffer) => { stdoutBuf.push(d); lastIOAt = Date.now(); });
+            }
         }
         if (capture && proc.stderr) {
             proc.stderr.on('data', (d: Buffer) => { stderrBuf.push(d); lastIOAt = Date.now(); });
@@ -583,6 +599,12 @@ export class QzSpawn {
             };
         }
         _normalizeBrief(brief);
+
+        // ★ 流式通道（2026-10-02）：onStdoutChunk 必须 nodeTier（逐块回传 + pause/resume 背压）——
+        //   ghrun 协议只有终局整包，无法流式；此处提前短路，禁落 ghrun。
+        if (brief.onStdoutChunk) {
+            return _capOutput(await nodeTier(brief, this.appRoot));
+        }
 
         // ★ 绿色包 Python 注入 PATH：确保 python 命令优先使用绿色包自带解释器
         const pyDir = getPythonDir(this.appRoot);

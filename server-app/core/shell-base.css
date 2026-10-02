@@ -159,6 +159,10 @@ body {
   height: 100%;
   gap: 2px;
   -webkit-app-region: no-drag;
+  /* ★ 收纳机器（core/shell-menu-fit.js）: 左组可压到 0，过渡帧只在自身地盘裁剪
+     （品牌下拉/qqq 工作台/help 菜单/⋯ 下拉均挂 document.body——不受裁剪影响） */
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ★ 品牌图形按钮（2026-09-18 用户定案：无文字纯图形；图形 21×14，绘制/配色恒定——不随响应区变）
@@ -196,6 +200,7 @@ body {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0; /* ★ 收纳机器: 永不被压变形（收缩责任归机器，不归 flex 收缩） */
 }
 
 .qqq-goods-btn {
@@ -225,6 +230,94 @@ body {
 }
 
 
+/* ── 菜单行2 宽度自适应「⋯ 收纳机器」（core/shell-menu-fit.js；2026-10-02 q397 用户定案） ──
+   ① 结构层: 右组恒冻结——行2 一切非工具栏子项永不收缩（编队/LV/ge/手机号/RULES/⚙/灯泡）
+   ② 密度一档: 溢出先挂 .qqq-mf-tight 收紧呼吸空间（按钮一个不少，省 ≈75px）
+   ③ 收纳: 仍溢出 → 按机器优先级把按钮移入 ⋯ 下拉；豁免 = 品牌/★/qqq（详铁律 §4.15） */
+.qqq-menu-row-2 > :not(.qqq-toolbar) { flex-shrink: 0; }
+
+/* 密度一档（机器挂 .qqq-mf-tight 时生效；内联样式以 !important 收编） */
+.qqq-menu-row-2.qqq-mf-tight .qqq-goods-btn,
+.qqq-menu-row-2.qqq-mf-tight .qqq-inbox-btn,
+.qqq-menu-row-2.qqq-mf-tight .qqq-help-btn,
+.qqq-menu-row-2.qqq-mf-tight .qqq-tools-btn,
+.qqq-menu-row-2.qqq-mf-tight .qqq-mf-btn { padding: 0 7px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-fav-btn { padding: 0 6px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-goods-bar { gap: 1px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-goods-bar > * { margin-left: 0 !important; margin-right: 0 !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-squad-btn { padding: 0 7px !important; margin-right: 4px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-lv-bar { margin-right: 6px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-lv-track { width: 44px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-lv-level { min-width: 38px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-ge-label { margin-right: 4px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-login-btn:not(.qqq-phone-btn) { padding: 1px 12px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-login-btn.qqq-phone-btn,
+.qqq-menu-row-2.qqq-mf-tight .qqq-rules-btn,
+.qqq-menu-row-2.qqq-mf-tight .qqq-settings-btn { margin-right: 4px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-rules-btn { padding: 1px 4px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-settings-btn { width: 28px !important; }
+.qqq-menu-row-2.qqq-mf-tight .qqq-bulb { margin-left: 0 !important; gap: 4px !important; }
+
+/* ⋯ 按钮 + ⋯ 下拉（形态对齐 goods 按钮 / help 浮层家族；暗主题边界见「内嵌弹窗统一边界块」B 组） */
+.qqq-mf-btn { position: relative; }
+.qqq-mf-btn.qqq-mf-dot::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dc322f;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+.qqq-mf-menu {
+  position: fixed;
+  z-index: 999997;
+  min-width: 132px;
+  max-width: 320px;
+  background: var(--card-bg, #fdf6e3);
+  border: 1px solid var(--border-color, #d6d6d6);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+  transform: translateY(-4px);
+  font-family: Tahoma, sans-serif;
+  font-size: 13px;
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.qqq-mf-menu.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.qqq-mf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  color: var(--text-primary, #586e75);
+  white-space: nowrap;
+}
+.qqq-mf-row:hover { background: var(--gold-hover-bg, rgba(181, 137, 0, 0.12)); }
+.qqq-mf-row-arrow { opacity: .55; font-size: 12px; margin-left: 10px; }
+.qqq-mf-row-dot {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  background: #dc322f;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  border-radius: 9px;
+}
+
 /* 外嵌面板灯泡 */
 .qqq-bulb {
   display: inline-flex;
@@ -240,7 +333,8 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1px solid var(--border-color);
+  /* 描边 = 部件线色 --base01（与品牌图形同族）——--border-color 暗主题下与行底近同色（不可见），禁用 */
+  border: 1px solid var(--base01);
   background: var(--background-color);
   flex-shrink: 0;
   transition: background 100ms, border-color 100ms, box-shadow 100ms;
@@ -708,7 +802,7 @@ body {
 
 /* ── 内嵌弹窗统一滚动条 — qd 现代无轨样式（5px、轨道透明、thumb rgba(128,128,128,.35) 圆角；基准 .tier-popup-panel/本块）──
    ★ 铁律 §4.1：一切内置面板必须挂入本块——漏挂 = 原生滚动条（违反即返工）；含 descendant 式（覆盖面板内嵌滚动区）。
-   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板/内嵌播放器卡（窗内播放器，2026-09-28 挂入）/qqq 设置中心（.qqq-center-panel，2026-09-28 挂入）/设置中心自绘下拉浮层（.qc-pop，2026-09-28 挂入）/界面缩放弹层（.qqq-zoom-pop，2026-09-29 挂入）（语言下拉不滚动，不列）
+   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板/内嵌播放器卡（窗内播放器，2026-09-28 挂入）/qqq 设置中心（.qqq-center-panel，2026-09-28 挂入）/设置中心自绘下拉浮层（.qc-pop，2026-09-28 挂入）/界面缩放弹层（.qqq-zoom-pop，2026-09-29 挂入）/菜单行2 收纳下拉（.qqq-mf-menu，2026-10-02 挂入）（语言下拉不滚动，不列）
    ★ 单源：面板滚动条/拖选样式只认本块——组件内自注入迁入并删源（shell-overlay / tier-popup 已迁） */
 .qqq-zoom-pop::-webkit-scrollbar,
 .qqq-settings-panel::-webkit-scrollbar,
@@ -732,7 +826,8 @@ body {
 .qqq-sg-panel::-webkit-scrollbar,
 .qqq-sg-body::-webkit-scrollbar,
 .qqq-fav-panel::-webkit-scrollbar,
-.qqq-fav-panel ::-webkit-scrollbar {
+.qqq-fav-panel ::-webkit-scrollbar,
+.qqq-mf-menu::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
@@ -758,7 +853,8 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-track,
 .qqq-sg-body::-webkit-scrollbar-track,
 .qqq-fav-panel::-webkit-scrollbar-track,
-.qqq-fav-panel ::-webkit-scrollbar-track {
+.qqq-fav-panel ::-webkit-scrollbar-track,
+.qqq-mf-menu::-webkit-scrollbar-track {
   background: transparent;
 }
 .qqq-zoom-pop::-webkit-scrollbar-thumb,
@@ -783,7 +879,8 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-thumb,
 .qqq-sg-body::-webkit-scrollbar-thumb,
 .qqq-fav-panel::-webkit-scrollbar-thumb,
-.qqq-fav-panel ::-webkit-scrollbar-thumb {
+.qqq-fav-panel ::-webkit-scrollbar-thumb,
+.qqq-mf-menu::-webkit-scrollbar-thumb {
   background: rgba(128, 128, 128, 0.35);
   border-radius: 3px;
 }
@@ -809,7 +906,8 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-thumb:hover,
 .qqq-sg-body::-webkit-scrollbar-thumb:hover,
 .qqq-fav-panel::-webkit-scrollbar-thumb:hover,
-.qqq-fav-panel ::-webkit-scrollbar-thumb:hover {
+.qqq-fav-panel ::-webkit-scrollbar-thumb:hover,
+.qqq-mf-menu::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.55);
 }
 .qqq-zoom-pop::-webkit-scrollbar-corner,
@@ -834,7 +932,8 @@ body {
 .qqq-sg-panel::-webkit-scrollbar-corner,
 .qqq-sg-body::-webkit-scrollbar-corner,
 .qqq-fav-panel::-webkit-scrollbar-corner,
-.qqq-fav-panel ::-webkit-scrollbar-corner {
+.qqq-fav-panel ::-webkit-scrollbar-corner,
+.qqq-mf-menu::-webkit-scrollbar-corner {
   background: transparent;
 }
 /* 悬浮预览层直系 div 滚动条隐藏（外层为主体滚动区；原 shell-overlay.js 自注入迁入） */
@@ -860,7 +959,8 @@ body {
 .qqq-notice-modal,
 .qqq-fav-panel,
 .qqq-fav-modal,
-.qqq-sg-panel {
+.qqq-sg-panel,
+.qqq-mf-menu {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -880,6 +980,7 @@ body {
 .qqq-sg-panel::selection, .qqq-sg-panel ::selection,
 .qqq-fav-panel::selection, .qqq-fav-panel ::selection,
 .qqq-fav-modal::selection, .qqq-fav-modal ::selection,
+.qqq-mf-menu::selection, .qqq-mf-menu ::selection,
 #qqq-ai-overlay-content::selection, #qqq-ai-overlay-content ::selection {
   background: var(--selection-bg, #e8a090);
   color: var(--selection-text, #000000);
@@ -929,6 +1030,7 @@ html[data-theme="dark"] .qqq-evangelist-sub,
 html[data-theme="dark"] .qqq-help-menu,
 html[data-theme="dark"] .qqq-help-sub,
 html[data-theme="dark"] .qqq-brand-dropdown,
+html[data-theme="dark"] .qqq-mf-menu,
 html[data-theme="dark"] .qc-pop {
   border: 1px solid transparent !important;
   background: linear-gradient(var(--card-bg), var(--card-bg)) padding-box,
