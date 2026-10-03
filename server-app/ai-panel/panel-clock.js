@@ -261,8 +261,8 @@ function _buildBillingTable(houses, passby) {
     if (_byokRoute) {
         html += '<div class="billing-byok-note" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888);text-align:center">'
             + (_byokRoute === 'relay'
-                ? _i2('ai.billing.byokNoteRelay', '🔑 本层对话经平台代理转发（你自付服务商；ge 仅计平台通道）')
-                : _i2('ai.billing.byokNote', '🔑 本层对话走自带密钥（你自付服务商；ge 仅计平台通道）'))
+         ? _i2('ai.billing.byokNoteRelay', '本层对话经平台代理转发（你自付服务商；ge 仅计平台通道）')
+        : _i2('ai.billing.byokNote', '本层对话走自带密钥（你自付服务商；ge 仅计平台通道）'))
             + '</div>';
     }
     return html;

@@ -94,6 +94,10 @@ function bootAiOverlay() {
   var zoomScale = 1.0;
   // 拖拽偏移（图片和表格共用 translate）
   var _dragX = 0, _dragY = 0;
+  // ★ 画布拖拽平移（2026-10-02）：仅表格/代码块模式武装——渲染区（wrapper）外的暗色区域按住拖拽 = 平移整个图层
+  var _ovTablePanMode = false;      // 仅 open-table 模式武装（图片模式拖图片本身，不用此机）
+  var _ovPanDrag = null;            // 本次拖拽会话 {sx,sy,raf,pending,moved}
+  var _ovPanSwallowClick = false;   // 拖拽后紧随的 click 吞掉（防 mouseup 落点漂移命中 overlay 背景 → 误关层）
 
   // ── 选中高亮全文匹配（CSS Highlight API — 零 DOM 操作，不阻复制、零抖动）──
   var _ovLastMatchText = '';
@@ -386,6 +390,9 @@ function bootAiOverlay() {
 
   function close() {
     _ovLocalPath = null;
+    _ovTablePanMode = false;
+    _ovPanDrag = null;
+    _ovPanSwallowClick = false;
     try { _stopRepeat(); } catch (_) { }
     try { _ovTxAbort(); } catch (_) { }
     try { _ovClearHighlights(); } catch (_) { }
@@ -401,6 +408,8 @@ function bootAiOverlay() {
 
 
   overlay.addEventListener('click', function (e) {
+    // ★ 拖拽平移后紧随的 click 吞掉（mouseup 落点漂移可能命中 overlay 背景 → 防误关层，2026-10-02）
+    if (_ovPanSwallowClick) { _ovPanSwallowClick = false; return; }
     if (e.target === overlay) close();
   });
 
@@ -523,6 +532,56 @@ function bootAiOverlay() {
   dpad.appendChild(btnRight); dpad.appendChild(btnDown);
   overlay.appendChild(dpad);
 
+  // ── ★ 画布拖拽平移（2026-10-02）：表格/代码块模式——在渲染区（wrapper）之外的暗色区域
+  //    按住拖拽即平移整个图层（与图片拖拽同款手感：mousedown 起手 + rAF 合帧 + transform translate）；
+  //    渲染区内起手不参与（保持原生文本选择），D-pad 十字键保留不变。
+  function _ovPanWrap() { return contentEl.querySelector('.qqq-overlay-table-wrapper'); }
+  function _ovPanEnd(sawMouseUp) {
+    var d = _ovPanDrag;
+    if (!d) return;
+    _ovPanDrag = null;
+    if (d.raf) { cancelAnimationFrame(d.raf); d.raf = 0; }
+    var w = _ovPanWrap();
+    if (w) w.style.transition = 'transform 0.15s ease';
+    if (sawMouseUp && d.moved) _ovPanSwallowClick = true;
+  }
+  contentEl.addEventListener('mousedown', function (ev) {
+    if (overlay.style.display === 'none') return;
+    if (!_ovTablePanMode || ev.button !== 0) return;
+    var t = ev.target;
+    if (t && t.closest && (t.closest('.qqq-overlay-table-wrapper') ||
+        t.closest('#qqq-ai-overlay-toolbar') || t.closest('button'))) return;
+    var w = _ovPanWrap();
+    if (!w) return;
+    _ovPanSwallowClick = false;
+    _ovPanDrag = { sx: ev.clientX, sy: ev.clientY, raf: 0, pending: false, moved: false };
+    w.style.transition = 'none';
+    ev.preventDefault();   // 防起手拖出全片文本选择
+  });
+  window.addEventListener('mousemove', function (ev) {
+    var d = _ovPanDrag;
+    if (!d) return;
+    // 拖拽中模式失效 / 按键已在窗口外松开（buttons 归零）→ 收尾
+    if (!_ovTablePanMode || (typeof ev.buttons === 'number' && ev.buttons === 0)) { _ovPanEnd(false); return; }
+    var dx = ev.clientX - d.sx, dy = ev.clientY - d.sy;
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) < 3) return;   // 微抖不算拖拽（点击语义零变化）
+    d.moved = true;
+    var s = zoomScale || 1;
+    _dragX += dx / s; _dragY += dy / s;
+    d.sx = ev.clientX; d.sy = ev.clientY;
+    if (!d.pending) {
+      d.pending = true;
+      d.raf = requestAnimationFrame(function () {
+        var dd = _ovPanDrag;
+        if (!dd) return;
+        dd.pending = false; dd.raf = 0;
+        var w2 = _ovPanWrap();
+        if (w2) w2.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
+      });
+    }
+  });
+  window.addEventListener('mouseup', function () { _ovPanEnd(true); });
+
   // Listen for messages from AI iframe
   window.addEventListener('message', function (e) {
     // ★ roam iframe 命令回执（2026-09-08）：命令已消费即停发。旧实现零确认——首次导航成功后
@@ -549,6 +608,8 @@ function bootAiOverlay() {
       // 强制清理上一轮残留状态（含 close 函数恢复）
       close = _baseClose;
       _ovLocalPath = e.data.localPath || null;
+      _ovTablePanMode = false;
+      _ovPanDrag = null;
       _stopRepeat();
       _ovTxAbort();
       overlay.style.display = 'none';
@@ -667,6 +728,10 @@ function bootAiOverlay() {
 
     if (e.data.action === 'open-table') {
       _ovLocalPath = null;
+      // ★ 武装画布拖拽平移（渲染区外暗色区域按住拖拽 = 平移整个图层；D-pad 照常）
+      _ovTablePanMode = true;
+      _ovPanDrag = null;
+      _ovPanSwallowClick = false;
       try {
         // 强制清理上一轮残留状态（含 close 函数恢复）
         close = _baseClose;
@@ -788,6 +853,7 @@ function bootAiOverlay() {
         overlay.style.visibility = '';
         contentEl.innerHTML = '';
         dpad.style.display = 'none';
+        _ovTablePanMode = false;
       }
     }
 

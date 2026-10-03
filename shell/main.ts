@@ -47,7 +47,7 @@ import { registerEditIpc } from './ipc-edit';
 import { registerMiscIpc } from './ipc-misc';
 import { registerMediaIpc } from './ipc-media';
 import { registerPlayerIpc, kickPlayerHostForRestore, noteHostAllWindowsClosed } from './ipc-player';
-import { parsePlayFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc, startIdeKeepalive } from './player-host';
+import { parsePlayFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc, startIdeKeepalive, filesToItems, queuePlayerRequest, ensureIdeInstance, startIdeRevealWatch } from './player-host';
 import { registerFileAssocIpc } from './ipc-fileassoc';
 import { registerExportIpc } from './ipc-export';
 import { registerTimelineIpc } from './ipc-timeline';
@@ -111,7 +111,9 @@ import { DownloadService } from './download-service';
 // app.disableHardwareAcceleration(); // [COMMENTED OUT 2026-06-25]
 app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
-app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
+// ★ disable-features 唯一入口 = portable-paths.ts（applyPortablePaths 单一清单，2026-10-02 F61）——
+//   实测同一 switch 重复 append 仅末值生效（前清单整份静默丢弃），此处禁再追加；ForcedColors/
+//   AutoDarkMode/WinUseBrowserSpellChecker 等已并入那边唯一清单。
 // ★ Windows 显示缩放无关（恒 100%）：强制 device scale factor = 1 —— 无视系统「显示缩放」百分比，
 //   1 DIP = 1 物理像素 → 逻辑空间 = 物理分辨率（小逻辑屏下三面板可开 + 同屏行数最大化）。
 //   必须在 app.whenReady() 前；仅 win32（mac Retina 缩放语义不同，不适用）。
@@ -119,17 +121,41 @@ if (process.platform === 'win32') {
     app.commandLine.appendSwitch('force-device-scale-factor', '1');
 }
 // ★ CDP devtools capture: 克隆 DevTools 另存为 100% 输出（Log.entryAdded）
-//   dev 多实例并存（dev 窗口 + 绿色包）时 8315 被占 → 后启动实例调试口静默失效（bind 失败不报错）。
-//   dev（非打包）自动右移到首个空闲端口；打包版恒 8315 原样。
-let _cdpPort = '8315';
-if (!app.isPackaged) {
+//   多实例/快速重启并存时 8315 易被占（含死进程幽灵套接字——句柄继承致监听残留）——
+//   后启动实例调试口静默失效（bind 失败不报错）。
+//   IDE（含打包）从 8315 起探首个空闲口；宿主从 8316 起（8315 恒保留 IDE）。
+//   实际端口 = global.__qqqCdpPort（单点——_setupCdpConsoleCapture 消费，禁再硬编码）。
+// ★ 监听口快照（跨平台，2026-10-02 F53 mac 移植）：Windows = netstat -ano（":PORT" 格式）；
+//   mac/linux = lsof（BSD netstat 的端口格式为 ".PORT"，与原正则不通用——恒探测失败 → 宿主/多实例右移失效）；
+//   探测失败一律返回空串（视作全空闲 → 保持默认 8315，与旧行为一致）。
+const _listenSnapshot = (): string => {
     try {
-        const _ns = require('child_process').execSync('netstat -ano', { encoding: 'utf8', timeout: 3000, windowsHide: true });
-        for (let _p = 8315; _p <= 8324; _p++) {
-            if (!new RegExp(':' + _p + '(\\s|$)').test(_ns)) { _cdpPort = String(_p); break; }
+        const cp = require('child_process');
+        if (process.platform === 'win32') {
+            return cp.execSync('netstat -ano', { encoding: 'utf8', timeout: 3000, windowsHide: true });
         }
-    } catch (_) { /* 探测失败 → 保持 8315 */ }
+        try {
+            return cp.execSync('lsof -nP -iTCP -sTCP:LISTEN', { encoding: 'utf8', timeout: 4000 });
+        } catch (e: any) { return (e && e.stdout) ? String(e.stdout) : ''; }   // lsof 无监听 = exit 1 零输出
+    } catch { return ''; }
+};
+let _cdpPort = '8315';
+if (_playHostMode) {
+    // ★ 播放器宿主域（2026-10-02）：8315 恒保留给 IDE（_setupCdpConsoleCapture 依赖）——宿主从 8316 起探首个空闲口。
+    //   旧行为：宿主打包版也钉 8315 → 与在跑 IDE 冲突 → devtools 恒启动失败（bind 报错刷屏、宿主全盲）。
+    const _ns = _listenSnapshot();
+    for (let _p = 8316; _p <= 8324; _p++) {
+        if (!new RegExp(':' + _p + '(\\s|$)').test(_ns)) { _cdpPort = String(_p); break; }
+    }
+} else {
+    // ★ 打包版也探测（2026-10-02 实锤：快速重启/多实例并存时 8315 被占或幽灵残留 → 恒 8315 = 整会话无调试口）；
+    //   8315 空闲则恒取 8315（行为与旧一致，仅被占时右移）
+    const _ns = _listenSnapshot();
+    for (let _p = 8315; _p <= 8324; _p++) {
+        if (!new RegExp(':' + _p + '(\\s|$)').test(_ns)) { _cdpPort = String(_p); break; }
+    }
 }
+(global as any).__qqqCdpPort = _cdpPort;
 app.commandLine.appendSwitch('remote-debugging-port', _cdpPort);
 
 // ── 自定义协议 qqqide:// — 浏览器登录成功后 push token 回 IDE（2026-06-29） ──
@@ -204,6 +230,71 @@ app.on('open-url', (event, url) => {
     console.log('[protocol] open-url fired, url=' + url);
     handleLegacyAuthProtocolUrl(url);
 });
+
+// ── mac：Finder 双击媒体（系统默认播放器）→ 播放器域 ──────────────────────────
+//   open-file 必须在 ready 前注册（launch 文档事件可先于 ready 到达）。
+//   语义三分（2026-10-03）：
+//     ① 宿主域 = 直开（external 批聚合——多选双击收敛一窗列表）
+//     ② IDE 已启动完成 = 转发请求队列（宿主不活自动拉起；同 external 聚合语义）
+//     ③ IDE 冷启且本进程即由文档打开触发（首个事件落在启动早期 1.5s 内）→ 交棒
+//        宿主成功后本进程退场（对齐 Windows「双击媒体只开播放器」；失败/迟到
+//        一律回退常规转发——文件绝不吞丢）。
+let _macDocFiles: string[] = [];
+let _macDocTimer: any = null;
+let _macDocHandoff = false;
+let _macBootDone = false;
+let _macDocEarly = false;
+const _macModT0 = Date.now();
+// 诊断日志（GUI 启动的 stdout 入黑洞——open-file 链唯一现场；≤64KB 轮转）
+function _macDocLog(msg: string): void {
+    try {
+        const dir = path.join(portable.userData, 'Logs');
+        fs.mkdirSync(dir, { recursive: true });
+        const f = path.join(dir, 'open-file.log');
+        try { if (fs.statSync(f).size > 65536) { fs.writeFileSync(f, ''); } } catch { /* 无文件 */ }
+        fs.appendFileSync(f, new Date().toISOString() + ' ' + msg + '\n');
+    } catch { /* ignore */ }
+}
+function _macDocForward(files: string[]): void {
+    try { queuePlayerRequest('open', { list: filesToItems(files), index: 0, play: true, external: true }, 0); }
+    catch (e: any) { console.warn('[open-file] forward err: ' + ((e && e.message) || e)); }
+}
+function _macDocRoute(): void {
+    _macDocTimer = null;
+    if (!_macDocFiles.length) { return; }
+    const files = _macDocFiles;
+    _macDocFiles = [];
+    try {
+        if (_playHostMode) { _macDocLog('route host files=' + files.length); ingestExternalFiles(files); return; }   // ① 宿主域：直开
+        if (!_macBootDone && _macDocEarly && !_macDocHandoff) {      // ③ 冷启文档打开：交棒 + 退场
+            _macDocHandoff = true;
+            _macDocLog('route cold-handoff files=' + files.length + ' bootDone=' + _macBootDone + ' early=' + _macDocEarly);
+            queuePlayerRequest('open', { list: filesToItems(files), index: 0, play: true, external: true }, 8000).then((r: any) => {
+                _macDocLog('handoff result ok=' + (r && r.ok));
+                if (r && r.ok) { app.exit(0); }
+                else { _macDocForward(files); }
+            }).catch((e: any) => {
+                _macDocLog('handoff err ' + ((e && e.message) || e));
+                _macDocForward(files);
+            });
+            return;
+        }
+        _macDocLog('route forward files=' + files.length + ' bootDone=' + _macBootDone + ' early=' + _macDocEarly);
+        _macDocForward(files);                                        // ② 热态：常规转发
+    } catch (e: any) { console.warn('[open-file] route err: ' + ((e && e.message) || e)); }
+}
+if (process.platform === 'darwin') {
+    app.on('open-file', (event, p) => {
+        try { event.preventDefault(); } catch { /* ignore */ }
+        if (!p || typeof p !== 'string') { return; }
+        const early = _macDocFiles.length === 0 && (Date.now() - _macModT0) < 1500;
+        if (early) { _macDocEarly = true; }
+        _macDocLog('recv +' + (Date.now() - _macModT0) + 'ms ' + p);
+        _macDocFiles.push(p);
+        if (_macDocTimer) { clearTimeout(_macDocTimer); }
+        _macDocTimer = setTimeout(_macDocRoute, 250);
+    });
+}
 
 function handleLegacyAuthProtocolUrl(url: string): void {
     console.log('[protocol] handleLegacyAuthProtocolUrl: ' + url);
@@ -562,6 +653,12 @@ app.whenReady().then(async () => {
         app.on('window-all-closed', () => {
             try { noteHostAllWindowsClosed(); } catch { /* ignore */ }
         });
+        // ★ mac 激活语义（2026-10-03）：宿主在跑时「open app / 点 Dock」只会 activate（mac 单实例
+        //   特性）——若无 IDE 实例在跑 → 拉起 IDE（对齐「图标=IDE」；否则「双击媒体→播放器」状态
+        //   下用户回不去 IDE）。IDE 在跑时本处 no-op（activate 归 IDE 域自己处理）。
+        if (process.platform === 'darwin') {
+            app.on('activate', () => { try { ensureIdeInstance(); } catch { /* ignore */ } });
+        }
         // ★ 冷启打点（2026-10-02）：分段落盘玩家日志（player-host.log）——测速与回归审计现场
         const _phT0 = Date.now();
         const _phMark = (m: string): void => { try { console.log('[player-host] boot +' + (Date.now() - _phT0) + 'ms ' + m); } catch { /* ignore */ } };
@@ -591,6 +688,9 @@ app.whenReady().then(async () => {
                 });
                 _phMark('py-broker scheduled');
             });
+            // ★ 转码硬编预热（2026-10-02）：后台探测定硬编码器（-encoders 预筛 + 640x360 实编 ≈0.3~1s）——
+            //   首次转码（渐进流首帧）零探测等待；失败 = 纯软编零回归（详 media-service.ensureHwEncoder / transcode-hw）
+            setTimeout(() => { try { mediaService.ensureHwEncoder(); } catch { /* ignore */ } }, 4000);
         } catch (e: any) {
             try { console.warn('[player-host] boot failed:', (e && e.message) || e); } catch { /* ignore */ }
             try { app.quit(); } catch { /* ignore */ }
@@ -864,6 +964,7 @@ app.whenReady().then(async () => {
         mainWindow, bootConfig, portable.root, portable.cache,
         isDevFlag, isOfflineFlag, setLastBootMode, getLastBootMode
     );
+    _macBootDone = true;   // mac open-file 冷启判定分界（此前到达的文档事件 = 本进程由文档打开触发）
 
     // ★ 冒烟测试机（--smoke）: 等渲染层就绪 → 经 preload 桥真实 IPC 探活 → 报告 + 退出码
     if (isSmokeFlag) {
@@ -993,6 +1094,9 @@ app.whenReady().then(async () => {
 
     // ★ IDE 存活心跳（2026-10-02 v19 常温）：60s 续写 ide-alive.json——宿主温水期据此续期（IDE 存活期恒温秒开）
     try { startIdeKeepalive(); } catch { /* ignore */ }
+
+    // ★ 「Roam 定位」跨进程接收（2026-10-03）：宿主 reveals 队列 → 本进程任一主窗置前投递（详 player-host.ts）
+    try { startIdeRevealWatch(); } catch { /* ignore */ }
 
     // ★ 认证中心大脑恢复登录态（2026-07-31 T3）
     // auth-brain.restore() 内建 safeStorage + phone.txt 双路径兜底

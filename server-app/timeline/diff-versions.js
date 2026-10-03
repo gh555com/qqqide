@@ -307,7 +307,7 @@
         }
         return '<div class="v-dropdown-item" data-value="' + _escAttr(mo.value) + '">' +
             displayHtml + markerHtml +
-            '<button class="v-copy-btn" title="' + _escAttr(_i('timeline.copyRow', '复制此行文本')) + '">📋</button></div>';
+            '<button class="v-copy-btn" title="' + _escAttr(_i('timeline.copyRow', '复制此行文本')) + '"><span class="qqi qqi-copy"></span></button></div>';
     }
     function _buildItemsHtml(from, to) {
         var html = '';
@@ -464,7 +464,7 @@
                 e.preventDefault();
                 var copyItem = copyBtn.closest('.v-dropdown-item');
                 if (copyItem) {
-                    var text = copyItem.textContent.replace(/📋/g, '').trim();
+                    var text = copyItem.textContent.trim();
                     var ta = document.createElement('textarea');
                     ta.value = text;
                     ta.style.position = 'fixed';

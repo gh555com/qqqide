@@ -4,7 +4,8 @@
 // goods/search/search.js — qqqide search goods manifest
 //
 // 高性能项目搜索器。注册为 gaea goods，在 X 区 gaea 标签组打开搜索面板。
-// 支持多实例：每个文件夹可打开独立搜索标签，标签名 🔍 + 文件夹名。
+// 支持多实例：每个文件夹可打开独立搜索标签，标签名 = 手绘图标(search) + 文件夹名
+//   （图标挂载 = core/tab-manager.js TAB_ICON_MAP，非本文件职责）。
 // 外部触发：AI 视口豆腐块放大镜按钮 → 打开搜索标签 + 自动填入对应目录。
 // ============================================================================
 (function () {
@@ -28,7 +29,7 @@
 
             tabs: {
                 search: {
-                    title: '🔍 search',
+                    title: 'search',
                     closable: true,
                     build: function (pane) {
                         pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
@@ -63,7 +64,7 @@
             var idx = p.lastIndexOf('/');
             folderName = idx >= 0 ? p.slice(idx + 1) : p;
         }
-        var tabTitle = folderName ? '🔍 ' + folderName : '🔍 search';
+        var tabTitle = folderName ? folderName : 'search';
 
         var tab = null;
         if (newWindow) {
@@ -148,9 +149,9 @@
             var tabTitle;
             if (query) {
                 var shortQuery = query.length > 40 ? query.slice(0, 40) + '...' : query;
-                tabTitle = '🔍 ' + folderName + ': ' + shortQuery;
+                tabTitle = folderName + ': ' + shortQuery;
             } else {
-                tabTitle = folderName ? '🔍 ' + folderName : '🔍 search';
+                tabTitle = folderName ? folderName : 'search';
             }
             // Find which pane contains this iframe and rename its tab
             var srcWindow = e.source;
@@ -227,7 +228,7 @@
                 var p = t.folderPath.replace(/\\/g, '/').replace(/\/$/, '');
                 var idx = p.lastIndexOf('/');
                 folderName = idx >= 0 ? p.slice(idx + 1) : p;
-                var tabTitle = t.title || ('🔍 ' + folderName);
+                var tabTitle = t.title || folderName;
                 var buildFn = function (pane) {
                     pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
                     var iframe = document.createElement('iframe');

@@ -483,10 +483,16 @@ app.on('browser-window-created', (_e, w) => {
     win.webContents.on('console-message', _cmHandler);
 
     // ★ CDP 作为补充 (网络错误调用栈等) — 静默失败不影响 console-message 主线
-    _setupCdpConsoleCapture(win).catch(() => {});
-
-    win.removeMenu();
-
+    _setupCdpConsoleCapture(win).catch(() => {});    win.removeMenu();
+
+    // ★ 后台节流恢复收口（2026-10-02 F61）：webPreferences 恒以 backgroundThrottling:false 创建
+    //   （主窗口隐藏启动期保初始化全速）——恢复必须随「首次亮相」发生；此前仅主窗口
+    //   boot._revealWindow 恢复 true → 附属窗口（多窗还原/菜单新窗/activate）永久停留 false。
+    //   统一收口：首次 show 即恢复（幂等——主窗口 boot 的恢复照旧）。
+    win.once('show', () => {
+        try { win.webContents.setBackgroundThrottling(true); } catch (_) { }
+    });
+
     win.once('ready-to-show', async () => {
         await restoreWindowBounds(win, stateStore);
         // ★ 不在 ready-to-show 就 show() — 等 boot 完成加载面板到 100% 才由 boot.ts 调用 show()
@@ -750,9 +756,9 @@ app.on('browser-window-created', (_e, w) => {
 }
 
 // ── CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据 ──
-// ★ v8: 延迟启动 + 重试 + 完整覆盖
-async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
-    const PORT = 8315;
+// ★ v8: 延迟启动 + 重试 + 完整覆盖async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
+    // ★ 实际调试口 = main.ts 探测结果（多实例/幽灵占用时可能 ≠ 8315；禁硬编码——2026-10-02 实锤）
+    const PORT = (global as any).__qqqCdpPort || 8315;
     const allSockets: SimpleWebSocket[] = [];
     let _started = false;
 

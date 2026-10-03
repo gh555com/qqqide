@@ -13,13 +13,15 @@
      ★ v12（2026-10-02）：头部最左加 qd logo（唯一源 ../assets/qqqide.png 16×16 + invert(1)——与 IDE 左上角
      「qd (qqqide)」菜单文字前同款；纯装饰 pointer-events:none、随拖拽带）；头部五钮恒直角（无圆角——边界清晰）。
      ─────────────────────────────────────────────────────────────────────── */
-  /* ★ 窗口外观（2026-10-02 q319 定案；v16 直角）：零圆角（IDE 传统 100% 直角）+ 橙色渐变环——播放器 = IDE 之外滴独立窗口序列，
-     环配色用橙调（IDE 面板环=青绿调，一眼区分）；与暗主题内置面板同原语（shell-base.css「内嵌弹窗统一边界块」技法：
-     内层 padding-box 铺面板本色 + 外层 border-box 铺渐变 + 1px 透明边框露环）；圆角已全废（真机探针实证：radius 0 时
-     系统不叠加圆角——背窗取色法，corner 恒方；禁回圆角）。 */
+  /* ★ 窗口外观（2026-10-02 q319 定案；v16 直角）：零圆角（IDE 传统 100% 直角）+ 渐变环——播放器 = IDE 之外滴独立窗口序列，
+     ★ 双角鎏金环（2026-10-03 q319 用户定案）：左上橙 + 右下橙（同 #ffa02a）+ 中段真无色平台带（transparent 32%→68%）——
+     平台带须覆盖左下/右上角位（角位参数 = (x+y)/(W+H)：宽窗 TR≈0.61~0.66 / BL≈0.34~0.39）：win32 弃透明后低透明段
+     贴不透明底盘会显成淡色边框（实报「橙色边框失鎏金感」根因），真 α=0 才恒「看不到」；禁删平台带/禁回单停靠点；
+     与暗主题内置面板同原语（shell-base.css「内嵌弹窗统一边界块」技法：内层 padding-box 铺面板本色 + 外层 border-box
+     铺渐变 + 1px 透明边框露环）；圆角已全废（真机探针实证：radius 0 时系统不叠加圆角——背窗取色法，corner 恒方；禁回圆角）。 */
   #pl-root{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;-webkit-app-region:no-drag;
     border-radius:0;border:1px solid transparent;
-    background:linear-gradient(#0b0b0b,#0b0b0b) padding-box, linear-gradient(135deg,#ffa02a,transparent 38%,#ff6a00) border-box;}
+    background:linear-gradient(#0b0b0b,#0b0b0b) padding-box, linear-gradient(135deg,#ffa02a,transparent 32%,transparent 68%,#ffa02a) border-box;}
   /* ── 拖拽区契约（2026-10-02 v9）：底座恒 no-drag；仅两处可拖窗——
      ① 头部条 #pl-head ② 播放区空背景 .ovmb-maincol。引擎 UI（控制条/dock/弹面板/媒体/转码条）恒 no-drag。
      ★ DOM 序 = 覆盖序：no-drag 控件必须排在覆盖它的 drag 元素之后（后兄弟/后代恒赢）；
@@ -31,23 +33,44 @@
   #pl-title{flex:1 1 auto;min-width:0;font-size:12px;color:#cfcbc2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;}
   #pl-tools{display:flex;align-items:center;gap:4px;flex:0 0 auto;-webkit-app-region:no-drag;}
   #pl-tools *{-webkit-app-region:no-drag;}
-  /* ★ 直角定案（v12）：头部五钮（编队/置顶/—/▢/✕）恒直角——禁回圆角（边界清晰，用户定案） */
-  .pl-hbtn{width:22px;height:22px;padding:0;border:none;border-radius:0;background:rgba(255,255,255,0.08);color:#cfcbc2;
-    font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;flex:0 0 auto;
-    position:relative;transition:background .12s,color .12s;}
-  .pl-hbtn:hover{background:rgba(255,255,255,0.22);color:#fff;}
-  .pl-hbtn.pl-close:hover{background:rgba(220,50,47,0.6);color:#fff;}
-  /* ★ 置顶状态 = 右下角打勾（2026-10-02 用户定案）：按钮本体零颜色变化，仅角标——无勾 = 未置顶 */
-  #pl-pin::after{content:'\2713';position:absolute;right:-2px;bottom:-3px;font-size:10px;font-weight:700;line-height:1;color:#ffd301;display:none;text-shadow:0 0 2px rgba(0,0,0,.85);pointer-events:none;}
+  /* ★ 直角定案（v12）：头部五钮（编队/置顶/—/▢/✕）恒直角——禁回圆角（边界清晰，用户定案）
+     ★ 可见边框（2026-10-02 用户定案）：一切按钮恒绘 1px 淡边——可点范围一眼可见（禁回 border:none 透明钮） */
+  .pl-hbtn{width:22px;height:22px;padding:0;border:1px solid rgba(255,255,255,0.22);border-radius:0;background:rgba(255,255,255,0.08);color:#cfcbc2;
+    box-sizing:border-box;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;flex:0 0 auto;
+    position:relative;transition:background .12s,color .12s,border-color .12s;}
+  .pl-hbtn:hover{background:rgba(255,255,255,0.22);color:#fff;border-color:rgba(255,255,255,0.42);}
+  .pl-hbtn.pl-close:hover{background:rgba(220,50,47,0.6);color:#fff;border-color:rgba(255,255,255,0.42);}
+  /* ★ 置顶状态 = 右下角打勾（2026-10-02 用户定案）：按钮本体零颜色变化，仅角标——无勾 = 未置顶
+     ★ 角标贴靠本体（2026-10-02 用户定案）：right:0/bottom:-1px——勾恒贴本钮右下角（旧 -2/-3 悬空于两钮之间致「勾给谁」歧义）
+     ★ 勾清晰度配方（2026-10-02 用户定案）：加重勾 ✔(U+2714)/12px/400 + 全向 1px 暗描边——任何底色（含悬停亮底）恒清晰；
+       角标全族（置顶 / Default / x1~x4 / 循环 / 随机 / 追踪——9 钮同配方）media-engine.js .ovmb-dswck 同步同改 */
+  #pl-pin::after{content:'\2714';position:absolute;right:0;bottom:-1px;font-size:12px;font-weight:400;line-height:1;color:#ffd301;display:none;pointer-events:none;
+    text-shadow:0 -1px 0 rgba(0,0,0,.95),0 1px 0 rgba(0,0,0,.95),-1px 0 0 rgba(0,0,0,.95),1px 0 0 rgba(0,0,0,.95),-1px -1px 0 rgba(0,0,0,.85),1px -1px 0 rgba(0,0,0,.85),-1px 1px 0 rgba(0,0,0,.85),1px 1px 0 rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.7);}
   #pl-pin.pl-pin-on::after{display:block;}
-  /* ★ Default 按钮（2026-10-02 v17）：设为系统默认播放器——文字钮（恒字「Default」）+ 右下角勾（手动确认态） */
-  .pl-htxt{width:auto;min-width:52px;height:22px;padding:0 9px;border:none;border-radius:0;background:rgba(255,255,255,0.08);color:#cfcbc2;
-    font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;flex:0 0 auto;
-    position:relative;transition:background .12s,color .12s;font-family:Tahoma,system-ui,sans-serif;}
-  .pl-htxt:hover{background:rgba(255,255,255,0.22);color:#fff;}
+  /* ★ Default 按钮（2026-10-02 v17）：设为系统默认播放器——文字钮（恒字「Default」）+ 右下角勾（手动确认态；配方同置顶钮） */
+  .pl-htxt{width:auto;min-width:52px;height:22px;padding:0 9px;border:1px solid rgba(255,255,255,0.22);border-radius:0;background:rgba(255,255,255,0.08);color:#cfcbc2;
+    box-sizing:border-box;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;flex:0 0 auto;
+    position:relative;transition:background .12s,color .12s,border-color .12s;font-family:Tahoma,system-ui,sans-serif;}
+  .pl-htxt:hover{background:rgba(255,255,255,0.22);color:#fff;border-color:rgba(255,255,255,0.42);}
   .pl-htxt:disabled{opacity:.55;}
-  #pl-def::after{content:'\2713';position:absolute;right:-2px;bottom:-3px;font-size:10px;font-weight:700;line-height:1;color:#ffd301;display:none;text-shadow:0 0 2px rgba(0,0,0,.85);pointer-events:none;}
+  #pl-def::after{content:'\2714';position:absolute;right:0;bottom:-1px;font-size:12px;font-weight:400;line-height:1;color:#ffd301;display:none;pointer-events:none;
+    text-shadow:0 -1px 0 rgba(0,0,0,.95),0 1px 0 rgba(0,0,0,.95),-1px 0 0 rgba(0,0,0,.95),1px 0 0 rgba(0,0,0,.95),-1px -1px 0 rgba(0,0,0,.85),1px -1px 0 rgba(0,0,0,.85),-1px 1px 0 rgba(0,0,0,.85),1px 1px 0 rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.7);}
   #pl-def.pl-def-on::after{display:block;}
+  /* ★ 窗口拉伸比例钮 x0.5~x4（2026-10-03 q319 用户定案）：位于 Default 左侧——快捷键 1/2/3/4（x0.5 = 「1 左侧键」(`) 或回车；键位在引擎键位表）；
+     x1 = 视频像素物理 1:1（win32 DSF=1 天然无视系统缩放）；点击直改窗口尺寸使画面恰为 视频分辨率×N（闭式解一发落点——2026-10-03 提速重写）；
+     ★ 一切视频装载即自动 x1（引擎 loadedmetadata 触发——启动值）；右下角 ✓ = 当前生效档（实测几何反推——手动改窗即自动消隐）；
+     钮面「x」中性色/倍率金色（= 键位标注，Tahoma 非加粗）；★ x0.5 例外（2026-10-03 用户定案）：0.5 非键位 → 倍率恒白 + 旁挂金键帽「`」（1 左侧键）；音轨/未就绪禁用（引擎回推 avail） */
+  .pl-hzoom{width:auto;min-width:24px;padding:0 4px;font-size:11px;letter-spacing:0;font-family:Tahoma,system-ui,sans-serif;}
+  .pl-hzoom::after{content:'\2714';position:absolute;right:0;bottom:-1px;font-size:12px;font-weight:400;line-height:1;color:#ffd301;display:none;pointer-events:none;
+    text-shadow:0 -1px 0 rgba(0,0,0,.95),0 1px 0 rgba(0,0,0,.95),-1px 0 0 rgba(0,0,0,.95),1px 0 0 rgba(0,0,0,.95),-1px -1px 0 rgba(0,0,0,.85),1px -1px 0 rgba(0,0,0,.85),-1px 1px 0 rgba(0,0,0,.85),1px 1px 0 rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.7);}
+  .pl-hzoom.pl-zoom-on::after{display:block;}
+  .pl-hzoom:disabled{opacity:.4;}
+  .pl-hzoom:disabled:hover{background:rgba(255,255,255,0.08);color:#cfcbc2;border-color:rgba(255,255,255,0.22);}
+  /* ★ 数字 = 快捷键标注（2026-10-02 用户定案）：xN 钮中「x」恒中性色、「N」金色（Tahoma 非加粗——与 dock N/P 同语言）；
+     x0.5 例外（2026-10-03 用户定案）：0.5 非键位恒白（.pl-znw）+ 旁挂金键帽「`」（.pl-kc）——金色专留键帽标注；键帽子样式与 .ovmb-kcap 同语言（金边 + 底边 2px 键体感） */
+  .pl-zn{color:#ffd301;}
+  .pl-znw{color:#fff;}
+  .pl-kc{display:inline-flex;align-items:center;justify-content:center;margin-left:3px;min-width:14px;height:14px;padding:0 3px;border-radius:3px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.12);color:#ffd301;font-size:10px;line-height:1;font-weight:400;font-family:Tahoma,Verdana,sans-serif;box-sizing:border-box;pointer-events:none;}
   /* ★ 确认框（Default）：暗色卡片 + 主操作右；遮罩/Esc/点外 = 取消；开框期拖拽带让路（no-drag） */
   .pl-ask-wrap{position:absolute;inset:0;z-index:99995;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);-webkit-app-region:no-drag;}
   .pl-ask-wrap.pl-ask-show{display:flex;}
@@ -67,13 +90,21 @@
   #pl-max .pl-ic-restore{display:none;}
   #pl-max.pl-maxed .pl-ic-max{display:none;}
   #pl-max.pl-maxed .pl-ic-restore{display:block;}
+  /* ★ 右下角 resize grip（2026-10-02 q319 定案；与主窗 IDE 右下角滴两条斜线 100% 同语言）：36×36 命中区 + 两条金斜线——
+     拖拽 = pointer capture + rAF 节流 → bridge.window.resizeGrip（主进程 clamp min/max + setBounds，左上角固定）；
+     唯一可见的改窗口大小入口（宿主域 handler = shell/player-host.ts registerHostShellIpc） */
+  #pl-rgrip{position:fixed;bottom:0;right:0;width:36px;height:36px;z-index:80;-webkit-app-region:no-drag;cursor:nwse-resize;background:transparent;touch-action:none;}
+  #pl-rgrip svg{display:block;width:100%;height:100%;pointer-events:none;}
+  #pl-rgrip line{stroke:#ffd301;stroke-width:2;stroke-linecap:round;}
   /* 编队按钮槽（squad-btn.js 注入；按钮自带内联样式） */
   #pl-squad{display:inline-flex;align-items:center;flex:0 0 auto;-webkit-app-region:no-drag;}
-  #pl-squad .qqq-squad-btn{border-radius:0 !important;}   /* v12 直角：收编 squad-btn 内联 4px 圆角（仅本窗生效，IDE 主窗不受影响） */
+  /* v12 直角 + 2026-10-02 可见边框同规：收编 squad-btn 内联圆角/暗边/透明底（仅本窗生效，IDE 主窗不受影响） */
+  #pl-squad .qqq-squad-btn{border-radius:0 !important;border-color:rgba(255,255,255,0.22) !important;background:rgba(255,255,255,0.08) !important;}
+  #pl-squad .qqq-squad-btn:hover{background:rgba(255,255,255,0.22) !important;border-color:rgba(255,255,255,0.42) !important;}
   #pl-body{position:relative;flex:1 1 auto;min-height:0;display:flex;}
   #pl-body .ovmb-maincol{-webkit-app-region:drag;}   /* 播放区空背景可拖窗（v15 后 = 音频盒四周；视频满铺 → 拖窗走头部条） */
   #pl-body .ovmb, #pl-body .ovmb *{-webkit-app-region:no-drag;}
-  #pl-body .ovmb-stack, #pl-body .ovmb-stack *{-webkit-app-region:no-drag;}
+  #pl-body .ovmb-uirow, #pl-body .ovmb-uirow *{-webkit-app-region:no-drag;}
   #pl-body video, #pl-body audio{-webkit-app-region:no-drag;}
   #pl-body .ovmb-txbar{-webkit-app-region:no-drag;}
   /* ★ 弹面板开启期拖拽带让路（2026-10-02）：面板开着时头部条/播放区空背景临时 no-drag——
@@ -107,6 +138,11 @@
     <img id="pl-logo" src="../assets/qqqide.png" alt="" draggable="false" aria-hidden="true">
     <span id="pl-title"></span>
     <span id="pl-tools">
+      <button class="pl-hbtn pl-hzoom" id="pl-z05" data-z="0.5">x<span class="pl-znw">0.5</span><span class="pl-kc" aria-hidden="true">`</span></button>
+      <button class="pl-hbtn pl-hzoom" id="pl-z1" data-z="1">x<span class="pl-zn">1</span></button>
+      <button class="pl-hbtn pl-hzoom" id="pl-z2" data-z="2">x<span class="pl-zn">2</span></button>
+      <button class="pl-hbtn pl-hzoom" id="pl-z3" data-z="3">x<span class="pl-zn">3</span></button>
+      <button class="pl-hbtn pl-hzoom" id="pl-z4" data-z="4">x<span class="pl-zn">4</span></button>
       <button class="pl-htxt" id="pl-def" title="Default">Default</button>
       <span id="pl-squad"></span>
       <button class="pl-hbtn" id="pl-pin" title="Pin">&#128204;</button>
@@ -119,6 +155,13 @@
   <div id="pl-empty">
     <div class="pl-note">&#9834;</div>
     <div id="pl-empty-text"></div>
+  </div>
+  <!-- Resize grip（主窗同款：36×36 命中区 + 两条斜线——拖右下角即改窗口大小） -->
+  <div id="pl-rgrip" aria-hidden="true">
+    <svg viewBox="0 0 36 36" preserveAspectRatio="none">
+      <line x1="30" y1="8" x2="8" y2="30"></line>
+      <line x1="30" y1="20" x2="20" y2="30"></line>
+    </svg>
   </div>
 </div>
 <div class="pl-ask-wrap" id="pl-defask">
@@ -229,13 +272,21 @@
         volume: p.volume, muted: p.muted
       });
     },
-    reveal: function (p) { try { if (bridge && bridge.player && bridge.player.reveal) { bridge.player.reveal(p); } } catch (_) { } },
+    // 返回值透传（宿主跨进程裁决 {ok, via}——'roam' 已由 IDE 承接；失败如实浮读，2026-10-03）
+    reveal: function (p) {
+      try { if (bridge && bridge.player && bridge.player.reveal) { return bridge.player.reveal(p); } } catch (_) { }
+      return null;
+    },
+    // 定位可达性（'roam'|'fs'——截图提示按钮文案依据；旧宿主无此通道 → null 回落 Roam 文案）
+    revealMode: function () { try { if (bridge && bridge.player && bridge.player.revealMode) { return bridge.player.revealMode(); } } catch (_) { } return null; },
     getLastDir: function () { return ''; },
     onPlayState: function () { },
     onState: function () { _save(false); },
     savePref: function (k, v) {
       if (k === 'dockSide') { _save(false); }
-    }
+    },
+    // ★ 窗口拉伸钮状态回推（x1~x4；2026-10-02）：avail = 有视频可拉伸 / active = 当前生效档（0=无）
+    onZoomState: function (st) { try { _zoomSync(st); } catch (_) { } }
   }) : null;
 
   function _showEmpty(on) {
@@ -333,6 +384,76 @@
   try {
     if (bridge && bridge.player && bridge.player.onMaxState) { bridge.player.onMaxState(function (on) { _maxUI(!!on); }); }
   } catch (_) { }
+
+  // ── 右下角 resize grip（2026-10-02 q319 定案；移植主窗 ResizeGrip v2：pointer capture + rAF 节流 + 主进程 setBounds）──
+  //   screen 坐标差值 + 起始 outer 基准 → 宽高同改、左上角固定（min/max 由主进程钳制）；blur 兜底强制退出拖拽态
+  (function () {
+    var grip = document.getElementById('pl-rgrip');
+    if (!grip) { return; }
+    var dragging = false, rafId = 0, pending = null;
+    var startX = 0, startY = 0, startW = 0, startH = 0;
+    function flushPending() {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      if (!pending) { return; }
+      var p = pending; pending = null;
+      try { if (bridge && bridge.window && bridge.window.resizeGrip) { bridge.window.resizeGrip(p.w, p.h); } } catch (_) { }
+    }
+    function endDrag() {
+      if (!dragging) { return; }
+      dragging = false; pending = null;
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      window.removeEventListener('blur', endDrag);
+    }
+    grip.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) { return; }
+      e.preventDefault();
+      dragging = true;
+      startX = e.screenX; startY = e.screenY;
+      startW = window.outerWidth; startH = window.outerHeight;
+      try { grip.setPointerCapture(e.pointerId); } catch (_) { }
+      window.addEventListener('blur', endDrag);
+    });
+    grip.addEventListener('pointermove', function (e) {
+      if (!dragging) { return; }
+      pending = { w: Math.max(startW + (e.screenX - startX), 100), h: Math.max(startH + (e.screenY - startY), 100) };
+      if (!rafId) { rafId = requestAnimationFrame(flushPending); }
+    });
+    function onPointerEnd() { flushPending(); endDrag(); }
+    grip.addEventListener('pointerup', onPointerEnd);
+    grip.addEventListener('pointercancel', onPointerEnd);
+  })();
+
+  // ── 窗口拉伸钮 x0.5~x4（2026-10-03 q319 用户定案）：点击 → 引擎按 视频分辨率×N 直改窗口尺寸（闭式解一发落点）──
+  //   x1 = 视频像素物理 1:1（win32 DSF=1 无视系统缩放）；✓ 角标由引擎实测几何回推（onZoomState 统一刷新——引擎推 zoom 值本身）；
+  //   音轨/元数据未就绪 → 禁用；快捷键 1/2/3/4 与 `（1 左侧键）/回车（=x0.5）同源（键在引擎键位表）
+  var zoomBtns = ['pl-z05', 'pl-z1', 'pl-z2', 'pl-z3', 'pl-z4'].map(function (id) { return document.getElementById(id); });
+  function _zoomZv(zb) { var v = parseFloat(zb && zb.getAttribute('data-z')); return (isFinite(v) && v > 0) ? v : 0; }
+  function _zoomSync(st) {
+    if (!zoomBtns) { return; }
+    var avail = !!(st && st.avail);
+    var active = (st && st.active) || 0;
+    for (var zi = 0; zi < zoomBtns.length; zi++) {
+      var zb = zoomBtns[zi];
+      if (!zb) { continue; }
+      var zv = _zoomZv(zb);
+      zb.disabled = !avail;
+      zb.classList.toggle('pl-zoom-on', avail && active === zv);
+      if (zv === 0.5) {
+        zb.title = _tt('shell.player.zoomTip05', '窗口拉伸 x0.5（快捷键 ` 或回车）');
+      } else {
+        var tip = _tt('shell.player.zoomTip', '窗口拉伸 x{0}（快捷键 {0}）');
+        zb.title = String(tip).split('{0}').join(String(zv));
+      }
+    }
+  }
+  for (var zj = 0; zj < zoomBtns.length; zj++) {
+    (function (zb) {
+      if (!zb) { return; }
+      zb.addEventListener('mousedown', function (e) { e.preventDefault(); });   // 焦点卫生（同头部钮）
+      zb.addEventListener('click', function () { try { if (eng && eng.zoom) { eng.zoom(_zoomZv(zb)); } } catch (_) { } });
+    })(zoomBtns[zj]);
+  }
+  _zoomSync(null);
 
   // ── 系统默认播放器（2026-10-02 v17）：「Default」→ 确认框 → 全量接管（apply）/纯清空解除（remove）──
   //   接管范围 = 一切媒体（一切可播音视频格式）；✓ 角标 = 当前已接管（手动确认态）。

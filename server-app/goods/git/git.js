@@ -26,7 +26,7 @@
             // X 区 tabs only — 不在 A 区
             tabs: {
                 git: {
-                    title: '🔀 git',
+                    title: 'git',
                     closable: true,
                     build: function (pane) {
                         pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';

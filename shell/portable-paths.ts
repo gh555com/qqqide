@@ -184,12 +184,16 @@ export function applyPortablePaths(opts?: { sessionDir?: string }): { root: stri
     //   环境变量 TEMP/TMP/LOCALAPPDATA 已在上面重设，GPU/Utility/Renderer
     //   子进程继承后自然写入 Data/ 目录。user-data-dir 覆盖 GPUCache/ 和 Code Cache/。
     //   仅禁用无用的 Chromium 特征（省资源、零能力影响）。
+    // ★ disable-features 唯一入口（2026-10-02 F61 实测定案）：全应用只此一处 append——重复 append
+    //   同一 switch 仅末值生效（实测 getSwitchValue；FeatureList 同源读取 → 前清单整份静默丢弃；
+    //   main.ts 曾并存第二份 3 项清单 → 本清单 16 项全灭）。新增/删除禁用项只改这里；
+    //   禁在任何其他文件再 append('disable-features')。
     app.commandLine.appendSwitch('disable-features',
-        'DefaultBrowser,MediaRouter,OptimizationHints,' +
-        'PreloadMediaEngagementData,SafeBrowsing,TranslateUI,' +
-        'InterestFeedContentSuggestions,PrivacySandboxSettings4,' +
-        'SpellcheckService,PrintPreview,AutofillServerCommunication,PasswordManager,' +
-        'IdleDetection,WebOTP,WebPayments');
+        'ForcedColors,AutoDarkMode,WinUseBrowserSpellChecker,' +
+        'DefaultBrowser,MediaRouter,DialMediaRouteProvider,OptimizationHints,' +
+        'OptimizationGuideModelDownloading,PreloadMediaEngagementData,SafeBrowsing,TranslateUI,' +
+        'InterestFeedContentSuggestions,PrivacySandboxSettings4,SpellcheckService,PrintPreview,' +
+        'AutofillServerCommunication,PasswordManager,IdleDetection,WebOTP,WebPayments');
 
     // explicitly disable features that may write registry / appdata
     app.commandLine.appendSwitch('no-default-browser-check');

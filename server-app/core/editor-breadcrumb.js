@@ -199,7 +199,9 @@
     // 复制按钮 — 恒显内联 · 淡雅统一档（2026-09-27：外观 = 编码徽标同款（灰边框+次文字色+透明底），悬浮 → 显著档（金边+实底）；不再等光标 hover、不再占右侧独立列——紧随编码按钮）
     var copyBtn = document.createElement('button');
     copyBtn.className = 'qqq-breadcrumb-copy-btn';
-    copyBtn.textContent = '📋';
+    var copyIco = document.createElement('span');
+    copyIco.className = 'qqi qqi-copy';
+    copyBtn.appendChild(copyIco);
     copyBtn.title = _i('editor.copyPath', '复制路径');
     copyBtn.setAttribute('data-no-cd', '');
     copyBtn.addEventListener('click', function (e) {
@@ -219,7 +221,7 @@
       } catch (_) { }
       if (worked) {
         copyBtn.textContent = '✓';
-        setTimeout(function () { copyBtn.textContent = '📋'; }, 800);
+        setTimeout(function () { copyBtn.textContent = ''; copyBtn.appendChild(copyIco); }, 800);
       }
     });
     bar.appendChild(copyBtn);
@@ -428,7 +430,9 @@
       var mdBtn = document.createElement('button');
       mdBtn.className = 'qqq-editor-float-btn';
       mdBtn.setAttribute('data-no-cd', '');
-      mdBtn.textContent = '\uD83D\uDC41\uFE0F';
+      var mdIco = document.createElement('span');
+      mdIco.className = 'qqi qqi-eye';
+      mdBtn.appendChild(mdIco);
       mdBtn.title = _i('mdview.action', '预览 Markdown');
       mdBtn.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
@@ -459,7 +463,9 @@
     var mmBtn = document.createElement('button');
     mmBtn.className = 'qqq-editor-float-btn';
     mmBtn.setAttribute('data-no-cd', '');
-    mmBtn.textContent = mmOn ? '\uD83D\uDDFA' : '\u25A1';
+    var mmIco = document.createElement('span');
+    mmIco.className = 'qqi qqi-map';
+    if (mmOn) mmBtn.appendChild(mmIco); else mmBtn.textContent = '\u25A1';
     mmBtn.title = _i('editor.minimap', '小地图');
     mmBtn.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
@@ -467,7 +473,8 @@
         var cur = monacoEditor.getOption(monaco.editor.EditorOption.minimap).enabled;
         var next = !cur;
         monacoEditor.updateOptions({ minimap: { enabled: next } });
-        mmBtn.textContent = next ? '\uD83D\uDDFA' : '\u25A1';
+        mmBtn.textContent = next ? '' : '\u25A1';
+        if (next) mmBtn.appendChild(mmIco);
         if (window.qqqEditor && window.qqqEditor.saveMinimapPref && filePath) {
           window.qqqEditor.saveMinimapPref(filePath, next);
         }

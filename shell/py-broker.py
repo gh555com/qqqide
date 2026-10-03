@@ -582,10 +582,17 @@ def _find_hwnd_by_title(title, pid):
 
 
 def _mac_squad_summon(slot, entry):
-    """macOS: NSRunningApplication 激活（应用激活不需辅助功能授权，TCC 不拦）。
-    最小化窗口的还原由 Electron 侧 focusWindowBySlot 兜底（summon 事件回传后进程内执行）。"""
+    """macOS: AX 窗口级精确 raise（2026-10-02 F53 实测定案）。
+    旧实现 = NSRunningApplication 应用级激活：同进程多窗时只能带「最后活跃窗」——
+    实测按 空格+2 想召 2■t_modern，眼前出现的却是 w■t_legacy（带错窗，比没反应更糟）；
+    且 app.isActive() 为实例级——目标窗在后台而实例活跃时被误判 already 静默跳过。
+    新实现 = AX 枚举 pid 窗口按标题精确匹配（entry.title → {slot}■ 前缀 → 首窗退化）：
+    还原最小化（kAXMinimized=False）+ frontmost 激活实例 + AXRaise 目标窗（全局最前）。
+    already 判定 = 实例活跃 且 焦点窗即目标窗（AXFocusedWindow 引用相等——精确到窗）。
+    TCC：辅助功能/输入监控授权随 qqqide 子进程继承（py-broker 实测可用全链）。"""
     pid = int(entry.get("pid") or 0)
     folder = str(entry.get("folder") or "")
+    title = str(entry.get("title") or "")
     if pid <= 0:
         return {"ok": False, "folder": folder}
     try:
@@ -593,6 +600,58 @@ def _mac_squad_summon(slot, entry):
     except OSError:
         _log(f"[Squad] summon {slot} miss (pid {pid} gone) folder={folder}")
         return {"ok": False, "folder": folder}
+    # ★ 窗口级路径（首选）：AX 精确 raise——复活最小化 + 目标窗置前
+    try:
+        from ApplicationServices import (AXUIElementCreateApplication, AXUIElementCopyAttributeValue,
+                                         AXUIElementPerformAction, AXUIElementSetAttributeValue,
+                                         kAXWindowsAttribute, kAXTitleAttribute, kAXRaiseAction,
+                                         kAXFrontmostAttribute, kAXMinimizedAttribute, kAXFocusedWindowAttribute)
+        appx = AXUIElementCreateApplication(pid)
+        err, wins = AXUIElementCopyAttributeValue(appx, kAXWindowsAttribute, None)
+        if err == 0 and wins:
+            pref = str(slot) + "\u25a0"
+            target = None
+            fallback = None
+            for w in wins:
+                if fallback is None:
+                    fallback = w
+                _e, t = AXUIElementCopyAttributeValue(w, kAXTitleAttribute, None)
+                ts = str(t) if t is not None else ""
+                if title and ts == title:
+                    target = w
+                    break
+                if target is None and ts.startswith(pref):
+                    target = w
+            if target is None:
+                target = fallback
+            # already：实例活跃且焦点窗即目标窗（引用相等——精确到窗，防误跳过）
+            _active = False
+            try:
+                from AppKit import NSRunningApplication
+                _ra = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+                _active = bool(_ra and _ra.isActive())
+            except Exception:
+                _active = False
+            if _active:
+                _e, fw = AXUIElementCopyAttributeValue(appx, kAXFocusedWindowAttribute, None)
+                if fw is not None and target is not None and fw == target:
+                    return {"ok": False, "folder": folder, "already": True}
+            AXUIElementSetAttributeValue(appx, kAXFrontmostAttribute, True)
+            try:
+                AXUIElementSetAttributeValue(target, kAXMinimizedAttribute, False)
+            except Exception:
+                pass
+            rc = AXUIElementPerformAction(target, kAXRaiseAction)
+            ok = (rc == 0)
+            _log(f"[Squad] summon {slot} pid={pid} ax-raise ok={ok} folder={folder}")
+            if ok:
+                return {"ok": True, "folder": folder}
+            # raise 失败 → 落回退链（不直接放弃）
+        else:
+            _log(f"[Squad] summon {slot} ax enum empty (err={err}) pid={pid} — fallback")
+    except Exception as e:
+        _log(f"[Squad] mac ax summon fallback: {e}")
+    # 回退：老 NSRunningApplication 应用级激活（AX 不可用/枚举失败时）
     try:
         from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
         app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)

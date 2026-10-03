@@ -13,15 +13,19 @@
 //   编队一等公民：开窗即 claimSquad 默认槽 + 标题 {槽}■{当前轨名}（轨变即刷，refreshWindowEntry）；
 //   关窗即 releaseSquad；热键可召回。不隶属任何 IDE 窗口（无 parent/无项目锁）——
 //   其他 IDE 窗口关完与它无关；全部窗口（IDE+播放器）都关完才随实例退。
-//   持久化：OS 级 player-state.json v2 = 按包分槽会话集 {version:2, packs:{<包根>: {sessions:[...]}}}——
+//   持久化：OS 级 player-state.json v2 = 按包分槽会话集 {version:2, packs:{<包根>: {sessions:[...]}}, prefs:{...}}——
 //   退出时仍打开的播放器窗下次启动原样恢复（暂停态；与 IDE 窗口 openWindows 同语义）；手动关闭的窗口不恢复。
+//   ★ 播放偏好跨窗继承（2026-10-02）：prefs 顶层 = {rate/loop/shuffle/follow/volume/muted}（store 顶层·跨包共享，与 lastPos 同域）——
+//   任一窗变更即字段级推进（setSession）；新窗出生读之（显式初值恒胜）；无记录 = 出厂默认（多文件列表 循环开）；
+//   恢复窗读自身会话并即刻回种偏好（装载即 _save(true)）。纯逻辑 = shell/player-prefs.ts。
 //   旧版 v1 单会话文件首启自动迁移为一条会话。QQQIDE_PLAYER_STATE / QQQIDE_SQUADS_FILE 可覆盖（探针）。
 //   ★ v13 新窗位置（2026-10-02 q319 定案）：lastPos（store 顶层·跨包共享）= 上次关闭位置〔getNormalBounds·含退出时关闭〕→ 新窗沿用；
 //   无记忆（历史首窗）= 光标所在显示器 workArea 正中；与既有播放器窗重叠（≤8px）→ +28,+28 逐次轻错位；完全离屏 → 钳回最近显示器 workArea（详 _resolveOpenGeom）。
 //   ★ mac 配方：alwaysOnTop('screen-saver') + setVisibleOnAllWorkspaces(true,{visibleOnFullScreen:true})。
-//   ★ 窗口外观（v16，2026-10-02）：transparent 窗 + CSS 零圆角（IDE 传统直角——真机探针实证 radius 0 时系统不叠加圆角：背窗取色法）
-//   + 橙色渐变环（与暗主题内置面板同原语，player.html 绘制）；默认几何 音频 860×540 / 视频 940×600；最小恒 500×360（360 = 编队下拉整链装得下——8 槽+none 行 ≈296px 实测）；
-//   禁 setBackgroundColor。
+//   ★ 窗口外观（v18，2026-10-02 q319）：win32 弃 transparent（layered 窗 drag 区双击被系统吞掉——真机探针实证零消息零最大化；
+//   非透明窗恢复系统双击头部条 = 最大化/还原〔双向实证〕+ drag/Aero Snap 全保留；环 = border-box 渐变照常渲染〔像素实证与透明窗逐点一致〕）；
+//   他平台维持 transparent。+ CSS 零圆角（IDE 传统直角——真机探针实证 radius 0 时系统不叠加圆角：背窗取色法）
+//   + 橙→绿渐变环（与暗主题内置面板同原语，player.html 绘制）；默认几何 音频 860×540 / 视频 940×600；最小恒 600×320（★ 2026-10-03 v20：宽 500→600 = UI 行「恒单行」地板——最小缩放极限，详 _PLAYER_MIN_W；高 320 = 编队下拉 8 槽+none ≈296px 装得下 + 240p 视频 x1 可达；2026-10-02 360→320）。
 //   ★ 加入播放列表（2026-10-02 q319）：Roam 右键行 → qqqide:player:append——文件夹递归收集媒体（上限 500，报数截断）
 //   → 目标 = 最近活跃播放器窗（lastActive = 最后聚焦/最后打开）纯追加（重复路径跳过；不动当前轨/不打断播放）；
 //   零窗 → 新建窗装下这批（暂停态）。行可见性：文件夹恒显 / 文件侧仅媒体显（roam 侧判断，零探测）。
@@ -30,10 +34,20 @@ import { app, BrowserWindow, ipcMain, screen, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getOsBaseDir } from './portable-paths';
+import { prefsFromStore, applyPrefsToSession, notePrefChanges, mergePrefsIntoStore } from './player-prefs';
+import { climbRevealTarget } from './player-reveal';
 import { claimSquad, releaseSquad, refreshWindowEntry, broadcastSquadState } from './squad-manager';
 import { getWebappBaseUrl } from './boot';
-import { isPlayerHostMode, queuePlayerRequest, startPlayerHostLoop, filesToItems, parsePlayFiles, clearPlayerHostState, playerHostAlive, ensurePlayerHostAlive, touchPlayerHostState, ideKeepaliveFresh } from './player-host';
+import { isPlayerHostMode, queuePlayerRequest, startPlayerHostLoop, filesToItems, parsePlayFiles, clearPlayerHostState, playerHostAlive, ensurePlayerHostAlive, touchPlayerHostState, ideKeepaliveFresh, requestIdeReveal } from './player-host';
 import { stopPyBroker } from './py-broker';
+
+// ★ 播放器窗最小尺寸（2026-10-03 v20 q319 用户定案）：宽 = UI 行「恒单行」地板（最小缩放极限——三路同钳：
+//   建窗 minWidth / grip 主进程 clamp（getMinimumSize 动态读）/ OS 拖拽 WM_GETMINMAXINFO）；
+//   实测：隔离探针（真页面+真引擎）最紧档（trx 最紧档 + uic 压紧 + 最长计数 500/500 + 最宽倍速 0.06×）576~588px 起单行；
+//   真机 600 窗复核：同内容恰 598px 零溢出（ovf=0）、拖拽到地板恒 600×320；取 600 既覆盖最紧档又保 240p 小视频 x1（352 宽视频 x1 目标窗宽 608）可达。
+//   禁回 500（会换两行——历史实锤）；>500 条目的超长计数由 .ovmb-uic .ovmb-pos 上限 52px 截断兜底。
+const _PLAYER_MIN_W = 600;
+const _PLAYER_MIN_H = 320;
 
 // 音频扩展名（仅用于开窗默认尺寸/最小高判定；与引擎 _AUDIO_EXTS / roam 白名单同口径）
 const _AUDIO_EXTS: Record<string, 1> = { '.mp3': 1, '.wav': 1, '.flac': 1, '.m4a': 1, '.aac': 1, '.ogg': 1, '.oga': 1, '.opus': 1, '.weba': 1, '.wma': 1, '.aiff': 1, '.aif': 1, '.ape': 1, '.ac3': 1, '.mka': 1, '.amr': 1, '.au': 1 };
@@ -54,7 +68,7 @@ interface PSession {
     bounds: any;
     name: string;
 }
-interface PWin { win: BrowserWindow; session: PSession; autoplay: boolean; saveTimer: any; boundsTimer: any; lastActive: number; }
+interface PWin { win: BrowserWindow; session: PSession; autoplay: boolean; saveTimer: any; boundsTimer: any; lastActive: number; src: { pid: number; winId: number } | null; }
 
 // ★ 秒开诊断打点（2026-10-02）：窗创建/亮相/滞留事件时刻（相对本模块求值）→ player-host.log
 const _modT0 = Date.now();
@@ -100,12 +114,24 @@ function _persist(): void {
     try {
         const fresh = _readStore();   // 磁盘最新（其他实例/包的槽保留——只换本包槽；tmp+rename 原子）
         fresh.packs[_packKey()] = { sessions: _listSessions() };
+        _stampPrefs(fresh);           // ★ 偏好字段级合并（待写集非空才写）
         _writeStore(fresh);
     } catch { /* ignore */ }
 }
 function _persistSoon(en: PWin): void {
     if (en.saveTimer) { clearTimeout(en.saveTimer); }
     en.saveTimer = setTimeout(() => { en.saveTimer = null; _persist(); }, 700);
+}
+
+// ── ★ 播放偏好跨窗继承机器（2026-10-02 q319 定案；纯逻辑 = shell/player-prefs.ts）──
+//   记忆字段 = {rate/loop/shuffle/follow/volume/muted}（store 顶层 prefs·跨包共享，与 lastPos 同域）——
+//   写点 = 任一窗 setSession 真变化（字段级累计，_persist / 关窗写盘时并入）；读点 = 新窗出生（显式初值恒胜）。
+let _pendingPrefs: any = null;
+function _applyPrefs(sess: PSession, payload: any): void {
+    try { applyPrefsToSession(sess, payload, prefsFromStore(_readStore())); } catch { /* ignore */ }
+}
+function _stampPrefs(fresh: any): void {
+    try { if (_pendingPrefs) { mergePrefsIntoStore(fresh, _pendingPrefs); _pendingPrefs = null; } } catch { /* ignore */ }
 }
 
 /** v1（单会话旧文件）→ v2 迁移（一次性；空列表直接弃用）。 */
@@ -122,7 +148,16 @@ function _ensureStoreV2(): void {
             pinned: raw.pinned !== false, bounds: raw.bounds || null, name: '',
         });
     }
-    _writeStore({ version: 2, packs: { [_packKey()]: { sessions } } });
+    // ★ v1 存量值顺手种入偏好（首启迁移即得跨窗记忆，零手工）
+    const prefs: any = {};
+    if (raw) {
+        if (typeof raw.rate === 'number' && isFinite(raw.rate)) { prefs.rate = raw.rate; }
+        if (raw.loop === 'one' || raw.loop === 'all' || raw.loop === 'off') { prefs.loop = (raw.loop === 'off') ? 'off' : 'all'; }
+        if (typeof raw.shuffle === 'boolean') { prefs.shuffle = raw.shuffle; }
+        if (typeof raw.volume === 'number' && isFinite(raw.volume)) { prefs.volume = raw.volume; }
+        if (typeof raw.muted === 'boolean') { prefs.muted = raw.muted; }
+    }
+    _writeStore({ version: 2, packs: { [_packKey()]: { sessions } }, prefs });
 }
 
 /** 几何校验：吸附到最近显示器 workArea 内（防跑出屏幕外不可见） */
@@ -182,12 +217,16 @@ function _applyAlwaysOnTop(win: BrowserWindow, pinned: boolean): void {
 function _pageUrl(): string {
     // ★ 2026-10-02 v17：统一走 getWebappBaseUrl——dev = 127.0.0.1:8090 实时源（播放器开发即刷新）；
     //   prod = Data/webapp 运行副本（qqqide-webapp://；本调用含协议注册副作用）→ 缺失回退远端 URL。
+    // ★ 2026-10-02 绿包实锤修复：getWebappBaseUrl 两形态——打包返回「页面 URL」（…/qqqide/index.html）、
+    //   dev 返回「目录 URL」（…/qqqide/）；必须先把 index.html 剥掉再拼子页，否则打包版拼成
+    //   …/index.html/player/player.html → ERR_FILE_NOT_FOUND（绿包播放器窗全黑实锤，dev 永不暴露）。
+    const _baseDir = (s: any): string => String(s || '').replace(/index\.html?$/i, '').replace(/\/*$/, '/');
     try {
         const isDev = process.argv.includes('--dev') || process.env.QQQIDE_DEV === '1';
         const base = getWebappBaseUrl(_packRoot, { url: String(_bootUrl || ''), healthTimeoutMs: 3000 }, isDev);
-        return String(base).replace(/\/*$/, '/') + 'player/player.html';
+        return _baseDir(base) + 'player/player.html';
     } catch {
-        return String(_bootUrl || '').replace(/\/*$/, '/') + 'player/player.html';
+        return _baseDir(_bootUrl) + 'player/player.html';
     }
 }
 
@@ -301,18 +340,23 @@ export function noteHostAllWindowsClosed(): void {
 export function openPlayerWindow(payload?: any): { ok: boolean; winId?: number; reason?: string } {
     const p = (payload && typeof payload === 'object') ? payload : {};
     const sess = _normSession(p.restore ? p.session : p);
+    if (!p.restore) { _applyPrefs(sess, p); }   // ★ 跨窗记忆：新窗从全局偏好初始化（恢复窗读自身会话）
     if (!sess.list.length) { return { ok: false, reason: 'empty' }; }
     _hadWindow = true;
     _cancelHostLinger('new window');
     const kind = _kindOf(sess.list[sess.index] || sess.list[0]);
     const geom = sess.bounds || _resolveOpenGeom(kind);
     const win = new BrowserWindow({
-        x: geom.x, y: geom.y, width: geom.w, height: geom.h,
-        minWidth: 500,            // 恒 500：播放列表恒显（190px dock + 控制行单行地板）——单/多同最低宽
-        minHeight: 360,           // 恒 360：装得下右上角编队下拉（8 槽 + none 行 ≈ 296px；2026-10-02 实测）
+        x: geom.x, y: geom.y,
+        // ★ v20：存量几何低于新最小尺寸的（旧会话 500 窄窗）直接抬到地板——防以子地板尺寸建窗（行会溢出）
+        width: Math.max(_PLAYER_MIN_W, geom.w | 0), height: Math.max(_PLAYER_MIN_H, geom.h | 0),
+        minWidth: _PLAYER_MIN_W,  // ★ v20：UI 行恒单行地板＝最小缩放极限（实测 588 + 余量；禁回 500——换两行实锤）
+        minHeight: _PLAYER_MIN_H, // ★ 2026-10-02：360→320——320 = 编队下拉（8 槽+none ≈296px）装得下 + 240p 小视频 x1（像素 1:1）可达地板（360 曾把 x1 钳在半路——小视频 ✓ 恒不亮实锤）
         frame: false, show: false,
-        transparent: true,        // ★ v11：CSS 圆角 + 鎏金环的前提（禁 backgroundColor——透明被覆盖即圆角失效）
-        backgroundColor: '#00000000',
+        // ★ v18（2026-10-02）：win32 弃 transparent——layered 窗的 drag 区双击被系统吞掉（探针实证：零消息/零最大化）；
+        // 非透明窗 = 系统双击头部条原生最大化/还原 + drag/Aero 全保留；环 border-box 渐变照常渲染（像素实证与透明窗逐点一致）。
+        transparent: process.platform !== 'win32',
+        backgroundColor: process.platform === 'win32' ? '#0b0b0b' : '#00000000',
         title: 'qd (qqqide) Player',
         resizable: true, maximizable: true, minimizable: true, fullscreenable: true,
         acceptFirstMouse: true,
@@ -328,7 +372,11 @@ export function openPlayerWindow(payload?: any): { ok: boolean; winId?: number; 
     });
     try { win.removeMenu(); } catch { /* ignore */ }
     (win as any).__qqqPlayerWin = true;
-    const entry: PWin = { win, session: sess, autoplay: p.restore ? false : (p.play !== false), saveTimer: null, boundsTimer: null, lastActive: Date.now() };
+    // ★ 发起窗侧记（选窗序①）：本次开窗请求来自哪个 IDE 窗——宿主「Roam 定位」优先回原窗（恢复窗/外源恒 null）
+    const entry: PWin = {
+        win, session: sess, autoplay: p.restore ? false : (p.play !== false), saveTimer: null, boundsTimer: null, lastActive: Date.now(),
+        src: (p && p.__src && typeof p.__src.pid === 'number' && typeof p.__src.winId === 'number') ? { pid: p.__src.pid | 0, winId: p.__src.winId | 0 } : null,
+    };
     _wins.set(win.id, entry);
     try { console.log('[player-host] win created +' + (Date.now() - _modT0) + 'ms (id=' + win.id + ')'); } catch { /* ignore */ }
     win.on('focus', () => { entry.lastActive = Date.now(); });
@@ -369,9 +417,16 @@ export function openPlayerWindow(payload?: any): { ok: boolean; winId?: number; 
             const fresh = _readStore();
             if (_normAtClose) { fresh.lastPos = { x: _normAtClose.x | 0, y: _normAtClose.y | 0 }; }
             if (!_quitting) { fresh.packs[_packKey()] = { sessions: _listSessions() }; }
+            _stampPrefs(fresh);   // ★ 偏好落盘（关窗即刷）
             _writeStore(fresh);
         } catch { /* ignore */ }
     });
+    // ★ 开窗链诊断打点（2026-10-02 实测补充）：dom ready（脚本全量求值完）/ 首媒体起播 / 加载失败——
+    //   与既有 boot / win created / win shown 同一现场（player-host.log；ASCII 串恒守）。
+    //   实测口径（2026-10-02）：暖路径 created→shown ≈0.2~0.4s、shown→dom ready ≈+0.14s、dom ready→media ≈+0.3s（Chromium 媒体管线上线，主线程空转等）。
+    win.webContents.on('dom-ready', () => { try { console.log('[player-host] dom ready +' + (Date.now() - _modT0) + 'ms (id=' + winId + ')'); } catch { /* ignore */ } });
+    win.webContents.on('media-started-playing', () => { try { console.log('[player-host] media started +' + (Date.now() - _modT0) + 'ms (id=' + winId + ')'); } catch { /* ignore */ } });
+    win.webContents.on('did-fail-load', (_e: any, code: number, desc: string) => { try { console.log('[player-host] load failed ' + code + ' ' + String(desc || '').slice(0, 80) + ' (id=' + winId + ')'); } catch { /* ignore */ } });
     win.once('ready-to-show', () => {
         try { console.log('[player-host] win shown +' + (Date.now() - _modT0) + 'ms (id=' + winId + ')'); } catch { /* ignore */ }
         try { win.show(); win.focus(); } catch { /* ignore */ }
@@ -590,6 +645,9 @@ async function _appendToPlayer(payload: any): Promise<any> {
                 const items = fresh.map(mkItem);
                 for (const it of items) { tgt.session.list.push(it); }
                 tgt.lastActive = Date.now();
+                if (payload && payload.__src && typeof payload.__src.winId === 'number') {
+                    tgt.src = { pid: payload.__src.pid | 0, winId: payload.__src.winId | 0 };   // 发起窗随最新一次加入推进
+                }
                 _persist();
                 try { if (!tgt.win.isDestroyed()) { tgt.win.webContents.send('qqqide:player:append', { items }); } } catch { /* ignore */ }
                 return { ok: true, added: items.length, dup, ignored, truncated: st.trunc, created: false, title: _trackTitle(tgt) };
@@ -597,7 +655,7 @@ async function _appendToPlayer(payload: any): Promise<any> {
             return { ok: true, added: 0, dup, ignored, truncated: false, created: false, title: _trackTitle(tgt) };
         }
         const items = uniq.map(mkItem);
-        const r = openPlayerWindow({ list: items, index: 0, play: false });   // 无窗 → 新建（暂停态）
+        const r = openPlayerWindow({ list: items, index: 0, play: false, __src: (payload && payload.__src) || null });   // 无窗 → 新建（暂停态；携发起窗侧记）
         if (!r.ok) { return { ok: false, reason: r.reason || 'open_failed' }; }
         return { ok: true, added: items.length, dup: 0, ignored, truncated: st.trunc, created: true, title: _baseName(items[0]) };
     } catch { return { ok: false, reason: 'error' }; }
@@ -608,6 +666,35 @@ function _entryOf(e: any): PWin | null {
         const win = BrowserWindow.fromWebContents(e.sender);
         return win ? (_wins.get(win.id) || null) : null;
     } catch { return null; }
+}
+
+/** 发起窗侧记（IDE 域）：本次请求来自哪个 IDE 窗（{pid,winId}）——宿主「Roam 定位」据此优先回原窗（选窗序①）。 */
+function _srcOf(e: any): { pid: number; winId: number } | null {
+    try {
+        if (isPlayerHostMode()) { return null; }
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (!win || win.isDestroyed()) { return null; }
+        return { pid: process.pid, winId: win.id };
+    } catch { return null; }
+}
+
+/** 系统文件管理器兜底定位（宿主跨进程通道失败时统一收口）：存在 → 选中；缺失 → 爬升最近存在祖先；全无 → 失败。 */
+function revealViaFileManager(p: string): { ok: boolean; reason?: string } {
+    let s = String(p || '').trim();
+    if (!s) { return { ok: false, reason: 'empty' }; }
+    try { s = path.normalize(s); } catch { /* keep */ }
+    const exists = (c: string): boolean => { try { return fs.existsSync(c); } catch { return false; } };
+    try {
+        if (exists(s)) { shell.showItemInFolder(s); return { ok: true }; }
+        const near = climbRevealTarget(s, exists);
+        if (near) {
+            let isDir = false;
+            try { isDir = fs.statSync(near).isDirectory(); } catch { /* ignore */ }
+            if (isDir) { shell.openPath(near); } else { shell.showItemInFolder(near); }
+            return { ok: true };
+        }
+    } catch { /* ignore */ }
+    return { ok: false, reason: 'missing' };
 }
 
 export function registerPlayerIpc(root: string, bootUrl: string, appVersion: string): void {
@@ -630,18 +717,20 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
     });
 
     // ★ 单宿主域分派（2026-10-02 v17）：宿主域 = 本进程执行；IDE 域 = 请求队列转发（player-host.ts）
-    ipcMain.handle('qqqide:player:open', (_e, payload: any) => {
+    ipcMain.handle('qqqide:player:open', (e, payload: any) => {
         try {
             if (isPlayerHostMode()) { return openPlayerWindow(payload); }
-            return queuePlayerRequest('open', payload, 0);   // 队列入档 + 宿主失活自动拉起（每次 Q 都开新窗语义在宿主内保持）
+            const src = _srcOf(e);   // ★ 发起窗侧记（选窗序①：宿主「Roam 定位」优先回原窗）
+            return queuePlayerRequest('open', Object.assign({}, payload || {}, src ? { __src: src } : {}), 0);   // 队列入档 + 宿主失活自动拉起（每次 Q 都开新窗语义在宿主内保持）
         } catch { return { ok: false }; }
     });
 
     // ★ 加入播放列表（2026-10-02 q319）：Roam 右键行 → 收集媒体 → 目标窗纯追加 / 无窗新建（暂停态）
-    ipcMain.handle('qqqide:player:append', (_e, payload: any) => {
+    ipcMain.handle('qqqide:player:append', (e, payload: any) => {
         try {
             if (isPlayerHostMode()) { return _appendToPlayer(payload); }
-            return queuePlayerRequest('append', payload, 8000);   // 带回复等待（roam 依结果出 toast）
+            const src = _srcOf(e);   // ★ 发起窗侧记（追加亦属发起行为——最新一次加入推进侧记）
+            return queuePlayerRequest('append', Object.assign({}, payload || {}, src ? { __src: src } : {}), 8000);   // 带回复等待（roam 依结果出 toast）
         } catch { return { ok: false, reason: 'error' }; }
     });
 
@@ -668,6 +757,7 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
                 if (typeof patch.volume === 'number' && isFinite(patch.volume)) { s.volume = Math.max(0, Math.min(1.5, patch.volume)); }
                 if (typeof patch.muted === 'boolean') { s.muted = patch.muted; }
                 if (patch.dockSide === 'left' || patch.dockSide === 'right') { s.dockSide = patch.dockSide; }
+                _pendingPrefs = notePrefChanges(_pendingPrefs, patch, s);   // ★ 偏好字段级推进（跨窗记忆写点）
             }
             _persistSoon(en);
             return { ok: true };
@@ -716,21 +806,40 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
         try { const en = _entryOf(e); if (en) { en.win.close(); } return { ok: true }; } catch { return { ok: false }; }
     });
 
-    // 截图「📂 Roam 定位」（播放器窗 → 主窗口 Roam 引擎；无主窗口 → 系统定位兜底）
-    ipcMain.handle('qqqide:player:reveal', (e, p: string) => {
+    // 截图「📂 Roam 定位」（2026-10-03 q319 跨进程重设计）：宿主域 = 请求同安装 IDE（reveals 队列 → 任一 IDE
+    //   主窗置前 + 投递 __qqq_roamRevealPath → ack 裁决——旧「进程内找主窗」在单宿主域结构性必败〔宿主进程恒无
+    //   IDE 窗〕只剩系统定位兜底）；无 IDE/无窗/投递失败/超时 → 系统文件管理器兜底（爬升最近存在祖先）。
+    //   IDE 域分支 = 进程内防御直投（正常不可达——播放器窗只存在于宿主进程）。
+    ipcMain.handle('qqqide:player:reveal', async (e, p: string) => {
+        const target = String(p || '');
+        if (isPlayerHostMode()) {
+            const en = _entryOf(e);
+            const r = await requestIdeReveal(target, (en && en.src) ? en.src : null);
+            if (r && r.ok) { return { ok: true, via: 'roam' }; }
+            const fb = revealViaFileManager(target);
+            return { ok: fb.ok, via: 'fs', reason: (r && r.reason) || fb.reason };
+        }
         try {
             const self = BrowserWindow.fromWebContents(e.sender);
-            const mains = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w !== self && !(w as any).__qqqPlayerWin);
-            const mw = mains.find((w) => (w as any).__qqqMainWindow) || mains.find((w) => (w.webContents.getURL() || '').indexOf('/qqqide/') !== -1);
+            const mw = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w !== self && (w as any).__qqqMainWindow);
             if (mw) {
                 mw.webContents.executeJavaScript(
-                    `(function(){ if (window.__qqq_roamRevealPath) window.__qqq_roamRevealPath(${JSON.stringify(String(p || ''))}); })()`
+                    `(function(){ if (window.__qqq_roamRevealPath) window.__qqq_roamRevealPath(${JSON.stringify(target)}); })()`
                 ).catch(() => { /* ignore */ });
-                return { ok: true };
+                return { ok: true, via: 'roam' };
             }
-            try { shell.showItemInFolder(String(p || '')); } catch { /* ignore */ }
-            return { ok: true, fallback: true };
+            const fb = revealViaFileManager(target);
+            return { ok: fb.ok, via: 'fs', reason: 'no_window' };
         } catch { return { ok: false }; }
+    });
+
+    // 「Roam 定位」标签决策（2026-10-03）：宿主域按同安装 IDE 心跳是否新鲜 → 'roam' | 'fs'
+    //   （仅决定截图提示按钮文案；click 仍由 reveal 恒活裁决兜底；旧宿主无此通道 → 前端回落 Roam 文案）
+    ipcMain.handle('qqqide:player:reveal-mode', () => {
+        try {
+            if (isPlayerHostMode()) { return { ok: true, mode: ideKeepaliveFresh() ? 'roam' : 'fs' }; }
+            return { ok: true, mode: 'roam' };
+        } catch { return { ok: false, mode: 'roam' }; }
     });
 
     // ★ 宿主域：运行时就绪（心跳/恢复/argv/队列/零窗自退）——置于全部 handler 注册之后

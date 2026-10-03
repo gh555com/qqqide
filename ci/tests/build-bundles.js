@@ -15,6 +15,9 @@ const ENTRIES = [
   { name: 'file-encoding', src: path.join(ROOT, 'shell', 'file-encoding.ts') },
   { name: 'squad-manager', src: path.join(ROOT, 'shell', 'squad-manager.ts') },
   { name: 'search-proto', src: path.join(ROOT, 'shell', 'search-proto.ts') },
+  { name: 'transcode-hw', src: path.join(ROOT, 'shell', 'transcode-hw.ts') },
+  { name: 'player-prefs', src: path.join(ROOT, 'shell', 'player-prefs.ts') },
+  { name: 'player-reveal', src: path.join(ROOT, 'shell', 'player-reveal.ts') },
 ];
 
 async function buildAll() {

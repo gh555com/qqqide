@@ -47,7 +47,7 @@
           if (e2) { try { window.qqqTabs.activateTab(gs[gi], e2.id); } catch (_) { } return true; }
         }
       }
-      var tab = window.qqqTabs.openFileCustomTab('inbox', '📬 inbox', function (pane, _tab) {
+      var tab = window.qqqTabs.openFileCustomTab('inbox', 'inbox', function (pane, _tab) {
         tab = _tab || tab;   // 时序陷阱（同 kmd）：renderFn 在 return 前同步执行，闭包 tab 此刻可能未赋值
         pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
         var iframe = document.createElement('iframe');

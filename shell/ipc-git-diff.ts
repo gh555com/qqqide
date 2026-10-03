@@ -8,7 +8,8 @@ import { ipcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getComponentBin } from './component-checker';
-import { BootConfig } from './boot';
+import { BootConfig, registerWebappProtocol } from './boot';
+import { getDataDir } from './portable-paths';
 import { APP_VERSION } from './version';
 import { addUiZoomListener } from './ui-zoom';
 
@@ -187,8 +188,16 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
         diffWin.on('move', _markUserMoved);
         diffWin.on('resize', _markUserMoved);
 
-        // URL base — always use bootConfig.url for dev or production
-        const diffBaseUrl = bootConfig.url.replace(/\/*$/, '/');
+        // URL base — 本地 webapp 优先（绿色包/离线 = qqqide-webapp:// 零网络秒开；与时间线 diff 窗同口径），
+        //   dev / 无本地副本 → 回退 bootConfig.url（禁回退「恒远端」——绿包每次开窗走网络的性能与离线缺陷已修）
+        let diffBaseUrl = bootConfig.url.replace(/\/*$/, '/');
+        try {
+            const localDir = path.join(getDataDir(), 'webapp');
+            if (fs.existsSync(path.join(localDir, 'index.html'))) {
+                registerWebappProtocol(localDir);
+                diffBaseUrl = 'qqqide-webapp://app/qqqide/';
+            }
+        } catch (_) { /* 探测失败 → 保持远端 */ }
 
         // Theme detection
         let _isDark = true;

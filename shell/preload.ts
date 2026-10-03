@@ -831,11 +831,12 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
             return () => ipcRenderer.removeListener('qqqide:player:append', handler);
         },
         reveal: (p: string) => ipcRenderer.invoke('qqqide:player:reveal', p),
+        revealMode: () => ipcRenderer.invoke('qqqide:player:reveal-mode'),
         close: () => ipcRenderer.invoke('qqqide:player:close'),
     },
 
     // ---- fileAssoc（系统默认播放器 — 播放器窗头部「Default」按钮，2026-10-02 v17）----
-    //   apply/remove = 全量接管/纯清空（一切媒体 37 类；仅 Windows；设置数据全在 HKCU）
+    //   apply/remove = 全量接管/纯清空（一切媒体 37 类；win=HKCU 注册表机 / mac=LaunchServices 机）
     fileAssoc: {
         check: () => ipcRenderer.invoke('qqqide:fileassoc:check'),
         apply: () => ipcRenderer.invoke('qqqide:fileassoc:apply'),

@@ -100,6 +100,10 @@
   }
 
   // ---- Tab button ----
+  // ★ 2026-10-03（q359 用户定案）：goods 标签图标映射（唯一表）——标签（gaeaId/customId）→ 手绘 SVG 图标名
+  //   search/git/dsecret/inbox 四个 goods 标签前置小图标（去 emoji 后的可见图标；跨系统一致）
+  var TAB_ICON_MAP = { search: 'search', git: 'git', dsecret: 'shield', inbox: 'mail' };
+
   function createTabBtn(tab, grp) {
     const btn = document.createElement('button');
     btn.className = 'qqq-tab-btn';
@@ -109,6 +113,13 @@
     nameSpan.className = 'qqq-tab-name';
     nameSpan.textContent = tab.title;
     nameSpan.style.fontStyle = tab.preview ? 'italic' : 'normal';
+    // ★ goods 标签图标：tab.icon 显式优先，否则按 TAB_ICON_MAP 自动解析（gaeaId/customId）
+    var _tabIcon = tab.icon || TAB_ICON_MAP[tab.customId || tab.gaeaId];
+    if (_tabIcon && window.qqqIcons && window.qqqIcons.has(_tabIcon)) {
+      const ico = document.createElement('span');
+      ico.className = 'qqq-tab-ico ' + window.qqqIcons.cls(_tabIcon);
+      btn.appendChild(ico);
+    }
     btn.appendChild(nameSpan);
 
     // ★ 编码徽标（2026-09-05）：点击 → 编码方案弹层（重新解码 / 另存转换）
@@ -1023,6 +1034,7 @@
       gaeaId: id,
       title: title,
       closable: (opts && opts.closable !== undefined) ? opts.closable : false,
+      icon: (opts && opts.icon) || null,
       onActivate: null,
       onClose: null,
     };
@@ -1473,7 +1485,7 @@
     if (!fileGrp) return null;
 
     const tabId = _nextTabId++;
-    const tab = { id: tabId, customId: customId, title: title, closable: true, onActivate: null, onClose: null, custom: true, preview: false, dirty: false };
+    const tab = { id: tabId, customId: customId, title: title, closable: true, icon: opts.icon || null, onActivate: null, onClose: null, custom: true, preview: false, dirty: false };
     // ★ 2026-08-18: 保存渲染闭包供右键「重开」通用复刻（goods 注册 onReopen 则优先）
     tab._custom = { renderFn: renderFn, opts: opts };
     const btn = createTabBtn(tab, fileGrp);
@@ -1514,7 +1526,7 @@
       if (existing) { activateTab(targetGrp, existing.id); return existing; }
     }
     const tabId = _nextTabId++;
-    const nt = { id: tabId, customId: tab.customId, title: tab.title, closable: true, onActivate: null, onClose: null, custom: true, preview: false, dirty: false, onReopen: tab.onReopen };
+    const nt = { id: tabId, customId: tab.customId, title: tab.title, closable: true, icon: tab.icon, onActivate: null, onClose: null, custom: true, preview: false, dirty: false, onReopen: tab.onReopen };
     nt._custom = c;
     const btn = createTabBtn(nt, targetGrp);
     targetGrp.barEl.appendChild(btn);

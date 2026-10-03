@@ -19,12 +19,14 @@
 //   requests/      请求队列目录（IDE 写 req-*；宿主 rename 认领 processing-* 处理后删；
 //                  reply 请求回写 res-<id>.json 供 IDE 轮询）
 //   ide-alive.json IDE 存活心跳 {pid, ts}（IDE 主进程 60s 刷；宿主滞留到期读——存活即续期＝常温）
+//   reveals/       「Roam 定位」跨进程通道（宿主写 req-*；IDE 认领 processing-* 投递后写 ack-*——详下方机器头注释）
 // ============================================================================
-import { app, ipcMain, shell } from 'electron';
-import { spawn } from 'child_process';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { spawn, execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDataDir } from './portable-paths';
+import { pickRevealWindowId, revealReqStale } from './player-reveal';
 
 let _mode: boolean | null = null;
 /** 本进程是否为播放器宿主域（--qqqide-play；含 --qqqide-play= 前缀式）。 */
@@ -138,6 +140,48 @@ export function ensurePlayerHostAlive(): boolean {
     }
 }
 
+// ── 宿主被激活（mac dock / 无文档 open）且无 IDE 实例 → 拉起 IDE（2026-10-03） ──
+//   mac 单实例语义：宿主在跑时 open app 只会 activate——没有本机制则「双击媒体→播放器」状态
+//   下用户点图标回不去 IDE。对齐 Windows「图标=IDE」。判活 = ps 扫描（精确：同 bundle、
+//   非 --qqqide-play、排除自身）；activate 属低频事件，异步 ps 零热路径开销。
+//   启动护窗 2.5s：宿主冷启自带的 launch-activate 不参与（此刻交接 IDE 尚在，ps 本会命中，双保险）。
+const _hostT0 = Date.now();
+let _lastIdeSpawnAt = 0;
+export function ensureIdeInstance(): void {
+    if (!isPlayerHostMode() || process.platform !== 'darwin') { return; }
+    const now = Date.now();
+    if (now - _hostT0 < 2500) { return; }              // 启动护窗（launch-activate 不算用户意图）
+    if (now - _lastIdeSpawnAt < 3000) { return; }      // 防连发
+    _lastIdeSpawnAt = now;
+    try {
+        execFile('/bin/ps', ['-axww', '-o', 'pid=,command='], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (_err, stdout) => {
+            try {
+                const self = process.pid;
+                const exe = String(process.execPath || '').replace(/\\/g, '/');
+                for (const ln of String(stdout || '').split('\n')) {
+                    const m = ln.match(/^\s*(\d+)\s+(.*)$/);
+                    if (!m) { continue; }
+                    if (parseInt(m[1], 10) === self) { continue; }
+                    const cmd = m[2];
+                    if (cmd.indexOf(exe) !== 0) { continue; }              // 非本 bundle 可执行体
+                    if (cmd.indexOf('--qqqide-play') >= 0) { continue; }   // 其他宿主
+                    console.log('[player-host] activate: IDE already running, skip');
+                    return;
+                }
+                const isDev = process.argv.includes('--dev') || process.env.QQQIDE_DEV === '1';
+                const args: string[] = app.isPackaged ? [] : [app.getAppPath()];
+                if (isDev) { args.push('--dev'); }
+                const child = spawn(process.execPath, args, {
+                    detached: true, stdio: 'ignore',
+                    cwd: app.isPackaged ? path.dirname(process.execPath) : app.getAppPath(),
+                });
+                child.unref();
+                console.log('[player-host] activate (no IDE) -> IDE instance spawned');
+            } catch { /* ignore */ }
+        });
+    } catch { /* ignore */ }
+}
+
 // ── 路径 → 播放器条目（runQ 同口径：file:/// 正斜杠） ──
 export function filesToItems(files: string[]): any[] {
     const out: any[] = [];
@@ -235,6 +279,199 @@ function _waitReply(id: string, waitMs: number): Promise<any> {
     });
 }
 
+// ═══ 截图「📂 Roam 定位」跨进程通道（2026-10-03 q319 定案）═══
+//   语义：播放器窗里的「Roam 定位」必须落到同安装的 IDE 主窗（Roam 是 IDE 里的文件浏览器；播放器宿主
+//   进程恒无 IDE 窗——旧「进程内找主窗」结构性必败，只剩系统定位兜底）。
+//   方向：宿主 → IDE（与 requests/ 相反；文件系统即 IPC）。宿主侧 = requestIdeReveal（写请求 + 等 ack）；
+//   IDE 侧 = startIdeRevealWatch（认领 → 选窗 → 置前 → 投递 __qqq_roamRevealPath → 写 ack）。
+//   选窗序（唯一权威 = player-reveal.pickRevealWindowId）：发起窗 → 聚焦窗 → 最后聚焦窗 → 任一存活主窗。
+//   失败收口（宿主侧统一裁决）：无 IDE / 无窗 / 投递失败 / 超时 → 系统文件管理器兜底（调用方执行）。
+//   陈腐防线：请求 ts 超 60s 拒执（防 IDE 迟到启动执行出「惊喜定位」）；processing/ack 超 1h 由 tick 清扫。
+export function playerHostRevealDir(): string { return path.join(playerHostDataDir(), 'reveals'); }
+
+/** 宿主侧：向同安装 IDE 请求「Roam 定位」。ok:true = 某 IDE 主窗已承接投递（已置前 + 投递成功）。 */
+export async function requestIdeReveal(target: string, src: { pid: number; winId: number } | null): Promise<{ ok: boolean; reason?: string }> {
+    const p = String(target || '');
+    if (!p) { return { ok: false, reason: 'empty' }; }
+    if (!ideKeepaliveFresh()) { return { ok: false, reason: 'no_ide' }; }   // 快速路径：IDE 不在 → 立即兜底
+    const dir = playerHostRevealDir();
+    let id = '';
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        id = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        const tmp = path.join(dir, 'tmp-' + id);
+        const srcOut = (src && typeof src.pid === 'number' && typeof src.winId === 'number')
+            ? { pid: src.pid | 0, winId: src.winId | 0 } : null;
+        fs.writeFileSync(tmp, JSON.stringify({ v: 1, id, ts: Date.now(), path: p, src: srcOut }), 'utf8');
+        fs.renameSync(tmp, path.join(dir, 'req-' + id + '.json'));   // tmp+rename 原子落位（IDE 绝不读到半截）
+    } catch { return { ok: false, reason: 'write_failed' }; }
+    const ack = await _waitRevealAck(id, 2000);
+    if (ack) { return ack.ok ? { ok: true } : { ok: false, reason: String(ack.reason || 'denied') }; }
+    // 超时：未被认领 → 删请求（防 IDE 迟到执行造成双定位）；已认领（rename 竞争赢了）→ 宽限 800ms 再等一次
+    const reqFile = path.join(dir, 'req-' + id + '.json');
+    let claimed = false;
+    try { if (fs.existsSync(reqFile)) { fs.unlinkSync(reqFile); } else { claimed = true; } } catch { claimed = true; }
+    if (claimed) {
+        const ack2 = await _waitRevealAck(id, 800);
+        if (ack2) { return ack2.ok ? { ok: true } : { ok: false, reason: String(ack2.reason || 'denied') }; }
+    }
+    return { ok: false, reason: 'timeout' };
+}
+
+function _waitRevealAck(id: string, waitMs: number): Promise<any | null> {
+    const file = path.join(playerHostRevealDir(), 'ack-' + id + '.json');
+    const read = (): any | null => {
+        try {
+            const o = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (o && o.v === 1) { try { fs.unlinkSync(file); } catch { /* ignore */ } return o; }
+        } catch { /* 未就绪，继续等 */ }
+        return null;
+    };
+    return new Promise((resolve) => {
+        const first = read();
+        if (first) { resolve(first); return; }
+        const t0 = Date.now();
+        const iv = setInterval(() => {
+            const o = read();
+            if (o) { clearInterval(iv); resolve(o); return; }
+            if (Date.now() - t0 > waitMs) { clearInterval(iv); resolve(null); }
+        }, 100);
+    });
+}
+
+// ── IDE 侧：reveals 队列监听（选窗/置前/投递/ack） ──
+let _ideRevealStarted = false;
+let _lastFocusedMainId: number | null = null;
+const _revealInflight = new Set<string>();
+
+function _mainWindowsAlive(): BrowserWindow[] {
+    try {
+        return BrowserWindow.getAllWindows().filter((w) => {
+            try { return !w.isDestroyed() && !!((w as any).__qqqMainWindow) && !((w as any).__qqqPlayerWin); } catch { return false; }
+        });
+    } catch { return []; }
+}
+
+function _focusMainWindow(win: BrowserWindow): void {
+    try { if (win.isMinimized()) { win.restore(); } } catch { /* ignore */ }
+    try { win.show(); } catch { /* ignore */ }
+    try { win.focus(); } catch { /* ignore */ }
+}
+
+/** 投递 = 在目标主窗主世界调用全局 Roam 定位入口（与 timeline op 菜单同机同语义）；缺入口 → false。 */
+function _deliverRoamReveal(win: BrowserWindow, p: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        try {
+            const code = '(function(){ try { if (typeof window.__qqq_roamRevealPath === "function") { window.__qqq_roamRevealPath('
+                + JSON.stringify(p) + '); return true; } return false; } catch (e) { return false; } })()';
+            win.webContents.executeJavaScript(code).then((r: any) => { resolve(r === true); }).catch(() => { resolve(false); });
+        } catch { resolve(false); }
+    });
+}
+
+function _writeRevealAck(id: string, result: { ok: boolean; reason?: string; win?: number }): void {
+    try {
+        const f = path.join(playerHostRevealDir(), 'ack-' + String(id) + '.json');
+        const tmp = f + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify({ v: 1, id: String(id), ok: !!result.ok, reason: String(result.reason || ''), win: Number(result.win) | 0, ts: Date.now() }), 'utf8');
+        fs.renameSync(tmp, f);
+    } catch { /* ignore */ }
+}
+
+async function _processRevealRequest(req: any): Promise<void> {
+    const wins = _mainWindowsAlive();
+    if (!wins.length) { _writeRevealAck(String(req.id), { ok: false, reason: 'no_window' }); return; }
+    const byId = new Map<number, BrowserWindow>();
+    for (const w of wins) { byId.set(w.id, w); }
+    const focused = BrowserWindow.getFocusedWindow();
+    const focusedId = (focused && !focused.isDestroyed() && byId.has(focused.id)) ? focused.id : null;
+    const aliveIds = wins.map((w) => w.id);
+    const pickId = pickRevealWindowId((req.src && typeof req.src === 'object') ? req.src : null, {
+        selfPid: process.pid,
+        focusedId,
+        lastFocusedId: (_lastFocusedMainId != null && byId.has(_lastFocusedMainId)) ? _lastFocusedMainId : null,
+        aliveIds,
+    });
+    const order = (pickId != null) ? [pickId].concat(aliveIds.filter((i) => i !== pickId)) : aliveIds;
+    for (const id of order) {
+        const w = byId.get(id);
+        if (!w) { continue; }
+        _focusMainWindow(w);
+        const ok = await _deliverRoamReveal(w, String(req.path || ''));
+        if (ok) { _writeRevealAck(String(req.id), { ok: true, win: id }); return; }
+    }
+    _writeRevealAck(String(req.id), { ok: false, reason: 'deliver_failed' });
+}
+
+function _sweepReveals(): void {
+    const dir = playerHostRevealDir();
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir); } catch { return; }
+    const now = Date.now();
+    for (const n of names.sort()) {
+        if (n.indexOf('.json') < 0) { continue; }
+        if (n.indexOf('processing-') === 0 || n.indexOf('ack-') === 0 || n.indexOf('tmp-') === 0) {
+            // 陈腐中间态清扫（投递中断 / 宿主超时放弃的 ack；>1h）
+            try { const st = fs.statSync(path.join(dir, n)); if (now - st.mtimeMs > 3600000) { fs.unlinkSync(path.join(dir, n)); } } catch { /* ignore */ }
+            continue;
+        }
+        if (n.indexOf('req-') !== 0 || _revealInflight.has(n)) { continue; }
+        const full = path.join(dir, n);
+        let raw = '';
+        try { raw = fs.readFileSync(full, 'utf8'); } catch { continue; }
+        let req: any = null;
+        try { req = JSON.parse(raw); } catch { req = null; }
+        if (!req || !req.id || !req.path || revealReqStale(Number(req.ts), now)) {
+            try { fs.unlinkSync(full); } catch { /* ignore */ }   // 陈腐/坏请求直接销毁（绝不迟到投递）
+            continue;
+        }
+        const claimed = path.join(dir, 'processing-' + n.slice(4));
+        try { fs.renameSync(full, claimed); } catch { continue; }   // 认领竞争失败 → 跳过
+        const key = path.basename(claimed);
+        _revealInflight.add(key);
+        Promise.resolve()
+            .then(() => _processRevealRequest(req))
+            .catch(() => { _writeRevealAck(String(req.id), { ok: false, reason: 'error' }); })
+            .finally(() => {
+                _revealInflight.delete(key);
+                try { fs.unlinkSync(claimed); } catch { /* ignore */ }
+            });
+    }
+}
+
+/** IDE 域启动调用（宿主域 no-op；幂等）——承接宿主侧「Roam 定位」请求（写 ack 供宿主裁决）。 */
+export function startIdeRevealWatch(): void {
+    if (isPlayerHostMode()) { return; }
+    if (_ideRevealStarted) { return; }
+    _ideRevealStarted = true;
+    const dir = playerHostRevealDir();
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
+    // 焦点历史（选窗序③）：仅本进程主窗入史
+    try {
+        app.on('browser-window-focus', (_e: any, w: any) => {
+            try { if (w && !w.isDestroyed() && (w as any).__qqqMainWindow) { _lastFocusedMainId = w.id; } } catch { /* ignore */ }
+        });
+    } catch { /* ignore */ }
+    let watcher: fs.FSWatcher | null = null;
+    let trail: any = null;
+    const startWatch = (): void => {
+        try {
+            watcher = fs.watch(dir, () => {
+                _sweepReveals();                                             // 事件即扫（零等待）
+                if (trail) { clearTimeout(trail); }
+                trail = setTimeout(() => { trail = null; _sweepReveals(); }, 40);
+            });
+            watcher.on('error', () => { try { watcher?.close(); } catch { /* ignore */ } watcher = null; });
+        } catch { watcher = null; }
+    };
+    startWatch();
+    const rebind = setInterval(() => { if (!watcher) { startWatch(); } }, 30000);
+    if (typeof (rebind as any).unref === 'function') { (rebind as any).unref(); }
+    const tick = setInterval(_sweepReveals, 4000);   // 兜底扫（watch 静默死亡/漏事件有界收敛）
+    if (typeof (tick as any).unref === 'function') { (tick as any).unref(); }
+    _sweepReveals();
+}
+
 // ── 宿主侧：运行时（心跳 + 队列 watch/清扫 + 二实例派发） ──
 export function startPlayerHostLoop(dispatch: (req: any) => any): void {
     _dispatch = dispatch;
@@ -244,14 +481,17 @@ export function startPlayerHostLoop(dispatch: (req: any) => any): void {
     // 周期心跳 + 队列兜底清扫（watch 静默死亡也有界收敛）
     const tick = setInterval(() => { _writeHostState(); _sweepRequests(dispatch); }, 4000);
     if (typeof (tick as any).unref === 'function') { (tick as any).unref(); }
-    // 目录监听（60ms 防抖——秒开：写入→开窗时延；请求写盘为 tmp+rename 原子，无半截风险）+ error 自愈重绑（30s 间隔重试）
+    // 目录监听（★ 快车道 2026-10-02：事件即扫 + 40ms 尾随补扫——请求写盘为 tmp+rename 原子，无半截风险；
+    //   固定 60ms 等待已删（Q→开窗链实测 ~50ms 白付）；尾随扫兜住同批余量/事件合并）
+    //   + error 自愈重绑（30s 间隔重试）
     let watcher: fs.FSWatcher | null = null;
-    let debounce: any = null;
+    let trail: any = null;
     const startWatch = (): void => {
         try {
             watcher = fs.watch(dir, () => {
-                if (debounce) { clearTimeout(debounce); }
-                debounce = setTimeout(() => { debounce = null; _sweepRequests(dispatch); }, 60);
+                _sweepRequests(dispatch);                                    // 立即扫（首请求零等待）
+                if (trail) { clearTimeout(trail); }
+                trail = setTimeout(() => { trail = null; _sweepRequests(dispatch); }, 40);
             });
             watcher.on('error', () => { try { watcher?.close(); } catch { /* ignore */ } watcher = null; });
         } catch { watcher = null; }
@@ -359,5 +599,26 @@ export function registerHostShellIpc(): void {
     ipcMain.handle('qqqide:shell:openPath', async (_e, p: string) => {
         try { return { ok: true, result: await shell.openPath(String(p || '')) }; }
         catch (e: any) { return { ok: false, error: (e && e.message) || 'open-failed' }; }
+    });
+    // ── resize grip（2026-10-02 移植自主窗 ipc-misc 同机）：渲染层每帧报告目标宽高 → clamp(min/max) + setBounds（左上角固定）──
+    //   fire-and-forget（60fps 热路径零 promise 开销）；min/max 主进程钳制（min 动态读 win.getMinimumSize——常量唯一源 = ipc-player.ts _PLAYER_MIN_W/H，v20 起 600×320）；通道名与 preload 同契
+    ipcMain.on('qqqide:window:resize-grip', (e, w: number, h: number) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (!win || win.isDestroyed()) { return; }
+        const b = win.getBounds();
+        const [minW, minH] = win.getMinimumSize();
+        const [maxW, maxH] = win.getMaximumSize();
+        let nw = Math.round(Number(w) || 0);
+        let nh = Math.round(Number(h) || 0);
+        if (minW) { nw = Math.max(nw, minW); }
+        if (minH) { nh = Math.max(nh, minH); }
+        if (maxW) { nw = Math.min(nw, maxW); }
+        if (maxH) { nh = Math.min(nh, maxH); }
+        // ★ 最大化态直改尺寸（拉伸钮 x1~x4 / grip 同路，2026-10-02）：先还原再 setBounds（最大化下 setBounds 语义不可靠）；
+        //   还原后按正常态几何重取基准（▢ 图标经 qqqide:player:maxstate 事件自动回推）
+        try { if (win.isMaximized()) { win.unmaximize(); } } catch { /* ignore */ }
+        const b2 = win.isDestroyed() ? b : win.getBounds();
+        if (nw === b2.width && nh === b2.height) { return; }
+        win.setBounds({ x: b2.x, y: b2.y, width: nw, height: nh });
     });
 }

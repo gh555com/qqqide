@@ -8,13 +8,15 @@
 //   + Capabilities/RegisteredApplications（系统「默认应用」可见）+ UserChoice hash 强写
 //   （Deny-ACL 突破，ipc-syspy.ts 同源算法）。解除 = 纯清空白板化（不恢复旧值，与
 //   系统解释器同语义）。验证 = 逐扩展 AssocQueryString 回调含 '--qqqide-play' 标记。
-//   可达性: 仅 Windows；结果恒上报 {total, taken}，系统保护拦截（Win11）如实报 blocked。
+//   可达性: Windows（fa-ps.ts PS 机）+ macOS（fa-mac.ts LaunchServices 机）；结果恒上报
+//   {total, taken}，系统保护拦截（Win11）如实报 blocked。
 //   PS 脚本体 = shell/fa-ps.ts（纯文本，探针可整体导入做沙箱验证）。
 // ============================================================================
 import { app, ipcMain, shell } from 'electron';
 import * as fs from 'fs';
 import { runPs, b64d } from './ipc-syspy';
 import { FA_PS } from './fa-ps';
+import { faMacCheck, faMacApply, faMacRemove } from './fa-mac';
 
 // 「一切媒体」= 播放器全谱扩展名（与 ipc-player._VIDEO_EXTS / _AUDIO_EXTS 同口径，
 //   media-engine / roam 白名单三方一致；新增可播格式必须四处同改）
@@ -69,7 +71,35 @@ function _serial<T>(fn: () => Promise<T>): Promise<T> {
 
 export function registerFileAssocIpc(portableRoot: string): void {
     void portableRoot;
-    // 仅 Windows 实现；其他平台如实报 unsupported（mac 关联 = 后续一期，语义同款）
+    // ── macOS 实现（2026-10-03 补）：LaunchServices 机（fa-mac.ts——osascript JXA 直调框架）；
+    //   语义与 Windows 版逐项对齐；双击链另一端 = main.ts 的 open-file 机器。──
+    if (process.platform === 'darwin') {
+        ipcMain.handle('qqqide:fileassoc:check', () => _serial(async () => {
+            if (_checkVal && (Date.now() - _checkAt) < _CHECK_TTL) { return _checkVal; }   // 60s TTL（多窗角标零重复 osascript）
+            const r = await faMacCheck(MEDIA_ASSOC_EXTS);
+            if (!r.ok) { console.warn('[fileassoc] mac check err:', r.code, r.err || ''); return { ok: false, code: r.code || 'check-failed' }; }
+            const out = { ok: true, total: r.total || 0, ours: r.taken || 0, exeOk: true };
+            _checkVal = out; _checkAt = Date.now();
+            return out;
+        }));
+        ipcMain.handle('qqqide:fileassoc:apply', () => _serial(async () => {
+            const r = await faMacApply(MEDIA_ASSOC_EXTS);
+            if (!r.ok) { console.warn('[fileassoc] mac apply fail:', r.code || '', r.err || '', (r.fails || []).slice(0, 6).join(' ')); }
+            else { _invalidateCheckCache(); }   // 实态已变——下次 check 重算
+            return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
+        }));
+        ipcMain.handle('qqqide:fileassoc:remove', () => _serial(async () => {
+            const r = await faMacRemove(MEDIA_ASSOC_EXTS);
+            if (r.ok) { _invalidateCheckCache(); }   // 实态已变——下次 check 重算
+            return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'remove-failed'), cleaned: r.cleaned || 0 };
+        }));
+        ipcMain.handle('qqqide:fileassoc:settings', async () => {
+            try { await shell.openExternal('x-apple.systempreferences:'); return { ok: true }; }
+            catch (e: any) { return { ok: false, error: (e && e.message) || 'open-failed' }; }
+        });
+        return;
+    }
+    // 其余平台如实报 unsupported
     if (process.platform !== 'win32') {
         ipcMain.handle('qqqide:fileassoc:check', () => ({ ok: false, code: 'unsupported' }));
         ipcMain.handle('qqqide:fileassoc:apply', () => ({ ok: false, code: 'unsupported' }));

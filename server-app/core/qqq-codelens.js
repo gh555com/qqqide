@@ -317,7 +317,7 @@
       var fsum = _folderGet(dir);
       var fSizeStr = fsum ? formatBytes(fsum.size) : '●';
       var folderTip = fsum ? fsum.summary : _t('editor.codelens.calculatingFolderSize', '正在计算文件夹大小...');
-      out.push(_lens(line, '✎( ' + fSizeStr + ') 🗀qqq', folderTip, 'qqqide.codelens.reveal', [path]));
+      out.push(_lens(line, '✎( ' + fSizeStr + ') $(qqq-folder-open)qqq', folderTip, 'qqqide.codelens.reveal', [path]));
       out.push(_lens(line, '✎rename', '', 'qqqide.codelens.rename', [{ path: path, fileName: fileName }]));
       out.push(_lens(line, '✎c1', path, 'qqqide.codelens.copyPath', [path]));
       out.push(_lens(line, '✎c2', '', 'qqqide.codelens.copyFile', [path]));
@@ -333,12 +333,12 @@
     var titleSuffix = '';
 
     if (isDir) {
-      iconPart = ' 📁';
+      iconPart = ' $(qqq-folder)';
       spacePart = '';
     } else if (isVidOrImg) {
       var info = _mediaGet(path);
       if (info && info.width && info.height) {
-        if (kind === 'video') { iconPart = '🎬'; spacePart = ''; }
+        if (kind === 'video') { iconPart = '$(qqq-video)'; spacePart = ''; }
         if (fr && fr.getFrameConfig && fr.fitIntoBox) {
           var cfg = fr.getFrameConfig(info);
           var fit = fr.fitIntoBox(info.width, info.height, cfg.width, cfg.height, _pref('enlargeSmallImages', false) === true);
@@ -352,7 +352,7 @@
         }
       }
     } else if (isText) {
-      iconPart = ' 📄';
+      iconPart = ' $(qqq-file)';
       spacePart = '';
     }
 

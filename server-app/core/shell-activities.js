@@ -806,10 +806,10 @@ function bootActivities(boot) {
       var rows2 = _data.eye_paid_list.map(function (it) {
         var d = new Date(it.created_at);
         var ds = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-        var note = it.note ? ' · ' + it.note : '';
+        // 备注为内部数据，任何地方不显示（成交明细行 = +金额 · 日期 · 星火徽章）
         var spark = (it.spark_enabled && it.spark_paid_yuan > 0)
           ? '<span class="qqq-act-eye-spark">' + tp('act.eye.sparkPaid', { v: fmt(it.spark_paid_yuan) }, '✨星火已入 ¥' + fmt(it.spark_paid_yuan)) + '</span>' : '';
-        return '<div class="qqq-act-eye-row"><span class="qqq-act-eye-amt">+¥' + fmt(it.amount_yuan) + '</span><span class="qqq-act-eye-info">' + ds + note + spark + '</span></div>';
+        return '<div class="qqq-act-eye-row"><span class="qqq-act-eye-amt">+¥' + fmt(it.amount_yuan) + '</span><span class="qqq-act-eye-info">' + ds + spark + '</span></div>';
       }).join('');
       eyeListHtml = '<div class="qqq-act-eye-list">' + rows2 + '</div>';
     }

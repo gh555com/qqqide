@@ -251,6 +251,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 </div>
 
 <script src="../../core/i18n.js"></script>
+<script src="../../core/qqq-icons.js"></script>
 <script>
 'use strict';
 
@@ -383,7 +384,7 @@ async function _checkGitAvailable() {
 function _showGitUnavailable() {
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('main-content').innerHTML =
-    '<div class="empty"><span style="font-size:48px;">&#128256;</span>' +
+    '<div class="empty"><span class="qqi qqi-git" style="font-size:48px"></span>' +
     '<span>' + _kk('goods.git.notFound', '未检测到 Git') + '</span>' +
     '<span style="font-size:11px;color:var(--base01);">' + _kk('goods.git.notFoundHint', '内嵌 git 未安装且系统 PATH 中找不到。') + '</span></div>';
 }

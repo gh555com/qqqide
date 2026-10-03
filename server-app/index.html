@@ -62,6 +62,8 @@ var _orig={};
 <link rel="stylesheet" href="core/shell-widgets.css">
 <link rel="stylesheet" href="vendor/katex/katex.min.css">
 <script src="core/qqqide-theme.js"></script>
+<!-- 手绘 SVG 图标唯一真源（跨系统 100% 一致；emoji 图标已废除，2026-10-02 q359） -->
+<script src="core/qqq-icons.js"></script>
 <script src="core/cooldown-guard.js"></script>
 <script src="core/char-undo.js"></script>
 <script src="core/i18n.js"></script>
@@ -174,12 +176,12 @@ var _orig={};
         <span class="qqq-status-item" id="qqq-status-clock"></span>
         <!-- ★ 三活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding）→ core/shell-activities.js -->
         <span class="qqq-act-widget qqq-act-cool" id="qqq-act-cool" title="">
-          <span class="qqq-act-head"><span class="qqq-act-icon">🧊</span><span class="qqq-act-name" data-i18n="act.cool.name">清爽从2026</span></span>
+          <span class="qqq-act-head"><span class="qqq-act-icon"><span class="qqi qqi-snow" style="font-size:12px"></span></span><span class="qqq-act-name" data-i18n="act.cool.name">清爽从2026</span></span>
           <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-cool-fill"></span></span>
           <span class="qqq-act-num" id="qqq-act-cool-num">0/10</span>
         </span>
         <span class="qqq-act-widget qqq-act-ge50" id="qqq-act-ge50">
-          <span class="qqq-act-head"><span class="qqq-act-icon">🎁</span><span class="qqq-act-name" data-i18n="act.ge50.name">原料与基本权利</span></span>
+          <span class="qqq-act-head"><span class="qqq-act-icon"><span class="qqi qqi-gift" style="font-size:12px"></span></span><span class="qqq-act-name" data-i18n="act.ge50.name">原料与基本权利</span></span>
           <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-ge50-fill"></span></span>
         </span>
         <!-- ★ 美丽滴眼睛：清爽达标（总消费≥10 ge）才显示，位置由 shell-activities.js 动态插到已完成豆腐块最右一个右边 -->
@@ -188,7 +190,7 @@ var _orig={};
           <span class="qqq-act-head"><span class="qqq-act-name" data-i18n="act.eye.name">美丽滴眼睛</span></span>
         </span>
         <span class="qqq-act-widget qqq-act-vibe" id="qqq-act-vibe">
-          <span class="qqq-act-head"><span class="qqq-act-icon">💎</span><span class="qqq-act-name" data-i18n="act.vibe.name">2026, 我, vibe coding</span></span>
+          <span class="qqq-act-head"><span class="qqq-act-icon"><span class="qqi qqi-gem" style="font-size:12px"></span></span><span class="qqq-act-name" data-i18n="act.vibe.name">2026, 我, vibe coding</span></span>
           <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-vibe-fill"></span></span>
           <span class="qqq-act-num" id="qqq-act-vibe-num">--:--:--</span>
         </span>

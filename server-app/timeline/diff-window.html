@@ -48,7 +48,7 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 .fuzzy-item:last-child{border-bottom:none}
 .fuzzy-item:hover{background:var(--hover-bg)}
 .fuzzy-item.active{background:var(--sel-bg)}
-.fuzzy-item .fi-icon{flex-shrink:0;font-size:11px}
+.fuzzy-item .fi-icon{flex-shrink:0;font-size:13px}
 .fuzzy-item .fi-name{color:var(--text);font-weight:700;flex-shrink:0;max-width:55%;overflow:hidden;text-overflow:ellipsis}
 .fuzzy-item .fi-dir{color:var(--base01);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10px}
 .fuzzy-item .fi-meta{color:var(--base01);flex-shrink:0;font-size:10px;margin-left:auto;white-space:nowrap}
@@ -243,7 +243,7 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
 <div id="vault-panel" class="vault-panel" style="display:none">
   <div class="vault-head">
     <div class="vault-search-row">
-      <span class="vault-search-ico">🔍</span>
+      <span class="vault-search-ico qqi qqi-search"></span>
       <input id="vault-search" class="vault-search" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="timeline.vaultSearchPh" placeholder="搜索记忆库：文件名或路径片段…">
       <label class="vault-chip" id="vault-gone-chip" data-i18n-title="timeline.vaultOnlyGoneTip" title="只显示磁盘上已删除的文件"><input type="checkbox" id="vault-only-gone"><span data-i18n="timeline.vaultOnlyGone">只看已删除</span></label>
       <button id="vault-back" class="vault-back" data-i18n="timeline.vaultBack">✕ 返回对比</button>
@@ -266,6 +266,7 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
 
 <script src="/core/qqqide-theme.js"></script>
 <script src="/core/i18n.js"></script>
+<script src="/core/qqq-icons.js"></script>
 <script>if (typeof window._i !== 'function') window._i = function(k,f) { return f || k; };</script>
 <script src="/core/state-sdk.js"></script>
 <script src="/qqqide/ai-panel/time-util.js"></script>

@@ -232,6 +232,7 @@ body {
 <div class="cmp-tooltip" id="cmpTooltip"></div>
 
 <script src="../../core/i18n.js"></script>
+<script src="../../core/qqq-icons.js"></script>
 <script>
 'use strict';
 
@@ -462,7 +463,7 @@ function render() {
     var container = document.getElementById('cells');
 
     if (_cells.length === 0) {
-        container.innerHTML = '<div class="empty"><span class="empty-icon">📭</span><span>' + _i('goods.conv.noData', '没有格子数据') + '</span><span style="font-size:11px">' + _i('goods.conv.noDataHint', '打开对话后，点击 AI 面板右下角「上下文」→「管理」') + '</span></div>';
+        container.innerHTML = '<div class="empty"><span class="empty-icon qqi qqi-mail-open"></span><span>' + _i('goods.conv.noData', '没有格子数据') + '</span><span style="font-size:11px">' + _i('goods.conv.noDataHint', '打开对话后，点击 AI 面板右下角「上下文」→「管理」') + '</span></div>';
         return;
     }
 
@@ -490,7 +491,7 @@ function render() {
         html += '<span class="cell-expand">▶</span>';
         html += '</div>';
         html += '<div class="cell-body">';
-        html += '<div class="cell-content">' + esc(cell.content) + '<button class="cell-copy-btn" title="' + _i('goods.conv.copyCell', '复制此格') + '" onclick="event.stopPropagation();copyCell(\'' + cell.id + '\')">📋</button></div>';
+        html += '<div class="cell-content">' + esc(cell.content) + '<button class="cell-copy-btn" title="' + _i('goods.conv.copyCell', '复制此格') + '" onclick="event.stopPropagation();copyCell(\'' + cell.id + '\')"><span class="qqi qqi-copy"></span></button></div>';
         html += '</div></div>';
     }
 

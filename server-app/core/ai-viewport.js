@@ -5,7 +5,7 @@
 //
 // 菜单栏 row-1 的横向豆腐块容器。每个豆腐块 = AI 能看到的一个项目文件夹。
 // - 空态：虚线框 + "+"
-// - 有项目：实线框 + 📁图标 + 文件夹名 + "−"
+// - 有项目：实线框 + 文件夹图标（手绘 SVG = core/qqq-icons.js）+ 文件夹名 + "−"
 // - hover 项目块：展开该文件夹的目录树下拉（级联子目录向右展开）
 // - hover "+" 块：展开最近 20 个主文件夹下拉（qgs global 持久化）
 // - 单击目录树中任意项：附加到 AI 对话
@@ -1715,20 +1715,21 @@
     _setAiIframesPointerEvents('none');
   }
 
+  // 返回手绘图标名（core/qqq-icons.js；emoji 图标已废除）
   function fileIconFor(name, isDir) {
-    if (isDir) return '📁';
+    if (isDir) return 'folder';
     const m = String(name).toLowerCase().match(/\.([a-z0-9]+)$/);
     const ext = m ? m[1] : '';
-    if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma', 'ape'].indexOf(ext) !== -1) return '🎵';
-    if (['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', 'ts', '3gp'].indexOf(ext) !== -1) return '🎬';
-    if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'heic', 'avif'].indexOf(ext) !== -1) return '🖼️';
-    if (['zip', 'rar', '7z', 'tar', 'gz', 'xz', 'bz2'].indexOf(ext) !== -1) return '📦';
-    if (['pdf'].indexOf(ext) !== -1) return '📕';
-    if (['doc', 'docx', 'rtf'].indexOf(ext) !== -1) return '📘';
-    if (['xls', 'xlsx', 'csv'].indexOf(ext) !== -1) return '📗';
-    if (['ppt', 'pptx'].indexOf(ext) !== -1) return '📙';
-    if (['exe', 'msi', 'dll'].indexOf(ext) !== -1) return '⚙\ufe0f';
-    return '📄';
+    if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma', 'ape'].indexOf(ext) !== -1) return 'audio';
+    if (['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', 'ts', '3gp'].indexOf(ext) !== -1) return 'video';
+    if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'heic', 'avif'].indexOf(ext) !== -1) return 'image';
+    if (['zip', 'rar', '7z', 'tar', 'gz', 'xz', 'bz2'].indexOf(ext) !== -1) return 'zip';
+    if (['pdf'].indexOf(ext) !== -1) return 'pdf';
+    if (['doc', 'docx', 'rtf'].indexOf(ext) !== -1) return 'doc';
+    if (['xls', 'xlsx', 'csv'].indexOf(ext) !== -1) return 'xls';
+    if (['ppt', 'pptx'].indexOf(ext) !== -1) return 'ppt';
+    if (['exe', 'msi', 'dll'].indexOf(ext) !== -1) return 'exe';
+    return 'file';
   }
 
   async function loadDirInto(parentEl, dirPath, projectRoot) {
@@ -1760,8 +1761,8 @@
       row.dataset.isDir = ent.isDir ? 'true' : 'false';
       row._dirFullPath = pathJoin(dirPath, ent.name);  // ★ 全路径标记，供快照还原精确匹配
       const icon = document.createElement('span');
-      icon.textContent = fileIconFor(ent.name, ent.isDir);
-      icon.style.cssText = 'margin-right:6px; font-size:11px;';
+      icon.className = 'qqi qqi-' + fileIconFor(ent.name, ent.isDir);
+      icon.style.cssText = 'margin-right:6px; font-size:12px;';
       const label = document.createElement('span');
       label.textContent = truncMiddle(ent.name, 26, 12);
       label.title = ent.name;  // 完整名称在 hover tooltip 显示
@@ -2130,8 +2131,8 @@
     block.title = proj.path;
 
     const icon = document.createElement('span');
-    icon.textContent = '📁';
-    icon.style.cssText = 'font-size:11px; margin-right:4px;';
+    icon.className = 'qqi qqi-folder';
+    icon.style.cssText = 'font-size:12px; margin-right:4px;';
 
     const name = document.createElement('span');
     name.className = 'aiv-block-name';
@@ -2329,8 +2330,8 @@
         row.style.cssText = 'padding:8px 12px; cursor:default; font-size:14px; font-weight:300; display:flex; align-items:center; gap:6px;';
 
         var icon = document.createElement('span');
-        icon.textContent = '📁';
-        icon.style.cssText = 'font-size:11px; flex-shrink:0;';
+        icon.className = 'qqi qqi-folder';
+        icon.style.cssText = 'font-size:12px; flex-shrink:0;';
 
         var nameSpan = document.createElement('span');
         nameSpan.style.cssText = 'font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;';

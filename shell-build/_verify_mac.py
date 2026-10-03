@@ -156,12 +156,78 @@ else:
     check(False, 'launcher .command present')
 check('README-\u4f7f\u7528\u8bf4\u660e.txt' in nameset, 'README present')
 
-# ── mac 自定义图标（2026-09-19）: 默认 Electron 图标必须已替换 ──
+# ── mac 自定义图标: 默认 Electron 图标必须已替换 + 结构深检（2026-10-03）──
+# 闸门 = ①已验证构建 sha256 锁（图标更新须 iconutil 往返 + 小尺寸眼验后同步此哈希）
+#        ②结构深检（声明长度/块遍历/PNG 块 zlib 完整性/尺寸覆盖）——小尺寸块写坏的 icns
+#          会在菜单/隐私设置等小图标面渲染成雪花，此检必须拦住。
+_ICNS_SHA256 = '733f000268bc068d82d98c616cb31661a5d70fe6719fcff55001ced2bc822070'
+
+
+def _icns_deep_check(data):
+    import struct, zlib
+    if data[:4] != b'icns':
+        return 'bad magic'
+    declared = struct.unpack('>I', data[4:8])[0]
+    if declared != len(data):
+        return 'declared %d != actual %d' % (declared, len(data))
+    pos, sizes = 8, set()
+    png_tags = ('icp4', 'icp5', 'icp6', 'ic07', 'ic08', 'ic09', 'ic10',
+                'ic11', 'ic12', 'ic13', 'ic14')
+    while pos + 8 <= len(data):
+        tag = data[pos:pos + 4].decode('latin1', 'replace')
+        ln = struct.unpack('>I', data[pos + 4:pos + 8])[0]
+        if ln < 8 or pos + ln > len(data):
+            return 'chunk %s bad length %d' % (tag, ln)
+        payload = data[pos + 8:pos + ln]
+        if tag in png_tags:
+            if payload[:8] != b'\x89PNG\r\n\x1a\n':
+                return 'chunk %s not PNG payload' % tag
+            p, w, h, bd, ct, idat = 8, None, None, None, None, b''
+            while p + 12 <= len(payload):
+                l2 = struct.unpack('>I', payload[p:p + 4])[0]
+                t2 = payload[p + 4:p + 8]
+                body = payload[p + 8:p + 8 + l2]
+                if t2 == b'IHDR':
+                    w, h, bd, ct = struct.unpack('>IIBB', body[:10])
+                elif t2 == b'IDAT':
+                    idat += body
+                elif t2 == b'IEND':
+                    break
+                p += 12 + l2
+            if w is None:
+                return 'chunk %s no IHDR' % tag
+            try:
+                raw = zlib.decompress(idat)
+            except Exception:
+                return 'chunk %s zlib stream broken' % tag
+            bpp = {0: 1, 2: 3, 4: 2, 6: 4}.get(ct, 0)
+            if bd == 8 and bpp and len(raw) != h * (1 + w * bpp):
+                return 'chunk %s raw %d != expected %d' % (tag, len(raw), h * (1 + w * bpp))
+            sizes.add(w)
+        elif tag in ('ic04', 'ic05'):
+            if payload[:4] != b'ARGB':
+                return 'chunk %s not ARGB payload' % tag
+            sizes.add(16 if tag == 'ic04' else 32)
+        pos += ln
+    if pos != len(data):
+        return 'trailing bytes after chunks'
+    missing = [s for s in (16, 32, 64, 128, 256, 512, 1024) if s not in sizes]
+    if missing:
+        return 'missing icon sizes %s' % missing
+    return None
+
+
 icns_p = 'qqqide.app/Contents/Resources/electron.icns'
 if icns_p in nameset:
     _im = tf.getmember(icns_p)
     _ih = first_bytes(icns_p, 4)
     check(_im.size > 300000 and _ih == b'icns', 'mac: custom icns applied (%dB)' % _im.size)
+    _icns_data = tf.extractfile(icns_p).read()
+    _icns_sha = hashlib.sha256(_icns_data).hexdigest()
+    check(_icns_sha == _ICNS_SHA256,
+          'mac: icns is the validated build (sha256 %s..)' % _icns_sha[:16])
+    _err = _icns_deep_check(_icns_data)
+    check(_err is None, 'mac: icns deep-check %s' % (_err or 'ok'))
 else:
     check(False, 'mac: electron.icns present')
 check((C + 'Resources/qqqide.icns') in nameset, 'mac: qqqide.icns present')
@@ -354,6 +420,12 @@ check(plist_val('CFBundleIdentifier') == 'com.gh555.qqqide', 'plist Identifier=c
 lsmin = plist_val('LSMinimumSystemVersion')
 check(lsmin == ('11.0' if ARCH == 'arm64' else '10.13'), 'plist LSMinimum=%s (expect %s)' % (lsmin, '11.0' if ARCH == 'arm64' else '10.13'))
 print('       CFBundleShortVersionString =', plist_val('CFBundleShortVersionString'))
+
+# ── default player claim (2026-10-03): CFBundleDocumentTypes = media handlers ──
+check('<key>CFBundleDocumentTypes</key>' in plist, 'plist declares CFBundleDocumentTypes (default player claim)')
+check('public.movie' in plist and 'public.audio' in plist, 'plist claims public.movie/public.audio')
+check('<string>mkv</string>' in plist and '<string>mp3</string>' in plist, 'plist claims media extensions (mkv/mp3)')
+check('<string>Alternate</string>' in plist, 'plist LSHandlerRank=Alternate (no auto-steal)')
 
 # ── verdict ──
 print('')

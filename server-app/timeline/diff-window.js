@@ -274,7 +274,7 @@
     // 失效缓存（恢复文件后 exists 翻转，下次打开重拉）
     function _invalidateVault() { _vaultFiles = null; _vaultLoadedAt = 0; }
 
-    // 单行 HTML：图标（📄/🗑️）+ 文件名 + 目录 + 快照数/相对时间（hits = 命中高亮下标）
+    // 单行 HTML：图标（手绘 SVG file/trash）+ 文件名 + 目录 + 快照数/相对时间（hits = 命中高亮下标）
     function _vaultRowHtml(row, hits) {
         var p = row.path || '';
         var name = p.split(/[\\/]/).pop() || p;
@@ -285,7 +285,7 @@
         var rel = _relTime(row.ts);
         if (rel) meta += (meta ? ' · ' : '') + rel;
         return '<div class="fuzzy-item' + (gone ? ' fi-gone' : '') + '" data-path="' + _escAttr(p) + '">' +
-            '<span class="fi-icon">' + (gone ? '🗑️' : '📄') + '</span>' +
+            '<span class="fi-icon qqi ' + (gone ? 'qqi-trash' : 'qqi-file') + '"></span>' +
             '<span class="fi-name">' + _hlSeg(name, p.length - name.length, hits) + '</span>' +
             '<span class="fi-dir">' + _hlSeg(dir, 0, hits) + '</span>' +
             '<span class="fi-meta">' + _escHtml(meta) + '</span></div>';
@@ -509,14 +509,14 @@
         _vpDir = d;
     }
 
-    // 行 HTML：目录行（▸📁 名称 + 聚合计数）/ 文件行（📄🗑️ 名称 + 目录? + 快照·相对时间）
+    // 行 HTML：目录行（▸ + 文件夹图标 + 名称 + 聚合计数）/ 文件行（file/trash 图标 + 名称 + 目录? + 快照·相对时间）
     function _vpRowHtml(item) {
         if (item.kind === 'dir') {
             var meta = _vpOnlyGone
                 ? _i('timeline.goneCount', '{n} 已删除').replace('{n}', item.gcount) + ' · ' + _i('timeline.snapCount', '{n} 快照').replace('{n}', item.gscount)
                 : _i('timeline.fileCount', '{n} 文件').replace('{n}', item.fcount) + (item.scount > 0 ? ' · ' + _i('timeline.snapCount', '{n} 快照').replace('{n}', item.scount) : '');
             return '<div class="vault-row v-row-dir" data-dir="' + _escAttr(item.path) + '">' +
-                '<span class="v-caret">▸</span><span class="v-ico">📁</span>' +
+                '<span class="v-caret">▸</span><span class="v-ico qqi qqi-folder"></span>' +
                 '<span class="v-name">' + _escHtml(item.name) + '</span>' +
                 '<span class="v-meta">' + _escHtml(meta) + '</span></div>';
         }
@@ -530,7 +530,7 @@
         var cls = 'vault-row v-row-file' + (item.showDir ? ' v-row-search' : '') + (gone ? ' v-row-gone' : '');
         if (FILE_PATH && _vpKey(p).toLowerCase() === _vpKey(FILE_PATH).toLowerCase()) cls += ' v-row-cur';
         return '<div class="' + cls + '" data-path="' + _escAttr(p) + '">' +
-            '<span class="v-ico">' + (gone ? '🗑️' : '📄') + '</span>' +
+            '<span class="v-ico qqi ' + (gone ? 'qqi-trash' : 'qqi-file') + '"></span>' +
             '<span class="v-name">' + (item.hits ? _hlSeg(name, p.length - name.length, item.hits) : _escHtml(name)) + '</span>' +
             (item.showDir ? '<span class="v-dir">' + _hlSeg(dir, 0, item.hits) + '</span>' : '') +
             '<span class="v-meta">' + _escHtml(meta2) + '</span></div>';

@@ -47,7 +47,7 @@
     // ── 打开 dsecret：X 区 file 分组 custom tab（单例，同 kmd 模式） ──
     function openDsecretTab(side) {
       if (!window.qqqTabs || !window.qqqTabs.openFileCustomTab) return false;
-      var tab = window.qqqTabs.openFileCustomTab('dsecret', '🛡 dsecret', function (pane) {
+      var tab = window.qqqTabs.openFileCustomTab('dsecret', 'dsecret', function (pane) {
         pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
         var iframe = document.createElement('iframe');
         iframe.src = '/qqqide/goods/dsecret/dsecret-ui.html';

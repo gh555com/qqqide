@@ -26,6 +26,7 @@ import { CacheStore } from './cache-store';
 import { HashService } from './hash-service';
 import { vigBump } from './vig';
 import { getComponentBin } from './component-checker';
+import { hwEncCandidatesFor, hwProbeArgs, HwEncCand } from './transcode-hw';
 
 export interface ThumbOpts {
     src: string;            // absolute source path
@@ -81,6 +82,7 @@ export interface PlayableStreamStart {
     cached?: boolean;
     cancelled?: boolean;
     error?: string;
+    sent?: boolean;                     // 失败时是否已下送过任何分片（false = 帧流从未开始——硬编失败可安全软件重跑）
 }
 
 /** fMP4 顶层 box 枚举（[start,end) 内连续 box → {t:类型, ps/pe:负载区间}）。 */
@@ -577,8 +579,15 @@ export class MediaService {
     private _streamLive = new Map<string, { pending: number; paused: boolean; ctl: { pause: () => void; resume: () => void } | null; kill: (() => void) | null }>();
     private static readonly PLAY_CACHE_MAX = 2 * 1073741824;
     private static readonly PLAY_CACHE_TARGET = 1536 * 1048576;
-    /** 产物方案版本：转码规则变更必须 bump——旧规则产物自动失效（禁复用旧规则产物） */
+    /** 产物方案版本：转码规则变更必须 bump——旧规则产物自动失效（禁复用旧规则产物）
+     *  ★ 硬编优选（2026-10-02）刻意不 bump：hw/sw 产物皆合法可播（qp30 与 crf23 画质/体积双对标，详 transcode-hw），
+     *    存量缓存继续命中；bump 会把全网已转好的文件重转一遍 = 纯粹的用户等待（正确性零收益）。 */
     private static readonly PLAY_PLAN_VER = '_p2';
+    // ★ 硬编码器探测机（2026-10-02；进程内一次——宿主启动 4s 后后台预热 + 首个转码请求兜底 await）
+    private _hwEnc: HwEncCand | null = null;
+    private _hwProbed = false;
+    private _hwProbeJob: Promise<void> | null = null;
+    private _hwFails = 0;
 
     private _playDir(): string {
         const d = path.join(this.cache.root, 'play');
@@ -697,34 +706,82 @@ export class MediaService {
         return null;
     }
 
-    /** 转码方案决策（快路径 = 同编码 copy 重封装；不可 copy 才重编码）
+    /** 硬编码器探测（进程内一次）：① -encoders 预筛（廉价）② 逐候选真机试编（640x360 合成源——presence ≠ 可用）。
+     *  失败即锁（同进程零重探）；QQQIDE_TX_HW=0 逃生开关。任何失败 = 纯软编（libx264），零回归。 */
+    async ensureHwEncoder(): Promise<void> {
+        if (this._hwProbed) { return; }
+        if (!this._hwProbeJob) {
+            this._hwProbeJob = this._probeHwEncoder().finally(() => { this._hwProbed = true; this._hwProbeJob = null; });
+        }
+        return this._hwProbeJob;
+    }
+    private async _probeHwEncoder(): Promise<void> {
+        try {
+            if (String(process.env.QQQIDE_TX_HW || '') === '0') { return; }
+            this.ensureResolved();
+            if (!this._ffmpegPath) { return; }
+            const cands = hwEncCandidatesFor(process.platform);
+            if (!cands.length) { return; }
+            let encTxt = '';
+            try {
+                const r = await this.qz.spawn({ cmd: this._ffmpegPath, args: ['-hide_banner', '-encoders'], timeout: 15_000, stallMs: 10_000, captureOutput: true });
+                encTxt = (r.stdout || '') + (r.stderr || '');
+            } catch { return; }
+            for (const cand of cands) {
+                if (encTxt.indexOf(cand.name) < 0) { continue; }   // 构建未编入 → 不必试编
+                try {
+                    const r = await this.qz.spawn({ cmd: this._ffmpegPath, args: hwProbeArgs(cand), timeout: 20_000, stallMs: 15_000, captureOutput: true });
+                    if (r.exitCode === 0) {
+                        this._hwEnc = cand;
+                        try { console.log('[media] hw encoder: ' + cand.name); } catch { /* ignore */ }
+                        return;
+                    }
+                } catch { /* 本候选失败 → 下一候选 */ }
+            }
+        } catch { /* 探测失败 = 纯软编 */ }
+    }
+    /** 硬编实跑失败降级：探针过 ≠ 全文件适用（极端尺寸/色深/会话耗尽）——连续 2 次真失败 → 本进程降回软编。 */
+    private _noteHwFailure(): void {
+        this._hwFails++;
+        if (this._hwFails >= 2) {
+            this._hwEnc = null;
+            try { console.warn('[media] hw encoder demoted after ' + this._hwFails + ' real failures -> libx264'); } catch { /* ignore */ }
+        }
+    }
+
+    /** 转码方案决策（快路径 = 同编码 copy 重封装；不可 copy 才重编码——硬编可用时优先，qp30 对标 x264 crf23）
      *  ★ 2026-10-02：mp3 音轨一律重编码 aac（Chromium 严格解码——脏 mp3 流一包解码失败即整体拒播；
      *    老 AVI〔Nandub/DivX 时代〕mp3 常态带病：copy 进 mp4/mkv 均被 PIPELINE_ERROR_DECODE 拒绝，实锤）。
-     *  ★ 奇偶守卫：重编码目标 yuv420p 要求偶数边长——源为奇数宽高时加整像素安全缩放（源不为奇数则零开销）。 */
-    private _planPlayable(kind: 'video' | 'audio' | 'image', meta: { vcodec: string; acodec: string; w?: number; h?: number }): { ext: string; args: string[] } {
+     *  ★ 奇偶守卫：重编码目标 yuv420p 要求偶数边长——源为奇数宽高时加整像素安全缩放（源不为奇数则零开销）。
+     *  ★ enc = 「本方案是否重编码」显式字段（硬编时代 args 不再含 libx264，禁回字符串嗅探）；hw = 命中的硬编码器名。 */
+    private _planPlayable(kind: 'video' | 'audio' | 'image', meta: { vcodec: string; acodec: string; w?: number; h?: number },
+        forceSw?: boolean): { ext: string; args: string[]; enc: boolean; hw?: string } {
         if (kind === 'image') {
-            return { ext: 'png', args: ['-frames:v', '1', '-c:v', 'png', '-update', '1'] };
+            return { ext: 'png', args: ['-frames:v', '1', '-c:v', 'png', '-update', '1'], enc: false };
         }
         const a = meta.acodec, v = meta.vcodec;
         if (kind === 'audio' || !v) {
-            if (a === 'aac') { return { ext: 'm4a', args: ['-vn', '-c:a', 'copy'] }; }
-            return { ext: 'm4a', args: ['-vn', '-c:a', 'aac', '-b:a', '192k'] };
+            if (a === 'aac') { return { ext: 'm4a', args: ['-vn', '-c:a', 'copy'], enc: false }; }
+            return { ext: 'm4a', args: ['-vn', '-c:a', 'aac', '-b:a', '192k'], enc: true };
         }
         const aArgs = a ? (a === 'aac' ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k']) : ['-an'];
         const mapArgs = ['-map', '0:v:0'].concat(a ? ['-map', '0:a:0'] : []);
         if (v === 'h264' || v === 'hevc' || v === 'av1') {
-            return { ext: 'mp4', args: mapArgs.concat(['-c:v', 'copy'], aArgs) };
+            return { ext: 'mp4', args: mapArgs.concat(['-c:v', 'copy'], aArgs), enc: false };
         }
         if ((v === 'vp8' || v === 'vp9') && (!a || a === 'opus' || a === 'vorbis')) {
-            return { ext: 'webm', args: mapArgs.concat(['-c:v', 'copy'], a ? ['-c:a', 'copy'] : ['-an']) };
+            return { ext: 'webm', args: mapArgs.concat(['-c:v', 'copy'], a ? ['-c:a', 'copy'] : ['-an']), enc: false };
         }
-        const vArgs = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'];
+        const hw = (!forceSw && this._hwEnc) ? this._hwEnc : null;
+        const vArgs = hw ? hw.args.slice() : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'];
         if ((meta.w && meta.w % 2) || (meta.h && meta.h % 2)) {
             vArgs.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
         }
         return {
             ext: 'mp4',
             args: mapArgs.concat(vArgs, aArgs),
+            enc: true,
+            hw: hw ? hw.name : undefined,
         };
     }
 
@@ -757,6 +814,7 @@ export class MediaService {
         const meta = await this._probeStreams(opts.src);
         if (!meta || (!meta.vcodec && !meta.acodec)) { return { ok: false, error: 'probe_failed' }; }
 
+        await this.ensureHwEncoder();   // ★ 硬编探测（进程内一次；上方缓存快路径已命中则不付探测成本）
         const plan = this._planPlayable(kind, meta);
         const dst = path.join(this._playDir(), st.sig + MediaService.PLAY_PLAN_VER + '.' + plan.ext);
         if (fs.existsSync(dst)) {
@@ -769,14 +827,24 @@ export class MediaService {
         if (pending) { return await pending; }
         try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
         const reqId = opts.reqId || '';
-        const job = this._genPlayable(opts.src, plan, dst, st, meta.duration, reqId, onProgress);
+        const job = (async (): Promise<PlayableResult> => {
+            let r = await this._genPlayable(opts.src, plan, dst, st, meta.duration, reqId, onProgress, !plan.hw);
+            if (!r.ok && !r.cancelled && plan.hw && (r.error === 'ffmpeg_failed' || r.error === 'invalid_output')) {
+                // ★ 硬编实跑失败（探针过但本文件不吃——极端尺寸/色深/会话耗尽/坏产物）：软件重跑一次
+                //   （硬编那次不记熔断——markBroken 已按 !plan.hw 关闭；成败由软件这次裁决）
+                this._noteHwFailure();
+                const swPlan = this._planPlayable(kind, meta, true);
+                r = await this._genPlayable(opts.src, swPlan, dst, st, meta.duration, reqId, onProgress, true);
+            }
+            return r;
+        })();
         this._playInflight.set(ik, job);
         try { return await job; } finally { this._playInflight.delete(ik); }
     }
 
     private async _genPlayable(src: string, plan: { ext: string; args: string[] }, dst: string,
         st: { sig: string; mtimeMs: number; size: number }, duration: number,
-        reqId: string, onProgress?: (pct: number) => void): Promise<PlayableResult> {
+        reqId: string, onProgress?: (pct: number) => void, markBroken: boolean = true): Promise<PlayableResult> {
         const tmp = dst.replace(new RegExp('\\.' + plan.ext + '$'), '.part.' + plan.ext);
         const prog = dst + '.prog';
         try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
@@ -827,7 +895,7 @@ export class MediaService {
             }
             if (stalled || r.exitCode !== 0 || !fs.existsSync(tmp)) {
                 try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
-                if (!stalled) { await this._brokenMark(st, 'playable_ffmpeg_failed'); }
+                if (!stalled && markBroken) { await this._brokenMark(st, 'playable_ffmpeg_failed'); }
                 return { ok: false, error: stalled ? 'stalled' : 'ffmpeg_failed', stderr: (r.stderr || '').slice(-400) };
             }
             try { if (fs.existsSync(dst)) { fs.rmSync(dst, { force: true }); } } catch { /* ignore */ }
@@ -837,7 +905,7 @@ export class MediaService {
             }
             if (!MediaService._isValidPlayableOut(dst, plan.ext)) {
                 try { fs.rmSync(dst, { force: true }); } catch { /* ignore */ }
-                await this._brokenMark(st, 'playable_invalid_output');
+                if (markBroken) { await this._brokenMark(st, 'playable_invalid_output'); }
                 return { ok: false, error: 'invalid_output' };
             }
             await this._brokenClear(st.sig);
@@ -896,6 +964,7 @@ export class MediaService {
         }
         const meta = await this._probeStreams(opts.src);
         if (!meta || (!meta.vcodec && !meta.acodec)) { return { ok: false, error: 'probe_failed' }; }
+        await this.ensureHwEncoder();   // ★ 硬编探测（进程内一次；上方缓存快路径已命中则不付探测成本）
         const plan = this._planPlayable(kind, meta);
         const dst = path.join(this._playDir(), st.sig + MediaService.PLAY_PLAN_VER + '.' + plan.ext);
         if (fs.existsSync(dst)) {
@@ -904,7 +973,7 @@ export class MediaService {
             return { ok: true, mode: 'cache', path: dst, ext: plan.ext, duration: meta.duration, cached: true };
         }
         // 非重编码方案（copy 重封装）/图片 → 经典全量（秒级）当缓存命中返回
-        const isEncode = plan.args.indexOf('libx264') !== -1 || (kind === 'audio' && meta.acodec !== 'aac');
+        const isEncode = plan.enc;   // ★ 源 = 方案字段（硬编时代 args 不再含 libx264——禁回字符串嗅探；audio 重编码亦由此覆盖）
         if (!isEncode) {
             try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
             const r = await this.playable({ src: opts.src, kind, reqId: reqId || undefined }, onProgress);
@@ -912,7 +981,14 @@ export class MediaService {
             return { ok: false, cancelled: r.cancelled, error: r.error || 'classic_failed' };
         }
         try { vigBump('cache', { miss: 1 }); } catch { /* ignore */ }
-        return await this._openStreamJob(opts.src, plan, dst, st, meta, reqId, token, send, onProgress);
+        let res = await this._openStreamJob(opts.src, plan, dst, st, meta, reqId, token, send, onProgress);
+        if (!res.ok && !res.cancelled && plan.hw && !res.sent && (res.error === 'ffmpeg_failed' || res.error === 'invalid_output')) {
+            // ★ 硬编起步失败且一帧未发（sent=false）→ 软件重跑一次——渲染层从未收到分片，无感切换（详 media-service §硬编）
+            this._noteHwFailure();
+            const swPlan = this._planPlayable(kind, meta, true);
+            res = await this._openStreamJob(opts.src, swPlan, dst, st, meta, reqId, token, send, onProgress);
+        }
+        return res;
     }
 
     /** ack 背压通道：渲染层每消费一批字节回执；解除暂停阈值 <12MB。 */
@@ -1071,21 +1147,21 @@ export class MediaService {
                         await closeWs(false);
                         try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
                         if (startResolved && startOk) { try { send({ token, kind: 'fail', cancelled: true }); } catch { /* ignore */ } }
-                        resolveOnce({ ok: false, cancelled: true, error: 'cancelled' });
+                        resolveOnce({ ok: false, cancelled: true, error: 'cancelled', sent: !!(startResolved && startOk) });
                         return;
                     }
                     if (stalled || r.exitCode !== 0 || !fs.existsSync(tmp)) {
                         await closeWs(false);
                         try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
                         if (startResolved && startOk) { try { send({ token, kind: 'fail', error: stalled ? 'stalled' : 'ffmpeg_failed' }); } catch { /* ignore */ } }
-                        resolveOnce({ ok: false, error: stalled ? 'stalled' : 'ffmpeg_failed' });
+                        resolveOnce({ ok: false, error: stalled ? 'stalled' : 'ffmpeg_failed', sent: !!(startResolved && startOk) });
                         return;
                     }
                     await closeWs(true);   // ★ 全量字节落盘后才校验/rename（顺序反了 = rename 拿到半截文件）
                     if (!MediaService._isValidPlayableOut(tmp, ext)) {
                         try { if (fs.existsSync(tmp)) { fs.rmSync(tmp, { force: true }); } } catch { /* ignore */ }
                         if (startResolved && startOk) { try { send({ token, kind: 'fail', error: 'invalid_output' }); } catch { /* ignore */ } }
-                        resolveOnce({ ok: false, error: 'invalid_output' });
+                        resolveOnce({ ok: false, error: 'invalid_output', sent: !!(startResolved && startOk) });
                         return;
                     }
                     try { if (fs.existsSync(dst)) { fs.rmSync(dst, { force: true }); } } catch { /* ignore */ }

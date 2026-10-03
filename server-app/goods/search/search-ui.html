@@ -22,6 +22,9 @@ input,select{-webkit-user-select:text;user-select:text}
 .lbl{font-size:11px;color:var(--tx3);white-space:nowrap;min-width:28px}
 .tog{width:26px;height:26px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx3);font:bold 12px Tahoma;text-align:center;cursor:pointer;flex-shrink:0;line-height:26px}
 .tog:hover{background:var(--bg2);color:var(--tx)}.tog.on{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}
+/* ab 全字匹配图标 = 下方手绘横线（词边界语义）；currentColor 随选中态自动跟随 */
+#bww{position:relative}
+#bww::after{content:'';position:absolute;left:6px;right:6px;bottom:5px;height:1.5px;background:currentColor}
 .btn{height:26px;padding:0 10px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx);font-size:11px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--bg2)}.btn.pri{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}.btn.pri:hover{opacity:.9}
 .chk{font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:3px;margin-left:6px;cursor:pointer;white-space:nowrap;flex-shrink:0}
@@ -101,11 +104,12 @@ input,select{-webkit-user-select:text;user-select:text}
     <div class="tb-r"><span class="lbl" data-i18n="goods.search.only">仅限</span><span class="iw"><input class="scope" id="inc" placeholder="*.js, src/" spellcheck="false"><div class="hdd" id="dd3"></div></span><span class="lbl" style="margin-left:8px" data-i18n="goods.search.exclude">排除</span><span class="iw"><input class="scope" id="exc" value=".git/, *.log, *.json" spellcheck="false"><div class="hdd" id="dd4"></div></span><span class="lbl" style="margin-left:8px" data-i18n="goods.search.sort">排序</span><span class="sort-wrap"><button class="sort" id="srt_btn">修改时间↓</button><div class="sort-dd" id="srt_dd"></div></span></div>
   </div>
   <div class="st" id="st"><span class="qs-spin" id="stspin" style="display:none"></span><span id="stt" data-i18n="goods.search.typeToSearch">键入关键字开始搜索</span><span class="live" id="stlive" style="display:none"></span><span class="done" id="stdone" style="display:none"></span><button class="cxl" id="bcxl" style="display:none" title="Esc" data-i18n="goods.search.cancelBtn">取消</button></div>
-  <div class="rs" id="rc"><div class="emp" id="em"><span class="ic">🔍</span><span class="ht" data-i18n="goods.search.typeToSearch">键入关键字开始搜索</span></div></div>
+  <div class="rs" id="rc"><div class="emp" id="em"><span class="ic qqi qqi-search"></span><span class="ht" data-i18n="goods.search.typeToSearch">键入关键字开始搜索</span></div></div>
 </div>
 
 <script src="../../core/char-undo.js"></script>
 <script src="../../core/i18n.js"></script>
+<script src="../../core/qqq-icons.js"></script>
 <script>
 (function(){
 // i18n 小助手：_kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
@@ -309,7 +313,7 @@ var STSPIN=document.getElementById('stspin'),STL=document.getElementById('stlive
     STDONE=document.getElementById('stdone'),BCXL=document.getElementById('bcxl');
 // clientId = 本 iframe 实例身份（window.name 跨刷新存活 → 刷新可自清孤儿搜索）
 var _clientId=(function(){try{if(window.name&&window.name.indexOf('srch-')===0)return window.name;var id='srch-'+Math.random().toString(36).slice(2)+Date.now().toString(36);window.name=id;return id}catch(_){return 'srch-'+Math.random().toString(36).slice(2)}})();
-var _reqSeq=0,_activeReq=null,_phase='idle',_wireTries=0,_streamUnsub=null;
+var _reqSeq=0,_activeReq=null,_displayReqId=null,_phase='idle',_wireTries=0,_streamUnsub=null;
 var _groups=null,_rowsTotal=0,_mCount=0,_fileStats={},_preview=[],_metaArrived=false;
 var _runStart=0,_liveTimer=null,_lastDone=null,_resultScope='',_listScan=null;
 
@@ -360,7 +364,8 @@ function _finishDone(d){
   _phase='done';
   _stDone(d);
   if(!_rowsTotal)_empShow('',_kk('goods.search.noResult','无匹配结果'));
-  _applySort();
+  // ★ 排序数据（fileStats）经 meta 恒晚于本消息异步补发——有文件时等 meta 落定再排（单次到位零闪烁）
+  if(_metaArrived||!(d.files>0))_applySort();
 }
 
 function _cancelLocal(){
@@ -404,7 +409,7 @@ async function dos(){
   if(!bri||!bri.search){_setSt('idle',_kk('goods.search.engineNotReady','⚠️ 搜索引擎未就绪'));return}
 
   var reqId=++_reqSeq;_activeReq=reqId;
-  _resetResults();_stRunning();
+  _resetResults();_displayReqId=reqId;_stRunning();
   var opts={query:q,searchPath:sp,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
     includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,
     maxResults:5000,timeoutMs:60000,respectGitignore:CGI.checked,clientId:_clientId,reqId:reqId};
@@ -437,6 +442,12 @@ function _onStream(msg){
   if(!msg)return;
   if(msg.clientId!==_clientId)return;
   if(_listScan&&msg.reqId===_listScan.reqId){_scanEvt(msg);return}
+  // ★ meta（fileStats 排序数据）恒晚于 done 异步补发——归属按「当前展示集」reqId 判定；
+  //   禁按 _activeReq（done 已达则恒 null → meta 整批被弃 → 时间/大小排序静默退化为路径序）
+  if(msg.kind==='meta'){
+    if(msg.reqId===_displayReqId){_fileStats=msg.fileStats||{};_metaArrived=true;if(_phase==='done')_applySort();}
+    return;
+  }
   if(msg.reqId!==_activeReq)return;
   if(msg.kind==='phase'){
     if(msg.stage==='queued'&&_phase==='running'){_setSt('queue',_kk('goods.search.queued','排队中…（其他搜索进行中）'))}
@@ -444,7 +455,6 @@ function _onStream(msg){
     return;
   }
   if(msg.kind==='batch'){_appendRows(msg.rows);return}
-  if(msg.kind==='meta'){_fileStats=msg.fileStats||{};_metaArrived=true;if(_phase==='done')_applySort();return}
   if(msg.kind==='done'){if(_activeReq===msg.reqId)_finishDone(msg);return}
 }
 function _scanEvt(msg){
@@ -486,11 +496,11 @@ function _wireStream(){
 }
 window.addEventListener('pagehide',function(){try{if(bri&&bri.search&&bri.search.cancel){var p=bri.search.cancel({clientId:_clientId});if(p&&p.catch)p.catch(function(){})}}catch(_){}});
 // ── 结果区增量渲染（流式先到先显；done 后整体重排分组）──
-function _resetResults(){_groups=new Map();_rowsTotal=0;_mCount=0;_fileStats={};_preview=[];_metaArrived=false;_lastDone=null;RC.innerHTML='';RC.appendChild(EM);EM.style.display='';}
+function _resetResults(){_groups=new Map();_rowsTotal=0;_mCount=0;_fileStats={};_preview=[];_metaArrived=false;_lastDone=null;_displayReqId=null;RC.innerHTML='';RC.appendChild(EM);EM.style.display='';}
 function _empShow(kind,text){
   EM.innerHTML='';
   var ic=document.createElement('span');
-  if(kind==='running'){ic.className='big'}else{ic.className='ic';ic.textContent=kind==='error'?'⚠️':'🔍'}
+  if(kind==='running'){ic.className='big'}else{ic.className='ic qqi qqi-search'}
   var ht=document.createElement('span');ht.className='ht';ht.textContent=text||'';
   EM.appendChild(ic);EM.appendChild(ht);EM.style.display='';
 }

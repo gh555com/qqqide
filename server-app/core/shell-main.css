@@ -191,6 +191,13 @@
   text-overflow: ellipsis;
 }
 
+/* ★ 2026-10-03: goods 标签图标（手绘 SVG·qqq-icons.js）——search/git/dsecret/inbox 标签前置小图标 */
+.qqq-tab-btn .qqq-tab-ico {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
 /* Tab content */
 .qqq-tab-content {
   flex: 1 1 auto;

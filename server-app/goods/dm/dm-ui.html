@@ -486,7 +486,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     <div id="bed-entry" title="打开 bed 我的文件" data-i18n-title="goods.dm.bedOpen">
       <div id="bed-left">
         <div id="bed-title">bed</div>
-        <div id="bed-icon">📦</div>
+        <div id="bed-icon"><span class="qqi qqi-zip"></span></div>
       </div>
       <div id="bed-body">
         <div id="bed-files" data-i18n="common.loading">加载中…</div>
@@ -527,7 +527,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   <!-- ═══ MAIN PANEL ═══ -->
   <div id="main">
     <div id="empty-state">
-      <div id="empty-icon">💬</div>
+      <div id="empty-icon"><span class="qqi qqi-chat"></span></div>
       <div id="empty-title" data-i18n="goods.dm.emptyTitle">选择一条对话</div>
       <div id="empty-sub" data-i18n="goods.dm.emptySub">从左侧选择一个联系人，或搜索手机号开始新对话</div>
     </div>
@@ -559,6 +559,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
 <script src="../../core/char-undo.js"></script>
 <script src="../../core/i18n.js"></script>
+<script src="../../core/qqq-icons.js"></script>
 <script>
 (function () {
   'use strict';
@@ -1274,7 +1275,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     try {
       var cv = _convMap[_activePeer] || {};
       var nm = cv.kind === 'group' ? (cv.gname || _kk('goods.dm.group', '群')) : (_activePeer ? dispPlain(cv, _activePeer) : '');
-      parent.postMessage({ type: 'dm:title', title: nm ? ('📬 ' + nm) : '📬 inbox' }, '*');
+      parent.postMessage({ type: 'dm:title', title: nm ? nm : 'inbox' }, '*');
     } catch (_) {}
   }
 
@@ -1295,7 +1296,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var cls = _activePeer === pid ? ' active' : '';
       var badge = cv.unread > 0 ? '<span class="conv-badge">'+(cv.unread>99?'99+':cv.unread)+'</span>' : '';
       // 群 → 👥 图标；私聊 → 国家码国旗（照抄登录区）
-      var icon = isG ? '<span style="font-size:16px">👥</span>' : flagImg(cv.country);
+      var icon = isG ? '<span class="qqi qqi-users" style="font-size:15px"></span>' : flagImg(cv.country);
       var preview = isG && cv.lastSender ? cv.lastSender + '：' + trunc(cv.lastMsg,28) : trunc(cv.lastMsg,40);
       var nm = isG ? {name:escHtml(name), tail:''} : dispName(cv, pid);   // ★ 备注/名字旁恒打印脱敏电话
 
@@ -1534,7 +1535,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var c = list[i];
       var thumb = c.url
         ? '<img class="thumb" src="' + c.url + '" alt="">'
-        : '<div class="file-ic">📄</div>';
+        : '<div class="file-ic qqi qqi-file"></div>';
       var pct = c.status === 'done' ? 100 : Math.round((c.loaded / (c.size || 1)) * 100);
       var stCls = c.status === 'failed' ? ' failed' : (c.status === 'done' ? ' done' : (c.status === 'uploading' ? ' uploading' : ''));
       html += '<div class="attach-chip' + stCls + '" title="' + escHtml(c.name) + '">' + thumb +
@@ -1894,7 +1895,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var cv = _convMap[_activePeer] || {};
     if (cv.kind === 'group') {
       // 群：👥 群名 · N 人（成员数可点 → 成员管理弹窗）
-      $chatHdrName.innerHTML = '<span style="font-size:15px">👥</span> ' + escHtml(cv.gname || _kk('goods.dm.group', '群'));
+      $chatHdrName.innerHTML = '<span class="qqi qqi-users" style="font-size:14px"></span> ' + escHtml(cv.gname || _kk('goods.dm.group', '群'));
       $chatHdrStat.style.display = '';
       $chatHdrStat.textContent = (cv.memberCnt ? _kk('goods.dm.memberCount', '{0} 人', cv.memberCnt) : '') + ' · ' + _kk('goods.dm.members', '成员');
       $chatHdrStat.title = _kk('goods.dm.viewMembers', '查看群成员');
@@ -2295,7 +2296,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           _attActs(url, nm, sz) + '</div>';
       } else {
         html += '<div class="attach-file" data-dl="' + escHtml(url) + '" data-dlname="' + escHtml(nm || _kk('goods.dm.attachment', '附件')) + '" data-dlsize="' + sz + '" title="' + _kk('goods.dm.clickSave', '点击保存（Shift+点击 = 另存为）') + '">' +
-          '<span class="af-ic">📄</span>' +
+          '<span class="af-ic qqi qqi-file"></span>' +
           '<span class="af-meta"><span class="af-name">' + escHtml(nm || _kk('goods.dm.attachment', '附件')) + '</span>' +
           '<span class="af-size">' + fmtBytes(sz) + '</span></span>' +
           _attActs(url, nm, sz) + '</div>';
