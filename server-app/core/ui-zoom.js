@@ -7,7 +7,7 @@
 //   hover 显快捷键组 tooltip；点击弹八档点选层 → qqqPrefs.set → onChange → 壳层热应用。
 // 其余输入（统一收敛到 qqq-prefs / 壳层）：
 //   ① 应急快捷键 Ctrl+= / Ctrl+- / Ctrl+0（壳层主进程直控）→ bridge.uiZoom.onChanged
-//      → _adopt 同步内存 + 徽章 + 发起窗口 toast
+//      → _adopt 同步内存 + 徽章 + 发起窗口 qoast
 //   ② 云拉取 / 恢复默认新值 → qqqPrefs.onChange → 闸门上报壳层
 // ★ 多窗口闭环（唯一语义 = 单值全窗同步；此前多窗口 90/100 互踢的根治）：
 //   真相唯一 = 壳层 _factor；变更唯一来源 = 用户动作（徽章/快捷键）或云拉取新值；
@@ -27,11 +27,11 @@
     try { return /Mac/i.test(navigator.platform || '') ? '⌘+0' : 'Ctrl+0'; } catch (e) { return 'Ctrl+0'; }
   }
 
-  function _toast(pct) {
+  function _qoast(pct) {
     try {
       var key = _resetKey();
       var msg = window._i
-        ? window._i('uiZoom.toast', '界面缩放 {p}%（{k} 复位）', { p: pct, k: key })
+        ? window._i('uiZoom.qoast', '界面缩放 {p}%（{k} 复位）', { p: pct, k: key })
         : ('界面缩放 ' + pct + '%（' + key + ' 复位）');
       if (window.qqqideQoast && window.qqqideQoast.show) {
         window.qqqideQoast.show(msg, { duration: 3200, type: 'info' });
@@ -264,13 +264,13 @@
         });
       }
     } catch (e) { /* ignore */ }
-    // ② 壳层广播（每次真变化全窗同步 + 快捷键 toast）→ 采用真值（内存 + 徽章，不回写）
+    // ② 壳层广播（每次真变化全窗同步 + 快捷键 qoast）→ 采用真值（内存 + 徽章，不回写）
     try {
       if (b && b.uiZoom && b.uiZoom.onChanged) {
         b.uiZoom.onChanged(function (payload) {
           if (!payload || typeof payload.pct !== 'number' || !isFinite(payload.pct)) { return; }
           _adopt(payload.pct);
-          if (payload.toast) { _toast(payload.pct); }
+          if (payload.qoast) { _qoast(payload.pct); }
         });
       }
     } catch (e) { /* ignore */ }

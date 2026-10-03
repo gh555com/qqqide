@@ -335,7 +335,7 @@
 	var h = await _roamGet('roam.cmdHistory'); if (h && typeof h === 'object') _cmdHistory = h;
 	var prefs = await _roamGet('roam.prefs');
 	if (prefs && typeof prefs === 'object') {
-		if (typeof prefs.lineSpacing === 'number') _lineSpacing = prefs.lineSpacing;
+		if (typeof prefs.lineSpacing === 'number') _lineSpacing = Math.round(prefs.lineSpacing * 0.85 * 2) / 2;   // ★ 旧 0.85 坐标系存量迁移（0.5 网格；默认 -2 → -1.5，2026-10-03 zoom 根治 v2）
 	}
 	_applyLineSpacing();
 	// ★ 设置中心接线（2026-09-29 · 老 q3 语义）：sz 显示 / 排序 / 自动感知 = qqq-prefs 消费方——
@@ -349,8 +349,8 @@
 		}
 	} catch (e) { }
 	try {
-		var sw = await _roamGet('roam.sidebarWidth');
-		if (typeof sw === 'number' && sw > 50 && sw < 500) { sidebarW = sw; applySidebarWidth(); }
+		var sw = _swNorm(await _roamGet('roam.sidebarWidth'));
+		if (typeof sw === 'number' && sw > 42 && sw < 425) { sidebarW = sw; applySidebarWidth(); }
 	} catch(e) {}
 
 	var bootInfo = {};
@@ -426,6 +426,7 @@
 	});
 
 	// ★ zoom 单位换算（2026-08-09）：html { zoom:0.85 } 下 innerWidth/clientX 报物理 px，而 fixed 定位/maxWidth/offsetWidth 用 CSS px（F113 实测 Electron22: zoom 生效但 clientX=物理注入值、innerWidth 不变）→ 物理/CSS 必须统一，否则右边界保护失效 + maxWidth 退避错 17.6%
+	//   2026-10-03「zoom 根治」：html zoom 已还原 1 → 本函数恒等返回原值（逻辑保留作多域统一）
 	function _ttZoom() {
 		var z = 1;
 		try { var cz = getComputedStyle(document.documentElement).zoom; if (cz && cz !== '' && cz !== '1') z = parseFloat(cz) || 1; } catch (e) {}

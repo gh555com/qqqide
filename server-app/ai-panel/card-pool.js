@@ -564,7 +564,7 @@ var CardPool = (function () {
     return null;
   }
 
-  function _imgActToast(msg, type) {
+  function _imgActQoast(msg, type) {
     try {
       if (window.parent && window.parent.qqqideQoast) {
         window.parent.qqqideQoast.show(msg, { type: type || 'info', duration: 2500 });
@@ -580,29 +580,29 @@ var CardPool = (function () {
     var src = (img && img.src) || '';
     if (act === 'mem') {
       var payload = p ? { path: p } : (/^data:/i.test(src) ? { dataUrl: src } : null);
-      if (!payload || !b || !b.clipboard || !b.clipboard.writeImage) { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+      if (!payload || !b || !b.clipboard || !b.clipboard.writeImage) { _imgActQoast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
       b.clipboard.writeImage(payload).then(function (ok) {
-        _imgActToast(ok ? _qq('shell.overlay.memOk', '图片已进入内存，可直接粘贴') : _qq('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
-      }).catch(function () { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
+        _imgActQoast(ok ? _qq('shell.overlay.memOk', '图片已进入内存，可直接粘贴') : _qq('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+      }).catch(function () { _imgActQoast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
       return;
     }
     if (!p) {
       var _noMsg = (/^data:/i.test(src) ? _qq('shell.overlay.noLocalPath', '该图片无本地路径') : _qq('shell.overlay.noLocalFile', '该图片无本地文件，无法复制文件'));
-      _imgActToast(_noMsg, 'info');
+      _imgActQoast(_noMsg, 'info');
       return;
     }
     if (act === 'file') {
-      if (!b || !b.clipboard || !b.clipboard.writeFiles) { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+      if (!b || !b.clipboard || !b.clipboard.writeFiles) { _imgActQoast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
       b.clipboard.writeFiles([p]).then(function (ok) {
-        _imgActToast(ok ? _qq('shell.overlay.fileOk', '文件已复制，可直接粘贴') : _qq('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
-      }).catch(function () { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
+        _imgActQoast(ok ? _qq('shell.overlay.fileOk', '文件已复制，可直接粘贴') : _qq('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+      }).catch(function () { _imgActQoast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
       return;
     }
     if (act === 'path') {
-      if (!b || !b.clipboard || !b.clipboard.writeText) { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+      if (!b || !b.clipboard || !b.clipboard.writeText) { _imgActQoast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
       b.clipboard.writeText(p).then(function () {
-        _imgActToast(_qq('shell.overlay.copied', '已复制'), 'success');
-      }).catch(function () { _imgActToast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
+        _imgActQoast(_qq('shell.overlay.copied', '已复制'), 'success');
+      }).catch(function () { _imgActQoast(_qq('shell.overlay.copyFailed', '复制失败'), 'error'); });
     }
   }
 

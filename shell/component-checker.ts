@@ -960,3 +960,57 @@ export function getComponentDir(portableRoot: string, name: string): string | nu
     const bp = _binPath(portableRoot, def);
     return bp && fs.existsSync(bp) ? path.dirname(bp) : null;
 }
+
+// ── 按需安装（用户显式触发：网页粘贴「安装组件」按钮等；绕过冷却；同组件并发去重）──
+
+const _installInFlight = new Map<string, Promise<{ ok: boolean; bin?: string; already?: boolean; error?: string }>>();
+
+/**
+ * 手动安装/修复单个组件（幂等）。
+ * 与启动链的区别：① 绕过下载冷却（用户显式意图）② last_success>0 的「永不再下」记录先清
+ * （否则重装永远被跳过）③ 安装后真实验证防假成功 ④ 同组件并发共享同一 promise。
+ */
+export function installComponent(
+    portableRoot: string,
+    name: string,
+): Promise<{ ok: boolean; bin?: string; already?: boolean; error?: string }> {
+    const key = String(portableRoot) + '|' + String(name);
+    const inflight = _installInFlight.get(key);
+    if (inflight) return inflight;
+    const job = (async () => {
+        try {
+            const manifest = _loadManifest(portableRoot);
+            if (!manifest) return { ok: false, error: 'manifest_missing' };
+            const def = manifest.components[name];
+            if (!def) return { ok: false, error: 'unknown_component' };
+            const engRoot = _enginesRoot(portableRoot);
+            const versPath = path.join(engRoot, 'engines', '.versions.json');
+            const versions = _readJson<VersionsFile>(versPath, {});
+            const verifyArgs = def.verify_args || ['--version'];
+
+            // 幂等：已装且验证通过 → 直接成功
+            const bp0 = _binPath(portableRoot, def);
+            if (bp0 && fs.existsSync(bp0) && (await _cmdOkAsync(bp0, verifyArgs))) {
+                return { ok: true, bin: bp0, already: true };
+            }
+
+            // 手动安装 = 显式用户意图 → 清下载日志（last_success>0 会令 _ensureOne 永久跳过）
+            const dlLog = _readJson<DownloadLog>(_dlLogPath(portableRoot), {});
+            if (dlLog[name]) { delete dlLog[name]; _writeJson(_dlLogPath(portableRoot), dlLog); }
+
+            await _ensureOne(portableRoot, name, def, _platformKey(), versions, manifest, versPath);
+            _writeJson(versPath, versions);
+
+            // 真验证（防 _ensureOne 内部冷却跳过/下载失败被吞掉的假成功）
+            const bp = _binPath(portableRoot, def);
+            if (bp && fs.existsSync(bp) && (await _cmdOkAsync(bp, verifyArgs))) return { ok: true, bin: bp };
+            return { ok: false, error: 'install_failed' };
+        } catch (e: any) {
+            return { ok: false, error: String((e && e.message) || e) };
+        } finally {
+            _installInFlight.delete(key);
+        }
+    })();
+    _installInFlight.set(key, job);
+    return job;
+}

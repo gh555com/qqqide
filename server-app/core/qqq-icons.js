@@ -13,6 +13,12 @@
 // ★ 2026-10-03（q359）实线化重绘：文件夹/文件/相机/复制/信封 全部改为「实线·直角·加粗」几何；
 //   纯直角图标启用 shape-rendering="crispEdges"（像素级锐度 = Win10 参照字形同级；曲线图标禁用）；
 //   新增 git（分支）/ shield（盾牌）。文件夹加大 ~1px、文件收小 + 直角边角（用户实测定案）。
+// ★ 2026-10-03（q359·再精修，用户定案）：文件夹还原前一版实心剪影（加宽版偏大被否）；
+//   文件改 1px 细线极简风（直角折角纸 + 2 条内容线——旧 6 线版过重"脏"被否）；
+//   信封上下加高 + 由实心块改细线描边；crispEdges 白名单仅剩 copy/shield/git（曲线/斜线/细线禁入）。
+// ★ 2026-10-03（q359·zoom 根治）：Roam 文档 zoom 0.85 整体废除（非整数光栅化=模糊+合成税，压测 p90 帧差 +47%）——
+//   全套尺寸 ×0.85 落地 + 新增 folder-r/file-r（13 网格 @1:1，仅 q2-roam 引用）；其它消费方仍用 16 网格形状。
+// ★ 2026-10-03 晚（q359）：file-r 还原放大（墨迹 6×8 → 8×10，用户定案）；Roam 图标整体下移 1px + 笔触减淡一档（CSS 侧，q2-roam.html）。
 //
 // Monaco codeLens 槽位：codeLens 标题只认文本，但 Monaco 支持 `$(name)` 语法 →
 //   <span class="codicon codicon-qqq-xxx">。本机为每个图标同时注入
@@ -28,22 +34,25 @@
 
   // ── 形状库（16×16 viewBox 手绘；filled=实心剪影 / stroked=线画）──
   var SHAPES = {
-    // 文件夹（实心剪影·纯直角无圆角·192px 墨迹逐行剖面逐点复刻 Segoe 📁 参照字形）
-    //   机身矩形 + 顶部梯形标签（实测 x43%~88%·真高低差 1.95 单位）合并为单一路径（15px 下像素对齐）
-    'folder': '<path d="M0.8 4.75H6.93L7.67 2.6h5.17l.63 2.15H15.2v9.65H0.8z"/>',
+    // 文件夹（实心剪影 + 左标签——对齐 Win10 Segoe 渲染观感；2026-10-03 用户定案还原此版）
+    'folder': '<path d="M1.5 4a1.1 1.1 0 0 1 1.1-1.1h3.9a1.1 1.1 0 0 1 1.1 1.1v1.4H1.5z"/>' +
+      '<path d="M1.5 5.6h12a1.1 1.1 0 0 1 1.1 1.1v4.8a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"/>',
+    // ★ Roam 专用·13 网格（2026-10-03「zoom 0.85→1」根治：q2-roam 去文档缩放，图标改 13px 盒 @1:1 光栅化——
+    //   视觉 = 旧 16 网格 ×0.85 等效；直边对齐 0.5 网格 → 1px 线纯色像素级清晰）
+    'folder-r': '<path d="M1 3a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1H1z"/>' +
+      '<path d="M1 4h9a1 1 0 0 1 1 1v3.75a1.25 1.25 0 0 1-1.25 1.25H2.25a1.25 1.25 0 0 1-1.25-1.25z"/>',
+    // Roam 专用·文件（同上 13 网格；2026-10-03 晚用户定案：还原「缩 1px」前尺寸——框 7×9 墨迹 8×10；
+    //   框线中心落 x.5 → 1px 实线零灰边）
+    'file-r': '<path d="M3.5 1.5h7v9h-7z" fill="none" stroke="#000" stroke-width="1"/>' +
+      '<path d="M8.5 1.5v2h2" fill="none" stroke="#000" stroke-width="1"/>' +
+      '<path d="M4.5 6.5h5M4.5 8.5h5" fill="none" stroke="#000" stroke-width="1"/>',
     // 打开的文件夹（前往/定位）
     'folder-open': '<path d="M2.1 6.6V4.3c0-.83.67-1.5 1.5-1.5h3.3c.4 0 .78.16 1.06.44l1.14 1.1h4.4c.83 0 1.5.67 1.5 1.5v.76z"/>' +
       '<path d="M1.5 13.7l1.9-5.5c.15-.44.57-.74 1.04-.74h10.15c.64 0 1.09.61.9 1.22l-1.75 5.5a1.08 1.08 0 0 1-1.04.75H2.45c-.67 0-1.14-.63-.95-1.23z"/>',
-    // 通用文件（直角线稿：斜切角 + 折角方框双线 + 6 条内容线 2 短 4 长——逐行剖面复刻 Win10 🗎 参照字形）
-    'file': '<path fill-rule="evenodd" d="M4 2.2h5.3l3.1 3.1v8.3H4z M5.4 3.6h3.1l2.5 2.5v6.1H5.4z"/>' +
-      '<rect x="8.8" y="2.2" width="1" height="2.75"/>' +
-      '<rect x="8.8" y="4.45" width="3.6" height="1"/>' +
-      '<rect x="5.6" y="3.75" width="2.4" height="0.9"/>' +
-      '<rect x="5.6" y="5.25" width="2.4" height="0.9"/>' +
-      '<rect x="5.6" y="6.75" width="5.2" height="0.9"/>' +
-      '<rect x="5.6" y="8.25" width="5.2" height="0.9"/>' +
-      '<rect x="5.6" y="9.75" width="5.2" height="0.9"/>' +
-      '<rect x="5.6" y="11.25" width="5.2" height="0.9"/>',
+    // 通用文件（1px 细线极简风·直角：折角纸 + 2 条内容线——2026-10-03 再定案，旧 6 线版过重被否）
+    'file': '<path d="M4 2.2h5.1l3.7 3.7v7.7H4z" fill="none" stroke="#000" stroke-width="1.2"/>' +
+      '<path d="M9.1 2.2v3.7h3.7" fill="none" stroke="#000" stroke-width="1.2"/>' +
+      '<path d="M5.4 8.7h6M5.4 11.1h6" fill="none" stroke="#000" stroke-width="1.1"/>',
     // 图片
     'image': '<rect x="1.9" y="2.9" width="12.2" height="10.2" rx="1.3" fill="none" stroke="#000" stroke-width="1.25"/>' +
       '<circle cx="5.5" cy="6.3" r="1.25"/>' +
@@ -90,15 +99,18 @@
     // 复制（双页·纯直角实线版）
     'copy': '<path fill-rule="evenodd" d="M5.8 5.8h8.6v8.6H5.8z M7.2 7.2v5.8h5.8V7.2z"/>' +
       '<path d="M10.4 5.8V2.4h-7v7h3.4V8.2H4.8V3.8h4.2v2z"/>',
-    // 邮件（封闭信封·实心填充版：框带 + V 带——无描边零模糊）
-    'mail': '<path fill-rule="evenodd" d="M1.9 3.6h12.2v8.8H1.9z M3.4 5.1v5.8h9.2V5.1z"/>' +
-      '<path d="M2.4 4.4L8 8.8l5.6-4.4v1.5L8 10.3 2.4 5.9z"/>',
+    // 邮件（细线加高版·直角：框 + 折信口——2026-10-03 再定案：上下加高、实心块改细线）
+    'mail': '<rect x="2.2" y="2.9" width="11.6" height="10.3" fill="none" stroke="#000" stroke-width="1.2"/>' +
+      '<path d="M2.7 3.4L8 8.2l5.3-4.8" fill="none" stroke="#000" stroke-width="1.2"/>',
     // git 分支（方块节点 + 干线/支线·全矩形——goods 标签图标）
     'git': '<rect x="3.1" y="2.7" width="2.8" height="2.8"/><rect x="3.1" y="10.5" width="2.8" height="2.8"/>' +
       '<rect x="10.1" y="6.6" width="2.8" height="2.8"/><rect x="3.8" y="4.9" width="1.4" height="6.2"/>' +
       '<rect x="4.5" y="7.3" width="6.3" height="1.4"/>',
     // 盾牌（dsecret goods 标签图标·实心直角多边形）
     'shield': '<path d="M8 1.6l5.2 2.1v4.2L8 14.4 2.8 7.9V3.7z"/>',
+    // 时钟（面包屑时间线按钮——实心环 + 双指针）
+    'clock': '<path fill-rule="evenodd" d="M8 1.7a6.3 6.3 0 1 1 0 12.6A6.3 6.3 0 0 1 8 1.7z m0 1.5a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z"/>' +
+      '<rect x="7.25" y="4.4" width="1.5" height="4.4"/><rect x="8" y="7.85" width="3.3" height="1.5"/>',
     // 邮件（开口信封）
     'mail-open': '<path d="M1.9 6.6L8 2.3l6.1 4.3v5.9a1.3 1.3 0 0 1-1.3 1.3H3.2a1.3 1.3 0 0 1-1.3-1.3z" fill="none" stroke="#000" stroke-width="1.25" stroke-linejoin="round"/>' +
       '<path d="M1.9 6.6L8 11.2l6.1-4.6" fill="none" stroke="#000" stroke-width="1.25"/>',
@@ -134,12 +146,16 @@
 
   var NAMES = Object.keys(SHAPES);
 
-  // crispEdges 白名单：纯直角图标关抗锯齿（像素级实线——与 Win10 参照字形同级锐度）；曲线图标禁入
-  var CRISP = { folder: 1, file: 1, copy: 1, shield: 1, mail: 1, git: 1 };
+  // crispEdges 白名单：纯直角/直线图标才可关抗锯齿；曲线/斜线图标禁入（会变锯齿/发糊）
+  //   file-r（全直线 1px）入列：crispEdges 像素吸附让线完全实色
+  var CRISP = { copy: 1, shield: 1, git: 1, 'file-r': 1 };
+  // 非 16 网格形状的 viewBox 覆盖（Roam 专用 13 网格，详 SHAPES 头注）
+  var VB = { 'folder-r': 13, 'file-r': 13 };
 
   function _uri(name) {
+    var vb = VB[name] || 16;
     return 'data:image/svg+xml,' + encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"' +
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + vb + ' ' + vb + '"' +
       (CRISP[name] ? ' shape-rendering="crispEdges"' : '') + '>' + SHAPES[name] + '</svg>'
     );
   }

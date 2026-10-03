@@ -25,7 +25,7 @@
 //   ★ 窗口外观（v18，2026-10-02 q319）：win32 弃 transparent（layered 窗 drag 区双击被系统吞掉——真机探针实证零消息零最大化；
 //   非透明窗恢复系统双击头部条 = 最大化/还原〔双向实证〕+ drag/Aero Snap 全保留；环 = border-box 渐变照常渲染〔像素实证与透明窗逐点一致〕）；
 //   他平台维持 transparent。+ CSS 零圆角（IDE 传统直角——真机探针实证 radius 0 时系统不叠加圆角：背窗取色法）
-//   + 橙→绿渐变环（与暗主题内置面板同原语，player.html 绘制）；默认几何 音频 860×540 / 视频 940×600；最小恒 600×320（★ 2026-10-03 v20：宽 500→600 = UI 行「恒单行」地板——最小缩放极限，详 _PLAYER_MIN_W；高 320 = 编队下拉 8 槽+none ≈296px 装得下 + 240p 视频 x1 可达；2026-10-02 360→320）。
+//   + 橙→绿渐变环（与暗主题内置面板同原语，player.html 绘制）；默认几何 音频 860×540 / 视频 940×600；最小恒 540×320（★ 2026-10-03 二轮：宽 600→540 = 左右空气墙清零后 UI 行新地板，详 _PLAYER_MIN_W；高 320 = 编队下拉 8 槽+none ≈296px 装得下 + 240p 视频 x1 可达；2026-10-02 360→320）。
 //   ★ 加入播放列表（2026-10-02 q319）：Roam 右键行 → qqqide:player:append——文件夹递归收集媒体（上限 500，报数截断）
 //   → 目标 = 最近活跃播放器窗（lastActive = 最后聚焦/最后打开）纯追加（重复路径跳过；不动当前轨/不打断播放）；
 //   零窗 → 新建窗装下这批（暂停态）。行可见性：文件夹恒显 / 文件侧仅媒体显（roam 侧判断，零探测）。
@@ -41,12 +41,12 @@ import { getWebappBaseUrl } from './boot';
 import { isPlayerHostMode, queuePlayerRequest, startPlayerHostLoop, filesToItems, parsePlayFiles, clearPlayerHostState, playerHostAlive, ensurePlayerHostAlive, touchPlayerHostState, ideKeepaliveFresh, requestIdeReveal } from './player-host';
 import { stopPyBroker } from './py-broker';
 
-// ★ 播放器窗最小尺寸（2026-10-03 v20 q319 用户定案）：宽 = UI 行「恒单行」地板（最小缩放极限——三路同钳：
+// ★ 播放器窗最小尺寸（2026-10-03 二轮 q395 用户定案；v20 骨架）：宽 = UI 行「恒单行」地板（最小缩放极限——三路同钳：
 //   建窗 minWidth / grip 主进程 clamp（getMinimumSize 动态读）/ OS 拖拽 WM_GETMINMAXINFO）；
-//   实测：隔离探针（真页面+真引擎）最紧档（trx 最紧档 + uic 压紧 + 最长计数 500/500 + 最宽倍速 0.06×）576~588px 起单行；
-//   真机 600 窗复核：同内容恰 598px 零溢出（ovf=0）、拖拽到地板恒 600×320；取 600 既覆盖最紧档又保 240p 小视频 x1（352 宽视频 x1 目标窗宽 608）可达。
-//   禁回 500（会换两行——历史实锤）；>500 条目的超长计数由 .ovmb-uic .ovmb-pos 上限 52px 截断兜底。
-const _PLAYER_MIN_W = 600;
+//   实测：隔离探针（真页面+真引擎）最紧档（trx 最紧档 + uic 压紧 + 最长计数 500/500 + 最宽倍速 0.06×）530px 内零溢出；
+//   取 540（余量 10）——左右空气墙清零（行侧距/dock 外边距→0）后 600→540；仍保 352 宽小视频 x1（目标窗宽 570）可达；
+//   禁回 500 以下（会换两行——历史实锤）；>500 条目的超长计数由 .ovmb-uic .ovmb-pos 上限 52px 截断兜底。
+const _PLAYER_MIN_W = 540;
 const _PLAYER_MIN_H = 320;
 
 // 音频扩展名（仅用于开窗默认尺寸/最小高判定；与引擎 _AUDIO_EXTS / roam 白名单同口径）
@@ -730,7 +730,7 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
         try {
             if (isPlayerHostMode()) { return _appendToPlayer(payload); }
             const src = _srcOf(e);   // ★ 发起窗侧记（追加亦属发起行为——最新一次加入推进侧记）
-            return queuePlayerRequest('append', Object.assign({}, payload || {}, src ? { __src: src } : {}), 8000);   // 带回复等待（roam 依结果出 toast）
+            return queuePlayerRequest('append', Object.assign({}, payload || {}, src ? { __src: src } : {}), 8000);   // 带回复等待（roam 依结果出 qoast）
         } catch { return { ok: false, reason: 'error' }; }
     });
 
@@ -806,8 +806,8 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
         try { const en = _entryOf(e); if (en) { en.win.close(); } return { ok: true }; } catch { return { ok: false }; }
     });
 
-    // 截图「📂 Roam 定位」（2026-10-03 q319 跨进程重设计）：宿主域 = 请求同安装 IDE（reveals 队列 → 任一 IDE
-    //   主窗置前 + 投递 __qqq_roamRevealPath → ack 裁决——旧「进程内找主窗」在单宿主域结构性必败〔宿主进程恒无
+    // 截图「📂 Roam 定位」（2026-10-03 q319 跨进程重设计）：宿主域 = 请求同安装 IDE（reveals 队列 → 「正在操作滴」IDE
+    //   主窗强制召回〔选窗序详 player-reveal.ts；restore+moveTop+focus〕 + 投递 __qqq_roamRevealPath → ack 裁决——旧「进程内找主窗」在单宿主域结构性必败〔宿主进程恒无
     //   IDE 窗〕只剩系统定位兜底）；无 IDE/无窗/投递失败/超时 → 系统文件管理器兜底（爬升最近存在祖先）。
     //   IDE 域分支 = 进程内防御直投（正常不可达——播放器窗只存在于宿主进程）。
     ipcMain.handle('qqqide:player:reveal', async (e, p: string) => {

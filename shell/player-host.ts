@@ -284,7 +284,7 @@ function _waitReply(id: string, waitMs: number): Promise<any> {
 //   进程恒无 IDE 窗——旧「进程内找主窗」结构性必败，只剩系统定位兜底）。
 //   方向：宿主 → IDE（与 requests/ 相反；文件系统即 IPC）。宿主侧 = requestIdeReveal（写请求 + 等 ack）；
 //   IDE 侧 = startIdeRevealWatch（认领 → 选窗 → 置前 → 投递 __qqq_roamRevealPath → 写 ack）。
-//   选窗序（唯一权威 = player-reveal.pickRevealWindowId）：发起窗 → 聚焦窗 → 最后聚焦窗 → 任一存活主窗。
+//   选窗序（唯一权威 = player-reveal.pickRevealWindowId）：聚焦窗 → 最后聚焦窗（「你正在操作滴」）→ 发起窗 → 任一存活主窗。
 //   失败收口（宿主侧统一裁决）：无 IDE / 无窗 / 投递失败 / 超时 → 系统文件管理器兜底（调用方执行）。
 //   陈腐防线：请求 ts 超 60s 拒执（防 IDE 迟到启动执行出「惊喜定位」）；processing/ack 超 1h 由 tick 清扫。
 export function playerHostRevealDir(): string { return path.join(playerHostDataDir(), 'reveals'); }
@@ -353,8 +353,10 @@ function _mainWindowsAlive(): BrowserWindow[] {
 }
 
 function _focusMainWindow(win: BrowserWindow): void {
+    // ★ 强制召回（2026-10-03 用户定案「直接强制召回你正在操作滴 IDE」）：还原 → 显形 → 抬顶 → 夺焦
     try { if (win.isMinimized()) { win.restore(); } } catch { /* ignore */ }
     try { win.show(); } catch { /* ignore */ }
+    try { if (typeof (win as any).moveTop === 'function') { (win as any).moveTop(); } } catch { /* ignore */ }
     try { win.focus(); } catch { /* ignore */ }
 }
 
@@ -601,7 +603,7 @@ export function registerHostShellIpc(): void {
         catch (e: any) { return { ok: false, error: (e && e.message) || 'open-failed' }; }
     });
     // ── resize grip（2026-10-02 移植自主窗 ipc-misc 同机）：渲染层每帧报告目标宽高 → clamp(min/max) + setBounds（左上角固定）──
-    //   fire-and-forget（60fps 热路径零 promise 开销）；min/max 主进程钳制（min 动态读 win.getMinimumSize——常量唯一源 = ipc-player.ts _PLAYER_MIN_W/H，v20 起 600×320）；通道名与 preload 同契
+    //   fire-and-forget（60fps 热路径零 promise 开销）；min/max 主进程钳制（min 动态读 win.getMinimumSize——常量唯一源 = ipc-player.ts _PLAYER_MIN_W/H，2026-10-03 二轮起 540×320）；通道名与 preload 同契
     ipcMain.on('qqqide:window:resize-grip', (e, w: number, h: number) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (!win || win.isDestroyed()) { return; }

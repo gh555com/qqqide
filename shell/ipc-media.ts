@@ -33,6 +33,15 @@ export function registerMediaIpc(mediaService: MediaService): void {
         }
     });
 
+    // ★ 播放器「媒体信息」详情（[!] 钮悬停详情框；2026-10-03 q319）——ffprobe 全量 + stat → 展示区块
+    ipcMain.handle('qqqide:media:info', async (_e, src: string) => {
+        try {
+            return await mediaService.info(src);
+        } catch (e: any) {
+            return { ok: false, error: e.message || 'info_exception' };
+        }
+    });
+
     ipcMain.handle('qqqide:media:ffmpegPath', async () => {
         return mediaService.ffmpegPath();
     });

@@ -559,6 +559,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
 <script src="../../core/char-undo.js"></script>
 <script src="../../core/i18n.js"></script>
+<!-- ★ 外拖文本提取机（唯一真理源 core/drag-text.js；AI 面板/inbox 共享） -->
+<script src="../../core/drag-text.js"></script>
 <script src="../../core/qqq-icons.js"></script>
 <script>
 (function () {
@@ -1568,6 +1570,31 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     return files;
   }
 
+  // ═══ 纯文本插入（唯一实现，2026-10-03）：右键 Ctrl+V / 外拖文本 共用 ═══
+  // 口径：输入框持焦点 → 光标处插入（有选区则替换）；未持焦点 → 焦点 + 追加末尾；
+  // maxlength 硬帽（超出截断 + qoast——与原生粘贴入字数上限语义对齐）；autoResize 同步。
+  function insertMsgText(text) {
+    if (!text) return;
+    var wasActive = (document.activeElement === $msgInput);
+    $msgInput.focus();
+    if (!wasActive) {
+      try { var L0 = $msgInput.value.length; $msgInput.setSelectionRange(L0, L0); } catch(_) {}
+    }
+    var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    var cur = nd.get.call($msgInput);
+    var ss = $msgInput.selectionStart || 0, se = $msgInput.selectionEnd || 0;
+    var max = parseInt($msgInput.getAttribute('maxlength') || '0', 10) || 0;
+    var avail = (max > 0) ? Math.max(0, max - (cur.length - (se - ss))) : text.length;
+    if (avail <= 0) return;
+    var ins = text.length > avail ? text.slice(0, avail) : text;
+    nd.set.call($msgInput, cur.substring(0, ss) + ins + cur.substring(se));
+    $msgInput.setSelectionRange(ss + ins.length, ss + ins.length);
+    autoResize();
+    if (ins.length < text.length) {
+      try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.pasteTruncated', '已达消息长度上限，多余内容已截断'), {type:'warn', duration:3500}); } catch(_) {}
+    }
+  }
+
   // ★ Ctrl+V：粘贴一切文件（图片/文档/压缩包/一批文件）；无文件则放行原生文本粘贴
   document.addEventListener('paste', function(e){
     if (!_activePeer) return;
@@ -1652,14 +1679,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       }
       Promise.all(reads).then(function(){
         if (imageFiles.length) addFiles(_activePeer, imageFiles);
-        if (text) {
-          var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-          var cur = nd.get.call($msgInput);
-          var ss = $msgInput.selectionStart || 0, se = $msgInput.selectionEnd || 0;
-          nd.set.call($msgInput, cur.substring(0, ss) + text + cur.substring(se));
-          $msgInput.setSelectionRange(ss + text.length, ss + text.length);
-          autoResize();
-        }
+        if (text) insertMsgText(text);   // 唯一插入机（与拖入文本同源）
         if (!imageFiles.length && !text) {
           try { if (parent.qqqideQoast) parent.qqqideQoast.show(_kk('goods.dm.clipEmpty', '剪贴板里没有可粘贴的内容（文件请直接在键入框 Ctrl+V）'), {type:'info', duration:3500}); } catch(_) {}
         }
@@ -1669,9 +1689,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     });
   }
 
-  // ═══ 拖放接收（2026-09-14）：文件拖入 inbox = 等同 Ctrl+V 加入附件条 ═══
-  // 协议与 AI 面板 / Roam 统一：橙色虚线框覆盖整个 iframe 视口（= 接收范围）；
-  // 仅响应 dataTransfer.types 含 Files（内部文本拖拽零干扰）；深度计数防子元素闪烁。
+  // ═══ 拖放接收（2026-09-14；2026-10-03 网页文本接管）═══
+  // 语义（协议与 AI 面板 / Roam 统一）：橙色虚线框覆盖整个 iframe 视口（= 接收范围）。
+  //   · 系统文件（types 含 Files）→ 等同 Ctrl+V 加入附件条（图片/文档/压缩包/一批；文件夹 stat 剔除）
+  //   · 外拖文本（浏览器选区/链接/任意应用: 无 Files 但有 text/*）→ 等同在键入框 Ctrl+V 纯文本
+  //     （insertMsgText——右键菜单同源；持焦点→光标处 / 未持焦点→焦点+追加末尾；maxlength 硬帽）
+  //   · 本窗口内部拖拽（原文拖拽/消息图片拖出）→ 零接管（dragstart 守卫让路原生）
+  //   · 他方输入框为目标（搜索框/新建号码框等）→ 让路原生，不接管
+  //   · 外部拖拽一律 preventDefault（防链接/URL 拖入触发 iframe 默认导航）
   (function () {
     var ov = document.createElement('div');
     ov.id = 'dm-drop-overlay';
@@ -1682,45 +1707,76 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     document.body.appendChild(ov);
     function ovShow() { ov.style.display = 'block'; }
     function ovHide() { ov.style.display = 'none'; }
-    function isFileDrag(e) {
-      var dt = e.dataTransfer;
-      if (!dt || !dt.types) return false;
-      return Array.prototype.indexOf.call(dt.types, 'Files') !== -1;
+
+    // 拖拽分类（唯一真理源 core/drag-text.js；脚本缺失降级为旧「仅系统文件」行为）
+    var DT = (typeof window !== 'undefined') ? window.qqqDragText : null;
+    var isInternal = DT ? DT.installInternalGuard(document) : function () { return false; };
+    function classify(e) {
+      if (DT) return DT.classify(e.dataTransfer, isInternal());
+      var dt0 = e.dataTransfer;
+      if (!dt0 || !dt0.types) return null;
+      return Array.prototype.indexOf.call(dt0.types, 'Files') !== -1 ? 'files' : null;
+    }
+    // 文本分支例外: 落点是他方输入框 → 让路原生，不接管
+    function isForeignEditable(t) {
+      if (!t || t === $msgInput) return false;
+      var tag = t.tagName ? t.tagName.toUpperCase() : '';
+      return tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable === true;
     }
     var depth = 0;
+    var kind = null;
     document.addEventListener('dragenter', function (e) {
-      if (!isFileDrag(e)) return;
-      e.preventDefault();
+      var k = classify(e);
+      if (!k) return;
       depth++;
+      kind = k;
+      if (k === 'text' && isForeignEditable(e.target)) return;   // 他方输入框: 原生全权（无 preventDefault）
+      e.preventDefault();
       ovShow();
     }, true);
     document.addEventListener('dragover', function (e) {
-      if (!isFileDrag(e)) return;
-      e.preventDefault();   // 允许 drop
+      var k = classify(e) || kind;
+      if (!k) return;
+      if (k === 'text' && isForeignEditable(e.target)) { ovHide(); return; }   // 原生全权
+      e.preventDefault();   // 允许 drop + 防链接拖入默认导航
       ovShow();
     }, true);
     document.addEventListener('dragleave', function (e) {
-      if (!isFileDrag(e)) return;
+      if (!kind) return;
       depth--;
-      if (depth <= 0) { depth = 0; ovHide(); }
+      if (depth <= 0) { depth = 0; kind = null; ovHide(); }
     }, true);
     // 失焦兜底（ALT+TAB 中途取消拖拽可能无 dragleave）
-    window.addEventListener('blur', function () { depth = 0; ovHide(); });
+    window.addEventListener('blur', function () { depth = 0; kind = null; ovHide(); });
 
     function dragQoast(msg, type, dur) {
       try { if (parent.qqqideQoast) parent.qqqideQoast.show(msg, { type: type || 'warn', duration: dur || 3500 }); } catch (_) {}
     }
 
-    // drop：一切文件（图片/文档/压缩包/一次一批）→ addFiles（先传后发走既有上传引擎）
+    // drop 总入口：先分类，再按分支执行（文件 = 原语义；文本 = 等同键入框 Ctrl+V）
     // 文件夹剔除：File 对象读不到目录内容 → 主进程 stat 精确判定（bridge 不可用则放行，由上传层裁决）
     document.addEventListener('drop', function (e) {
+      var k = kind || classify(e);   // 极少数无 dragenter 的直达 drop 兜底
       depth = 0;
+      kind = null;
       ovHide();
-      if (!isFileDrag(e)) return;
+      if (!k) return;
+      if (k === 'text' && isForeignEditable(e.target)) return;    // 让路他方输入框（原生 drop）
       e.preventDefault();
       e.stopPropagation();
 
       var dt = e.dataTransfer;
+
+      // ══ 文本分支: 等同在键入框 Ctrl+V（插入机与右键菜单同源）══
+      if (k === 'text') {
+        if (!_activePeer) { dragQoast(_kk('goods.dm.needConvDropText', '先选择一条对话再拖入文字')); return; }
+        var text = DT ? DT.extractText(dt) : '';
+        if (!text) return;   // 空文本载荷 → 定义为 no-op（默认导航已由 preventDefault 封死）
+        insertMsgText(text);
+        return;
+      }
+
+      // ══ 文件分支（原语义不变）══
       if (!dt || !dt.files || dt.files.length === 0) return;
       var peer = _activePeer;
       if (!peer) { dragQoast(_kk('goods.dm.needConvDrop', '先选择一条对话再拖入文件')); return; }

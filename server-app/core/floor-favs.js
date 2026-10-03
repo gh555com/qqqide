@@ -30,7 +30,7 @@
   function _i(key, fb, params) {
     try { return window._i ? window._i(key, fb, params) : fb; } catch (_) { return fb; }
   }
-  function _toast(msg, opts) {
+  function _qoast(msg, opts) {
     try { if (window.qqqideQoast && window.qqqideQoast.show) window.qqqideQoast.show(msg, opts || {}); } catch (_) { }
   }
   function _folderFromUrl() {
@@ -126,7 +126,7 @@
   }
   function _afterMutate() {
     return _persist().then(function (ok) {
-      if (!ok) _toast('★ ' + _i('fav.saveFail', '收藏保存失败'), { type: 'error', duration: 6000 });
+      if (!ok) _qoast('★ ' + _i('fav.saveFail', '收藏保存失败'), { type: 'error', duration: 6000 });
       _pushState();
       if (_panelOv) _renderPanel(_panelQuery());
     });
@@ -178,7 +178,7 @@
       try { if (typeof window.__qqq_releaseQuest === 'function') window.__qqq_releaseQuest(questId, target); } catch (_) { }
       target = 1; fr = _frameFor(1);
     }
-    if (!fr) { _toast('★ ' + _i('fav.noPanel', 'AI 面板尚未就绪'), { type: 'info', duration: 4000 }); return; }
+    if (!fr) { _qoast('★ ' + _i('fav.noPanel', 'AI 面板尚未就绪'), { type: 'info', duration: 4000 }); return; }
     if (target === 0 || target === 2) _ensureWingOpen(target);
     try { fr.contentWindow.postMessage({ type: 'qqq-fav-jump', questId: questId, floorNum: floorNum }, '*'); } catch (_) { }
   }
@@ -186,7 +186,7 @@
     var msg = d.reason === 'floor' ? _i('fav.floorGone', '该楼层数据不存在')
       : d.reason === 'card' ? _i('fav.cardGone', '任务数据未就绪或已被删除')
         : _i('fav.questGone', '该任务已不存在（可在收藏夹中移除该条）');
-    _toast('★ ' + msg, { type: 'warning', duration: 5000 });
+    _qoast('★ ' + msg, { type: 'warning', duration: 5000 });
   }
 
   // 任务存活探测（共享 quest 索引；索引未就绪 → 视为存活，交给面板侧裁决）
@@ -546,7 +546,7 @@
     item.level = lv;
     item.updatedAt = Date.now();   // 云同步 LWW 语义需要（本地排序按 createdAt，不挪行）
     _persist().then(function (ok) {
-      if (!ok) _toast('★ ' + _i('fav.saveFail', '收藏保存失败'), { type: 'error', duration: 6000 });
+      if (!ok) _qoast('★ ' + _i('fav.saveFail', '收藏保存失败'), { type: 'error', duration: 6000 });
     });
     if (_filterLevel) { _renderPanel(_panelQuery()); return; }
     try {
@@ -614,7 +614,7 @@
     row.addEventListener('mouseleave', _hideRowTip);
     row.addEventListener('click', function () {
       if (!_questAlive(item.questId)) {
-        _toast('★ ' + _i('fav.questGone', '该任务已不存在（可在收藏夹中移除该条）'), { type: 'warning', duration: 5000 });
+        _qoast('★ ' + _i('fav.questGone', '该任务已不存在（可在收藏夹中移除该条）'), { type: 'warning', duration: 5000 });
         return;
       }
       _jump(item);

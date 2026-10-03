@@ -222,7 +222,7 @@ export function encodeText(enc: EncName, bom: boolean, text: string): Buffer {
 
 // ★ 不可表示字符守卫：encode → decode 回读 ≠ 原文 = 有字符丢失 → 拒绝保存
 //   （禁静默 '?' 损伤。GBK 无 emoji/生僻 Unicode 字符时保存必现此错误）
-//   ★ 2026-09-27：① 消息尾部追加标记 [ENC_REJECT]（机器可辨；渲染层剥离后上屏）——保存失败 toast
+//   ★ 2026-09-27：① 消息尾部追加标记 [ENC_REJECT]（机器可辨；渲染层剥离后上屏）——保存失败 qoast
 //   可确定性识别编码拒绝并挂动作按钮（另存 UTF-8 / 编码菜单）；② U+FFFD 替换字符 = 解码时的「无法解码字节」
 //   占位（并非用户输入）→ 专属文案（换编码重开 / 另存 UTF-8），不再误导用户去删「看不见的字符」。
 const _ENC_REJECT_TAG = ' [ENC_REJECT]';

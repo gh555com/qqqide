@@ -207,10 +207,10 @@
 
   async function _gitUcEnable(path, name) {
     var gitBin = _gitPoll.bin || 'git';
-    function _toast(msg, type, dur) {
+    function _qoast(msg, type, dur) {
       try { window.qqqideQoast.show(msg, { duration: dur || 9000, type: type || 'info' }); } catch (_) { }
     }
-    function _fail() { _toast(window._i('gitPoll.ucFail', '该仓库不支持 untracked cache（可能非本地磁盘），未做任何修改'), 'warning', 0); }
+    function _fail() { _qoast(window._i('gitPoll.ucFail', '该仓库不支持 untracked cache（可能非本地磁盘），未做任何修改'), 'warning', 0); }
     try {
       var t = await bridge.qz.spawn({ cmd: gitBin, args: ['-C', path, 'update-index', '--test-untracked-cache'], timeout: 20000 });
       if (!t || t.exitCode !== 0) { _fail(); return; }
@@ -219,7 +219,7 @@
       try { await bridge.qz.spawn({ cmd: gitBin, args: ['-C', path, 'config', 'core.untrackedCache', 'true'], timeout: 8000 }); } catch (_) { }
       _gitPoll.slowHits[path] = 0;
       _gitPoll.lastDur = 0;   // 下一轮立即重测真实耗时
-      _toast(window._i('gitPoll.ucDone', '✓ 已为 {name} 开启 untracked cache，下次扫描起生效', { name: name }), 'info', 9000);
+      _qoast(window._i('gitPoll.ucDone', '✓ 已为 {name} 开启 untracked cache，下次扫描起生效', { name: name }), 'info', 9000);
     } catch (e) { _fail(); }
   }
 

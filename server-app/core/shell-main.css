@@ -228,6 +228,14 @@
   animation: none !important;
 }
 
+/* ── 拖拽光标恒原生（铁律 §4.3/§4.6）：Monaco 内部拖拽（鼠标拖动选区移动文字）会把
+   mouseStyle 切到 default/copy（光标变箭头/复制标）——这里锁回自动态（文本区 = 系统
+   文字光标，跟随用户自定义光标主题）。禁再引入任何拖拽期 cursor 覆盖。 ── */
+#qqq-x-zone .monaco-editor.mouse-default .view-lines,
+#qqq-x-zone .monaco-editor.mouse-copy .view-lines {
+  cursor: auto;
+}
+
 /* 分组�?sash �?4px 宽，背景色匹配分组，::after 居中做唯一分割�?*/
 .qqq-sash-v[data-sash="tab-group"] {
   flex: 0 0 4px;

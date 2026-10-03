@@ -98,14 +98,14 @@ body {
 .cell-content:hover .cell-copy-btn { display: block; }
 .cell-copy-btn:hover { color: var(--fg); border-color: var(--yellow); }
 
-/* ── toast ── */
-.toast {
+/* ── qoast ── */
+.qoast {
     position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
     padding: 6px 18px; background: var(--base03); color: var(--bg);
     border-radius: 4px; font-size: 12px; z-index: 999; opacity: 0;
     transition: opacity 0.3s; pointer-events: none;
 }
-.toast.show { opacity: 1; }
+.qoast.show { opacity: 1; }
 
 /* ── 空状态 ── */
 .empty {
@@ -205,7 +205,7 @@ body {
 
 <div class="cells" id="cells"></div>
 
-<div class="toast" id="toast"></div>
+<div class="qoast" id="qoast"></div>
 
 <!-- ═══ 压缩动画遮罩 ═══ -->
 <div class="cmp-anim-overlay" id="cmpAnimOverlay" onclick="closeAnim()">
@@ -516,7 +516,7 @@ function collapseAll() { _expanded = {}; render(); }
 
 function copyCell(id) {
     var cell = findCell(id); if (!cell) return;
-    copyText(cell.content); toast(_i('goods.conv.toastCopied', '已复制'));
+    copyText(cell.content); qoast(_i('goods.conv.qoastCopied', '已复制'));
 }
 
 function findCell(id) {
@@ -545,8 +545,8 @@ function copyText(text) {
     }
 }
 
-function toast(msg) {
-    var el = document.getElementById('toast');
+function qoast(msg) {
+    var el = document.getElementById('qoast');
     el.textContent = msg; el.classList.add('show');
     clearTimeout(el._timeout);
     el._timeout = setTimeout(function () { el.classList.remove('show'); }, 2000);
@@ -600,8 +600,8 @@ window.addEventListener('message', function (e) {
         if (e.data.ok) {
             if (e.data.action === 'onlyfacts') {
                 // ★ only facts：压缩动画已在 floor-starting 播放过一次（压缩瞬间已发生），
-                //   完成时不再重复播放，仅 toast 提示结果
-                toast(_i('goods.conv.compressOnlyfactsOk', '✅ Facts 已提取'));
+                //   完成时不再重复播放，仅 qoast 提示结果
+                qoast(_i('goods.conv.compressOnlyfactsOk', '✅ Facts 已提取'));
             } else {
                 var titleMap = { absolut: _i('goods.conv.compressAbsolutOk', '🧹 绝对包装盒已剥离'), editonly: _i('goods.conv.compressEditonlyOk', '✂️ 已精简为仅编辑包装盒') };
                 var title = titleMap[e.data.action] || _i('goods.conv.compressDone', '✅ 压缩完成');
@@ -613,9 +613,9 @@ window.addEventListener('message', function (e) {
                 }, 6000);
             }
         } else {
-            // ★ 2026-09-10 撕裂修复：失败必须同步收回压缩动画（floor-starting 已播动画时，失败若不同屏关闭会与失败 toast 矛盾）
+            // ★ 2026-09-10 撕裂修复：失败必须同步收回压缩动画（floor-starting 已播动画时，失败若不同屏关闭会与失败 qoast 矛盾）
             try { closeAnim(); } catch (_) { }
-            toast(_i('goods.conv.compressFailed', '压缩失败') + (e.data.error ? ': ' + e.data.error : ''));
+            qoast(_i('goods.conv.compressFailed', '压缩失败') + (e.data.error ? ': ' + e.data.error : ''));
         }
     }
 });
@@ -753,8 +753,8 @@ function resolveOwnerPanel() {
 // 执行压缩（委托 AI 面板）
 function doCompress(action) {
     var ag = _agent || getAgent();
-    if (!ag) { toast(_i('goods.conv.compressAgentNotFound', '未找到 Agent')); return; }
-    if (ag._stopState === 'sending') { toast(_i('goods.conv.compressSending', 'AI 建楼中，请等待')); return; }
+    if (!ag) { qoast(_i('goods.conv.compressAgentNotFound', '未找到 Agent')); return; }
+    if (ag._stopState === 'sending') { qoast(_i('goods.conv.compressSending', 'AI 建楼中，请等待')); return; }
 
     // 禁用按钮，显示状态
     var btns = document.querySelectorAll('.cmp-btn');
@@ -787,7 +787,7 @@ function doCompress(action) {
     window._cmpTimeout = setTimeout(function () {
         updateCompressBtns();
         if (statusEl) statusEl.style.display = 'none';
-        toast(_i('goods.conv.compressTimeout', '压缩超时，请重试'));
+        qoast(_i('goods.conv.compressTimeout', '压缩超时，请重试'));
     }, _timeoutMs);
 }
 

@@ -2,7 +2,8 @@
 
 // ============================================================================
 // fa-ps.ts — 系统默认播放器（文件关联）PowerShell 脚本（纯文本，零依赖）
-//   由 ipc-fileassoc.ts 经 stdin 执行（行协议 QQQIDE_FA_*）；探针可整体导入本文件、
+//   由 ipc-fileassoc.ts 经 stdin 执行（行协议 QQQIDE_FA_*；$mode=apply——check/remove 已废：
+//   无状态角标、无解除逻辑〔2026-10-03 定案〕）；探针可整体导入本文件、
 //   替换四个注册表根变量 + $verifyMode 后在沙箱命名空间做全链验证。
 //
 //   UserChoice hash 算法与 Deny-ACL 突破 = ipc-syspy.ts 同源（Windows UserChoice 公开逆向格式
@@ -181,24 +182,6 @@ function Verify-Ext([string]$e) {
   return (($aq -ne '') -and ($aq.ToLower().Contains('--qqqide-play')))
 }
 
-if ($mode -eq 'check') {
-  $total = 0
-  $ours = 0
-  $det = ''
-  foreach ($e in $exts) {
-    $total++
-    $uc = Read-Value (UcPathOf $e) 'ProgId'
-    if ($uc -eq $progId) { $ours++ }
-    $det = $det + $e + '=' + $uc + ';'
-  }
-  OutKV 'OK' '1'
-  OutKV 'CODE' 'ok'
-  OutKV 'TOTAL' ([string]$total)
-  OutKV 'OURS' ([string]$ours)
-  OutKV 'DETAIL' (B64 $det)
-  exit 0
-}
-
 if ($mode -eq 'apply') {
   if (-not $cmdLine) { OutKV 'OK' '0'; OutKV 'CODE' 'no-cmd'; exit 0 }
   try {
@@ -253,32 +236,6 @@ if ($mode -eq 'apply') {
   OutKV 'TAKEN' ([string]$taken)
   OutKV 'FAILS' (B64 $fails)
   if ($Error.Count -gt 0) { OutKV 'PSERR' (B64 (($Error | Select-Object -First 3 | ForEach-Object { $_.ToString() }) -join ' | ')) }
-  exit 0
-}
-
-if ($mode -eq 'remove') {
-  $cleaned = 0
-  foreach ($e in $exts) {
-    $uc = UcPathOf $e
-    $cur = Read-Value $uc 'ProgId'
-    if ($cur -eq $progId) {
-      try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($uc); $cleaned++ } catch { }
-    }
-    try {
-      $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($clsRoot + '\' + $e + '\OpenWithProgids', $true)
-      if ($k) { try { $k.DeleteValue($progId, $false) } catch { }; $k.Close() }
-    } catch { }
-  }
-  try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($clsRoot + '\' + $progId) } catch { }
-  try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($capRoot + '\PlayerCapabilities') } catch { }
-  try {
-    $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($raRoot, $true)
-    if ($k) { try { $k.DeleteValue($appName, $false) } catch { }; $k.Close() }
-  } catch { }
-  [QS]::NotifyAssocChanged()
-  OutKV 'OK' '1'
-  OutKV 'CODE' 'ok'
-  OutKV 'CLEANED' ([string]$cleaned)
   exit 0
 }
 

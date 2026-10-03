@@ -821,6 +821,7 @@ body {
 .qqq-diag-panel ::-webkit-scrollbar,
 .qqq-notice-body::-webkit-scrollbar,
 .qqq-tools-menu::-webkit-scrollbar,
+.qqq-tools-vurl-drop::-webkit-scrollbar,
 .qqq-help-menu::-webkit-scrollbar,
 .qqq-help-sub::-webkit-scrollbar,
 .qqq-sg-panel::-webkit-scrollbar,
@@ -848,6 +849,7 @@ body {
 .qqq-diag-panel ::-webkit-scrollbar-track,
 .qqq-notice-body::-webkit-scrollbar-track,
 .qqq-tools-menu::-webkit-scrollbar-track,
+.qqq-tools-vurl-drop::-webkit-scrollbar-track,
 .qqq-help-menu::-webkit-scrollbar-track,
 .qqq-help-sub::-webkit-scrollbar-track,
 .qqq-sg-panel::-webkit-scrollbar-track,
@@ -874,6 +876,7 @@ body {
 .qqq-diag-panel ::-webkit-scrollbar-thumb,
 .qqq-notice-body::-webkit-scrollbar-thumb,
 .qqq-tools-menu::-webkit-scrollbar-thumb,
+.qqq-tools-vurl-drop::-webkit-scrollbar-thumb,
 .qqq-help-menu::-webkit-scrollbar-thumb,
 .qqq-help-sub::-webkit-scrollbar-thumb,
 .qqq-sg-panel::-webkit-scrollbar-thumb,
@@ -901,6 +904,7 @@ body {
 .qqq-diag-panel ::-webkit-scrollbar-thumb:hover,
 .qqq-notice-body::-webkit-scrollbar-thumb:hover,
 .qqq-tools-menu::-webkit-scrollbar-thumb:hover,
+.qqq-tools-vurl-drop::-webkit-scrollbar-thumb:hover,
 .qqq-help-menu::-webkit-scrollbar-thumb:hover,
 .qqq-help-sub::-webkit-scrollbar-thumb:hover,
 .qqq-sg-panel::-webkit-scrollbar-thumb:hover,
@@ -927,6 +931,7 @@ body {
 .qqq-diag-panel ::-webkit-scrollbar-corner,
 .qqq-notice-body::-webkit-scrollbar-corner,
 .qqq-tools-menu::-webkit-scrollbar-corner,
+.qqq-tools-vurl-drop::-webkit-scrollbar-corner,
 .qqq-help-menu::-webkit-scrollbar-corner,
 .qqq-help-sub::-webkit-scrollbar-corner,
 .qqq-sg-panel::-webkit-scrollbar-corner,
@@ -960,7 +965,9 @@ body {
 .qqq-fav-panel,
 .qqq-fav-modal,
 .qqq-sg-panel,
-.qqq-mf-menu {
+.qqq-mf-menu,
+.qqq-tools-menu,
+.qqq-tools-menu .qqq-tools-vurl-drop {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -981,6 +988,8 @@ body {
 .qqq-fav-panel::selection, .qqq-fav-panel ::selection,
 .qqq-fav-modal::selection, .qqq-fav-modal ::selection,
 .qqq-mf-menu::selection, .qqq-mf-menu ::selection,
+.qqq-tools-menu::selection, .qqq-tools-menu ::selection,
+.qqq-tools-vurl-drop::selection, .qqq-tools-vurl-drop ::selection,
 #qqq-ai-overlay-content::selection, #qqq-ai-overlay-content ::selection {
   background: var(--selection-bg, #e8a090);
   color: var(--selection-text, #000000);
@@ -1031,6 +1040,7 @@ html[data-theme="dark"] .qqq-help-menu,
 html[data-theme="dark"] .qqq-help-sub,
 html[data-theme="dark"] .qqq-brand-dropdown,
 html[data-theme="dark"] .qqq-mf-menu,
+html[data-theme="dark"] .qqq-tools-vurl-drop,
 html[data-theme="dark"] .qc-pop {
   border: 1px solid transparent !important;
   background: linear-gradient(var(--card-bg), var(--card-bg)) padding-box,

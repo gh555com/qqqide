@@ -53,7 +53,7 @@ function _CFG() {
 //                                              点击时由主窗口按「上文最近锚点目录」拼接解析
 // 幂等：已有 <a>（含 markdown 链接/历史 ai_html）内部文本跳过，重复执行零影响。
 // 点击：document 级委托（capture），任何子树/恢复/热重载后新 DOM 一律命中。
-// 边界：磁盘不存在/已删除 → 主窗口 stat 爬升最近存在祖先目录 + toast（见 shell-overlay）。
+// 边界：磁盘不存在/已删除 → 主窗口 stat 爬升最近存在祖先目录 + qoast（见 shell-overlay）。
 // ═══════════════════════════════════════════════════════════════════════════
 var _LPL_TERM = " \t\n\r\"'`<>()[]{}，。；：、！？…“”‘’（）【】《》〈〉·×★←→↑↓↔│";
 var _LPL_BLOCK_SEL = 'p,li,td,th,dd,dt,h1,h2,h3,h4,h5,h6,pre,blockquote,div';

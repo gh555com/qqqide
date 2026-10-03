@@ -6,12 +6,13 @@
 //   悬浮层/窗内卡/状态栏豆腐块全部废除；悬浮层仅借用转码工具（txRun/extOf——open-image 的 psd/tif 直转码）。
 //   禁第二套实现（防漂移）——一切媒体行为（转码兜底/自建控制条/播放列表/A-B/倍速/逐帧/截图/键盘）
 //   只在本文修改。★ 宿主注入 = configure(host)（全局兜底）/ mount({host})（逐实例）。
-//     host = { bridge, rootEl, i18n(k,fb,params), toast(msg,opts), onClose(), reopen(payload),
+//     host = { bridge, rootEl, i18n(k,fb,params), qoast(msg,opts), onClose(), reopen(payload),
 //              reveal(path), getLastDir(), onPlayState(playing), onState(), savePref(k,v)?, onZoomState(st)? }
 //   onZoomState(st)：窗口拉伸状态回推（st = {avail 有视频可拉伸, active 当前生效档 0.5~4/0}）——宿主据此刷新 x0.5~x4 钮
 //   ★ 2026-10-02 单宿主大整改：popOut/popIn/stow 宿主能力位已整体删除（唯一宿主 = 播放器窗，不再有跨宿主交接）。
 //   ★ 播放列表 = 右侧常驻 dock（非弹出面板）：恒显（含单曲——播放列表一直带着）、停靠边恒右、满高拉伸自顶排列（行从最上方打起）；列表头 = 标题 + 随机开关（计数左侧；固定绘制 + 右下角 ✓）+ 计数。
-//   mount(opts) → { keys, keysUp, esc(), destroy(), pause(), isPlaying(), append(items,autoplay), getState(), zoom(n) }
+//   mount(opts) → { keys, keysUp, esc(), destroy(), pause(), isPlaying(), append(items,autoplay), getState(), zoom(n), getBase() }
+//   getBase() = 当前轨「原文件」路径（转码回放恒指原始文件；播放器 [❗] 媒体信息/「Roam 定位原文件」基准）
 //     opts = { container, mode:'video'|'audio', src, localPath, shotBase, name, list, index, host,
 //              isTx, autoplay, startTime, initial:{rate,loop,shuffle,volume,muted,dockSide} }
 // ============================================================================
@@ -30,37 +31,42 @@
     // ★ v16 布局（2026-10-02 q319 用户定案）：根列 = 进度行（顶部整行）+ UI 行（左 = 播放控制行/右 = 控制条按钮组——恒不遮挡视频）+ 壳层行；
     //   控制栈底部浮层整体废除（scrim 随废，零残留）；轻盒内联变体早已删除
     '.ovmb-rootcol{display:flex;flex-direction:column;width:100%;height:100%;min-width:0;min-height:0}' +
-    '.ovmb-progrow{display:flex;align-items:center;gap:10px;flex:0 0 auto;height:30px;padding:0 12px;box-sizing:border-box;background:rgba(255,255,255,0.035);border-bottom:1px solid rgba(255,255,255,0.07);user-select:none}' +
+    '.ovmb-progrow{display:flex;align-items:center;gap:10px;flex:0 0 auto;height:30px;padding:0;box-sizing:border-box;background:rgba(255,255,255,0.035);border-bottom:1px solid rgba(255,255,255,0.07);user-select:none}' +
     '.ovmb-progrow .ovmb-seek{height:100%}' +
     // ★ 播放列表 dock（2026-10-02 q319 定案）：恒显于右侧（含单曲）——满高拉伸自顶排列（行从最上方打起；旧「n≤1 隐藏 / 竖直居中 / 左停靠」整体删除）
     // ★ v6 宽度契约（2026-09-26 用户实测）：旧 150px 下限 → 歌名可见宽仅 10~28px 全截断（「歌名完全看不到」实锤）；
-    //   190/38%/300 + 行内空间收窄（padding 3 · gap 5 · mk 9 · idx 12）= 歌名可读；禁改回小下限
+    //   190/38%/300 + 行内空间收窄 = 歌名可读；禁改回小下限
+    // ★ 2026-10-03 q319 用户定案：左右空气墙全收、行尾三钮贴右缘——dock 侧距 8→4 · list 右距 8→5 · 行内 padding 2/1 · gap 5→4
+    //   （歌名可读宽 +16px；行尾钮右缘到卡片右缘 20→11px、到窗缘 33→20px）
+    // ★ 2026-10-03 二轮（q395 用户定案）：左右空气墙彻底清零——dock 外边距 12/8→0（贴窗缘、与舞台零隙）、
+    //   UI 行/进度行侧距 10/12→0（胶囊/时间贴窗缘）；上/下不动（轻盒上下保留 10）；最小宽随之下调（详 shell/ipc-player.ts）
     '.ovmb-shell{display:flex;flex:1 1 auto;width:100%;min-width:0;min-height:0}' +
     '.ovmb-maincol{flex:1 1 auto;min-width:0;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}' +
-    '.ovmb-abox{position:relative;flex:1 1 auto;align-self:stretch;margin:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:24px;min-height:0;min-width:0;box-sizing:border-box}' +
-    '.ovmb-dock{flex:0 0 auto;align-self:stretch;width:clamp(190px,38%,300px);display:none;flex-direction:column;margin:0 12px;box-sizing:border-box;position:relative;' +
-    'background:rgba(16,16,16,0.86);border:1px solid rgba(255,255,255,0.14);border-radius:11px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}' +
+    '.ovmb-abox{position:relative;flex:1 1 auto;align-self:stretch;margin:10px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:24px;min-height:0;min-width:0;box-sizing:border-box}' +
+    '.ovmb-dock{flex:0 0 auto;align-self:stretch;width:clamp(190px,38%,300px);display:none;flex-direction:column;margin:0;box-sizing:border-box;position:relative;' +
+    'background:rgba(16,16,16,0.86);border:1px solid rgba(255,255,255,0.14);border-radius:11px;padding:8px 4px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}' +
     '.ovmb-dhead{display:flex;align-items:center;gap:6px;padding:1px 2px 7px;flex:0 0 auto}' +
     '.ovmb-dcnt{font-size:11px;color:#a8a49b;flex:0 0 auto}' +
-    // ★ 列表头循环/随机双开关（2026-10-02 q319 用户定案）：位置 = 计数左侧（循环在随机左）；固定绘制（glyph 恒原样——按钮本体零颜色变化）
-    //   + 右下角 ✓ 角标（pin 同款；仅此角标区分开/关）——循环/随机唯一 UI（模式弹层整体已删）。通用类 ovmb-dsw（两开关共用）
+    // ★ 列表头循环/随机双开关（2026-10-02 q319 用户定案）：位置 = 计数左侧（循环在随机左）；固定绘制（glyph 恒原样）
+    //   + 右下角 ✓ 角标（pin 同款）+ 勾亮 = 本体外框同转金（2026-10-03 定案：外框色 100% = 勾色 #ffd301；未勾 = 暗淡外框）——循环/随机唯一 UI（模式弹层整体已删）。通用类 ovmb-dsw（两开关共用）
     //   ★ 可见边框 + 角标贴靠本体（2026-10-02 用户定案）：一切按钮恒绘 1px 淡边——可点范围一眼可见（禁回 border:none 透明钮）；
     //   ✓ 恒贴本钮右下角（right:0/bottom:-1px——旧 -2/-3 悬空于两钮之间致「勾给谁」歧义）
     //   ★ 勾清晰度配方（2026-10-02 用户定案）：加重勾 ✔(U+2714)/11px/400 + 全向 1px 暗描边——任何底色（含悬停亮底）恒清晰；
-    //   角标全族（置顶/Default/x1~x4/循环/随机/追踪——9 钮同配方）player/player.html 头部三钮同步同改
+    //   角标全族（置顶/x0.5~x4/循环/随机/追踪——9 钮同配方；勾亮 = 外框同转金；Default 恒不打勾〔2026-10-03 定案〕）player/player.html 头部同步同改
     '.ovmb-dsw{position:relative;display:flex;align-items:center;justify-content:center;width:22px;height:18px;padding:0;border:1px solid rgba(255,255,255,0.18);border-radius:4px;background:rgba(255,255,255,0.05);color:#a8a49b;outline:none;flex:0 0 auto;box-sizing:border-box;transition:background .1s,color .1s,border-color .1s}' +
     '.ovmb-dsw:hover{background:rgba(255,255,255,0.14);color:#fff;border-color:rgba(255,255,255,0.32)}' +
     '.ovmb-dsw svg{display:block;width:14px;height:14px;pointer-events:none}' +
     '.ovmb-dswck{position:absolute;right:0;bottom:-1px;font-size:11px;font-weight:400;line-height:1;color:#ffd301;display:none;pointer-events:none;' +
     'text-shadow:0 -1px 0 rgba(0,0,0,.95),0 1px 0 rgba(0,0,0,.95),-1px 0 0 rgba(0,0,0,.95),1px 0 0 rgba(0,0,0,.95),-1px -1px 0 rgba(0,0,0,.85),1px -1px 0 rgba(0,0,0,.85),-1px 1px 0 rgba(0,0,0,.85),1px 1px 0 rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.7)}' +
     '.ovmb-dsw.ovmb-dsw-on .ovmb-dswck{display:block}' +
+    '.ovmb-dsw.ovmb-dsw-on{border-color:#ffd301}' +
     // ★ 2026-10-02 q319 v14：dock 头部导航组（标题「播放列表」废除）——[< P][◎追踪][N >] 三按钮；
-    //   N/P = 纯文字（Tahoma 非加粗·大写·金色=快捷键标注——N/P 亦是真快捷键）；< > = 纯文字箭头恒中性色（color:inherit——禁发金/禁 SVG 三角/字母图标）
+    //   N/P = 纯文字（Tahoma 非加粗·大写·标准色 q=快捷键标注——N/P 亦是真快捷键）；< > = 纯文字箭头恒中性色（color:inherit——禁自着色/禁 SVG 三角/字母图标）
     '.ovmb-dnav{flex:1 1 auto;display:flex;align-items:center;gap:4px;min-width:0}' +
     '.ovmb-dnp{display:flex;align-items:center;justify-content:center;gap:2px;height:18px;padding:0 5px;border:1px solid rgba(255,255,255,0.18);border-radius:4px;background:rgba(255,255,255,0.05);color:#a8a49b;outline:none;flex:0 0 auto;box-sizing:border-box;transition:background .1s,border-color .1s}' +
     '.ovmb-dnp:hover{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.32)}' +
     '.ovmb-dnp:disabled{opacity:.35;background:transparent}' +
-    '.ovmb-npl{font-family:Tahoma,Verdana,sans-serif;font-weight:400;font-size:14px;line-height:1;color:#ffd301}' +
+    '.ovmb-npl{font-family:Tahoma,Verdana,sans-serif;font-weight:400;font-size:14px;line-height:1;color:var(--key-q)}' +
     '.ovmb-chev{font-family:Tahoma,Verdana,sans-serif;font-weight:400;font-size:13px;line-height:1;color:inherit}' +
 
     // ★ 可见边界（2026-10-01 q319 用户定案）：底部条按钮恒浅边框 + 淡底色——点选范围一眼可见（禁回 border:none 透明底）
@@ -85,10 +91,12 @@
     //   ② 时间浮读框/文字整体放大一倍（24px 大字 + 2px 金框；框顶 = 轨道下缘 +4px 起挂——留轨道净空，按钮区覆盖最小化）
     '.ovmb-seektip{position:absolute;top:calc(50% + 7px);left:0;transform:translateX(-50%);z-index:40;display:none;pointer-events:none;' +
     'padding:2px 14px;border-radius:12px;background:rgba(13,13,13,0.97);border:2px solid rgba(255,211,1,0.5);color:#ffd301;' +
-    'font-size:24px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,0.55)}' +
+    'font-size:24px;font-weight:400;line-height:1.2;font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,0.55)}' +
     // ★ 音量增压视觉（2026-10-01 q319 用户定案）：上限 150%——轨道右段 = 增压区（金色淡染）+ 100% 处金色分隔刻度；
     //   进入增压区滑块加金色光环；拖拽浮读百分比（>100% 金色）——增压段可一眼辨识，无需永久文字
-    '.ovmb-vol{-webkit-appearance:none;appearance:none;width:58px;height:4px;border-radius:2px;' +
+    // ★ 音量拉杆弹性宽（2026-10-03 q395 用户定案）：随窗宽线性张开——36px（最小宽处「极限小」）→ 封顶 145px（= 常态 58 的 2.5 倍）；
+    //   旧 uic 固定 42px 已删（clamp 为唯一宽源）；window 单位 = 整窗宽（播放器页即窗口）
+    '.ovmb-vol{-webkit-appearance:none;appearance:none;width:clamp(36px, calc(36px + (100vw - 540px) * 0.3), 145px);height:4px;border-radius:2px;' +
     'background:linear-gradient(to right, rgba(255,255,255,0.22) 0 65.5%, rgba(255,211,1,0.6) 65.5% 68.2%, rgba(255,211,1,0.22) 68.2% 100%);outline:none;flex:0 0 auto;margin:0}' +
     '.ovmb-vol::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:11px;height:11px;border-radius:50%;background:#ffd301;border:none}' +
     '.ovmb-vol.ovmb-vboost::-webkit-slider-thumb{box-shadow:0 0 0 2px rgba(255,211,1,0.30), 0 0 7px rgba(255,211,1,0.55)}' +
@@ -115,21 +123,22 @@
     '.ovmb-ratehost{position:relative;display:flex;flex:0 0 auto}' +
     '.ovmb-pos{font-size:11px;color:#b9b5ac;flex:0 0 auto;font-variant-numeric:tabular-nums;padding:0 2px;white-space:nowrap}' +
     // ★ 播放列表 dock 列表容器（2026-09-26 v5）：弹性吃满 dock 高度 + 内部滚动；当前轨金色高亮
-    // ★ 播放列表滚动块 = qh 滚动真理机器接入（2026-10-02 q319 用户定案）：隐形滑轨（零轨道绘制，仅 8px 透明命中区）+
-    //   常态 2px 无圆角细条（右距 6px——贴内容缘；原 5px 收半）/ hover 变粗贴边（8px）/ 点击滑轨任意位置即跳 / 拖拽 / 滚轮转发；
-    //   gutter 8px 预留（padding-right——行内容与行尾按钮永不与滑轨区重叠）；原生态滚动条隐藏；滚屏与滑轨为兄弟，同挂不滚父容器（ovmb-plwrap）
+    // ★ 播放列表滚动块 = qh 滚动真理机器接入（2026-10-02 q319 定案）：隐形滑轨（零轨道绘制，仅 6px 透明命中区）+
+    //   常态 2px 无圆角细条（右距 2px——贴内容缘）/ hover 变粗贴边（6px）/ 点击滑轨任意位置即跳 / 拖拽 / 滚轮转发；
+    //   gutter 6px 预留（list 右距 5 + 行右 1）——行尾三钮恒贴右缘（2026-10-03 q319 用户定案：消除右侧空气墙），
+    //   按钮右缘 = 滑轨命中区左缘（零重叠，行尾钮点击不被滚动块吞）；原生态滚动条隐藏；滚屏与滑轨为兄弟，同挂不滚父容器（ovmb-plwrap）
     '.ovmb-plwrap{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column}' +
-    '.ovmb-pllist{display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0;flex:1 1 auto;padding-right:8px;scrollbar-width:none}' +
+    '.ovmb-pllist{display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0;flex:1 1 auto;padding-right:5px;scrollbar-width:none}' +
     '.ovmb-pllist::-webkit-scrollbar{display:none;width:0;height:0}' +
-    '.ovmb-plsb{position:absolute;right:0;top:0;bottom:0;width:8px;z-index:50;display:none}' +
-    '.ovmb-plsb-thumb{position:absolute;right:6px;width:2px;min-height:24px;border-radius:0;background:rgba(150,150,150,0.5);' +
+    '.ovmb-plsb{position:absolute;right:0;top:0;bottom:0;width:6px;z-index:50;display:none}' +
+    '.ovmb-plsb-thumb{position:absolute;right:2px;width:2px;min-height:24px;border-radius:0;background:rgba(150,150,150,0.5);' +
     'transition:width .1s ease,right .1s ease}' +
     // ★ 行结构 v3（2026-09-26 q319）：行容器（wrap）= 视觉/高亮/拖动单元；名称区 = 内嵌按钮（禁 button 套 button）；行尾三钮（↑ 上移 / ↓ 下移 / − 移除）
-    '.ovmb-prowwrap{display:flex;align-items:center;gap:2px;height:28px;padding:0 3px 0 3px;border-radius:6px;color:#e8e6e0;flex:0 0 auto;transition:background .1s}' +
+    '.ovmb-prowwrap{display:flex;align-items:center;gap:2px;height:28px;padding:0 1px 0 2px;border-radius:6px;color:#e8e6e0;flex:0 0 auto;transition:background .1s}' +
     '.ovmb-prowwrap:hover{background:rgba(255,255,255,0.12)}' +
     '.ovmb-prowwrap.ovmb-cur{color:#ffd301;background:rgba(255,211,1,0.14)}' +
     '.ovmb-prowwrap.ovmb-cur .ovmb-pidx{color:#ffd301}' +
-    '.ovmb-prow{display:flex;align-items:center;gap:5px;height:28px;padding:0;border:none;background:transparent;color:inherit;flex:1 1 auto;' +
+    '.ovmb-prow{display:flex;align-items:center;gap:4px;height:28px;padding:0;border:none;background:transparent;color:inherit;flex:1 1 auto;' +
     'font-size:12px;text-align:left;min-width:0;outline:none}' +
     '.ovmb-pops{display:flex;align-items:center;gap:1px;flex:0 0 auto}' +
     '.ovmb-pop{display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:1px solid rgba(255,255,255,0.14);border-radius:5px;background:transparent;box-sizing:border-box;' +
@@ -162,15 +171,16 @@
     '.ovmb-rok{height:26px;padding:0 10px;border:1px solid rgba(255,211,1,0.5);border-radius:6px;background:rgba(255,211,1,0.22);color:#ffd301;box-sizing:border-box;' +
     'font-size:12px;font-weight:600;flex:0 0 auto}' +
     '.ovmb-rok:hover{background:rgba(255,211,1,0.34)}' +
-    // ★ A-B 循环（2026-09-26 q319）：按钮双字独金 + 进度条区间底色 + 两端内指三角（▶ 起点 / ◀ 终点）
+    // ★ A-B 循环（2026-09-26 q319）：按钮双字独金 + 进度条区间底色 + 两端内指三角（▶ 起点 / ◀ 终点）；
+    //   ★ 标记放大一倍 + 标准色 q（2026-10-03 q319 用户定案）：三角 6×8 → 12×16px + 金 → 粉红 → 键位标准色 q（与键帽字符同色——详 player.html :root 注释；区间底色/按钮不变）
     '.ovmb-ab{width:auto;min-width:42px;padding:0 6px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}' +
     '.ovmb-aba,.ovmb-abb{opacity:.4}' +
     '.ovmb-ab.ovmb-arm .ovmb-aba{opacity:1;color:#ffd301}' +
     '.ovmb-ab.ovmb-on .ovmb-aba,.ovmb-ab.ovmb-on .ovmb-abb{opacity:1;color:#ffd301}' +
     '.ovmb-abzone{position:absolute;top:50%;transform:translateY(-50%);height:6px;border-radius:0;background:rgba(255,211,1,0.22);display:none;pointer-events:none}' +
-    '.ovmb-abmark{position:absolute;top:50%;width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translate(-50%,-50%);display:none;pointer-events:none}' +
-    '.ovmb-abmark-a{border-left:6px solid #ffd301}' +
-    '.ovmb-abmark-b{border-right:6px solid #ffd301}' +
+    '.ovmb-abmark{position:absolute;top:50%;width:0;height:0;border-top:8px solid transparent;border-bottom:8px solid transparent;transform:translate(-50%,-50%);display:none;pointer-events:none}' +
+    '.ovmb-abmark-a{border-left:12px solid var(--key-q)}' +
+    '.ovmb-abmark-b{border-right:12px solid var(--key-q)}' +
     // ★ 专属播放控制行 v7（2026-10-01 q319 用户定案）：按钮上下两段式（上=快捷键字母加大一号 / 下=图标）+ 每钮可见边界（边框+底色）；播放+停止=中央对恒居中（对心对称、左右空白相等）+ 停止（■=暂停并回到开头，无键位）；
     //   两翼 逐帧（◀|/|▶ 竖线与三角平边隔开一点）→ 4秒（◀◀/▶▶ 双三角重叠）→ 速率（−0.5×/+0.5×）；行/条/间隙整带 no-drag（播放器窗拖拽区挖洞——登记于 player.html）
     // ★ v16（2026-10-02 q319 用户定案）：UI 行 = 进度行下方专属整行（恒不遮挡视频）——左 = 播放控制行（八合一）/ 右 = 控制条按钮组；
@@ -179,11 +189,10 @@
     //   再窄整体不给缩，绝不换两行；trx 在原浮层内的定宽约束解除
     // ★ 行高恒定 min-height:62px（2026-10-02 探针实锤）：档位/压紧档切换会改 trx 胶囊高——若行高随之伸缩，
     //   窗口拉伸收敛后会被挤 4px（x1 ✓ 假灭）；钉死后窗几何与档位零耦合
-    '.ovmb-uirow{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;flex:0 0 auto;min-height:62px;padding:4px 10px;box-sizing:border-box;user-select:none}' +
+    '.ovmb-uirow{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;flex:0 0 auto;min-height:62px;padding:4px 0;box-sizing:border-box;user-select:none}' +
     '.ovmb-uirow .ovmb-trx{width:auto;flex:1 1 0;min-width:236px}' +
     '.ovmb-uirow .ovmb{position:static;left:auto;bottom:auto;transform:none;width:auto;flex:0 0 auto;padding:4px 8px;gap:3px;row-gap:0;flex-wrap:nowrap}' +
     '.ovmb-uirow.ovmb-uic .ovmb{gap:2px;padding:4px 6px}' +
-    '.ovmb-uirow.ovmb-uic .ovmb-vol{width:42px}' +
     // ★ v20（2026-10-03 q319 用户定案）：右侧按钮组 = 与八合一同款两段式（.ovmb-tbtn 46px）+ 有快捷键者带上格键帽（M/A/S/F）；
     //   压紧档 uic 逐档收紧宽度（镜像左行缩法——把「窗口最小宽」地板压到最低）
     '.ovmb-uirow.ovmb-uic .ovmb .ovmb-tbtn{min-width:32px;padding:3px 5px}' +
@@ -198,7 +207,7 @@
     '.ovmb-trxl,.ovmb-trxr{display:flex;align-items:center;gap:6px;flex:1 1 0;min-width:0}' +
     '.ovmb-trxl{justify-content:flex-end}' +
     '.ovmb-trxr{justify-content:flex-start}' +
-    // ★ v7（2026-10-01 q319）：按钮恒有可见边界（边框+底色）+ 上下两段式布局（kcap 上 / tbody 下）；播放/停止无键位（图标垂直居中）
+    // ★ v7（2026-10-01 q319）：按钮恒有可见边界（边框+底色）+ 上下两段式布局（kcap 上 / tbody 下）；播放/停止无键位（图标垂直居中）；★ 键帽字符恒键位标准色 q（var(--key-q)——2026-10-03 定案：色值唯一源 = player.html :root；边框/底色恒金不变）
     '.ovmb-tbtn{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:46px;min-width:36px;padding:3px 7px;border:1px solid rgba(255,255,255,0.22);border-radius:9px;background:rgba(255,255,255,0.05);color:#e8e6e0;flex:0 0 auto;outline:none;box-sizing:border-box;transition:background .12s,border-color .12s}' +
     '.ovmb-tbtn:hover{background:rgba(255,255,255,0.13);border-color:rgba(255,255,255,0.38)}' +
     '.ovmb-tbtn:active{background:rgba(255,255,255,0.20)}' +
@@ -210,7 +219,7 @@
     '.ovmb-trx .ovmb-play:hover{background:rgba(255,255,255,0.16);border-color:rgba(255,255,255,0.34)}' +
     '.ovmb-trx .ovmb-play svg{width:20px;height:20px}' +
     '.ovmb-tlab{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;pointer-events:none}' +
-    '.ovmb-kcap{display:inline-flex;align-items:center;justify-content:center;min-width:23px;height:17px;padding:0 4px;border-radius:4px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.14);color:#ffd301;font-size:12px;font-weight:400;text-transform:lowercase;line-height:1;font-family:Tahoma,Verdana,sans-serif;pointer-events:none;box-sizing:border-box}' +
+    '.ovmb-kcap{display:inline-flex;align-items:center;justify-content:center;min-width:23px;height:17px;padding:0 4px;border-radius:4px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.14);color:var(--key-q);font-size:12px;font-weight:400;text-transform:lowercase;line-height:1;font-family:Tahoma,Verdana,sans-serif;pointer-events:none;box-sizing:border-box}' +
     // ★ 恒单行紧凑三档（2026-10-01 q319 用户定案）：行永不换行——窄容器逐档收紧（base≥410 / t1≥340 / t2≥298 / 其余 t3；阈值按实测需求宽在 _fitTrxRow 选档 + 溢出自动降档）
     '.ovmb-trx.ovmb-t1{gap:4px;padding:3px 6px}' +
     '.ovmb-trx.ovmb-t1 .ovmb-trxl,.ovmb-trx.ovmb-t1 .ovmb-trxr{gap:4px}' +
@@ -246,14 +255,14 @@
 
   // ── 宿主差异面（seams）★ v5：一切宿主调用带显式 H（同页多宿主共存——悬浮层与窗内播放器卡同在主动窗口）──
   function _ifor(H, k, fb, prm) { try { return (H && H.i18n) ? H.i18n(k, fb, prm) : (fb || k); } catch (_) { return fb || k; } }
-  function _toastFor(H, m, o) { try { if (H && H.toast) { H.toast(m, o); } } catch (_) { } }
+  function _qoastFor(H, m, o) { try { if (H && H.qoast) { H.qoast(m, o); } } catch (_) { } }
   function _closeHostFor(H) { try { if (H && H.onClose) { H.onClose(); } } catch (_) { } }
   function _reopenHostFor(H, p) { try { if (H && H.reopen) { H.reopen(p); } } catch (_) { } }
   function _txRootFor(H) { try { return (H && H.rootEl) || document.body; } catch (_) { return document.body; } }
   function _persistTickFor(H) { try { if (H && H.onState) { H.onState(); } } catch (_) { } }
   // 全局 HOST 包装（模块级工具函数用；mount/控制条内部一律用 H 显式版本）
   function _i(k, fb, prm) { return _ifor(HOST, k, fb, prm); }
-  function _toast(m, o) { _toastFor(HOST, m, o); }
+  function _qoast(m, o) { _qoastFor(HOST, m, o); }
 
   function _closeHost() { _closeHostFor(HOST); }
   function _reopenHost(p) { _reopenHostFor(HOST, p); }
@@ -565,9 +574,9 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
   //   layout = { shell, main }（dock 挂载锚点）；H = 本实例宿主（缺省全局 HOST）
   function _ovBuildMediaBar(mEl, isVid, wrapEl, api, layout, H) {
     H = H || HOST || {};
-    // ★ v5 实例局部（禁与模块全局串号）：i18n/toast/持久化 + Esc 钩子 + 逐帧帧率
+    // ★ v5 实例局部（禁与模块全局串号）：i18n/qoast/持久化 + Esc 钩子 + 逐帧帧率
     var _i = function (k, fb, prm) { return _ifor(H, k, fb, prm); };
-    var _toast = function (m, o) { _toastFor(H, m, o); };
+    var _qoast = function (m, o) { _qoastFor(H, m, o); };
     var _persistTick = function () { _persistTickFor(H); };
     var _engEscHook = null;
     var _ovMediaFps = 0;
@@ -870,7 +879,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       try { inp.focus(); } catch (_) { }
     }
     // ═══ ★ 循环/随机开关机器 v3（2026-10-02 q319 用户定案）：唯一 UI = 列表头双开关（底条循环钮 + 模式弹层整体删除）═══
-    //   循环 = 二元（开/关）；随机 = 二元（开/关）；外观 = 固定绘制 + 右下角 ✓（按钮本体零颜色变化）——dock 未建时同步静默
+    //   循环 = 二元（开/关）；随机 = 二元（开/关）；外观 = 固定绘制 + 右下角 ✓（勾亮 = 外框同转金）——dock 未建时同步静默
     function _refreshEscapeHook() {
       _engEscHook = function () {
         if (_panel) { _closeRatePanel(); return true; }
@@ -894,13 +903,13 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     }
     function _cycleLoop() {
       _applyLoop(_ovMediaLoop === 'off' ? 'all' : 'off');
-      _hintShow(_i('shell.overlay.mlooplab', '循环') + '：' + _ovLoopName(_ovMediaLoop));   // ★ v21：状态浮读入提示框（旧 toast 废除）
+      _hintShow(_i('shell.overlay.mlooplab', '循环') + '：' + _ovLoopName(_ovMediaLoop));   // ★ v21：状态浮读入提示框（旧 qoast 废除）
     }
     function _toggleShuffle() {
       _applyShuffle(!_ovMediaShuffle);
       _hintShow(_i('shell.overlay.mshuflab', '随机') + '：' + _ovShufName(_ovMediaShuffle));
     }
-    // ★ 列表头双开关同步（2026-10-02 q319）：右下角 ✓ 角标 = 唯一状态信号（固定绘制；按钮本体零颜色变化）
+    // ★ 列表头双开关同步（2026-10-02 q319）：状态信号 = 右下角 ✓ 角标 + 勾亮时外框同转金（固定绘制）
     function _syncLoopBtn() {
       if (!_dockLoopB) { return; }
       _dockLoopB.classList.toggle('ovmb-dsw-on', _ovMediaLoop !== 'off');
@@ -1125,7 +1134,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       _dockCntEl.className = 'ovmb-dcnt';
       _dockCntEl.textContent = String(api ? api.n : 0);
       // ★ 2026-10-01 q319：列表头「⇄ 切边」按钮整体删除（用户判定无用）——停靠边随记忆保持，无手动入口
-      // ★ 2026-10-02 q319：列表头循环/随机双开关（计数左侧：循环在随机左；固定绘制 + 右下角 ✓ 角标——pin 同款，按钮本体零颜色变化）
+      // ★ 2026-10-02 q319：列表头循环/随机双开关（计数左侧：循环在随机左；固定绘制 + 右下角 ✓ 角标——pin 同款；勾亮 = 外框同转金）
       function _dockSwBtn(glyph, title, fn) {
         var b = document.createElement('button');
         b.className = 'ovmb-dsw';
@@ -1135,7 +1144,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
         b.innerHTML = _ovMediaIcon(glyph);
         var ck = document.createElement('span');
         ck.className = 'ovmb-dswck';
-        ck.textContent = '\u2713';
+        ck.textContent = '\u2714';   // 加重勾（角标全族同配方——2026-10-02 定案；dock 侧 2026-10-03 补齐）
         b.appendChild(ck);
         b.addEventListener('mousedown', function (e) { e.preventDefault(); });   // 焦点卫生
         b.addEventListener('click', fn);
@@ -1175,8 +1184,8 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
         _plDrag.from = +wrap.dataset.i; _plDrag.on = false; _plDrag.y0 = e.clientY; _plDrag.el = wrap;
         _plDragAttach();   // 跟随监听挂 document 捕获相位（pointerup 必达；拖动结束自动摘除）
       });
-      // ★ 自定义滚动块（2026-10-02 q319 用户定案）= qh 滚动真理机器接入：隐形滑轨（零轨道绘制，仅 8px 透明命中区）+
-      //   常态 2px 无圆角细条（右距 6px——贴内容缘；原 5px 收半）/ hover 变粗贴边（8px）/ 点击滑轨任意位置即跳 /
+      // ★ 自定义滚动块（2026-10-02 q319 定案；2026-10-03 收窄）= qh 滚动真理机器接入：隐形滑轨（零轨道绘制，仅 6px 透明命中区）+
+      //   常态 2px 无圆角细条（右距 2px）/ hover 变粗贴边（6px）/ 点击滑轨任意位置即跳 /
       //   拖拽跟手（指针捕获 + document 捕获相位）/ 滚轮转发；滚屏与滑轨为兄弟，同挂不滚父容器 _plWrap
       var _plWrap = document.createElement('div');
       _plWrap.className = 'ovmb-plwrap';
@@ -1193,10 +1202,10 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
         _plSbThumb.style.height = th + 'px';
         _plSbThumb.style.top = ((_plListEl.scrollTop / (sh - ch)) * (ch - th)) + 'px';
       }
-      _plSb.addEventListener('mouseenter', function () { _plSbThumb.style.width = '8px'; _plSbThumb.style.right = '0'; });
+      _plSb.addEventListener('mouseenter', function () { _plSbThumb.style.width = '6px'; _plSbThumb.style.right = '0'; });
       _plSb.addEventListener('mouseleave', function () {
         if (_plSbDrag) { return; }
-        _plSbThumb.style.width = '2px'; _plSbThumb.style.right = '6px';
+        _plSbThumb.style.width = '2px'; _plSbThumb.style.right = '2px';
       });
       // 滑轨点击任意位置 → 滑块立即跳到该位置（滚屏同步跳转；仅非滑块区域）
       _plSb.addEventListener('pointerdown', function (e) {
@@ -1235,19 +1244,19 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
         _plSbDrag = false;
         _plSbDetach();
         var at = (e && e.clientX != null) ? document.elementFromPoint(e.clientX, e.clientY) : null;
-        if (at && _plSb.contains(at)) { _plSbThumb.style.width = '8px'; _plSbThumb.style.right = '0'; }
-        else { _plSbThumb.style.width = '2px'; _plSbThumb.style.right = '6px'; }
+        if (at && _plSb.contains(at)) { _plSbThumb.style.width = '6px'; _plSbThumb.style.right = '0'; }
+        else { _plSbThumb.style.width = '2px'; _plSbThumb.style.right = '2px'; }
       }
       function _plSbCancel() {
         if (!_plSbDrag) { return; }
         _plSbDrag = false;
         _plSbDetach();
-        _plSbThumb.style.width = '2px'; _plSbThumb.style.right = '6px';
+        _plSbThumb.style.width = '2px'; _plSbThumb.style.right = '2px';
       }
       _plSbThumb.addEventListener('pointerdown', function (e) {
         if (e.button !== 0) { return; }
         _plSbDrag = true; _plSbY0 = e.clientY; _plSbS0 = _plListEl.scrollTop;
-        _plSbThumb.style.width = '8px'; _plSbThumb.style.right = '0';   // 抓住即粗（拖拽全程保持）
+        _plSbThumb.style.width = '6px'; _plSbThumb.style.right = '0';   // 抓住即粗（拖拽全程保持）
         try { _plSbThumb.setPointerCapture(e.pointerId); } catch (_) { }
         document.addEventListener('pointermove', _plSbMove, true);
         document.addEventListener('pointerup', _plSbDrop, true);
@@ -1277,7 +1286,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       _txCancelB.setAttribute('data-no-cd', '');
       _txCancelB.addEventListener('mousedown', function (e) { e.preventDefault(); });   // 焦点卫生（同全部按钮）
       // ★ 取消转码语义（2026-10-03 q319 定案——旧「中止 + 关窗」升级）：中止在飞转码（经典/渐进流——ffmpeg 进程即杀，省 CPU）；
-      //   去向 = 列表还有下一首 → 跳下一首（会话不断——与跳过坏轨同规，仅无错误 toast）；仅此一首 → 关闭窗口（没得播——同旧语义）
+      //   去向 = 列表还有下一首 → 跳下一首（会话不断——与跳过坏轨同规，仅无错误 qoast）；仅此一首 → 关闭窗口（没得播——同旧语义）
       _txCancelB.addEventListener('click', function () {
         _ovTxAbort();
         if (api && api.n > 1 && api.onNext) {
@@ -1466,7 +1475,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
 
     // 画中画 + 全屏（仅视频）★ 2026-09-26 v2：失败可见（qoast 携原因，绝不静默吞）
     function _ovFsFail(reason) {
-      try { _toast(_i('shell.overlay.mfsFail', '全屏失败') + (reason ? '（' + reason + '）' : ''), 'error'); } catch (_) { }
+      try { _qoast(_i('shell.overlay.mfsFail', '全屏失败') + (reason ? '（' + reason + '）' : ''), 'error'); } catch (_) { }
     }
     function _toggleFs() {
       try {
@@ -1520,7 +1529,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     function _ovShot() {
       if (!isVid) { return; }
       function _fail(reason) {
-        _toast(_i('shell.overlay.mshotFail', '截图失败') + (reason ? '（' + reason + '）' : ''), 'error');
+        _qoast(_i('shell.overlay.mshotFail', '截图失败') + (reason ? '（' + reason + '）' : ''), 'error');
       }
       var b64 = '';
       try {
@@ -1554,17 +1563,17 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
             var msg = _i('shell.overlay.mshotSaved', '已保存截图：{name}', { name: fname });
             // ★ 定位按钮（2026-10-03 跨进程重设计）：文案随可达性——同安装 IDE 在 →「Roam 定位」；
             //   不在 →「在文件夹中显示」（宿主活裁决）。点击 = 同一裁决（无 IDE/无窗/投递失败/超时 → 系统兜底）；失败如实浮读。
-            var _shotToast = function (mode) {
+            var _shotQoast = function (mode) {
               var label = (mode === 'fs') ? _i('shell.dl.showInFolder', '📂 在文件夹中显示') : _i('shell.dl.roamLocate', '📂 Roam 定位');
               try {
-                _toast(msg, {
+                _qoast(msg, {
                   type: 'success', duration: 12000,
                   action: {
                     label: label, onClick: function () {
                       try {
                         var r = _ovShotReveal(target);
                         if (r && r.then) {
-                          r.then(function (res) { if (res && res.ok === false) { _toast(_i('shell.dl.revealFail', '无法定位该文件'), 'error'); } }).catch(function () { });
+                          r.then(function (res) { if (res && res.ok === false) { _qoast(_i('shell.dl.revealFail', '无法定位该文件'), 'error'); } }).catch(function () { });
                         }
                       } catch (_) { }
                     },
@@ -1576,8 +1585,8 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
             var pm = null;
             try { pm = (H.revealMode ? H.revealMode() : null); } catch (_) { pm = null; }
             if (pm && pm.then) {
-              pm.then(function (mode) { if (!_shotToast(mode)) { _toast(msg, 'success'); } }).catch(function () { if (!_shotToast(null)) { _toast(msg, 'success'); } });
-            } else if (!_shotToast(pm)) { _toast(msg, 'success'); }
+              pm.then(function (mode) { if (!_shotQoast(mode)) { _qoast(msg, 'success'); } }).catch(function () { if (!_shotQoast(null)) { _qoast(msg, 'success'); } });
+            } else if (!_shotQoast(pm)) { _qoast(msg, 'success'); }
           });
         }).catch(function () { _fail('write'); });
       }
@@ -2130,7 +2139,7 @@ function mount(opts) {
   try { _ensureMediaCss(); } catch (_) { }
   var H = opts.host || HOST || {};   // ★ v5：宿主可由 mount 显式传入（同页多宿主共存——悬浮层 + 窗内播放器卡）
   var _i = function (k, fb, prm) { return _ifor(H, k, fb, prm); };
-  var _toast = function (m, o) { _toastFor(H, m, o); };
+  var _qoast = function (m, o) { _qoastFor(H, m, o); };
   var _closeHost = function () { _closeHostFor(H); };
   var _reopenHost = function (p) { _reopenHostFor(H, p); };
   var _persistTick = function () { _persistTickFor(H); };
@@ -2228,11 +2237,11 @@ function mount(opts) {
         if (_plList && _plSkipLeft > 1) {
           _plSkipLeft--;
           var _bad = _plList[_plIdx];
-          _toast(_i('shell.overlay.mskip', '无法播放，已跳过：{name}', { name: (_bad && _bad.name) || '' }), 'error');
+          _qoast(_i('shell.overlay.mskip', '无法播放，已跳过：{name}', { name: (_bad && _bad.name) || '' }), 'error');
           _advanceTo((_plIdx + 1) % _plN, true);
           return;
         }
-        _toast(_i('shell.overlay.mediaFailed', '媒体加载失败，可能格式不受支持或文件已损坏'), 'error');
+        _qoast(_i('shell.overlay.mediaFailed', '媒体加载失败，可能格式不受支持或文件已损坏'), 'error');
         try { _closeHost(); } catch (_) { }
       };
       // ★ 转码产物重开（2026-10-02 抽共用）：经典路径 / 渐进 cache 快路径共用——isTx 显式 + 播放意图/倍速/模式/音量/dock 边全量回灌
@@ -2256,7 +2265,7 @@ function mount(opts) {
         var s = {
           rid: rid, H: H, el: _mEl, barApi: _barApi, fail: _ovMediaFail, fallback: null,
           ms: null, sb: null, url: null, q: [], idx: 0, done: false, failed: false, ended: false,
-          wantPlay: _playIntent, started: false, ackAcc: 0, seekToast: false,
+          wantPlay: _playIntent, started: false, ackAcc: 0, seekQoast: false,
           unsubEvt: null, unsubProg: null, onElErr: null, onSeeking: null
         };
         s.fallback = function () {
@@ -2283,7 +2292,7 @@ function mount(opts) {
             var bu = s.sb.buffered.length ? s.sb.buffered.end(s.sb.buffered.length - 1) : 0;
             if (_mEl.currentTime > bu + 0.35) {
               _mEl.currentTime = Math.max(0, bu - 0.25);
-              if (!s.seekToast) { s.seekToast = true; _toast(_i('shell.overlay.txSeekWait', '转码缓冲中，稍后可任意跳转'), { type: 'info', duration: 4000 }); }
+              if (!s.seekQoast) { s.seekQoast = true; _qoast(_i('shell.overlay.txSeekWait', '转码缓冲中，稍后可任意跳转'), { type: 'info', duration: 4000 }); }
             }
           } catch (_) { }
         };
@@ -2520,6 +2529,8 @@ function mount(opts) {
     keysUp: _barApi.keysUp,
     esc: _barApi.esc,
     zoom: _barApi.zoom,
+    // ★ 2026-10-03 q319：当前轨「原文件」基准（播放器 [!] 钮 —— 媒体信息源 + 「Roam 定位原文件」目标）
+    getBase: function () { return _curShotBase || _curLocalPath || ''; },
     destroy: function () {
       try { _ovTxAbort(); } catch (_) { }   // ★ 在飞转码（经典/渐进流）随挂载销毁同链收尾
       try { if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; } } catch (_) { }

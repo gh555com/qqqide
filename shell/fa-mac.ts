@@ -6,27 +6,21 @@
 //     ① 扩展名 → UTI：mdls（系统元数据机；含动态 UTI——mkv/rmvb 等第三方格式亦然）
 //     ② 读取 = NSWorkspace.URLForApplicationToOpenURL（逐扩展采样文件 → 真实默认 app 路径）
 //     ③ 接管 = LSSetDefaultRoleHandlerForContentType(uti, kLSRolesAll(-1), bundleId)
-//     ④ 解除 = 纯清空白板化（仅撤我们持有的类型 → 设回 Apple 自带 QuickTime/Music；
-//        不恢复旧值——与 Windows 版同语义；先快照 → 再写 → 再核验，防共享 UTI 边读边写互扰）
+//   ★ 单向可反复（2026-10-03 定案）：无解除逻辑、无状态角标——其他播放器可随时覆盖我们，
+//     打勾/取消均无意义；可反复点击重夺默认。
 //   落地载体 = osascript（macOS 自带，零编译零安装）执行 JXA（ObjC bridge）；应用注册 = LSRegisterURL。
 //   双击链另一端 = main.ts 的 open-file 机器（Finder 双击 → 本 bundle → 播放器宿主）。
 //   ★ 实测铁律（2026-10-03 VM 全绿）：角色掩码必须 kLSRolesAll（-1）——传 1（kLSRolesNone？）
 //     会写 LSHandlerRoleNone（看似成功实则空转，实测坑）；回读唯一可信 = NSWorkspace
 //     （LSCopyDefaultRoleHandlerForContentType 返回值在 JXA 里不可解包——Ref，实测三法全败）。
-//   ★ 结果形状与 Windows 版一致（{total, ours} / {total, taken, fails} / {cleaned}）——UI 零分叉。
+//   ★ 结果形状与 Windows 版一致（{total, taken, fails}）——UI 零分叉。
 // ============================================================================
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-/** 音频扩展名（remove 回退 = Music，其余 = QuickTime）
- *  ★ 须与 ipc-fileassoc.MEDIA_ASSOC_EXTS 音频段同改（改名/增删格式必须两处联动）。 */
-const _AUDIO_EXTS = ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'weba', 'wma', 'aiff', 'aif', 'ape', 'ac3', 'mka', 'amr', 'au'];
-
 const BUNDLE_ID = 'com.gh555.qqqide';
-const FALLBACK_VIDEO = 'com.apple.QuickTimePlayerX';
-const FALLBACK_AUDIO = 'com.apple.Music';
 
 /** 当前进程所在 .app bundle（dev/非 bundle 布局 → ''：不做注册，设置将如实失败） */
 function _bundlePath(): string {
@@ -76,24 +70,21 @@ async function _resolveUtis(files: string[]): Promise<string[]> {
 
 function _items(exts: string[], files: string[], utis: string[]): any[] {
     return exts.map((e0, i) => {
-        const e = _ext(e0);
         return {
-            e,
+            e: _ext(e0),
             u: utis[i] || '',
-            f: (_AUDIO_EXTS.indexOf(e) >= 0) ? FALLBACK_AUDIO : FALLBACK_VIDEO,
             p: files[i],
         };
     });
 }
 
 /** 生成 JXA 脚本（纯 ASCII 骨架；路径/清单经 JSON 安全嵌入）。输出行 = 'QFA1' + JSON。 */
-function _jxa(mode: 'check' | 'apply' | 'remove', items: any[], appPath: string): string {
+function _jxa(items: any[], appPath: string): string {
     return [
         "'use strict';",
         "ObjC.import('CoreServices');",
         "ObjC.import('Foundation');",
         "ObjC.import('AppKit');",
-        'var MODE = ' + JSON.stringify(mode) + ';',
         'var APP = ' + JSON.stringify(appPath) + ';',
         'var M = ' + JSON.stringify(BUNDLE_ID) + ';',
         'var ITEMS = ' + JSON.stringify(items) + ';',
@@ -103,12 +94,9 @@ function _jxa(mode: 'check' | 'apply' | 'remove', items: any[], appPath: string)
         "function _norm(s){ return String(s || '').replace(/\\/+$/,'').toLowerCase(); }",
         'var ours = _norm(APP);',
         "if (APP) { try { $.LSRegisterURL($.NSURL.fileURLWithPath(APP), true); } catch(e){ } }",
-        'var total = ITEMS.length, taken = 0, cleaned = 0, fails = [];',
+        'var total = ITEMS.length, taken = 0, fails = [];',
         'var i;',
-        "if (MODE === 'check') {",
-        '  for (i = 0; i < total; i++) { var cc = _cur(ITEMS[i].p); if (cc && _norm(cc) === ours) { taken++; } }',
-        "} else if (MODE === 'apply') {",
-        '  for (i = 0; i < total; i++) {',
+        'for (i = 0; i < total; i++) {',
         "    if (!ITEMS[i].u) { fails.push(ITEMS[i].e + ': no-uti'); continue; }",
         '    var st = -1; try { st = $.LSSetDefaultRoleHandlerForContentType($(ITEMS[i].u), -1, $(M)); } catch(e){ st = -2; }',
         "    if (st !== 0) { fails.push(ITEMS[i].e + ': set=' + st); }",
@@ -123,22 +111,7 @@ function _jxa(mode: 'check' | 'apply' | 'remove', items: any[], appPath: string)
         "      if (!has) { fails.push(ITEMS[i].e + ': not-sticky'); }",
         '    }',
         '  }',
-        "} else if (MODE === 'remove') {",
-        '  var snap = [];',
-        '  for (i = 0; i < total; i++) { var c0 = _cur(ITEMS[i].p); if (c0 && _norm(c0) === ours) { snap.push(i); } }',
-        '  for (var b = 0; b < snap.length; b++) {',
-        '    var it = ITEMS[snap[b]];',
-        "    if (!it.u) { fails.push(it.e + ': no-uti'); continue; }",
-        '    var st2 = -1; try { st2 = $.LSSetDefaultRoleHandlerForContentType($(it.u), -1, $(it.f)); } catch(e){ st2 = -2; }',
-        "    if (st2 !== 0) { fails.push(it.e + ': set=' + st2); }",
-        '  }',
-        "  try { $.NSThread.sleepForTimeInterval(0.35); } catch(e){ }",
-        '  for (var j = 0; j < snap.length; j++) {',
-        '    var c2 = _cur(ITEMS[snap[j]].p);',
-        "    if (!(c2 && _norm(c2) === ours)) { cleaned++; } else { fails.push(ITEMS[snap[j]].e + ': still-ours'); }",
-        '  }',
-        '}',
-        'var out = JSON.stringify({ ok: true, total: total, taken: taken, cleaned: cleaned, fails: fails });',
+        'var out = JSON.stringify({ ok: true, total: total, taken: taken, fails: fails });',
         "try { $.NSFileHandle.fileHandleWithStandardOutput.writeData($('QFA1' + out + '\\n').dataUsingEncoding($.NSUTF8StringEncoding)); } catch(e){ }",
         'void 0;',
     ].join('\n');
@@ -160,40 +133,22 @@ function _runJxa(script: string): Promise<any> {
     });
 }
 
-export interface FaMacResult { ok: boolean; code?: string; total?: number; taken?: number; cleaned?: number; fails?: string[]; err?: string; }
+export interface FaMacResult { ok: boolean; code?: string; total?: number; taken?: number; fails?: string[]; err?: string; }
 
-async function _run(mode: 'check' | 'apply' | 'remove', exts: string[]): Promise<any> {
+async function _run(exts: string[]): Promise<any> {
     const files = _ensureSamples(exts);
     const utis = await _resolveUtis(files);
-    return _runJxa(_jxa(mode, _items(exts, files, utis), _bundlePath()));
-}
-
-export async function faMacCheck(exts: string[]): Promise<FaMacResult> {
-    if (process.platform !== 'darwin') { return { ok: false, code: 'unsupported' }; }
-    try {
-        const r = await _run('check', exts);
-        return { ok: true, total: r.total || 0, taken: r.taken || 0 };
-    } catch (e: any) {
-        return { ok: false, code: 'check-failed', err: String((e && e.message) || e).slice(0, 300) };
-    }
+    return _runJxa(_jxa(_items(exts, files, utis), _bundlePath()));
 }
 
 export async function faMacApply(exts: string[]): Promise<FaMacResult> {
     if (process.platform !== 'darwin') { return { ok: false, code: 'unsupported' }; }
     try {
-        const r = await _run('apply', exts);
+        const r = await _run(exts);
         return { ok: (r.taken || 0) > 0, total: r.total || 0, taken: r.taken || 0, fails: r.fails || [] };
     } catch (e: any) {
         return { ok: false, code: 'apply-failed', err: String((e && e.message) || e).slice(0, 300) };
     }
 }
 
-export async function faMacRemove(exts: string[]): Promise<FaMacResult> {
-    if (process.platform !== 'darwin') { return { ok: false, code: 'unsupported' }; }
-    try {
-        const r = await _run('remove', exts);
-        return { ok: true, cleaned: r.cleaned || 0, fails: r.fails || [] };
-    } catch (e: any) {
-        return { ok: false, code: 'remove-failed', err: String((e && e.message) || e).slice(0, 300) };
-    }
-}
+

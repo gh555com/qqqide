@@ -8,22 +8,26 @@ const path = require('path');
 
 const pr = require(path.join(__dirname, '.build', 'player-reveal.cjs'));
 
-test('pickRevealWindowId：选窗序唯一（发起窗→聚焦→最后聚焦→任一）', () => {
+test('pickRevealWindowId：选窗序唯一（聚焦→最后聚焦→发起窗→任一）', () => {
     const alive = [11, 22, 33];
-    // ① 发起窗同进程且存活 → 发起窗（即使另有聚焦窗）
-    assert.strictEqual(pr.pickRevealWindowId({ pid: 100, winId: 22 }, { selfPid: 100, focusedId: 33, lastFocusedId: 11, aliveIds: alive }), 22);
-    // 发起窗 pid 不同（陈旧/跨实例）→ 聚焦窗
-    assert.strictEqual(pr.pickRevealWindowId({ pid: 999, winId: 22 }, { selfPid: 100, focusedId: 33, lastFocusedId: 11, aliveIds: alive }), 33);
-    // 发起窗已关（winId 不在存活集）→ 聚焦窗
-    assert.strictEqual(pr.pickRevealWindowId({ pid: 100, winId: 77 }, { selfPid: 100, focusedId: 33, lastFocusedId: 11, aliveIds: alive }), 33);
-    // 无聚焦 → 最后聚焦
-    assert.strictEqual(pr.pickRevealWindowId(null, { selfPid: 100, focusedId: null, lastFocusedId: 11, aliveIds: alive }), 11);
-    // 最后聚焦也已关 → 任一（数组首）
-    assert.strictEqual(pr.pickRevealWindowId(null, { selfPid: 100, focusedId: null, lastFocusedId: 77, aliveIds: alive }), 11);
+    // ① 当场聚焦 → 恒聚焦窗（压过一切，含发起窗）
+    assert.strictEqual(pr.pickRevealWindowId({ pid: 100, winId: 22 }, { selfPid: 100, focusedId: 33, lastFocusedId: 11, aliveIds: alive }), 33);
+    // ② 无聚焦 → 最后聚焦窗（「你正在操作滴」主语义；压过发起窗）
+    assert.strictEqual(pr.pickRevealWindowId({ pid: 100, winId: 22 }, { selfPid: 100, focusedId: null, lastFocusedId: 11, aliveIds: alive }), 11);
+    // ③ 无聚焦/无焦点历史 → 发起窗（同进程且存活）
+    assert.strictEqual(pr.pickRevealWindowId({ pid: 100, winId: 22 }, { selfPid: 100, focusedId: null, lastFocusedId: null, aliveIds: alive }), 22);
+    // 发起窗 pid 不同（陈旧/跨实例）→ 任一（数组首）
+    assert.strictEqual(pr.pickRevealWindowId({ pid: 999, winId: 22 }, { selfPid: 100, focusedId: null, lastFocusedId: null, aliveIds: alive }), 11);
+    // 发起窗已关（winId 不在存活集）→ 任一
+    assert.strictEqual(pr.pickRevealWindowId({ pid: 100, winId: 77 }, { selfPid: 100, focusedId: null, lastFocusedId: null, aliveIds: alive }), 11);
+    // 聚焦/最后聚焦均已关 → 逐一降级到任一
+    assert.strictEqual(pr.pickRevealWindowId(null, { selfPid: 100, focusedId: 99, lastFocusedId: 77, aliveIds: alive }), 11);
+    // 无聚焦时最后聚焦已关 → 发起窗兜底
+    assert.strictEqual(pr.pickRevealWindowId({ pid: 100, winId: 22 }, { selfPid: 100, focusedId: null, lastFocusedId: 77, aliveIds: alive }), 22);
     // 零窗 → null
     assert.strictEqual(pr.pickRevealWindowId(null, { selfPid: 100, focusedId: 11, lastFocusedId: 11, aliveIds: [] }), null);
-    // 脏 src（只有 pid）→ 不炸，降级到聚焦
-    assert.strictEqual(pr.pickRevealWindowId({ pid: 100 }, { selfPid: 100, focusedId: 33, lastFocusedId: null, aliveIds: alive }), 33);
+    // 脏 src（只有 pid）→ 不炸
+    assert.strictEqual(pr.pickRevealWindowId({ pid: 100 }, { selfPid: 100, focusedId: null, lastFocusedId: 11, aliveIds: alive }), 11);
 });
 
 test('revealReqStale：陈腐 = ts≤0/NaN 或超龄（默认 60s）', () => {

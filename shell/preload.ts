@@ -15,11 +15,11 @@ const QQQ = {    // ---- app info ----
         // ★ 就绪门控（2026-09-24）: 渲染层 UI 就绪信号（主窗口 core + 中面板恢复完成）
         //   → boot.ts 撤启动面板（窗口亮相即已可交互）；渲染层经 shell.js 转发调用。
         uiReady: () => ipcRenderer.send('qqqide:renderer-ready'),
-    },
-
-    // ---- component binaries ----
-    components: {
-        getBin: (name: string) => ipcRenderer.invoke('qqqide:components:getBin', name),
+    },    // ---- component binaries ----
+    components: {
+        getBin: (name: string) => ipcRenderer.invoke('qqqide:components:getBin', name),
+        // 按需安装（手动下载+验证；幂等、绕过冷却）——渲染层「安装 yt-dlp」等按钮用
+        install: (name: string) => ipcRenderer.invoke('qqqide:components:install', name),
     },
 
     // ---- auth — 认证中心大脑（2026-07-31 T3） ----
@@ -75,7 +75,7 @@ const QQQ = {    // ---- app info ----
         },
         stat: (p: string) => ipcRenderer.invoke('qqqide:fs:stat', p),
         fileIcon: (p: string) => ipcRenderer.invoke('qqqide:fs:fileIcon', p),
-        // ★ 文件夹体积汇总（codelens「🗀qqq」按钮：体积 + 悬停摘要；主进程扫描不阻塞渲染）
+        // ★ 文件夹体积汇总（codelens 首列「_qqqvault」按钮：体积 + 悬停摘要；主进程扫描不阻塞渲染）
         dirSummary: (p: string) => ipcRenderer.invoke('qqqide:fs:dirSummary', p),
         // ★ 头部字节读取（文本探针用：只读前 N 字节，200MB 级文件零负担）
         readHead: (p: string, n?: number) => ipcRenderer.invoke('qqqide:fs:readHead', p, n),
@@ -160,7 +160,7 @@ const QQQ = {    // ---- app info ----
     uiZoom: {
         get: () => ipcRenderer.invoke('qqqide:ui-zoom:get'),
         set: (pct: number) => ipcRenderer.invoke('qqqide:ui-zoom:set', pct),
-        onChanged: (cb: (payload: { pct: number; toast?: boolean }) => void) => {
+        onChanged: (cb: (payload: { pct: number; qoast?: boolean }) => void) => {
             const handler = (_e: any, payload: any) => { try { cb(payload || {}); } catch (_) {} };
             ipcRenderer.on('qqqide:ui-zoom:changed', handler);
             return () => ipcRenderer.removeListener('qqqide:ui-zoom:changed', handler);
@@ -504,8 +504,10 @@ const QQQ = {    // ---- app info ----
     // ---- media (ffmpeg-backed thumbnail / transcode / probe via qz) ----
     media: {
         thumb: (opts: any) => ipcRenderer.invoke('qqqide:media:thumb', opts),
-        transcode: (opts: any) => ipcRenderer.invoke('qqqide:media:transcode', opts),
-        probe: (src: string) => ipcRenderer.invoke('qqqide:media:probe', src),        ffmpegPath: () => ipcRenderer.invoke('qqqide:media:ffmpegPath'),
+        transcode: (opts: any) => ipcRenderer.invoke('qqqide:media:transcode', opts),        probe: (src: string) => ipcRenderer.invoke('qqqide:media:probe', src),
+        // ★ 播放器「媒体信息」详情（[!] 钮悬停详情框；2026-10-03 q319）
+        info: (src: string) => ipcRenderer.invoke('qqqide:media:info', src),
+        ffmpegPath: () => ipcRenderer.invoke('qqqide:media:ffmpegPath'),
         preview: (opts: any) => ipcRenderer.invoke('qqqide:media:preview', opts),
         textPreview: (opts: any) => ipcRenderer.invoke('qqqide:media:textPreview', opts),
         // ★ 状态栏 wq 卡片：缓存占用读数（媒体缓存 40MB / 转码缓存 2GB；只读）
@@ -555,6 +557,19 @@ const QQQ = {    // ---- app info ----
         },
     },
 
+    // ---- paste-dl（网页粘贴媒体下载机器：shell/paste-fetch.ts；老 q3 dow.js 移植 = 安全档位 11 开关 + yt-dlp 平台视频）----
+    pasteDl: {
+        fetch: (payload: any) => ipcRenderer.invoke('qqqide:paste-dl:fetch', payload),
+        cancel: (jobId: string) => ipcRenderer.invoke('qqqide:paste-dl:cancel', jobId),
+        onProgress: (cb: (msg: any) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[pasteDl.onProgress]', err); } };
+            ipcRenderer.on('qqqide:paste-dl:progress', handler);
+            return () => ipcRenderer.removeListener('qqqide:paste-dl:progress', handler);
+        },
+        // 网页抓取（URL 粘贴 → 视频嗅探；返回 {ok,html,charset,finalUrl} 或 {ok,directKind}）
+        fetchPage: (payload: any) => ipcRenderer.invoke('qqqide:paste-dl:fetch-page', payload),
+    },
+
     // ---- export（文档导出机：export doc / export Zip（老 q3 移植），2026-09-18）----
     export: {
         doc: (payload: any) => ipcRenderer.invoke('qqqide:export:doc', payload),
@@ -835,12 +850,11 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
         close: () => ipcRenderer.invoke('qqqide:player:close'),
     },
 
-    // ---- fileAssoc（系统默认播放器 — 播放器窗头部「Default」按钮，2026-10-02 v17）----
-    //   apply/remove = 全量接管/纯清空（一切媒体 37 类；win=HKCU 注册表机 / mac=LaunchServices 机）
+    // ---- fileAssoc（系统默认播放器 — 播放器窗头部「Default」按钮，2026-10-03 定案：单向可反复）----
+    //   apply = 全量接管（一切媒体 37 类；win=HKCU 注册表机 / mac=LaunchServices 机）
+    //   ★ 无 check/remove（其他播放器可随时覆盖——状态角标/解除均无意义；按钮恒 = 「设为默认」）
     fileAssoc: {
-        check: () => ipcRenderer.invoke('qqqide:fileassoc:check'),
         apply: () => ipcRenderer.invoke('qqqide:fileassoc:apply'),
-        remove: () => ipcRenderer.invoke('qqqide:fileassoc:remove'),
         settings: () => ipcRenderer.invoke('qqqide:fileassoc:settings'),
     },
 

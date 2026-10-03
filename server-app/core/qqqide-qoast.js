@@ -125,7 +125,8 @@
 
       var copyBtn = document.createElement('span');
       copyBtn.className = 'qqoast-copy';
-      copyBtn.textContent = '\uD83D\uDCCB';
+      // ★ 2026-10-03: 📋 字形 → 手绘 SVG 图标（qqq-icons.js·跨系统一致）；成功态 ✓（老字形 Win7 原生有）
+      copyBtn.innerHTML = '<span class="qqi qqi-copy"></span>';
       copyBtn.title = '\u590D\u5236';
       copyBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -138,7 +139,7 @@
           document.body.removeChild(ta);
         });
         copyBtn.textContent = '\u2713';
-        setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB'; }, 1200);
+        setTimeout(function () { copyBtn.innerHTML = '<span class="qqi qqi-copy"></span>'; }, 1200);
       });
 
       el.appendChild(body);

@@ -666,7 +666,7 @@ export function registerFsIpc(cacheStore?: CacheStore): void {
         } catch { return null; }
     });
 
-    // ★ 文件夹体积汇总（codelens「🗀qqq」按钮：体积 + 悬停摘要）
+    // ★ 文件夹体积汇总（codelens 首列「_qqqvault」按钮：体积 + 悬停摘要）
     //   老 q3 getFolderInfoJS 语义：递归 total_size + file_count_root + ext_stats（扩展名无点）
     //   缓存 + 目录 mtime 校验（变了才重扫）+ in-flight 去重 + 15s 冷却 + 双上限保护
     const _dirSummaryCache = new Map<string, { mtimeMs: number; ts: number; data: any }>();

@@ -247,12 +247,12 @@ var lnkJumpFromPath = null; // ★ 从 .lnk 快捷方式跳转时记录来源目
 var sortBy = 'name', _globalSortBy = 'name';
 var szMode = 'nothing', _globalSzMode = 'nothing';   // 全局默认 = 设置中心 szDisplayMode（boot 时读取；'nothing'=不显示——老 q3 语义）
 var filesOnTop = false;
-var sidebarW = 160;
+var sidebarW = 136;   // ★ zoom 0.85→1 等效（2026-10-03 根治）：160×0.85 = 136（旧存量值读取时经 _swNorm 自动迁移）
 var _qqiq = [];           // [{path,type}]
 var _pinnedDirs = [];      // [path]
 var _fineScm = {};         // { normalizedPath: {szMode,sortBy,filesOnTop,ts} }
 var _cmdHistory = { address: [], fileFilter: [], qqFilter: [] };
-var _lineSpacing = -2;
+var _lineSpacing = -1.5;   // ★ 行距（旧世界步进 17px 等效）：行高 18.5 + 边距 -1.5 = 步进 17（=旧 0.85 世界 20×0.85 实测）；整数步进→图标相位恒整、纯色线（2026-10-03 zoom 根治 v2）
 var FINE_SCM_MAX = 500;
 var sessionSizeCache = {};   // ★ 仅会话内: Space 强制尺寸, 切目录/切 SCM 模式即清空 (q3 对齐, 不持久化)
 var _lastRenderedDir = null;  // 上次渲染目录 — 用于强制尺寸失效判定
@@ -310,7 +310,14 @@ function _qqiqSave() { _roamSet('roam.qqiq', _qqiq); }
 function _pinnedSave() { _roamSet('roam.pinnedDirs', _pinnedDirs); }
 function _historySave() { _roamSet('roam.lastVisitedDir', currentPath); }
 function _cmdHistorySave() { _roamSet('roam.cmdHistory', _cmdHistory); }
-function _sidebarSave() { _roamSet('roam.sidebarWidth', sidebarW); }
+// ★ zoom 0.85→1 迁移（2026-10-03 根治）：旧存量 sidebarWidth 为 0.85 坐标系逻辑值 → ×0.85 换算；
+//   新格式 { v, ver:2 } 直接取用。两读取点（boot 启动 / 跨窗口同步）+ 保存共用。
+function _swNorm(v) {
+	if (v && typeof v === 'object' && typeof v.v === 'number') return v.v;
+	if (typeof v === 'number') return Math.round(v * 0.85 * 2) / 2;
+	return null;
+}
+function _sidebarSave() { _roamSet('roam.sidebarWidth', { v: sidebarW, ver: 2 }); }
 // ★ 跨窗口同步: 其他窗口改了 OS 级数据 → 重载对应 key
 function _onRoamChanged(key, value) {
 	if (value === undefined || value === null) return;
@@ -322,13 +329,14 @@ function _onRoamChanged(key, value) {
 		case 'roam.prefs':
 			// 全局 sz/排序 已迁设置中心（qqq-prefs）——roam.prefs 仅剩 lineSpacing
 			if (value && typeof value === 'object') {
-				if (typeof value.lineSpacing === 'number') _lineSpacing = value.lineSpacing;
+				if (typeof value.lineSpacing === 'number') _lineSpacing = Math.round(value.lineSpacing * 0.85 * 2) / 2;   // ★ 旧 0.85 坐标系存量迁移（0.5 网格；默认 -2 → -1.5）
 			}
 			_applyLineSpacing();
 			break;
 		case 'roam.lastVisitedDir': if (typeof value === 'string') {} break;
 		case 'roam.sidebarWidth':
-			if (typeof value === 'number' && value > 50 && value < 500) { sidebarW = value; applySidebarWidth(); }
+			var _swv = _swNorm(value);
+			if (typeof _swv === 'number' && _swv > 42 && _swv < 425) { sidebarW = _swv; applySidebarWidth(); }
 			break;
 	}
 }
@@ -339,7 +347,7 @@ function applySidebarWidth() {
 	if (!sb || !rz || !ct) return;
 	sb.style.width = sidebarW + 'px';
 	rz.style.left = sidebarW + 'px';
-	ct.style.left = (sidebarW + 8) + 'px';
+	ct.style.left = (sidebarW + 7) + 'px';
 }
 
 function fineScmGet(p) {
@@ -1221,7 +1229,7 @@ async function loadFileList(p) {
 		lastSelectedItem = null;
 		fileList.replaceChildren(frag); // ★ 原子换入，单次 layout，无空白帧
 	} catch(err) {
-		fileList.innerHTML = '<div style="padding:20px;color:var(--red);">' + escHtml(String(err)) + '</div>';
+		fileList.innerHTML = '<div style="padding:17px;color:var(--red);">' + escHtml(String(err)) + '</div>';
 	}
 }
 
@@ -1229,9 +1237,9 @@ async function loadFileList(p) {
 // ★ 文件/文件夹图标 = 手绘 SVG（core/qqq-icons.js，mask 方案颜色随文字色）——跨系统 100% 一致
 //   （旧 emoji 平台分治已废除：Win7 文字体无 2010+ 字形 → 乱码方框）。
 var _folderTpl = document.createElement('template');
-_folderTpl.innerHTML = '<div class="sz-area"></div><div class="file-select-area"><span class="file-icon qqi qqi-folder"></span></div><div class="folder-name-area"></div>';
+_folderTpl.innerHTML = '<div class="sz-area"></div><div class="file-select-area"><span class="file-icon qqi qqi-folder-r"></span></div><div class="folder-name-area"></div>';
 var _fileTpl = document.createElement('template');
-_fileTpl.innerHTML = '<div class="sz-area"></div><div class="file-name-area"><span class="file-icon qqi qqi-file"></span><span></span></div>';
+_fileTpl.innerHTML = '<div class="sz-area"></div><div class="file-name-area"><span class="file-icon qqi qqi-file-r"></span><span></span></div>';
 
 function buildFileItem(entry, fullPath) {
 	var item = document.createElement('div');
@@ -1624,7 +1632,7 @@ function _openQqqideWindowForFolder(folderPath) {
 }
 
 // ★ Q 键多选媒体（2026-09-26 q319；2026-10-02 混合解禁 + 单宿主）：选中 ≥2 个媒体文件（音/视频可混合）→ 新播放器窗（从不复用）
-//   起播 = 列表序第一个（用户定案）；队列保序；忽略项（非媒体文件）>0 时 toast 报数；返回 true = 已消费
+//   起播 = 列表序第一个（用户定案）；队列保序；忽略项（非媒体文件）>0 时 qoast 报数；返回 true = 已消费
 //   ★ 混合播放：类型随轨切换由引擎负责（跨类型切轨 = 宿主重建，core/media-engine.js）——此处不再按类型过滤
 function _qBatchMediaPlaylist() {
 	if (typeof selectedItems === 'undefined' || !selectedItems || selectedItems.length < 2) return false;
@@ -1974,8 +1982,8 @@ function _playlistAddFromMenu() {
 	if (!ts.length) return;
 	rpc('player.append', { paths: ts.map(function(t) { return t.path; }) }).then(function(r) {
 		if (!r || !r.ok) {
-			if (r && r.reason === 'none') { _roamToast(_kk('goods.roam.mplNone', '没有可加入的媒体文件'), 'error'); _playSfx('error'); }
-			else { _roamToast(_kk('goods.roam.mplFail', '加入播放列表失败'), 'error'); }
+			if (r && r.reason === 'none') { _roamQoast(_kk('goods.roam.mplNone', '没有可加入的媒体文件'), 'error'); _playSfx('error'); }
+			else { _roamQoast(_kk('goods.roam.mplFail', '加入播放列表失败'), 'error'); }
 			return;
 		}
 		var added = r.added || 0, dup = r.dup || 0, ignored = r.ignored || 0;
@@ -1983,16 +1991,16 @@ function _playlistAddFromMenu() {
 			var msg = _kk('goods.roam.mplAdded', '已加入 {0} 首 ▶ {1}', added, r.title || '');
 			if (ignored > 0) { msg += _kk('goods.roam.mplIgnored', '（忽略 {0} 个非媒体）', ignored); }
 			if (r.truncated) { msg += _kk('goods.roam.mplTrunc', '（已达上限）'); }
-			_roamToast(msg, 'info');
+			_roamQoast(msg, 'info');
 			_playSfx('enter');
 		} else if (dup > 0) {
-			_roamToast(_kk('goods.roam.mplExist', '已在播放列表中'), 'info');
+			_roamQoast(_kk('goods.roam.mplExist', '已在播放列表中'), 'info');
 		} else {
-			_roamToast(_kk('goods.roam.mplNone', '没有可加入的媒体文件'), 'error');
+			_roamQoast(_kk('goods.roam.mplNone', '没有可加入的媒体文件'), 'error');
 			_playSfx('error');
 		}
 	}).catch(function() {
-		_roamToast(_kk('goods.roam.mplFail', '加入播放列表失败'), 'error');
+		_roamQoast(_kk('goods.roam.mplFail', '加入播放列表失败'), 'error');
 	});
 }
 
@@ -2044,8 +2052,8 @@ if (emptyCtxMenu) {
 		ov.id = 'roam-drop-overlay';
 		ov.style.cssText =
 			'position:fixed;left:0;top:0;right:0;bottom:0;display:none;pointer-events:none;' +
-			'z-index:999999;border:3px dashed #e07020;border-radius:4px;' +
-			'box-shadow:inset 0 0 0 2px rgba(224,112,32,0.12), 0 0 0 2px rgba(224,112,32,0.18);';
+			'z-index:999999;border:2.5px dashed #e07020;border-radius:3.5px;' +
+			'box-shadow:inset 0 0 0 1.5px rgba(224,112,32,0.12), 0 0 0 1.5px rgba(224,112,32,0.18);';
 		document.body.appendChild(ov);
 		function _ovShow() { ov.style.display = 'block'; }
 		function _ovHide() { ov.style.display = 'none'; }

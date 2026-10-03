@@ -20,7 +20,7 @@
 //
 // ★ 应急快捷键（Ctrl/Cmd + = / - / 0，浏览器同款）：主进程 before-input-event 直控——
 //   步进档位 → setUiZoomPct（全窗即时生效）→ 落盘 qqq.prefs/values.uiZoom → 全窗广播
-//   'qqqide:ui-zoom:changed'（core/ui-zoom.js 收侧同步偏好内存 + 发起窗 toast）；
+//   'qqqide:ui-zoom:changed'（core/ui-zoom.js 收侧同步偏好内存 + 发起窗 qoast）；
 //   不经过渲染层——UI 异常时键盘仍可把窗口救回来。字号的旧 Ctrl+= 三键让位 Ctrl+Alt 三键。
 // ============================================================================
 
@@ -96,7 +96,7 @@ function _broadcastUiZoom(pct: number, originWebContentsId: number): void {
     for (const win of BrowserWindow.getAllWindows()) {
         if (!win || win.isDestroyed() || win.webContents.isDestroyed()) { continue; }
         try {
-            win.webContents.send('qqqide:ui-zoom:changed', { pct: pct, toast: win.webContents.id === originWebContentsId });
+            win.webContents.send('qqqide:ui-zoom:changed', { pct: pct, qoast: win.webContents.id === originWebContentsId });
         } catch { /* ignore */ }
     }
 }
@@ -137,7 +137,7 @@ export function initUiZoom(stateStore: StateStore): void {
             win.webContents.on('dom-ready', () => _applyTo(win));
             win.webContents.on('did-finish-load', () => {
                 _applyTo(win);
-                try { win.webContents.send('qqqide:ui-zoom:changed', { pct: Math.round(_factor * 100), toast: false }); } catch { /* ignore */ }
+                try { win.webContents.send('qqqide:ui-zoom:changed', { pct: Math.round(_factor * 100), qoast: false }); } catch { /* ignore */ }
             });
         } catch { /* ignore */ }
     });

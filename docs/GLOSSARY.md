@@ -24,7 +24,7 @@ Terms you meet in the qqqide source. One line each; deeper docs live under
 | **only.sq3 / quest.sq3** | Project-level SQLite: assets & preferences / quest index. |
 | **qwr** | The write machine: per-file serial queue + re-read on edit + external-change detection. |
 | **qz** | The unified process-spawn pipeline (ghrun first, Node fallback). |
-| **qoast / ioast** | Toast notifications / task-dock cards. |
+| **qoast / ioast** | qoast notifications / task-dock cards. |
 | **Context Backpack** | The per-quest context carried between floors (Z → facts → biscuit → floor). |
 | **Grid** | The facts grid (`fx`) extracted by "only facts" compression. |
 | **VIG** | The local usage ledger whose aggregate counters ride along telemetry. |

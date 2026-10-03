@@ -668,7 +668,7 @@ app.on('browser-window-created', (_e, w) => {
         // ★ 翼状态重推（Ctrl+R 热重载后 renderer 需重新应用；主进程 map 仍在）
         _pushWingsTo(win, _windowWingMap.get(win.id) || { left: false, right: false });
     });    // ★ 界面缩放应急快捷键（Ctrl/Cmd + = / - / 0，浏览器同款）——主进程直控（详 ui-zoom.ts）；
-    //   渲染层无依赖，UI 异常时仍可把窗口救回来；落盘 + 全窗广播 + 发起窗 toast
+    //   渲染层无依赖，UI 异常时仍可把窗口救回来；落盘 + 全窗广播 + 发起窗 qoast
     win.webContents.on('before-input-event', (ev, input) => {
         if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
         const mod = input.control || input.meta;

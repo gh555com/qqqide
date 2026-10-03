@@ -13,11 +13,13 @@ const STUB = path.join(__dirname, 'stubs', 'electron.js');
 
 const ENTRIES = [
   { name: 'file-encoding', src: path.join(ROOT, 'shell', 'file-encoding.ts') },
+  { name: 'player-info', src: path.join(ROOT, 'shell', 'player-info.ts') },
   { name: 'squad-manager', src: path.join(ROOT, 'shell', 'squad-manager.ts') },
   { name: 'search-proto', src: path.join(ROOT, 'shell', 'search-proto.ts') },
   { name: 'transcode-hw', src: path.join(ROOT, 'shell', 'transcode-hw.ts') },
   { name: 'player-prefs', src: path.join(ROOT, 'shell', 'player-prefs.ts') },
   { name: 'player-reveal', src: path.join(ROOT, 'shell', 'player-reveal.ts') },
+  { name: 'paste-fetch', src: path.join(ROOT, 'shell', 'paste-fetch.ts') },
 ];
 
 async function buildAll() {

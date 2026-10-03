@@ -227,7 +227,7 @@
     bar.appendChild(copyBtn);
 
     // Roam 按钮 — 恒显内联 · 淡雅统一档（2026-09-27：外观与编码徽标/复制按钮零差异，悬浮 → 显著档）：点击 = 在 Roam 中定位该文件（定位机器唯一入口 = shell-overlay __qqq_roamRevealPath——
-    //   与 codelens 🗀qqq 同源零第二实现：命中 revealFile 选中+滚动（Roam 未开则召回/加开 tab）/ 缺失自动爬升最近祖先 + qoast 裁决）
+    //   与 codelens 首列 _qqqvault 同源零第二实现：命中 revealFile 选中+滚动（Roam 未开则召回/加开 tab）/ 缺失自动爬升最近祖先 + qoast 裁决）
     var roamBtn = document.createElement('button');
     roamBtn.className = 'qqq-breadcrumb-roam-btn';
     roamBtn.textContent = 'Roam';
@@ -280,7 +280,10 @@
     //   ✘ 旧实现单取 window._workspaceRoot：绑定期为空 → 空根开窗 →「缺少参数」空白窗）
     var tlBtn = document.createElement('button');
     tlBtn.className = 'qqq-breadcrumb-timeline-btn';
-    tlBtn.textContent = '\uD83D\uDD58'; // 时钟图标（文字按钮「timeline」太宽，图标化 ≈28px）
+    // ★ 2026-10-03: 时钟字形（U+1F558）→ 手绘 SVG 图标（qqq-icons.js·跨系统一致；Win7 无该字形）
+    var tlIcoEl = document.createElement('span');
+    tlIcoEl.className = 'qqi qqi-clock';
+    tlBtn.appendChild(tlIcoEl);
     // ★ 版本数恒显（2026-10-02 q390 用户定案）：时钟右侧直接打印版本库收录版本数（Roam 风格千分位原文；未知态留空）
     var tlCountEl = document.createElement('span');
     tlCountEl.className = 'qqq-bc-tl-count';
@@ -331,7 +334,7 @@
       if (!p) return;
       var b = window.qqqideBridge;
       if (!b || !b.timeline || !b.timeline.openDiffWindow) return;
-      function _tlFailToast() {
+      function _tlFailQoast() {
         // 打开链失败必须如实提示（禁静默吞错——「点击零反应」体验根治）
         try {
           if (window.qqqideQoast) window.qqqideQoast.show(_i('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { type: 'warn', duration: 5000 });
@@ -348,9 +351,9 @@
         try {
           var r = b.timeline.openDiffWindow({ filePath: p, projectRoot: root });
           if (r && r.then) {
-            r.then(function (res) { if (res && res.ok === false) { _tlFailToast(); } }).catch(_tlFailToast);
+            r.then(function (res) { if (res && res.ok === false) { _tlFailQoast(); } }).catch(_tlFailQoast);
           }
-        } catch (_) { _tlFailToast(); }
+        } catch (_) { _tlFailQoast(); }
       });
     });
     bar.appendChild(tlBtn);

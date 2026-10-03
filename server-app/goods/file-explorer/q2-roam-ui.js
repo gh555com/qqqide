@@ -205,10 +205,10 @@ async function updateDriveDisplay() {
 	function onMove(e) {
 		if (!dragging) return;
 		var delta = e.clientX - startX;
-		sidebarW = Math.max(60, Math.min(400, startW + delta));
+		sidebarW = Math.max(51, Math.min(340, startW + delta));   // 旧 60/400 ×0.85 视觉等效（zoom 根治）
 		sidebar.style.width = sidebarW + 'px';
 		resizer.style.left = sidebarW + 'px';
-		content.style.left = (sidebarW + 8) + 'px';
+		content.style.left = (sidebarW + 7) + 'px';
 	}
 	function onUp() {
 		dragging = false;
@@ -228,7 +228,7 @@ async function updateDriveDisplay() {
 
 	function getThumbHeight() {
 		var ch = container.clientHeight, sh = container.scrollHeight;
-		return Math.max(20, (ch / sh) * bar.clientHeight);
+		return Math.max(17, (ch / sh) * bar.clientHeight);   // ★ 最小块 17（=旧 0.85 世界 20×0.85 等效，2026-10-03 zoom 根治 v2）
 	}
 
 	function update() {
@@ -647,7 +647,7 @@ function _confirmAsync(message, buttons) {
 }
 
 // ★ 非阻塞通知 — 父窗口 qoast（铁律 §4.2 iframe 统一入口），失败降级 paste-tip
-function _roamToast(message, type) {
+function _roamQoast(message, type) {
 	try {
 		if (parent && parent.qqqideQoast && parent.qqqideQoast.show) {
 			parent.qqqideQoast.show(message, { duration: 4000, type: type || 'error' });
@@ -683,7 +683,7 @@ async function doCreateFile() {
 		filenameInput.blur();
 		parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
 	}).catch(function(err) {
-		_roamToast('Failed to create file: ' + (err.message || err));
+		_roamQoast('Failed to create file: ' + (err.message || err));
 	});
 }
 
@@ -692,7 +692,7 @@ function doCreateFolder() {
 	if (!name) { filenameInput.focus(); return; }
 	if (_nameExists(name)) {
 		// 与 q3 一致：重名文件夹不弹覆盖框（mkdir 无法覆盖），仅提示
-		_roamToast('Folder "' + name + '" already exists.');
+		_roamQoast('Folder "' + name + '" already exists.');
 		return;
 	}
 	var fullPath = pathJoin(currentPath, name);
@@ -703,7 +703,7 @@ function doCreateFolder() {
 		recordDirHistory(currentPath);
 		loadFileList(currentPath);
 	}).catch(function(err) {
-		_roamToast('Failed to create folder: ' + (err.message || err));
+		_roamQoast('Failed to create folder: ' + (err.message || err));
 	});
 }
 

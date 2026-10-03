@@ -131,7 +131,7 @@ off). No module talks to the OS any other way.
 | audio-volume.js | Volume panel + SFX scene registry |
 | qqqide-theme.js | Theme machine + layout constants + Monaco themes |
 | i18n.js | i18n runtime (language chain + DOM translation) |
-| qqqide-qoast.js | Toast notifications (qoast) |
+| qqqide-qoast.js | qoast notifications |
 | qqqide-ioast.js | Task-dock cards (ioast) |
 | ai-viewport.js | AI viewport (folder formation, git badges) |
 | settings.js | Settings panel |
@@ -236,7 +236,7 @@ build on; **internal intrinsics** (`__qqq*`) — cross-frame plumbing that lives
 | --- | --- | --- |
 | qqqideBridge | shell/preload.ts | The one native bridge (§7) |
 | _i / _qq | core/i18n.js / ai-panel | Translate (main window / AI panel) |
-| qqqideQoast / qqqideIoast | core/qqqide-qoast.js / -ioast.js | Toasts / task-dock cards |
+| qqqideQoast / qqqideIoast | core/qqqide-qoast.js / -ioast.js | qoast notifications / task-dock cards |
 | qqqTabs | core/tab-manager.js | Open files, manage tabs |
 | qqqGaea | core/gaea-host.js | goods host API (register / open) |
 | qqqLogin | core/login.js | Auth state, LV, openProfile |

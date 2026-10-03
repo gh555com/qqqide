@@ -250,7 +250,7 @@ function bootAiOverlay() {
     if (/^[A-Za-z]:[\\/]/.test(src)) return src;
     return null;
   }
-  function _ovToast(msg, type) {
+  function _ovQoast(msg, type) {
     if (window.qqqideQoast) window.qqqideQoast.show(msg, { type: type || 'info', duration: 2500 });
   }
 
@@ -262,7 +262,7 @@ function bootAiOverlay() {
       bridge: bridge,
       rootEl: overlay,
       i18n: function (k, fb, prm) { return window._i(k, fb, prm); },
-      toast: function (m, o) {
+      qoast: function (m, o) {
         try {
           var op = (typeof o === 'string') ? { type: o } : (o || {});
           if (!op.duration && !op.action) { op.duration = 2500; }
@@ -281,15 +281,15 @@ function bootAiOverlay() {
   // 内存 — 图片进剪贴板（图像数据），可直接粘贴到聊天/画布
   memBtn.addEventListener('click', function () {
     var src = _currentOverlayImgSrc();
-    if (!src) { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
+    if (!src) { _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return; }
     var p = _ovLocalPath || _localPathFromSrc(src);
     var payload = p ? { path: p } : (/^data:/i.test(src) ? { dataUrl: src } : null);
     if (!payload || !bridge || !bridge.clipboard || !bridge.clipboard.writeImage) {
-      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+      _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
     }
     bridge.clipboard.writeImage(payload).then(function (ok) {
-      _ovToast(ok ? window._i('shell.overlay.memOk', '图片已进入内存，可直接粘贴') : window._i('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
-    }).catch(function () { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
+      _ovQoast(ok ? window._i('shell.overlay.memOk', '图片已进入内存，可直接粘贴') : window._i('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+    }).catch(function () { _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
   });
 
   // 文件 — 复制图片文件本体（CF_HDROP），可粘贴到聊天/Roam/资源管理器
@@ -297,13 +297,13 @@ function bootAiOverlay() {
     var src = _currentOverlayImgSrc();
     if (!src) return;
     var p = _ovLocalPath || _localPathFromSrc(src);
-    if (!p) { _ovToast(window._i('shell.overlay.noLocalFile', '该图片无本地文件，无法复制文件'), 'info'); return; }
+    if (!p) { _ovQoast(window._i('shell.overlay.noLocalFile', '该图片无本地文件，无法复制文件'), 'info'); return; }
     if (!bridge || !bridge.clipboard || !bridge.clipboard.writeFiles) {
-      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+      _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
     }
     bridge.clipboard.writeFiles([p]).then(function (ok) {
-      _ovToast(ok ? window._i('shell.overlay.fileOk', '文件已复制，可直接粘贴') : window._i('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
-    }).catch(function () { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
+      _ovQoast(ok ? window._i('shell.overlay.fileOk', '文件已复制，可直接粘贴') : window._i('shell.overlay.copyFailed', '复制失败'), ok ? 'success' : 'error');
+    }).catch(function () { _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
   });
 
   // 路径 — 复制图片文件路径
@@ -312,15 +312,15 @@ function bootAiOverlay() {
     if (!src) return;
     var p = _ovLocalPath || _localPathFromSrc(src);
     if (!p) {
-      if (/^data:/i.test(src)) { _ovToast(window._i('shell.overlay.noLocalPath', '该图片无本地路径'), 'info'); return; }
-      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+      if (/^data:/i.test(src)) { _ovQoast(window._i('shell.overlay.noLocalPath', '该图片无本地路径'), 'info'); return; }
+      _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
     }
     if (!bridge || !bridge.clipboard || !bridge.clipboard.writeText) {
-      _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
+      _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); return;
     }
     bridge.clipboard.writeText(p).then(function () {
-      _ovToast(window._i('shell.overlay.copied', '已复制'), 'success');
-    }).catch(function () { _ovToast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
+      _ovQoast(window._i('shell.overlay.copied', '已复制'), 'success');
+    }).catch(function () { _ovQoast(window._i('shell.overlay.copyFailed', '复制失败'), 'error'); });
   });
 
   // Zoom out（跳过冷却护盾，准许快速连按）
@@ -627,7 +627,7 @@ function bootAiOverlay() {
         _ovTxRun(_ovLocalPath, 'image', function (newPath) {
           window.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + newPath, localPath: newPath, _tx: 1 }, '*');
         }, function () {
-          _ovToast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
+          _ovQoast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
           try { close(); } catch (_) { }
         });
         dpad.style.display = 'block';
@@ -707,12 +707,12 @@ function bootAiOverlay() {
             // 产物 → 以同一管线重开（_tx:1 防二次转码）
             window.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + newPath, localPath: newPath, _tx: 1 }, '*');
           }, function () {
-            _ovToast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
+            _ovQoast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
             try { close(); } catch (_) { }
           });
           return;
         }
-        _ovToast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
+        _ovQoast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
         try { close(); } catch (_) { }
       };
       img.src = e.data.src;
@@ -878,7 +878,7 @@ function bootAiOverlay() {
 
   // ═══ Roam 定位引擎（2026-09-06 泛化）：任意本地路径 → 激活 roam + 跳转/选中 ═══
   // 支持：盘符绝对 / 相对路径（依 AI 视口阵营逐根解析，主文件夹优先）/ 树图裸文件名（ctx 拼接）
-  // 边界兜底：不存在/已删除 → 爬升最近存在祖先 + toast，绝不静默死链；
+  // 边界兜底：不存在/已删除 → 爬升最近存在祖先 + qoast，绝不静默死链；
   //           roam tab/iframe 未就绪 → 自建 tab + 轮询重发（7.5s 上限）。
   function _roamQoast(msg) {
     try {

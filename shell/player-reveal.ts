@@ -8,10 +8,10 @@
 // （Data/player-host/reveals/，契约详 player-host.ts）；本文件只承载可单测的纯裁决
 // （选窗序 / 请求陈腐 / 缺失爬升），IO 编排分居 player-host.ts（IDE 侧）与 ipc-player.ts（宿主侧）。
 //
-// 选窗序（唯一权威，禁旁路第二套）：
-//   ① 发起窗（打开/追加该播放窗的 IDE 窗；src={pid,winId} 同进程且窗存活）
-//   ② 当前聚焦的 IDE 主窗（用户此刻注意力所在；点播放器按钮时宿主持焦点，通常落到下一级）
-//   ③ 最后聚焦过的 IDE 主窗（本进程焦点历史——多窗用户「上一活跃窗」语义）
+//   选窗序（唯一权威，禁旁路第二套；2026-10-03 用户定案 = 强制召回「你正在操作滴」IDE）：
+//   ① 当前聚焦的 IDE 主窗（处理时刻有 = 用户注意力当场所在，最强信号）
+//   ② 最后聚焦过的 IDE 主窗（本进程焦点历史最近一个——多窗主语义：「你正在操作滴」）
+//   ③ 发起窗（打开/追加该播放窗的 IDE 窗；src={pid,winId} 同进程且窗存活——历史线索兜底）
 //   ④ 任一存活 IDE 主窗（确定性兜底 = 数组序第一个）
 // ============================================================================
 
@@ -30,13 +30,13 @@ export function pickRevealWindowId(src: RevealSrc | null | undefined, ctx: Revea
     const ids = (ctx && Array.isArray(ctx.aliveIds)) ? ctx.aliveIds.filter((n) => typeof n === 'number') : [];
     if (!ids.length) { return null; }
     const has = (n: any): boolean => typeof n === 'number' && ids.indexOf(n) >= 0;
+    if (has(ctx.focusedId)) { return ctx.focusedId as number; }          // ① 当场聚焦
+    if (has(ctx.lastFocusedId)) { return ctx.lastFocusedId as number; }  // ② 最后操作（「你正在操作滴」——主语义）
     if (src && typeof src.pid === 'number' && typeof src.winId === 'number'
         && src.pid === ctx.selfPid && has(src.winId)) {
-        return src.winId;
+        return src.winId;                                                // ③ 发起窗兜底（历史线索）
     }
-    if (has(ctx.focusedId)) { return ctx.focusedId as number; }
-    if (has(ctx.lastFocusedId)) { return ctx.lastFocusedId as number; }
-    return ids[0];
+    return ids[0];                                                       // ④ 任一存活
 }
 
 /** 请求陈腐上限：宿主超时已兜底系统定位——IDE 迟到读到陈腐请求必须拒执（防「惊喜定位」）。 */

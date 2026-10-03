@@ -644,16 +644,16 @@
   //   本流把一切自动化到极限：注册系统级应用（选择窗口里可见「Node (qd)」/「Python (qd)」）
   //   → 自动拉起系统选择窗口 → 常驻指引（选它 → 点「始终」）→ 轮询自动检测 → 完工 finalize 命令归一。
   var _interpGuideTimer = { python: null, node: null };
-  var _interpGuideToast = { python: null, node: null };
+  var _interpGuideQoast = { python: null, node: null };
   var _interpGuideInfo = { python: null, node: null };   // picker 返回：{ sample（桌面样例路径）, exe（解释器路径） }
 
   function _interpGuideDismiss(t) {
-    var q = _interpGuideToast[t];
+    var q = _interpGuideQoast[t];
     if (q && typeof q.dismiss === 'function') { try { q.dismiss(); } catch (e) { /* ignore */ } }
-    _interpGuideToast[t] = null;
+    _interpGuideQoast[t] = null;
   }
 
-  function _interpGuideToastShow(t, isWait) {
+  function _interpGuideQoastShow(t, isWait) {
     var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
     var isNode = (t === 'node');
     var txt;
@@ -669,7 +669,7 @@
     _interpGuideDismiss(t);
     try {
       if (window.qqqideQoast && window.qqqideQoast.show) {
-        _interpGuideToast[t] = window.qqqideQoast.show(txt, {
+        _interpGuideQoast[t] = window.qqqideQoast.show(txt, {
           type: 'info',
           duration: 0,
           actions: [{
@@ -705,7 +705,7 @@
     return Promise.resolve(p).then(function (res) {
       if (res && res.ok) {
         _interpGuideInfo[t] = { sample: String(res.sample || ''), exe: String(res.exePath || '') };
-        _interpGuideToastShow(t, false);
+        _interpGuideQoastShow(t, false);
       }
       else { _interpGuideFail(t, res); }
     }, function () { _interpGuideFail(t, null); });
@@ -720,7 +720,7 @@
       if (Date.now() > deadline) {
         _interpGuideStop(t);
         _interpSetState(t, false, 'idle');
-        _interpGuideToastShow(t, true);
+        _interpGuideQoastShow(t, true);
         return;
       }
       Promise.resolve().then(function () { return bridge.check(t); }).then(function (res) {

@@ -7,7 +7,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { BootConfig, BootMode, healthCheck, loadStaticFallback, loadRemoteWithCacheGuard, isBootCompleted } from './boot';
 import { readManifestId } from './version';
-import { getComponentBin } from './component-checker';
+import { getComponentBin, installComponent } from './component-checker';
 
 export function registerBootIpc(
     portableRoot: string,
@@ -23,6 +23,12 @@ export function registerBootIpc(
 
     ipcMain.handle('qqqide:components:getBin', (_e, name: string) => {
         return getComponentBin(portableRoot, name);
+    });
+
+    // 按需安装（用户显式触发：渲染层「安装组件」按钮 → 手动下载+验证；绕过冷却、幂等）
+    ipcMain.handle('qqqide:components:install', async (_e, name: string) => {
+        try { return await installComponent(portableRoot, String(name || '')); }
+        catch (e: any) { return { ok: false, error: String((e && e.message) || e) }; }
     });
 
     ipcMain.handle('qqqide:boot:info', () => ({

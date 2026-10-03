@@ -588,8 +588,31 @@ function renderImageStrip() {
 // ═══ 编辑框硬上限（字符数 = str.length；唯一真理源 content-gateway.js EDITOR_CAP_CHARS）══
 var INPUT_CAP_CHARS = 16000;
 // 尝试从 ContentGateway 同步（如果有），但本地 16000 是硬兜底
-if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CHARS === 'number') {
-    INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
+if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CHARS === 'number') {    INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
+}
+
+// ═══ 纯文本插入（唯一实现，2026-10-03）：Ctrl+V / 右键菜单 / 外拖文本 三条入口共用 ═══
+// 口径：光标处插入（有选区则替换，与原生粘贴一致）；字符上限硬帽（超出截断 + qoast）；resize/progress 同步。
+function _insertPlainText(text) {
+    if (!text) return;
+    // ★ 直接用原生 getter 读当前值（绕过自定义属性，绝对可靠）
+    var nativeGet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').get;
+    var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    var cur = nativeGet.call($input);
+    var selStart = $input.selectionStart || 0;
+    var selEnd = $input.selectionEnd || 0;
+    var before = cur.substring(0, selStart);
+    var after = cur.substring(selEnd);
+    var available = INPUT_CAP_CHARS - before.length - after.length;
+    if (available <= 0) { _limitQoast('paste-full'); return; }
+    var wasTruncated = text.length > available;
+    var insertText = wasTruncated ? text.substring(0, available) : text;
+    // ★ 用原生 setter 直设值，然后手动触发 resize + progress
+    nativeSet.call($input, before + insertText + after);
+    $input.setSelectionRange(selStart + insertText.length, selStart + insertText.length);
+    autoResizeInput();
+    _updateInputProgress();
+    if (wasTruncated) _limitQoast('paste-truncated');
 }
 
 // 粘贴图片（多图全量收集 + 串行保序 + 三重硬帽）/ 纯文本粘贴
@@ -623,35 +646,9 @@ $input.addEventListener('paste', function (e) {
             await _pasteImages(imageFiles);
         }
 
-        // 纯文本分支：硬上限保护
+        // 纯文本分支：硬上限保护（唯一插入机 _insertPlainText——右键菜单/外拖文本同源）
         if (!plainText) return;
-
-        // ★ 直接用原生 getter 读当前值（绕过自定义属性，绝对可靠）
-        var nativeGet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').get;
-        var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-        var cur = nativeGet.call($input);
-        var selStart = $input.selectionStart || 0;
-        var selEnd = $input.selectionEnd || 0;
-        var before = cur.substring(0, selStart);
-        var after = cur.substring(selEnd);
-        var available = INPUT_CAP_CHARS - before.length - after.length;
-
-        if (available <= 0) {
-            _limitQoast('paste-full');
-            return;
-        }
-
-        var wasTruncated = plainText.length > available;
-        var insertText = wasTruncated ? plainText.substring(0, available) : plainText;
-        var newVal = before + insertText + after;
-
-        // ★ 用原生 setter 直设值，然后手动触发 resize + progress
-        nativeSet.call($input, newVal);
-        $input.setSelectionRange(selStart + insertText.length, selStart + insertText.length);
-        autoResizeInput();
-        _updateInputProgress();
-
-        if (wasTruncated) _limitQoast('paste-truncated');
+        _insertPlainText(plainText);
     });
 });
 
@@ -725,18 +722,9 @@ $input.addEventListener('contextmenu', function (e) {
             await _pasteImages(imageBlobs);
         }
 
-        // 纯文本分支（图片+文本共存时，图片先入条，文本走此分支插入一次）
+        // 纯文本分支（图片+文本共存时，图片先入条，文本走此分支插入一次；唯一插入机同源）
         if (!txt) return;
-        var nd2 = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-        var cur2 = nd2.get.call($input);
-        var ss2 = $input.selectionStart || 0, se2 = $input.selectionEnd || 0;
-        var avail2 = INPUT_CAP_CHARS - cur2.substring(0, ss2).length - cur2.substring(se2).length;
-        if (avail2 <= 0) { _limitQoast('paste-full'); return; }
-        var ins2 = txt.length > avail2 ? txt.substring(0, avail2) : txt;
-        nd2.set.call($input, cur2.substring(0, ss2) + ins2 + cur2.substring(se2));
-        $input.setSelectionRange(ss2 + ins2.length, ss2 + ins2.length);
-        autoResizeInput(); _updateInputProgress();
-        if (txt.length > avail2) _limitQoast('paste-truncated');
+        _insertPlainText(txt);
         });
     });
 

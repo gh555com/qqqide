@@ -5,12 +5,12 @@
 //
 // 老项目：每个相框上方一排按钮（VS Code codelens）。本机用 Monaco 原生 codeLens 复刻——
 // 数据源 = viewport-machine 的 per-editor 锚点表（唯一渲染真理机，只读消费），
-// 按钮点击 → 命令（老 qqq.* 命令语义 1:1；例外：首列 🗀qqq = 内置 Roam 定位，2026-09-17 用户定）。
+// 按钮点击 → 命令（老 qqq.* 命令语义 1:1；例外：首列 _qqqvault = 内置 Roam 定位，2026-09-17 用户定；2026-10-03 用户定案去图标、文案改 _qqqvault）。
 //
 // 等级 = 偏好 codelensLevel（老枚举 0/1/7 原值）:
 //   0 = 无
 //   1 = 仅文件信息行（open file，无 ✎ 前缀）
-//   7 = 全套: [✎(文件夹体积) 🗀qqq] [✎rename] [✎c1 复制路径] [✎c2 复制文件] [✎c3 复制图片二进制*]
+//   7 = 全套: [✎(文件夹体积) _qqqvault] [✎rename] [✎c1 复制路径] [✎c2 复制文件] [✎c3 复制图片二进制*]
 //            + 文件信息行 ✎(体积) {图标} {完整路径} {缩放% 宽x高}
 //            + [✎qqqide*]   （*c3 仅图片；*qqqide 仅文本文件 → 在右分组打开）
 //
@@ -317,7 +317,7 @@
       var fsum = _folderGet(dir);
       var fSizeStr = fsum ? formatBytes(fsum.size) : '●';
       var folderTip = fsum ? fsum.summary : _t('editor.codelens.calculatingFolderSize', '正在计算文件夹大小...');
-      out.push(_lens(line, '✎( ' + fSizeStr + ') $(qqq-folder-open)qqq', folderTip, 'qqqide.codelens.reveal', [path]));
+      out.push(_lens(line, '✎( ' + fSizeStr + ') _qqqvault', folderTip, 'qqqide.codelens.reveal', [path]));
       out.push(_lens(line, '✎rename', '', 'qqqide.codelens.rename', [{ path: path, fileName: fileName }]));
       out.push(_lens(line, '✎c1', path, 'qqqide.codelens.copyPath', [path]));
       out.push(_lens(line, '✎c2', '', 'qqqide.codelens.copyFile', [path]));
@@ -402,7 +402,7 @@
   // ════════════════════════════════════════════════════════════════════
   // 命令实现（老 qqq.* 命令 1:1）
   // ════════════════════════════════════════════════════════════════════
-  function _toast(msg, type) {
+  function _qoast(msg, type) {
     try {
       if (window.qqqideQoast && window.qqqideQoast.show) {
         window.qqqideQoast.show(msg, { type: type || 'info', duration: type === 'error' ? 6000 : 3000 });
@@ -410,7 +410,7 @@
     } catch (e) { /* */ }
   }
 
-  // 🗀qqq → 在当前 Roam 中打开并定位该文件（2026-09-17 用户定：全平台统一，弃系统资源管理器）
+  // _qqqvault（首列按钮，2026-10-03 起文案）→ 在当前 Roam 中打开并定位该文件（2026-09-17 用户定：全平台统一，弃系统资源管理器）
   // 定位机器唯一入口 = shell-overlay window.__qqq_roamRevealPath：命中 → revealFile 选中+滚动 / 目录 → navTo；
   // 文件缺失 → 自动爬升最近祖先目录 + qoast 提示（引擎自带裁决，零死链）。
   function _cmdReveal(path) {
@@ -434,9 +434,9 @@
     var p;
     try { p = bridge.clipboard.writeText(String(path)); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function () {
-      _toast(_t('editor.codelens.copyPathSuccess', '已复制成功 — 纯文本路径'), 'success');
+      _qoast(_t('editor.codelens.copyPathSuccess', '已复制成功 — 纯文本路径'), 'success');
     }).catch(function (e) {
-      _toast(_t('editor.codelens.copyPathFailed', '复制失败 — 纯文本路径: {0}', (e && e.message) || 'clipboard'), 'error');
+      _qoast(_t('editor.codelens.copyPathFailed', '复制失败 — 纯文本路径: {0}', (e && e.message) || 'clipboard'), 'error');
     });
   }
 
@@ -445,10 +445,10 @@
     var p;
     try { p = bridge.clipboard.writeFiles([String(path)]); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function (ok) {
-      if (ok) _toast(_t('editor.codelens.copyFileSuccess', '已复制成功 — 文件'), 'success');
-      else _toast(_t('editor.codelens.copyFileFailed', '复制失败 — 文件: {0}', 'writeFiles'), 'error');
+      if (ok) _qoast(_t('editor.codelens.copyFileSuccess', '已复制成功 — 文件'), 'success');
+      else _qoast(_t('editor.codelens.copyFileFailed', '复制失败 — 文件: {0}', 'writeFiles'), 'error');
     }).catch(function (e) {
-      _toast(_t('editor.codelens.copyFileFailed', '复制失败 — 文件: {0}', (e && e.message) || 'error'), 'error');
+      _qoast(_t('editor.codelens.copyFileFailed', '复制失败 — 文件: {0}', (e && e.message) || 'error'), 'error');
     });
   }
 
@@ -457,10 +457,10 @@
     var p;
     try { p = bridge.clipboard.writeImage({ path: String(path) }); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function (ok) {
-      if (ok) _toast(_t('editor.codelens.copyImageSuccess', '已复制成功 — 位图二进制'), 'success');
-      else _toast(_t('editor.codelens.copyImageFailed', '复制失败 — 位图二进制: {0}', 'unsupported format'), 'error');
+      if (ok) _qoast(_t('editor.codelens.copyImageSuccess', '已复制成功 — 位图二进制'), 'success');
+      else _qoast(_t('editor.codelens.copyImageFailed', '复制失败 — 位图二进制: {0}', 'unsupported format'), 'error');
     }).catch(function (e) {
-      _toast(_t('editor.codelens.copyImageFailed', '复制失败 — 位图二进制: {0}', (e && e.message) || 'error'), 'error');
+      _qoast(_t('editor.codelens.copyImageFailed', '复制失败 — 位图二进制: {0}', (e && e.message) || 'error'), 'error');
     });
   }
 
@@ -593,7 +593,7 @@
         bridge.fs.rename(path, newAbs).then(function () {
           _closeRenameModal();
           _applyRenameToDoc(path, cur, v, newAbs);
-          _toast(_t('editor.codelens.renameSuccess', '重命名成功: {0}', v), 'success');
+          _qoast(_t('editor.codelens.renameSuccess', '重命名成功: {0}', v), 'success');
         }).catch(function (e) {
           busy = false;
           err.textContent = _t('editor.codelens.renameFailed', '重命名失败: {0}', (e && e.message) || 'rename failed');

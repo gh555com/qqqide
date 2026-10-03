@@ -47,9 +47,9 @@
     } catch (_) { _applying = false; }
   }
 
-  function readyToast(ver) {
+  function readyQoast(ver) {
     _notified = ver || '?';
-    qoast(t('shell.update.toast', '新版本 v{version} 已就绪：点「重启更新」立即完成，或退出应用后自动更新', { version: _notified }), {
+    qoast(t('shell.update.qoast', '新版本 v{version} 已就绪：点「重启更新」立即完成，或退出应用后自动更新', { version: _notified }), {
       duration: 0, type: 'info',
       action: { label: t('shell.update.apply', '重启更新'), onClick: apply }
     });
@@ -73,7 +73,7 @@
     if (!s || !s.phase) { return; }
     _state = s;
     renderBtn();
-    if (s.phase === 'ready' && s.version && _notified !== s.version) { readyToast(s.version); }
+    if (s.phase === 'ready' && s.version && _notified !== s.version) { readyQoast(s.version); }
     if (s.phase === 'updated' && _notified !== 'upd:' + (s.version || '?')) {
       _notified = 'upd:' + (s.version || '?');
       qoast(t('shell.update.done', '已更新到 v{version}', { version: s.version || '?' }), { duration: 9000, type: 'success' });

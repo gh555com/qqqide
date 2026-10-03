@@ -646,7 +646,7 @@
   var _conflictArchBuf = {}; // fp|side → 已归档内容/哈希（双端快照去重）
   var _savingPaths = {};     // fp → Promise — 在飞保存（检测/关闭守卫互斥用）
   var _extBusy = {};         // fp → bool — 检测在飞（防重入）
-  var _extToastAt = {};      // fp → ts — 提示节流（8s）
+  var _extQoastAt = {};      // fp → ts — 提示节流（8s）
   var _extDebounce = {};     // fp → timer — 突发写合并（120ms）
   var _extPollTimer = null;  // 外部修改轮询（5s，可见时）
 
@@ -1025,11 +1025,11 @@
             } else if (_sr && _sr.error) {
               console.error('[editor] auto-save failed:', filePath, _sr.error && _sr.error.message);
               // ★ 保存失败必须可见：否则脏 tab 星号永久残留，用户误以为文件已保存（正体+星号之谜）
-              _showSaveFailToast(filePath, _sr.error, true);
+              _showSaveFailQoast(filePath, _sr.error, true);
             }
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
-            _showSaveFailToast(filePath, err, true);
+            _showSaveFailQoast(filePath, err, true);
           } finally {
             if (_savingPaths[filePath] === _saveP) delete _savingPaths[filePath];
           }
@@ -1049,11 +1049,11 @@
             // ★ 2026-08-17: 保存成功 → 清除已删除标记
             if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
           } else if (_sr2 && _sr2.error) {
-            _showSaveFailToast(filePath, _sr2.error, false);
+            _showSaveFailQoast(filePath, _sr2.error, false);
           }
         } catch (e) {
           console.error('[editor] save failed:', e);
-          _showSaveFailToast(filePath, e, false);
+          _showSaveFailQoast(filePath, e, false);
         } finally {
           if (_savingPaths[filePath] === _saveP2) delete _savingPaths[filePath];
         }
@@ -1143,7 +1143,7 @@
 
   // ★ 2026-09-27：保存失败统一提示（唯一入口）——IPC 包装前缀剥离 + 编码拒绝（[ENC_REJECT]）挂动作按钮
   //   （另存为 UTF-8 / 编码菜单）——编码机器给出的出路不再要求用户自己去菜单里找。
-  function _showSaveFailToast(filePath, err, retryHint) {
+  function _showSaveFailQoast(filePath, err, retryHint) {
     if (!window.qqqideQoast) return;
     var fn = String(filePath).split(/[\\/]/).pop() || filePath;
     var clean = String((err && err.message) || err || '');
@@ -1228,11 +1228,11 @@
     return (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
       ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
   }
-  function _extToast(fp, text, opts) {
+  function _extQoast(fp, text, opts) {
     if (!window.qqqideQoast || !text) return;
     var now = Date.now();
-    if (_extToastAt[fp] && now - _extToastAt[fp] < 8000) return;
-    _extToastAt[fp] = now;
+    if (_extQoastAt[fp] && now - _extQoastAt[fp] < 8000) return;
+    _extQoastAt[fp] = now;
     try { window.qqqideQoast.show(text, opts || { duration: 3000 }); } catch (_) { }
   }
   function _extStat(fp) {
@@ -1345,7 +1345,7 @@
     _showConflictBar(fp);
     _archiveConflictSides(fp, ed).catch(function () { });
     if (first) {
-      _extToast(fp, '⚠ ' + _extName(fp) + ' — ' + _extT('editor.ext.conflictToast', '磁盘已被外部修改，已暂停自动保存；请选择保留哪一版'), { duration: 6000 });
+      _extQoast(fp, '⚠ ' + _extName(fp) + ' — ' + _extT('editor.ext.conflictQoast', '磁盘已被外部修改，已暂停自动保存；请选择保留哪一版'), { duration: 6000 });
     }
   }
   function _exitConflict(fp) {
@@ -1362,7 +1362,7 @@
     if (ok) {
       _exitConflict(fp);
       _extSetDirty(fp, false);
-      _extToast(fp, _extT('editor.ext.usedDiskToast', '已载入磁盘版本；你之前的修改已存入时间线'), { duration: 4000 });
+      _extQoast(fp, _extT('editor.ext.usedDiskQoast', '已载入磁盘版本；你之前的修改已存入时间线'), { duration: 4000 });
     }
   }
   async function _resolveConflictKeepMine(fp) {
@@ -1372,7 +1372,7 @@
     if (r && r.ok) {
       _exitConflict(fp);
       _extSetDirty(fp, false);
-      _extToast(fp, _extT('editor.ext.keepMineToast', '已用你的版本覆盖磁盘'), { duration: 3500 });
+      _extQoast(fp, _extT('editor.ext.keepMineQoast', '已用你的版本覆盖磁盘'), { duration: 3500 });
     }
   }
   async function _openConflictDiff(fp) {
@@ -1389,8 +1389,8 @@
       });
       if (r && r.then) {
         r.then(function (res) {
-          if (res && res.ok === false) { _extToast(fp, _extT('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { duration: 5000 }); }
-        }).catch(function () { _extToast(fp, _extT('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { duration: 5000 }); });
+          if (res && res.ok === false) { _extQoast(fp, _extT('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { duration: 5000 }); }
+        }).catch(function () { _extQoast(fp, _extT('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'), { duration: 5000 }); });
       }
     } catch (_) { }
   }
@@ -1481,7 +1481,7 @@
       var dn = ed.getDomNode && ed.getDomNode();
       var paneNode = (dn && dn.closest) ? dn.closest('.qqq-tab-pane') : null;
       var visible = !!(paneNode && paneNode.classList.contains('qqq-tab-pane-active') && document.visibilityState === 'visible');
-      if (visible) _extToast(fp, '↻ ' + _extName(fp) + ' ' + _extT('editor.ext.refreshedTip', '已被外部修改，已刷新显示'), { duration: 3000 });
+      if (visible) _extQoast(fp, '↻ ' + _extName(fp) + ' ' + _extT('editor.ext.refreshedTip', '已被外部修改，已刷新显示'), { duration: 3000 });
     } catch (_) { }
     return true;
   }
@@ -1515,7 +1515,7 @@
           return { ok: false, refreshed: true };
         }
         _enterConflict(fp, ed, st);
-        _extToast(fp, '⚠ ' + _extName(fp) + ' ' + _extT('editor.ext.saveBlocked', '已暂停保存：磁盘被外部修改，请先处理冲突条'), { duration: 6000 });
+        _extQoast(fp, '⚠ ' + _extName(fp) + ' ' + _extT('editor.ext.saveBlocked', '已暂停保存：磁盘被外部修改，请先处理冲突条'), { duration: 6000 });
         return { ok: false, blocked: true };
       }
     }

@@ -27,6 +27,8 @@ import { HashService } from './hash-service';
 import { vigBump } from './vig';
 import { getComponentBin } from './component-checker';
 import { hwEncCandidatesFor, hwProbeArgs, HwEncCand } from './transcode-hw';
+import { buildMediaInfo } from './player-info';
+import type { ProbeState } from './player-info';
 
 export interface ThumbOpts {
     src: string;            // absolute source path
@@ -1267,6 +1269,50 @@ export class MediaService {
             }
         }
         return { ok: false, error: 'probe_failed' };
+    }
+
+    // -------------------------------------------------------------------------
+    // info — 播放器「媒体信息」详情（[!] 钮悬停详情框；2026-10-03 q319 定案）
+    //   ffprobe 全量 JSON（-show_streams -show_format）+ stat → player-info.buildMediaInfo 归一
+    //   （渲染层只做 row.id → i18n 标签映射）。缓存键 = stat 指纹（mediaService 统一缓存）。
+    //   ffprobe 是 rank1 后台组件：未就绪 → probe:'unavailable'（仍返回文件/时间区块，绝不炸）。
+    // -------------------------------------------------------------------------
+
+    async info(src: string): Promise<any> {
+        try {
+            if (!src || !fs.existsSync(src)) { return { ok: false, error: 'src_missing' }; }
+            this.ensureResolved();
+            let st0: fs.Stats;
+            try { st0 = await fs.promises.stat(src); } catch { return { ok: false, error: 'src_missing' }; }
+            const fp = await this._srcStat(src);
+            const cacheKey = `info1:${fp ? fp.sig : (Math.floor(st0.mtimeMs) + '|' + st0.size)}`;
+            const cached = await this.cache.get(cacheKey) as any;
+            if (cached) { return { ...cached, cached: true }; }
+            let probe: any = null;
+            let probeState: ProbeState = 'unavailable';
+            if (this._ffprobePath) {
+                const r = await this.qz.spawn({
+                    cmd: this._ffprobePath,
+                    args: ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', src],
+                    timeout: 20_000, stallMs: 10_000, captureOutput: true,
+                });
+                if (r.exitCode === 0 && r.stdout) {
+                    try { probe = JSON.parse(r.stdout); probeState = 'ok'; }
+                    catch { probeState = 'failed'; }
+                } else { probeState = 'failed'; }
+            }
+            const payload = {
+                ok: true,
+                probe: probeState,
+                sections: buildMediaInfo(probe, {
+                    path: src,
+                    size: st0.size, mtimeMs: st0.mtimeMs,
+                    birthtimeMs: st0.birthtimeMs, ctimeMs: st0.ctimeMs,
+                }, probeState),
+            };
+            await this.cache.put(cacheKey, payload, { ttlMs: 30 * 24 * 3600_000 });
+            return payload;
+        } catch { return { ok: false, error: 'info_exception' }; }
     }
 
     // =========================================================================

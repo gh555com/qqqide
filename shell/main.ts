@@ -50,6 +50,7 @@ import { registerPlayerIpc, kickPlayerHostForRestore, noteHostAllWindowsClosed }
 import { parsePlayFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc, startIdeKeepalive, filesToItems, queuePlayerRequest, ensureIdeInstance, startIdeRevealWatch } from './player-host';
 import { registerFileAssocIpc } from './ipc-fileassoc';
 import { registerExportIpc } from './ipc-export';
+import { registerPasteFetchIpc } from './paste-fetch';
 import { registerTimelineIpc } from './ipc-timeline';
 import { registerGitDiffIpc } from './ipc-git-diff';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
@@ -447,6 +448,7 @@ function registerAllIpc(): void {
     registerQmdIpc(portable.root);
     registerGaeaProcessIpc();
     registerMediaIpc(mediaService);
+    registerPasteFetchIpc(portable.root);   // 网页粘贴媒体下载（老 q3 dow.js：安全档位 11 开关 + yt-dlp）
     registerPlayerIpc(portable.root, bootConfig.url, APP_VERSION);   // 独立悬浮播放器窗（2026-09-26 q319 v4）
     registerExportIpc(exportService);
     registerAuthBrainIpc(getAuthBrain());
@@ -1095,7 +1097,7 @@ app.whenReady().then(async () => {
     // ★ IDE 存活心跳（2026-10-02 v19 常温）：60s 续写 ide-alive.json——宿主温水期据此续期（IDE 存活期恒温秒开）
     try { startIdeKeepalive(); } catch { /* ignore */ }
 
-    // ★ 「Roam 定位」跨进程接收（2026-10-03）：宿主 reveals 队列 → 本进程任一主窗置前投递（详 player-host.ts）
+    // ★ 「Roam 定位」跨进程接收（2026-10-03）：宿主 reveals 队列 → 「正在操作滴」主窗强制召回 + 投递（详 player-host.ts）
     try { startIdeRevealWatch(); } catch { /* ignore */ }
 
     // ★ 认证中心大脑恢复登录态（2026-07-31 T3）

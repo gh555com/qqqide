@@ -1134,7 +1134,7 @@ document.getElementById('ctx-snap').onclick = async function () {
         var _snapPath = _targetDir + 'snapshot_' + _ts + '.json';
         await _bridge.fs.write(_snapPath, JSON.stringify(_snap, null, 2));
 
-        // ── Toast ──
+        // ── Qoast ──
         var _iFn = typeof _i === 'function' ? _i : function (k, f) { return f; };
         if (window.parent && window.parent.qqqideQoast) {
             window.parent.qqqideQoast.show('📸 ' + _iFn('ai.ctx.snapOk', '快照已保存') + ': snapshot_' + _ts + '.json', { type: 'success', duration: 4000 });
@@ -1384,7 +1384,7 @@ window.addEventListener('message', async function (e) {
                             var _floorAfter = ag._currentFloorNum || 0;
                             if (_floorAfter <= _floorBefore) {
                                 // ★ 2026-08-17 F51: 建楼未真正开始（闸门拦截）→ 恢复饼干原样 + 落盘 + 显式报错
-                                //   （q154 事故实锤：子弹已写、饼干已砍半、楼层未建、toast 假成功）
+                                //   （q154 事故实锤：子弹已写、饼干已砍半、楼层未建、qoast 假成功）
                                 m.content = _origBiscuit;
                                 // ★ 2026-08-17: 与压缩路径同修——_parseBiscuitFromContent 作用域不可见，本地解析
                                 if (ag._ctx) {

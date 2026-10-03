@@ -255,7 +255,11 @@ var _orig={};
 <!-- ★ 应用级界面缩放消费机（2026-09-29）：qqq-prefs uiZoom → 壳层 zoom 热应用；须在 qqq-prefs.js 之后 -->
 <script src="core/ui-zoom.js"></script>
 <script src="core/frame-renderer.js"></script>
+<!-- 网页/富文本粘贴转换机（老 q3 SmartPaste 移植：HTML→结构化文本 + 媒体抽取；消费方 = paste-router 第 7 步） -->
+<script src="core/html-paste.js"></script>
 <script src="core/paste-router.js"></script>
+<!-- 工作台 Pure 机器（老 q3 pureCommand 移植：_qqqvault 孤儿扫描 → _qqqvault.pure 审阅清单；消费方 = qqq-tools） -->
+<script src="core/qqq-pure.js"></script>
 <script src="core/drop-overlay.js"></script>
 <script src="core/viewport-machine.js"></script>
 <!-- codelens 按钮机器（老 q3 FileCodeLensProvider 移植；编辑单才适配器在 editor.js 就绪后 install） -->

@@ -10,7 +10,9 @@
 //   │  [ .doc ][ .docx ]                                    │
 //   │  [↑][↓]           ⚙ 居中（点击开设置中心）             │  ← [↑][↓] 云同步（老 qqq AQ 100%）+ 齿轮开「qqq 设置中心」
 
-//   │  [▶ Video Url] [✎ Paste] [✦ Pure]                     │  ← 占位（待移植）
+//   │  [▶ Video Url ............][▶]                        │  ← 老 q3 videoCard 100%（回车/▶=开始下载；历史下拉）
+//   │  [✎ Paste]         [✦ Pure]                           │  ← Paste=对目标文档等效 Ctrl+V；Pure=孤儿扫描出清单
+//   │                ▓▓（正中合页）                         │  ← 专用行：即将被操作的编辑分组（实心=当前目标）
 //   └───────────────────────────────────────────────────────┘
 //   2026-09-22 二次改版: 移除 SOUND/EXPORT/DATA/SOON 分割行——纯卡片连续流。
 //   2026-09-22 三次改版（用户定案）: 标题行 "qqq workbench" 删除 + 副行小字全删；
@@ -37,7 +39,11 @@
 //   云同步+齿轮  [↑][↓] = 上传/下载（桥 window.qqqCenter.doSync——机械在 qqq-center.js）；齿轮（原文字位）
 //               = 点击打开「qqq 设置中心」（core/qqq-center.js：设置全量本地化）
 
-//   Video Url / Paste / Pure → 占位 chips（点击提示待移植）
+//   Video Url → 直达下载（直链/平台视频/网页嗅探——paste-router.pasteUrlInto 与粘贴同一机器）；
+//               历史自动收录（qgs.simple('qqq.videoUrl')，空输入框聚焦回看）
+//   Paste     → 对目标文档执行等效 Ctrl+V（桥读剪贴板 → paste-router.pasteInto 同一条管线）
+//   Pure      → 扫描文档旁 _qqqvault 孤儿项 → 生成 _qqqvault.pure 审阅清单（core/qqq-pure.js；绝不自动删除）
+//   合页指示器 → 专用行正中一枚（比旧卡内款稍大）；悬停操作类按钮/合页方块 → 目标编辑区亮淡紫虚线框
 //
 // 交互: hover 进入展开（250ms 延迟关闭）；Esc / 点别处 / resize 即关；零自定义 cursor（铁律 §4.3）。
 // 挂载: gaea-host renderTabBar() 尾部、help 之前（顺序契约——详 铁律 §4.12）。
@@ -60,6 +66,13 @@
   var _savorCardEl = null;
   var _savorLabelEl = null;
   var _savorUnsub = null;
+
+  // 视频 Url 行（输入框 / 历史下拉 / 错误提示）——输入中不自动收面板（_pointerInside 协同）
+  var _vurlInputEl = null;
+  var _vurlDropEl = null;
+  var _vurlTipEl = null;
+  var _vurlTipTimer = null;
+  var _pointerInside = false;
 
 
   function _i(key, fb) { try { return window._i ? window._i(key, fb) : fb; } catch (e) { return fb; } }
@@ -129,16 +142,29 @@
       '.qqq-tools-chip:hover { background: var(--primary-color, #b58900); color: #1e1e1e; }',
       '.qqq-tools-chip svg { display: block; }',
       // ★ 导出合页指示器（两卡右侧）：竖双方块共缝（合页形）；实心 = 即将被导出的编辑分组；单分组 = 独占态（单块 +4px 向左宽出）
-      '.qqq-tools-hinge { margin-left: auto; display: inline-flex; align-items: center; flex: 0 0 auto; }',
-      '.qqq-tools-hinge i { display: block; width: 7px; height: 13px; box-sizing: border-box; border: 1px solid currentColor; border-radius: 1px; }',
+      // ★ 合页指示器（2026-10-03 定案）：专用行正中一枚（比旧卡内款稍大）；实心 = 即将被操作的编辑分组
+      '.qqq-tools-hinge { display: inline-flex; align-items: center; flex: 0 0 auto; }',
+      '.qqq-tools-hinge i { display: block; width: 8px; height: 16px; box-sizing: border-box; border: 1px solid currentColor; border-radius: 1px; }',
       '.qqq-tools-hinge i + i { margin-left: -1px; }',
-      '.qqq-tools-hinge.single i { width: 11px; }',
+      '.qqq-tools-hinge.single i { width: 13px; }',
       '.qqq-tools-hinge i.on { background: currentColor; }',
       '.qqq-tools-hinge:hover i { border-color: var(--primary-color, #b58900); }',
       '.qqq-tools-hinge:hover i.on { background: var(--primary-color, #b58900); }',
-      '.qqq-tools-soon { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }',
-      '.qqq-tools-soon .qqq-tools-chip { border-style: dashed; opacity: .5; padding: 6px 6px; }',
-      '.qqq-tools-soon .qqq-tools-chip:hover { opacity: .85; }',
+      '.qqq-tools-hinge-row { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; padding: 4px 0 1px; }',
+      // ★ 视频 Url 行（老 q3 videoCard 移植：输入框 + ▶ + 历史下拉；向上展开防越界）
+      '.qqq-tools-video-card { position: relative; }',
+      '.qqq-tools-vurl-row { display: flex; align-items: center; gap: 4px; }',
+      '.qqq-tools-vurl { flex: 1 1 auto; min-width: 0; font-family: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; background: var(--base3, #eee8d5); color: var(--text-primary, #586e75); outline: none; }',
+      '.qqq-tools-vurl:focus { border-color: var(--primary-color, #b58900); }',
+      '.qqq-tools-vurl.invalid { border-color: var(--red, #dc322f); }',
+      '.qqq-tools-vurl-go { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 3px 9px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; background: var(--base3, #eee8d5); color: var(--text-primary, #586e75); }',
+      '.qqq-tools-vurl-go:hover { background: var(--primary-color, #b58900); color: #1e1e1e; }',
+      '.qqq-tools-vurl-drop, .qqq-tools-vurl-tip { position: absolute; left: 0; right: 0; bottom: calc(100% + 3px); z-index: 40; background: var(--card-bg, #fdf6e3); border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; box-shadow: 0 -2px 10px rgba(0,0,0,0.12); padding: 2px 0; display: none; }',
+      '.qqq-tools-vurl-drop { overflow-y: auto; }',
+      '.qqq-tools-vurl-item { padding: 4px 10px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '.qqq-tools-vurl-item:hover { background: var(--gold-hover-bg, rgba(181,137,0,0.12)); }',
+      '.qqq-tools-vurl-tip { padding: 5px 10px; font-size: 11px; color: var(--red, #dc322f); }',
+      '.qqq-tools-bigbtn { justify-content: center; padding: 7px 8px; font-size: 12px; min-width: 0; }',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -147,9 +173,17 @@
   function _clearTimers() {
     if (_allTimer) { clearTimeout(_allTimer); _allTimer = null; }
   }
+  function _videoInputFocused() {
+    try { return !!(_vurlInputEl && document.activeElement === _vurlInputEl); } catch (_) { return false; }
+  }
   function _scheduleAll() {
     _clearTimers();
-    _allTimer = setTimeout(_closeAll, HOVER_CLOSE_DELAY);
+    _allTimer = setTimeout(function () {
+      _allTimer = null;
+      // ★ 视频 Url 输入中不自动收面板（防长 URL 打一半面板消失）；失焦/移出后再收
+      if (_videoInputFocused()) { return; }
+      _closeAll();
+    }, HOVER_CLOSE_DELAY);
   }
   function _containsAny(t) {
     if (!t) { return false; }
@@ -204,11 +238,6 @@
     } catch (e) {
       _qoast(_i('export.exportFailed', 'qqq: 导出失败: {0}').replace('{0}', String((e && e.message) || e)), { type: 'error', duration: 9000 });
     }
-  }
-
-  function _pendingClick(label) {
-    _closeAll();
-    _qoast(_i('export.pending', '此功能待移植（先占位）') + ' — ' + label, { type: 'info', duration: 5000 });
   }
 
   // ── Savor（消费 core/savor.js；按钮 100% 老项目形态）──
@@ -326,12 +355,13 @@
     return c;
   }
 
-  // ── 导出目标指示机器（合页图标 + 悬停淡紫目标框）──
-  //   与导出本体同源 = window.qqqExport.resolveTarget()（唯一出口；禁第二套扫描）。
-  //   · 合页 = 两卡右侧竖双方块：实心 = 即将被导出的编辑分组（X 区文件分组，左→右）；空心 = 其余
-  //   · 单分组 = 独占态：单块 +4px 向左宽出（7→11px，容器右对齐 → 右缘锚定不动）
-  //   · 点方块 = 聚焦该分组当前标签（直接切换导出目标，不导出、不关面板）
-  //   · 悬停导出卡 = 目标编辑区亮淡紫 3px 虚线框（同 drop-overlay 绘制，仅换色）
+  // ── 操作目标指示机器（合页指示器 + 悬停淡紫目标框；2026-10-03 改版）──
+  //   与一切操作本体同源 = window.qqqExport.resolveTarget()（唯一出口；禁第二套扫描）。
+  //   · 合页 = 专用行正中一枚竖双方块（8×16，单分组 13px）：实心 = 即将被操作的编辑分组（X 区文件分组，左→右）
+  //   · 点方块 = 聚焦该分组当前标签（切换目标，不导出、不关面板）；悬停方块 = 预览该分组淡紫框
+  //   · 悬停【操作类】元素 = 目标编辑区亮淡紫 3px 虚线框（同 drop-overlay 绘制，仅换色）：
+  //       导出卡×2 · 视频 Url 行 · Paste 钮 · 合页行（Pure 不显示——其作用于目录而非目标文档）
+  //   · tooltip 后缀按 kind 分流：export → 「即将导出」；op/hinge → 「即将操作」（单源 _refreshExportCards）
   var _expCards = [];      // [{el, base}] 两张导出卡 + 基础 tooltip
   var _hingeEls = [];      // 两张卡右侧合页图标
   var _expOvEl = null;     // 淡紫目标框（懒建；指针穿透）
@@ -388,24 +418,46 @@
     var w = document.createElement('span');
     w.className = 'qqq-tools-hinge';
     w.addEventListener('click', function (e) {
-      e.stopPropagation();   // 不触发整卡导出；面板保持打开
+      e.stopPropagation();   // 不触发其它动作；面板保持打开
       var idx = -1;
       for (var i = 0; i < w.children.length; i++) { if (e.target === w.children[i]) { idx = i; break; } }
       if (idx >= 0) { _expPickGroup(idx); }
     });
+    // ★ 悬停方块 = 预览该分组的淡紫目标框（表达「点它将切到这里」；不可得回落当前目标）
+    w.addEventListener('mouseover', function (e) {
+      var idx = -1;
+      for (var i = 0; i < w.children.length; i++) { if (e.target === w.children[i]) { idx = i; break; } }
+      if (idx >= 0) { _expOvShowGroup(idx); }
+    });
     _hingeEls.push(w);
     return w;
+  }
+  // 分组 → 其活动标签的编辑器挂载点（合页悬停预览 / 点方块聚焦共用；活动标签优先，回落组内首挂载）
+  function _expGroupMount(g) {
+    try {
+      if (!g) { return null; }
+      var tabs = g.tabs || [];
+      var act = null;
+      for (var k = 0; k < tabs.length; k++) { if (tabs[k] && tabs[k].id === g.activeTabId) { act = tabs[k]; break; } }
+      if (!act) { act = tabs[tabs.length - 1] || null; }
+      var pane = act && act.paneEl;
+      var mount = (pane && pane.querySelector) ? pane.querySelector('[data-editor-mount]') : null;
+      if (mount) { return mount; }
+      if (g.el && g.el.querySelector) { return g.el.querySelector('[data-editor-mount]'); }
+    } catch (_) { /* */ }
+    return null;
+  }
+  function _expOvShowGroup(idx) {
+    var groups = _expFileGroups();
+    var mount = _expGroupMount(groups[idx]);
+    if (!mount) { _expOvShow(); return; }
+    _expOvShowRect(mount);
   }
   function _expPickGroup(idx) {
     var groups = _expFileGroups();
     var g = groups[idx];
     if (!g) { return; }
-    var tabs = g.tabs || [];
-    var act = null;
-    for (var k = 0; k < tabs.length; k++) { if (tabs[k] && tabs[k].id === g.activeTabId) { act = tabs[k]; break; } }
-    if (!act) { act = tabs[tabs.length - 1] || null; }
-    var pane = act && act.paneEl;
-    var mount = (pane && pane.querySelector) ? pane.querySelector('[data-editor-mount]') : null;
+    var mount = _expGroupMount(g);
     var ed = mount && mount._qqqEd;
     if (ed && ed.focus) { try { ed.focus(); } catch (e) { /* */ } }
     var re = function () { _refreshExportCards(); if (_expOvShown) { _expOvShow(); } };
@@ -419,11 +471,15 @@
     var fillIdx = _expTargetGroupIdx(groups, target);
     var name = '';
     if (target && target.filePath) { name = String(target.filePath).replace(/\\/g, '/').split('/').pop() || ''; }
-    var nameLine = name ? ('\n\u25B8 ' + _T('workbench.exportWillExport', '即将导出：{0}', { 0: name })) : '';
-    for (var c = 0; c < _expCards.length; c++) { _expCards[c].el.title = _expCards[c].base + nameLine; }
+    var nameLineExp = name ? ('\n\u25B8 ' + _T('workbench.exportWillExport', '即将导出：{0}', { 0: name })) : '';
+    var nameLineOp = name ? ('\n\u25B8 ' + _T('workbench.opTargetTip', '即将操作：{0}', { 0: name })) : '';
+    for (var c = 0; c < _expCards.length; c++) {
+      var _k = _expCards[c].kind;
+      _expCards[c].el.title = _expCards[c].base + (_k === 'export' ? nameLineExp : nameLineOp);
+    }
     for (var h = 0; h < _hingeEls.length; h++) {
       _hingeRender(_hingeEls[h], groups.length, fillIdx);
-      _hingeEls[h].title = _i('workbench.exportHingeTip', '实心 = 即将被导出的编辑分组（你最后在看的那个）；空心 = 另一分组。点方块可切换导出目标；悬停导出卡时，目标编辑区会亮起淡紫虚线框。') + nameLine;
+      _hingeEls[h].title = _i('workbench.exportHingeTip', '实心 = 当前即将被操作的编辑分组（你最后在看的那个）；空心 = 另一个分组。点方块可切换目标；悬停操作类按钮或方块时，目标编辑区会亮起淡紫虚线框。') + nameLineOp;
     }
   }
   function _expOvEnsure() {
@@ -440,7 +496,9 @@
   }
   function _expOvShow() {
     var t = _expResolve();
-    var m = t && t.mountEl;
+    _expOvShowRect(t && t.mountEl);
+  }
+  function _expOvShowRect(m) {
     if (!m || !m.getBoundingClientRect) { _expOvHide(); return; }
     var r = m.getBoundingClientRect();
     if (!r || (!r.width && !r.height)) { _expOvHide(); return; }
@@ -469,12 +527,13 @@
     }
     _expOvHide();
   }
-  function _expWireCard(el, tipKey, tipFb) {
+  function _expWireCard(el, tipKey, tipFb, kind) {
     var base = _i(tipKey, tipFb);
     el.title = base;
-    _expCards.push({ el: el, base: base });
+    _expCards.push({ el: el, base: base, kind: kind || 'op' });
     el.addEventListener('mouseenter', _expCardEnter);
     el.addEventListener('mouseleave', _expCardLeave);
+    return el;
   }
   // 诊断 / 单测入口（只读当前裁决态）
   function _expState() {
@@ -498,7 +557,6 @@
     t.className = 'qqq-tools-card-title';
     t.textContent = 'export doc';
     h.appendChild(t);
-    h.appendChild(_buildHinge());
     var chips = document.createElement('div');
     chips.className = 'qqq-tools-chips';
     var bRtf = _chip('.doc', _i('export.docFormatRtf', '.doc 文档（兼容 Office 2003, RTF）'));
@@ -509,7 +567,7 @@
     chips.appendChild(bDocx);
     c.appendChild(h);
     c.appendChild(chips);
-    _expWireCard(c, 'workbench.exportDocTip', '把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。');
+    _expWireCard(c, 'workbench.exportDocTip', '把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。', 'export');
     return c;
   }
 
@@ -524,9 +582,8 @@
     t.className = 'qqq-tools-card-title';
     t.textContent = 'export Zip';
     h.appendChild(t);
-    h.appendChild(_buildHinge());
     c.appendChild(h);
-    _expWireCard(c, 'workbench.exportZipTip', '把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。');
+    _expWireCard(c, 'workbench.exportZipTip', '把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。', 'export');
     return c;
   }
 
@@ -572,42 +629,316 @@
   }
 
 
-  function _buildSoonRow() {
-    var row = document.createElement('div');
-    row.className = 'qqq-tools-soon';
-    var items = [
-      { label: 'Video Url', ico: _ICO_PLAY, tip: _i('workbench.videoUrlTip', '待移植：输入视频网址，自动下载到文档目录并插入相框。') },
-      { label: 'Paste', ico: _ICO_PASTE, tip: _i('workbench.pasteTip', '待移植：一键把剪贴板内容粘贴到文档（目前用 Ctrl+V 可完成同样操作）。') },
-      { label: 'Pure', ico: _ICO_PURE, tip: _i('workbench.pureTip', '待移植：扫描文档引用，清理不再被引用的孤儿文件。') },
-    ];
-    for (var i = 0; i < items.length; i++) {
-      (function (it) {
-        var b = _chip(it.label, it.tip, it.ico);
-        b.addEventListener('click', function (e) { e.stopPropagation(); _pendingClick(it.label); });
-        row.appendChild(b);
-      })(items[i]);
+  // ════════════════════════════════════════════════════════════════════════
+  // 视频 Url 行 / Paste / Pure / 合页行（2026-10-03 施工：待移植区三拆）
+  // ════════════════════════════════════════════════════════════════════════
+
+  // ── 视频 Url：历史收录（qgs.simple('qqq.videoUrl')，程序级 global.sq3） ──
+  function _videoHistoryHandle() {
+    try { return (window.qgs && window.qgs.simple) ? window.qgs.simple('qqq.videoUrl', { cloud: false }) : null; } catch (_) { return null; }
+  }
+  function _videoHistoryGet() {
+    var h = _videoHistoryHandle();
+    if (!h) { return []; }
+    try {
+      var v = h.get('history');
+      if (Array.isArray(v)) {
+        return v.filter(function (x) { return typeof x === 'string' && x; }).slice(0, 10);
+      }
+    } catch (_) { /* */ }
+    return [];
+  }
+  function _videoHistoryPush(url) {
+    var h = _videoHistoryHandle();
+    if (!h) { return; }
+    try {
+      var list = _videoHistoryGet().filter(function (x) { return x !== url; });
+      list.unshift(url);
+      if (list.length > 10) { list = list.slice(0, 10); }
+      if (h.setNow) { h.setNow('history', list); } else { h.set('history', list); }
+    } catch (_) { /* */ }
+  }
+  function _looksHttpUrl(u) {
+    var s = String(u || '').trim();
+    if (!s || s.length > 2048) { return false; }
+    return /^https?:\/\/\S+$/i.test(s);
+  }
+  function _vurlDropHide() {
+    if (_vurlDropEl) { try { _vurlDropEl.style.display = 'none'; } catch (e) { /* */ } }
+  }
+  // 历史下拉（向上展开；max-height = 卡片上缘到面板上缘的可用空间；行悬停恒 --gold-hover-bg）
+  function _vurlDropShow() {
+    if (!_vurlDropEl || !_vurlInputEl) { return; }
+    var list = _videoHistoryGet();
+    if (!list.length) { _vurlDropHide(); return; }
+    _vurlDropEl.textContent = '';
+    for (var i = 0; i < list.length; i++) {
+      (function (val) {
+        var it = document.createElement('div');
+        it.className = 'qqq-tools-vurl-item';
+        it.textContent = val;
+        it.title = val;
+        it.addEventListener('mousedown', function (e) { e.preventDefault(); });   // 保输入框焦点（防 blur 先行）
+        it.addEventListener('click', function (e) {
+          e.stopPropagation();
+          try {
+            _vurlInputEl.value = val;
+            _vurlInputEl.classList.remove('invalid');
+            _vurlInputEl.focus();
+            _vurlInputEl.setSelectionRange(val.length, val.length);
+          } catch (_) { /* */ }
+          _vurlDropHide();
+        });
+        _vurlDropEl.appendChild(it);
+      })(list[i]);
     }
-    return row;
+    var maxH = 180;
+    try {
+      var cr = _vurlDropEl.parentNode.getBoundingClientRect();
+      var rr = _rootEl.getBoundingClientRect();
+      maxH = Math.max(44, Math.min(200, cr.top - rr.top - 8));
+    } catch (_) { /* */ }
+    _vurlDropEl.style.maxHeight = maxH + 'px';
+    _vurlDropEl.style.display = 'block';
+  }
+  function _videoInvalidFlash(msg) {
+    if (!_vurlInputEl) { return; }
+    try { _vurlInputEl.classList.add('invalid'); } catch (_) { /* */ }
+    if (_vurlTipEl) {
+      _vurlTipEl.textContent = msg || '';
+      _vurlTipEl.style.display = 'block';
+      if (_vurlTipTimer) { clearTimeout(_vurlTipTimer); }
+      _vurlTipTimer = setTimeout(function () {
+        _vurlTipTimer = null;
+        try { _vurlTipEl.style.display = 'none'; } catch (_) { /* */ }
+        try { _vurlInputEl.classList.remove('invalid'); } catch (_) { /* */ }
+      }, 2400);
+    }
+    try { _vurlInputEl.focus(); } catch (_) { /* */ }
+  }
+  // 回车 = ▶ = 确认开始下载（校验 → 收录历史 → 清框 → 同一条 URL 粘贴机器）
+  function _videoSubmit() {
+    var inp = _vurlInputEl;
+    if (!inp) { return; }
+    var url = String(inp.value || '').trim();
+    if (!url) { return; }
+    if (!_looksHttpUrl(url)) {
+      _videoInvalidFlash(_i('workbench.videoUrlInvalid', '网址无效（需以 http:// 或 https:// 开头的完整链接）'));
+      return;
+    }
+    var t = _expResolve();
+    if (!t || !t.ed) {
+      _qoast(_i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
+      return;
+    }
+    var pr = window.qqqPasteRouter;
+    if (!pr || !pr.pasteUrlInto) {
+      _qoast(_i('workbench.needRestart', '此功能未就绪（请刷新窗口；壳层更新后需重启实例）'), { type: 'info', duration: 6000 });
+      return;
+    }
+    _videoHistoryPush(url);
+    inp.value = '';
+    try { inp.classList.remove('invalid'); } catch (_) { /* */ }
+    _vurlDropHide();
+    try { inp.blur(); } catch (_) { /* */ }
+    var p = null;
+    try { p = pr.pasteUrlInto(t.ed, url); } catch (e) { p = null; }
+    if (p && p.then) {
+      p.then(function (res) {
+        if (res === 'no_dir') { _qoast(_i('workbench.noTargetDir', '目标文档未保存到磁盘（媒体需要落盘到文档旁的 _qqqvault）'), { type: 'info', duration: 6000 }); }
+        else if (res === 'no_editor') { _qoast(_i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 }); }
+        else if (res === 'invalid') { _qoast(_i('workbench.videoUrlInvalid', '网址无效（需以 http:// 或 https:// 开头的完整链接）'), { type: 'info', duration: 5000 }); }
+      }).catch(function () { /* 管线内部已如实报错（ioast/qoast） */ });
+    }
+  }
+  function _buildVideoRow() {
+    var c = document.createElement('div');
+    c.className = 'qqq-tools-card wide qqq-tools-video-card';
+    var row = document.createElement('div');
+    row.className = 'qqq-tools-vurl-row';
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'qqq-tools-vurl';
+    inp.placeholder = 'Video Url';
+    inp.spellcheck = false;
+    try { inp.setAttribute('autocomplete', 'off'); } catch (_) { /* */ }
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'qqq-tools-vurl-go';
+    go.title = _i('workbench.videoUrlGo', '开始下载（= 回车）');
+    go.appendChild(_ico(_ICO_PLAY));
+    var drop = document.createElement('div');
+    drop.className = 'qqq-tools-vurl-drop';
+    var tip = document.createElement('div');
+    tip.className = 'qqq-tools-vurl-tip';
+    tip.style.display = 'none';
+    row.appendChild(inp);
+    row.appendChild(go);
+    c.appendChild(row);
+    c.appendChild(drop);
+    c.appendChild(tip);
+    _vurlInputEl = inp;
+    _vurlDropEl = drop;
+    _vurlTipEl = tip;
+
+    inp.addEventListener('focus', function () { if (!inp.value) { _vurlDropShow(); } });
+    inp.addEventListener('input', function () {
+      _vurlDropHide();
+      try { inp.classList.remove('invalid'); } catch (_) { /* */ }
+      if (tip) { tip.style.display = 'none'; }
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); _videoSubmit(); }
+      else if (e.key === 'Escape') { _vurlDropHide(); }
+    });
+    // 老行为：右键 = 读取剪贴板文本填入（Electron 生产态无默认右键菜单）
+    inp.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      (async function () {
+        try {
+          var b = window.qqqideBridge;
+          var t2 = (b && b.clipboard && b.clipboard.readText) ? await b.clipboard.readText() : '';
+          if (t2) {
+            inp.value = String(t2);
+            try { inp.classList.remove('invalid'); } catch (_) { /* */ }
+            inp.focus();
+            try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (_) { /* */ }
+            _vurlDropHide();
+          }
+        } catch (_) { /* */ }
+      })();
+    });
+    inp.addEventListener('blur', function () {
+      if (!_pointerInside) { _scheduleAll(); }   // 未在输入中且指针在外 → 恢复正常收面板节拍
+      setTimeout(function () {
+        try { if (document.activeElement !== inp) { _vurlDropHide(); } } catch (_) { /* */ }
+      }, 160);
+    });
+    drop.addEventListener('mousedown', function (e) { e.preventDefault(); });   // 点下拉不夺输入焦点
+    go.addEventListener('click', function (e) { e.stopPropagation(); _videoSubmit(); });
+    c.addEventListener('click', function (e) {
+      // 点行内空白（非按钮/下拉/提示）→ 聚焦输入框（老 videoCard 语义）
+      var tg = e.target;
+      if (tg === inp) { return; }
+      try {
+        if (tg && tg.closest && tg.closest('.qqq-tools-vurl-go, .qqq-tools-vurl-drop, .qqq-tools-vurl-tip')) { return; }
+      } catch (_) { /* */ }
+      try { inp.focus(); } catch (_) { /* */ }
+    });
+    _expWireCard(c, 'workbench.videoUrlTip', '输入视频/网页网址 → 回车或点 ▶：直链直接下载；平台/分片视频自动走 yt-dlp；普通网页自动抓取嗅探视频。下载到目标文档旁的 _qqqvault 并插入相框；历史自动收录（空输入框聚焦回看）。', 'op');
+    return c;
+  }
+
+  // ── Paste：对目标文档执行等效 Ctrl+V（同一条粘贴管线） ──
+  function _doPasteInto() {
+    var t = _expResolve();
+    if (!t || !t.ed) {
+      _qoast(_i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
+      return;
+    }
+    var pr = window.qqqPasteRouter;
+    if (!pr || !pr.pasteInto) {
+      _qoast(_i('workbench.needRestart', '此功能未就绪（请刷新窗口；壳层更新后需重启实例）'), { type: 'info', duration: 6000 });
+      return;
+    }
+    _closeAll();
+    var p = null;
+    try { p = pr.pasteInto(t.ed); } catch (e) { p = null; }
+    if (p && p.then) {
+      p.then(function (res) {
+        if (res === 'empty') { _qoast(_i('pasteRouter.clipEmpty', '剪贴板为空（没有可粘贴的内容）'), { type: 'info', duration: 5000 }); }
+        else if (res === 'need_bridge') { _qoast(_i('workbench.needRestart', '此功能未就绪（请刷新窗口；壳层更新后需重启实例）'), { type: 'info', duration: 6000 }); }
+        else if (res === 'no_editor') { _qoast(_i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 }); }
+      }).catch(function () { /* 管线内部已如实报错 */ });
+    }
+  }
+  function _buildPasteChip() {
+    var b = _chip('Paste', '', _ICO_PASTE);
+    b.classList.add('qqq-tools-bigbtn');
+    b.addEventListener('click', function (e) { e.stopPropagation(); _doPasteInto(); });
+    return _expWireCard(b, 'workbench.pasteTip', '把剪贴板内容粘贴到目标文档（与 Ctrl+V 同一条管线：图片 / 文件 / 网页富文本 / URL 嗅探全部支持）。', 'op');
+  }
+
+  // ── Pure：孤儿扫描出审阅清单（core/qqq-pure.js；绝不自动删除） ──
+  var _pureBusyUi = false;
+  function _doPure() {
+    var t = _expResolve();
+    if (!t || !t.ed || !t.filePath) {
+      _qoast(_i('workbench.pureNoTarget', 'Pure 需要一个已保存的目标文档（先在编辑器里打开一个文件）'), { type: 'info', duration: 6000 });
+      return;
+    }
+    var pu = window.qqqPure;
+    if (!pu || !pu.run) {
+      _qoast(_i('workbench.needRestart', '此功能未就绪（请刷新窗口；壳层更新后需重启实例）'), { type: 'info', duration: 6000 });
+      return;
+    }
+    if (_pureBusyUi) { return; }
+    _pureBusyUi = true;
+    _closeAll();
+    var slowTimer = setTimeout(function () {
+      _qoast(_i('workbench.pureRunning', 'Pure：正在扫描 _qqqvault…'), { type: 'info', duration: 4000 });
+    }, 1200);
+    function _fin() { if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; } _pureBusyUi = false; }
+    var p = null;
+    try { p = pu.run(t.filePath); } catch (e) { p = null; }
+    if (!(p && p.then)) { _fin(); return; }
+    p.then(function (res) {
+      _fin();
+      if (!res || !res.ok) {
+        var r = (res && res.reason) || '';
+        if (r === 'no_vault') { _qoast(_i('workbench.pureNoVault', '该目录下没有 _qqqvault（还没有粘贴过文件）'), { type: 'info', duration: 6000 }); }
+        else if (r === 'write_fail') { _qoast(_T('workbench.pureFail', 'Pure 扫描失败：{msg}', { msg: (res && res.error) || '?' }), { type: 'error', duration: 8000 }); }
+        else if (r === 'no_dir') { _qoast(_i('workbench.pureNoTarget', 'Pure 需要一个已保存的目标文档（先在编辑器里打开一个文件）'), { type: 'info', duration: 6000 }); }
+        else if (r === 'no_bridge') { _qoast(_i('workbench.needRestart', '此功能未就绪（请刷新窗口；壳层更新后需重启实例）'), { type: 'info', duration: 6000 }); }
+        /* 'busy'：并发点击静默 */
+        return;
+      }
+      if (res.count > 0) {
+        _qoast(_T('workbench.pureDone', '发现 {n} 个孤儿项 · 清单已生成（_qqqvault.pure，不会自动删除）', { n: res.count }), { type: 'success', duration: 9000 });
+      } else {
+        _qoast(_T('workbench.pureNone', '没有孤儿项（扫描了 {files} 个文档 · {items} 个 _qqqvault 项）', { files: res.scanned, items: res.items }), { type: 'info', duration: 7000 });
+      }
+    }).catch(function (e2) {
+      _fin();
+      _qoast(_T('workbench.pureFail', 'Pure 扫描失败：{msg}', { msg: String((e2 && e2.message) || e2) }), { type: 'error', duration: 8000 });
+    });
+  }
+  function _buildPureChip() {
+    var b = _chip('Pure', _i('workbench.pureTip', '扫描目标文档旁的 _qqqvault：找出未被本目录任何文档引用的孤儿文件，生成 _qqqvault.pure 审阅清单（只生成清单，绝不自动删除）。'), _ICO_PURE);
+    b.classList.add('qqq-tools-bigbtn');
+    b.addEventListener('click', function (e) { e.stopPropagation(); _doPure(); });
+    return b;
+  }
+
+  // ── 合页指示器专用行（正中一枚；无按钮——一切上方按钮的操作对象即它） ──
+  function _buildHingeRow() {
+    var row = document.createElement('div');
+    row.className = 'qqq-tools-hinge-row';
+    row.appendChild(_buildHinge());
+    return _expWireCard(row, 'workbench.exportHingeTip', '实心 = 当前即将被操作的编辑分组（你最后在看的那个）；空心 = 另一个分组。点方块可切换目标；悬停操作类按钮或方块时，目标编辑区会亮起淡紫虚线框。', 'hinge');
   }
 
   // ── 主面板 ──
   function _buildRoot() {
     var root = document.createElement('div');
     root.className = 'qqq-tools-menu';
-    root.addEventListener('mouseenter', _clearTimers);
-    root.addEventListener('mouseleave', _scheduleAll);
+    root.addEventListener('mouseenter', function () { _pointerInside = true; _clearTimers(); });
+    root.addEventListener('mouseleave', function () { _pointerInside = false; _scheduleAll(); });
 
     var grid = document.createElement('div');
     grid.className = 'qqq-tools-grid';
 
-    // 零分组标题行——纯卡片连续流（分组靠布局差异区分：宽卡 / 双半宽卡 / 占位虚线行）
+    // 零分组标题行——纯卡片连续流（分组靠布局差异区分：宽卡 / 双半宽卡 / 专用行）
     grid.appendChild(_buildSavorCard());
     grid.appendChild(_buildDocCard());
     grid.appendChild(_buildZipCard());
     grid.appendChild(_buildGearCard());
-    grid.appendChild(_buildSoonRow());
+    grid.appendChild(_buildVideoRow());     // 视频 Url：整行（输入框 + ▶）
+    grid.appendChild(_buildPasteChip());    // Paste ⎮ Pure 平分左右
+    grid.appendChild(_buildPureChip());
+    grid.appendChild(_buildHingeRow());     // 合页专用行（正中一枚，无按钮）
 
-    _refreshExportCards();   // 合页指示器 + 「即将导出」tooltip（打开即对齐当前目标）
+    _refreshExportCards();   // 合页指示器 + 「即将操作」tooltip（打开即对齐当前目标）
 
     root.appendChild(grid);
     return root;
@@ -632,6 +963,7 @@
     root.style.top = top + 'px';
     requestAnimationFrame(function () { if (_rootEl) { _rootEl.classList.add('open'); } });
     if (_btnEl) { _btnEl.classList.add('qqq-tools-open'); }
+    _pointerInside = true;   // 开面板时指针在按钮上；进面板 mouseenter 续，出面板 mouseleave 断
     _bindGlobal();
   }
 
@@ -642,6 +974,11 @@
     _savorLabelEl = null;
     _expCards = [];
     _hingeEls = [];
+    _vurlInputEl = null;
+    _vurlDropEl = null;
+    _vurlTipEl = null;
+    if (_vurlTipTimer) { clearTimeout(_vurlTipTimer); _vurlTipTimer = null; }
+    _pointerInside = false;
     _expOvHide();
   }
 

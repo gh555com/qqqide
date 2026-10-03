@@ -276,7 +276,7 @@ async function _executeSend(intent) {
     // ★ 2026-08-17 F51: 目标 agent 解析——机器触发路径（only facts 压缩楼层）的目标 quest
     //   可能不是面板当前活跃 quest（用户可能在别的 quest 建楼时点背包页 only facts）。
     //   旧代码全程用 _activeAgent → ① streaming 闸门被活跃 quest 的流式状态误拦
-    //   （q154 事故实锤：子弹已写、饼干已砍半、楼层未建、toast 假成功）② compress 标志
+    //   （q154 事故实锤：子弹已写、饼干已砍半、楼层未建、qoast 假成功）② compress 标志
     //   会串号到活跃 agent（V21 泄漏重演）。正常用户发送路径 pool[questId] === _activeAgent，
     //   行为零变化。
     try {
