@@ -205,7 +205,7 @@ async function _initWorkspace(root) {
                         } else {
                             console.warn('[workspace] lock-lost: re-claim rejected');
                             parent.__qqq_lockState = 'blocked';
-                            try { addMessageEl('error', '⛔ 项目锁已丢失且无法重新获取（另一窗口已占用），本窗口停止绑定。'); } catch (_) { }
+                            try { addMessageEl('error', _qq('ai.lockLostStopBind', '⛔ 项目锁已丢失且无法重新获取（另一窗口已占用），本窗口停止绑定。')); } catch (_) { }
                             onlyStore.init(null);
                             _workspaceRoot = null;
                             try { parent._workspaceRoot = null; } catch (_) { }

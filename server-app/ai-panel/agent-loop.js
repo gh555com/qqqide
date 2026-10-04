@@ -264,49 +264,49 @@ var AgentLoop = (function () {
         var parts = [];
         // 主因
         switch (this._exitReason) {
-            case 'http_502': parts.push('服务器返回502(Bad Gateway)'); break;
-            case 'http_503': parts.push('服务器返回503(Service Unavailable) — 可能是上游计费/配额耗尽或服务器过载'); break;
-            case 'http_504': parts.push('服务器返回504(Gateway Timeout)'); break;
-            case 'http_429': parts.push('请求过于频繁(429限流)'); break;
+            case 'http_502': parts.push(_qq('ai.diag.http502', '服务器返回502(Bad Gateway)')); break;
+            case 'http_503': parts.push(_qq('ai.diag.http503', '服务器返回503(Service Unavailable) — 可能是上游计费/配额耗尽或服务器过载')); break;
+            case 'http_504': parts.push(_qq('ai.diag.http504', '服务器返回504(Gateway Timeout)')); break;
+            case 'http_429': parts.push(_qq('ai.diag.http429', '请求过于频繁(429限流)')); break;
             case 'http_400':
                 // ★ 上下文硬墙：上游报文含精确数字 → 显示真因（红框诊断不再误报孤儿 tool）
                 if (this._lastCtxOverflow && this._lastCtxOverflow.msgs) {
-                    parts.push('上下文超出模型窗口(' + Math.round(this._lastCtxOverflow.msgs / 1000) + 'K + ' + Math.round(this._lastCtxOverflow.completion / 1000) + 'K > ' + Math.round((this._lastCtxOverflow.limit || 1048576) / 1000) + 'K tokens)');
+                    parts.push(_qq('ai.diag.ctxOverflow', '上下文超出模型窗口({0}K + {1}K > {2}K tokens)', { 0: Math.round(this._lastCtxOverflow.msgs / 1000), 1: Math.round(this._lastCtxOverflow.completion / 1000), 2: Math.round((this._lastCtxOverflow.limit || 1048576) / 1000) }));
                 } else {
-                    parts.push('AI接口返回400(请求格式错误，可能是孤儿tool消息)');
+                    parts.push(_qq('ai.diag.http400', 'AI接口返回400(请求格式错误，可能是孤儿tool消息)'));
                 }
                 break;
-            case 'http_422': parts.push('AI接口返回422(参数错误)'); break;
-            case 'http_402': parts.push('ge余额不足(402)'); break;
+            case 'http_422': parts.push(_qq('ai.diag.http422', 'AI接口返回422(参数错误)')); break;
+            case 'http_402': parts.push(_qq('ai.diag.http402', 'ge余额不足(402)')); break;
             case 'fetch_error':
-                var _fe = this._lastFetchError || '连接中断';
+                var _fe = this._lastFetchError || _qq('ai.diag.connDropped', '连接中断');
                 // 精简常见错误
-                if (_fe === 'Failed to fetch') _fe = '网络连接失败(Failed to fetch)';
-                else if (_fe.indexOf('network error') >= 0) _fe = '网络错误(network error)';
-                else if (_fe.indexOf('Timeout') >= 0) _fe = '请求超时';
-                parts.push('Network request failed: ' + _fe);
+                if (_fe === 'Failed to fetch') _fe = _qq('ai.diag.netFailFetch', '网络连接失败(Failed to fetch)');
+                else if (_fe.indexOf('network error') >= 0) _fe = _qq('ai.diag.netError', '网络错误(network error)');
+                else if (_fe.indexOf('Timeout') >= 0) _fe = _qq('ai.diag.timeout', '请求超时');
+                parts.push(_qq('ai.diag.netFail', '网络请求失败: {0}', { 0: _fe }));
                 break;
-            case 'watchdog_stream': parts.push('SSE流90秒无数据(连接假死)'); break;
-            case 'deadline': parts.push('请求90秒无响应(超时)'); break;
-            case 'max_iter': parts.push('达到最大迭代次数(200)'); break;
+            case 'watchdog_stream': parts.push(_qq('ai.diag.watchdog', 'SSE流90秒无数据(连接假死)')); break;
+            case 'deadline': parts.push(_qq('ai.diag.deadline', '请求90秒无响应(超时)')); break;
+            case 'max_iter': parts.push(_qq('ai.diag.maxIter', '达到最大迭代次数(200)')); break;
             default:
-                if (this._lastHttpStatus) parts.push('HTTP ' + this._lastHttpStatus + '错误');
+                if (this._lastHttpStatus) parts.push(_qq('ai.diag.httpStatus', 'HTTP {0}错误', { 0: this._lastHttpStatus }));
                 break;
         }
         // 补充：服务端SSE错误消息（网关错误已有诊断，不重复）
         if (this._lastSseError && !ContentGateway.HttpError.isGatewayExitReason(this._exitReason)) {
-            parts.push('服务端: ' + this._lastSseError);
+            parts.push(_qq('ai.diag.serverPrefix', '服务端: {0}', { 0: this._lastSseError }));
         }
         // 补充：连续失败次数
         if (this._consecutiveFetchErrors > 1) {
-            parts.push('连续' + this._consecutiveFetchErrors + '次网络失败');
+            parts.push(_qq('ai.diag.consecutive', '连续{0}次网络失败', { 0: this._consecutiveFetchErrors }));
         }
         // 补充：请求体过大
         var _ctxTokens = this._lastApiTotalTokens || this._lastApiPromptTokens || 0;
         if (_ctxTokens > 900000) {
-            parts.push('Context too large (' + Math.round(_ctxTokens / 1000) + 'k tokens, near limit)');
+            parts.push(_qq('ai.diag.ctxBig', '上下文过大({0}k tokens，接近上限)', { 0: Math.round(_ctxTokens / 1000) }));
         }
-        return parts.join('; ') || '未知原因';
+        return parts.join('; ') || _qq('ai.errUnknownReason', '未知原因');
     };
 
 

@@ -1632,7 +1632,10 @@ async function bootMenu() {
   // ★ 先从缓存恢复（兜底），再异步拉取服务器最新数据
   _loadEvangelistCache();
   _fetchEvangelistMentor();
-  window.addEventListener('qqq-lang-change', function () { _shellRenderMenubarLabels(schema); });
+  window.addEventListener('qqq-lang-change', function () {
+    _shellRenderMenubarLabels(schema);
+    _shellCloseMenubarPopup();   // 弹窗文字构建期烧字——切语言即关闭，下次打开按新语言重建
+  });
   bridge.menu.onFired(function (cmd) {
     window._shHandleMenuCmd(cmd);
   });

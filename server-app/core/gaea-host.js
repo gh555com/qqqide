@@ -168,9 +168,10 @@
               tip = document.createElement('div');
               tip.className = 'qqq-roam-tip qqq-tip-multi';
               tip.dataset.owner = gid + '-btn';
-              tip.textContent = window._i ? window._i(tipKey, tipFb) : tipFb;
               document.body.appendChild(tip);
             }
+            // 每次显示现算（语言切换后 hover 不留旧语言快照）
+            tip.textContent = window._i ? window._i(tipKey, tipFb) : tipFb;
             var r = btnEl.getBoundingClientRect();
             tip.style.display = 'block';
             tip.style.left = Math.max(4, Math.min(r.left, window.innerWidth - tip.offsetWidth - 4)) + 'px';

@@ -576,6 +576,8 @@
     var base = _i(tipKey, tipFb);
     el.title = base;
     _expCards.push({ el: el, base: base, kind: kind || 'op' });
+    // 语言切换后 hover 现算（工作台开启期间切语言不留旧语言快照）
+    el.addEventListener('mouseenter', function () { el.title = _i(tipKey, tipFb); });
     el.addEventListener('mouseenter', _expCardEnter);
     el.addEventListener('mouseleave', _expCardLeave);
     return el;
