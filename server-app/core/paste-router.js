@@ -562,6 +562,13 @@
     'yt-dlp_not_installed': ['pasteDl.errYtdlpMissing', '平台/分片视频需要 yt-dlp（组件未安装）'],
     'ytdlp_failed': ['pasteDl.errYtdlpFail', '视频站下载失败'],
     'ytdlp_output_missing': ['pasteDl.errYtdlpFail', '视频站下载失败'],
+    'ytdlp_bot_wall': ['pasteDl.errYtBotWall', '该站点要求登录验证。用浏览器扩展「Get cookies.txt LOCALLY」导出 cookies 文件，放入 cookies 文件夹后重试（或更换网络/代理节点）'],
+    'douyin_need_link': ['pasteDl.errDyNeedLink', '该抖音链接未指向具体视频（请用视频或分享链接）'],
+    'douyin_capture_timeout': ['pasteDl.errDyTimeout', '抖音页面加载超时（可能触发验证，稍后重试）'],
+    'douyin_image_post': ['pasteDl.errDyImage', '该链接是图文帖子（暂不支持下载）'],
+    'douyin_extract_failed': ['pasteDl.errDyExtract', '无法解析抖音视频信息（页面结构可能已变化）'],
+    'douyin_capture_failed': ['pasteDl.errDyFail', '抖音视频获取失败'],
+    'douyin_download_failed': ['pasteDl.errDyFail', '抖音视频获取失败'],
     'probe_output_too_large': ['pasteDl.errProbe', '视频列表信息过大，已保护性终止'],
     'blob_url_unavailable': ['pasteDl.errBlob', 'blob: 链接无法直接下载'],
     'invalid_media': ['pasteDl.errInvalidMedia', '文件无效（非视频或已损坏）'],
@@ -614,6 +621,8 @@
 
   // yt-dlp 一键获取（错误提示「安装 yt-dlp」按钮入口；按需组件安装）
   var _ytdlpInstalling = false;
+  // 最近一次被风控（bot wall）拦截的下载 URL —— cookies 就绪（「在 qd 内登录」）后自动重试
+  var _cookiePendingRetry = null;
   async function _installYtdlp() {
     if (_ytdlpInstalling) return;
     if (!(bridge && bridge.components && bridge.components.install)) {
@@ -648,6 +657,53 @@
     } finally {
       _ytdlpInstalling = false;
     }
+  }
+
+  // ── cookies 一键获取（「在 qd 内登录」）：壳层打开真实浏览器窗口登录 → 自动保存 cookies →
+  //   广播 cookies-saved → 这里自动重试最近一次被风控拦截的下载（无挂起失败则提示重新粘贴）。──
+  function _loginForCookies() {
+    if (!(bridge && bridge.pasteDl && bridge.pasteDl.loginCookies)) {
+      if (window.qqqideQoast) window.qqqideQoast.show(_i18n('pasteDl.errUnavailable', '功能暂不可用（需重启实例）'), { duration: 5000 });
+      return;
+    }
+    try {
+      bridge.pasteDl.loginCookies((_cookiePendingRetry && _cookiePendingRetry.url) || '').then(function (r) {
+        if (!window.qqqideQoast) return;
+        if (r && r.ok) window.qqqideQoast.show(_i18n('pasteDl.cookieLoginOpened', '已打开登录窗口：登录后 cookies 会自动保存，并自动重试下载'), { duration: 8000 });
+        else window.qqqideQoast.show(_i18n('pasteDl.errUnavailable', '功能暂不可用（需重启实例）'), { duration: 5000 });
+      })['catch'](function () { });
+    } catch (_) { /* ignore */ }
+  }
+
+  // ── bot wall 自救（老 q3 expert_cookies 路线移植）：打开 cookies 文件夹 ──
+  //   壳层确保目录存在（{Data}/yt-dlp）并落一份双语使用说明；打开动作走壳层 openPath 唯一通道。
+  function _openCookiesDir() {
+    if (!(bridge && bridge.pasteDl && bridge.pasteDl.cookiesDir)) {
+      if (window.qqqideQoast) window.qqqideQoast.show(_i18n('pasteDl.errUnavailable', '功能暂不可用（需重启实例）'), { duration: 5000 });
+      return;
+    }
+    try {
+      bridge.pasteDl.cookiesDir().then(function (r) {
+        if (!r || !r.ok || !r.dir) {
+          if (window.qqqideQoast) window.qqqideQoast.show(_i18n('pasteDl.errUnavailable', '功能暂不可用（需重启实例）'), { duration: 5000 });
+          return;
+        }
+        try { if (bridge.shell && bridge.shell.openPath) bridge.shell.openPath(r.dir); } catch (_) { /* ignore */ }
+        if (window.qqqideQoast) window.qqqideQoast.show(_i18n('pasteDl.cookiesDirOpened', '已打开 cookies 文件夹：把导出的 .txt 文件放进去后，重新粘贴链接下载即可'), { duration: 6000 });
+      })['catch'](function () { });
+    } catch (_) { /* ignore */ }
+  }
+
+  // bot wall 帮助链接：服务器下发超链接优先（help.cookies 键——网站帮助文档上线后服务端改一条即切换，
+  // 客户端零发版），缺省回退 yt-dlp 官方 FAQ。
+  function _botWallHelpUrl() {
+    try {
+      if (window.QQQLinks && typeof window.QQQLinks.url === 'function') {
+        var _u = window.QQQLinks.url('help.cookies');
+        if (_u) return _u;
+      }
+    } catch (_) { /* ignore */ }
+    return 'https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp';
   }
 
   // ── qqqide-asset://file/<abs> → 本地路径（自家资产协议；复制 AI 面板图片等场景） ──
@@ -775,12 +831,15 @@
     // ★ 每作业独立任务卡（并发粘贴不互相覆写进度/取消——同 id 会让后一次粘贴吞掉前一次的取消句柄）
     var TASK_ID = 'paste-media:' + jobId;
     var doneN = 0, totalN = tasks.length;
+    var curLabel = '';
     function _updCard() {
       if (ioast && ioast.task) {
         try {
           ioast.task(TASK_ID, {
             title: _i18n('pasteRouter.mediaTask', '网页媒体下载'),
-            subtitle: _i18n('pasteRouter.mediaProgress', '{done}/{total}', { done: doneN, total: totalN }),
+            // ★ 单行清晰文案（2026-10-04 修）：副行 = 当前动作（不再与底行计数重复「0/1 0/1」）；
+            //   数字唯一出口 = 底行 count（进度条同源）。
+            subtitle: curLabel || _i18n('pasteRouter.mediaPreparing', '正在准备…'),
             count: { done: doneN, total: totalN },
             cancelable: true,
             onCancel: function () { try { bridge.pasteDl.cancel(jobId); } catch (_) { } },
@@ -795,6 +854,11 @@
       off = bridge.pasteDl.onProgress(function (msg) {
         if (!msg || msg.jobId !== jobId) return;
         doneN = msg.done || doneN;
+        if (msg.curName) {
+          curLabel = (typeof msg.curPct === 'number' && msg.curPct >= 0)
+            ? _i18n('pasteRouter.mediaDownloadingPct', '正在下载：{name} · {pct}%', { name: String(msg.curName), pct: Math.round(msg.curPct) })
+            : _i18n('pasteRouter.mediaDownloading', '正在下载：{name}', { name: String(msg.curName) });
+        }
         _updCard();
       });
     } catch (_) { off = null; }
@@ -999,13 +1063,39 @@
         if (Object.prototype.hasOwnProperty.call(codes, kk)) parts.push(_dlErrText(kk) + (codes[kk] > 1 ? (' ×' + codes[kk]) : ''));
       }
       // ★ yt-dlp 缺口 → qoast 挂「安装组件」按钮（一键按需安装；常驻待操作）
+      // ★ 站点风控（bot wall）→ 三按钮自救（2026-10-04 v2）：在 qd 内登录获取（首选）/ 打开 cookies 文件夹 / 了解如何解决
       var _ytMissing = !!codes['yt-dlp_not_installed'];
-      var _qopts = { duration: _ytMissing ? 0 : 7000 };
+      var _ytWall = !!codes['ytdlp_bot_wall'];
+      if (_ytWall) {
+        // 记录最近一次被风控拦截的 URL —— cookies 就绪（「在 qd 内登录」完成）后自动重试
+        for (var _fi = 0; _fi < failed.length; _fi++) {
+          if (String(failed[_fi].error || '') === 'ytdlp_bot_wall' && failed[_fi].src) {
+            _cookiePendingRetry = { url: String(failed[_fi].src) };
+            break;
+          }
+        }
+      }
+      var _qopts = { duration: _ytMissing ? 0 : (_ytWall ? 12000 : 7000) };
       if (_ytMissing && bridge && bridge.components && bridge.components.install) {
         _qopts.actions = [{
           label: _i18n('pasteDl.installYtdlp', '安装 yt-dlp'),
           onClick: function () { _installYtdlp(); },
         }];
+      } else if (_ytWall) {
+        var _wallActs = [];
+        if (bridge && bridge.pasteDl && bridge.pasteDl.loginCookies) {
+          _wallActs.push({ label: _i18n('pasteDl.cookieLogin', '在 qd 内登录'), onClick: _loginForCookies });
+        }
+        if (bridge && bridge.pasteDl && bridge.pasteDl.cookiesDir) {
+          _wallActs.push({ label: _i18n('pasteDl.openCookiesDir', '打开 cookies 文件夹'), onClick: _openCookiesDir });
+        }
+        if (bridge && bridge.shell && bridge.shell.openExternal) {
+          _wallActs.push({
+            label: _i18n('pasteDl.botWallHelp', '了解如何解决'),
+            onClick: function () { try { bridge.shell.openExternal(_botWallHelpUrl()); } catch (e2) { /* ignore */ } },
+          });
+        }
+        if (_wallActs.length) _qopts.actions = _wallActs;
       }
       window.qqqideQoast.show(_i18n('pasteRouter.richSomeFail', '网页粘贴：{n} 个媒体未下载（{detail}）', { n: failed.length, detail: parts.join('；') }), _qopts);
     } else if (vidSkipped > 0 && window.qqqideQoast) {
@@ -1079,123 +1169,38 @@
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // 工作台入口（2026-10-03）：Paste 按钮 / 视频 Url 行——对目标编辑器执行等效操作
+  // 工作台入口：Paste Plain Text 按钮（纯文本粘贴）/ 视频 Url 行（URL → 嗅探下载）
   // ════════════════════════════════════════════════════════════════════════
 
-  // data: URL → Blob（桥读剪贴板图片合成粘贴载荷用；同步）
-  function _dataUrlToBlob(dataUrl) {
-    try {
-      var m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/i.exec(String(dataUrl || ''));
-      if (!m) return null;
-      var mime = m[1] || 'image/png';
-      var bin = m[2] ? atob(m[3]) : decodeURIComponent(m[3]);
-      var bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xFF;
-      return new Blob([bytes], { type: mime });
-    } catch (_) { return null; }
-  }
-
-  // 合成等价 ClipboardEvent 载荷（桥读内容 → klipzap.probe 同一机器解析 → 下游路由与真 Ctrl+V 完全同构）
-  function _synthPasteEvent(targetEd, text, html, imageBlob, paths) {
-    var types = [];
-    var items = [];
-    var data = {};
-    var fileList = [];
-    if (text) { types.push('text/plain'); data['text/plain'] = text; }
-    if (html) { types.push('text/html'); data['text/html'] = html; }
-    if (imageBlob) {
-      types.push('Files');
-      items.push({ kind: 'file', type: String(imageBlob.type || 'image/png'), getAsFile: function () { return imageBlob; } });
-    }
-    if (paths && paths.length) {
-      types.push('Files');
-      for (var i = 0; i < paths.length; i++) {
-        var nm = String(paths[i]).replace(/\\/g, '/').split('/').pop() || 'file';
-        var f = null;
-        try { f = new File([], nm); } catch (_) { f = null; }
-        if (!f) continue;
-        (function (ff) {
-          items.push({ kind: 'file', type: '', getAsFile: function () { return ff; } });
-        })(f);
-        fileList.push(f);
-      }
-    }
-    if (!types.length) return null;
-    var target = null;
-    try { if (targetEd && targetEd.getDomNode) target = targetEd.getDomNode(); } catch (_) { target = null; }
-    var cd = {
-      types: types,
-      items: items,
-      files: fileList,
-      getData: function (t) { return Object.prototype.hasOwnProperty.call(data, t) ? data[t] : ''; },
-    };
-    return {
-      clipboardData: cd,
-      target: target,
-      preventDefault: function () { },
-      stopPropagation: function () { },
-      __qqqPasteEd: targetEd || null,
-    };
-  }
-
-  // ★ Paste 按钮（工作台）：对目标编辑器执行「等效 Ctrl+V」
-  //   语义 = 把剪贴板内容按同一条粘贴管线放进目标编辑器（图片/文件/网页富文本/URL 嗅探全支持）。
-  //   实现 = 桥读剪贴板（probe/readText/readHtml/readImage/readFiles）→ 合成等价载荷 → 复用 _onPaste 全部下游。
+  // ★ Paste Plain Text（工作台）：把剪贴板的纯文本原样插入目标编辑器
+  //   语义 = 「粘贴为纯文本」：只取 text/plain 文字原样插入（含乱码回修），不下载图片 / 不转换网页富文本 /
+  //   不处理文件与网址——富文本粘贴仍是编辑器内 Ctrl+V / 右键粘贴的职责，此按钮不与其重复。
+  //   实现 = 桥读剪贴板（probe/readText）→ 位置冻结锚 → _insertPlainAtCursor（与其余纯文本路径同一条）。
   //   ★ 为什么不用 execCommand('paste')：Chromium 行为随权限/版本漂移不可验证；桥读路径 100% 确定。
-  //   返回: 'ok' | 'empty'（剪贴板空）| 'need_bridge'（旧壳层）| 'no_editor'（无目标）
-  async function pasteInto(ed) {
+  //   返回: 'ok' | 'no_text'（剪贴板没有文本）| 'need_bridge'（旧壳层）| 'no_editor'（无目标）
+  async function pasteTextInto(ed) {
     var targetEd = ed || _editor || null;
     if (!targetEd) return 'no_editor';
-    if (!(bridge && bridge.clipboard && bridge.clipboard.probe)) return 'need_bridge';
+    if (!(bridge && bridge.clipboard && bridge.clipboard.probe && bridge.clipboard.readText)) return 'need_bridge';
     try { if (targetEd.focus) targetEd.focus(); } catch (_) { }
 
     var p = null;
     try { p = await bridge.clipboard.probe(); } catch (_) { p = null; }
     if (!p) return 'need_bridge';
+    if (!p.hasText) return 'no_text';
 
     var text = '';
-    var html = '';
-    var imageBlob = null;
-    var paths = [];
-    try { if (p.hasText && bridge.clipboard.readText) text = String((await bridge.clipboard.readText()) || ''); } catch (_) { }
-    try { if (p.hasHtml && bridge.clipboard.readHtml) html = String((await bridge.clipboard.readHtml()) || ''); } catch (_) { }
-    try {
-      if (p.hasImage && bridge.clipboard.readImage) {
-        var du = await bridge.clipboard.readImage();
-        imageBlob = _dataUrlToBlob(du);
-      }
-    } catch (_) { }
-    try { if (p.hasFile && bridge.clipboard.readFiles) paths = (await bridge.clipboard.readFiles()) || []; } catch (_) { paths = []; }
-    if (!text && !html && !imageBlob && !(paths && paths.length)) return 'empty';
+    try { text = String((await bridge.clipboard.readText()) || ''); } catch (_) { text = ''; }
+    if (!text) return 'no_text';
 
-    var fake = _synthPasteEvent(targetEd, text, html, imageBlob, paths);
-    if (!fake) return 'empty';
-    var pr = klipzap ? klipzap.probe(fake) : null;
-    if (!pr) return 'need_bridge';
-
-    try { _getPasteDir(fake); } catch (_) { }   // 粘贴瞬间固化目标目录（长异步防漂移）
-
-    var _hasRichHtml = !!(pr.hasHtml && !pr.hasImage && !pr.hasFile);
-    if (pr.isPureText && !_hasRichHtml) {
-      if (!text) return 'empty';
-      var u1 = _singleUrlOf(text);
-      var ucls = u1 ? _classifyUrl(u1) : '';
-      var a0 = _anchorNew(targetEd);   // 位置冻结锚
-      try {
-        if (ucls && _autoDownloadOn() && bridge && bridge.pasteDl) {
-          await _urlPaste(targetEd, fake, u1, ucls, a0);
-        } else {
-          _insertPlainAtCursor(targetEd, text, a0);
-        }
-      } finally {
-        _anchorDrop(a0);
-      }
-      return 'ok';
+    // 乱码回修（与纯文本粘贴回退口同源：html-paste.repairMojibake，严格门槛——干净文本零改写）
+    if (window.qqqHtmlPaste && window.qqqHtmlPaste.repairMojibake) {
+      try { text = window.qqqHtmlPaste.repairMojibake(text); } catch (_) { }
     }
 
-    var anchor = _anchorNew(targetEd);
-    try { await _handleOwnedPaste(targetEd, fake, pr, anchor); }
-    finally { _anchorDrop(anchor); }
+    var a0 = _anchorNew(targetEd);   // 位置冻结锚（与其余粘贴路径同构）
+    try { _insertPlainAtCursor(targetEd, text, a0); }
+    finally { _anchorDrop(a0); }
     return 'ok';
   }
 
@@ -1633,6 +1638,22 @@
 
     _pasteHandler = _onPaste;
     document.addEventListener('paste', _onPaste, true);
+
+  // cookies 保存完成（「在 qd 内登录」合并写入）→ 自动重试最近一次风控失败的下载
+  try {
+    if (bridge && bridge.pasteDl && bridge.pasteDl.onCookiesSaved) {
+      bridge.pasteDl.onCookiesSaved(function () {
+        var retry = _cookiePendingRetry;
+        _cookiePendingRetry = null;
+        if (retry && retry.url) {
+          if (window.qqqideQoast) window.qqqideQoast.show(_i18n('pasteDl.cookiesSavedRetry', 'cookies 已保存 · 正在重新下载…'), { duration: 5000 });
+          pasteUrlInto(null, retry.url)['catch'](function () { });
+        } else if (window.qqqideQoast) {
+          window.qqqideQoast.show(_i18n('pasteDl.cookiesSaved', 'cookies 已保存 · 重新粘贴链接即可下载'), { duration: 6000 });
+        }
+      });
+    }
+  } catch (_) { /* ignore */ }
     _attached = true;
     _addAssetWhitelist(editor);
   }
@@ -1686,7 +1707,7 @@
     isActive: function () { return _attached; },
     handleDrop: handleDrop,
     handlePaste: _onPaste,
-    pasteInto: pasteInto,       // 工作台 Paste 按钮（等效 Ctrl+V → 目标编辑器）
+    pasteTextInto: pasteTextInto, // 工作台 Paste Plain Text 按钮（纯文本粘贴 → 目标编辑器；无文本返回 'no_text'）
     pasteUrlInto: pasteUrlInto, // 工作台 视频 Url 行（URL → 同一条嗅探/下载机器）
     _makeAnchorToken: _makeAnchorToken,
   };

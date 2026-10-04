@@ -10,9 +10,10 @@
 // 等级 = 偏好 codelensLevel（老枚举 0/1/7 原值）:
 //   0 = 无
 //   1 = 仅文件信息行（open file，无 ✎ 前缀）
-//   7 = 全套: [✎(文件夹体积) _qqqvault] [✎rename] [✎c1 复制路径] [✎c2 复制文件] [✎c3 复制图片二进制*]
+//   7 = 全套: [✎(文件夹体积) _qqqvault] [✎rename] [✎mem 复制图片*] [✎file 复制文件] [✎path 复制路径]
 //            + 文件信息行 ✎(体积) {图标} {完整路径} {缩放% 宽x高}
-//            + [✎qqqide*]   （*c3 仅图片；*qqqide 仅文本文件 → 在右分组打开）
+//            + [✎qqqide*]   （*mem 仅图片；*qqqide 仅文本文件 → 在右分组打开）
+//   后三钮文案与排序 = AI 面板图片三按钮 mem|file|path 1:1（2026-10-04 用户定案；✎ 前缀恒保留作分隔）
 //
 // 样式：恒 Tahoma 11 号 + 主题红（html.qqq-codelens-style 常驻挂载；不设开关）
 //
@@ -103,7 +104,7 @@
     return String(dir).replace(/[\\/]+$/, '') + sep + name;
   }
 
-  // c3 可复制为位图的扩展名（老 h.js IMAGE_EXTS_FOR_CLIPBOARD 原表）
+  // mem 可复制为位图的扩展名（老 h.js IMAGE_EXTS_FOR_CLIPBOARD 原表）
   var CLIPBOARD_IMAGE_EXTS = {
     '.png': 1, '.jpg': 1, '.jpeg': 1, '.gif': 1, '.bmp': 1, '.webp': 1, '.ico': 1, '.tiff': 1, '.tif': 1,
   };
@@ -311,7 +312,7 @@
     var tooltip = _t('editor.codelens.created', '创建') + ': ' + _fmtDate(st.birthtimeMs) +
       '\n' + _t('editor.codelens.modified', '修改') + ': ' + _fmtDate(st.mtimeMs);
 
-    // ── level 7：左排按钮（老顺序：open folder / rename / c1 / c2 / [c3]）──
+    // ── level 7：左排按钮（open folder / rename / mem / file / path——后三钮文案与排序 = AI 面板图片三按钮 mem|file|path 1:1，2026-10-04 用户定案）──
     if (level === '7') {
       var dir = _dirname(path);
       var fsum = _folderGet(dir);
@@ -319,11 +320,11 @@
       var folderTip = fsum ? fsum.summary : _t('editor.codelens.calculatingFolderSize', '正在计算文件夹大小...');
       out.push(_lens(line, '✎( ' + fSizeStr + ') _qqqvault', folderTip, 'qqqide.codelens.reveal', [path]));
       out.push(_lens(line, '✎rename', '', 'qqqide.codelens.rename', [{ path: path, fileName: fileName }]));
-      out.push(_lens(line, '✎c1', path, 'qqqide.codelens.copyPath', [path]));
-      out.push(_lens(line, '✎c2', '', 'qqqide.codelens.copyFile', [path]));
       if (!isDir && CLIPBOARD_IMAGE_EXTS[ext]) {
-        out.push(_lens(line, '✎c3', '', 'qqqide.codelens.copyImage', [path]));
+        out.push(_lens(line, '✎mem', '', 'qqqide.codelens.copyImage', [path]));
       }
+      out.push(_lens(line, '✎file', '', 'qqqide.codelens.copyFile', [path]));
+      out.push(_lens(line, '✎path', path, 'qqqide.codelens.copyPath', [path]));
     }
 
     // ── 文件信息行（老 title 拼接逐字：前缀(体积) 图标 空格 完整路径 尺寸后缀）──
@@ -429,7 +430,7 @@
     try { if (bridge && bridge.shell && bridge.shell.openPath) bridge.shell.openPath(path); } catch (e) { /* */ }
   }
 
-  // c1 → 复制纯文本路径
+  // path → 复制纯文本路径（原 c1）
   function _cmdCopyPath(path) {
     var p;
     try { p = bridge.clipboard.writeText(String(path)); } catch (e) { p = Promise.reject(e); }
@@ -440,7 +441,7 @@
     });
   }
 
-  // c2 → 复制文件进剪贴板（CF_HDROP，等于资源管理器 Ctrl+C）
+  // file → 复制文件进剪贴板（CF_HDROP，等于资源管理器 Ctrl+C）（原 c2）
   function _cmdCopyFile(path) {
     var p;
     try { p = bridge.clipboard.writeFiles([String(path)]); } catch (e) { p = Promise.reject(e); }
@@ -452,7 +453,7 @@
     });
   }
 
-  // c3 → 复制图片为位图二进制（可直接粘贴进聊天/画布）
+  // mem → 复制图片为位图二进制（可直接粘贴进聊天/画布）（原 c3）
   function _cmdCopyImage(path) {
     var p;
     try { p = bridge.clipboard.writeImage({ path: String(path) }); } catch (e) { p = Promise.reject(e); }

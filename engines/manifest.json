@@ -10,7 +10,8 @@
   ],
   "rank1": [
     "ffprobe",
-    "yt-dlp"
+    "yt-dlp",
+    "quickjs"
   ],
   "download_cooldown_ms": 300000,
   "components": {
@@ -197,6 +198,8 @@
       }
     },
     "yt-dlp": {
+      "bg_download": true,
+      "_note": "bg_download=true（2026-10-04 起）: 启动后后台静默安装（CDN 镜像优先）——平台视频开箱即用；失败仍有错误提示内「安装 yt-dlp」按钮兑底。单文件 18MB，不进绿色包（体积考量）。",
       "install_to": "yt-dlp",
       "bin_win": "yt-dlp.exe",
       "bin_unix": "yt-dlp",
@@ -209,11 +212,19 @@
           {
             "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp.exe",
             "kind": "binary"
+          },
+          {
+            "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe",
+            "kind": "binary"
           }
         ],
         "linux-x64": [
           {
             "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp_linux",
+            "kind": "binary"
+          },
+          {
+            "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_linux",
             "kind": "binary"
           }
         ],
@@ -221,13 +232,49 @@
           {
             "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp_macos",
             "kind": "binary"
+          },
+          {
+            "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_macos",
+            "kind": "binary"
           }
         ],
         "darwin-x64": [
           {
             "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp_macos",
             "kind": "binary"
+          },
+          {
+            "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp_macos",
+            "kind": "binary"
           }
+        ]
+      }
+    },
+    "quickjs": {
+      "bundled": false,
+      "bg_download": true,
+      "_note": "QuickJS (qjs) — yt-dlp EJS (YouTube) JS 挑战运行时；自编译（mingw64 全静态、_WIN32_WINNT=0x0601 面向 Win7；依赖 KERNEL32+UCRT api-set，绿色包 vc_runtime 已 app-local 覆盖）。更新 = tools/build-quickjs 重编 → 传 CDN → bump version（与官方 quickjs release 对齐）。",
+      "install_to": "quickjs",
+      "bin_win": "qjs.exe",
+      "bin_unix": "qjs",
+      "verify_args": [
+        "-e",
+        "print(1)"
+      ],
+      "version": "2026.06.04",
+      "srcs": {
+        "win32-x64": [
+          {
+            "url": "https://cdn.gh555.com/components/quickjs/2026.06.04/quickjs-win32-x64.zip",
+            "kind": "zip"
+          }
+        ]
+      },
+      "verify": {
+        "_note": "Single binary — smoke sufficient.",
+        "smoke": [
+          "-e",
+          "print(1)"
         ]
       }
     },

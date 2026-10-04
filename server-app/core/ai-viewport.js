@@ -2174,7 +2174,7 @@
     block.appendChild(rmBtn);
 
     // hover → 150ms 防抖后展开下拉（防止光标掠过误触 + 限制 readdir 频率）
-    // 仅窗口有焦点时响应 hover，无焦点时靠 click 触发
+    // ★ 展开职责唯一归属 hover（2026-10-04 用户定案：click 改 Roam 直达，不再弹下拉）；仅窗口有焦点时响应
     var _blockHoverTimer = null;
     block.addEventListener('mouseenter', () => {
       if (!document.hasFocus()) return;
@@ -2187,10 +2187,17 @@
     block.addEventListener('mouseleave', () => {
       if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
     });
-    // 光标左键点击 → 立即展开下拉（不防抖，窗口有无焦点均可）
+    // ★ 光标左键点击 → 在 Roam 中直接进入该项目文件夹（2026-10-04 用户定案：hover=展开下拉、click=Roam 直达）
+    //   定位唯一入口 = shell-overlay __qqq_roamRevealPath（目录 → roam.navTo；自动确保 Roam 标签存在并激活；
+    //   路径缺失 → 爬升最近祖先 + qoast）。点击先收掉 hover 可能已展开的下拉；窗口有无焦点均可。
     block.addEventListener('click', () => {
       if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
-      showDropdown(block, proj);
+      closeDropdown();
+      if (typeof window.__qqq_roamRevealPath === 'function') {
+        try { window.__qqq_roamRevealPath(proj.path); } catch (_) { }
+      } else {
+        showDropdown(block, proj);   // 定位机器缺失兜底（理论不可达）——至少给出目录树，绝不死点击
+      }
     });
     // 右键 → 打开新搜索标签（多实例）
     block.addEventListener('contextmenu', (e) => {

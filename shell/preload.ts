@@ -568,6 +568,15 @@ const QQQ = {    // ---- app info ----
         },
         // 网页抓取（URL 粘贴 → 视频嗅探；返回 {ok,html,charset,finalUrl} 或 {ok,directKind}）
         fetchPage: (payload: any) => ipcRenderer.invoke('qqqide:paste-dl:fetch-page', payload),
+        // cookies 文件夹（风控自救：确保目录存在+落使用说明；返回 {ok,dir}，由调用方走 shell.openPath 打开）
+        cookiesDir: () => ipcRenderer.invoke('qqqide:paste-dl:cookies-dir'),
+        // cookies 一键获取（「在 qd 内登录」）：打开 qd 内登录窗口；登录完成自动保存并广播 cookies-saved
+        loginCookies: (siteUrl?: string) => ipcRenderer.invoke('qqqide:paste-dl:cookie-login', { siteUrl: siteUrl || '' }),
+        onCookiesSaved: (cb: (msg: any) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[pasteDl.onCookiesSaved]', err); } };
+            ipcRenderer.on('qqqide:paste-dl:cookies-saved', handler);
+            return () => ipcRenderer.removeListener('qqqide:paste-dl:cookies-saved', handler);
+        },
     },
 
     // ---- export（文档导出机：export doc / export Zip（老 q3 移植），2026-09-18）----

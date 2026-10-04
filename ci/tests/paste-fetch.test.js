@@ -90,6 +90,43 @@ test('extFromMime / sniffVideoMagic / isPlatformOrSegmentVideo / platformVideoNa
     assert.ok(bili.indexOf('bilibili') >= 0 && bili.indexOf('BV1xx411c7mD') >= 0, 'bilibili 命名异常: ' + bili);
 });
 
+test('isDouyinUrl / douyinPageUrl: 域名识别与页面归一（捕获机路由前置）', () => {
+    assert.strictEqual(pf.isDouyinUrl('https://www.douyin.com/video/7678356530345442801'), true);
+    assert.strictEqual(pf.isDouyinUrl('https://v.douyin.com/iAbCdEf/'), true);
+    assert.strictEqual(pf.isDouyinUrl('https://www.iesdouyin.com/share/video/123'), true);
+    assert.strictEqual(pf.isDouyinUrl('https://notdouyin.com/x'), false);
+    assert.strictEqual(pf.isDouyinUrl('https://evil-douyin.com.evil.com/x'), false);
+    assert.strictEqual(pf.isDouyinUrl(''), false);
+
+    // /video/{id} 原样
+    let r = pf.douyinPageUrl('https://www.douyin.com/video/7678356530345442801');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.videoId, '7678356530345442801');
+    assert.strictEqual(r.pageUrl, 'https://www.douyin.com/video/7678356530345442801');
+
+    // 作者分享页 ?modal_id=/vid= → 归一为 /video/{id}
+    r = pf.douyinPageUrl('https://www.douyin.com/user/MS4wLjABAAAAx?from_tab_name=main&modal_id=7678356530345442801&relation=0&vid=7678356530345442801');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.videoId, '7678356530345442801');
+    assert.strictEqual(r.pageUrl, 'https://www.douyin.com/video/7678356530345442801');
+
+    // /note/{id} 图文帖（捕获层再判图文并给诚实错误）
+    r = pf.douyinPageUrl('https://www.douyin.com/note/1234567890123456');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.videoId, '1234567890123456');
+
+    // 短链原样（窗口跟随重定向自动落位）
+    r = pf.douyinPageUrl('https://v.douyin.com/iAbCdEf/');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.videoId, '');
+
+    // 作者主页无 modal_id → 未指向具体视频（诚实拒绝，不猜测）
+    r = pf.douyinPageUrl('https://www.douyin.com/user/MS4wLjABAAAAx');
+    assert.strictEqual(r.ok, false);
+    r = pf.douyinPageUrl('not a url');
+    assert.strictEqual(r.ok, false);
+});
+
 test('parseRetryAfterMs: 秒数 / 空值 / 上限封顶', () => {
     assert.strictEqual(pf.parseRetryAfterMs('5'), 5000);
     assert.strictEqual(pf.parseRetryAfterMs(''), 0);
@@ -152,4 +189,79 @@ test('resolveCharset: 别名归一 / 未知返回空', () => {
     assert.strictEqual(pf.resolveCharset('shift_jis'), 'shiftjis');
     assert.strictEqual(pf.resolveCharset('no-such-charset-xyz'), '');
     assert.strictEqual(pf.resolveCharset(''), '');
+});
+
+test('pickCookiesFile: 精确名优先 / 含 cookies 取最新 / 空与非 cookies 剔除', () => {
+    assert.strictEqual(pf.pickCookiesFile([]), null);
+    assert.strictEqual(pf.pickCookiesFile(null), null);
+    // 空文件视为不存在
+    assert.strictEqual(pf.pickCookiesFile([{ path: 'a', name: 'cookies.txt', mtimeMs: 9, size: 0 }]), null);
+    // txt 但不含 cookies → 剔除
+    assert.strictEqual(pf.pickCookiesFile([{ path: 'a', name: 'notes.txt', mtimeMs: 9, size: 5 }]), null);
+    // 含 cookies 但非 txt → 剔除
+    assert.strictEqual(pf.pickCookiesFile([{ path: 'a', name: 'cookies.json', mtimeMs: 9, size: 5 }]), null);
+    // 宽松名（扩展导出常见名）：取最新 mtime
+    const loose = pf.pickCookiesFile([
+        { path: 'old', name: 'www.youtube.com_cookies.txt', mtimeMs: 1, size: 5 },
+        { path: 'new', name: 'b_cookies.txt', mtimeMs: 2, size: 5 },
+    ]);
+    assert.strictEqual(loose, 'new');
+    // 精确 cookies.txt 优先于更新的宽松名
+    assert.strictEqual(pf.pickCookiesFile([
+        { path: 'loose', name: 'a_cookies.txt', mtimeMs: 99, size: 5 },
+        { path: 'exact', name: 'cookies.txt', mtimeMs: 1, size: 5 },
+    ]), 'exact');
+    // 多个精确名（大小写不敏感）→ 取最新
+    assert.strictEqual(pf.pickCookiesFile([
+        { path: 'e1', name: 'Cookies.TXT', mtimeMs: 1, size: 5 },
+        { path: 'e2', name: 'cookies.txt', mtimeMs: 2, size: 5 },
+    ]), 'e2');
+});
+
+test('serializeCookiesToNetscape: 头/制表符/#HttpOnly_/同键去重/结构防线', () => {
+    const t = pf.serializeCookiesToNetscape([
+        { domain: '.youtube.com', path: '/', name: 'SID', value: 'abc', secure: true, httpOnly: false, expirationDate: 1825650666 },
+        { domain: '.youtube.com', path: '/', name: 'SID', value: 'dup' },
+        { domain: 'www.youtube.com', path: '/', name: 'X', value: 'y', secure: false, httpOnly: true, expirationDate: 0 },
+    ]);
+    assert.ok(t.indexOf('# Netscape HTTP Cookie File') === 0, '应以 Netscape 头开始');
+    assert.ok(t.indexOf('.youtube.com\tTRUE\t/\tTRUE\t1825650666\tSID\tabc') >= 0, 'SID 行格式异常: ' + t);
+    assert.ok(t.indexOf('#HttpOnly_www.youtube.com\tFALSE\t/\tFALSE\t0\tX\ty') >= 0, '#HttpOnly_ 前缀缺失: ' + t);
+    assert.ok(t.indexOf('dup') < 0, '同键应去重（保留先见）');
+    // 值含制表符 → 丢弃（结构防线）；空列表 → 空串
+    assert.strictEqual(pf.serializeCookiesToNetscape([{ domain: '.a.com', path: '/', name: 'N', value: 'a\tb' }]), '');
+    assert.strictEqual(pf.serializeCookiesToNetscape([]), '');
+});
+
+test('mergeNetscapeCookies: 同键新者胜 / 旧文件其它站点保留 / 注释与坏行跳过', () => {
+    const oldT = '# Netscape HTTP Cookie File\n# comment\n\n.b.com\tTRUE\t/\tFALSE\t1\tK\told\n.youtube.com\tTRUE\t/\tTRUE\t1\tSID\tOLD\nbadline\n';
+    const newT = '# Saved by qd (qqqide)\n\n.youtube.com\tTRUE\t/\tTRUE\t2\tSID\tNEW\n';
+    const m = pf.mergeNetscapeCookies(oldT, newT);
+    assert.ok(m.indexOf('.youtube.com\tTRUE\t/\tTRUE\t2\tSID\tNEW') >= 0, '新值应覆盖旧值: ' + m);
+    assert.ok(m.indexOf('SID\tOLD') < 0, '旧 SID 行应被覆盖');
+    assert.ok(m.indexOf('.b.com\tTRUE\t/\tFALSE\t1\tK\told') >= 0, '其它站点应保留');
+    const m2 = pf.mergeNetscapeCookies(null, newT);
+    assert.ok(m2.indexOf('SID\tNEW') >= 0, '无旧文件时应直出新值');
+});
+
+test('siteRootOf: 站点根归一（登录窗入口页；非法/缺省 → YouTube）', () => {
+    assert.strictEqual(pf.siteRootOf('https://www.douyin.com/video/7678356530345442801?x=1'), 'https://www.douyin.com/');
+    assert.strictEqual(pf.siteRootOf('http://example.com/a/b?c=d'), 'http://example.com/');
+    assert.strictEqual(pf.siteRootOf('https://www.youtube.com/watch?v=R_PMTlFn0TQ'), 'https://www.youtube.com/');
+    assert.strictEqual(pf.siteRootOf(''), 'https://www.youtube.com/');
+    assert.strictEqual(pf.siteRootOf('not a url'), 'https://www.youtube.com/');
+    assert.strictEqual(pf.siteRootOf('file:///E:/x/a.png'), 'https://www.youtube.com/');
+    assert.strictEqual(pf.siteRootOf('qqqide-asset://file/a.png'), 'https://www.youtube.com/');
+    assert.strictEqual(pf.siteRootOf(null), 'https://www.youtube.com/');
+    assert.strictEqual(pf.siteRootOf(undefined), 'https://www.youtube.com/');
+});
+
+test('cookieBtnScript: 幂等守卫 / 双路回传标记 / 标签 JSON 转义', () => {
+    const s = pf.cookieBtnScript('登录完成后点此保存 <b>"x"</b>');
+    assert.ok(s.indexOf('__qqqCookieSaveBtn') >= 0, '幂等守卫缺失');
+    assert.ok(s.indexOf('qqqide-cookies:save') >= 0, '伪协议缺失');
+    assert.ok(s.indexOf('__qqq_cookie_save__') >= 0, 'console 标记缺失');
+    assert.ok(s.indexOf('登录完成后点此保存') >= 0, '标签缺失');
+    assert.ok(s.indexOf('\\"x\\"') >= 0, '标签必须 JSON 转义（防注入）');
+    assert.ok(pf.cookieBtnScript('').indexOf('Save cookies') >= 0, '空标签应回落默认值');
 });

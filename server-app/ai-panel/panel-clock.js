@@ -492,7 +492,7 @@ function stopFloorTimer(timing, ag) {
 var _questDrop = null;
 var _q2Shimmer = null;
 var _questDropTimer = null;
-var _questSearchText = '';
+var _questSearchText = '';   // ★ 跨收起保留（2026-10-04 用户定案）：下拉收起不清空、重新展开接着编辑；清空仅归用户手动（closeQuestDrop 禁清）
 var _questDropLimit = 20;
 var _questSearchFocused = false;  // ★ 搜索框焦点追踪
 var _questDropPinned = false;     // ★ 点击钉住（2026-09-26）：单击豆腐块区（改名笔以左）= 打开且永不自动关闭，收起仅认显式手势
@@ -502,7 +502,9 @@ function closeQuestDrop() {
     clearTimeout(_questDropTimer);
     if (_questDrop) { _questDrop.remove(); _questDrop = null; }
     if (_q2Shimmer) { _q2Shimmer.remove(); _q2Shimmer = null; }
-    _questSearchText = '';
+    // ★ 搜索文本跨收起保留（2026-10-04 用户定案）：一切收起路径（指针移出面板 / 窗口失焦 / 点区域外 / Esc / 选条目 / 新建）
+    //   都不清空输入框——重新 hover 展开由 openQuestDrop 原样预填（search.value=_questSearchText）+ 列表续用同一筛选，
+    //   用户可直接接着编辑；清空仅归用户手动删除。旧实现此处恒 _questSearchText=''（收起即丢字）已删，禁加回。
     _questDropLimit = 20;
     _questSearchFocused = false;
     _questDropPinned = false;

@@ -4,6 +4,72 @@
 // \u2550\u2550\u2550 panel-quest-ui.js \u2550\u2550\u2550
 // Quest UI: switchQuest, CRUD, cost/balance, ctx button, guide button, queue system
 
+// ═══ quest 切换提示「召回中」（唯一实现） ═══
+//   设计：切换蒙板期面板正中胶囊 [q{n}] [任务名] [● 召回中]（脉冲点示活）
+//   · 延迟 180ms 露面——数据已驻留的快切（<180ms 完成）零闪烁；大型任务（数百层加载 + 重建 DOM）立等可见
+//   · 零性能开销：静态 DOM 预置（index.html）+ 纯 opacity 动画（合成层不触发布局）；
+//     quest 身份从共享索引 parent.__qqq_questIndex 同步零 IO 取（未命中才异步补名，回执校验防串名）
+//   · 生命周期 = switchQuest 蒙板（arm 于蒙板亮起 / hide 于蒙板熄灭与早退路径）；禁第二套切换提示
+var _swHintTimer = null;
+var _swHintQuest = null;
+function _swHintFill(el, info) {
+    if (!el) return;
+    var qEl = el.querySelector('.sw-hint-q');
+    var tEl = el.querySelector('.sw-hint-t');
+    var sEl = el.querySelector('.sw-hint-stext');
+    if (qEl) {
+        var _num = (info && info.numericId) ? info.numericId : 0;
+        qEl.textContent = _num ? ('q' + _num) : '';
+        qEl.style.display = _num ? '' : 'none';
+    }
+    if (tEl) {
+        var _t = (info && info.title) ? String(info.title) : '';
+        tEl.textContent = _t;
+        tEl.style.display = _t ? '' : 'none';
+    }
+    if (sEl) sEl.textContent = _qq('ai.switchRestore', '召回中');
+}
+function _swHintArm(questId) {
+    var el = document.getElementById('qqq-switch-hint');
+    if (!el) return;
+    _swHintQuest = questId;
+    var info = null;
+    try {
+        var arr = parent && parent.__qqq_questIndex;
+        if (Array.isArray(arr)) {
+            for (var i = 0; i < arr.length; i++) {
+                if (arr[i] && arr[i].id === questId) { info = arr[i]; break; }
+            }
+        }
+    } catch (_) { }
+    _swHintFill(el, info);
+    if (!info && typeof questStore !== 'undefined' && questStore) {
+        // 共享索引未命中 → 异步补名（回执 = 当前提示目标仍为该 quest，防切走/重开后串名）
+        try {
+            questStore.list().then(function (list) {
+                if (_swHintQuest !== questId) return;
+                var q = null;
+                for (var j = 0; list && j < list.length; j++) {
+                    if (list[j] && list[j].id === questId) { q = list[j]; break; }
+                }
+                if (q) _swHintFill(document.getElementById('qqq-switch-hint'), q);
+            }).catch(function () { });
+        } catch (_) { }
+    }
+    el.classList.remove('on');
+    clearTimeout(_swHintTimer);
+    _swHintTimer = setTimeout(function () {
+        _swHintTimer = null;
+        el.classList.add('on');
+    }, 180);
+}
+function _swHintHide() {
+    _swHintQuest = null;
+    if (_swHintTimer) { clearTimeout(_swHintTimer); _swHintTimer = null; }
+    var el = document.getElementById('qqq-switch-hint');
+    if (el) el.classList.remove('on');
+}
+
 async function switchQuest(id) {
     if (id === questActiveId) return;
     if (_switching) return;
@@ -12,6 +78,7 @@ async function switchQuest(id) {
     var _overlay = document.getElementById('qqq-switch-overlay');
     if (_overlay) _overlay.classList.add('show');
     if ($messages) $messages.classList.add('qqq-switching');
+    _swHintArm(id);   // ★ 切换提示「召回中」：蒙板期延迟露面（快切零闪烁）
     // ★ 硬限制：没收到 house 1 不准切任务（防原 floor 中断出红字"未收到 AI 回复"）
     //   ★ agent pool 直取，不经 _activeAgent（_activeAgent 可能被异步换掉导致误判）
     //   ★ _houseIndex 是 agent-loop 原生计数器：floor 始=0，每间 house 完成 +=1，永不清零
@@ -20,6 +87,7 @@ async function switchQuest(id) {
         var _noHouse1 = _curAg._deferRenderUntilHouse1 || (_curAg._houseIndex == null || _curAg._houseIndex <= 0);
         if (_noHouse1) {
             _switching = false;
+            _swHintHide();
             if (_overlay) _overlay.classList.remove('show');
             if ($messages) $messages.classList.remove('qqq-switching');
             try {
@@ -177,6 +245,7 @@ async function switchQuest(id) {
         _scrollToBottomDeferred(true);
     } finally {
         _switching = false;
+        _swHintHide();
         var _overlay = document.getElementById('qqq-switch-overlay');
         if (_overlay) _overlay.classList.remove('show');
         if ($messages) $messages.classList.remove('qqq-switching');

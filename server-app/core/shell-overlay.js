@@ -92,6 +92,9 @@ function bootAiOverlay() {
   }
 
   var zoomScale = 1.0;
+  // ★ 缩放域 1%~6400%（滚轮/±钮/指示钮共用边界，唯一常量）；放大超 1:1 一律 pixelated 原始像素
+  var _OV_ZOOM_MAX = 64, _OV_ZOOM_MIN = 0.01;
+  var _ovZoomTouched = false;   // 本层打开期间用户动过缩放——决定「缩放指示钮」显隐
   // 拖拽偏移（图片和表格共用 translate）
   var _dragX = 0, _dragY = 0;
   // ★ 画布拖拽平移（2026-10-02）：仅表格/代码块模式武装——渲染区（wrapper）外的暗色区域按住拖拽 = 平移整个图层
@@ -146,11 +149,19 @@ function bootAiOverlay() {
     try { CSS.highlights.delete('ov-matches'); } catch (_) { }
     _ovLastMatchText = '';
   }
+  // ★ 图片滤镜裁定：显示总倍率（基础适配 × 缩放，含小图初始上采样）>1:1 → pixelated 原始像素零插值；≤1:1 平滑；svg 恒平滑
+  function _ovApplyImgFilter(img) {
+    var total = zoomScale * (img._ovBaseScale || 1);
+    var isSvg = /\.svg$/i.test(String(_ovLocalPath || '')) || /^data:image\/svg/i.test(String(img.src || ''));
+    img.style.imageRendering = (total > 1.0001 && !isSvg) ? 'pixelated' : 'auto';
+  }
   function applyZoom() {
     var img = contentEl.querySelector('img');
     if (img) {
       img.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
       img.style.transition = 'transform 0.15s ease';
+      _ovApplyImgFilter(img);
+      _ovZoomBadge();
       return;
     }
     // 表格：wrapper 在 clipBox 内，统一采用 scale+translate（禁止 reflow，保持原始比例与换行）
@@ -168,6 +179,7 @@ function bootAiOverlay() {
       wrapper.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
       wrapper.style.transition = 'transform 0.15s ease';
     }
+    _ovZoomBadge();
   }
 
   // Copy button — 固定文字，禁止 i18n 覆写和动画（防按钮变宽→焦点窃取→Ctrl+C 失效）
@@ -233,6 +245,22 @@ function bootAiOverlay() {
   var memBtn = tbBtn(window._i('shell.overlay.mem', '内存'), window._i('shell.overlay.memTitle', '图片进入内存（剪贴板图像），可直接粘贴到聊天或画布'));
   var fileBtn = tbBtn(window._i('shell.overlay.file', '文件'), window._i('shell.overlay.fileTitle', '复制图片文件，可粘贴到聊天/Roam/资源管理器'));
   var pathBtn = tbBtn(window._i('shell.overlay.path', '路径'), window._i('shell.overlay.pathTitle', '复制图片路径'));
+
+  // ★ 缩放指示钮（内存钮左侧·恒占槽——显/隐零挪位）：用户改过缩放且非 100% 才现，点击回 100% 并复位视图
+  var zoomPctBtn = tbBtn('', window._i('shell.overlay.zoomReset', '点击回到 100%'), 'width:66px; padding:8px 0; font-variant-numeric:tabular-nums;');
+  zoomPctBtn.setAttribute('data-no-cd', '');
+  zoomPctBtn.style.visibility = 'hidden';
+  zoomPctBtn.addEventListener('click', function () {
+    zoomScale = 1.0;
+    _dragX = 0; _dragY = 0;
+    applyZoom();
+  });
+  function _ovZoomBadge() {
+    if (!zoomPctBtn) return;
+    var vis = _ovZoomTouched && Math.abs(zoomScale - 1) > 0.001;
+    zoomPctBtn.style.visibility = vis ? '' : 'hidden';
+    if (vis) { zoomPctBtn.textContent = Math.round(zoomScale * 100) + '%'; }
+  }
 
   // 当前 overlay 主体 src（图片）
   function _currentOverlayImgSrc() {
@@ -327,7 +355,8 @@ function bootAiOverlay() {
   var zoomOutBtn = tbBtn('\u2212', window._i('shell.overlay.zoomOut', '缩小'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
   zoomOutBtn.setAttribute('data-no-cd', '');
   zoomOutBtn.addEventListener('click', function () {
-    zoomScale = Math.max(0.25, zoomScale * 0.8);
+    zoomScale = Math.max(_OV_ZOOM_MIN, zoomScale * 0.8);
+    _ovZoomTouched = true;
     applyZoom();
   });
 
@@ -335,7 +364,8 @@ function bootAiOverlay() {
   var zoomInBtn = tbBtn('+', window._i('shell.overlay.zoomIn', '放大'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
   zoomInBtn.setAttribute('data-no-cd', '');
   zoomInBtn.addEventListener('click', function () {
-    zoomScale = Math.min(5.0, zoomScale * 1.25);
+    zoomScale = Math.min(_OV_ZOOM_MAX, zoomScale * 1.25);
+    _ovZoomTouched = true;
     applyZoom();
   });
 
@@ -373,6 +403,7 @@ function bootAiOverlay() {
   });
 
   toolbar.appendChild(copyBtn);
+  toolbar.appendChild(zoomPctBtn);
   toolbar.appendChild(memBtn);
   toolbar.appendChild(fileBtn);
   toolbar.appendChild(pathBtn);
@@ -403,6 +434,7 @@ function bootAiOverlay() {
     contentEl.style.overflow = '';
     zoomScale = 1.0;
     _dragX = 0; _dragY = 0;
+    _ovZoomTouched = false;
   }
   var _baseClose = close;  // 保存原始 close，用于恢复
 
@@ -462,8 +494,9 @@ function bootAiOverlay() {
   overlay.addEventListener('wheel', function (e) {
     if (overlay.style.display === 'none') return;
     e.preventDefault(); e.stopPropagation();
-    if (e.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
-    else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
+    if (e.deltaY < 0) { zoomScale = Math.min(_OV_ZOOM_MAX, zoomScale * 1.15); }
+    else { zoomScale = Math.max(_OV_ZOOM_MIN, zoomScale * 0.87); }
+    _ovZoomTouched = true;
     applyZoom();
   }, { passive: false, capture: true });
 
@@ -617,6 +650,9 @@ function bootAiOverlay() {
       contentEl.style.overflow = '';
       zoomScale = 1.0;
       _dragX = 0; _dragY = 0;
+      _initZoom = 1.0;              // 图片模式重置基准 = 100%（D-pad 中键「重置位置」同步受益）
+      _ovZoomTouched = false;
+      _ovZoomBadge();
       // ★ 先让 overlay 可见以取得正确容器尺寸，再加载图片（避免缓存图 onload 同步触发时容器尺寸为 0）
       overlay.style.display = 'block';
       contentEl.style.overflow = 'hidden';
@@ -657,6 +693,8 @@ function bootAiOverlay() {
           'width:' + finalW + 'px; height:' + finalH + 'px; ' +
           'object-fit:contain; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
           'display:block; user-select:none; will-change:transform;';
+        img._ovBaseScale = nw > 0 ? finalW / nw : 1;   // 基础适配倍率（放大裁定基准 = 本值 × zoomScale）
+        _ovApplyImgFilter(img);                        // 小图初始上采样同为「原始像素」显示
         contentEl.appendChild(img);
         contentEl.style.overflow = 'visible';
         // ── 拖拽平移 ──
@@ -742,6 +780,7 @@ function bootAiOverlay() {
         contentEl.style.overflow = 'hidden';
         zoomScale = 1.0;
         _dragX = 0; _dragY = 0;
+        _ovZoomTouched = false;
 
         // ★ 先让 overlay 布局生效再测可用空间：display:none 时 clientWidth=0，
         //   旧代码回退 window.innerWidth = 全窗口宽（含左右翼）→ clipBox 按错误宽度
@@ -827,15 +866,16 @@ function bootAiOverlay() {
         // _initZoom: 重置按钮用 — 取 fitZoom 和 1.0 中较小者（至多原样，不放大）
         _initZoom = Math.min(1, fitZoom);
         // 初始缩放：放大两级（1.25²=1.5625），但绝不超出边界 fitZoom
-        zoomScale = Math.min(5.0, _initZoom * 1.5625, fitZoom);
+        zoomScale = Math.min(_OV_ZOOM_MAX, _initZoom * 1.5625, fitZoom);
         applyZoom();
 
         overlay.style.visibility = '';
 
         clipBox.addEventListener('wheel', function (we) {
           we.preventDefault(); we.stopPropagation();
-          if (we.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
-          else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
+          if (we.deltaY < 0) { zoomScale = Math.min(_OV_ZOOM_MAX, zoomScale * 1.15); }
+          else { zoomScale = Math.max(_OV_ZOOM_MIN, zoomScale * 0.87); }
+          _ovZoomTouched = true;
           applyZoom();
         }, { passive: false });
 

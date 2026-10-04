@@ -967,7 +967,7 @@ body {
 .qqq-sg-panel,
 .qqq-mf-menu,
 .qqq-tools-menu,
-.qqq-tools-menu .qqq-tools-vurl-drop {
+.qqq-tools-vurl-drop {
   -webkit-user-select: text;
   user-select: text;
 }

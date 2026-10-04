@@ -10,7 +10,7 @@
 //   │  [ .doc ][ .docx ]                                    │
 //   │  [↑][↓]           ⚙ 居中（点击开设置中心）             │  ← [↑][↓] 云同步（老 qqq AQ 100%）+ 齿轮开「qqq 设置中心」
 
-//   │  [▶ Video Url ............][▶]                        │  ← 老 q3 videoCard 100%（回车/▶=开始下载；历史下拉）
+//   │  [ Video Url ............ ][▶]                        │  ← 老 q3 videoCard 100%（回车/▶=开始下载；历史下拉）
 //   │  [✎ Paste]         [✦ Pure]                           │  ← Paste=对目标文档等效 Ctrl+V；Pure=孤儿扫描出清单
 //   │                ▓▓（正中合页）                         │  ← 专用行：即将被操作的编辑分组（实心=当前目标；无目标=整行不显示）
 //   └───────────────────────────────────────────────────────┘
@@ -41,7 +41,8 @@
 
 //   Video Url → 直达下载（直链/平台视频/网页嗅探——paste-router.pasteUrlInto 与粘贴同一机器）；
 //               历史自动收录（qgs.simple('qqq.videoUrl')，空输入框聚焦回看）
-//   Paste     → 对目标文档执行等效 Ctrl+V（桥读剪贴板 → paste-router.pasteInto 同一条管线）
+//   Paste Plain Text → 纯文本粘贴：只取剪贴板文字原样插入目标文档（不下载图片 / 不转换网页富文本 /
+//               不处理文件与网址——富粘贴仍归编辑器右键 / Ctrl+V；paste-router.pasteTextInto）
 //   Pure      → 扫描文档旁 _qqqvault 孤儿项 → 生成 _qqqvault.pure 审阅清单（core/qqq-pure.js；绝不自动删除）
 //   合页指示器 → 专用行正中一枚（比旧卡内款稍大）；悬停操作类按钮/合页方块 → 目标编辑区亮淡紫虚线框
 //
@@ -68,6 +69,7 @@
   var _savorUnsub = null;
 
   // 视频 Url 行（输入框 / 历史下拉 / 错误提示）——输入中不自动收面板（_pointerInside 协同）
+  var _vurlRowEl = null;
   var _vurlInputEl = null;
   var _vurlDropEl = null;
   var _vurlTipEl = null;
@@ -86,7 +88,10 @@
   // ── 图标（内联 SVG，currentColor 全主题自适应；♾/■ 两枚沿用老项目 base64 图标类） ──
   var _ICO_PEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>';
   var _ICO_ZIP = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="4" width="17" height="4.5" rx="1"/><path d="M5.5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V8.5"/><path d="M10.5 12.5h3" stroke-linecap="round"/></svg>';
-  var _ICO_PLAY = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>';
+  // ★ ▶ 内三角（2026-10-04 三轮终稿：二轮 16×20 过大约 35% → 收至 65%，墨迹 ≈10.4×12.9px）：tight viewBox
+  //   贴合墨迹（旧 24 格画布含大量留白——18px 画布实际墨迹仅 ~9.8px）+ flex:0 0 auto 防缩（图标槽 14px
+  //   flex 容器会压缩 SVG；按钮恒高 32px 恰容纳）。
+  var _ICO_PLAY = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 5.5 10.5 13" width="10.4" height="13" style="flex:0 0 auto"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>';
   var _ICO_PASTE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3.2A1.2 1.2 0 0 1 10.2 2h3.6A1.2 1.2 0 0 1 15 3.2v1.3"/></svg>';
   var _ICO_PURE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12"><path d="M12 2l1.8 7.2L21 12l-7.2 1.8L12 21l-1.8-7.2L3 12l7.2-1.8z" fill="currentColor"/></svg>';
 
@@ -152,16 +157,23 @@
       '.qqq-tools-hinge:hover i { border-color: var(--primary-color, #b58900); }',
       '.qqq-tools-hinge:hover i.on { background: var(--primary-color, #b58900); }',
       '.qqq-tools-hinge-row { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; padding: 4px 0 1px; }',
-      // ★ 视频 Url 行（老 q3 videoCard 移植：输入框 + ▶ + 历史下拉；向上展开防越界）
-      '.qqq-tools-video-card { position: relative; }',
+      // ★ 视频 Url 行（老 q3 videoCard 移植：输入框 + ▶ + 历史下拉）
+      //   整行无外框（无卡边框/底色），纯左右结构——左 = 输入框（文字 var(--base03) 近黑/近白，与 --text-dim
+      //   提示文字一眼可辨）/ 右 = ▶ 钮；两者恒高 32px（fix 高 + flex 居中，窄窗不换行、不塌陷）；
+      //   2026-10-04 用户定案：两者微圆角 3px（原直角）+ ▶ 内三角终稿 = 二轮尺寸的 65%（墨迹 ≈10.4×12.9px，tight viewBox）。
+      '.qqq-tools-video-card { grid-column: 1 / -1; position: relative; padding: 7px 0; }',
       '.qqq-tools-vurl-row { display: flex; align-items: center; gap: 4px; }',
-      '.qqq-tools-vurl { flex: 1 1 auto; min-width: 0; font-family: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; background: var(--base3, #eee8d5); color: var(--text-primary, #586e75); outline: none; }',
+      '.qqq-tools-vurl { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 32px; font-family: inherit; font-size: 13px; padding: 0 10px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 3px; background: var(--base3, #eee8d5); color: var(--base03, #002b36); outline: none; }',
+      '.qqq-tools-vurl::placeholder { color: var(--text-dim, #a8a6a2); opacity: 1; }',
       '.qqq-tools-vurl:focus { border-color: var(--primary-color, #b58900); }',
       '.qqq-tools-vurl.invalid { border-color: var(--red, #dc322f); }',
-      '.qqq-tools-vurl-go { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 3px 9px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; background: var(--base3, #eee8d5); color: var(--text-primary, #586e75); }',
+      '.qqq-tools-vurl-go { flex: 0 0 auto; box-sizing: border-box; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--border-color, #d6d6d6); border-radius: 3px; background: var(--base3, #eee8d5); color: var(--text-primary, #586e75); }',
       '.qqq-tools-vurl-go:hover { background: var(--primary-color, #b58900); color: #1e1e1e; }',
-      '.qqq-tools-vurl-drop, .qqq-tools-vurl-tip { position: absolute; left: 0; right: 0; bottom: calc(100% + 3px); z-index: 40; background: var(--card-bg, #fdf6e3); border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; box-shadow: 0 -2px 10px rgba(0,0,0,0.12); padding: 2px 0; display: none; }',
-      '.qqq-tools-vurl-drop { overflow-y: auto; }',
+      // ★ 历史下拉（2026-10-04 用户定案）：输入框正下方紧贴（+1px）、与输入行同宽——fixed 定位且节点挂 body
+      //   （脱离菜单树：菜单是 overflow:auto 滚动容器且带 transform，fixed 子级会被改成菜单局部坐标系并遭下缘裁剪，
+      //   20 条下拉必被切断；坐标由 JS 按输入行实测矩形落值，见 _vurlDropPlace）
+      '.qqq-tools-vurl-drop { position: fixed; z-index: 1000000; background: var(--card-bg, #fdf6e3); border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.12); padding: 2px 0; display: none; overflow-y: auto; }',
+      '.qqq-tools-vurl-tip { position: absolute; left: 0; right: 0; bottom: calc(100% + 3px); z-index: 40; background: var(--card-bg, #fdf6e3); border: 1px solid var(--border-color, #d6d6d6); border-radius: 4px; box-shadow: 0 -2px 10px rgba(0,0,0,0.12); padding: 2px 0; display: none; }',
       '.qqq-tools-vurl-item { padding: 4px 10px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.qqq-tools-vurl-item:hover { background: var(--gold-hover-bg, rgba(181,137,0,0.12)); }',
       '.qqq-tools-vurl-tip { padding: 5px 10px; font-size: 11px; color: var(--red, #dc322f); }',
@@ -191,6 +203,7 @@
     if (!t) { return false; }
     if (_rootEl && _rootEl.contains(t)) { return true; }
     if (_btnEl && _btnEl.contains(t)) { return true; }
+    if (_vurlDropEl && _vurlDropEl.contains(t)) { return true; }   // 历史下拉挂在 body（不在 _rootEl 子树）
     return false;
   }
   function _onDocClick(e) { if (!_containsAny(e && e.target)) { _closeAll(); } }
@@ -668,30 +681,55 @@
   // 视频 Url 行 / Paste / Pure / 合页行（2026-10-03 施工：待移植区三拆）
   // ════════════════════════════════════════════════════════════════════════
 
-  // ── 视频 Url：历史收录（qgs.simple('qqq.videoUrl')，程序级 global.sq3） ──
+  // ── 视频 Url：历史收录（qgs.simple('qqq.videoUrl')，程序级 global.sq3；上限 20 条，新前旧后） ──
+  //   ★ qgs 句柄全异步（get/set 恒返 Promise）——读取统一走「内存镜像 + 异步回填」：
+  //   _vurlHist = 同步可读镜像（null = 未加载），_vurlHistLoad 拉权威值回填（在飞去重）；
+  //   写侧先确保镜像就绪再合并写出（未加载即写会覆盖旧历史——「记忆丢失」曾根因）。
+  var _VURL_HIST_MAX = 20;   // 历史上限（= 下拉最多展示条数；2026-10-04 用户定案 10→20）
+  var _vurlHist = null;
+  var _vurlHistP = null;
   function _videoHistoryHandle() {
     try { return (window.qgs && window.qgs.simple) ? window.qgs.simple('qqq.videoUrl', { cloud: false }) : null; } catch (_) { return null; }
   }
-  function _videoHistoryGet() {
-    var h = _videoHistoryHandle();
-    if (!h) { return []; }
-    try {
-      var v = h.get('history');
-      if (Array.isArray(v)) {
-        return v.filter(function (x) { return typeof x === 'string' && x; }).slice(0, 10);
+  function _vurlHistNorm(v) {
+    var out = [];
+    if (Array.isArray(v)) {
+      for (var i = 0; i < v.length && out.length < _VURL_HIST_MAX; i++) {
+        if (typeof v[i] === 'string' && v[i] && out.indexOf(v[i]) === -1) { out.push(v[i]); }
       }
-    } catch (_) { /* */ }
-    return [];
+    }
+    return out;
   }
+  function _vurlHistLoad(cb) {
+    if (_vurlHist !== null) { if (cb) { cb(); } return; }
+    var h = _videoHistoryHandle();
+    if (!h) { _vurlHist = []; if (cb) { cb(); } return; }
+    if (!_vurlHistP) {
+      try {
+        _vurlHistP = Promise.resolve(h.get('history')).then(function (v) {
+          _vurlHist = _vurlHistNorm(v);
+        }, function () {
+          _vurlHist = [];
+        }).then(function () { _vurlHistP = null; });
+      } catch (_) { _vurlHistP = null; _vurlHist = []; }
+    }
+    if (cb) { if (_vurlHistP) { _vurlHistP.then(cb); } else { cb(); } }
+  }
+  function _videoHistoryGet() { return _vurlHist || []; }
   function _videoHistoryPush(url) {
     var h = _videoHistoryHandle();
     if (!h) { return; }
-    try {
+    var commit = function () {
       var list = _videoHistoryGet().filter(function (x) { return x !== url; });
       list.unshift(url);
-      if (list.length > 10) { list = list.slice(0, 10); }
-      if (h.setNow) { h.setNow('history', list); } else { h.set('history', list); }
-    } catch (_) { /* */ }
+      if (list.length > _VURL_HIST_MAX) { list = list.slice(0, _VURL_HIST_MAX); }
+      _vurlHist = list;
+      try {
+        var p = h.setNow ? h.setNow('history', list) : h.set('history', list);
+        if (p && p.catch) { p.catch(function () { /* */ }); }
+      } catch (_) { /* */ }
+    };
+    _vurlHistLoad(commit);
   }
   function _looksHttpUrl(u) {
     var s = String(u || '').trim();
@@ -699,11 +737,35 @@
     return /^https?:\/\/\S+$/i.test(s);
   }
   function _vurlDropHide() {
-    if (_vurlDropEl) { try { _vurlDropEl.style.display = 'none'; } catch (e) { /* */ } }
+    if (!_vurlDropEl) { return; }
+    try { _vurlDropEl.style.display = 'none'; } catch (e) { /* */ }
+    try { if (_vurlDropEl.parentNode) { _vurlDropEl.parentNode.removeChild(_vurlDropEl); } } catch (e) { /* */ }
   }
-  // 历史下拉（向上展开；max-height = 卡片上缘到面板上缘的可用空间；行悬停恒 --gold-hover-bg）
+  // 历史下拉（2026-10-04 用户定案：输入框正下方紧贴 +1px、与输入行同宽、最多 20 条；行悬停恒 --gold-hover-bg）
+  //   ★ 定位 = fixed + 节点挂 body——菜单是 overflow:auto 滚动容器且带 transform（fixed 子级会变菜单
+  //   局部坐标系并遭下缘裁剪，20 条下拉必被切断）；下探空间不足 → max-height 钳到视口底、内部滚动。
+  //   ★ 镜像异步回填：先确保加载完成再渲染；渲染前复核「面板在 / 框空 / 框聚焦」——
+  //   加载期间用户已输入或已离开则不弹（防迟到下拉残影）。
+  function _vurlDropPlace() {
+    if (!_vurlDropEl || !_vurlInputEl) { return; }
+    try {
+      var anchor = (_vurlRowEl && _vurlRowEl.isConnected) ? _vurlRowEl : _vurlInputEl;
+      var rr = anchor.getBoundingClientRect();
+      _vurlDropEl.style.left = Math.round(rr.left) + 'px';
+      _vurlDropEl.style.width = Math.round(rr.width) + 'px';
+      _vurlDropEl.style.top = Math.round(rr.bottom + 1) + 'px';
+      _vurlDropEl.style.maxHeight = Math.max(44, Math.round(window.innerHeight - rr.bottom - 9)) + 'px';
+    } catch (e) { /* */ }
+  }
   function _vurlDropShow() {
     if (!_vurlDropEl || !_vurlInputEl) { return; }
+    _vurlHistLoad(_vurlDropRender);
+  }
+  function _vurlDropRender() {
+    if (!_vurlDropEl || !_vurlInputEl || !_rootEl) { return; }
+    try {
+      if (String(_vurlInputEl.value || '') !== '' || document.activeElement !== _vurlInputEl) { return; }
+    } catch (_) { /* */ }
     var list = _videoHistoryGet();
     if (!list.length) { _vurlDropHide(); return; }
     _vurlDropEl.textContent = '';
@@ -727,14 +789,11 @@
         _vurlDropEl.appendChild(it);
       })(list[i]);
     }
-    var maxH = 180;
-    try {
-      var cr = _vurlDropEl.parentNode.getBoundingClientRect();
-      var rr = _rootEl.getBoundingClientRect();
-      maxH = Math.max(44, Math.min(200, cr.top - rr.top - 8));
-    } catch (_) { /* */ }
-    _vurlDropEl.style.maxHeight = maxH + 'px';
+    try { if (_vurlDropEl.parentNode !== document.body) { document.body.appendChild(_vurlDropEl); } } catch (_) { /* */ }
+    _vurlDropPlace();
     _vurlDropEl.style.display = 'block';
+    // 菜单开合过渡（transform translateY 0.12s）落定后复测一次（防开面板瞬间聚焦量到过渡中坐标）
+    setTimeout(function () { if (_vurlDropEl && _vurlDropEl.style.display === 'block') { _vurlDropPlace(); } }, 150);
   }
   function _videoInvalidFlash(msg) {
     if (!_vurlInputEl) { return; }
@@ -751,19 +810,25 @@
     }
     try { _vurlInputEl.focus(); } catch (_) { /* */ }
   }
-  // 回车 = ▶ = 确认开始下载（校验 → 收录历史 → 清框 → 同一条 URL 粘贴机器）
+  // 回车 = ▶ = 确认开始下载（目标闸 → 校验 → 收录历史 → 清框 → 同一条 URL 粘贴机器）
+  // ★ 2026-10-04（q400 用户定案）：目标闸必须先于输入检查——旧实现空输入直接静默 return，
+  //   造成「置灰（无目标）时点 ▶ / 回车零反馈」；现在与 Paste/Pure/导出完全一致：无目标恒如实 qoast。
   function _videoSubmit() {
     var inp = _vurlInputEl;
     if (!inp) { return; }
-    var url = String(inp.value || '').trim();
-    if (!url) { return; }
-    if (!_looksHttpUrl(url)) {
-      _videoInvalidFlash(_i('workbench.videoUrlInvalid', '网址无效（需以 http:// 或 https:// 开头的完整链接）'));
-      return;
-    }
     var t = _expResolve();
     if (!t || !t.ed) {
       _qoast((t && t.reason === 'custom-tab') ? _i('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）') : _i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
+      return;
+    }
+    var url = String(inp.value || '').trim();
+    if (!url) {
+      _qoast(_i('workbench.videoUrlEmpty', '请先输入视频/网页网址'), { type: 'info', duration: 5000 });
+      try { inp.focus(); } catch (_) { /* */ }
+      return;
+    }
+    if (!_looksHttpUrl(url)) {
+      _videoInvalidFlash(_i('workbench.videoUrlInvalid', '网址无效（需以 http:// 或 https:// 开头的完整链接）'));
       return;
     }
     var pr = window.qqqPasteRouter;
@@ -788,7 +853,7 @@
   }
   function _buildVideoRow() {
     var c = document.createElement('div');
-    c.className = 'qqq-tools-card wide qqq-tools-video-card';
+    c.className = 'qqq-tools-video-card';
     var row = document.createElement('div');
     row.className = 'qqq-tools-vurl-row';
     var inp = document.createElement('input');
@@ -810,8 +875,9 @@
     row.appendChild(inp);
     row.appendChild(go);
     c.appendChild(row);
-    c.appendChild(drop);
+    c.appendChild(drop);   // 初始挂点；_vurlDropRender 展示时改挂 body（见 _vurlDropPlace 注释）
     c.appendChild(tip);
+    _vurlRowEl = row;
     _vurlInputEl = inp;
     _vurlDropEl = drop;
     _vurlTipEl = tip;
@@ -821,6 +887,7 @@
       _vurlDropHide();
       try { inp.classList.remove('invalid'); } catch (_) { /* */ }
       if (tip) { tip.style.display = 'none'; }
+      if (!inp.value) { _vurlDropShow(); }   // 清空即回看历史（老 q3 语义：空框重拉历史）
     });
     inp.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); _videoSubmit(); }
@@ -865,34 +932,34 @@
     return c;
   }
 
-  // ── Paste：对目标文档执行等效 Ctrl+V（同一条粘贴管线） ──
-  function _doPasteInto() {
+  // ── Paste Plain Text：纯文本粘贴（只取剪贴板文字；富粘贴归编辑器右键 / Ctrl+V，不重复） ──
+  function _doPasteText() {
     var t = _expResolve();
     if (!t || !t.ed) {
       _qoast((t && t.reason === 'custom-tab') ? _i('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）') : _i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
       return;
     }
     var pr = window.qqqPasteRouter;
-    if (!pr || !pr.pasteInto) {
+    if (!pr || !pr.pasteTextInto) {
       _qoast(_i('workbench.needRestart', '此功能未就绪（请刷新窗口；壳层更新后需重启实例）'), { type: 'info', duration: 6000 });
       return;
     }
     _closeAll();
     var p = null;
-    try { p = pr.pasteInto(t.ed); } catch (e) { p = null; }
+    try { p = pr.pasteTextInto(t.ed); } catch (e) { p = null; }
     if (p && p.then) {
       p.then(function (res) {
-        if (res === 'empty') { _qoast(_i('pasteRouter.clipEmpty', '剪贴板为空（没有可粘贴的内容）'), { type: 'info', duration: 5000 }); }
+        if (res === 'no_text') { _qoast(_i('workbench.pasteTextEmpty', '剪贴板里没有文本（纯文本粘贴只读取文字内容）'), { type: 'info', duration: 5000 }); }
         else if (res === 'need_bridge') { _qoast(_i('workbench.needRestart', '此功能未就绪（请刷新窗口；壳层更新后需重启实例）'), { type: 'info', duration: 6000 }); }
         else if (res === 'no_editor') { _qoast(_i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 }); }
       }).catch(function () { /* 管线内部已如实报错 */ });
     }
   }
   function _buildPasteChip() {
-    var b = _chip('Paste', '', _ICO_PASTE);
+    var b = _chip('Paste Plain Text', '', _ICO_PASTE);
     b.classList.add('qqq-tools-bigbtn');
-    b.addEventListener('click', function (e) { e.stopPropagation(); _doPasteInto(); });
-    _expWireCard(b, 'workbench.pasteTip', '把剪贴板内容粘贴到目标文档（与 Ctrl+V 同一条管线：图片 / 文件 / 网页富文本 / URL 嗅探全部支持）。', 'op');
+    b.addEventListener('click', function (e) { e.stopPropagation(); _doPasteText(); });
+    _expWireCard(b, 'workbench.pasteTextTip', '把剪贴板里的纯文本原样插入目标文档（粘贴为纯文本）：不转换网页富文本、不下载图片、不处理文件与网址；需要富粘贴时用编辑器右键 / Ctrl+V。', 'op');
     _dimEls.push(b);
     return b;
   }
@@ -965,6 +1032,8 @@
     root.className = 'qqq-tools-menu';
     root.addEventListener('mouseenter', function () { _pointerInside = true; _clearTimers(); });
     root.addEventListener('mouseleave', function () { _pointerInside = false; _scheduleAll(); });
+    // 面板内容滚动 → 历史下拉（挂 body/fixed）跟随输入行走（capture：scroll 不冒泡）
+    root.addEventListener('scroll', function () { if (_vurlDropEl && _vurlDropEl.style.display === 'block') { _vurlDropPlace(); } }, true);
 
     var grid = document.createElement('div');
     grid.className = 'qqq-tools-grid';
@@ -975,7 +1044,7 @@
     grid.appendChild(_buildZipCard());
     grid.appendChild(_buildGearCard());
     grid.appendChild(_buildVideoRow());     // 视频 Url：整行（输入框 + ▶）
-    grid.appendChild(_buildPasteChip());    // Paste ⎮ Pure 平分左右
+    grid.appendChild(_buildPasteChip());    // Paste Plain Text ⎮ Pure 平分左右
     grid.appendChild(_buildPureChip());
     grid.appendChild(_buildHingeRow());     // 合页专用行（正中一枚，无按钮）
 
@@ -1017,6 +1086,8 @@
     _hingeEls = [];
     _hingeRows = [];
     _dimEls = [];
+    if (_vurlDropEl) { try { if (_vurlDropEl.parentNode) { _vurlDropEl.parentNode.removeChild(_vurlDropEl); } } catch (e) { /* */ } }
+    _vurlRowEl = null;
     _vurlInputEl = null;
     _vurlDropEl = null;
     _vurlTipEl = null;

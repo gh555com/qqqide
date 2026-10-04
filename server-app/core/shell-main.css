@@ -365,11 +365,17 @@
   color: var(--text-primary);
 }
 
-/* ★ 时间线按钮内嵌版本数（2026-10-02 q390 用户定案；2026-10-04 f51 用户定案加粗）：时钟右侧恒显版本库收录版本数（Roam 风格千分位原文；未知态留空）；
-   字号/颜色随按钮继承 + 数字加粗（font-weight 600；等宽字体无 600 档时自动落 Bold）+ 4px 左间距（:not(:empty) 保证空态零占位） */
+/* ★ 时间线按钮内嵌版本数（2026-10-02 q390 用户定案）：时钟右侧恒显版本库收录版本数（Roam 风格千分位原文；未知态留空）；
+   字号/颜色随按钮继承，仅补 4px 左间距（:not(:empty) 保证空态零占位） */
 .qqq-breadcrumb-timeline-btn .qqq-bc-tl-count:not(:empty) {
   margin-left: 4px;
-  font-weight: 600;
+}
+
+/* ★ 面包屑复制/时钟图标绘制整体下移 1px（2026-10-04 f52 用户定案）：仅图标层微调——按钮/文字/版本数零位移 */
+.qqq-breadcrumb-copy-btn .qqi-copy,
+.qqq-breadcrumb-timeline-btn .qqi-clock {
+  position: relative;
+  top: 1px;
 }
 
 /* ★ 面包屑即时 hover 文字框（2026-10-01 q390 用户定案；零延迟，Roam/时间线按钮专用）：

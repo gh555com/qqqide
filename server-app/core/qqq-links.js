@@ -18,10 +18,14 @@
         'https://www.gh555.com/static/qqqide/client-links.json'
     ];
 
-    // ★ 客户端兜底表 — 双写同步点 A（当前零 key——服务器下发即真理；新增 key 时两处必改）
+    // ★ 客户端兜底表 — 双写同步点 A（服务器下发即真理，缺失 key 回退本表；新增 key 时两处必改）
     // 新增/修改 key 必须同步:
     //   gaea/cf/qqqide/服务器下发超链接.py  DEFAULT_LINKS（运维控制台出厂兜底值）
-    var FALLBACK_LINKS = {};
+    var FALLBACK_LINKS = {
+        // 视频下载风控自救帮助（bot wall qoast「了解如何解决」按钮目标；网站帮助文档上线后
+        // 由服务器下发覆盖为文档 URL——客户端零发版切换）
+        'help.cookies': 'https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp'
+    };
 
     var _links = null;   // 服务器拉取成功后的 {key: url}（部分配置 = 服务器真理，缺失 key 自动回退兜底）
     var _loading = false;

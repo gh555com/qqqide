@@ -160,8 +160,18 @@ function renderMarkdown(src) {
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
     // Images — must run BEFORE links to prevent ![alt](url) being caught as [alt](url)
+    // ★ 目标 URL 归一（2026-10-04）：剥离 CommonMark 尖括号包裹 <url>——带空格/中文路径的合法写法；
+    //   本函数在 escHtml 之后执行 → 实际捕获为实体形 &lt;…&gt;（HTML 解析回退 <> → 按相对地址解析；
+    //   qqqide-webapp://…/%3Cfile:///… 裂图实锤）——raw / 实体两种形态都剥
+    function _mdDest(u) {
+        u = String(u).trim();
+        if (u.charAt(0) === '<' && u.charAt(u.length - 1) === '>') { u = u.slice(1, -1).trim(); }
+        else if (u.slice(0, 4) === '&lt;' && u.slice(-4) === '&gt;') { u = u.slice(4, -4).trim(); }
+        return u;
+    }
     // ★ 过滤明显占位/截断路径（含 ... 的 file:/// URL），避免浏览器 404
     s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
+        url = _mdDest(url);
         if (/^file:\/\/\/.*\.\.\./.test(url)) { return '<em>[' + (alt || 'image') + ']</em>'; }
         // ★ 本地图片（file:///）额外挂 Roam 按钮：hover 定位到文件所在目录并选中
         var _roamBtn = /^file:\/\//i.test(url) ? '<span class="table-roam-btn">Roam</span>' : '';
@@ -169,7 +179,9 @@ function renderMarkdown(src) {
         return '<div class="table-wrap img-wrap"><span class="table-view-btn">View</span>' + _roamBtn + '<span class="img-info"></span><img src="' + url + '" alt="' + alt + '" loading="lazy" decoding="async" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
     });
     // Links
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (m, text, url) {
+        return '<a href="' + _mdDest(url) + '" target="_blank">' + text + '</a>';
+    });
     // Tables (must run before lists to avoid confusing | with list markers)
     // ★ 防护：用 \x0a 代替 \n，防止 search_replace 工具将正则中的 \n 断裂成真换行
     // ★ 转义管道符（2026-08-21 二次根治，逐字符扫描）：\| → 字面 |（不拆列）；
