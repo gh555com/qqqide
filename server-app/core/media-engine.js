@@ -52,7 +52,7 @@
     //   ★ 可见边框 + 角标贴靠本体（2026-10-02 用户定案）：一切按钮恒绘 1px 淡边——可点范围一眼可见（禁回 border:none 透明钮）；
     //   ✓ 恒贴本钮右下角（right:0/bottom:-1px——旧 -2/-3 悬空于两钮之间致「勾给谁」歧义）
     //   ★ 勾清晰度配方（2026-10-02 用户定案）：加重勾 ✔(U+2714)/11px/400 + 全向 1px 暗描边——任何底色（含悬停亮底）恒清晰；
-    //   角标全族（置顶/x0.5~x4/循环/随机/追踪——9 钮同配方；勾亮 = 外框同转金；Default 恒不打勾〔2026-10-03 定案〕）player/player.html 头部同步同改
+    //   角标全族（置顶/x0.5~x4/循环/随机/追踪——9 钮同配方；勾亮 = 外框同转金；★ 星标播放钮恒不打勾〔2026-10-03 定案〕）player/player.html 头部同步同改
     '.ovmb-dsw{position:relative;display:flex;align-items:center;justify-content:center;width:22px;height:18px;padding:0;border:1px solid rgba(255,255,255,0.18);border-radius:4px;background:rgba(255,255,255,0.05);color:#a8a49b;outline:none;flex:0 0 auto;box-sizing:border-box;transition:background .1s,color .1s,border-color .1s}' +
     '.ovmb-dsw:hover{background:rgba(255,255,255,0.14);color:#fff;border-color:rgba(255,255,255,0.32)}' +
     '.ovmb-dsw svg{display:block;width:14px;height:14px;pointer-events:none}' +
@@ -326,7 +326,7 @@
   function _ovTxBarShow(show) {
     var _hb0 = _ovTxLastHost || HOST || {};
     if (_hb0._ovTxSlot) {   // ★ 播放器窗（2026-10-03 q319 定案）：转码状态恒驻底部提示框（与动作浮读同容器——旧浮动条在播放器窗整体废除）
-      if (show) { _ovTxSetText(_ifor(_hb0, 'shell.overlay.transcoding', '正在转码预览…')); }
+      if (show) { _ovTxSetText(_ifor(_hb0, 'shell.overlay.transcoding', '正在转码')); }
       _hb0._ovTxSlot.setVisible(!!show);
       return;
     }
@@ -338,7 +338,7 @@
         'display:flex;align-items:center;gap:12px;background:rgba(0,0,0,0.78);color:#fff;border-radius:10px;' +
         'padding:10px 16px;font-size:13px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 4px 24px rgba(0,0,0,0.5);';
       _ovTxBarText = document.createElement('span');
-      _ovTxBarText.textContent = _ifor(_ovTxLastHost || HOST, 'shell.overlay.transcoding', '正在转码预览…');
+      _ovTxBarText.textContent = _ifor(_ovTxLastHost || HOST, 'shell.overlay.transcoding', '正在转码');
       var _txCancelBtn = document.createElement('button');
       _txCancelBtn.textContent = _ifor(_ovTxLastHost || HOST, 'common.cancel', '取消');
       _txCancelBtn.setAttribute('data-no-cd', '');
@@ -379,8 +379,9 @@
       try {
         _ovTxUnsub = hh.bridge.media.onPlayableProgress(function (m) {
           if (!m || m.reqId !== rid) { return; }
-          var base = _ifor(hh, 'shell.overlay.transcoding', '正在转码预览…');
-          _ovTxSetText((m.pct != null && m.pct >= 0) ? (base + ' ' + m.pct + '%') : base);
+          var base = _ifor(hh, 'shell.overlay.transcoding', '正在转码');
+          // ★ 百分比恒最左（2026-10-03 q395 定案）：窄窗文字截断只切尾字，pct 永不丢——'42% · 正在转码'
+          _ovTxSetText((m.pct != null && m.pct >= 0) ? (m.pct + '% · ' + base) : base);
         });
       } catch (_) { }
     }
@@ -2261,7 +2262,7 @@ function mount(opts) {
         _ovTxReqId = rid;
         _ovTxLastHost = H;
         _ovTxBarShow(true);
-        _ovTxSetText(_i('shell.overlay.txStreaming', '边转边播 · 正在转码…'));   // 流路径专属起手文案（首个进度事件到达前即正确）
+        _ovTxSetText(_i('shell.overlay.txStreaming', '边转边播'));   // 流路径专属起手文案（首个进度事件到达前即正确；2026-10-03 q395 精简）
         var s = {
           rid: rid, H: H, el: _mEl, barApi: _barApi, fail: _ovMediaFail, fallback: null,
           ms: null, sb: null, url: null, q: [], idx: 0, done: false, failed: false, ended: false,
@@ -2275,8 +2276,8 @@ function mount(opts) {
           try {
             s.unsubProg = bm.onPlayableProgress(function (m) {
               if (!m || m.reqId !== rid) { return; }
-              var base = _i('shell.overlay.txStreaming', '边转边播 · 正在转码…');
-              _ovTxSetText((m.pct != null && m.pct >= 0) ? (base + ' ' + m.pct + '%') : base);
+              var base = _i('shell.overlay.txStreaming', '边转边播');
+              _ovTxSetText((m.pct != null && m.pct >= 0) ? (m.pct + '% · ' + base) : base);   // ★ pct 恒最左（窄窗恒可见）
             });
           } catch (_) { }
         }

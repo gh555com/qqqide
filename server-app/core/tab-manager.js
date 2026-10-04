@@ -102,7 +102,8 @@
   // ---- Tab button ----
   // ★ 2026-10-03（q359 用户定案）：goods 标签图标映射（唯一表）——标签（gaeaId/customId）→ 手绘 SVG 图标名
   //   search/git/dsecret/inbox 四个 goods 标签前置小图标（去 emoji 后的可见图标；跨系统一致）
-  var TAB_ICON_MAP = { search: 'search', git: 'git', dsecret: 'shield', inbox: 'mail' };
+  //   inbox = 'mail-r'（12 网格像素台阶信封——12px 盒 @1:1 纯色实线零模糊；2026-10-04 f51 定案，旧 'mail' 16 网格细线版 12px 下全半透明）
+  var TAB_ICON_MAP = { search: 'search', git: 'git', dsecret: 'shield', inbox: 'mail-r' };
 
   function createTabBtn(tab, grp) {
     const btn = document.createElement('button');

@@ -194,28 +194,41 @@ async function updateDriveDisplay() {
 	var resizer = document.getElementById('sidebarResizer');
 	var sidebar = document.getElementById('sidebar');
 	var content = document.getElementById('kyContent');
-	var dragging = false, startX = 0, startW = 0;
+	var dragging = false, startX = 0, startW = 0, lastX = 0, rafId = 0;
 	resizer.addEventListener('mousedown', function(e) {
 		e.preventDefault();
-		dragging = true; startX = e.clientX; startW = sidebarW;
+		dragging = true; startX = e.clientX; startW = sidebarW; lastX = e.clientX;
+		window.__roamSashDrag = true;                           // ★ 拖拽期冻结 qq 区填空重算（ResizeObserver 副作用）
+		document.documentElement.classList.add('rm-sash-drag'); // ★ 拖拽期禁用过渡（零动画直落 → 跟手 + 消每步 200ms 过渡动画的逐帧重排重绘）
 		resizer.classList.add('active');
 		document.addEventListener('mousemove', onMove);
 		document.addEventListener('mouseup', onUp);
 	});
-	function onMove(e) {
-		if (!dragging) return;
-		var delta = e.clientX - startX;
+	function applyMove() {
+		rafId = 0;
+		var delta = lastX - startX;
 		sidebarW = Math.max(51, Math.min(340, startW + delta));   // 旧 60/400 ×0.85 视觉等效（zoom 根治）
 		sidebar.style.width = sidebarW + 'px';
 		resizer.style.left = sidebarW + 'px';
 		content.style.left = (sidebarW + 7) + 'px';
 	}
+	function onMove(e) {
+		if (!dragging) return;
+		lastX = e.clientX;
+		if (!rafId) rafId = requestAnimationFrame(applyMove);   // ★ rAF 节流：每帧至多一次样式写（高频鼠标下省掉 80%+ 冗余写）
+	}
 	function onUp() {
+		if (!dragging) return;
 		dragging = false;
+		if (rafId) { cancelAnimationFrame(rafId); applyMove(); }
+		window.__roamSashDrag = false;
+		document.documentElement.classList.remove('rm-sash-drag');
 		resizer.classList.remove('active');
 		document.removeEventListener('mousemove', onMove);
 		document.removeEventListener('mouseup', onUp);
 		_sidebarSave();
+		try { _qqApplyVisible('dirs'); _qqApplyVisible('files'); } catch (e) {}   // 拖拽冻结的填空重算 → 收尾统一补算
+		try { checkAndApplyResponsive(); } catch (e) {}                            // 右侧响应式级联（按新宽度）
 	}
 })();
 

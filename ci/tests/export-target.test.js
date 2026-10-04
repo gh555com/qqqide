@@ -1,6 +1,8 @@
 // ci/tests/export-target.test.js — 导出目标裁决唯一出口 + 工作台合页指示器分组映射。
 //   两源文件均为浏览器全局守卫 IIFE（无模块依赖）→ vm 沙箱注入 window/document 桩直接加载。
 //   契约（详铁律 §4.12）：合页指示器 / 悬停淡紫目标框 / 导出本体三处同源 = window.qqqExport.resolveTarget()。
+//   ★ 2026-10-04 双闸：① 注意力上下文门（焦点在工具标签域 → 无目标，reason 'custom-tab'）；
+//   ② 可见门（机器目标窗格非活动 = 藏在他标签后 → 不算目标；回落可见编辑器）。
 'use strict';
 
 const test = require('node:test');
@@ -23,14 +25,33 @@ function mkEd(filePath, opts) {
 }
 
 // 加载 export-machine.js（window/document 桩）；返回 ctx（window.qqqExport 就绪）
-function loadExportMachine(eds, mounts, activeGetter) {
+//   env.activeElement → 焦点快照证据；env.qqqTabs → 标签按钮 → 标签种类查询桩
+function loadExportMachine(eds, mounts, activeGetter, env) {
+  env = env || {};
   const document = { querySelectorAll: (sel) => (sel === '[data-editor-mount]' ? mounts : []) };
+  document.activeElement = env.activeElement;
   const ctx = { console, document };
   ctx.window = { monaco: { editor: { getEditors: () => eds } } };
   if (activeGetter) { ctx.window.qqqEditor = { getEditorInstance: activeGetter }; }
+  if (env.qqqTabs) { ctx.window.qqqTabs = env.qqqTabs; }
   vm.createContext(ctx);
   vm.runInContext(SRC_EXPORT, ctx, { filename: 'export-machine.js' });
   return ctx;
+}
+
+function mkPane(active) {
+  return { classList: { contains: (c) => c === 'qqq-tab-pane-active' && !!active } };
+}
+function mkMount(ed, pane) {
+  return { _qqqEd: ed, closest: (sel) => (sel === '.qqq-tab-pane' ? (pane || null) : null) };
+}
+function mkTabBtn(tabId) {
+  const b = {
+    tagName: 'BUTTON',
+    getAttribute: (n) => (n === 'data-tab-id' ? tabId : null),
+    closest: function (sel) { return sel === '.qqq-tab-btn' ? b : null; },
+  };
+  return b;
 }
 
 // 加载 qqq-tools.js（同 ctx；qqqExport/qqqTabs 桩）
@@ -141,4 +162,77 @@ test('合页映射: qqqExport 缺席（旧窗口/模块未载）→ 静默回落
   const { groups } = mkGroups();
   const tools = loadTools(undefined, groups);
   assert.strictEqual(tools.expTarget().fillIdx, -1);
+});
+
+// ── 2026-10-04 注意力上下文门（焦点在工具标签域 → 无目标）──
+
+test('上下文门: 焦点在工具标签 iframe（.qqq-tab-pane 内）→ 阻断（机器有可操作目标也不给）', () => {
+  const edA = mkEd('E:/x/q');
+  const pane = mkPane(true);
+  const mountA = mkMount(edA, pane);
+  const iframe = { tagName: 'IFRAME', closest: (sel) => (sel === '.qqq-tab-pane' ? pane : null) };
+  const exp = loadExportMachine([edA], [mountA], () => edA, { activeElement: iframe }).window.qqqExport;
+  const t = exp.resolveTarget();
+  assert.strictEqual(t.ed, null);
+  assert.strictEqual(t.reason, 'custom-tab');
+});
+
+test('上下文门: 焦点在 AI 面板 iframe（不在标签窗格内）→ 不阻断（正常回落机器目标）', () => {
+  const edA = mkEd('E:/x/q');
+  const pane = mkPane(true);
+  const mountA = mkMount(edA, pane);
+  const iframe = { tagName: 'IFRAME', closest: () => null };
+  const exp = loadExportMachine([edA], [mountA], () => edA, { activeElement: iframe }).window.qqqExport;
+  assert.strictEqual(exp.resolveTarget().ed, edA);
+});
+
+test('上下文门: 焦点在工具标签按钮（kmd 标签）→ 阻断', () => {
+  const edA = mkEd('E:/x/q');
+  const mountA = mkMount(edA, mkPane(true));
+  const qqqTabs = { getGroups: () => ([{ type: 'file', tabs: [{ id: 7, customId: 'kmd' }] }]) };
+  const exp = loadExportMachine([edA], [mountA], () => edA, { activeElement: mkTabBtn('7'), qqqTabs }).window.qqqExport;
+  const t = exp.resolveTarget();
+  assert.strictEqual(t.ed, null);
+  assert.strictEqual(t.reason, 'custom-tab');
+});
+
+test('上下文门: 焦点在文件标签按钮 → 放行（走机器裁决）', () => {
+  const edA = mkEd('E:/x/q');
+  const mountA = mkMount(edA, mkPane(true));
+  const qqqTabs = { getGroups: () => ([{ type: 'file', tabs: [{ id: 8, filePath: 'E:/x/q' }] }]) };
+  const exp = loadExportMachine([edA], [mountA], () => edA, { activeElement: mkTabBtn('8'), qqqTabs }).window.qqqExport;
+  assert.strictEqual(exp.resolveTarget().ed, edA);
+});
+
+// ── 2026-10-04 可见门（窗格非活动 = 藏在别的标签后 → 不算目标）──
+
+test('可见门: 机器目标被切走（q400 实景）→ 拒绝；另一组可见编辑器 → 回落它', () => {
+  const edHidden = mkEd('E:/x/hidden');
+  const edVisible = mkEd('E:/x/visible');
+  const mountHidden = mkMount(edHidden, mkPane(false));
+  const mountVisible = mkMount(edVisible, mkPane(true));
+  const exp = loadExportMachine([edHidden, edVisible], [mountHidden, mountVisible], () => edHidden).window.qqqExport;
+  const t = exp.resolveTarget();
+  assert.strictEqual(t.ed, edVisible);
+  assert.strictEqual(t.filePath, 'E:/x/visible');
+});
+
+test('可见门: 机器目标隐藏且无其它可操作编辑器 → ed null（reason none）', () => {
+  const edHidden = mkEd('E:/x/hidden');
+  const mountHidden = mkMount(edHidden, mkPane(false));
+  const exp = loadExportMachine([edHidden], [mountHidden], () => edHidden).window.qqqExport;
+  const t = exp.resolveTarget();
+  assert.strictEqual(t.ed, null);
+  assert.strictEqual(t.reason, 'none');
+  assert.strictEqual(t.mountEl, null);
+});
+
+test('可见门: 正常场景（窗格活动）→ 目标照常 + reason 空', () => {
+  const edA = mkEd('E:/x/q');
+  const mountA = mkMount(edA, mkPane(true));
+  const exp = loadExportMachine([edA], [mountA], () => edA).window.qqqExport;
+  const t = exp.resolveTarget();
+  assert.strictEqual(t.ed, edA);
+  assert.strictEqual(t.reason, '');
+  assert.strictEqual(t.mountEl, mountA);
 });

@@ -49,6 +49,8 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .sidebar-resizer { width: var(--sidebar-resizer-width); background-color: var(--base2); position: fixed; left: 136px; top: 0; bottom: 51px; z-index: 30; cursor: ew-resize; transition: background-color 0.2s, width 0.2s; border: none; }
 .sidebar-resizer:hover { background-color: var(--base1); width: calc(var(--sidebar-resizer-width) * 1.5); }
 .sidebar-resizer.active { background-color: var(--base00); width: calc(var(--sidebar-resizer-width) * 1.5); }
+/* ★ 拖拽性能（2026-10-03）：拖动分割线期间禁用全部过渡——值直落（跟手零滞后），并消掉每步 200ms 过渡动画引发的逐帧重排重绘 */
+html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-drag .ky-content { transition: none !important; }
 
 .nav-item { appearance: none; -webkit-appearance: none; padding: 7px 3.5px;   /* 左移 5px 贴边 */ border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma; font-size: 11px; }
 .nav-item:hover { background-color: var(--bg-highlight); }
@@ -134,7 +136,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .file-select-area { display: flex; align-items: center; padding: 1.5px 3.5px 1.5px 7px; cursor: pointer; flex-shrink: 0; height: 100%; }
 .folder-name-area { flex: 1; padding: 1.5px 7px 1.5px -1.5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }
 .file-name-area { flex: 1; padding: 1.5px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }
-.file-icon { margin-right: 0; font-size: 13px; position: relative; left: -5.5px; top: 0.625px; opacity: .85; }   /* ★ 盒相位对整（2026-10-03）：left/top 使盒恒落整像素（纯色零灰边）；top = 旧相位 +1px（用户定案「整体下移 1px 试试」）；opacity .85 = 笔触减淡一档（两主题统一） */
+.file-icon { margin-right: 0; font-size: 13px; position: relative; left: -5.5px; top: 0.625px; }   /* ★ 盒相位对整（2026-10-03）：left/top 使盒恒落整像素（纯色零灰边）；top = 旧相位 +1px（用户定案「整体下移 1px 试试」）；颜色全量（用户定案还原，撤 .85 减淡） */
 .file-item[data-type="file"] .file-icon { position: relative; top: -0.094px; }   /* ★ 相位对整（2026-10-03）：file 行盒 y 恒落整像素（随「整体下移 1px」同步 +1px） */
 .file-item[data-type="file"] .file-name-area > span:not(.file-icon) { padding-left: 1.5px; }
 .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 8.5px; background-color: var(--bg-color); border-top: 1px solid var(--border-strong); display: flex; justify-content: space-between; align-items: center; z-index: 10; box-shadow: 0 -1.5px 4.5px rgba(0,0,0,0.05); gap: 8.5px; }

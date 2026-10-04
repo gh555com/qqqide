@@ -77,8 +77,25 @@ function _sendActive(questId) {
             if (_pi === true || _pi === questId) return true;
         }
         return false;
-    } catch (_) { return false; }
-}
+    } catch (_) { return false; }
+}
+
+// ★ 2026-10-03 根治（q401 事故·面板 _activeAgent 被后台任务劫持 → 发送静默死锁 + 幽灵队列条）：
+//   _executeSend 顶部的「目标 agent 解析」（_activeAgent = pool[questId]）只允许对本次任务生效；
+//   任务收尾（含一切闸门早退）必须把面板 _activeAgent 复位回「面板当前 quest」的 agent——
+//   面板级 _sending / streaming / _queue / 发送闸门 / 队列渲染 / 按钮状态全部经 _activeAgent 解析，
+//   一旦被别的 quest 劫持：本面板发送被静默拒绝（Enter/按钮全黑），队列条会显示别的任务的内容。
+//   幂等安全：只认已存在的 agent（不创建——保持 _unloadQuest 后 _activeAgent=null 的既有语义）；
+//   指针本就正确 / questActiveId 未定 / 异常 → 静默零动作。
+function _restorePanelAgentHome() {
+    try {
+        if (typeof questActiveId === 'undefined' || !questActiveId) return;
+        var _poolR = window.parent && window.parent.__qqq_agentPool;
+        if (!_poolR) return;
+        var _homeAg = _poolR[questActiveId] || null;
+        if (_homeAg && _activeAgent !== _homeAg) _activeAgent = _homeAg;
+    } catch (_) { }
+}
 // ★ 串行执行器：意图追加到 quest 链尾。同 quest 排队执行（排队信封语义，永不丢消息），
 //   不同 quest 完全并行。链尾 .then 复位 _chainBusy（含异常路径，结构上无泄漏）。
 function _enqueueSend(questId, intent) {
@@ -102,8 +119,10 @@ function _enqueueSend(questId, intent) {
                     if (_ac && (_ac._sendChain === _ag._sendChain || _ac === _ag)) _ac._chainBusy = false;
                 }
             }
-            _ag._chainBusy = false;
-            return result;
+            _ag._chainBusy = false;
+            // ★ 2026-10-03 根治：链任务收尾（含全部闸门早退/异常路径）复位面板 _activeAgent（详 _restorePanelAgentHome）
+            _restorePanelAgentHome();
+            return result;
         });
     };
     if (!_ag._sendChain) _ag._sendChain = Promise.resolve();
@@ -169,7 +188,8 @@ function _buildSendIntent(questId, content, opts) {
     opts = opts || {};
     return {
         questId: questId,
-        content: content,        images: opts.images || null,
+        content: content,
+        images: opts.images || null,
         // ★ 2026-10-01：冻结气泡/图行引用随 intent 随身（旧全局槽在多 quest 并行链下会被后一次
         //   冻结覆盖 → 本条预建气泡变孤儿 + 重复新建；随身引用天然归属本意图，零串号）
         bubbleEl: opts.bubbleEl || null,
@@ -292,8 +312,23 @@ async function _executeSend(intent) {
     //   「继续任务」恢复完成后 finally 排水自动续发（网络恢复即自动发完，不点则待命）。
     var _requeueFromQueue = function () {
         try {
-            if (typeof _queue === 'undefined' || !_queue) return;
-            _queue.unshift({
+            // ★ 2026-10-03 根治（q401 事故·幽灵队列条 + 归错队）：归队目标恒为「本意图的目标 agent」。
+            //   旧实现经 window._queue 访问器（解析面板当前 _activeAgent）——后台 quest 的链任务运行期
+            //   _activeAgent 可能已被解析/劫持成别的 quest → 消息归错队列 + renderQueueStrip 把别的
+            //   quest 的队列画进本面板（幽灵条实锤）。直写目标 agent 队列；UI 仅在「本面板正显示该
+            //   quest 且指针就是它」时刷新，否则交给该 quest 所属面板自行重绘（跨面板错误渲染 > 延迟渲染）。
+            var _rqAg = null;
+            try {
+                var _rqPool = window.parent && window.parent.__qqq_agentPool;
+                if (_rqPool) {
+                    _rqAg = _rqPool[_sendLockKey(questId)] || null;
+                    // 兜底：草稿晋升窗口 questId 可能与池键短暂不同步 → 认「本次任务解析出的 _activeAgent」
+                    if (!_rqAg && _activeAgent && _activeAgent._questId === questId) _rqAg = _activeAgent;
+                }
+            } catch (_) { }
+            if (!_rqAg) { _queueBusy = false; return; }
+            if (!_rqAg._queue) _rqAg._queue = [];
+            _rqAg._queue.unshift({
                 id: 'bk_' + Date.now() + '_rq',
                 text: content || '',
                 images: (images && images.length > 0)
@@ -304,8 +339,10 @@ async function _executeSend(intent) {
                 byok: (function () { try { return !!(window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()); } catch (_) { return false; } })(),
                 ts: Date.now()
             });
-            if (typeof renderQueueStrip === 'function') renderQueueStrip();
-            if (typeof updateQueueBtn === 'function') updateQueueBtn();
+            if (questId === questActiveId && _activeAgent === _rqAg) {
+                if (typeof renderQueueStrip === 'function') renderQueueStrip();
+                if (typeof updateQueueBtn === 'function') updateQueueBtn();
+            }
         } catch (_eRq) { }
         _queueBusy = false;  // ★ 复位排水锁（防永久卡死）
     };
@@ -325,6 +362,10 @@ async function _executeSend(intent) {
     if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery && !_isCompress) {
         if (intent.fromQueue) _requeueFromQueue();
         _pressRejectRollback();
+        // ★ 2026-10-03：普通消息被本闸门拒绝必须有可见反馈——旧实现静默 return = 「按了没反应」黑洞
+        //   （q401 事故实锤：面板 _activeAgent 被劫持到正在建楼的 quest → 本条静默蒸发无任何提示）。
+        //   与输入层 Enter/发送按钮的忙提示同源（_limitQoast 'send-busy'，3s 节流防刷屏）。
+        if (!intent.fromQueue && typeof _limitQoast === 'function') _limitQoast('send-busy');
         return;
     }
     if (_activeAgent && _activeAgent._stopState === 'stopping') {
@@ -506,7 +547,8 @@ async function _executeSend(intent) {
     }
     updateQueueBtn();
 
-    // ★ 内容验证（显式传入，不读 $input）    var text = (content || '').trim();
+    // ★ 内容验证（显式传入，不读 $input）
+    var text = (content || '').trim();
     if (!text && (!images || images.length === 0)) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); agent.setStopState('idle'); updateQueueBtn(); return; }
     // ★ 2026-08-17 F51: compress 楼层不受面板 streaming 拦截（目标 agent 已由上方解析，
     //   streaming proxy = 目标 agent 的 _streaming；双保险豁免机器触发的压缩楼层）
@@ -622,7 +664,8 @@ async function _executeSend(intent) {
     //   mkdir 抛错 → 楼层号永久蒸发 + 发送静默死亡（用户只见气泡不见任何错误）→ 显式报错）
     var floorNum;
     var root2 = questStore.getProjectRoot();
-    try {        var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
+    try {
+        var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
         // ★ 2026-10-01 forceFloorNum（0-house 同层重试）：解析原楼层目录用于复用——
         //   旧实现跳过 !forceFloorNum 分支后，qDirName2/fDirName2 恒 undefined →
         //   _allTxtDirLocal 拼出 root/_qqq/quests/// 垃圾路径 + 图片不写盘（_ensured undefined）。
@@ -683,7 +726,8 @@ async function _executeSend(intent) {
                             } else {
                                 var _b64Only = _pimg.base64 || _pimg.dataUrl.split(',')[1] || '';
                                 await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _b64Only);
-                            }                            _pimg.fileName = _fileName;
+                            }
+                            _pimg.fileName = _fileName;
                             // ★ 2026-09-26：fileName 同步回渲染闭包引用的同一对象——_images 是 _srcImgs 的
                             //   map 副本，两套对象；旧实现只写 _images → badge 闭包读 _srcImgs 的
                             //   img.fileName 恒空 → overlay「文件/路径」按钮的 localPath 恒 null。
@@ -733,7 +777,8 @@ async function _executeSend(intent) {
             agent._passbyBaseWge = (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0);
             agent._passbyBaseTokens = (agent._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(agent) : 0);
             agent._passbyBaseFloorNum = _oldFloorNum2;
-        }        agent._currentFloorNum = floorNum;
+        }
+        agent._currentFloorNum = floorNum;
         // ★ 2026-09-26：图片 badge 楼层号回填（闭包点击时读 dataset.fn 取真实楼层——防解析到新楼层目录）
         // ★ 2026-09-30：questId 同步回填（按下即冻结路径建行时草稿 id 未定，badge 点击惰性读 dataset.qid）
         try { if (imgRow) { imgRow.dataset.fn = String(floorNum); imgRow.dataset.qid = String(qid || ''); } } catch (_) { }
@@ -741,7 +786,8 @@ async function _executeSend(intent) {
         agent._a4Snapshots = {};
         agent._lastAutoSaveLen = 0;
         agent._lastFloorTimingRecord = null;
-        if (!agent._floorMeta) agent._floorMeta = {};        var _projectRoot = root2 || questStore.getProjectRoot();
+        if (!agent._floorMeta) agent._floorMeta = {};
+        var _projectRoot = root2 || questStore.getProjectRoot();
         if (!_allTxtDirLocal && _retryFDir) {
             // ★ 2026-10-01：forceFloorNum 重试复用原楼层目录（旧实现此路径拼垃圾 + 写错位）
             _allTxtDirLocal = _retryFDir;
@@ -818,7 +864,8 @@ async function _executeSend(intent) {
     }
     // ★ recovery: 流式状态已在 agent 上，直接复用
     agent._streamBuf = agent._streamBuf || '';
-    agent._streamParas = agent._streamParas || [];    // ★ BYOK（Z）楼层标签（2026-09-17）：自带密钥（Z）通道下平台档位对请求零影响
+    agent._streamParas = agent._streamParas || [];
+    // ★ BYOK（Z）楼层标签（2026-09-17）：自带密钥（Z）通道下平台档位对请求零影响
     //   （模型名/思考参数/max_tokens 全由用户配置或恒定值接管）→ 标签显 'Z' 替代 A1/A2/A3，
     //   与 Z 按钮 / 费用后缀 ' BYOK' 同源；发送时按 isActive 判定（BYOK 无静默回退，判定即实际通道）
     var _byokOn = false;
@@ -829,14 +876,16 @@ async function _executeSend(intent) {
     // ★ V15: compress 楼层标记（az 区外观正常，GE 账单 type=f3）
     if (_isCompress) {
         agent._compressFloor = true;
-        agent._aiStartTime = _fmtTime(new Date());        // ★ 压缩楼层强制 tier 4：标签用 intent.tierIndex，而非 selectedTier（否则显示 A6）
+        agent._aiStartTime = _fmtTime(new Date());
+        // ★ 压缩楼层强制 tier 4：标签用 intent.tierIndex，而非 selectedTier（否则显示 A6）
         //   三键档位（2026-09-16）：标签恒显示三键数（_tierUiOf：4 → A2）
         agent._aiTierLabel = _tierLabelOf(tierIndex || 4);
     } else {
         // ★ V21: 防 compress 标志泄漏到后续正常楼层
         //   （q147 事故：f97 only facts 后 agent._compressFloor 未重置 → f98 起所有楼层被误标
         //    _compressFloor → 全部跳过饼干 + 楼层回答被当作 facts 提取进 fx）
-        agent._compressFloor = false;        if (sendType !== 'recovery') {
+        agent._compressFloor = false;
+        if (sendType !== 'recovery') {
             agent._aiStartTime = _fmtTime(new Date());
             // ★ 三键档位（2026-09-16）：标签恒显示三键数（1/2/3），旧存量 1..6 自动换算
             agent._aiTierLabel = _tierLabelOf(selectedTier || 6);
@@ -1037,7 +1086,8 @@ async function _executeSend(intent) {
             if (!_lease || agent._capLease !== _lease) return;
             if (agent._capSendToken !== _capToken) return;
             agent._capLease = null;  // 消费租约（防同租约重复触发）
-            if (agent._floorCompletedCleanly || agent._sendTerminated) return;            // ★ R1/R2: 工具执行中 = 真实进展（上传/长命令无 onToken/onCost 信号，不能误判停滞）：
+            if (agent._floorCompletedCleanly || agent._sendTerminated) return;
+            // ★ R1/R2: 工具执行中 = 真实进展（上传/长命令无 onToken/onCost 信号，不能误判停滞）：
             //   预算续命（2026-09-19 f36 事故修案）——每次触发 +20min 窗口，静默段累计预算 2h 耗尽才落闸；
             //   挂死工具由工具层两道看门狗先行兜底（ghrun 15min 失速 / qz-spawn 2h 硬超时）
             var _capByToolBudget = false;
@@ -1126,7 +1176,8 @@ async function _executeSend(intent) {
             _samplePeakK();
             _refreshAqLine();
         } catch (_) { }
-    };    var _touchCap = function (_isProgress) {
+    };
+    var _touchCap = function (_isProgress) {
         if (!agent) return;
         // ★ R3: 令牌不符 = 陈旧闭包（新发送已接管）→ 零副作用早退，绝不误清/误臂新发送的租约
         if (agent._capSendToken !== _capToken) return;
@@ -1211,7 +1262,8 @@ async function _executeSend(intent) {
                     _samplePeakK();   // ★ aq 峰值采样：工具组原子推入完成后（防抖内），先采样再落盘
                     if (typeof _saveAgentFloor === 'function') _saveAgentFloor(agent, qid);
                 }, 500);
-            },            onToken: function (chunk) {
+            },
+            onToken: function (chunk) {
                 _touchCap(true);
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
@@ -1266,7 +1318,13 @@ async function _executeSend(intent) {
                     if (typeof updateQueueBtn === 'function') updateQueueBtn();
                     scrollToBottom(true);
                 }
-                var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
+                // ★ 2026-10-03 根治（q359 f43 实锤）：渲染标记必须打在「真实渲染目标」上——_doStreamRender 永远渲染
+                //   agent._activeAiDiv；旧式「闭包 aiDiv 只要 isConnected 就优先」在换面板后仍选旧卡的隐藏 div
+                //   （卡片切走仅 display:none，isConnected 恒真）→ 脏标记/调度落在旧 div、渲染读新 div（不脏）→ 双方
+                //   各自空转、屏幕自卡重建起彻底静默（终稿永不上屏）。新序：agent 绑定且属于本楼层者优先。
+                var _targetDiv = (agent._activeAiDiv && agent._activeAiDiv._contentWrap && (agent._activeAiDiv._floor === floorNum || agent._activeAiDiv === aiDiv))
+                    ? agent._activeAiDiv
+                    : ((aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv));
                 if (!_targetDiv) {
                     agent._streamingContent = (agent._streamingContent || '') + chunk;
                     return;
@@ -1374,7 +1432,11 @@ async function _executeSend(intent) {
                 }
                 if (aiDiv) aiDiv._floorCompleted = true;
                 aiDiv._renderScheduled = false;
-                var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
+                // ★ 2026-10-03 根治（同 onToken）：终稿渲染必须打进「agent 绑定且属于本楼层」的 div
+                //   （旧式在换面板后会把终稿写进旧卡的隐藏 div → 屏幕永远看不到最终回复，q359 f43 实锤）
+                var _targetDiv2 = (agent._activeAiDiv && agent._activeAiDiv._contentWrap && (agent._activeAiDiv._floor === floorNum || agent._activeAiDiv === aiDiv))
+                    ? agent._activeAiDiv
+                    : ((aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv));
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
                     _targetDiv2._guideMode = false;
                     // ★ C 重构：content = API 完整回复 = 唯一权威真理源
@@ -1634,11 +1696,17 @@ async function _executeSend(intent) {
                 agent._activeAiDiv = null;
             }
         }
-        if (agent && !agent._floorCompletedCleanly && agent._stopState === 'sending' && !agent._floorOnErrorCalled) {
-            agent._streaming = false;
-            console.log('[pipeline] floor ended headless');
-            if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-            return;
+        if (agent && !agent._floorCompletedCleanly && agent._stopState === 'sending' && !agent._floorOnErrorCalled) {
+            agent._streaming = false;
+            console.log('[pipeline] floor ended headless');
+            if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
+            // ★ 2026-10-03 根治：headless 终结必须落终态——旧实现裸 return 把 _stopState 永久卡在
+            //   'sending'（此后 Enter/发送按钮/队列排水全部静默拒绝 = 死锁）+ _queueBusy 可能卡 true
+            //   （排水永塞）+ _activeAgent 劫持残留（面板读错 agent）。补终态 + 解锁 + 指针复位。
+            _queueBusy = false;
+            try { agent.setStopState('idle'); } catch (_) { }
+            _restorePanelAgentHome();
+            return;
         }
         if (agent) { agent._streaming = false; }
         if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
@@ -1649,13 +1717,18 @@ async function _executeSend(intent) {
         // ★ 2026-09-06: fatal 态不排水（网络中断实锤：fatal 后立即排水 → 下一条 shift 出队 →
         //   fatal 闸门拦截 → 消息永久丢失）。待命队列，等用户点红框恢复成功后此条件自然放行续发。
         if (_queue && _queue.length > 0 && _activeAgent === agent && !_queuePaused && agent._stopState !== 'fatal') {
-            _triggerQueueSend();
+            // ★ 2026-10-03：显式携目标 quest + 队列来源 agent——后台任务（qid ≠ 面板活跃 quest）排水
+            //   必须发给运行任务的 quest（旧实现经 sendMessage 用面板 questActiveId → 消息发进错误 quest）
+            _triggerQueueSend(qid, agent);
         }
-        if (_activeAgent === agent) {
-            // ★ 无条件同步按钮 UI：无论正常完成/停止/报错，finally 做最后一次按钮刷新
-            //   setStreaming(false) 内部已含 updateGuideBtn，下方不再重复调用
-            setStreaming(false);
-        }
+        if (_activeAgent === agent) {
+            // ★ 无条件同步按钮 UI：无论正常完成/停止/报错，finally 做最后一次按钮刷新
+            //   setStreaming(false) 内部已含 updateGuideBtn，下方不再重复调用
+            setStreaming(false);
+        }
+        // ★ 2026-10-03 根治：本任务若非面板活跃 quest（后台链任务），收尾复位面板 _activeAgent
+        //   （详 _restorePanelAgentHome——防发送闸门/队列渲染被劫持指针污染）
+        _restorePanelAgentHome();
     }
 
     return { questId: qid, agent: agent, floorNum: floorNum, aiDiv: aiDiv };

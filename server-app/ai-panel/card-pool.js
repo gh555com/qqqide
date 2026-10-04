@@ -799,8 +799,11 @@ var CardPool = (function () {
     //   _streaming 真则表明楼未建完（快照），丢弃预渲染 ai_html 换现场重渲
     var conv = fData.conversation || [];
     var flowHtml = fData.ai_html || '';
-    if (fData._streaming && flowHtml.indexOf('msg-flow-tools-done') >= 0) {
-      flowHtml = '';  // ★ 舍弃焙入幽灵的 stale ai_html
+    // ★ 2026-10-03 根治（q359 f43 实锤）：守卫从「仅认 tools-done 标记」放宽为「凡未完结快照一律弃用」——
+    //   楼层跨面板迁移断链时快照可冻结在半途（f43 冻结在 ~47% 处、终稿从未写入快照；无标记的冻结快照
+    //   曾漏网被当真理渲染 →「切走再切回」仍显残缺）。conversation 是唯一真理源。
+    if (fData._streaming && flowHtml) {
+      flowHtml = '';  // ★ 舍弃未完结（可能冻结）的 stale ai_html
     }
     // ★ 补充：老代码 _streaming 未设，查 agent pool 确认活楼 → 活楼就留空（不印幽灵）
     if (flowHtml && flowHtml.indexOf('msg-flow-tools-done') >= 0 && !fData._streaming) {

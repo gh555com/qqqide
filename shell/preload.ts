@@ -850,7 +850,7 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
         close: () => ipcRenderer.invoke('qqqide:player:close'),
     },
 
-    // ---- fileAssoc（系统默认播放器 — 播放器窗头部「Default」按钮，2026-10-03 定案：单向可反复）----
+    // ---- fileAssoc（系统默认播放器 — 播放器窗头部 ★ 星标播放钮，2026-10-03 定案：单向可反复）----
     //   apply = 全量接管（一切媒体 37 类；win=HKCU 注册表机 / mac=LaunchServices 机）
     //   ★ 无 check/remove（其他播放器可随时覆盖——状态角标/解除均无意义；按钮恒 = 「设为默认」）
     fileAssoc: {

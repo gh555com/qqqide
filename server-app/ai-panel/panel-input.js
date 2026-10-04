@@ -105,7 +105,8 @@ async function _copyAlphalDir(srcDir, dstDir) {
 
 // ── 智能等级选择（per-quest）──
 // ★ 全局默认等级由父窗口 settings 机器提供，兜底 6
-var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;function updateTierButtons(tierIndex) {
+var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
+function updateTierButtons(tierIndex) {
     document.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('sel'); });
     if (tierIndex && tierIndex >= 1 && tierIndex <= 6) {
         // ★ 三键档位（2026-09-16）：data-tier = 组代表值 1/3/5（显示 1/2/3）——旧存量 2/4/6 自动换算到组代表
@@ -145,7 +146,8 @@ function selectTier(tierIndex) {
 //    弹出窗在 parent window（同设置按钮），不在 AI iframe 内
 document.getElementById('tier-a').onclick = function () {
     try { if (parent && parent.window && parent.window.openTierPopup) parent.window.openTierPopup(); } catch (_) { }
-};// ★ 三键档位绑定等级选择（显示 1/2/3 = 组代表 1/3/5；2026-09-16）
+};
+// ★ 三键档位绑定等级选择（显示 1/2/3 = 组代表 1/3/5；2026-09-16）
 document.querySelectorAll('.tier-btn[data-tier]').forEach(function (btn) {
     btn.onclick = function () { selectTier(parseInt(btn.dataset.tier)); };
 });
@@ -346,8 +348,9 @@ $input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
-        if (_sending) return;
-        if (_activeAgent && _activeAgent._compressing) return;
+        // ★ 2026-10-03：静默档补可见反馈——「按回车没反应」黑洞根治（q401 事故实锤）；3s 节流防刷屏
+        if (_sending) { _limitQoast('send-busy'); return; }
+        if (_activeAgent && _activeAgent._compressing) { _limitQoast('send-busy'); return; }
         // ★ 发送活跃检查（同 quest 任何面板链在执行/本面板草稿晋升中 → 拒；不同 quest 三翼并发 → 三通开工）
         //   链串行结构上不可能并发（2026-08-11 重构替代锁表），此检查仅给用户即时反馈
         if (typeof _sendActive === 'function' && _sendActive(questActiveId)) {
@@ -588,7 +591,8 @@ function renderImageStrip() {
 // ═══ 编辑框硬上限（字符数 = str.length；唯一真理源 content-gateway.js EDITOR_CAP_CHARS）══
 var INPUT_CAP_CHARS = 16000;
 // 尝试从 ContentGateway 同步（如果有），但本地 16000 是硬兜底
-if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CHARS === 'number') {    INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
+if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CHARS === 'number') {
+    INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
 }
 
 // ═══ 纯文本插入（唯一实现，2026-10-03）：Ctrl+V / 右键菜单 / 外拖文本 三条入口共用 ═══
@@ -750,7 +754,8 @@ $input.addEventListener('keydown', function (e) {
 
 $sendBtn.onclick = function () {
     if (_switching) return;
-    if (_activeAgent && _activeAgent._compressing) return;
+    // ★ 2026-10-03：静默档补可见反馈（与 Enter 同规）
+    if (_activeAgent && _activeAgent._compressing) { _limitQoast('send-busy'); return; }
 
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !streaming) {
         if (typeof _capRedBoxAndSeal === 'function') _capRedBoxAndSeal();
@@ -758,7 +763,8 @@ $sendBtn.onclick = function () {
     }
 
     if (streaming) { stopStream(); }
-    else if (_activeAgent && _activeAgent._stopState === 'sending') { return; }
+    // ★ 2026-10-03：静默档补可见反馈——旧实现直接 return，点发送零反应（q401 事故实锤）
+    else if (_activeAgent && _activeAgent._stopState === 'sending') { _limitQoast('send-busy'); return; }
     else {
         // ★ 发送活跃检查：同 quest 忙 → 拒（内容保留编辑框）；不同 quest 三翼并发不受阻
         if (typeof _sendActive === 'function' && _sendActive(questActiveId)) {

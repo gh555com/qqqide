@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// ipc-fileassoc.ts — 系统默认播放器机器（播放器窗「Default」按钮后端）
+// ipc-fileassoc.ts — 系统默认播放器机器（播放器窗 ★ 星标播放钮后端）
 //   语义（2026-10-03 定案：单向可反复——无状态角标、无解除逻辑）: 一次点击 = 全量接管
 //   「一切媒体」默认打开方式——不设白名单筛选；范围 = 播放器可播全谱（视频 20 + 音频
 //   17 = 37 类，.ts 排除——与 TypeScript 冲突）。接管层 = HKCU：ProgID(qqqide.player)

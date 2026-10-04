@@ -284,8 +284,27 @@ else:
 roamjs = EP + 'webapp/goods/file-explorer/q2-roam.js'
 if roamjs in nameset:
     roam_txt = tf.extractfile(roamjs).read().decode('utf-8', 'replace')
-    check('\U0001F4C4' in roam_txt and '\U0001F5C8' not in roam_txt,
-          'roam: file icon glyph renderable on mac (no tofu)')
+    # ★ 2026-10-03 图标换代：Roam 列表图标 = SVG mask（qqq-icons folder-r/file-r 13 网格）——
+    #   emoji 字形豆腐风险结构性消除（不再依赖字体字形）；断言 = 新机制在位 + 旧豆腐字形零残留。
+    _roam_ui2 = EP + 'webapp/goods/file-explorer/q2-roam-ui.js'
+    _roam_bt2 = EP + 'webapp/goods/file-explorer/q2-roam-boot.js'
+    _icons2 = EP + 'webapp/core/qqq-icons.js'
+    _svg_ok = ('qqi-file-r' in roam_txt) and ('qqi-folder-r' in roam_txt)
+    _defs_ok = False
+    if _icons2 in nameset:
+        _itxt = tf.extractfile(_icons2).read().decode('utf-8', 'replace')
+        _defs_ok = ("'folder-r'" in _itxt) and ("'file-r'" in _itxt)
+    _scan = [roam_txt]
+    for _rp in (_roam_ui2, _roam_bt2):
+        if _rp in nameset:
+            _scan.append(tf.extractfile(_rp).read().decode('utf-8', 'replace'))
+    _no_tofu = True
+    for _t in _scan:
+        for _ch in _t:
+            if 0x1F5C0 <= ord(_ch) <= 0x1F5FF:
+                _no_tofu = False
+    check(_svg_ok and _defs_ok and _no_tofu,
+          'roam: file icon = SVG mask folder-r/file-r (no emoji tofu on mac)')
 else:
     check(False, 'webapp/goods/file-explorer/q2-roam.js present')
 # ── roam 'd' 键 → 系统回收站（2026-09-19）：webapp 能力探测 + 壳层 trash IPC ──

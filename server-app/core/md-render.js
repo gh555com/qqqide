@@ -165,7 +165,8 @@ function renderMarkdown(src) {
         if (/^file:\/\/\/.*\.\.\./.test(url)) { return '<em>[' + (alt || 'image') + ']</em>'; }
         // ★ 本地图片（file:///）额外挂 Roam 按钮：hover 定位到文件所在目录并选中
         var _roamBtn = /^file:\/\//i.test(url) ? '<span class="table-roam-btn">Roam</span>' : '';
-        return '<div class="table-wrap img-wrap"><span class="table-view-btn">View</span>' + _roamBtn + '<span class="img-info"></span><img src="' + url + '" alt="' + alt + '" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
+        // ★ 性能（2026-10-03）：loading=lazy（视口外不加载）+ decoding=async（解码不阻塞主线程）
+        return '<div class="table-wrap img-wrap"><span class="table-view-btn">View</span>' + _roamBtn + '<span class="img-info"></span><img src="' + url + '" alt="' + alt + '" loading="lazy" decoding="async" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
     });
     // Links
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');

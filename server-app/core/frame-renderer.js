@@ -205,6 +205,11 @@
     img.className = 'qqq-frame-img';
     img.alt = '';             // ★ 防穿帮：不挂文件名（img 无 src 时 Chromium 直接把 alt 文本画出来）
     img.draggable = false;
+    // ★ 性能（2026-10-03）：视口外相框图片不立即加载 + 图像解码不阻塞主线程 ——
+    //   打开含大量图片相框的大文档时，只加载可见区域图片（滚动到时自动加载），
+    //   消除 10+ 图片同时解码排队（实测恢复大楼层时 10 图排队 4.6s）。
+    img.loading = 'lazy';
+    img.decoding = 'async';
     // ★ 防穿帮揭幕制：内容未解码完成前整体不可见（visibility 同时压掉 alt 文本与裂图占位），
     //   成功加载由 _revealFrameContent 揭幕 —— 打开文档不再闪「文件名 + 裂图」
     img.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;visibility:hidden;';

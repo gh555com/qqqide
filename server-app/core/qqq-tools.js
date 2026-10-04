@@ -12,7 +12,7 @@
 
 //   │  [▶ Video Url ............][▶]                        │  ← 老 q3 videoCard 100%（回车/▶=开始下载；历史下拉）
 //   │  [✎ Paste]         [✦ Pure]                           │  ← Paste=对目标文档等效 Ctrl+V；Pure=孤儿扫描出清单
-//   │                ▓▓（正中合页）                         │  ← 专用行：即将被操作的编辑分组（实心=当前目标）
+//   │                ▓▓（正中合页）                         │  ← 专用行：即将被操作的编辑分组（实心=当前目标；无目标=整行不显示）
 //   └───────────────────────────────────────────────────────┘
 //   2026-09-22 二次改版: 移除 SOUND/EXPORT/DATA/SOON 分割行——纯卡片连续流。
 //   2026-09-22 三次改版（用户定案）: 标题行 "qqq workbench" 删除 + 副行小字全删；
@@ -148,6 +148,7 @@
       '.qqq-tools-hinge i + i { margin-left: -1px; }',
       '.qqq-tools-hinge.single i { width: 13px; }',
       '.qqq-tools-hinge i.on { background: currentColor; }',
+      '.qqq-tools-hinge i.off { opacity: .3; }',
       '.qqq-tools-hinge:hover i { border-color: var(--primary-color, #b58900); }',
       '.qqq-tools-hinge:hover i.on { background: var(--primary-color, #b58900); }',
       '.qqq-tools-hinge-row { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; padding: 4px 0 1px; }',
@@ -165,6 +166,7 @@
       '.qqq-tools-vurl-item:hover { background: var(--gold-hover-bg, rgba(181,137,0,0.12)); }',
       '.qqq-tools-vurl-tip { padding: 5px 10px; font-size: 11px; color: var(--red, #dc322f); }',
       '.qqq-tools-bigbtn { justify-content: center; padding: 7px 8px; font-size: 12px; min-width: 0; }',
+      '.qqq-tools-idle { opacity: .55; }',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -361,9 +363,14 @@
   //   · 点方块 = 聚焦该分组当前标签（切换目标，不导出、不关面板）；悬停方块 = 预览该分组淡紫框
   //   · 悬停【操作类】元素 = 目标编辑区亮淡紫 3px 虚线框（同 drop-overlay 绘制，仅换色）：
   //       导出卡×2 · 视频 Url 行 · Paste 钮 · 合页行（Pure 不显示——其作用于目录而非目标文档）
-  //   · tooltip 后缀按 kind 分流：export → 「即将导出」；op/hinge → 「即将操作」（单源 _refreshExportCards）
-  var _expCards = [];      // [{el, base}] 两张导出卡 + 基础 tooltip
-  var _hingeEls = [];      // 两张卡右侧合页图标
+  //   · tooltip 后缀按 kind 分流：export → 「即将导出」；op/hinge → 「即将操作」；无目标 → 「无目标文档」（单源 _refreshExportCards）
+  //   ★ 2026-10-04（q400 用户实锤：焦点在 kmd/inbox 时紫框没亮、导出却把陈旧目标导出走了）——
+  //     无目标 = 全静默：合页行【不显示】、文档操作卡置灰（.qqq-tools-idle）、方块按分组可操作性置灰（.off）、
+  //     点击一律如实拒绝（目标裁决双闸详 export-machine.js resolveTarget）；非文件活动标签的分组 = 不可点不可悬停预览。
+  var _expCards = [];      // [{el, base, kind}] 操作类元素 + 基础 tooltip（导出×2 / 视频行 / Paste / 合页行）
+  var _hingeEls = [];      // 合页图标（专用行正中一枚）
+  var _hingeRows = [];     // 合页专用行（无目标时整行隐藏）
+  var _dimEls = [];        // 文档操作类卡片（无目标时置灰）
   var _expOvEl = null;     // 淡紫目标框（懒建；指针穿透）
   var _expOvShown = false;
 
@@ -405,11 +412,15 @@
     }
     return anyHit;
   }
-  function _hingeRender(w, n, fillIdx) {
+  function _hingeRender(w, groups, fillIdx) {
+    var n = (groups && groups.length) || 0;
+    w._qqqGroups = (groups || []).slice();   // 点击/悬停按「看到的这一份」定位（渲染即绑定）
     while (w.children.length > n) { w.removeChild(w.lastChild); }
     while (w.children.length < n) { w.appendChild(document.createElement('i')); }
     for (var i = 0; i < w.children.length; i++) {
-      w.children[i].className = (i === fillIdx) ? 'on' : '';
+      var cls = (i === fillIdx) ? 'on' : '';
+      if (!_expGroupOperable(groups[i])) { cls = cls ? cls + ' off' : 'off'; }
+      w.children[i].className = cls;
     }
     w.className = 'qqq-tools-hinge' + (n === 1 ? ' single' : '');
     w.style.display = n > 0 ? '' : 'none';
@@ -421,42 +432,53 @@
       e.stopPropagation();   // 不触发其它动作；面板保持打开
       var idx = -1;
       for (var i = 0; i < w.children.length; i++) { if (e.target === w.children[i]) { idx = i; break; } }
-      if (idx >= 0) { _expPickGroup(idx); }
+      if (idx >= 0) { _expPickGroup(w._qqqGroups && w._qqqGroups[idx]); }
     });
-    // ★ 悬停方块 = 预览该分组的淡紫目标框（表达「点它将切到这里」；不可得回落当前目标）
+    // ★ 悬停方块 = 预览该分组的淡紫目标框（表达「点它将切到这里」；非可操作分组零框）
     w.addEventListener('mouseover', function (e) {
       var idx = -1;
       for (var i = 0; i < w.children.length; i++) { if (e.target === w.children[i]) { idx = i; break; } }
-      if (idx >= 0) { _expOvShowGroup(idx); }
+      if (idx >= 0) { _expOvShowGroup(w._qqqGroups && w._qqqGroups[idx]); }
     });
     _hingeEls.push(w);
     return w;
   }
-  // 分组 → 其活动标签的编辑器挂载点（合页悬停预览 / 点方块聚焦共用；活动标签优先，回落组内首挂载）
+  // 分组 → 其【活动标签】的编辑器挂载点（合页悬停预览 / 点方块聚焦共用）。
+  // ★ 2026-10-04：禁跨标签回落——旧实现会回落到组内任意隐藏编辑器（活动标签是 kmd 的组也能找到
+  //   「躲在后面」的文件编辑器）→ 聚焦隐藏编辑器 / 预览幻影目标；现在非文件活动标签 = 无挂载点。
   function _expGroupMount(g) {
     try {
       if (!g) { return null; }
       var tabs = g.tabs || [];
       var act = null;
       for (var k = 0; k < tabs.length; k++) { if (tabs[k] && tabs[k].id === g.activeTabId) { act = tabs[k]; break; } }
-      if (!act) { act = tabs[tabs.length - 1] || null; }
-      var pane = act && act.paneEl;
+      if (!act || !act.filePath) { return null; }
+      var pane = act.paneEl;
       var mount = (pane && pane.querySelector) ? pane.querySelector('[data-editor-mount]') : null;
-      if (mount) { return mount; }
-      if (g.el && g.el.querySelector) { return g.el.querySelector('[data-editor-mount]'); }
+      return mount || null;
     } catch (_) { /* */ }
     return null;
   }
-  function _expOvShowGroup(idx) {
-    var groups = _expFileGroups();
-    var mount = _expGroupMount(groups[idx]);
-    if (!mount) { _expOvShow(); return; }
+  // 分组可操作性：活动标签为文件且编辑器存活（可点切换 / 可悬停预览 / 可亮紫框）
+  function _expGroupOperable(g) {
+    var mount = _expGroupMount(g);
+    if (!mount) { return false; }
+    var ed = mount._qqqEd;
+    if (!ed) { return false; }
+    try {
+      var m = ed.getModel && ed.getModel();
+      if (!m || (m.isDisposed && m.isDisposed())) { return false; }
+    } catch (_) { return false; }
+    return true;
+  }
+  function _expOvShowGroup(g) {
+    if (!g || !_expGroupOperable(g)) { _expOvHide(); return; }
+    var mount = _expGroupMount(g);
+    if (!mount) { _expOvHide(); return; }
     _expOvShowRect(mount);
   }
-  function _expPickGroup(idx) {
-    var groups = _expFileGroups();
-    var g = groups[idx];
-    if (!g) { return; }
+  function _expPickGroup(g) {
+    if (!g || !_expGroupOperable(g)) { return; }   // 非文件活动标签的分组 = 不可切换（禁聚焦隐藏编辑器）
     var mount = _expGroupMount(g);
     var ed = mount && mount._qqqEd;
     if (ed && ed.focus) { try { ed.focus(); } catch (e) { /* */ } }
@@ -468,18 +490,28 @@
     if (!_expCards.length) { return; }
     var groups = _expFileGroups();
     var target = _expResolve();
+    var hasTarget = !!(target && target.ed);
     var fillIdx = _expTargetGroupIdx(groups, target);
     var name = '';
     if (target && target.filePath) { name = String(target.filePath).replace(/\\/g, '/').split('/').pop() || ''; }
     var nameLineExp = name ? ('\n\u25B8 ' + _T('workbench.exportWillExport', '即将导出：{0}', { 0: name })) : '';
     var nameLineOp = name ? ('\n\u25B8 ' + _T('workbench.opTargetTip', '即将操作：{0}', { 0: name })) : '';
+    var idleLine = hasTarget ? '' : ('\n\u25B8 ' + _i('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）'));
     for (var c = 0; c < _expCards.length; c++) {
       var _k = _expCards[c].kind;
-      _expCards[c].el.title = _expCards[c].base + (_k === 'export' ? nameLineExp : nameLineOp);
+      _expCards[c].el.title = _expCards[c].base + (_k === 'export' ? (nameLineExp || idleLine) : (nameLineOp || idleLine));
     }
     for (var h = 0; h < _hingeEls.length; h++) {
-      _hingeRender(_hingeEls[h], groups.length, fillIdx);
-      _hingeEls[h].title = _i('workbench.exportHingeTip', '实心 = 当前即将被操作的编辑分组（你最后在看的那个）；空心 = 另一个分组。点方块可切换目标；悬停操作类按钮或方块时，目标编辑区会亮起淡紫虚线框。') + nameLineOp;
+      _hingeRender(_hingeEls[h], groups, fillIdx);
+      _hingeEls[h].title = _i('workbench.exportHingeTip', '实心 = 当前即将被操作的编辑分组（你最后在看的那个）；空心 = 另一个分组。点方块可切换目标；悬停操作类按钮或方块时，目标编辑区会亮起淡紫虚线框。') + (nameLineOp || idleLine);
+    }
+    // ★ 无目标 = 合页行整体不显示（2026-10-04 用户定案：没有可操作对象，指示不复存在）
+    for (var r = 0; r < _hingeRows.length; r++) {
+      try { _hingeRows[r].style.display = hasTarget ? '' : 'none'; } catch (_) { /* */ }
+    }
+    // ★ 无目标 = 文档操作类卡片置灰（点击恒如实拒绝；Savor/云同步/齿轮不属文档操作，保持可用）
+    for (var d = 0; d < _dimEls.length; d++) {
+      try { _dimEls[d].classList.toggle('qqq-tools-idle', !hasTarget); } catch (_) { /* */ }
     }
   }
   function _expOvEnsure() {
@@ -544,6 +576,7 @@
       fillIdx: _expTargetGroupIdx(groups, target),
       filePath: (target && target.filePath) || '',
       hasMount: !!(target && target.mountEl),
+      reason: (target && target.reason) || '',
     };
   }
 
@@ -568,6 +601,7 @@
     c.appendChild(h);
     c.appendChild(chips);
     _expWireCard(c, 'workbench.exportDocTip', '把当前文档导出为 Word 文件：图片与视频转成图片内嵌，其他附件生成清单；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。', 'export');
+    _dimEls.push(c);
     return c;
   }
 
@@ -584,6 +618,7 @@
     h.appendChild(t);
     c.appendChild(h);
     _expWireCard(c, 'workbench.exportZipTip', '把当前文档及其引用的全部文件、目录打包成 ZIP（保留目录结构、最高压缩）；默认保存到文档旁，仅当同名文件已存在时才弹保存对话框。', 'export');
+    _dimEls.push(c);
     return c;
   }
 
@@ -728,7 +763,7 @@
     }
     var t = _expResolve();
     if (!t || !t.ed) {
-      _qoast(_i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
+      _qoast((t && t.reason === 'custom-tab') ? _i('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）') : _i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
       return;
     }
     var pr = window.qqqPasteRouter;
@@ -826,6 +861,7 @@
       try { inp.focus(); } catch (_) { /* */ }
     });
     _expWireCard(c, 'workbench.videoUrlTip', '输入视频/网页网址 → 回车或点 ▶：直链直接下载；平台/分片视频自动走 yt-dlp；普通网页自动抓取嗅探视频。下载到目标文档旁的 _qqqvault 并插入相框；历史自动收录（空输入框聚焦回看）。', 'op');
+    _dimEls.push(c);
     return c;
   }
 
@@ -833,7 +869,7 @@
   function _doPasteInto() {
     var t = _expResolve();
     if (!t || !t.ed) {
-      _qoast(_i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
+      _qoast((t && t.reason === 'custom-tab') ? _i('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）') : _i('workbench.noTargetDoc', '没有可操作的目标文档（先打开一个已保存的文件）'), { type: 'info', duration: 5000 });
       return;
     }
     var pr = window.qqqPasteRouter;
@@ -856,7 +892,9 @@
     var b = _chip('Paste', '', _ICO_PASTE);
     b.classList.add('qqq-tools-bigbtn');
     b.addEventListener('click', function (e) { e.stopPropagation(); _doPasteInto(); });
-    return _expWireCard(b, 'workbench.pasteTip', '把剪贴板内容粘贴到目标文档（与 Ctrl+V 同一条管线：图片 / 文件 / 网页富文本 / URL 嗅探全部支持）。', 'op');
+    _expWireCard(b, 'workbench.pasteTip', '把剪贴板内容粘贴到目标文档（与 Ctrl+V 同一条管线：图片 / 文件 / 网页富文本 / URL 嗅探全部支持）。', 'op');
+    _dimEls.push(b);
+    return b;
   }
 
   // ── Pure：孤儿扫描出审阅清单（core/qqq-pure.js；绝不自动删除） ──
@@ -864,7 +902,7 @@
   function _doPure() {
     var t = _expResolve();
     if (!t || !t.ed || !t.filePath) {
-      _qoast(_i('workbench.pureNoTarget', 'Pure 需要一个已保存的目标文档（先在编辑器里打开一个文件）'), { type: 'info', duration: 6000 });
+      _qoast((t && t.reason === 'custom-tab') ? _i('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）') : _i('workbench.pureNoTarget', 'Pure 需要一个已保存的目标文档（先在编辑器里打开一个文件）'), { type: 'info', duration: 6000 });
       return;
     }
     var pu = window.qqqPure;
@@ -907,6 +945,7 @@
     var b = _chip('Pure', _i('workbench.pureTip', '扫描目标文档旁的 _qqqvault：找出未被本目录任何文档引用的孤儿文件，生成 _qqqvault.pure 审阅清单（只生成清单，绝不自动删除）。'), _ICO_PURE);
     b.classList.add('qqq-tools-bigbtn');
     b.addEventListener('click', function (e) { e.stopPropagation(); _doPure(); });
+    _dimEls.push(b);
     return b;
   }
 
@@ -915,7 +954,9 @@
     var row = document.createElement('div');
     row.className = 'qqq-tools-hinge-row';
     row.appendChild(_buildHinge());
-    return _expWireCard(row, 'workbench.exportHingeTip', '实心 = 当前即将被操作的编辑分组（你最后在看的那个）；空心 = 另一个分组。点方块可切换目标；悬停操作类按钮或方块时，目标编辑区会亮起淡紫虚线框。', 'hinge');
+    _expWireCard(row, 'workbench.exportHingeTip', '实心 = 当前即将被操作的编辑分组（你最后在看的那个）；空心 = 另一个分组。点方块可切换目标；悬停操作类按钮或方块时，目标编辑区会亮起淡紫虚线框。', 'hinge');
+    _hingeRows.push(row);
+    return row;
   }
 
   // ── 主面板 ──
@@ -974,6 +1015,8 @@
     _savorLabelEl = null;
     _expCards = [];
     _hingeEls = [];
+    _hingeRows = [];
+    _dimEls = [];
     _vurlInputEl = null;
     _vurlDropEl = null;
     _vurlTipEl = null;

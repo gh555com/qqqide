@@ -343,6 +343,9 @@ function _waitRevealAck(id: string, waitMs: number): Promise<any | null> {
 let _ideRevealStarted = false;
 let _lastFocusedMainId: number | null = null;
 const _revealInflight = new Set<string>();
+// ★ 投递串行链（2026-10-03 q395）：按认领顺序（= 用户点击顺序，文件名按时间 id 单调）逐条投递——
+//   并发投递会让多条 reveal 竞跑同一主窗（乱序投递/互踩选中；配合主窗口命令序号裁决 = 最新命令胜）。
+let _revealChain: Promise<void> = Promise.resolve();
 
 function _mainWindowsAlive(): BrowserWindow[] {
     try {
@@ -431,7 +434,7 @@ function _sweepReveals(): void {
         try { fs.renameSync(full, claimed); } catch { continue; }   // 认领竞争失败 → 跳过
         const key = path.basename(claimed);
         _revealInflight.add(key);
-        Promise.resolve()
+        _revealChain = _revealChain
             .then(() => _processRevealRequest(req))
             .catch(() => { _writeRevealAck(String(req.id), { ok: false, reason: 'error' }); })
             .finally(() => {

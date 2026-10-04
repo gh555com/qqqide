@@ -342,12 +342,13 @@ function _unloadQuest() {
     _queueFallback = [];
     if (unloadId && parent.__qqq_agentPool && parent.__qqq_agentPool[unloadId]) {
         var _oldAg = parent.__qqq_agentPool[unloadId];
-        _oldAg._queue = [];
+        // ★ 2026-10-03：不再清空 _queue——排队消息是 quest 自有财产（meta 持久化 + 切回
+        //   _restoreAgentFromStore 从 meta 恢复 + renderQueueStrip 重绘）。切走即清 =
+        //   未发出的排队消息静默蒸发（用户唯一副本）；排水待楼层完成/点击触发自然接续。
         // ★ V6 fix: 清理红框 DOM 引用防内存泄漏
         _oldAg._questErrorDivByFloor = {};
     }
     if (_queueSaveTimer) { clearTimeout(_queueSaveTimer); _queueSaveTimer = null; }
-    renderQueueStrip();
     $input.value = '';
     $input._resetUndo();
     pendingImages = [];
@@ -355,6 +356,10 @@ function _unloadQuest() {
     updateTierButtons(selectedTier);
     renderImageStrip();
     _activeAgent = null;
+    // ★ 2026-10-03：队列条渲染挪到 _activeAgent 置空之后——队列不再随卸载清空后，
+    //   在此前位置渲染会把旧 quest 的队列条画到草稿界面上（_queue 仍解析旧 agent）。
+    //   置空后渲染 = 空 fallback → 隐藏（目标的队列由切回路径 renderQueueStrip 重绘）。
+    renderQueueStrip();
     setStreaming(false);  // ★ 卸载 quest 后刷新按钮状态
     updateCostDisplay();
     updateCtxBtn();
@@ -1380,7 +1385,9 @@ window.addEventListener('message', async function (e) {
                         if (typeof _buildSendIntent === 'function' && typeof _executeSend === 'function') {
                             var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true, backpackEstK: _preBackpackK });
                             var _floorBefore = ag._currentFloorNum || 0;
-                            await _executeSend(_intent);
+                            // ★ 2026-10-03：直调 _executeSend（非链路径）后复位面板 _activeAgent——压缩目标
+                            //   quest 可能 ≠ 面板活跃 quest（F51 解析故意劫持），收尾必须归位（详 _restorePanelAgentHome）
+                            try { await _executeSend(_intent); } finally { if (typeof _restorePanelAgentHome === 'function') _restorePanelAgentHome(); }
                             var _floorAfter = ag._currentFloorNum || 0;
                             if (_floorAfter <= _floorBefore) {
                                 // ★ 2026-08-17 F51: 建楼未真正开始（闸门拦截）→ 恢复饼干原样 + 落盘 + 显式报错
@@ -1604,24 +1611,59 @@ function _debounceSaveQueue() {
     }, 500);
 }
 
-function _triggerQueueSend() {
+// ★ 2026-10-03 排水竞态根治（q401 f1 实锤「点击排队 + 楼层恰完成 → 队列消息凭空消失」）：
+//   楼层「逻辑完结」（onDone 置 _floorCompletedCleanly/_streaming=false）与其 finally 收尾排水之间
+//   存在数秒窗口（save/rebuild/compress 等 await）。此窗口内点击排队 → 按钮立即排水 shift 队首；
+//   随后该 finally 的 `_queueBusy=false`（无条件复位）+ 二次排水 → 第二条消息被静默搬进 sendChain
+//   ——既不在队列条、也还没开建（要等前一条楼层跑完才轮到；前一条再遇 fatal 才被 requeue 救回）。
+//   根治 = 点击类入口（排队按钮 / 暂停恢复）只在链条真空闲时排水；链条忙（本 quest 的 send run
+//   仍在执行，含其 finally 收尾）→ 交给 finally 排水接续——一层楼完成恰一次排水，零双排水。
+function _queueDrainIdle() {
+    try { return !(typeof _sendActive === 'function' && _sendActive(questActiveId)); } catch (_) { return true; }
+}
+
+function _triggerQueueSend(_targetQuestId, _srcAgent) {
+    // ★ 2026-10-03：quest 切换窗口禁排水——切换期间 questActiveId 已指向目标 quest 而 _activeAgent
+    //   尚未换代（switchQuest 内 cardPool.switchTo 等 await 窗口），此时旧 quest 楼层 finally 排水会
+    //   经 sendMessage 读到新 questActiveId → 队列消息被发进错误 quest。切换期间一律不排水（消息
+    //   留在队列条可见，切换完成后在归属 quest 内由点击/楼层完成接续）。
+    if (_switching) return;
     if (_queueBusy) return;
-    var _q = _queue;
-    if (!_q || _q.length === 0) { renderQueueStrip(); return; }
+    // ★ 2026-10-03 根治（q401 事故·跨 quest 发错目标 + 队列条画错任务）：显式目标 quest（楼层 finally
+    //   排水传入运行任务的 qid——可能 ≠ 面板活跃 quest）+ 队列来源 agent。旧实现恒经 sendMessage
+    //   （用面板 questActiveId）且无条件 renderQueueStrip → 后台任务排水会把消息发进本面板正在显示的
+    //   错误 quest、把别的任务队列画进本面板。缺省（点击类入口）= 面板活跃 quest，行为不变。
+    var _tq = (typeof _targetQuestId === 'string' && _targetQuestId) ? _targetQuestId : questActiveId;
+    var _aq = _srcAgent || _activeAgent;
+    var _isHome = (_tq === questActiveId);
+    var _canRender = !!(_isHome && _aq && _activeAgent === _aq);
+    var _q = (_aq && _aq._queue) ? _aq._queue : _queue;
+    if (!_q || _q.length === 0) { if (_canRender) renderQueueStrip(); return; }
     var next = _q.shift();
-    renderQueueStrip();
-    _debounceSaveQueue();
+    if (_canRender) renderQueueStrip();
+    if (_isHome) {
+        _debounceSaveQueue();
+    } else if (_aq && typeof _saveAgentQuestData === 'function') {
+        // 后台任务排水：队列变更必须精确写回该任务自己的 quest（saveQuestData 恒用面板活跃对 → 会写错槽）
+        try { _saveAgentQuestData(_tq, _aq, null, { skipDomFlush: true }).catch(function () { }); } catch (_) { }
+    }
     // ★ 直通载荷（2026-08-20 定案）：队列消息不经过编辑框——直接构建 intent 发送。
     //   编辑框草稿（文字/图片）永不被触碰/覆盖 → 草稿保护机制整体废除，
     //   自动暂停唯一来源 = 人工点「暂停」按钮。
     _queueBusy = true;
-    sendMessage(next.text || '', {
+    var _sendOpts = {
         images: (next.images && next.images.length > 0)
             ? next.images.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; })
             : null,
         tierIndex: (typeof next.selectedTier === 'number') ? next.selectedTier : selectedTier,
         fromQueue: true
-    });
+    };
+    if (_isHome) {
+        sendMessage(next.text || '', _sendOpts);
+    } else {
+        // ★ 显式目标路径：不发进面板活跃 quest（sendMessage 恒用 questActiveId）——直接入链
+        _enqueueSend(_tq, _buildSendIntent(_tq, next.text || '', _sendOpts));
+    }
 }
 
 function renderQueueStrip() {
@@ -1654,7 +1696,8 @@ function renderQueueStrip() {
             _queuePaused = false;
             _queuePausedManual = false;
             renderQueueStrip();
-            if (_queue.length > 0 && !streaming && !_sending) {
+            // ★ 2026-10-03：链条真空门——楼层 finally 收尾期间恢复排水会与前处双排水（详 _queueDrainIdle）
+            if (_queue.length > 0 && _queueDrainIdle() && !streaming && !_sending) {
                 _triggerQueueSend();
             }
         } else {
@@ -1858,7 +1901,10 @@ $queueBtn.onclick = function () {
     //   （2026-08-20：入队后草稿已被本按钮收编清空 → 若此前因草稿自动暂停，立即恢复排水；人工暂停不动）
     // ★ 2026-09-06: fatal 态不立即排水——agent 卡在网络中断红框，立即排水必被 fatal 闸门拦截
     //   （旧实现 shift 出队后被吞 → 消息消失实锤）；消息待命队列，点红框「继续任务」恢复完成后自动续发
-    if (!_sending && !streaming && (!_activeAgent || _activeAgent._stopState !== 'fatal')) {
+    // ★ 2026-10-03: 加链条真空门（竞态根治详 _queueDrainIdle）——楼层 onDone 与 finally 排水之间的
+    //   数秒窗口内点击，绝不再抢排水（否则 finally 二次排水把刚入队的消息静默搬进链条、队列条立空，
+    //   消息既未发出也无任何可见形态）。链条忙 → 本条留在队列条可见，由 finally 收尾排水按序接续。
+    if (_queueDrainIdle() && !_sending && !streaming && (!_activeAgent || _activeAgent._stopState !== 'fatal')) {
         if (_queuePaused && !_queuePausedManual) _queuePaused = false;
         if (!_queuePaused) _triggerQueueSend();
     }

@@ -1716,8 +1716,9 @@
   }
 
   // 返回手绘图标名（core/qqq-icons.js；emoji 图标已废除）
+  // ★ 2026-10-04 f51 用户定案：文件夹/通用文件用 Roam 专用 13 网格形状（folder-r/file-r——与 Roam 列表同款观感；径向 1:1 渲染）
   function fileIconFor(name, isDir) {
-    if (isDir) return 'folder';
+    if (isDir) return 'folder-r';
     const m = String(name).toLowerCase().match(/\.([a-z0-9]+)$/);
     const ext = m ? m[1] : '';
     if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma', 'ape'].indexOf(ext) !== -1) return 'audio';
@@ -1729,7 +1730,7 @@
     if (['xls', 'xlsx', 'csv'].indexOf(ext) !== -1) return 'xls';
     if (['ppt', 'pptx'].indexOf(ext) !== -1) return 'ppt';
     if (['exe', 'msi', 'dll'].indexOf(ext) !== -1) return 'exe';
-    return 'file';
+    return 'file-r';
   }
 
   async function loadDirInto(parentEl, dirPath, projectRoot) {
@@ -1761,8 +1762,10 @@
       row.dataset.isDir = ent.isDir ? 'true' : 'false';
       row._dirFullPath = pathJoin(dirPath, ent.name);  // ★ 全路径标记，供快照还原精确匹配
       const icon = document.createElement('span');
-      icon.className = 'qqi qqi-' + fileIconFor(ent.name, ent.isDir);
-      icon.style.cssText = 'margin-right:6px; font-size:12px;';
+      const icName = fileIconFor(ent.name, ent.isDir);
+      icon.className = 'qqi qqi-' + icName;
+      // ★ 2026-10-04 f51：Roam 专用形状（13 网格）按 13px 渲染 = 1:1 纯色实线；其余 16 网格形状维持 12px
+      icon.style.cssText = 'margin-right:6px; font-size:' + (icName === 'folder-r' || icName === 'file-r' ? '13px' : '12px') + ';';
       const label = document.createElement('span');
       label.textContent = truncMiddle(ent.name, 26, 12);
       label.title = ent.name;  // 完整名称在 hover tooltip 显示
@@ -2330,8 +2333,8 @@
         row.style.cssText = 'padding:8px 12px; cursor:default; font-size:14px; font-weight:300; display:flex; align-items:center; gap:6px;';
 
         var icon = document.createElement('span');
-        icon.className = 'qqi qqi-folder';
-        icon.style.cssText = 'font-size:12px; flex-shrink:0;';
+        icon.className = 'qqi qqi-folder-r';   // ★ 2026-10-04 f51：与 Roam 同款文件夹形状（13 网格 @13px 1:1）
+        icon.style.cssText = 'font-size:13px; flex-shrink:0;';
 
         var nameSpan = document.createElement('span');
         nameSpan.style.cssText = 'font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;';

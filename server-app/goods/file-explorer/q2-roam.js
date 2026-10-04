@@ -825,6 +825,7 @@ function _qqLimit(kind, fit) {
 
 // 应用可见性：过滤命中 + 显示条数 → display（不重建 DOM，保留滚动位置）
 function _qqApplyVisible(kind) {
+	if (window.__roamSashDrag) return;   // ★ 拖拽性能（2026-10-03）：拖动分割线时冻结填空重算（只改宽度、与可见条数无关）；收尾由 resizer onUp 统一补算
 	var pane = _qqPaneEl(kind);
 	if (!pane) return;
 	var g = _qqGeo(pane);
@@ -2104,7 +2105,7 @@ if (emptyCtxMenu) {
 // ═══ 外部命令：Roam 定位文件（AI 面板图片 hover Roam 按钮触发）═══
 // 主窗口 → postMessage qqq-roam-cmd {cmd:'roam.revealFile', path} → 本函数
 // 行为: 跳到文件所在目录 + 选中该文件 + 滚动到可视区
-function roamRevealFile(fullPath, reqId) {
+function roamRevealFile(fullPath, reqId, seq) {
 	try {
 		var norm = String(fullPath).replace(/\\/g, '/');
 		if (!norm) return;
@@ -2133,9 +2134,12 @@ function roamRevealFile(fullPath, reqId) {
 			_roamCmdAck(reqId);   // 导航已发起即回执（选中由下方轮询兜底，成功再补一次回执）
 		}
 		// 目录渲染异步（loadFileList），轮询等待选中，最多 2s；选中成功补回执更早停发
+		// ★ 序号守卫（2026-10-03 q395「连点丢定位」根治）：被更新命令顶替（seq 落后）→ 立即停轮，
+		//   旧命令绝不在新命令选中之后回抢选中（实锤：两个 reveal 相连时旧轮询会把选中抢回旧文件）。
 		var tries = 0;
 		var timer = setInterval(function () {
 			tries++;
+			if (seq && seq < _roamCmdSeq) { clearInterval(timer); return; }
 			if (doSelect()) { clearInterval(timer); _roamCmdAck(reqId); }
 			else if (tries >= 20) { clearInterval(timer); }
 		}, 100);
@@ -2166,10 +2170,16 @@ function roamNavTo(fullPath, reqId) {
 }
 
 // qqq-roam-cmd 外部命令分发（boot.js 转发为 CustomEvent）
+// ★ 命令序号裁决（2026-10-03 q395「连点丢定位」根治）：只认最新命令——旧消息（乱序到达）直接忽略；
+//   旧命令的在飞轮询在 roamRevealFile 内按号自停（见上）。无号消息（旧主窗口）放行，行为不变。
+var _roamCmdSeq = 0;
 document.addEventListener('qqq-roam-cmd', function(e) {
 	var d = e.detail || {};
+	var seq = (typeof d.seq === 'number') ? d.seq : 0;
+	if (seq && seq < _roamCmdSeq) { return; }
+	if (seq) { _roamCmdSeq = seq; }
 	if (d.cmd === 'roam.revealFile' && d.path) {
-		roamRevealFile(d.path, d.reqId || '');
+		roamRevealFile(d.path, d.reqId || '', seq);
 	} else if (d.cmd === 'roam.navTo' && d.path) {
 		roamNavTo(d.path, d.reqId || '');
 	}

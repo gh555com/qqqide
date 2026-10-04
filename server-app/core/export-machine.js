@@ -7,6 +7,9 @@
 //   window.qqqExport.zip()                 导出当前文档 + 全部引用文件/目录 → zip
 //
 // 目标裁决 = 活跃编辑器机器（qqqEditor.getEditorInstance——最后聚焦/最近激活；禁第二套扫描）
+//   ★ 2026-10-04 两道硬闸（q400 实锤：焦点在 kmd/inbox 时点导出，旧裁决拿机器里的陈旧编辑器顶包 →
+//   静默导出错误文档）：① 注意力上下文门——焦点在工具标签域（工具标签 iframe / 工具标签按钮）→ 直接无目标；
+//   ② 可见门——目标编辑器窗格必须 = 其分组活动标签（藏在别的标签后面的编辑器不算目标）。
 // ★ 目标裁决唯一出口 = window.qqqExport.resolveTarget()（工作台合页指示器 / 悬停淡紫目标框 / 导出本体三处同源）
 // 链路：活动编辑器 → viewport-machine.prepareExportAnchors（唯一锚点真相）→
 //   按文档顺序切元素（text/media/path）→ bridge.export.* → 壳层 export-service
@@ -78,22 +81,94 @@
       return !!(m && !m.isDisposed());
     } catch (_) { return false; }
   }
+
+  // ── 注意力上下文门（2026-10-04）：焦点在工具标签域（kmd/inbox/roam/mdview…）→ 无目标 ──
+  //   证据 = 活动焦点归类；焦点在中性区（qqq 面板/壳层按钮/body）时回落「最后一次离焦归类」——
+  //   点 qqq 按钮会把焦点从编辑器搬到按钮上，中性区绝不能冲掉上下文。
+  var _lastUnfocusKind = null;   // 'custom' | 'editor' | null
+  try {
+    if (document.addEventListener) {
+      document.addEventListener('focusout', function (e) {
+        try {
+          var k = _classifyFocusNode(e && e.target);
+          if (k) { _lastUnfocusKind = k; }   // 中性目标（null）不覆盖——防面板内点击冲掉上下文
+        } catch (_) { }
+      }, true);
+    }
+  } catch (_) { }
+
+  // 焦点节点归类：'custom'（工具标签域）/ 'editor'（文档编辑器域）/ null（中性——不裁决）
+  function _classifyFocusNode(el) {
+    try {
+      if (!el || typeof el !== 'object') { return null; }
+      if (typeof document !== 'undefined' && (el === document.body || el === document.documentElement)) { return null; }
+      if (el.tagName === 'IFRAME') {
+        // X 区工具标签内容恒 iframe；AI 面板/翼板 iframe 不在标签窗格内 → 中性（不阻断）
+        return (el.closest && el.closest('.qqq-tab-pane')) ? 'custom' : null;
+      }
+      if (el.closest && el.closest('.monaco-editor')) { return 'editor'; }
+      var tb = el.closest && el.closest('.qqq-tab-btn');
+      if (tb) {
+        var tab = _findTabById(tb.getAttribute && tb.getAttribute('data-tab-id'));
+        if (tab) { return tab.filePath ? 'editor' : 'custom'; }
+        return null;
+      }
+    } catch (_) { }
+    return null;
+  }
+  function _findTabById(id) {
+    try {
+      var t = window.qqqTabs;
+      if (!t || !t.getGroups || id == null) { return null; }
+      var gs = t.getGroups() || [];
+      for (var i = 0; i < gs.length; i++) {
+        var tabs = (gs[i] && gs[i].tabs) || [];
+        for (var j = 0; j < tabs.length; j++) {
+          if (tabs[j] && String(tabs[j].id) === String(id)) { return tabs[j]; }
+        }
+      }
+    } catch (_) { }
+    return null;
+  }
+  function _customFocusBlocked() {
+    try {
+      var v = _classifyFocusNode(document.activeElement);
+      if (v === 'custom') { return true; }
+      if (v === 'editor') { return false; }
+    } catch (_) { }
+    return _lastUnfocusKind === 'custom';
+  }
+
+  // ── 编辑器可见门：窗格非活动（标签被切走）→ 隐藏编辑器不算目标 ──
+  function _mountOperable(ed) {
+    var mount = _mountOfEditor(ed);
+    if (!mount) { return true; }   // 挂载点未找到（极短过渡态）→ 无从判隐，回归旧契约
+    try {
+      if (typeof mount.closest !== 'function') { return true; }   // 测试桩/非元素 → 放行
+      var pane = mount.closest('.qqq-tab-pane');
+      if (!pane || !pane.classList) { return true; }   // 无窗格祖先（理论不发生）→ 放行
+      return pane.classList.contains('qqq-tab-pane-active');
+    } catch (_) { return true; }
+  }
+
   function _activeEditor() {
     var monaco = window.monaco;
     var eds = [];
     try { if (monaco && monaco.editor && monaco.editor.getEditors) { eds = monaco.editor.getEditors() || []; } } catch (_) { eds = []; }
+    var i;
     // ① 真焦点（最直接真相）
-    for (var i = 0; i < eds.length; i++) {
-      try { if (eds[i].hasTextFocus && eds[i].hasTextFocus()) { return eds[i]; } } catch (_) { }
+    for (i = 0; i < eds.length; i++) {
+      try { if (eds[i].hasTextFocus && eds[i].hasTextFocus() && _editorUsable(eds[i]) && _mountOperable(eds[i])) { return eds[i]; } } catch (_) { }
     }
     // ② 活跃编辑器机器（最后聚焦/最近激活——失焦后仍准；出口 = editor.js getEditorInstance）
+    //    ★ 必须可操作——陈旧机器值指向「藏在别的标签后」的编辑器 = 错误文档（q400 内核）
     try {
       var ce = (window.qqqEditor && window.qqqEditor.getEditorInstance) ? window.qqqEditor.getEditorInstance() : null;
-      if (ce && ce._qqqFilePath && _editorUsable(ce)) { return ce; }
+      if (ce && ce._qqqFilePath && _editorUsable(ce) && _mountOperable(ce)) { return ce; }
     } catch (_) { }
-    // ③ 兜底：任一带文件的存活编辑器
-    for (var j = 0; j < eds.length; j++) {
-      try { if (eds[j]._qqqFilePath && _editorUsable(eds[j])) { return eds[j]; } } catch (_) { }
+    // ③ 兜底：任一带文件的存活【且可操作】编辑器（跨分组可见编辑器）
+    for (i = 0; i < eds.length; i++) {
+      try { if (eds[i]._qqqFilePath && _editorUsable(eds[i]) && _mountOperable(eds[i])) { return eds[i]; } } catch (_) { }
     }
     return null;
   }
@@ -126,13 +201,18 @@
   }
 
   // ★ 导出目标裁决唯一出口（工作台合页指示器 / 悬停淡紫目标框 / 导出本体三处同源，禁第二套扫描）
-  //   返回 { ed, filePath, mountEl }；ed = null 表示当前无可导出文档。
+  //   返回 { ed, filePath, mountEl, reason }；ed = null 表示当前无可操作文档。
+  //   reason: '' 正常 | 'custom-tab'（焦点在工具标签——kmd/inbox…）| 'none'（无存活可操作编辑器）
   function resolveTarget() {
+    if (_customFocusBlocked()) {
+      return { ed: null, filePath: '', mountEl: null, reason: 'custom-tab' };
+    }
     var ed = _activeEditor();
     return {
       ed: ed || null,
       filePath: ed ? _fileOfEditor(ed) : '',
       mountEl: ed ? _mountOfEditor(ed) : null,
+      reason: ed ? '' : 'none',
     };
   }
 
@@ -222,8 +302,13 @@
       _qoast(_T('export.bridgeMissing', 'qqq: \u5BFC\u51FA\u670D\u52A1\u4E0D\u53EF\u7528\uFF08\u9700\u91CD\u542F\u5B9E\u4F8B\uFF09'), { type: 'error', duration: 9000 });
       return;
     }
-    var ed = resolveTarget().ed;   // ★ 唯一出口（与工作台合页指示器 / 淡紫目标框同源）
+    var _tgt = resolveTarget();   // ★ 唯一出口（与工作台合页指示器 / 淡紫目标框同源）
+    var ed = _tgt.ed;
     if (!ed) {
+      if (_tgt.reason === 'custom-tab') {
+        _qoast(_T('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）'), { type: 'info', duration: 6000 });
+        return;
+      }
       _qoast(_T('export.noOpenDocument', 'qqq: \u8BF7\u9009\u62E9\u6253\u5F00\u6EF4\u6587\u6863'), { type: 'warning', duration: 6000 });
       return;
     }

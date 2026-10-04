@@ -968,21 +968,31 @@ function bootAiOverlay() {
   // Roam 命令单飞发送器（2026-09-08 ack 回路）：命令带 reqId，iframe 消费后回执 → 立即停发。
   // 单飞 = 新命令先清旧发送器（快速连点两个链接时旧命令不得继续把用户拉来拉去）；
   // 25 次/7.5s 仅作 iframe 未就绪（懒加载/重建）兜底，正常路径 ~300ms 内 ack 即停，零硬控。
-  var _roamCmdTimer = null, _roamCmdToken = 0;
-  function _roamSendCmd(cmd, path) {
+  // ★ 命令序号裁决（2026-10-03 q395 实锤「连点丢定位」根治）：进入 reveal 流程即取号（先于一切 await——
+  //   stat 等待完成先后不可信）；发送时旧号一律作废（绝不覆盖更新的命令）；消息携 seq → roam 侧按号裁决
+  //   （旧命令/旧轮询不得回抢最新选择）。无号直调现取号，旧行为不变。
+  var _roamCmdTimer = null, _roamCmdToken = 0, _roamCmdSeq = 0, _roamCmdSentSeq = 0;
+  function _roamNextSeq() { return ++_roamCmdSeq; }
+  function _roamSendCmd(cmd, path, seq) {
     if (!path) return;
+    var s = (typeof seq === 'number' && seq > 0) ? seq : _roamNextSeq();
+    // ★ 仅按「已发送水位」作废：已有更晚且已发出的命令 → 本条丢弃（旧命令绝不回抢）；
+    //   只取号未发送的旧命令（如无效路径仅 qoast）不进水位——不得误伤在途有效命令。
+    if (s < _roamCmdSentSeq) { return; }
+    if (s > _roamCmdSentSeq) { _roamCmdSentSeq = s; }
     if (_roamCmdTimer) { clearInterval(_roamCmdTimer); _roamCmdTimer = null; }
     _roamEnsureTab();
     var token = ++_roamCmdToken;
     var sent = 0;
     var wasNull = true;
-    var timer = setInterval(function () {
+    var timer = null;
+    var tick = function () {
       var it = document.querySelector('iframe[src*="q2-roam"]');
       if (it && it.contentWindow) {
         try {
           // iframe 首次出现才抢焦点——旧实现每 300ms focus 一次，7.5s 内反复抢焦点同样在硬控用户
           if (wasNull) { try { it.contentWindow.focus(); } catch (_) { } wasNull = false; }
-          it.contentWindow.postMessage({ type: 'qqq-roam-cmd', cmd: cmd, path: path, reqId: token }, '*');
+          it.contentWindow.postMessage({ type: 'qqq-roam-cmd', cmd: cmd, path: path, reqId: token, seq: s }, '*');
         } catch (_) { }
       }
       sent++;
@@ -990,12 +1000,14 @@ function bootAiOverlay() {
         clearInterval(timer);
         if (_roamCmdTimer === timer) _roamCmdTimer = null;
       }
-    }, 300);
+    };
+    timer = setInterval(tick, 300);
     _roamCmdTimer = timer;
+    tick();   // ★ 立即首发（2026-10-03：旧实现首个 300ms 空窗内被新命令打断 = 整条 reveal 静默失效实锤）
   }
-  function _roamRevealHit(path, st) {
-    if (st && st.isDir) _roamSendCmd('roam.navTo', path);
-    else _roamSendCmd('roam.revealFile', path);
+  function _roamRevealHit(path, st, seq) {
+    if (st && st.isDir) _roamSendCmd('roam.navTo', path, seq);
+    else _roamSendCmd('roam.revealFile', path, seq);
   }
   // ═══ 命中裁决（2026-09-07 共享）：点击定位与存在性探针同一裁决，零双写漂移 ═══
   // 返回 { hit:{path,isDir} | null, first:爬升基准, err:fs 不可用 }；只做①直接候选 ②ctx 裸名拼接，不爬升。
@@ -1046,15 +1058,16 @@ function bootAiOverlay() {
   }
   // 唯一入口：text=候选路径原文，ctx=树图上文目录（可选）——命中直达；未命中爬升最近祖先，杜绝死链
   async function _roamRevealText(text, ctx) {
+    var seq = _roamNextSeq();   // ★ 入口即取号（先于一切 await——命令先后 = 进入先后，与 stat 完成顺序无关）
     var r = await _roamResolveHits(text, ctx);
     if (r.err) { _roamQoast(window._i('shell.overlay.roamUnavailable', 'Roam 定位暂不可用，请稍后再试')); return; }
     var orig = String(text || '').trim();
     if (!r.first) { _roamQoast(window._i('shell.overlay.roamNoPath', '该路径无本地文件，无法在 Roam 定位')); return; }
-    if (r.hit) { _roamRevealHit(r.hit.path, { isDir: r.hit.isDir }); return; }
+    if (r.hit) { _roamRevealHit(r.hit.path, { isDir: r.hit.isDir }, seq); return; }
     var near = await _roamClimb(r.first);
     if (near) {
       _roamQoast(window._i('shell.overlay.roamMoved', '路径已不存在（可能被移动/删除）：') + _roamShort(orig) + window._i('shell.overlay.roamMoved2', ' → 已定位到最近目录 ') + _roamShort(near.path));
-      _roamSendCmd('roam.navTo', near.path);
+      _roamSendCmd('roam.navTo', near.path, seq);
     } else {
       _roamQoast(window._i('shell.overlay.roamNotFound', '未在磁盘上找到：') + _roamShort(orig));
     }

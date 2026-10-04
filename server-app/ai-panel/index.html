@@ -757,6 +757,10 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="../core/lpl.js"></script>
 <script src="../core/qqq-icons.js"></script>
 <script src="panel-render.js"></script>
+<!-- ★ panel-quest 三拆分（2026-10-03 纯搬移零行为变化）：跨面板同步 / 工作空间绑定+项目锁+楼层上限 / 楼层持久化——必须先于 panel-quest.js 装载 -->
+<script src="panel-quest-sync.js"></script>
+<script src="panel-quest-bind.js"></script>
+<script src="panel-quest-persist.js"></script>
 <script src="panel-quest.js"></script>
 <script src="panel-floor.js"></script>
 <script src="panel-quest-ui.js"></script>
