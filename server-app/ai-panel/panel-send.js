@@ -867,16 +867,16 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         if (!m || !m._guideAck) continue;
         if (m._floor !== floorNum) continue;
         // 引导确认块（✅）— 先插入，作为锚点
-        var ackText = (m.content || '\u5df2\u6536\u5230\u5f15\u5bfc').replace(/^\u2705\s*/, '').trim();
+        var ackText = (m.content || _qq('ai.guideAck', '已收到引导')).replace(/^\u2705\s*/, '').trim();
         var ackEl = document.createElement('div');
         ackEl.className = 'msg-flow-guide-ack';
-        ackEl.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">\u2705</span> Guide received</div><div class="msg-flow-guide-ack-body">' + escFn(ackText || '\u5df2\u6536\u5230\u5f15\u5bfc') + '</div>';
+        ackEl.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">\u2705</span> ' + escFn(_qq('ai.guideAck', '已收到引导')) + '</div><div class="msg-flow-guide-ack-body">' + escFn(ackText || _qq('ai.guideAck', '已收到引导')) + '</div>';
         contentWrap.insertBefore(ackEl, contentWrap.firstChild);
         // 引导注入块（⚡）— 插入到 ackEl 之前 → 红条在绿条上方
         if (m._guideText) {
             var injectEl = document.createElement('div');
             injectEl.className = 'msg-flow-guide-inject';
-            injectEl.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> \u5f15\u5bfc\u4fe1\u606f</div><div class="msg-flow-guide-body">' + escFn(m._guideText) + '</div>';
+            injectEl.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> ' + escFn(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + escFn(m._guideText) + '</div>';
             contentWrap.insertBefore(injectEl, ackEl);
         }
     }

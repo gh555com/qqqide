@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "Audio bridge unavailable (instance restart required)",
+            "playFailed": "Playback failed (instance restart required)",
+            "moduleMissing": "Module not loaded (refresh required)"
+        },
         "about": {
             "title": "About qqq",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "Remove",
             "removeAsk": "Remove \"{n}\"?",
             "openElsewhere": "⚠️ This item is already open as the main folder in another window",
-            "clearedBusy": "⚠️ Main folder is occupied by another window; AI viewport cleared to a clean state"
+            "clearedBusy": "⚠️ Main folder is occupied by another window; AI viewport cleared to a clean state",
+            "filterPh": "Filter...",
+            "sortByName": "Sort by filename",
+            "sortByMtime": "Sort by modification time"
         },
         "gaeaHostLoading": "Loading gaea host...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "Saved",
         "saving": "Saving...",
         "saveFailed": "Save Failed",
+        "saveFailedPrefix": "Save failed:",
+        "saveFailHint": "(Content retained in editor; press Ctrl+S to retry)",
         "fileTooLarge": "File Too Large",
         "binaryFile": "Binary file, cannot edit",
+        "binaryOpenFail": "Binary file cannot be opened in the editor",
         "line": "Line",
         "col": "Col",
         "spaces": "Spaces",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "Guide AI with the current message without starting a new turn!",
         "draftBean": "Unsent edits detected",
+        "questDropMore": "… {0} more …",
+        "questDropNoMatch": "(No matches)",
+        "questDropEmpty": "(Empty)",
+        "questDropNew": "New Quest",
+        "questDropFilterPh": "Filter...",
         "billing": {
             "number": "ID",
             "type": "Type",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "Clear",
             "caseSensitive": "Case sensitive",
-            "noMatch": "No matches"
+            "noMatch": "No matches",
+            "small": "🔍 Mini Search — Search within panel",
+            "mid": "📄 Mid Search — Full-text search in current task",
+            "big": "🌐 Global Search — Cross-task global search"
         },
         "bulletTip": "Bullet",
         "newline": "Insert newline",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ Layer abnormally interrupted ({0}); conversation saved."
         },
         "guideInfo": "Guide Info",
+        "guideConfirming": "Confirming...",
         "guideImagesAnalyzed": "📷 {0} images (Analyzed)",
         "guideImagesPending": "📷 {0} images (Visual analysis incomplete)",
         "guideAck": "Guide received",
@@ -808,6 +828,7 @@
             "stop": "■ Stop",
             "expand": "Expand Details",
             "collapse": "Collapse",
+            "taskCapsule": "⏳ {0} tasks in progress",
             "muteTip": "Do not prompt again for this session (new waiting floors will still trigger a prompt)",
             "serverAck": "Awaiting server acknowledgment",
             "firstToken": "Waiting for first token output",
@@ -841,6 +862,9 @@
         "translateBtn": "Translate",
         "auditCopied": "Audit text copied to clipboard ({0} KB). You can paste it into any AI chat.",
         "waitSwitch": "AI has not yet replied to the current task. Please wait before switching.",
+        "questOpenLeft": "📌 This Quest is already open in the left panel; automatically switched",
+        "questOpenRight": "📌 This Quest is already open in the right panel; automatically switched",
+        "questOpenMid": "📌 This Quest is already open in the center panel; automatically switched",
         "switchRestore": "Recalling",
         "waitNew": "AI has not yet replied to the current task. Please wait before creating a new one.",
         "recoverPrefix": "Network reconnected. Previous floor interruption record:",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "Show only files deleted from disk",
         "loadEarlierTip": "Click to load earlier snapshots",
         "loadEarlierGate": "⬆ Load {n} earlier items ({m} remaining)",
-        "blockArrowTip": "Move left diff to right"
+        "blockArrowTip": "Move left diff to right",
+        "findBtn": "Find (Ctrl+F)"
     },
     "act": {
         "sponsorLabelWord": "Sponsor",
@@ -2148,6 +2173,7 @@
     },
     "pasteRouter": {
         "noDir": "Unable to determine paste directory (is the editor linked to a file?)",
+        "bridgeNotReady": "File system bridge not ready; please refresh and try again",
         "writeFail": "Disk write failed: {msg}",
         "imgSaveFail": "Failed to paste image: {msg}",
         "imgPasteDone": "Paste: {ok} succeeded, {fail} failed",

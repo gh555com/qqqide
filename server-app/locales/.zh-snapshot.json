@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "音频桥不可用（需重启实例）",
+            "playFailed": "播放失败（需重启实例）",
+            "moduleMissing": "模块未加载（需刷新）"
+        },
         "about": {
             "title": "关于 qqq",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "移除",
             "removeAsk": "移除「{n}」？",
             "openElsewhere": "⚠️ 该项目已在另一个窗口作为主文件夹打开",
-            "clearedBusy": "⚠️ 主文件夹已被另一窗口占用，AI 视口已清空为干净窗口"
+            "clearedBusy": "⚠️ 主文件夹已被另一窗口占用，AI 视口已清空为干净窗口",
+            "filterPh": "筛选...",
+            "sortByName": "按文件名排序",
+            "sortByMtime": "按修改时间排序"
         },
         "gaeaHostLoading": "gaea host 加载中...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "已保存",
         "saving": "保存中...",
         "saveFailed": "保存失败",
+        "saveFailedPrefix": "保存失败：",
+        "saveFailHint": "（内容保留在编辑器，可用 Ctrl+S 重试）",
         "fileTooLarge": "文件太大",
         "binaryFile": "二进制文件，无法编辑",
+        "binaryOpenFail": "二进制文件，无法在编辑器中打开",
         "line": "行",
         "col": "列",
         "spaces": "空格",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "立即用当下消息引导 AI 而不起新楼层！",
         "draftBean": "有未发送的编辑内容",
+        "questDropMore": "… 还有 {0} 条 …",
+        "questDropNoMatch": "（无匹配）",
+        "questDropEmpty": "（空）",
+        "questDropNew": "新建 Quest",
+        "questDropFilterPh": "筛选...",
         "billing": {
             "number": "编号",
             "type": "类型",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "清除",
             "caseSensitive": "区分大小写",
-            "noMatch": "无匹配"
+            "noMatch": "无匹配",
+            "small": "🔍 小搜索 — 面板内查找",
+            "mid": "📄 中搜索 — 当前任务全文检索",
+            "big": "🌐 大搜索 — 跨任务全局检索"
         },
         "bulletTip": "子弹",
         "newline": "插入换行",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ 楼层异常中断（{0}），对话已保存。"
         },
         "guideInfo": "引导信息",
+        "guideConfirming": "确认中...",
         "guideImagesAnalyzed": "📷 {0} 张图片（已分析）",
         "guideImagesPending": "📷 {0} 张图片（视觉分析未完成）",
         "guideAck": "已收到引导",
@@ -808,6 +828,7 @@
             "stop": "■ 停止",
             "expand": "展开明细",
             "collapse": "收起",
+            "taskCapsule": "⏳ {0} 个任务进行中",
             "muteTip": "本次不再提示（出现新的等待楼层会再提示）",
             "serverAck": "服务器确认等待中",
             "firstToken": "等待首字输出",
@@ -841,6 +862,9 @@
         "translateBtn": "翻译",
         "auditCopied": "审计文本已复制到剪贴板 ({0} KB)，可粘贴到任意 AI 对话框。",
         "waitSwitch": "当前任务 AI 尚未回复，请稍后再切换",
+        "questOpenLeft": "📌 该 Quest 已在左面板打开，已自动跳转",
+        "questOpenRight": "📌 该 Quest 已在右面板打开，已自动跳转",
+        "questOpenMid": "📌 该 Quest 已在中间面板打开，已自动跳转",
         "switchRestore": "召回中",
         "waitNew": "当前任务 AI 尚未回复，请稍后再新建",
         "recoverPrefix": "网络恢复重连。此前楼层中断记录：",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "只显示磁盘上已删除的文件",
         "loadEarlierTip": "点击加载更早的快照",
         "loadEarlierGate": "⬆ 加载更早的 {n} 条（还剩 {m} 条）",
-        "blockArrowTip": "将左侧差异移到右侧"
+        "blockArrowTip": "将左侧差异移到右侧",
+        "findBtn": "查找 (Ctrl+F)"
     },
     "act": {
         "sponsorLabelWord": "赞助商",
@@ -2144,6 +2169,7 @@
     },
     "pasteRouter": {
         "noDir": "无法确定粘贴目录（编辑器未关联文件？）",
+        "bridgeNotReady": "文件系统桥未就绪，请刷新重试",
         "writeFail": "写盘失败: {msg}",
         "imgSaveFail": "粘贴图片失败: {msg}",
         "imgPasteDone": "粘贴: {ok} 成功, {fail} 失败",

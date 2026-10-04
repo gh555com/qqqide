@@ -403,9 +403,18 @@
                 primary: _URLS.visionPrimary + '/' + taskId + '/stream',
                 fallback: _URLS.visionFallback + '/' + taskId + '/stream'
             };
-            var evt = await _pollStream(urls, token, 120000);
-            if (evt && evt.status === 'done') {
-                return { description: evt.description, ge_cost: evt.ge_cost || 0, billing_request_id: evt.billing_request_id || 0 };
+            // 单次重试：首轮 null（两线路不可达 / 流中断 / 未达 done）→ 2.5s 后重轮询一次。
+            // 任务结果服务端缓存 10 分钟，重轮询 = 纯读取（计费只在任务完成时发生一次），零重复计费。
+            for (var attempt = 0; attempt < 2; attempt++) {
+                var evt = await _pollStream(urls, token, 120000);
+                if (evt && evt.status === 'done') {
+                    return { description: evt.description, ge_cost: evt.ge_cost || 0, billing_request_id: evt.billing_request_id || 0 };
+                }
+                if (evt && evt.status === 'error') {
+                    // 服务端终态错误：如实透传原因（如「视觉服务暂不可用」），重试无意义
+                    return { error: evt.error || 'vision task error' };
+                }
+                if (attempt === 0) await new Promise(function (r) { setTimeout(r, 2500); });
             }
             return null;
         },

@@ -351,9 +351,9 @@
         menu.style.top = Math.max(4, my) + 'px';
 
         var rows = [
-            { label: '\uD83D\uDD0D \u5C0F\u641C\u7D22 \u2014 \u9762\u677F\u5185\u67E5\u627E', action: function () { _doSmallSearch(selText); } },
-            { label: '\uD83D\uDCC4 \u4E2D\u641C\u7D22 \u2014 \u5F53\u524D\u4EFB\u52A1\u5168\u6587\u68C0\u7D22', action: function () { _doMidSearch(selText); } },
-            { label: '\uD83C\uDF10 \u5927\u641C\u7D22 \u2014 \u8DE8\u4EFB\u52A1\u5168\u5C40\u68C0\u7D22', action: function () { _doBigSearch(selText); } }
+            { label: _qq('ai.search.small', '🔍 小搜索 — 面板内查找'), action: function () { _doSmallSearch(selText); } },
+            { label: _qq('ai.search.mid', '📄 中搜索 — 当前任务全文检索'), action: function () { _doMidSearch(selText); } },
+            { label: _qq('ai.search.big', '🌐 大搜索 — 跨任务全局检索'), action: function () { _doBigSearch(selText); } }
         ];
         for (var ri = 0; ri < rows.length; ri++) {
             var row = document.createElement('div');

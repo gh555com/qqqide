@@ -31,6 +31,8 @@
                 search: {
                     title: 'search',
                     closable: true,
+                    // ★ 多实例：每次「打开」= 再开一个新标签（菜单行2 按钮同语义；单例即弃）
+                    multi: true,
                     build: function (pane) {
                         pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
                         var iframe = document.createElement('iframe');

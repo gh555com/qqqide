@@ -816,7 +816,7 @@ async function executeAnalyzeImage(args, ownerAgent) {
             // 4. 经 AiGateway 轮询 SSE 结果
             var pollResult = await AiGateway.visionPoll(submitResult.task_id, token);
             if (!pollResult || !pollResult.description) {
-                return 'Image analysis failed: no result from stream';
+                return 'Image analysis failed: ' + ((pollResult && pollResult.error) || 'no result from stream');
             }
             content = pollResult.description;
 

@@ -12,23 +12,8 @@
 // ---- i18n 小工具（q2-roam.js 最先加载，全局共享给 ui/boot）----
 // _kk(key, fallback[, v0[, v1...]]) —— {0}/{1}... 用 split/join 替换（防 $ 特殊字符）
 var _kk = function (key, fb) { var s = window._i ? window._i(key, fb) : fb; for (var i = 2; i < arguments.length; i++) { s = String(s).split('{' + (i - 2) + '}').join(arguments[i]); } return s; };
-// roam 自定义 tooltip 系统（data-tooltip）不走 i18n.js updateDom → 专用同步器
-function _syncRoamTooltips() {
-	try {
-		var els = document.querySelectorAll('[data-i18n-tooltip]');
-		for (var i = 0; i < els.length; i++) {
-			var k = els[i].getAttribute('data-i18n-tooltip');
-			if (k) els[i].setAttribute('data-tooltip', _kk(k, els[i].getAttribute('data-tooltip')));
-		}
-	} catch (_) {}
-}
-if (window.i18n && window.i18n.init) { window.i18n.init().then(_syncRoamTooltips); } else { _syncRoamTooltips(); }
-window.addEventListener('message', function (e) {
-	if (e.data && e.data.type === 'qqq-lang-change') {
-		try { if (window.i18n) window.i18n.updateDom(document); } catch (_) {}
-		_syncRoamTooltips();
-	}
-});
+// roam tooltip 文案：hover 显示时实时翻译（boot 读 data-i18n-tooltip → _kk）；
+// data-tooltip 恒为 HTML 原文（中文回退），禁把译文快照写回属性（快照会把上一语言残留到下一次切换）
 
 // ---- 行选中配色机（刻意例外：不接主题系统，goods 唯一私有配色）----
 // 色池恒老版 3 淡色（亮暗主题通用）；禁红禁暗——红底红字不可读、暗系显泥土感。

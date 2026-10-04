@@ -268,7 +268,7 @@
   function _savorPlay(mode) {
     var s = window.qqqSavor;
     if (!s) {
-      _qoast('Savor: 模块未加载（需刷新）', { type: 'error', duration: 9000 });
+      _qoast('Savor: ' + _i('shell.savor.moduleMissing', '模块未加载（需刷新）'), { type: 'error', duration: 9000 });
       return;
     }
     try { s.play(mode); } catch (e) { _qoast('Savor: ' + String((e && e.message) || e), { type: 'error', duration: 9000 }); }

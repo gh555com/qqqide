@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "Cầu nối âm thanh không khả dụng (cần khởi động lại phiên bản)",
+            "playFailed": "Phát thất bại (cần khởi động lại phiên bản)",
+            "moduleMissing": "Mô-đun chưa được tải (cần làm mới)"
+        },
         "about": {
             "title": "Giới thiệu về qqq",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "Xóa",
             "removeAsk": "Xóa 「{n}」?",
             "openElsewhere": "⚠️ Dự án này đã được mở dưới dạng thư mục chính trong một cửa sổ khác",
-            "clearedBusy": "⚠️ Thư mục chính đang bị chiếm dụng bởi cửa sổ khác, khung nhìn AI đã được làm sạch"
+            "clearedBusy": "⚠️ Thư mục chính đang bị chiếm dụng bởi cửa sổ khác, khung nhìn AI đã được làm sạch",
+            "filterPh": "Lọc...",
+            "sortByName": "Sắp xếp theo tên tệp",
+            "sortByMtime": "Sắp xếp theo thời gian sửa đổi"
         },
         "gaeaHostLoading": "Đang tải gaea host...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "Đã lưu",
         "saving": "Đang lưu...",
         "saveFailed": "Lưu thất bại",
+        "saveFailedPrefix": "Lưu thất bại:",
+        "saveFailHint": "(Nội dung vẫn được giữ trong trình soạn thảo, có thể nhấn Ctrl+S để thử lại)",
         "fileTooLarge": "Tệp quá lớn",
         "binaryFile": "Tệp nhị phân, không thể chỉnh sửa",
+        "binaryOpenFail": "Tệp nhị phân, không thể mở trong trình soạn thảo",
         "line": "Dòng",
         "col": "Cột",
         "spaces": "Khoảng trắng",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "Hướng dẫn AI bằng tin nhắn hiện tại mà không tạo tầng mới!",
         "draftBean": "Có nội dung chỉnh sửa chưa được gửi",
+        "questDropMore": "... Còn {0} mục ...",
+        "questDropNoMatch": "(Không khớp)",
+        "questDropEmpty": "(Trống)",
+        "questDropNew": "Tạo Quest mới",
+        "questDropFilterPh": "Lọc...",
         "billing": {
             "number": "Số",
             "type": "Loại",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "Xóa",
             "caseSensitive": "Phân biệt chữ hoa/thường",
-            "noMatch": "Không tìm thấy kết quả"
+            "noMatch": "Không tìm thấy kết quả",
+            "small": "🔍 Tìm kiếm nhỏ — Tìm kiếm trong bảng điều khiển",
+            "mid": "📄 Tìm kiếm trung bình — Tìm kiếm toàn văn trong nhiệm vụ hiện tại",
+            "big": "🌐 Tìm kiếm lớn — Tìm kiếm toàn cục xuyên suốt các nhiệm vụ"
         },
         "bulletTip": "Đạn",
         "newline": "Chèn dòng mới",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ Tầng bị gián đoạn bất thường ({0}), cuộc trò chuyện đã được lưu."
         },
         "guideInfo": "Thông tin hướng dẫn",
+        "guideConfirming": "Đang xác nhận...",
         "guideImagesAnalyzed": "📷 {0} ảnh (đã phân tích)",
         "guideImagesPending": "📷 {0} ảnh (phân tích hình ảnh chưa hoàn tất)",
         "guideAck": "Đã nhận hướng dẫn",
@@ -808,6 +828,7 @@
             "stop": "■ Dừng",
             "expand": "Xem chi tiết",
             "collapse": "Thu gọn",
+            "taskCapsule": "⏳ {0} nhiệm vụ đang tiến hành",
             "muteTip": "Không nhắc lại trong lần này (sẽ nhắc lại khi có tầng chờ mới)",
             "serverAck": "Đang chờ xác nhận từ máy chủ",
             "firstToken": "Đang chờ ký tự đầu tiên xuất hiện",
@@ -841,6 +862,9 @@
         "translateBtn": "Dịch",
         "auditCopied": "Văn bản kiểm tra đã được sao chép vào clipboard ({0} KB), có thể dán vào bất kỳ hộp thoại AI nào.",
         "waitSwitch": "AI chưa phản hồi cho tác vụ hiện tại, vui lòng chờ trước khi chuyển đổi",
+        "questOpenLeft": "📌 Quest này đã được mở trong bảng trái, đã tự động chuyển hướng",
+        "questOpenRight": "📌 Quest này đã được mở trong bảng phải, đã tự động chuyển hướng",
+        "questOpenMid": "📌 Quest này đã được mở trong bảng giữa, đã tự động chuyển hướng",
         "switchRestore": "Đang khôi phục",
         "waitNew": "AI chưa phản hồi cho tác vụ hiện tại, vui lòng chờ trước khi tạo mới",
         "recoverPrefix": "Kết nối mạng đã được khôi phục. Ghi chép gián đoạn trước đó:",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "Chỉ hiển thị các tệp đã bị xóa trên ổ đĩa",
         "loadEarlierTip": "Nhấp để tải các bản chụp nhanh trước đó",
         "loadEarlierGate": "⬆ Tải thêm {n} mục trước đó (còn lại {m} mục)",
-        "blockArrowTip": "Di chuyển khác biệt bên trái sang bên phải"
+        "blockArrowTip": "Di chuyển khác biệt bên trái sang bên phải",
+        "findBtn": "Tìm kiếm (Ctrl+F)"
     },
     "act": {
         "sponsorLabelWord": "Nhà tài trợ",
@@ -2148,6 +2173,7 @@
     },
     "pasteRouter": {
         "noDir": "Không thể xác định thư mục dán (trình soạn thảo chưa liên kết với tệp?)",
+        "bridgeNotReady": "Cầu nối hệ thống tệp chưa sẵn sàng, vui lòng làm mới và thử lại",
         "writeFail": "Ghi đĩa thất bại: {msg}",
         "imgSaveFail": "Dán ảnh thất bại: {msg}",
         "imgPasteDone": "Dán: {ok} thành công, {fail} thất bại",

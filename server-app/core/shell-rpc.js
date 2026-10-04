@@ -77,7 +77,7 @@ function hookFileExplorerToTabs() {
               pane.textContent = '';
               var _msg = document.createElement('div');
               _msg.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3);font:13px Tahoma,sans-serif;user-select:none;';
-              _msg.textContent = '\u274C ' + _fileName + ' \u2014 \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00';
+              _msg.textContent = '\u274C ' + _fileName + ' \u2014 ' + (window._i ? window._i('editor.binaryOpenFail', '二进制文件，无法在编辑器中打开') : '二进制文件，无法在编辑器中打开');
               pane.appendChild(_msg);
               return;
             }
@@ -128,7 +128,7 @@ function hookFileExplorerToTabs() {
 
       _checkBin2.then(function (isBin) {
         if (isBin) {
-          if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
+          if (window.qqqideQoast) window.qqqideQoast.show('\u274C ' + (window._i ? window._i('editor.binaryOpenFail', '二进制文件，无法在编辑器中打开') : '二进制文件，无法在编辑器中打开'), { duration: 4000 });
           return;
         }
         bridge.fs.read(filePath).then(function (content) {
@@ -140,45 +140,10 @@ function hookFileExplorerToTabs() {
           window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function (ed) {
             if (_search && ed) {
               setTimeout(function () {
-                try {
-                  var fc = ed.getContribution('editor.contrib.findController');
-                  if (fc && fc.start) {
-                    fc.start({
-                      forceRevealReplace: false,
-                      seedSearchStringFromSelection: 'none',
-                      seedSearchStringFromNonEmptySelection: false,
-                      seedSearchStringFromGlobalClipboard: false,
-                      shouldFocus: 2,
-                      shouldAnimate: true,
-                      updateSearchScope: false,
-                      loop: true
-                    });
-                    if (_realSearch) {
-                      fc.getState().change({ searchString: _realSearch }, false);
-                      setTimeout(function () {
-                        fc.getState().change({ searchString: _realSearch }, false);
-                      }, 120);
-                    }
-                  } else {
-                    ed.getAction('actions.find').run();
-                    if (_realSearch) {
-                      var domNode = ed.getDomNode();
-                      if (domNode) {
-                        var _att = 0;
-                        var _try = function () {
-                          var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
-                          if (fi) {
-                            var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                            ns.call(fi, _realSearch);
-                            fi.dispatchEvent(new Event('input', { bubbles: true }));
-                          }
-                          if (++_att < 8) setTimeout(_try, 60);
-                        };
-                        setTimeout(_try, 60);
-                      }
-                    }
-                  }
-                } catch (_) { }
+                // 控件机器唯一入口（旧内联实现已删）
+                if (window.qqqEditor && window.qqqEditor.openFindWidget) {
+                  window.qqqEditor.openFindWidget(ed, { search: _realSearch, allowEmpty: true });
+                }
               }, 250);
             }
           });

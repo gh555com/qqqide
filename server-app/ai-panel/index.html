@@ -494,15 +494,15 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 #messages.qqq-switching{opacity:.35;transition:opacity .15s}
 /* ★ quest 切换提示「召回中」——蒙板期面板正中胶囊：[q{n}] [任务名] [● 召回中]（脉冲点示活）
    静态 DOM 预置 + 纯 opacity 动画（合成层，零布局开销）；露面时机由 JS 延迟控制（快切不闪） */
-#qqq-switch-hint{position:absolute;inset:0;margin:auto;width:max-content;height:max-content;max-width:86%;display:none;align-items:center;gap:10px;padding:9px 18px;border-radius:6px;background:var(--card-bg);border:1px solid var(--border-color);box-shadow:0 4px 18px rgba(0,0,0,.16);font-family:Tahoma,sans-serif;font-size:13px;line-height:1.4;color:var(--text-primary);pointer-events:none}
-[data-theme="dark"] #qqq-switch-hint{box-shadow:0 4px 18px rgba(0,0,0,.5)}
+#qqq-switch-hint{position:absolute;inset:0;margin:auto;width:max-content;height:max-content;max-width:86%;display:none;align-items:center;gap:15px;padding:13.5px 27px;border-radius:9px;background:var(--card-bg);border:1px solid var(--border-color);box-shadow:0 6px 27px rgba(0,0,0,.16);font-family:Tahoma,sans-serif;font-size:19.5px;line-height:1.4;color:var(--text-primary);pointer-events:none}
+[data-theme="dark"] #qqq-switch-hint{box-shadow:0 6px 27px rgba(0,0,0,.5)}
 #qqq-switch-hint.on{display:flex;animation:qqqSwHintIn .18s ease-out}
-@keyframes qqqSwHintIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-#qqq-switch-hint .sw-hint-q{flex-shrink:0;font-size:15px;font-weight:700;color:#e8a030}
-#qqq-switch-hint .sw-hint-t{min-width:0;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#qqq-switch-hint .sw-hint-s{flex-shrink:0;display:inline-flex;align-items:center;gap:6px}
+@keyframes qqqSwHintIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#qqq-switch-hint .sw-hint-q{flex-shrink:0;font-size:30px;font-weight:700;color:#e8a030}
+#qqq-switch-hint .sw-hint-t{min-width:0;max-width:255px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#qqq-switch-hint .sw-hint-s{flex-shrink:0;display:inline-flex;align-items:center;gap:9px}
 #qqq-switch-hint .sw-hint-stext{opacity:.8}
-#qqq-switch-hint .sw-hint-dot{width:7px;height:7px;border-radius:50%;background:#e8a030;animation:qqqSwHintPulse 1.1s ease-in-out infinite}
+#qqq-switch-hint .sw-hint-dot{width:10.5px;height:10.5px;border-radius:50%;background:#e8a030;animation:qqqSwHintPulse 1.1s ease-in-out infinite}
 @keyframes qqqSwHintPulse{0%,100%{opacity:.2}50%{opacity:1}}
 </style>
 <div id="clock-tooltip"></div>

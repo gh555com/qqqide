@@ -44,11 +44,12 @@
   var _qgs = null;
 
   function _qoast(m, o) { try { if (window.qqqideQoast) { window.qqqideQoast.show(m, o || {}); } } catch (e) { } }
+  function _i18n(key, fb) { try { return window._i ? window._i(key, fb) : fb; } catch (e) { return fb; } }
 
   function _audio() { try { return (window.qqqideBridge && window.qqqideBridge.audio) || null; } catch (e) { return null; } }
   function _invoke(action, params) {
     var b = _audio();
-    if (!b || !b.invoke) { return Promise.reject(new Error('音频桥不可用（需重启实例）')); }
+    if (!b || !b.invoke) { return Promise.reject(new Error(_i18n('shell.savor.bridgeUnavailable', '音频桥不可用（需重启实例）'))); }
     return b.invoke(action, params || {});
   }
   function _wqPing(on) {
@@ -260,7 +261,7 @@
   function play(mode) {
     mode = (mode === 'loop') ? 'loop' : 'normal';
     if (!_audio()) {
-      _qoast('Savor: 音频桥不可用（需重启实例）', { type: 'error', duration: 9000 });
+      _qoast('Savor: ' + _i18n('shell.savor.bridgeUnavailable', '音频桥不可用（需重启实例）'), { type: 'error', duration: 9000 });
       return Promise.resolve();
     }
     _endSession(true);
@@ -279,7 +280,7 @@
         _adoptPlayback(own, res.source === 'radio', isLoop);
       } else {
         _st.expectOwn = false;
-        _qoast('Savor: ' + ((res && res.error) || '播放失败（需重启实例）'), { type: 'error', duration: 9000 });
+        _qoast('Savor: ' + ((res && res.error) || _i18n('shell.savor.playFailed', '播放失败（需重启实例）')), { type: 'error', duration: 9000 });
       }
     }).catch(function (e) {
       _st.expectOwn = false;

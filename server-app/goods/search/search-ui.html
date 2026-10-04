@@ -255,7 +255,7 @@ INPS.forEach(function(inp,fid){
 });
 document.addEventListener('mousedown',function(e){if(_openFid===null)return;var t=e.target;if(t.closest&&(t.closest('.iw')||t.closest('.hdd')))return;_close()});
 
-var _rx=false,_cs=false,_ww=false,_tmr=null,_lastQ='',_hl=null,_scopePath='',_lastQuery='';
+var _rx=false,_cs=false,_ww=false,_tmr=null,_hl=null,_scopePath='',_lastQuery='';
 var CGI=document.getElementById('cgi'),LGI=document.getElementById('lgi'),
   BRX=document.getElementById('brx'),BCS=document.getElementById('bcs'),BWW=document.getElementById('bww'),
   BRA=document.getElementById('bra'),ST=document.getElementById('st'),STT=document.getElementById('stt'),
@@ -561,7 +561,7 @@ function eh(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,
 function pq(s){return s.replace(/([qf]\d+)\./g,'<span class="pq">$1.</span>')}
 function bn(p){var x=p.replace(/\\/g,'/').split('/');return x[x.length-1]||p}
 function dn(p){var n=p.replace(/\\/g,'/');var i=n.lastIndexOf('/');return i>0?n.slice(0,i):''}
-function opn(fp,l,c){try{var abs=_resultScope?(_resultScope.replace(/[\\/]$/,'')+'/'+fp.replace(/^[\\/]+/,'').replace(/\\/g,'/')):fp;window.parent._nextPaneOpts={line:l,col:c,search:_lastQ};window.parent.document.dispatchEvent(new CustomEvent('qqq-file-open',{detail:{path:abs}}))}catch(e){console.error('[search] openFile failed:',e)}}
+function opn(fp,l,c){try{var abs=_resultScope?(_resultScope.replace(/[\\/]$/,'')+'/'+fp.replace(/^[\\/]+/,'').replace(/\\/g,'/')):fp;window.parent._nextPaneOpts={line:l,col:c,search:_lastQuery,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww};window.parent.document.dispatchEvent(new CustomEvent('qqq-file-open',{detail:{path:abs}}))}catch(e){console.error('[search] openFile failed:',e)}}
 BRA.onclick=async function(){
   if(!_lastDone||_rowsTotal===0)return;var rt=RP.value;
   if(!rt){_setSt('idle',_kk('goods.search.needReplaceText','⚠️ 请键入替换文本'));return}
@@ -579,9 +579,9 @@ BRA.onclick=async function(){
   if(trunc){
     pm.style.display='flex';pbar.style.width='0%';pe.innerHTML='';pf.textContent='';
     pt2.textContent=_kk('goods.search.fullScanning','🔍 完整扫描所有匹配文件...');
-    var scan=await _listScanRun({query:_lastQ,searchPath:_resultScope,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,respectGitignore:CGI.checked});
+    var scan=await _listScanRun({query:_lastQuery,searchPath:_resultScope,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,respectGitignore:CGI.checked});
     if(scan.legacy){
-      var fullR=await bri.search.query({query:_lastQ,searchPath:_resultScope,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,contextLines:0,maxResults:100000,timeoutMs:120000,respectGitignore:CGI.checked});
+      var fullR=await bri.search.query({query:_lastQuery,searchPath:_resultScope,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,contextLines:0,maxResults:100000,timeoutMs:120000,respectGitignore:CGI.checked});
       if(fullR.error){pm.style.display='none';_setSt('idle',_kk('goods.search.fullScanFail','⚠️ 完整扫描失败: {0}',fullR.error));return}
       fileSet.clear();totalMatches=fullR.results.length;previewReps=[];
       for(var i3=0;i3<fullR.results.length;i3++){var r3=fullR.results[i3];fileSet.add(r3.file);if(previewReps.length<8)previewReps.push({file:r3.file,line:r3.line,oldText:r3.text||''})}
@@ -613,7 +613,7 @@ BRA.onclick=async function(){
   try{
     var fileList=Array.from(fileSet);
     pt2.textContent=_kk('goods.search.replacingNow','正在替换 {0} 处匹配（{1} 个文件）...',totalMatches,fc3);
-    var res=await bri.search.replace({files:fileList,find:_lastQ,replace:rt,useRegex:_rx,caseSensitive:_cs,wholeWord:_ww,searchPath:_resultScope,onProgress:function(d){
+    var res=await bri.search.replace({files:fileList,find:_lastQuery,replace:rt,useRegex:_rx,caseSensitive:_cs,wholeWord:_ww,searchPath:_resultScope,onProgress:function(d){
       var pct=d.total>0?Math.round(d.current/d.total*100):0;
       if(pct>lp||(d.errors&&d.errors.length)||d.changed){
         pbar.style.width=pct+'%';pt2.textContent=_kk('goods.search.replaceProgress','已完成 {0}/{1} 文件, {2} 处替换',d.current,d.total,d.replaced);

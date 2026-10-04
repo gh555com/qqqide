@@ -127,7 +127,7 @@
       copyBtn.className = 'qqoast-copy';
       // ★ 2026-10-03: 📋 字形 → 手绘 SVG 图标（qqq-icons.js·跨系统一致）；成功态 ✓（老字形 Win7 原生有）
       copyBtn.innerHTML = '<span class="qqi qqi-copy"></span>';
-      copyBtn.title = '\u590D\u5236';
+      copyBtn.title = window._i ? window._i('common.copy', '复制') : '复制';
       copyBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         navigator.clipboard.writeText(message)['catch'](function () {

@@ -328,7 +328,7 @@
     try {
       if (!bridge || !bridge.fs || !bridge.fs.writeBase64) {
         console.error('[paste-router] bridge.fs.writeBase64 不可用');
-        return { error: '文件系统桥未就绪，请刷新重试' };
+        return { error: _i18n('pasteRouter.bridgeNotReady', '文件系统桥未就绪，请刷新重试') };
       }
       console.log('[paste-router] writing: ' + fullPath);
       await bridge.fs.writeBase64(fullPath, base64);

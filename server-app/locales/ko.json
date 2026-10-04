@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "오디오 브리지 사용 불가 (인스턴스 재시작 필요)",
+            "playFailed": "재생 실패 (인스턴스 재시작 필요)",
+            "moduleMissing": "모듈 로드되지 않음 (새로고침 필요)"
+        },
         "about": {
             "title": "qqq 소개",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "제거",
             "removeAsk": "「{n}」을 제거하시겠습니까?",
             "openElsewhere": "⚠️ 이 프로젝트는 다른 창에서 기본 폴더로 이미 열려 있습니다",
-            "clearedBusy": "⚠️ 기본 폴더가 다른 창에서 사용 중이므로, AI 뷰포트가 깨끗한 창으로 초기화되었습니다"
+            "clearedBusy": "⚠️ 기본 폴더가 다른 창에서 사용 중이므로, AI 뷰포트가 깨끗한 창으로 초기화되었습니다",
+            "filterPh": "필터링...",
+            "sortByName": "파일 이름 순 정렬",
+            "sortByMtime": "수정 시간 순 정렬"
         },
         "gaeaHostLoading": "gaea host 로딩 중...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "저장됨",
         "saving": "저장 중...",
         "saveFailed": "저장 실패",
+        "saveFailedPrefix": "저장 실패:",
+        "saveFailHint": "(내용은 편집기에 유지되며, Ctrl+S로 다시 시도할 수 있습니다)",
         "fileTooLarge": "파일이 너무 큼",
         "binaryFile": "바이너리 파일은 편집할 수 없습니다",
+        "binaryOpenFail": "바이너리 파일은 편집기에서 열 수 없습니다",
         "line": "행",
         "col": "열",
         "spaces": "공백",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "새 레이어를 시작하지 않고 현재 메시지로 AI를 즉시 안내하세요!",
         "draftBean": "전송되지 않은 편집 내용이 있습니다",
+        "questDropMore": "… 추가로 {0}개 항목 …",
+        "questDropNoMatch": "(일치 항목 없음)",
+        "questDropEmpty": "(비어 있음)",
+        "questDropNew": "새 Quest 생성",
+        "questDropFilterPh": "필터링...",
         "billing": {
             "number": "번호",
             "type": "유형",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "지우기",
             "caseSensitive": "대소문자 구분",
-            "noMatch": "일치 항목 없음"
+            "noMatch": "일치 항목 없음",
+            "small": "🔍 소형 검색 — 패널 내 검색",
+            "mid": "📄 중간 검색 — 현재 작업 전체 텍스트 검색",
+            "big": "🌐 대형 검색 — 작업 간 전역 검색"
         },
         "bulletTip": "총알",
         "newline": "줄 바꿈 삽입",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ 층이 비정상적으로 중단되었습니다 ({0}), 대화는 저장되었습니다."
         },
         "guideInfo": "안내 정보",
+        "guideConfirming": "확인 중...",
         "guideImagesAnalyzed": "📷 이미지 {0}장 (분석 완료)",
         "guideImagesPending": "📷 이미지 {0}장 (시각 분석 미완료)",
         "guideAck": "안내 수신됨",
@@ -808,6 +828,7 @@
             "stop": "■ 중지",
             "expand": "상세 내역 펼치기",
             "collapse": "접기",
+            "taskCapsule": "⏳ {0}개 작업 진행 중",
             "muteTip": "이번에는 더 이상 알림 표시 안 함 (새로운 대기 층 발생 시 다시 알림)",
             "serverAck": "서버 확인 대기 중",
             "firstToken": "첫 번째 토큰 출력 대기 중",
@@ -841,6 +862,9 @@
         "translateBtn": "번역",
         "auditCopied": "감사 텍스트가 클립보드에 복사되었습니다 ({0} KB). AI 대화창에 붙여넣을 수 있습니다.",
         "waitSwitch": "현재 작업의 AI 응답이 아직 도착하지 않았습니다. 잠시 후 전환해 주세요.",
+        "questOpenLeft": "📌 해당 Quest는 이미 왼쪽 패널에 열려 있으며, 자동으로 이동되었습니다",
+        "questOpenRight": "📌 해당 Quest는 이미 오른쪽 패널에 열려 있으며, 자동으로 이동되었습니다",
+        "questOpenMid": "📌 해당 Quest는 이미 중앙 패널에 열려 있으며, 자동으로 이동되었습니다",
         "switchRestore": "복구 중",
         "waitNew": "현재 작업의 AI 응답이 아직 도착하지 않았습니다. 잠시 후 새 작업을 생성해 주세요.",
         "recoverPrefix": "네트워크 복구 재연결. 이전 층 중단 기록:",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "디스크에서 삭제된 파일만 표시",
         "loadEarlierTip": "이전 스냅샷을 로드하려면 클릭하세요",
         "loadEarlierGate": "⬆ 이전 {n}개 로드 (남은 항목: {m}개)",
-        "blockArrowTip": "왼쪽의 차이점을 오른쪽으로 이동"
+        "blockArrowTip": "왼쪽의 차이점을 오른쪽으로 이동",
+        "findBtn": "찾기 (Ctrl+F)"
     },
     "act": {
         "sponsorLabelWord": "스폰서",
@@ -2148,6 +2173,7 @@
     },
     "pasteRouter": {
         "noDir": "붙여넣기 디렉터리를 확인할 수 없습니다 (편집기가 파일과 연결되지 않았나요?)",
+        "bridgeNotReady": "파일 시스템 브리지가 준비되지 않았습니다. 새로고침 후 다시 시도하세요",
         "writeFail": "디스크 쓰기 실패: {msg}",
         "imgSaveFail": "이미지 붙여넣기 실패: {msg}",
         "imgPasteDone": "붙여넣기: {ok} 성공, {fail} 실패",

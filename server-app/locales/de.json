@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "Audio-Brücke nicht verfügbar (Instanzneustart erforderlich)",
+            "playFailed": "Wiedergabe fehlgeschlagen (Instanzneustart erforderlich)",
+            "moduleMissing": "Modul nicht geladen (Aktualisierung erforderlich)"
+        },
         "about": {
             "title": "Über qqq",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "Entfernen",
             "removeAsk": "„{n}“ entfernen?",
             "openElsewhere": "⚠️ Dieses Projekt ist bereits in einem anderen Fenster als Hauptordner geöffnet",
-            "clearedBusy": "⚠️ Der Hauptordner wird von einem anderen Fenster verwendet. Das AI-Viewports wurde für ein sauberes Fenster geleert."
+            "clearedBusy": "⚠️ Der Hauptordner wird von einem anderen Fenster verwendet. Das AI-Viewports wurde für ein sauberes Fenster geleert.",
+            "filterPh": "Filtern...",
+            "sortByName": "Nach Dateiname sortieren",
+            "sortByMtime": "Nach Änderungsdatum sortieren"
         },
         "gaeaHostLoading": "gaea host wird geladen...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "Gespeichert",
         "saving": "Speichern...",
         "saveFailed": "Speichern fehlgeschlagen",
+        "saveFailedPrefix": "Speichern fehlgeschlagen:",
+        "saveFailHint": "(Inhalt bleibt im Editor erhalten, mit Strg+S erneut versuchen)",
         "fileTooLarge": "Datei zu groß",
         "binaryFile": "Binärdatei, nicht bearbeitbar",
+        "binaryOpenFail": "Binärdatei, kann nicht im Editor geöffnet werden",
         "line": "Zeile",
         "col": "Spalte",
         "spaces": "Leerzeichen",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "AI sofort mit der aktuellen Nachricht leiten, ohne neuen Thread zu starten!",
         "draftBean": "Es gibt ungesendete Bearbeitungsinhalte",
+        "questDropMore": "… und {0} weitere …",
+        "questDropNoMatch": "(Keine Übereinstimmung)",
+        "questDropEmpty": "(Leer)",
+        "questDropNew": "Neuen Quest erstellen",
+        "questDropFilterPh": "Filtern...",
         "billing": {
             "number": "Nummer",
             "type": "Typ",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "Löschen",
             "caseSensitive": "Groß-/Kleinschreibung beachten",
-            "noMatch": "Keine Übereinstimmung"
+            "noMatch": "Keine Übereinstimmung",
+            "small": "🔍 Kleine Suche – Suche im Panel",
+            "mid": "📄 Mittlere Suche – Volltextsuche im aktuellen Task",
+            "big": "🌐 Große Suche – Globale Suche über alle Tasks"
         },
         "bulletTip": "Bullet",
         "newline": "Zeilenumbruch einfügen",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ Ebene abnormal unterbrochen ({0}), Dialog wurde gespeichert."
         },
         "guideInfo": "Anleitungsinformationen",
+        "guideConfirming": "Bestätigung läuft...",
         "guideImagesAnalyzed": "📷 {0} Bilder (analysiert)",
         "guideImagesPending": "📷 {0} Bilder (visuelle Analyse nicht abgeschlossen)",
         "guideAck": "Anleitung erhalten",
@@ -808,6 +828,7 @@
             "stop": "■ Stoppen",
             "expand": "Details anzeigen",
             "collapse": "Einklappen",
+            "taskCapsule": "⏳ {0} Tasks werden ausgeführt",
             "muteTip": "Diesmal nicht mehr hinweisen (neue wartende Ebenen werden erneut angezeigt)",
             "serverAck": "Warten auf Serverbestätigung",
             "firstToken": "Warten auf das erste Ausgabezeichen",
@@ -841,6 +862,9 @@
         "translateBtn": "Übersetzen",
         "auditCopied": "Audit-Text in die Zwischenablage kopiert ({0} KB). Kann in jeden KI-Dialog eingefügt werden.",
         "waitSwitch": "Die aktuelle AI-Antwort steht noch aus. Bitte warten Sie, bevor Sie wechseln.",
+        "questOpenLeft": "📌 Dieser Quest ist bereits im linken Panel geöffnet, automatisch dorthin gewechselt",
+        "questOpenRight": "📌 Dieser Quest ist bereits im rechten Panel geöffnet, automatisch dorthin gewechselt",
+        "questOpenMid": "📌 Dieser Quest ist bereits im mittleren Panel geöffnet, automatisch dorthin gewechselt",
         "switchRestore": "Wiederherstellung läuft",
         "waitNew": "Die aktuelle AI-Antwort steht noch aus. Bitte warten Sie, bevor Sie eine neue Aufgabe erstellen.",
         "recoverPrefix": "Netzwerkverbindung wiederhergestellt. Unterbrochene Verlaufseinträge:",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "Nur auf der Festplatte gelöschte Dateien anzeigen",
         "loadEarlierTip": "Klicken, um frühere Snapshots zu laden",
         "loadEarlierGate": "⬆ Frühere {n} Einträge laden ({m} verbleibend)",
-        "blockArrowTip": "Linke Differenzen nach rechts verschieben"
+        "blockArrowTip": "Linke Differenzen nach rechts verschieben",
+        "findBtn": "Suchen (Strg+F)"
     },
     "act": {
         "sponsorLabelWord": "Sponsor",
@@ -2148,6 +2173,7 @@
     },
     "pasteRouter": {
         "noDir": "Zielverzeichnis für das Einfügen kann nicht ermittelt werden (ist der Editor mit keiner Datei verknüpft?)",
+        "bridgeNotReady": "Dateisystem-Brücke nicht bereit, bitte aktualisieren und erneut versuchen",
         "writeFail": "Schreiben auf Datenträger fehlgeschlagen: {msg}",
         "imgSaveFail": "Einfügen des Bildes fehlgeschlagen: {msg}",
         "imgPasteDone": "Eingefügt: {ok} erfolgreich, {fail} fehlgeschlagen",

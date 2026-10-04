@@ -133,6 +133,14 @@ test('humanBytes 基本映射', () => {
     assert.strictEqual(P.humanBytes(5 * 1024 * 1024), '5.0 MB');
 });
 
+// ── search-ui 静态卫生：查询记录变量防回归（曾出现「声明+只读、从未赋值」的 _lastQ 幽灵 → 点击结果丢关键词） ──
+test('search-ui.html: 查询记录变量卫生（_lastQ 幽灵防回归）', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'server-app', 'goods', 'search', 'search-ui.html'), 'utf8');
+    assert.ok(!/_lastQ(?!uery)/.test(html), '发现幽灵变量 _lastQ（应为 _lastQuery）');
+    assert.ok(html.indexOf('search:_lastQuery') !== -1, 'opn 必须以 _lastQuery 传关键词');
+    assert.ok(/_lastQuery\s*=\s*q\s*;/.test(html), 'dos() 必须写 _lastQuery=q（执行口径唯一真理源）');
+});
+
 // ── 实机 rg 加固（有二进制才跑；公开 CI 无 rg 自动跳过）──
 const RG = path.join(ROOT, 'engines', 'ripgrep', process.platform === 'win32' ? 'rg.exe' : 'rg');
 test('live ripgrep: --null --column --stats 帧解析（实机）', { skip: !fs.existsSync(RG) }, () => {

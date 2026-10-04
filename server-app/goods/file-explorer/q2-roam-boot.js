@@ -446,7 +446,9 @@
 			var target = t.closest('[data-tooltip]');
 			if (!target) return;   // ★ q3 语义：未命中不隐藏（mouseleave 负责隐藏），防按钮间隙移动闪烁
 			_currentTarget = target;
-			var text = target.getAttribute('data-tooltip');
+			// ★ 文案实时翻译：有 data-i18n-tooltip 时 hover 现算（语言切换立即生效）；data-tooltip 恒为原文回退
+			var _tiKey = target.getAttribute('data-i18n-tooltip');
+			var text = _tiKey ? _kk(_tiKey, target.getAttribute('data-tooltip')) : target.getAttribute('data-tooltip');
 			if (!text) { gt.style.display = 'none'; return; }
 
 			var pageW = window.innerWidth / _ttZoom();   // ★ CSS px（zoom 下 innerWidth 报物理值）

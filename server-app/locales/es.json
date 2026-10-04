@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "Puente de audio no disponible (requiere reiniciar la instancia)",
+            "playFailed": "Error al reproducir (requiere reiniciar la instancia)",
+            "moduleMissing": "Módulo no cargado (requiere actualizar)"
+        },
         "about": {
             "title": "Acerca de qqq",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "Eliminar",
             "removeAsk": "¿Eliminar «{n}»?",
             "openElsewhere": "⚠️ Este elemento ya está abierto como carpeta principal en otra ventana",
-            "clearedBusy": "⚠️ La carpeta principal está siendo utilizada por otra ventana. El visor de IA se ha limpiado para mostrar una ventana vacía."
+            "clearedBusy": "⚠️ La carpeta principal está siendo utilizada por otra ventana. El visor de IA se ha limpiado para mostrar una ventana vacía.",
+            "filterPh": "Filtrar...",
+            "sortByName": "Ordenar por nombre de archivo",
+            "sortByMtime": "Ordenar por fecha de modificación"
         },
         "gaeaHostLoading": "Cargando gaea host...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "Guardado",
         "saving": "Guardando...",
         "saveFailed": "Error al guardar",
+        "saveFailedPrefix": "Error al guardar:",
+        "saveFailHint": "(El contenido se conserva en el editor, use Ctrl+S para reintentar)",
         "fileTooLarge": "Archivo demasiado grande",
         "binaryFile": "Archivo binario, no se puede editar",
+        "binaryOpenFail": "Archivo binario, no se puede abrir en el editor",
         "line": "Línea",
         "col": "Columna",
         "spaces": "Espacios",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "¡Guíe a la IA con el mensaje actual sin iniciar un nuevo hilo!",
         "draftBean": "Hay contenido editado sin enviar",
+        "questDropMore": "… {0} más …",
+        "questDropNoMatch": "(Sin coincidencias)",
+        "questDropEmpty": "(Vacío)",
+        "questDropNew": "Nueva Quest",
+        "questDropFilterPh": "Filtrar...",
         "billing": {
             "number": "Número",
             "type": "Tipo",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "Limpiar",
             "caseSensitive": "Distinguir mayúsculas y minúsculas",
-            "noMatch": "Sin coincidencias"
+            "noMatch": "Sin coincidencias",
+            "small": "🔍 Búsqueda pequeña — Buscar dentro del panel",
+            "mid": "📄 Búsqueda media — Búsqueda de texto completo en la tarea actual",
+            "big": "🌐 Búsqueda amplia — Búsqueda global entre tareas"
         },
         "bulletTip": "Bala",
         "newline": "Insertar salto de línea",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ Interrupción anómala del nivel ({0}), la conversación se ha guardado."
         },
         "guideInfo": "Información de guía",
+        "guideConfirming": "Confirmando...",
         "guideImagesAnalyzed": "📷 {0} imágenes (analizadas)",
         "guideImagesPending": "📷 {0} imágenes (análisis visual incompleto)",
         "guideAck": "Guía recibida",
@@ -808,6 +828,7 @@
             "stop": "■ Detener",
             "expand": "Mostrar detalles",
             "collapse": "Ocultar",
+            "taskCapsule": "⏳ {0} tareas en progreso",
             "muteTip": "No volver a mostrar esta alerta (se notificará cuando aparezcan nuevos pisos en espera)",
             "serverAck": "Esperando confirmación del servidor",
             "firstToken": "Esperando la salida del primer carácter",
@@ -841,6 +862,9 @@
         "translateBtn": "Traducir",
         "auditCopied": "Texto de auditoría copiado al portapapeles ({0} KB), puede pegarlo en cualquier cuadro de diálogo de IA.",
         "waitSwitch": "La IA aún no ha respondido a la tarea actual, por favor cambia más tarde",
+        "questOpenLeft": "📌 Esta Quest ya está abierta en el panel izquierdo, se ha navegado automáticamente",
+        "questOpenRight": "📌 Esta Quest ya está abierta en el panel derecho, se ha navegado automáticamente",
+        "questOpenMid": "📌 Esta Quest ya está abierta en el panel central, se ha navegado automáticamente",
         "switchRestore": "Restaurando",
         "waitNew": "La IA aún no ha respondido a la tarea actual, por favor crea una nueva más tarde",
         "recoverPrefix": "Reconexión de red restaurada. Registro de interrupción anterior del hilo:",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "Mostrar solo archivos eliminados del disco",
         "loadEarlierTip": "Haz clic para cargar instantáneas anteriores",
         "loadEarlierGate": "⬆ Cargar {n} anteriores (quedan {m})",
-        "blockArrowTip": "Mover las diferencias de la izquierda a la derecha"
+        "blockArrowTip": "Mover las diferencias de la izquierda a la derecha",
+        "findBtn": "Buscar (Ctrl+F)"
     },
     "act": {
         "sponsorLabelWord": "Patrocinador",
@@ -2148,6 +2173,7 @@
     },
     "pasteRouter": {
         "noDir": "No se puede determinar el directorio de pegado (¿el editor no está asociado a un archivo?)",
+        "bridgeNotReady": "El puente del sistema de archivos no está listo, por favor actualice e inténtelo de nuevo",
         "writeFail": "Error al escribir en disco: {msg}",
         "imgSaveFail": "Error al pegar imagen: {msg}",
         "imgPasteDone": "Pegado: {ok} exitoso(s), {fail} fallido(s)",

@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "音訊橋接器無法使用（需重新啟動執行個體）",
+            "playFailed": "播放失敗（需重新啟動執行個體）",
+            "moduleMissing": "模組未載入（需重新整理）"
+        },
         "about": {
             "title": "關於 qqq",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "移除",
             "removeAsk": "移除「{n}」？",
             "openElsewhere": "⚠️ 該專案已在另一個視窗作為主資料夾開啟",
-            "clearedBusy": "⚠️ 主資料夾已被另一視窗佔用，AI 視窗已清空為乾淨視窗"
+            "clearedBusy": "⚠️ 主資料夾已被另一視窗佔用，AI 視窗已清空為乾淨視窗",
+            "filterPh": "篩選...",
+            "sortByName": "依檔名排序",
+            "sortByMtime": "依修改時間排序"
         },
         "gaeaHostLoading": "gaea host 載入中...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "已儲存",
         "saving": "儲存中...",
         "saveFailed": "儲存失敗",
+        "saveFailedPrefix": "儲存失敗：",
+        "saveFailHint": "（內容仍保留在編輯器中，可使用 Ctrl+S 重試）",
         "fileTooLarge": "檔案太大",
         "binaryFile": "二進位檔案，無法編輯",
+        "binaryOpenFail": "二進位檔案，無法在編輯器中開啟",
         "line": "行",
         "col": "欄",
         "spaces": "空格",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "立即使用當前訊息引導 AI，而不新增對話層級！",
         "draftBean": "有未傳送的編輯內容",
+        "questDropMore": "… 還有 {0} 筆 …",
+        "questDropNoMatch": "（無相符項目）",
+        "questDropEmpty": "（空）",
+        "questDropNew": "新建 Quest",
+        "questDropFilterPh": "篩選...",
         "billing": {
             "number": "編號",
             "type": "類型",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "清除",
             "caseSensitive": "區分大小寫",
-            "noMatch": "無相符結果"
+            "noMatch": "無相符結果",
+            "small": "🔍 小搜尋 — 面板內查找",
+            "mid": "📄 中搜尋 — 當前任務全文檢索",
+            "big": "🌐 大搜尋 — 跨任務全域檢索"
         },
         "bulletTip": "子彈",
         "newline": "插入換行",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ 樓層異常中斷（{0}），對話已儲存。"
         },
         "guideInfo": "引導資訊",
+        "guideConfirming": "確認中...",
         "guideImagesAnalyzed": "📷 {0} 張圖片（已分析）",
         "guideImagesPending": "📷 {0} 張圖片（視覺分析未完成）",
         "guideAck": "已收到引導",
@@ -808,6 +828,7 @@
             "stop": "■ 停止",
             "expand": "展開明細",
             "collapse": "收起",
+            "taskCapsule": "⏳ {0} 個任務進行中",
             "muteTip": "本次不再提示（出現新的等待樓層會再提示）",
             "serverAck": "伺服器確認等待中",
             "firstToken": "等待首字輸出",
@@ -841,6 +862,9 @@
         "translateBtn": "翻譯",
         "auditCopied": "審計文字已複製到剪貼簿 ({0} KB)，可貼上到任意 AI 對話框。",
         "waitSwitch": "當前任務 AI 尚未回覆，請稍後再切換",
+        "questOpenLeft": "📌 該 Quest 已在左側面板開啟，已自動跳轉",
+        "questOpenRight": "📌 該 Quest 已在右側面板開啟，已自動跳轉",
+        "questOpenMid": "📌 該 Quest 已在中間面板開啟，已自動跳轉",
         "switchRestore": "召回中",
         "waitNew": "當前任務 AI 尚未回覆，請稍後再新建",
         "recoverPrefix": "網路恢復重連。此前樓層中斷記錄：",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "僅顯示磁碟上已刪除的檔案",
         "loadEarlierTip": "點擊以載入更早的快照",
         "loadEarlierGate": "⬆ 載入更早的 {n} 筆（剩餘 {m} 筆）",
-        "blockArrowTip": "將左側差異移至右側"
+        "blockArrowTip": "將左側差異移至右側",
+        "findBtn": "尋找 (Ctrl+F)"
     },
     "act": {
         "sponsorLabelWord": "贊助商",
@@ -2148,6 +2173,7 @@
     },
     "pasteRouter": {
         "noDir": "無法確定貼上目錄（編輯器未關聯檔案？）",
+        "bridgeNotReady": "檔案系統橋接器尚未就緒，請重新整理後重試",
         "writeFail": "寫入磁碟失敗: {msg}",
         "imgSaveFail": "貼上圖片失敗: {msg}",
         "imgPasteDone": "貼上: {ok} 成功, {fail} 失敗",

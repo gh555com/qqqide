@@ -152,6 +152,12 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
 /* ═══ DIFF CONTAINER ═══ */
 #diff-container{flex:1;overflow:hidden;position:relative}
 
+/* ═══ 编辑区右上角悬浮按钮行（diff 左右两编辑器各一组；外观对齐主编辑器右下角按钮行，位置改右上）═══ */
+.tl-corner-layer{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none;z-index:1}
+.tl-corner-btns{position:absolute;display:flex;gap:4px;pointer-events:auto}
+.tl-float-btn{width:28px;height:28px;border:none;border-radius:6px;background:var(--card);color:var(--text);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.18);opacity:.70;transition:opacity .15s;line-height:1;padding:0}
+.tl-float-btn:hover{opacity:1}
+
 /* ═══ EMPTY STATE ═══ */
 #empty-state{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:13px}
 
@@ -264,11 +270,11 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
 <div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.editTooltip">编辑当前磁盘最新文件（而非任何一个历史快照）</span></div>
 <div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.closeHint">= Right Click</span></div>
 
-<script src="/core/qqqide-theme.js"></script>
-<script src="/core/i18n.js"></script>
-<script src="/core/qqq-icons.js"></script>
+<script src="/qqqide/core/qqqide-theme.js"></script>
+<script src="/qqqide/core/i18n.js"></script>
+<script src="/qqqide/core/qqq-icons.js"></script>
 <script>if (typeof window._i !== 'function') window._i = function(k,f) { return f || k; };</script>
-<script src="/core/state-sdk.js"></script>
+<script src="/qqqide/core/state-sdk.js"></script>
 <script src="/qqqide/ai-panel/time-util.js"></script>
 <script src="/qqqide/timeline/diff-window.js"></script>
 <script src="/qqqide/timeline/diff-versions.js"></script>

@@ -127,10 +127,12 @@
         _diffEditor.setModel({ original: originalModel, modified: modifiedModel });
         _stripEditor(_diffEditor.getOriginalEditor());
         _stripEditor(_diffEditor.getModifiedEditor());
+        _tlCornerAttach(_diffEditor);   // 右上角悬浮按钮行（左右两组；diff 重建后重新挂接）
         var _firstDiffReady = false;
         _diffEditor.onDidUpdateDiff(function () {
             updateDiffStats();
             _applyHiddenAreas();
+            _tlCornerLayout();   // 首算完成后复查就位（字体/行高就绪后的最终几何）
             if (!_firstDiffReady) {
                 _firstDiffReady = true;
                 _scrollToFirstChange();
@@ -334,4 +336,211 @@
         try { originalEditor.setHiddenAreas(toRanges(oUnchanged)); } catch (_) { }
         try { modifiedEditor.setHiddenAreas(toRanges(mUnchanged)); } catch (_) { }
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 编辑器右上角悬浮按钮行（唯一机器）
+    //   布局：左右两编辑器各一组，悬浮于各自编辑器右上角（与主编辑器右下角按钮行同款外观，
+    //         仅位置改右上）；坐标 = 编辑器 DOM rect 与容器 rect 之差，随布局/窗口缩放实时随动。
+    //   让位：按钮行上缘 = 编辑器顶 + 41px —— 查找控件常态占 0..33（实测），41 = 33 + 8 间距，
+    //         控件展开时按钮恒在控件下缘之外（一按不被遮）。
+    //   按钮：目前仅一个 —— 搜索（点击 = 该编辑器原生 Ctrl+F：同一动作，含选区播种/聚焦查找框）。
+    //   显隐：恒可见；仅本侧查找控件矩形真实压到按钮行时才让位（替换展开 / 控件被拖到按钮上），
+    //         关闭即回归；以查找状态事件为主、键盘/点击路径补刀——任意路径开合后显隐恒正确。
+    //   生命周期：diff 每次重建（版本切换/进出编辑态）后重新挂接；节点幂等复用，零重复。
+    // ════════════════════════════════════════════════════════════════════════
+    var _TL_CORNER_TOP = 41;                              // 按钮行上缘（相对编辑器顶，px；见上「让位」）
+    var _tlCornerEls = null;                              // { layer, left, right }
+    var _tlCornerBoundEd = { left: null, right: null };   // 已绑定查找状态事件的编辑器实例
+
+    // 节点构建（幂等：已存在且仍在容器内 → 直接复用）
+    function _tlCornerEnsure() {
+        if (_tlCornerEls && _tlCornerEls.layer && $diffContainer.contains(_tlCornerEls.layer)) return _tlCornerEls;
+        var layer = document.createElement('div');
+        layer.className = 'tl-corner-layer';
+        function make(side) {
+            var strip = document.createElement('div');
+            strip.className = 'tl-corner-btns';
+            strip.setAttribute('data-side', side);
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'tl-float-btn';
+            btn.title = _i('timeline.findBtn', '查找 (Ctrl+F)');
+            var ico = document.createElement('span');
+            ico.className = 'qqi qqi-search';
+            btn.appendChild(ico);
+            // 按下不夺焦、不冒泡（点击才触发；与主编辑器悬浮按钮同规）
+            btn.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); });
+            btn.addEventListener('click', function (e) {
+                e.preventDefault(); e.stopPropagation();
+                _tlCornerOpenFind(side);
+            });
+            strip.appendChild(btn);
+            layer.appendChild(strip);
+            return strip;
+        }
+        var left = make('left'), right = make('right');
+        $diffContainer.appendChild(layer);
+        _tlCornerEls = { layer: layer, left: left, right: right };
+        return _tlCornerEls;
+    }
+
+    // 当前 diff 的左右编辑器（点击时实时解析——diff 重建后无需重绑）
+    function _tlCornerEd(side) {
+        if (!_diffEditor) return null;
+        try { return side === 'left' ? _diffEditor.getOriginalEditor() : _diffEditor.getModifiedEditor(); } catch (_) { return null; }
+    }
+
+    // 本侧查找控件是否展开（贡献状态为权威；未实例化时回落 DOM 类名）
+    function _tlFindRevealed(ed) {
+        if (!ed) return false;
+        try {
+            var fc = ed.getContribution('editor.contrib.findController');
+            var st = fc && fc.getState ? fc.getState() : null;
+            if (st && typeof st.isRevealed === 'boolean') return st.isRevealed;
+        } catch (_) { }
+        try {
+            var dom = ed.getDomNode();
+            var w = dom && dom.querySelector ? dom.querySelector('.find-widget') : null;
+            return !!(w && w.classList.contains('visible'));
+        } catch (_) { return false; }
+    }
+
+    // 查找状态事件绑定（每编辑器实例一次；isRevealed 变化 → 即时显隐同步）
+    function _tlCornerBindFind(ed, side) {
+        if (!ed || _tlCornerBoundEd[side] === ed) return;
+        var st = null;
+        try {
+            var fc = ed.getContribution('editor.contrib.findController');
+            st = fc && fc.getState ? fc.getState() : null;
+        } catch (_) { st = null; }
+        if (!st || !st.onFindReplaceStateChange) return;   // 贡献未就绪：留待下次布局/交互再绑
+        _tlCornerBoundEd[side] = ed;
+        try {
+            st.onFindReplaceStateChange(function (e) {
+                if (e && e.isRevealed) { try { _tlCornerVis(); } catch (_) { } }
+            });
+        } catch (_) { }
+    }
+
+    // 就位：贴到目标编辑器右上角（8px 内缩；同值零写，防拖拽期样式抖动）
+    function _tlCornerPlace(strip, ed, crect) {
+        var dom = null, r = null;
+        try { dom = ed && ed.getDomNode(); } catch (_) { dom = null; }
+        try { r = dom ? dom.getBoundingClientRect() : null; } catch (_) { r = null; }
+        if (!r || !r.width || !r.height) { strip.style.display = 'none'; return; }
+        strip.style.display = '';
+        var top = Math.round(r.top - crect.top + _TL_CORNER_TOP);
+        var right = Math.round(crect.right - r.right + 8);
+        if (strip.__tlTop !== top) { strip.__tlTop = top; strip.style.top = top + 'px'; }
+        if (strip.__tlRight !== right) { strip.__tlRight = right; strip.style.right = right + 'px'; }
+    }
+
+    function _tlCornerVisSide(side) {
+        if (!_tlCornerEls) return;
+        var strip = side === 'left' ? _tlCornerEls.left : _tlCornerEls.right;
+        var ed = _tlCornerEd(side);
+        if (ed) _tlCornerBindFind(ed, side);
+        var next = (ed && _tlFindRevealed(ed) && _tlWidgetCovers(strip, ed)) ? 'hidden' : '';
+        if (strip.__tlVis !== next) { strip.__tlVis = next; strip.style.visibility = next; }
+    }
+
+    // 查找控件是否真实压住按钮行（矩形相交判定——控件常态在按钮行上方，零相交恒可见；
+    // 仅「替换展开 / 控件被拖到按钮行上」等真实相交场景让位）
+    function _tlWidgetCovers(strip, ed) {
+        var dom = null, w = null, sr = null, wr = null;
+        try { dom = ed.getDomNode(); } catch (_) { dom = null; }
+        try { w = (dom && dom.querySelector) ? dom.querySelector('.find-widget') : null; } catch (_) { w = null; }
+        if (!w) return false;
+        try { sr = strip.getBoundingClientRect(); wr = w.getBoundingClientRect(); } catch (_) { return false; }
+        if (!sr || !wr || !wr.width || !wr.height) return false;
+        return (sr.left < wr.right && sr.right > wr.left && sr.top < wr.bottom && sr.bottom > wr.top);
+    }
+
+    function _tlCornerVis() {
+        if (!_tlCornerEls) return;
+        _tlCornerVisSide('left');
+        _tlCornerVisSide('right');
+    }
+
+    // 布局总入口（无 diff 编辑器 / 容器零尺寸 → 整层隐藏）
+    function _tlCornerLayout() {
+        var els = _tlCornerEnsure();
+        if (!_diffEditor) { els.layer.style.display = 'none'; return; }
+        var crect = null;
+        try { crect = $diffContainer.getBoundingClientRect(); } catch (_) { crect = null; }
+        if (!crect || !crect.width || !crect.height) { els.layer.style.display = 'none'; return; }
+        els.layer.style.display = '';
+        _tlCornerPlace(els.left, _tlCornerEd('left'), crect);
+        _tlCornerPlace(els.right, _tlCornerEd('right'), crect);
+        _tlCornerVis();
+    }
+
+    // 点击 = 该编辑器原生 Ctrl+F（同一动作；动作缺失时逐项复刻其参数直连查找贡献）
+    function _tlCornerOpenFind(side) {
+        var ed = _tlCornerEd(side);
+        if (!ed) return;
+        try { ed.focus(); } catch (_) { }
+        var ran = false;
+        try { var act = ed.getAction('actions.find'); if (act && act.run) { act.run(); ran = true; } } catch (_) { ran = false; }
+        if (!ran) {
+            try {
+                var fc = ed.getContribution('editor.contrib.findController');
+                if (fc && fc.start) {
+                    var seedSel = 'single', seedNE = false, gcb = false, loop = true;
+                    try {
+                        var f = (window.monaco && window.monaco.editor) ? ed.getOption(window.monaco.editor.EditorOption.find) : null;
+                        if (f) {
+                            if (f.seedSearchStringFromSelection === 'never') seedSel = 'none';
+                            seedNE = (f.seedSearchStringFromSelection === 'selection');
+                            gcb = !!f.globalFindClipboard;
+                            if (typeof f.loop === 'boolean') loop = f.loop;
+                        }
+                    } catch (_) { }
+                    fc.start({
+                        forceRevealReplace: false,
+                        seedSearchStringFromSelection: seedSel,
+                        seedSearchStringFromNonEmptySelection: seedNE,
+                        seedSearchStringFromGlobalClipboard: gcb,
+                        shouldFocus: 1,
+                        shouldAnimate: true,
+                        updateSearchScope: false,
+                        loop: loop
+                    });
+                }
+            } catch (_) { }
+        }
+        _tlCornerPoke(60);
+        _tlCornerPoke(320);
+    }
+
+    // 补刀同步（延迟复核——动作异步落地/事件缺失时的自愈）
+    function _tlCornerPoke(delay) {
+        setTimeout(function () { try { _tlCornerVis(); } catch (_) { } }, delay || 120);
+    }
+
+    // diff 重建后重新挂接：布局事件 + 首次就位（幂等）
+    function _tlCornerAttach(diff) {
+        if (!diff) return;
+        _tlCornerEnsure();
+        try {
+            var eds = [diff.getOriginalEditor(), diff.getModifiedEditor()];
+            for (var i = 0; i < eds.length; i++) {
+                var ed = eds[i];
+                if (ed && ed.onDidLayoutChange) ed.onDidLayoutChange(function () { try { _tlCornerLayout(); } catch (_) { } });
+            }
+        } catch (_) { }
+        _tlCornerLayout();
+        setTimeout(function () { try { _tlCornerLayout(); } catch (_) { } }, 120);
+    }
+
+    // 兜底同步触发（查找控件还可经键盘/点击路径开合——事件绑定之外的补刀）
+    window.addEventListener('resize', function () { try { _tlCornerLayout(); } catch (_) { } });
+    document.addEventListener('keydown', function (e) {
+        if (!e) return;
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F')) { _tlCornerPoke(90); _tlCornerPoke(360); }
+        else if (e.key === 'Escape') { _tlCornerPoke(90); }
+    }, true);
+    document.addEventListener('click', function () { _tlCornerPoke(140); }, true);
+    document.addEventListener('mouseup', function () { _tlCornerPoke(120); }, true);   // 控件可拖拽：拖完即复算显隐
+
 

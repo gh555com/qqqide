@@ -109,7 +109,8 @@ async function switchQuest(id) {
             }
             try {
                 if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
-                    '\ud83d\udccc \u8be5 Quest \u5df2\u5728' + (_syncOwnerPanel === 0 ? '\u5de6' : _syncOwnerPanel === 2 ? '\u53f3' : '\u4e2d') + '\u9762\u677f\u6253\u5f00\uff0c\u5df2\u81ea\u52a8\u8df3\u8f6c',
+                    _qq(_syncOwnerPanel === 0 ? 'ai.questOpenLeft' : _syncOwnerPanel === 2 ? 'ai.questOpenRight' : 'ai.questOpenMid',
+                        _syncOwnerPanel === 0 ? '📌 该 Quest 已在左面板打开，已自动跳转' : _syncOwnerPanel === 2 ? '📌 该 Quest 已在右面板打开，已自动跳转' : '📌 该 Quest 已在中间面板打开，已自动跳转'),
                     { type: 'info', duration: 3000 }
                 );
             } catch (_) { }
@@ -1644,7 +1645,7 @@ $guideBtn.onclick = async function () {
 
         var guideBlock = document.createElement('div');
         guideBlock.className = 'msg-flow-guide-inject';
-        var guideHtml = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> \u5f15\u5bfc\u4fe1\u606f</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
+        var guideHtml = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> ' + _qq('ai.guideInfo', '引导信息') + '</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
         if (hasImages) {
             // ★ 2026-09-30 诚实标注：视觉分析失败/未登录降级时不再谎称「已分析」（旧实现恒标已分析）
             var _gImgNote = visionText
@@ -1658,7 +1659,7 @@ $guideBtn.onclick = async function () {
         var marker = document.createElement('div');
         marker.className = 'msg-flow-guide';
         marker.style.cssText = 'opacity:0.6;';
-        marker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> \u786e\u8ba4\u4e2d...';
+        marker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> ' + _qq('ai.guideConfirming', '确认中...');
         _aiDiv._contentWrap.appendChild(marker);
         _aiDiv._guideMarker = marker;
     }

@@ -483,17 +483,24 @@
     if (def.tabs && typeof def.tabs === 'object' && window.qqqTabs) {
       var gaeaGrp = window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
       var tabIds = Object.keys(def.tabs);
+      var _born = null;   // 本次 open 新建的 tab
       for (var ti = 0; ti < tabIds.length; ti++) {
         var tid = tabIds[ti];
-        var already = gaeaGrp && gaeaGrp.tabs && gaeaGrp.tabs.some(function (t) { return t.gaeaId === tid; });
-        if (already) continue;
         var tabDef = def.tabs[tid];
-        if (typeof tabDef.build === 'function') {
-          window.qqqTabs.addGaeaTab(tid, tabDef.title || tid, tabDef.build, { closable: tabDef.closable !== false });
+        if (typeof tabDef.build !== 'function') continue;
+        var already = gaeaGrp && gaeaGrp.tabs && gaeaGrp.tabs.some(function (t) { return t.gaeaId === tid; });
+        if (already) {
+          // ★ multi 语义：声明 multi 的 tab 抛弃单例——每次 open = 再开一个新实例
+          //   （search 与 kmd「一律新建」同语义；旧行为「已存在即无操作」使菜单按钮点击没反应）
+          if (tabDef.multi === true) {
+            _born = window.qqqTabs.addGaeaTab(tid, tabDef.title || tid, tabDef.build, { closable: tabDef.closable !== false, multi: true });
+          }
+          continue;
         }
+        _born = window.qqqTabs.addGaeaTab(tid, tabDef.title || tid, tabDef.build, { closable: tabDef.closable !== false });
       }
-      // 激活第一个 tab
-      if (tabIds.length > 0 && gaeaGrp) {
+      // 激活兜底（单例语义：已有 tab 被回头激活；multi 新建已由 addGaeaTab 激活——不得再抢）
+      if (!_born && tabIds.length > 0 && gaeaGrp) {
         var g2 = window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : gaeaGrp;
         var ft = g2 && g2.tabs && g2.tabs.find(function (t) { return t.gaeaId === tabIds[0]; });
         if (ft && g2.activeTabId !== ft.id) {

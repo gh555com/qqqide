@@ -229,6 +229,11 @@
                 }
             }
         },
+        "savor": {
+            "bridgeUnavailable": "オーディオブリッジが利用できません（インスタンスの再起動が必要です）",
+            "playFailed": "再生に失敗しました（インスタンスの再起動が必要です）",
+            "moduleMissing": "モジュールが読み込まれていません（更新が必要です）"
+        },
         "about": {
             "title": "qqq について",
             "version": "qqq-shell v2",
@@ -254,7 +259,10 @@
             "removeBtn": "削除",
             "removeAsk": "「{n}」を削除しますか？",
             "openElsewhere": "⚠️ このプロジェクトは別のウィンドウでメインフォルダとして開かれています",
-            "clearedBusy": "⚠️ メインフォルダは別のウィンドウで使用されているため、AI ビューポートはクリーンな状態にクリアされました"
+            "clearedBusy": "⚠️ メインフォルダは別のウィンドウで使用されているため、AI ビューポートはクリーンな状態にクリアされました",
+            "filterPh": "フィルター...",
+            "sortByName": "ファイル名で並べ替え",
+            "sortByMtime": "更新日時で並べ替え"
         },
         "gaeaHostLoading": "gaea host を読み込み中...",
         "onl": {
@@ -461,8 +469,11 @@
         "saved": "保存済み",
         "saving": "保存中...",
         "saveFailed": "保存に失敗しました",
+        "saveFailedPrefix": "保存失敗：",
+        "saveFailHint": "（内容はエディタに残っています。Ctrl+S で再試行してください）",
         "fileTooLarge": "ファイルが大きすぎます",
         "binaryFile": "バイナリファイルのため編集できません",
+        "binaryOpenFail": "バイナリファイルのため、エディタで開けません",
         "line": "行",
         "col": "列",
         "spaces": "スペース",
@@ -669,6 +680,11 @@
         },
         "guideBtnTooltip": "新しいスレッドを開始せず、現在のメッセージでAIをガイドします！",
         "draftBean": "送信されていない編集内容があります",
+        "questDropMore": "… さらに {0} 件 …",
+        "questDropNoMatch": "（一致する項目なし）",
+        "questDropEmpty": "（空）",
+        "questDropNew": "新規 Quest",
+        "questDropFilterPh": "フィルター...",
         "billing": {
             "number": "番号",
             "type": "タイプ",
@@ -688,7 +704,10 @@
         "search": {
             "clear": "クリア",
             "caseSensitive": "大文字と小文字を区別",
-            "noMatch": "一致する項目なし"
+            "noMatch": "一致する項目なし",
+            "small": "🔍 小検索 — パネル内検索",
+            "mid": "📄 中検索 — 現在のタスク全文検索",
+            "big": "🌐 大検索 — タスク横断グローバル検索"
         },
         "bulletTip": "バレット",
         "newline": "改行を挿入",
@@ -746,6 +765,7 @@
             "floorInterruptedReason": "⚠️ 階層が異常中断されました（{0}）。対話は保存済みです。"
         },
         "guideInfo": "ガイド情報",
+        "guideConfirming": "確認中...",
         "guideImagesAnalyzed": "📷 {0}枚の画像（分析済み）",
         "guideImagesPending": "📷 {0}枚の画像（視覚分析未完了）",
         "guideAck": "ガイドを受信しました",
@@ -808,6 +828,7 @@
             "stop": "■ 停止",
             "expand": "詳細を展開",
             "collapse": "折りたたむ",
+            "taskCapsule": "⏳ {0} 件のタスクが進行中",
             "muteTip": "今回は通知しない（新しい待機フロアが発生した場合は再度通知）",
             "serverAck": "サーバー確認待ち",
             "firstToken": "最初の文字出力を待機中",
@@ -841,6 +862,9 @@
         "translateBtn": "翻訳",
         "auditCopied": "監査テキストがクリップボードにコピーされました ({0} KB)。任意の AI 対話ウィンドウに貼り付けることができます。",
         "waitSwitch": "現在のタスクでAIからの返信がないため、しばらくしてから切り替えてください",
+        "questOpenLeft": "📌 この Quest は左パネルで既に開かれています。自動的に移動しました。",
+        "questOpenRight": "📌 この Quest は右パネルで既に開かれています。自動的に移動しました。",
+        "questOpenMid": "📌 この Quest は中央パネルで既に開かれています。自動的に移動しました。",
         "switchRestore": "復元中",
         "waitNew": "現在のタスクでAIからの返信がないため、しばらくしてから新規作成してください",
         "recoverPrefix": "ネットワーク復旧による再接続。以前のフロア中断記録：",
@@ -1408,7 +1432,8 @@
         "vaultOnlyGoneTip": "ディスク上から削除されたファイルのみを表示",
         "loadEarlierTip": "クリックして以前のスナップショットを読み込む",
         "loadEarlierGate": "⬆ 以前の {n} 件を読み込む（残り {m} 件）",
-        "blockArrowTip": "左側の差分を右側に移動"
+        "blockArrowTip": "左側の差分を右側に移動",
+        "findBtn": "検索 (Ctrl+F)"
     },
     "act": {
         "sponsorLabelWord": "スポンサー",
@@ -2148,6 +2173,7 @@
     },
     "pasteRouter": {
         "noDir": "貼り付け先ディレクトリを特定できません（エディターがファイルに関連付けられていませんか？）",
+        "bridgeNotReady": "ファイルシステムブリッジの準備ができていません。更新して再試行してください",
         "writeFail": "ディスク書き込み失敗: {msg}",
         "imgSaveFail": "画像の貼り付けに失敗: {msg}",
         "imgPasteDone": "貼り付け: {ok} 成功, {fail} 失敗",

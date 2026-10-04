@@ -114,6 +114,12 @@ AgentLoop.prototype._callVision = async function (base64, token, prompt, userCon
         return pollResult.description;
     }
 
+    // 服务端终态错误：如实透传原因（如「视觉服务暂不可用」），不再折叠成 poll failed
+    if (pollResult && pollResult.error) {
+        self._log('  ✗ vision error: ' + pollResult.error);
+        return null;
+    }
+
     self._log('  ✗ vision poll failed');
     return null;
 };

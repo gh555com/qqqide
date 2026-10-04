@@ -677,14 +677,14 @@ async function renderQuestDrop() {
         var more = document.createElement('div');
         more.className = 'quest-drop-item';
         more.style.cssText = 'color:var(--base01);font-style:italic;text-align:center;pointer-events:none';
-        more.textContent = '\u2026 \u8fd8\u6709 ' + (filtered.length - displayCount) + ' \u6761 \u2026';
+        more.textContent = _qq('ai.questDropMore', '… 还有 {0} 条 …', { 0: filtered.length - displayCount });
         body.appendChild(more);
     }
     if (filtered.length === 0) {
         var empty = document.createElement('div');
         empty.className = 'quest-drop-item';
         empty.style.cssText = 'color:var(--base01);font-style:italic';
-        empty.textContent = query ? '(\u65e0\u5339\u914d)' : '(\u7a7a)';
+        empty.textContent = query ? _qq('ai.questDropNoMatch', '（无匹配）') : _qq('ai.questDropEmpty', '（空）');
         body.appendChild(empty);
     }
     _questDrop.appendChild(body);
@@ -709,12 +709,12 @@ async function openQuestDrop() {
     var addBtn = document.createElement('div');
     addBtn.className = 'quest-drop-add';
     addBtn.textContent = '+';
-    addBtn.title = '\u65b0\u5efa Quest';
+    addBtn.title = _qq('ai.questDropNew', '新建 Quest');
     addBtn.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); createNewQuest(); };
     head.appendChild(addBtn);
     var search = document.createElement('input');
     search.className = 'quest-drop-search';
-    search.placeholder = '\u7b5b\u9009...';
+    search.placeholder = _qq('ai.questDropFilterPh', '筛选...');
     search.value = _questSearchText;
     search.oninput = function () {
         _questSearchText = search.value;

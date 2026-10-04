@@ -235,7 +235,7 @@
     if (_expanded) {
       ids.forEach(function (id) { _tasks[id].el.classList.remove('qiioast-hidden'); });
       var cap = _capsule();
-      cap.textContent = '\u6536\u8D77';
+      cap.textContent = _wbi('ai.gwWait.collapse', '收起');
       cap.style.display = '';
       return;
     }
@@ -243,7 +243,7 @@
       _tasks[id].el.classList.toggle('qiioast-hidden', idx >= MAX_VISIBLE);
     });
     var cap2 = _capsule();
-    cap2.textContent = '\u23F3 ' + (n - MAX_VISIBLE) + ' \u4E2A\u4EFB\u52A1\u8FDB\u884C\u4E2D';
+    cap2.textContent = _wbi('ai.gwWait.taskCapsule', '⏳ {0} 个任务进行中', { 0: n - MAX_VISIBLE });
     cap2.style.display = '';
   }
 

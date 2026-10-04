@@ -529,7 +529,7 @@
 
     var isOn = false;
     try { isOn = ed.getOption(monaco.editor.EditorOption.minimap).enabled; } catch (_) { }
-    var label = (isOn ? '\u2713 ' : '') + '\u5C0F\u5730\u56FE';
+    var label = (isOn ? '\u2713 ' : '') + (window._i ? window._i('editor.minimap', '小地图') : '小地图');
 
     var disposable = ed.addAction({
       id: 'qqq-toggle-minimap',
@@ -563,7 +563,8 @@
   // ★ 标签按焦点面板方向带左右箭头（Roam 右键菜单传统：←喂给 AI / 喂给 AI / 喂给 AI→）
   function _feedToAiLabel() {
     var t = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
-    return t === 0 ? '\u2190\uD83D\uDCCE \u5582\u7ED9 AI' : t === 2 ? '\uD83D\uDCCE \u5582\u7ED9 AI\u2192' : '\uD83D\uDCCE \u5582\u7ED9 AI';
+    var mid = window._i ? window._i('goods.roam.feedAi', '喂给 AI') : '喂给 AI';
+    return t === 0 ? '\u2190\uD83D\uDCCE ' + mid : t === 2 ? '\uD83D\uDCCE ' + mid + '\u2192' : '\uD83D\uDCCE ' + mid;
   }
 
   // ★ 右键弹出前刷新喂给 AI 标签（Monaco action label 创建后不可改，dispose 重建）
@@ -632,7 +633,6 @@
   //   编辑器簿记键与 dirty 事件载荷统一正斜杠形式（与 timeline / dirty 主进程存储 / 加号下拉口径一致），
   //   否则同一文件两种写法 = 两份簿记（dirty 星号/预览斜体/删除标记各算各的）。
   function _normFP(p) { return String(p == null ? '' : p).replace(/\\/g, '/'); }
-   let _jumpLineStyleInjected = false;
   var _openedMtime = {};    // filePath → {mtimeMs, size} — track when we last loaded/saved
   var _paneDirtyMap = {};   // filePath → boolean — per-pane dirty state
   // ★ 全局刷新锁：任何程序化 applyEdits（外部修改重载/跨窗口脏快照/live refresh）期间置位，
@@ -773,21 +773,209 @@
     ed.onDidDispose(function () { _clearDecos(); });
   }
 
-  // ★ 搜索跳转行高亮给目标行加背景色，4s 自动消失
-  function _highlightJumpLine(ed, monaco, lineNumber) {
-    if (!_jumpLineStyleInjected) {
-      _jumpLineStyleInjected = true;
-      var style = document.createElement('style');
-      style.textContent = '.qqq-jump-line{background:rgba(181,137,0,0.18)!important}[data-theme="dark"] .qqq-jump-line{background:rgba(181,137,0,0.25)!important}';
-      document.head.appendChild(style);
+  // ★ 查找控件机器（唯一入口）：打开 Monaco 查找控件 + 预填关键字与模式（Ctrl+F 同款体验）
+  //   正文高亮恒由控件原生渲染（主题已配 findMatch「当前/其余」双色）——禁再叠第二套自绘高亮。
+  //   消费方 = 一切「打开查找控件」场景（搜索结果跳转 / AI 面板 a1 / 外部 goods _nextSearch）——
+  //   旧三处复制实现（editor 内联 / tab-manager / shell-rpc）全数收敛于此，禁任何第二套。
+  //   opts: { search, isRegex, caseSensitive, wholeWord, allowEmpty }
+  //   返回 true = 控件已打开（含经 action 兜底路径）；false = 全链失败（调用方可自行降级）
+  function _openFindWidget(ed, opts) {
+    if (!ed) return false;
+    opts = opts || {};
+    var term = (opts.search == null) ? '' : String(opts.search);
+    if (!term && !opts.allowEmpty) return false;
+    var fc = null;
+    try { fc = ed.getContribution('editor.contrib.findController') || null; } catch (_) { fc = null; }
+    if (fc && fc.start) {
+      try {
+        // 与 Ctrl+F 同语义：不抓选区/剪贴板、聚焦查找输入框（1 = FocusFindInput）、循环查找
+        fc.start({
+          forceRevealReplace: false,
+          seedSearchStringFromSelection: 'none',
+          seedSearchStringFromNonEmptySelection: false,
+          seedSearchStringFromGlobalClipboard: false,
+          shouldFocus: 1,
+          shouldAnimate: true,
+          updateSearchScope: false,
+          loop: true
+        });
+        _fillFindTerm(fc, ed, term, opts);
+        return true;
+      } catch (_) { /* 落到 action 兜底 */ }
     }
+    // 兜底 1：经 action 触发实例化并打开（run 成功即视为已打开）；随后短轮询取回控件补填
+    var ran = false;
+    try { var act = ed.getAction('actions.find'); if (act && act.run) { act.run(); ran = true; } } catch (_) { }
+    if (ran) {
+      var tries = 0;
+      var poll = function () {
+        tries++;
+        var c = null;
+        try { c = ed.getContribution('editor.contrib.findController') || null; } catch (_) { c = null; }
+        if (c && c.getState && c.getState().change) { _fillFindTerm(c, ed, term, opts); return; }
+        if (tries < 6) { setTimeout(poll, 80); return; }
+        _fillFindByDom(ed, term);
+      };
+      setTimeout(poll, 0);
+      return true;
+    }
+    return false;
+  }
+  // 状态写入 + 校验补齐（控件刚起首帧偶吞写的补刀；终级 DOM 直写兜底）
+  function _fillFindTerm(fc, ed, term, opts) {
+    if (!term) return;
+    // ★ 第二参 moveCursor=true：「键入即定位」同语义——当前匹配获强色 + 选中 + 计数定位（Ctrl+F 实感）
+    //   同词再点同文件时新旧状态完全一致 → change 不触发事件 → 补一刀 moveToNextMatch 立当前匹配
+    var same = false;
     try {
-      var deco = ed.deltaDecorations([], [{
-        range: new monaco.Range(lineNumber, 1, lineNumber, 1),
-        options: { isWholeLine: true, className: 'qqq-jump-line' }
-      }]);
-      setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) {} }, 4000);
-    } catch (_) {}
+      var st0 = fc.getState();
+      same = (st0.searchString === term) && (!!st0.isRegex === !!opts.isRegex) &&
+             (!!st0.matchCase === !!opts.caseSensitive) && (!!st0.wholeWord === !!opts.wholeWord);
+    } catch (_) { same = false; }
+    var apply = function () {
+      try {
+        fc.getState().change({
+          searchString: term,
+          isRegex: !!opts.isRegex,
+          matchCase: !!opts.caseSensitive,
+          wholeWord: !!opts.wholeWord
+        }, true);
+      } catch (_) { }
+    };
+    apply();
+    if (same) { try { fc.moveToNextMatch && fc.moveToNextMatch(); } catch (_) { } }
+    var tries = 0;
+    var verify = function () {
+      tries++;
+      var cur = null;
+      try { cur = fc.getState().searchString; } catch (_) { return; }
+      if (cur === term) return;
+      apply();
+      if (tries < 4) { setTimeout(verify, 80); return; }
+      _fillFindByDom(ed, term);
+    };
+    setTimeout(verify, 90);
+  }
+  function _fillFindByDom(ed, term) {
+    if (!term) return;
+    var dom = null;
+    try { dom = ed.getDomNode(); } catch (_) { dom = null; }
+    if (!dom) return;
+    var tries = 0;
+    var tryFill = function () {
+      tries++;
+      // ★ 0.34 查找输入框是 textarea（InputBox flexibleHeight → textarea.input）；input 仅为旧版兜底
+      var fi = dom.querySelector('.find-widget .monaco-findInput textarea.input') ||
+               dom.querySelector('.find-widget textarea.input') ||
+               dom.querySelector('.find-widget .monaco-findInput input') ||
+               dom.querySelector('.find-widget input');
+      if (fi) {
+        try {
+          var proto = (fi.tagName === 'TEXTAREA') ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+          setter.call(fi, term);
+          fi.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch (_) { }
+        if (fi.value === term) return;
+      }
+      if (tries < 6) setTimeout(tryFill, 70);
+    };
+    tryFill();
+  }
+
+  // ★ 搜索跳转高亮机器（唯一入口）：跳行 + 行闪（4s）+ 查找控件预填（主路径）/ 词级高亮（兜底）
+  //   消费方 = 一切「跳转并高亮」场景（搜索结果点击等；openInPane opts / tab-manager 已有文件路径）——
+  //   禁任何第二套复制实现。opts: { line, col, search, isRegex, caseSensitive, wholeWord }
+  var _searchJumpStyleInjected = false;
+  var SEARCH_JUMP_MAX_MATCHES = 5000;   // 词级高亮上限（与搜索命中上限同值；全景超出时保证当前匹配仍可见）
+  function _injectSearchJumpStyle() {
+    if (_searchJumpStyleInjected) return;
+    _searchJumpStyleInjected = true;
+    var style = document.createElement('style');
+    style.textContent =
+      '.qqq-jump-line{background:rgba(181,137,0,0.18)!important}[data-theme="dark"] .qqq-jump-line{background:rgba(181,137,0,0.25)!important}' +
+      '.qqq-find-hit{background:#e0a01066}[data-theme="dark"] .qqq-find-hit{background:#d4a01766}' +
+      '.qqq-find-cur{background:#e0a010cc}[data-theme="dark"] .qqq-find-cur{background:#d4a017cc}';
+    document.head.appendChild(style);
+  }
+  // 当前匹配裁决：起始相等 → 范围包含 → 同行右起始最近 → 同行最近 → 全文最近（行距优先）
+  function _pickCurrentMatch(matches, line, col) {
+    if (!matches || !matches.length) return null;
+    var exact = null, contains = null, afterLine = null, nearLine = null, nearAny = null;
+    var afterD = 1e9, nearD = 1e9, anyD = 1e12;
+    for (var i = 0; i < matches.length; i++) {
+      var m = matches[i], r = m && m.range;
+      if (!r) continue;
+      if (r.startLineNumber === line) {
+        if (!exact && r.startColumn === col) exact = m;
+        // 范围包含目标位（起点在本行 → 只需列与前/后边界判定）
+        if (!contains && r.startColumn <= col && (r.endLineNumber > line || r.endColumn >= col)) contains = m;
+        if (r.startColumn >= col && r.startColumn - col < afterD) { afterD = r.startColumn - col; afterLine = m; }
+        if (Math.abs(r.startColumn - col) < nearD) { nearD = Math.abs(r.startColumn - col); nearLine = m; }
+      }
+      var d = Math.abs(r.startLineNumber - line) * 1e6 + Math.abs(r.startColumn - col);
+      if (d < anyD) { anyD = d; nearAny = m; }
+    }
+    return exact || contains || afterLine || nearLine || nearAny;
+  }
+  function _applySearchJump(ed, opts) {
+    if (!ed || !opts) return;
+    var line = parseInt(opts.line, 10) || 0;
+    if (line <= 0) return;
+    var col = parseInt(opts.col, 10) || 1;
+    try {
+      var _pos = { lineNumber: line, column: col };
+      ed.setPosition(_pos);
+      ed.revealPositionInCenter(_pos);
+    } catch (_) { }
+    _injectSearchJumpStyle();
+    var monaco = _monacoRef;
+    var specs = [];
+    if (monaco) {
+      try {
+        specs.push({ range: new monaco.Range(line, 1, line, 1), options: { isWholeLine: true, className: 'qqq-jump-line' } });
+      } catch (_) { }
+    }
+    var term = (opts.search == null) ? '' : String(opts.search);
+    // ★ 主路径：查找控件预填（控件停留期恒亮 + 计数 + 上下导航；主题已配双色高亮）
+    //   仅当控件全链失败才降级词级自绘（防两套高亮叠色）
+    var findOpened = false;
+    if (term.trim()) { findOpened = _openFindWidget(ed, opts); }
+    if (monaco && term.trim() && !findOpened) {
+      var model = null;
+      try { model = ed.getModel(); } catch (_) { }
+      if (model && !model.isDisposed()) {
+        var wsep = null;
+        if (opts.wholeWord) {
+          try { wsep = ed.getOption(monaco.editor.EditorOption.wordSeparators) || null; } catch (_) { wsep = null; }
+        }
+        var list = [];
+        try { list = model.findMatches(term, false, !!opts.isRegex, !!opts.caseSensitive, wsep, false, SEARCH_JUMP_MAX_MATCHES) || []; } catch (_) { list = []; }
+        var cur = _pickCurrentMatch(list, line, col);
+        if (!cur) {
+          // 列表截断（超上限）或目标行无命中 → 定位式兜底：目标位起的第一处匹配
+          try { cur = model.findNextMatch(term, { lineNumber: line, column: col }, !!opts.isRegex, !!opts.caseSensitive, wsep, false); } catch (_) { }
+        }
+        var curInList = false;
+        for (var i = 0; i < list.length; i++) {
+          var isCur = !!(cur && list[i].range && list[i].range.equalsRange(cur.range));
+          if (isCur) curInList = true;
+          specs.push({ range: list[i].range, options: { className: isCur ? 'qqq-find-cur' : 'qqq-find-hit' } });
+        }
+        if (cur && !curInList) specs.push({ range: cur.range, options: { className: 'qqq-find-cur' } });
+      }
+    }
+    if (!specs.length) return;
+    var _old = ed._qqqJumpDecos || [];
+    var _new = _old;
+    try { _new = ed.deltaDecorations(_old, specs); } catch (_) { _new = []; }
+    ed._qqqJumpDecos = _new;
+    if (ed._qqqJumpTimer) clearTimeout(ed._qqqJumpTimer);
+    ed._qqqJumpTimer = setTimeout(function () {
+      ed._qqqJumpTimer = 0;
+      try { ed.deltaDecorations(ed._qqqJumpDecos || [], []); } catch (_) { }
+      ed._qqqJumpDecos = [];
+    }, 4000);
   }
 
   // ---- openInPane: create a Monaco editor inside a tab pane for a specific file ----
@@ -886,16 +1074,10 @@
         }, 1300);
       }
 
-      // ★ 搜索跳转：从搜索列表点击跳转到指定行/列（延迟执行，让 Monaco 先完成布局）
+      // ★ 搜索跳转高亮（唯一机器 _applySearchJump）：跳行 + 行闪 + 查找控件预填
+      //   （延迟执行让 Monaco 先完成布局；search + isRegex/caseSensitive/wholeWord 全透传）
       if (opts && opts.line) {
-        setTimeout(function () {
-          try {
-            var _jumpPos = { lineNumber: opts.line, column: opts.col || 1 };
-            ed.setPosition(_jumpPos);
-            ed.revealPositionInCenter(_jumpPos);
-            _highlightJumpLine(ed, monaco, opts.line);
-          } catch (_) {}
-        }, 300);
+        setTimeout(function () { _applySearchJump(ed, opts); }, 300);
       }
 
       // ★ 窗口快照还原：检查是否有待恢复的光标位置
@@ -903,49 +1085,6 @@
         var _pendPos = window.qqqPendingEditorPositions[filePath];
         try { ed.setPosition(_pendPos); ed.revealPositionInCenter(_pendPos); } catch (_) {}
         delete window.qqqPendingEditorPositions[filePath];
-      }
-
-      // ★ 搜索高亮：自动打开查找控件并填入搜索词
-      if (opts && opts.search && opts.search.trim()) {
-        var _srchTerm = opts.search;
-        setTimeout(function () {
-          try {
-            var _fc = ed.getContribution('editor.contrib.findController');
-            if (_fc && _fc.start) {
-              _fc.start({
-                forceRevealReplace: false,
-                seedSearchStringFromSelection: 'none',
-                seedSearchStringFromNonEmptySelection: false,
-                seedSearchStringFromGlobalClipboard: false,
-                shouldFocus: 2,
-                shouldAnimate: true,
-                updateSearchScope: false,
-                loop: true
-              });
-              _fc.getState().change({ searchString: _srchTerm }, false);
-              setTimeout(function () {
-                _fc.getState().change({ searchString: _srchTerm }, false);
-              }, 120);
-            } else {
-              // fallback: 用 action + DOM 写入
-              ed.getAction('actions.find').run();
-              var _dn = ed.getDomNode();
-              if (_dn) {
-                var _at = 0;
-                var _try = function () {
-                  var _fi = _dn.querySelector('.find-widget input[type="text"]') || _dn.querySelector('.find-widget .monaco-inputbox input');
-                  if (_fi) {
-                    var _ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                    _ns.call(_fi, _srchTerm);
-                    _fi.dispatchEvent(new Event('input', { bubbles: true }));
-                  }
-                  if (++_at < 8) setTimeout(_try, 60);
-                };
-                setTimeout(_try, 60);
-              }
-            }
-          } catch (_) {}
-        }, 300);
       }
 
       // ── 面包屑导航条 ──
@@ -1155,8 +1294,8 @@
       }
     } catch (_) { }
     var _t = function (k, fb) { try { return window._i ? window._i(k, fb) : fb; } catch (_) { return fb; } };
-    var text = fn + ' \u4FDD\u5B58\u5931\u8D25\uFF1A' + clean;
-    if (retryHint && !encReject) text += ' \uFF08\u5185\u5BB9\u4FDD\u7559\u5728\u7F16\u8F91\u5668\uFF0C\u53EF\u7528 Ctrl+S \u91CD\u8BD5\uFF09';
+    var text = fn + ' ' + _t('editor.saveFailedPrefix', '保存失败：') + clean;
+    if (retryHint && !encReject) text += ' ' + _t('editor.saveFailHint', '（内容保留在编辑器，可用 Ctrl+S 重试）');
     var opts = { duration: encReject ? 16000 : 6000, type: 'warn' };
     if (encReject) {
       // 编码拒绝专属：动作直通（按钮 = 官方出路两步之内）
@@ -1809,6 +1948,10 @@
       filePath = _normFP(filePath);   // ★ 路径归一（外部调用方路径写法不定）
       return _paneEditors[filePath] || null;
     },
+    // ★ 搜索跳转高亮唯一入口：跳行 + 行闪 + 查找控件预填（词级高亮=控件失败兜底）
+    applySearchJump: _applySearchJump,
+    // ★ 查找控件唯一入口：打开 + 预填（搜索结果跳转 / AI 面板 a1 / 外部 goods _nextSearch 共享）
+    openFindWidget: _openFindWidget,
     // ★ 外部修改机器 v2 出口（AI 写推送即时校验 / tab 关闭守卫 / 诊断）
     notifyExternalWrite: function (filePath) { _extKick(filePath); },
     beforeTabClose: function (filePath, retry) { return _extBeforeTabClose(filePath, retry); },

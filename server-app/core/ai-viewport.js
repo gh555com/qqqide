@@ -515,7 +515,7 @@
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'aiv-filter-input';
-    input.placeholder = '\u7b5b\u9009...';
+    input.placeholder = window._i('shell.viewport.filterPh', '筛选...');
     input.style.cssText =
       'flex:1; background:var(--base2); border:1px solid var(--border-color); ' +
       'border-radius:2px; padding:4px 6px; font-size:12px; color:var(--text-primary); ' +
@@ -543,7 +543,7 @@
       var btn = document.createElement('button');
       btn.className = 'aiv-sort-btn';
       btn.textContent = label;
-      btn.title = mode === 'n' ? '\u6309\u6587\u4ef6\u540d\u6392\u5e8f' : '\u6309\u4fee\u6539\u65f6\u95f4\u6392\u5e8f';
+      btn.title = mode === 'n' ? window._i('shell.viewport.sortByName', '按文件名排序') : window._i('shell.viewport.sortByMtime', '按修改时间排序');
       btn.style.cssText =
         'width:24px; height:24px; border:1px solid var(--border-color); border-radius:2px; ' +
         'color:var(--text-primary); font-size:12px; font-weight:bold; ' +

@@ -1288,113 +1288,30 @@
   }
 
   // ★ 在活跃 editor 中触发查找（活跃 = 最后聚焦/最近激活的 pane 实例，editor.js 维护）
+  //   控件机器唯一入口 = qqqEditor.openFindWidget（本文件旧内联实现已删）
+  //   '__FIND__' = 「无词开空控件」sentinel（AI 面板三级搜索用）
   function _triggerEditorFind(searchText) {
     if (!searchText) return;
     var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
     if (!ed) return;
     var realSearch = (searchText === '__FIND__') ? '' : searchText;
-    try {
-      var fc = ed.getContribution('editor.contrib.findController');
-      if (fc && fc.start) {
-        // 用 start() 打开搜索框，seedSearchStringFromSelection:'none' 防止从光标抓词
-        fc.start({
-          forceRevealReplace: false,
-          seedSearchStringFromSelection: 'none',
-          seedSearchStringFromNonEmptySelection: false,
-          seedSearchStringFromGlobalClipboard: false,
-          shouldFocus: 2,
-          shouldAnimate: true,
-          updateSearchScope: false,
-          loop: true
-        });
-        // 有搜索词时设置搜索词
-        if (realSearch) {
-          fc.getState().change({ searchString: realSearch }, false);
-          // 延迟二次确认
-          setTimeout(function () {
-            fc.getState().change({ searchString: realSearch }, false);
-          }, 120);
-        }
-      } else {
-        // fallback：直接用 action + DOM 写入
-        ed.getAction('actions.find').run();
-        if (realSearch) {
-          var domNode = ed.getDomNode();
-          if (domNode) {
-            var _att = 0;
-            var _try = function () {
-              var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
-              if (fi) {
-                var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                ns.call(fi, realSearch);
-                fi.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-              if (++_att < 8) setTimeout(_try, 60);
-            };
-            setTimeout(_try, 60);
-          }
-        }
-      }
-    } catch (_) { }
+    if (window.qqqEditor && window.qqqEditor.openFindWidget) {
+      window.qqqEditor.openFindWidget(ed, { search: realSearch, allowEmpty: true });
+    }
   }
 
-  // ★ 应用 _nextPaneOpts 的行/列跳转+搜索高亮+行背景（已有文件点击搜索列表时使用）
-  var _tabJumpLineStyleInjected = false;
+  // ★ 应用 _nextPaneOpts 的跳行 + 行闪 + 查找控件预填（已有文件点击搜索列表时使用）
+  //   高亮唯一机器 = qqqEditor.applySearchJump（旧本文件自绘 + 查找控件双份实现已删）
   function _applyPaneOpts(filePath) {
     var _paneOpts = window._nextPaneOpts || {};
-    if (_paneOpts.line) {
-      var line = _paneOpts.line, col = _paneOpts.col || 1, search = _paneOpts.search || '';
-      window._nextPaneOpts = null;
-      setTimeout(function () {
-        // ★ 取目标文件对应的编辑器（pane 编辑器优先——split view 每格独立实例）
-        var ed = window.qqqEditor && window.qqqEditor.getEditorForFile(filePath);
-        if (!ed || !ed.getModel) return;
-        var model = ed.getModel();
-        if (!model) return;
-        try {
-          var _jumpPos = { lineNumber: line, column: col };
-          ed.setPosition(_jumpPos);
-          ed.revealPositionInCenter(_jumpPos);
-          // 行背景高亮（4s 自消）
-          if (!_tabJumpLineStyleInjected) {
-            _tabJumpLineStyleInjected = true;
-            var style = document.createElement('style');
-            style.textContent = '.qqq-jump-line{background:rgba(181,137,0,0.18)!important}[data-theme="dark"] .qqq-jump-line{background:rgba(181,137,0,0.25)!important}';
-            document.head.appendChild(style);
-          }
-          var monaco = window.qqqEditor.getMonaco();
-          if (monaco) {
-            var deco = ed.deltaDecorations([], [{
-              range: new monaco.Range(line, 1, line, 1),
-              options: { isWholeLine: true, className: 'qqq-jump-line' }
-            }]);
-            setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) { } }, 4000);
-          }
-          // 搜索高亮：打开查找控件
-          if (search && search.trim()) {
-            setTimeout(function () {
-              try {
-                var fc = ed.getContribution('editor.contrib.findController');
-                if (fc && fc.start) {
-                  fc.start({
-                    forceRevealReplace: false,
-                    seedSearchStringFromSelection: 'none',
-                    seedSearchStringFromNonEmptySelection: false,
-                    seedSearchStringFromGlobalClipboard: false,
-                    shouldFocus: 2, shouldAnimate: true,
-                    updateSearchScope: false, loop: true
-                  });
-                  fc.getState().change({ searchString: search }, false);
-                  setTimeout(function () { fc.getState().change({ searchString: search }, false); }, 120);
-                }
-              } catch (_) { }
-            }, 200);
-          }
-        } catch (_) { }
-      }, 400);
-    } else {
-      window._nextPaneOpts = null;
-    }
+    window._nextPaneOpts = null;
+    if (!_paneOpts.line) return;
+    setTimeout(function () {
+      // ★ 取目标文件对应的编辑器（pane 编辑器优先——split view 每格独立实例）
+      var ed = window.qqqEditor && window.qqqEditor.getEditorForFile(filePath);
+      if (!ed) return;
+      if (window.qqqEditor.applySearchJump) window.qqqEditor.applySearchJump(ed, _paneOpts);
+    }, 400);
   }
 
   // ---- Public: open file in left (first) file group ----
