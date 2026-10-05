@@ -142,6 +142,8 @@ function bootXKeyMachine() {
   var HOLD_MS = 600;
   var st = { armed: false, longFired: false, path: null, timer: null };
   function down(path) {
+    // ★ 悬浮预览层打开期间：x 呈递机器整体停摆（kmd/qmd 不得在层下静默开启——2026-10-05）
+    if (window.__qqqOvVisible && window.__qqqOvVisible()) return;
     if (st.armed) { if (path && !st.path) st.path = path; return; } // 重复按下：只补路径，不重置计时
     st.armed = true; st.longFired = false; st.path = path || null;
     st.timer = setTimeout(function () {

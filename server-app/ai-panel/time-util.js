@@ -2,8 +2,22 @@
 
 'use strict';
 // ═══ 唯一真理时间机器 — 一切时间格式化走这里 ═══
-// _fmtTime(d?) → "YYYY-MM-DD HH:MM:SS"（操作系统本地时间）
+// _fmtTime(d?) → "YYYY-MM-DD HH:MM:SS UTC+N"（操作系统本地时间）
+// _fmtDateClock(d?) → "YYYY-MM-DD HH:MM:SS"（无时区后缀）
+// _fmtClock(d?) → "HH:MM:SS"
 // 参数: Date 对象，或任何 new Date() 能解析的值。省略 = 当前时间。
+function _fmtDateClock(d) {
+    if (!d) d = new Date();
+    else if (!(d instanceof Date)) d = new Date(d);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function _fmtClock(d) {
+    if (!d) d = new Date();
+    else if (!(d instanceof Date)) d = new Date(d);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
 function _fmtTime(d) {
     if (!d) d = new Date();
     else if (!(d instanceof Date)) d = new Date(d);

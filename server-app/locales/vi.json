@@ -91,6 +91,10 @@
         "overlay": {
             "copy": "Sao chép vào clipboard",
             "copied": "Đã sao chép",
+            "prevImage": "Ảnh trước",
+            "nextImage": "Ảnh sau",
+            "skipMissing": "Đã bỏ qua {0} ảnh không thể hiển thị",
+            "noMoreImages": "Không còn ảnh nào để hiển thị",
             "copyFailed": "Sao chép thất bại",
             "zoomIn": "Phóng to",
             "zoomOut": "Thu nhỏ",
@@ -845,16 +849,8 @@
             "lockedDecrypt": "Không thể giải mã khóa trên máy này (có thể đến từ thiết bị khác), vui lòng nhập lại"
         },
         "gwWait": {
-            "title": "⏳ Không phản hồi từ upstream {0}",
-            "rowLabel": "{0} Tầng {1}",
-            "barMulti": "⏳ {0} tầng đang chờ phản hồi từ thượng nguồn · Tối đa {1}",
-            "stop": "■ Dừng",
-            "expand": "Xem chi tiết",
             "collapse": "Thu gọn",
             "taskCapsule": "⏳ {0} nhiệm vụ đang tiến hành",
-            "muteTip": "Không nhắc lại trong lần này (sẽ nhắc lại khi có tầng chờ mới)",
-            "serverAck": "Đang chờ xác nhận từ máy chủ",
-            "firstToken": "Đang chờ ký tự đầu tiên xuất hiện",
             "hangCount": "(Lần thứ {0})",
             "hangBroken": "Kênh mạng nghi ngờ bị hỏng{0}, đã tự động thử tất cả các tuyến. Tầng đã được lưu, khuyến nghị nhấn Ctrl+R để làm mới cửa sổ rồi nhấp vào \"Tiếp tục nhiệm vụ\""
         },

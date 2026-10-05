@@ -660,6 +660,27 @@ var CardPool = (function () {
     contentWrap._imgObserver = _obs;
   }
 
+  // ═══ 悬浮预览翻页序列（AI 面板唯一实现）═══
+  //   会话（当前 quest 卡）内全部图片按显示顺序：AI 回复图片（.img-wrap）+ 用户附件缩略图（.msg-img-wrap）；
+  //   裂图（onerror 隐去 display:none）不入列。返回 {list:[{src,localPath}], index}；缺卡片/不足两张 → null。
+  function _aiImgNav(imgEl) {
+    try {
+      if (!imgEl || !imgEl.closest) return null;
+      var cardEl = imgEl.closest('.card');
+      if (!cardEl) return null;
+      var nodes = cardEl.querySelectorAll('.img-wrap > img, .msg-img-wrap > img');
+      var list = [], index = -1;
+      for (var i = 0; i < nodes.length; i++) {
+        var im = nodes[i];
+        if (im.style.display === 'none') continue;
+        if (!im.src) continue;
+        if (im === imgEl) index = list.length;
+        list.push({ src: im.src, localPath: im.dataset.localPath || null });
+      }
+      return (index >= 0 && list.length > 1) ? { list: list, index: index } : null;
+    } catch (_) { return null; }
+  }
+
   // ═══ 构建单层楼的 DOM（插入 card._contentWrap） ═══
   // isBuilding: 是否在建楼层（在建楼层需要额外的 streaming 标记）
   CardPool.prototype._buildFloorDOM = function (card, floorEntry, isBuilding, questTimings) {
@@ -743,27 +764,28 @@ var CardPool = (function () {
           var badge = document.createElement('span');
           badge.className = 'msg-img-badge';
           badge.textContent = '#' + (img.id || (imi + 1));
-          badge.onclick = (function (imgData, fDir, _qId, _fNum) {
+          badge.onclick = (function (imgData, fDir, _qId, _fNum, _imgEl) {
             return function (ev) {
               ev.stopPropagation();
               var srcUrl = imgData.dataUrl;
               var b64 = imgData.base64 || '';
+              var _nav = _aiImgNav(_imgEl);   // 翻页上下文（会话图片顺序；不在卡内 → null）
               if (!srcUrl && imgData.fileName) {
                 if (fDir) srcUrl = fDir + imgData.fileName;
                 // ★ badge 点击也用动态解析防 _fDir 过期
                 if (window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
                   window.questStore.resolveFloorDir(_qId, _fNum).then(function (_fDir2) {
                     if (_fDir2 && _fDir2 !== fDir) {
-                      if (typeof openLightbox === 'function') openLightbox(_fDir2 + imgData.fileName, b64, _fDir2 + imgData.fileName);
+                      if (typeof openLightbox === 'function') openLightbox(_fDir2 + imgData.fileName, b64, _fDir2 + imgData.fileName, _nav);
                     }
                   });
                 }
               }
               if (typeof openLightbox === 'function') {
-                if (srcUrl) openLightbox(srcUrl, b64, (fDir && imgData.fileName) ? fDir + imgData.fileName : null);
+                if (srcUrl) openLightbox(srcUrl, b64, (fDir && imgData.fileName) ? fDir + imgData.fileName : null, _nav);
               }
             };
-          })(img, fData._fDir || '', _imgQuestId, _imgFloorNum);
+          })(img, fData._fDir || '', _imgQuestId, _imgFloorNum, imgEl);
           wrap.appendChild(badge);
           imgRow.appendChild(wrap);
         }
@@ -925,7 +947,10 @@ var CardPool = (function () {
           var img = wrap.querySelector(':scope > img');
           // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
           if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
-            _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null });
+            var _imgNav = _aiImgNav(img);
+            var _imgMsg = { type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null };
+            if (_imgNav) _imgMsg.nav = _imgNav;
+            _postToHost(_imgMsg);
           } else {
             var pre = wrap.querySelector(':scope > pre');
             var inner = wrap.querySelector(':scope > .table-inner');
@@ -1031,6 +1056,15 @@ var CardPool = (function () {
           for (var ti = 0; ti < questTimings.length; ti++) {
             if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
           }
+        }
+        // ★ 楼层完结时刻（悬停第二行）：终结记录 finishedAt 优先；缺失（崩溃/强杀中断、旧数据）
+        //   → 最后一次落盘 savedAt 近似（≈ 前缀）
+        var _doneMs2 = (timing && timing.finishedAt) ? Date.parse(timing.finishedAt) : 0;
+        if (_doneMs2 > 0) {
+          aiEl._floorDoneTs = _doneMs2;
+        } else if (fData.savedAt) {
+          aiEl._floorDoneTs = fData.savedAt;
+          aiEl._floorDoneApprox = true;
         }
         if (timing && aiEl._clockMin && aiEl._clockCanvas) {
           // ★ 防御（2026-09-06）：历史 record 曾含 NaN（JSON→null）/跨轴负 durationMs → 归一非负，防灰饼+负分钟
@@ -1198,7 +1232,10 @@ var CardPool = (function () {
       var img = wrap.querySelector(':scope > img');
       // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
       if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
-        _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null });
+        var _imgNav2 = _aiImgNav(img);
+        var _imgMsg2 = { type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null };
+        if (_imgNav2) _imgMsg2.nav = _imgNav2;
+        _postToHost(_imgMsg2);
       } else {
         var pre = wrap.querySelector(':scope > pre');
         var inner = wrap.querySelector(':scope > .table-inner');
@@ -1525,6 +1562,7 @@ var CardPool = (function () {
 
   // ═══ 暴露到全局 ═══
   window.CardPool = CardPool;
+  window._aiImgNav = _aiImgNav;   // 面板其它脚本（panel-pipeline / panel-input）共用翻页序列机
   window._buildConversationFlowHtml = _buildConversationFlowHtml;
   window._escHtml = _escHtml;
 

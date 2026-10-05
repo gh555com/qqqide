@@ -1145,6 +1145,27 @@ function naturalCompare(a, b) {
 	return 0;
 }
 
+// ★ 排序机（唯一实现——文件列表渲染 / Q 图片翻页快照 共用；改这一处两处同步生效）
+//   分组由 filesOnTop 定（默认目录在前）；组内按 so：size/ctime/mtime 降序，name 自然序
+function _sortEntries(entries, so, fot) {
+	entries.sort(function(a, b) {
+		if (fot) {
+			if (!a.isDir && b.isDir) return -1;
+			if (a.isDir && !b.isDir) return 1;
+		} else {
+			if (a.isDir && !b.isDir) return -1;
+			if (!a.isDir && b.isDir) return 1;
+		}
+		switch (so) {
+		case 'size': return (b.size||0) - (a.size||0);
+		case 'ctime': return (b.ctimeMs||0) - (a.ctimeMs||0);
+		case 'mtime': return (b.mtimeMs||0) - (a.mtimeMs||0);
+		default: return naturalCompare(String(a.name), String(b.name));
+		}
+	});
+	return entries;
+}
+
 // ---- Load file list ----
 var _lastRenderSig = '';
 // ★ 2026-08-09 防幻影闪烁: diff 签名 key — 只含可见字段(name+type+sz 动态列), 后台写文件不触发重建
@@ -1181,21 +1202,7 @@ async function loadFileList(p) {
 		}
 
 		var entries = await bridge.fs.list(p);
-		entries.sort(function(a, b) {
-			if (filesOnTop) {
-				if (!a.isDir && b.isDir) return -1;
-				if (a.isDir && !b.isDir) return 1;
-			} else {
-				if (a.isDir && !b.isDir) return -1;
-				if (!a.isDir && b.isDir) return 1;
-			}
-			switch (sortBy) {
-			case 'size': return (b.size||0) - (a.size||0);
-			case 'ctime': return (b.ctimeMs||0) - (a.ctimeMs||0);
-			case 'mtime': return (b.mtimeMs||0) - (a.mtimeMs||0);
-			default: return naturalCompare(String(a.name), String(b.name));
-			}
-		});
+		_sortEntries(entries, sortBy, filesOnTop);
 		// ★ 2026-08-09 防幻影闪烁: 先构建 + diff 签名 → 无变化零重建零闪烁;
 		//   有变化才原子换入 (replaceChildren 单帧换入, 无 innerHTML='' 空白帧)
 		var sigParts = [];
@@ -1649,6 +1656,40 @@ function _qBatchMediaPlaylist() {
 }
 
 
+// ★ Q 键（图片）→ 悬浮预览层 + 翻页上下文（唯一实现）：翻页序列 = 来源文件夹的排序快照——
+//   排序 = 该文件夹的细分排序偏好（每目录 fineScm 覆盖 > 设置中心全局默认，名称/大小/时间 同文件列表口径），
+//   仅图片格式（同 _OVERLAY_IMG_EXTS）、不含子目录；列目录失败/单张 → 无翻页钮的普通预览。
+//   适用全部入口（文件区 Q 键 / 右键打开 / qq 区单击——三者同过 performCodeAction）。
+function _openOverlayImageWithNav(item) {
+	var _op = String(item.path).replace(/\\/g, '/');
+	var _slash = _op.lastIndexOf('/');
+	var _dir = _op;
+	if (_slash > 0) {
+		// 盘根（E:/x.png → E:/）不能截到 'E:'
+		_dir = (_slash === 2 && /^[A-Za-z]:$/.test(_op.slice(0, 2))) ? _op.slice(0, 3) : _op.slice(0, _slash);
+	}
+	function _post(nav) {
+		var msg = { type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + _op, localPath: _op };
+		if (nav) msg.nav = nav;
+		parent.postMessage(msg, '*');
+	}
+	try {
+		bridge.fs.list(_dir).then(function(entries) {
+			var f = fineScmGet(_dir);
+			_sortEntries(entries, f.sortBy || _globalSortBy, !!f.filesOnTop);
+			var list = [], idx = -1, key = _normPath(_op);
+			for (var i = 0; i < entries.length; i++) {
+				var en = entries[i];
+				if (!en || en.isDir || !isOverlayImageByName(en.name)) continue;
+				var p = pathJoin(_dir, en.name).replace(/\\/g, '/');
+				if (idx < 0 && _normPath(p) === key) idx = list.length;
+				list.push({ src: 'file:///' + p, localPath: p });
+			}
+			_post((idx >= 0 && list.length > 1) ? { list: list, index: idx } : null);
+		}).catch(function() { _post(null); });
+	} catch (e) { _post(null); }
+}
+
 function performCodeAction(item, opts) {
 	if (!item) return;
 	if (item.name === '..') return;
@@ -1661,11 +1702,11 @@ function performCodeAction(item, opts) {
 		_playSfx('enter');
 		return;
 	}
-	// ★ Q 键（图片文件）：用 qd 内置悬浮预览层打开（2026-09-21）——一切可直显图片格式（含 SVG）
+	// ★ Q 键（图片文件）：用 qd 内置悬浮预览层打开——一切可直显图片格式（含 SVG）
 	//   主窗口 shell-overlay open-image（file:/// 直载 + localPath，与 AI 面板图片同一台预览机器）
+	//   + 翻页上下文：来源文件夹排序快照（详 _openOverlayImageWithNav）
 	if (isOverlayImageByName(item.name)) {
-		var _op = String(item.path).replace(/\\/g, '/');
-		parent.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + _op, localPath: _op }, '*');
+		_openOverlayImageWithNav(item);
 		recordFileHistory(item.path);
 		_playSfx('enter');
 		return;

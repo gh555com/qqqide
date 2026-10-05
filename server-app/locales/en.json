@@ -91,6 +91,10 @@
         "overlay": {
             "copy": "Copy to Clipboard",
             "copied": "Copied",
+            "prevImage": "Previous",
+            "nextImage": "Next",
+            "skipMissing": "Skipped {0} image(s) that could not be displayed",
+            "noMoreImages": "No more images to display",
             "copyFailed": "Copy Failed",
             "zoomIn": "Zoom In",
             "zoomOut": "Zoom Out",
@@ -845,16 +849,8 @@
             "lockedDecrypt": "Key cannot be decrypted on this device (possibly from another device), please re-enter"
         },
         "gwWait": {
-            "title": "⏳ Upstream unresponsive {0}",
-            "rowLabel": "{0} Floor {1}",
-            "barMulti": "⏳ {0} floors awaiting upstream response · up to {1}",
-            "stop": "■ Stop",
-            "expand": "Expand Details",
             "collapse": "Collapse",
             "taskCapsule": "⏳ {0} tasks in progress",
-            "muteTip": "Do not prompt again for this session (new waiting floors will still trigger a prompt)",
-            "serverAck": "Awaiting server acknowledgment",
-            "firstToken": "Waiting for first token output",
             "hangCount": "(Attempt {0})",
             "hangBroken": "Network channel suspected damaged{0}; all routes have been automatically attempted. Layer saved. Recommended: Press Ctrl+R to refresh the window, then click \"Resume Task\"."
         },

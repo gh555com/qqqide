@@ -231,12 +231,13 @@ function _renderBubbleImgRow(userMsgEl, imgs) {
             var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
             var _qid = (imgRow.dataset && imgRow.dataset.qid) || ((typeof questActiveId !== 'undefined') ? questActiveId : '');
             var _fLv = parseInt((imgRow.dataset && imgRow.dataset.fn) || '', 10) || (_ag ? (_ag._currentFloorNum || (_ag._ctx && _ag._ctx.totalFloors) || 0) : 0);
+            var _nav = (typeof window._aiImgNav === 'function') ? window._aiImgNav(imgEl) : null;   // 翻页上下文（会话图片顺序）
             if (img.fileName && window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
                 window.questStore.resolveFloorDir(_qid, _fLv).then(function (_fDir) {
-                    openLightbox(img.dataUrl, img.base64, _fDir ? _fDir + img.fileName : null);
-                }).catch(function () { openLightbox(img.dataUrl, img.base64); });
+                    openLightbox(img.dataUrl, img.base64, _fDir ? _fDir + img.fileName : null, _nav);
+                }).catch(function () { openLightbox(img.dataUrl, img.base64, null, _nav); });
             } else {
-                openLightbox(img.dataUrl, img.base64);
+                openLightbox(img.dataUrl, img.base64, null, _nav);
             }
         };
         wrap.appendChild(badge);
@@ -1681,6 +1682,8 @@ async function _executeSend(intent) {
         if (agent) {
             if (agent._activeAiDiv) {
                 if (agent._activeAiDiv._clockBlock) agent._activeAiDiv._clockBlock.className = 'msg-ai-clock';
+                // ★ 楼层终结收尾兜底（悬停第二行）：未走 stopFloorTimer 的收尾路径（headless 等）在此补记完结时刻
+                if (!agent._activeAiDiv._floorDoneTs) { agent._activeAiDiv._floorDoneTs = Date.now(); agent._activeAiDiv._floorDoneApprox = false; }
                 // ★ wall-clock（2026-09-06）：同 startFloorTimer 轴；未 start（perf=0）只复位样式不写数值
                 if (agent._floorStartPerf > 0) {
                     var _elapsed = Math.max(0, Date.now() - agent._floorStartPerf);

@@ -272,9 +272,9 @@ async function manualAssemble() {
   }
   cpFile('shell-out');
   cpFile('shell/boot-fallback.html');
-  // ★ mac target: skip win python/git bulk here — swapEnginesForMac replaces
-  //   them with the mac trees anyway (saves ~450MB of pointless copying).
-  if (target.startsWith('mac-')) {
+  // ★ mac/linux target: skip win python/git bulk here — swapEnginesFor*
+  //   replaces them with the cross trees anyway (saves ~450MB of pointless copying).
+  if (target.startsWith('mac-') || target.startsWith('linux-')) {
     const engSrc = path.join(ROOT, 'engines');
     const engDst = path.join(appDst, 'engines');
     fs.mkdirSync(engDst, { recursive: true });
@@ -464,7 +464,9 @@ function unzipTo(zipPath, dest) {
   //   Expand-Archive materializes unix symlinks (Electron Framework
   //   Versions/Current, top-level framework links...) as tiny text files →
   //   the .app is dead on macOS. Python worker recreates real symlinks.
-  if (target.startsWith('mac-')) {
+  // ★ linux（2026-10-05）: Electron linux zip 同含 unix 符号链接 + 可执行位——
+  //   与 mac 同走 symlink 感知解压器（Expand-Archive 拍扁符号链接 → 库链断）。
+  if (target.startsWith('mac-') || target.startsWith('linux-')) {
     run('python', [path.join(ROOT, 'shell-build', '_unzip_mac.py'), zipPath, dest]);
     return;
   }
@@ -1134,7 +1136,7 @@ function pruneEngines(unpacked) {
   // ── ⑤ Legacy: non-target-platform root engine binaries ──
   const nonTgtRoot = [];
   if (target.startsWith('win-')) { nonTgtRoot.push('ghrun'); }
-  else if (target.startsWith('linux-')) { nonTgtRoot.push('watchdog.exe'); }
+  else if (target.startsWith('linux-')) { nonTgtRoot.push('watchdog.exe', 'ghrun.exe'); }
   else if (target.startsWith('mac-')) { nonTgtRoot.push('watchdog.exe', 'ghrun.exe'); }
 
   // Cross-platform ripgrep
@@ -1316,6 +1318,347 @@ function swapEnginesForMac(unpacked) {
 
   if (need.length) {
     throw new Error('[pack] FATAL: mac package is missing cross-platform engines:\n  - ' + need.join('\n  - '));
+  }
+}
+
+// 3.9b-linux) ★ linux engine platform swap (2026-10-05): a linux package must ship
+//   linux binaries for python/git/ripgrep/ghrun/watchdog — dev engines/ hold win
+//   builds. python/git come from the cross-build cache
+//   (shell-build/build-mac-cross.py --os=linux), ripgrep + ghrun/watchdog already
+//   live in-repo. Refuse to pack when any is missing (half-swapped package is
+//   worse than no package).
+function swapEnginesForLinux(unpacked) {
+  if (!target.startsWith('linux-')) { return; }
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir) { throw new Error('[pack] linux: app resources dir not found'); }
+  const engDir = path.join(appDir, 'engines');
+  const platKey = 'linux-x64';       // 首发仅 x64（arm64 资产后续按需补）
+  const crossRoot = path.join(ROOT, 'dist-pack', 'cross');
+  const need = [];
+
+  // runtime state files must never ship (mirrors win/mac prune)
+  for (const f of ['.versions.json', '.downloads.json']) {
+    const p = path.join(engDir, f);
+    if (fs.existsSync(p)) { fs.rmSync(p, { force: true }); console.log('[pack] linux: pruned runtime state engines/' + f); }
+  }
+
+  // ── python: win embed -> pb-s linux tree (cross cache) ──
+  {
+    const dst = path.join(engDir, 'python');
+    const src = path.join(crossRoot, 'python-' + platKey);
+    const zipAlt = path.join(ROOT, 'dist-pack', 'python-' + platKey + '.zip');
+    fs.rmSync(dst, { recursive: true, force: true });
+    if (fs.existsSync(src)) {
+      fs.cpSync(src, dst, { recursive: true, verbatimSymlinks: true });
+      console.log('[pack] linux: engines/python <- cross cache (' + platKey + ')');
+    } else if (fs.existsSync(zipAlt)) {
+      run('python', [path.join(ROOT, 'shell-build', '_unzip_mac.py'), zipAlt, dst]);
+      console.log('[pack] linux: engines/python <- ' + path.basename(zipAlt));
+    } else {
+      need.push('python — run: python shell-build/build-mac-cross.py python --os=linux');
+    }
+  }
+
+  // ── git: win PortableGit -> linux build (cross cache) ──
+  {
+    const dst = path.join(engDir, 'git');
+    const src = path.join(crossRoot, 'git-' + platKey);
+    fs.rmSync(dst, { recursive: true, force: true });
+    if (fs.existsSync(src)) {
+      fs.cpSync(src, dst, { recursive: true, verbatimSymlinks: true });
+      console.log('[pack] linux: engines/git <- cross cache (' + platKey + ')');
+    } else {
+      need.push('git — run: python shell-build/build-mac-cross.py git --os=linux');
+    }
+  }
+
+  // ── ripgrep: pick the linux binary, drop everything else ──
+  {
+    const dst = path.join(engDir, 'ripgrep');
+    const srcBin = path.join(dst, 'rg-linux-x64');
+    if (fs.existsSync(srcBin)) {
+      const keep = path.join(dst, 'rg');
+      if (fs.existsSync(keep)) { fs.rmSync(keep, { force: true }); }
+      fs.renameSync(srcBin, keep);
+      for (const f of fs.readdirSync(dst)) {
+        if (f !== 'rg' && !f.startsWith('.')) { fs.rmSync(path.join(dst, f), { recursive: true, force: true }); }
+      }
+      console.log('[pack] linux: engines/ripgrep -> rg (x64, elf)');
+    } else {
+      need.push('ripgrep — missing engines/ripgrep/rg-linux-x64');
+    }
+  }
+
+  // ── ghrun + watchdog: elf from engines/ci ──
+  {
+    for (const bin of ['ghrun', 'watchdog']) {
+      const src = path.join(ROOT, 'engines', 'ci', 'ghrun-linux-x64', bin);
+      const dst = path.join(engDir, bin);
+      if (fs.existsSync(src)) {
+        if (fs.existsSync(dst)) { fs.rmSync(dst, { force: true }); }
+        fs.cpSync(src, dst);
+        console.log('[pack] linux: engines/' + bin + ' <- ci (x64)');
+      } else {
+        need.push(bin + ' — missing ' + src);
+      }
+    }
+    // 跨平台 CI 原料（构建期源码）不进 linux 包
+    const ciDir = path.join(engDir, 'ci');
+    if (fs.existsSync(ciDir)) { fs.rmSync(ciDir, { recursive: true, force: true }); console.log('[pack] linux: pruned engines/ci (build-time sources)'); }
+  }
+
+  // ── 残留清扫: pyc + vc_runtime（win 专属）+ webapp pyc ──
+  {
+    let junk = 0;
+    for (const j of [path.join(engDir, '__pycache__'), path.join(appDir, 'shell-out', '__pycache__')]) {
+      if (fs.existsSync(j)) { fs.rmSync(j, { recursive: true, force: true }); junk++; }
+    }
+    {
+      const walkPyc = (dir) => {
+        let entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+          if (!e.isDirectory()) { continue; }
+          const fp = path.join(dir, e.name);
+          if (e.name === '__pycache__') {
+            fs.rmSync(fp, { recursive: true, force: true });
+            junk++;
+          } else {
+            walkPyc(fp);
+          }
+        }
+      };
+      walkPyc(path.join(appDir, 'webapp'));
+    }
+    const vcDir = path.join(engDir, 'vc_runtime');
+    if (fs.existsSync(vcDir)) {
+      fs.rmSync(vcDir, { recursive: true, force: true });
+      console.log('[pack] linux: pruned engines/vc_runtime (win-only component)');
+      junk++;
+    }
+    if (junk) { console.log('[pack] linux: junk cleanup (' + junk + ' items)'); }
+  }
+
+  // ── manifest 剪枝: vc_runtime 是 win-only 组件（无 linux srcs）——留在清单里会让
+  //    component-checker 每次启动空转一遍下载尝试（no sources → CDN recovery FAILED 噪声）。
+  {
+    const mfPath = path.join(engDir, 'manifest.json');
+    if (fs.existsSync(mfPath)) {
+      try {
+        const mf = JSON.parse(fs.readFileSync(mfPath, 'utf8'));
+        let pruned = false;
+        if (mf.components && mf.components.vc_runtime) { delete mf.components.vc_runtime; pruned = true; }
+        if (Array.isArray(mf.rank0)) {
+          const n0 = mf.rank0.length;
+          mf.rank0 = mf.rank0.filter(x => x !== 'vc_runtime');
+          if (mf.rank0.length !== n0) { pruned = true; }
+        }
+        if (pruned) {
+          fs.writeFileSync(mfPath, JSON.stringify(mf, null, 2));
+          console.log('[pack] linux: manifest pruned vc_runtime (win-only)');
+        }
+      } catch (e) { console.log('[pack] linux: manifest prune skipped: ' + e.message); }
+    }
+  }
+
+  if (need.length) {
+    throw new Error('[pack] FATAL: linux package is missing cross-platform engines:\n  - ' + need.join('\n  - '));
+  }
+}
+
+// 3.9b2) externalizeLinuxBundle — engines 移出程序目录（2026-10-05）
+//   动机: 升级换装只动程序文件（binary/resources），数据与组件（qqqide-data）原地保留；
+//   与 mac 的 externalizeMacBundle 同构（mac 另有签名封条约束；linux 为升级/备份一致性）。
+//   布局: {unpacked}/qqqide-data/engines（实体）
+//         resources/app/engines → ../../qqqide-data/engines（相对 symlink，上溯 2 级 = 容器根）
+function externalizeLinuxBundle(unpacked) {
+  if (!target.startsWith('linux-')) { return; }
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir) { throw new Error('[pack] linux: app resources dir not found'); }
+  const engSrc = path.join(appDir, 'engines');
+  const hostDir = path.join(unpacked, 'qqqide-data');
+  const engDst = path.join(hostDir, 'engines');
+
+  if (!fs.existsSync(engSrc) || !fs.statSync(engSrc).isDirectory()) {
+    throw new Error('[pack] linux: engines missing before externalize');
+  }
+  if (fs.existsSync(engDst)) { fs.rmSync(engDst, { recursive: true, force: true }); }
+  fs.mkdirSync(hostDir, { recursive: true });
+  fs.renameSync(engSrc, engDst);
+
+  fs.symlinkSync('../../qqqide-data/engines', engSrc, 'dir');
+  console.log('[pack] linux: engines externalized -> qqqide-data/engines (+ relative symlink)');
+
+  // factory_version 注入外置 Data（全新安装读它；已装用户换装时旧 Data 保留不覆盖）
+  try {
+    const fvDir = path.join(hostDir, 'Data', 'alphal');
+    fs.mkdirSync(fvDir, { recursive: true });
+    fs.writeFileSync(path.join(fvDir, 'factory_version'), APP_VERSION, 'utf8');
+    console.log('[pack] linux: injected factory_version -> qqqide-data/Data/alphal/');
+  } catch (e) {
+    console.warn('[pack] linux: factory_version inject failed:', e.message);
+  }
+}
+
+// 3.9c2) writeLinuxLaunchers — linux 一键启动脚本 + 桌面集成 + 使用说明（2026-10-05）
+//   首次启动.sh: chrome-sandbox setuid 修复（tar 非 root 解压必丢 setuid 位）→ userns 探测
+//     → 降级 --no-sandbox；然后启动。安装桌面图标.sh: .desktop + 图标落 ~/.local/share。
+function writeLinuxLaunchers(unpacked) {
+  if (!target.startsWith('linux-')) { return; }
+  const firstSh = [
+    '#!/bin/bash',
+    '# qqqide linux 启动 — 沙箱权限修复 + 启动',
+    '# 用法：终端运行 ./首次启动.sh；或在文件管理器中双击（选“运行”/“在终端中运行”）',
+    'cd "$(dirname "$0")" || exit 1',
+    '',
+    '# 0) 系统依赖（Qt xcb 平台库——goods 图形组件必需；缺则窗口/剪贴板组件无法启动）',
+    'if ! ldconfig -p 2>/dev/null | grep -q libxcb-cursor; then',
+    '  echo "[0] 安装系统依赖 libxcb-cursor0（需要一次管理员密码）..."',
+    '  sudo apt-get install -y libxcb-cursor0 2>/dev/null || echo "      跳过（若组件异常请手动安装 xcb-util-cursor 系软件包）"',
+    'fi',
+    '',
+    'SANDBOX="$PWD/chrome-sandbox"',
+    'SANDBOX_OK=0',
+    '',
+    '# 1) setuid root（Chromium SUID 沙箱标准形态）——tar 非 root 解压会丢 setuid 位，需一次落权',
+    'if [ -u "$SANDBOX" ]; then',
+    '  SANDBOX_OK=1',
+    'else',
+    '  echo "[1/2] 修复浏览器沙箱权限（需要一次管理员密码；已授权则自动跳过）..."',
+    '  if sudo -n chown root:root "$SANDBOX" 2>/dev/null && sudo -n chmod 4755 "$SANDBOX" 2>/dev/null; then',
+    '    SANDBOX_OK=1',
+    '  elif [ -t 0 ] || [ -t 1 ]; then',
+    '    if sudo chown root:root "$SANDBOX" 2>/dev/null && sudo chmod 4755 "$SANDBOX" 2>/dev/null; then',
+    '      SANDBOX_OK=1',
+    '    fi',
+    '  fi',
+    '  if [ $SANDBOX_OK -eq 1 ]; then echo "      沙箱 OK"; else echo "      未设置 setuid（无管理员权限或已取消）"; fi',
+    'fi',
+    '',
+    '# 2) 沙箱不可用 → 内核 userns 探测；再不可用 → 降级 --no-sandbox（功能完整，沙箱保护降级）',
+    'LAUNCH_ARGS=()',
+    'if [ $SANDBOX_OK -ne 1 ]; then',
+    '  if command -v unshare >/dev/null 2>&1 && unshare -U true 2>/dev/null; then',
+    '    echo "[2/2] 使用内核 userns 沙箱"',
+    '  else',
+    '    echo "[2/2] 沙箱不可用 → 以降级模式启动（--no-sandbox）"',
+    '    LAUNCH_ARGS+=(--no-sandbox)',
+    '  fi',
+    'else',
+    '  echo "[2/2] 启动 qqqide..."',
+    'fi',
+    '',
+    '# 3) 桌面集成（首启自动；已装且路径一致则秒过）——应用菜单条目 + 图标主题 + 桌面快捷方式',
+    'if [ ! -f "$HOME/.local/share/applications/qqqide.desktop" ] || ! grep -qF "$PWD" "$HOME/.local/share/applications/qqqide.desktop" 2>/dev/null; then',
+    '  bash "$PWD/安装桌面图标.sh" >/dev/null 2>&1 || true',
+    'fi',
+    '',
+    'if [ -t 0 ] || [ -t 1 ]; then',
+    '  exec ./qqqide "${LAUNCH_ARGS[@]}" "$@"',
+    'else',
+    '  setsid ./qqqide "${LAUNCH_ARGS[@]}" "$@" >/dev/null 2>&1 < /dev/null &',
+    '  echo "已启动（本窗口可关闭）"',
+    'fi',
+    ''
+  ].join('\n');
+  const installSh = [
+    '#!/bin/bash',
+    '# 桌面集成——把 qd (qqqide) 加入应用菜单 + 图标主题 + 桌面快捷方式（幂等，可反复运行）',
+    'cd "$(dirname "$0")" || exit 1',
+    'APPDIR="$PWD"',
+    '',
+    'mkdir -p "$HOME/.local/share/applications"',
+    'sed "s|__APPDIR__|$APPDIR|g" "$APPDIR/qqqide.desktop" > "$HOME/.local/share/applications/qqqide.desktop"',
+    '',
+    '# 图标主题（多尺寸——应用菜单 / 任务栏 / 任务切换器按需取用）',
+    'if [ -d "$APPDIR/icons" ]; then',
+    '  for f in "$APPDIR"/icons/*.png; do',
+    '    [ -f "$f" ] || continue',
+    '    s=$(basename "$f" .png)',
+    '    mkdir -p "$HOME/.local/share/icons/hicolor/${s}x${s}/apps"',
+    '    cp -f "$f" "$HOME/.local/share/icons/hicolor/${s}x${s}/apps/qqqide.png"',
+    '  done',
+    'elif [ -f "$APPDIR/qqqide.png" ]; then',
+    '  mkdir -p "$HOME/.local/share/icons/hicolor/256x256/apps"',
+    '  cp -f "$APPDIR/qqqide.png" "$HOME/.local/share/icons/hicolor/256x256/apps/qqqide.png"',
+    'fi',
+    'command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1',
+    'command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" 2>/dev/null',
+    '',
+    '# 桌面快捷方式（GNOME 需 trusted 标记才可双击启动；失败静默降级）',
+    'DESK=$(xdg-user-dir DESKTOP 2>/dev/null); [ -n "$DESK" ] || DESK="$HOME/Desktop"',
+    'if [ -d "$DESK" ]; then',
+    '  sed "s|__APPDIR__|$APPDIR|g" "$APPDIR/qqqide.desktop" > "$DESK/qqqide.desktop"',
+    '  chmod +x "$DESK/qqqide.desktop" 2>/dev/null',
+    '  command -v gio >/dev/null 2>&1 && gio set "$DESK/qqqide.desktop" metadata::trusted true >/dev/null 2>&1',
+    'fi',
+    '',
+    'echo "已安装：应用菜单搜索 qqqide；桌面快捷方式已就位。"',
+    'echo "卸载：删除 ~/.local/share/applications/qqqide.desktop 与桌面的 qqqide.desktop。"',
+    ''
+  ].join('\n');
+  const desktop = [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=qd (qqqide)',
+    'Comment=qd (qqqide) — 所见即所得的 AI 开发环境',
+    'Exec=__APPDIR__/首次启动.sh',
+    'Icon=qqqide',
+    'Terminal=false',
+    'Categories=Development;IDE;',
+    'StartupWMClass=qqqide',
+    ''
+  ].join('\n');
+  const readme = [
+    'qqqide (linux) 使用说明',
+    '============================',
+    '',
+    '【启动】',
+    '终端运行 ./首次启动.sh（或文件管理器中双击 → 选“在终端中运行”）。',
+    '首次会修复浏览器沙箱（需要一次管理员密码）——之后直接启动即可。',
+    '',
+    '【应用到系统（自动）】',
+    '首次启动会自动安装：应用菜单条目 + 图标 + 桌面快捷方式（也可手动运行 ./安装桌面图标.sh）。',
+    '',
+    '【数据位置】',
+    '全部数据在 qqqide-data 文件夹（与程序同级）——升级时只替换程序文件，',
+    '保留 qqqide-data 即可，数据零丢失。',
+    '',
+    '【升级】',
+    '1. 解压新包；',
+    '2. 用新包程序文件覆盖旧目录（保留旧 qqqide-data）；',
+    '3. 正常启动。（内置自动更新将在后续版本提供。）',
+    '',
+    '【终端】kmd 标签页；qmd（PowerShell 集成）为 Windows 专属，linux 自动隐藏。',
+    '【快捷键】键盘组合 = Ctrl；编队召回 = 按住空格再按槽位键。',
+    '【系统依赖】首次启动会自动补装 libxcb-cursor0（Qt 图形组件需要；Debian/Ubuntu 系）。',
+    '【注意】Wayland 会话下已自动走 XWayland（X11）兼容层，剪贴板/热键正常；',
+    '如遇显示异常可在登录界面右下角切换 X11 会话。',
+    ''
+  ].join('\n');
+  try {
+    fs.writeFileSync(path.join(unpacked, '首次启动.sh'), firstSh);
+    fs.writeFileSync(path.join(unpacked, '安装桌面图标.sh'), installSh);
+    fs.writeFileSync(path.join(unpacked, 'qqqide.desktop'), desktop);
+    fs.writeFileSync(path.join(unpacked, 'README-使用说明.txt'), readme, 'utf8');
+    const iconSrc = path.join(ROOT, 'shell', 'icon.png');
+    if (fs.existsSync(iconSrc)) {
+      fs.copyFileSync(iconSrc, path.join(unpacked, 'qqqide.png'));
+      console.log('[pack] linux: launchers written (首次启动.sh + 安装桌面图标.sh + desktop + README + icon)');
+    } else {
+      console.warn('[pack] linux: launchers written (shell/icon.png missing — desktop icon will be generic)');
+    }
+    const iconsSrc = path.join(ROOT, 'shell', 'icons-linux');
+    if (fs.existsSync(iconsSrc)) {
+      const iconsDst = path.join(unpacked, 'icons');
+      fs.mkdirSync(iconsDst, { recursive: true });
+      for (const f of fs.readdirSync(iconsSrc)) {
+        if (f.endsWith('.png')) fs.copyFileSync(path.join(iconsSrc, f), path.join(iconsDst, f));
+      }
+      console.log('[pack] linux: multi-size icons -> icons/ (' + fs.readdirSync(iconsDst).length + ' png)');
+    }
+  } catch (e) {
+    console.warn('[pack] linux: launcher write failed:', e.message);
   }
 }
 
@@ -1751,10 +2094,11 @@ function packDir(unpacked, flatOnly) {
     // ★ 2026-10-01 定案（用户拍板）: mac 分发契约 = 单文件夹容器——tar 内一切包进 qqqide/
     //   一层（从 Archive Utility 到 Keka/终端 tar，任何解压器任何解压位置恒只出一个文件夹；
     //   qqqide.app 与 qqqide-data 永不散落）。与 win 的 program/qd 同思路。
-    //   消费侧三同步点: mac-updater.ts extractStaging 剥壳 / gaea/cf/up/mac_units.py 剥离前缀 /
-    //   _verify_mac.py 容器断言。linux 目标未分发，维持扁平（不动）。
+    //   消费侧同步点: mac-updater.ts extractStaging 剥壳 / gaea/cf/up/mac_units.py 剥离前缀 /
+    //   _verify_mac.py 容器断言。linux 同步适用（2026-10-05）：消费侧 = _linux_tar_audit /
+    //   _verify_linux.py / 未来 linux 更新器剥壳。
     const twArgs = [path.join(ROOT, 'shell-build', '_tar_worker.py'), unpacked, out];
-    if (baseTarget.startsWith('mac-')) { twArgs.push('qqqide'); }
+    if (baseTarget.startsWith('mac-') || baseTarget.startsWith('linux-')) { twArgs.push('qqqide'); }
     run('python', twArgs);
     return;
   }
@@ -1917,10 +2261,13 @@ function packSfx(unpacked) {
 (async () => {
   // mac builds on non-mac hosts must use manual assembly (electron-builder refuses)
   const isCrossMac = baseTarget.startsWith('mac-') && process.platform !== 'darwin';
+  // ★ linux（2026-10-05）: electron-builder 的 linux-on-win 不可靠（与 mac 同因）——
+  //   非 linux 宿主机恒走 manualAssemble（dev 机 = win，必走）。
+  const isCrossLinux = baseTarget.startsWith('linux-') && process.platform !== 'linux';
   // SFX only for win locals
   if (isSfx && !isWin) { console.error('SFX only supported for win targets'); process.exit(1); }
   let unpacked;
-  if (isCrossMac) {
+  if (isCrossMac || isCrossLinux) {
     unpacked = await manualAssemble();
   } else {
     // electron-builder needs baseTarget (not -sfx variant)
@@ -1957,13 +2304,16 @@ function packSfx(unpacked) {
   // ★ swap 必须先于 pruneEngines：旧 ripgrep 清扫逻辑以「mac 二进制已叫 rg」
   //   为前提，会把 rg-mac-arm64 当垃圾删掉；swap 负责把 mac 二进制正确落位。
   swapEnginesForMac(unpacked);
+  swapEnginesForLinux(unpacked);
   pruneEngines(unpacked);
   pruneServerApp(unpacked);
   pruneShellOut(unpacked);
   prunePythonSlim(unpacked);
   cleanRuntimeDirs(unpacked);
   externalizeMacBundle(unpacked);
+  externalizeLinuxBundle(unpacked);
   writeMacLaunchers(unpacked);
+  writeLinuxLaunchers(unpacked);
   if (isSfx) {
     packSfx(unpacked);
   } else {

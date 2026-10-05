@@ -91,6 +91,10 @@
         "overlay": {
             "copy": "Copiar al portapapeles",
             "copied": "Copiado",
+            "prevImage": "Anterior",
+            "nextImage": "Siguiente",
+            "skipMissing": "Se han omitido {0} imágenes que no se pueden mostrar",
+            "noMoreImages": "No hay más imágenes para mostrar",
             "copyFailed": "Error al copiar",
             "zoomIn": "Acercar",
             "zoomOut": "Alejar",
@@ -845,16 +849,8 @@
             "lockedDecrypt": "No se puede descifrar la clave en este dispositivo (posiblemente procedente de otro dispositivo). Por favor, introdúzcala de nuevo."
         },
         "gwWait": {
-            "title": "⏳ Sin respuesta del upstream {0}",
-            "rowLabel": "{0} Piso {1}",
-            "barMulti": "⏳ {0} pisos esperando respuesta del nivel superior · Máximo {1}",
-            "stop": "■ Detener",
-            "expand": "Mostrar detalles",
             "collapse": "Ocultar",
             "taskCapsule": "⏳ {0} tareas en progreso",
-            "muteTip": "No volver a mostrar esta alerta (se notificará cuando aparezcan nuevos pisos en espera)",
-            "serverAck": "Esperando confirmación del servidor",
-            "firstToken": "Esperando la salida del primer carácter",
             "hangCount": "(Intento número {0})",
             "hangBroken": "El canal de red parece estar dañado{0}, se han intentado automáticamente todas las rutas. El nivel se ha guardado; se recomienda actualizar la ventana con Ctrl+R y hacer clic en «Continuar tarea»"
         },

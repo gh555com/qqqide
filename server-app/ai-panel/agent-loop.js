@@ -417,6 +417,8 @@ var AgentLoop = (function () {
         var _visionStart = performance.now();
         if (images && images.length > 0) {
             self._log('🔍 vision: analyzing ' + images.length + ' image(s)...');
+            // ★ 实时分段阶段：视觉预分析 = ai（绿）——时长由阶段机结算入 aiMs，不再单独入账
+            _livePhaseSet(self, 'ai');
             var visionResults = await self._analyzeImages(images, token, userContent);
             if (visionResults.length > 0) {
                 var parts = [];
@@ -451,7 +453,8 @@ var AgentLoop = (function () {
                 self._visionCostWge = 0;
             }
         }
-        if (_visionStart) self._floorTiming.aiMs += performance.now() - _visionStart;
+        // ★ 实时分段阶段：视觉预分析收尾 → 回本地处理（结算入 aiMs；后续请求发出改判 network）
+        _livePhaseSet(self, 'other');
 
         // ★ 注入图片路径到 content（避免 AI 花 N 间 house 搜索磁盘）
         var _imgPathHints = '';
@@ -751,7 +754,7 @@ var AgentLoop = (function () {
                         if (opts._netRetryCount <= 3) {
                             var _wait = 3000 * opts._netRetryCount;
                             self._log('🔄 SSE dropped — auto-retry #' + opts._netRetryCount + '/3 in ' + (_wait / 1000) + 's');
-                            if (self._floorTiming) self._floorTiming.networkMs = (self._floorTiming.networkMs || 0) + _wait;
+                            _livePhaseSet(self, 'network');  // ★ 退避等待归入网络时间（红）——阶段机结算
                             await new Promise(function (r) { setTimeout(r, _wait); });
                             if (self._stopState !== 'sending') break;
                             maxIterations++;
@@ -832,11 +835,8 @@ var AgentLoop = (function () {
                 if (response._abortedForGuide) {
                     continue;
                 }
-                // accumulate timing from gateway call
-                if (response._ttfbMs !== undefined) {
-                    self._floorTiming.networkMs += response._ttfbMs;
-                    self._floorTiming.aiMs += response._streamMs;
-                }
+                // ★ 轮次分段入账已移交阶段机（_livePhaseSet，唯一记账口）：network 等待 / ai 流式
+                //   在阶段切换时结算；此处不再 deferred 累加（deferred = 实时值先涨后回落 = 数字倒跳）
                 // API 精确上下文 token 计数
                 //   _lastApiPromptTokens: 发送时 conversation 的 token 数（用于动态帽）
                 //   _lastApiTotalTokens: prompt + completion 的 token 数（用于按钮显示/压缩阈值）
@@ -933,6 +933,7 @@ var AgentLoop = (function () {
                                 //   Authorization: `Bearer function () { }` → Go Auth Parse 失败 → 401 INVALID_TOKEN
                                 //   （nginx 实锤 59B body 逐字节 = INVALID_TOKEN）→ 修复屋必败保留原文（f46 实锤）。
                                 var _repairResp = await self._callGateway(_repairConv, { token: token, onReasoning: function () { }, onError: onError, tier: { model: 'fast', thinking: { type: 'disabled' }, effort: null, label: '1-Fast' }, noTools: true });
+
                                 var _rBill = self._lastBilling; self._lastBilling = null;
                                 if (_repairResp && _repairResp.type === 'message' && _repairResp.content && !_repairResp._truncatedByError && !_repairResp._abortedForGuide) {
                                     var _rNl = (_repairResp.content.match(/\n/g) || []).length;
@@ -1132,10 +1133,8 @@ var AgentLoop = (function () {
                     var _bill3 = self._lastBilling; self._lastBilling = null;
                     var _cd3 = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: self._compressFloor ? 'f3' : 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '', wgeCost: _bill3 ? _bill3.wgeCost : 0, model: _bill3 ? _bill3.model : '', cacheHitRate: _bill3 ? _bill3.cacheHitRate : -1, usage: _bill3 ? _bill3.usage : null, billingSeq: _bill3 ? _bill3.seq : 0, billingRequestId: _bill3 ? _bill3.requestId : '', byok: _bill3 && _bill3.byokRoute ? _bill3.byokRoute : '', cacheDiag: _cd3 || undefined, tier: self._lastTier ? self._lastTier.label : '' });
-                    if (finalResp._ttfbMs !== undefined) {
-                        self._floorTiming.networkMs += finalResp._ttfbMs;
-                        self._floorTiming.aiMs += finalResp._streamMs;
-                    }
+                    // ★ 强制回答轮次分段入账同由阶段机结算（不再 deferred 累加）
+
                     // ★ 优先用 API 完整返回（权威），流式累积为备
                     var _finalContent2 = finalResp.content || self._streamingContent;
                     self._streamingContent = null;

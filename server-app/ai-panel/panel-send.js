@@ -716,109 +716,163 @@ document.addEventListener('qqq-ai-attach', function (e) {
 });
 
 // \u2550\u2550\u2550 \u9762\u677f\u5feb\u6377\u952e \u2550\u2550\u2550
-// ★ 按住连发真理机器（2026-09-27）：节奏 100% 自持——不依赖 OS 键盘自动重复，且抹平机器快慢/定时器抖动差异。
-//   契约：keydown 首步即刻执行 → _HOLD_DELAY 起手后进入连发，此后按「墙上时钟」每 _HOLD_STEP_MS 一步
-//   （时间戳累加、欠账补发、单 tick 封顶 _HOLD_CATCHUP 步）→ keyup/blur/隐藏停发。
-//   → 跨 Win7-11 / 跨机器 / 跨 OS 设置（筛选键误开致零重复、重复率·延迟任意值）：平均频率恒定。
-//   ★ 防叠加双闸（OS 连发开着也绝不加速）：① e.repeat 一律忽略 ② _physHeld 物理按住板——
-//   同键第二次 keydown（OS 补发的重复事件）只吞不动：不触发动作、不重启计时；解锁只认 keyup/blur/隐藏。
-//   节拍 66ms/步 ≈15 步/秒（原 33ms/30 步/秒 减半，用户定案）。同时只允许一个连发键（对齐 OS「仅最后按下键连发」语义）。
+// ★ 按住连发真理机器 v3（2026-10-05）：位移自驱引擎——节奏与速度 100% 由本地时钟计算，跨机器恒定：
+//   ① 不依赖 OS 键盘连发：e.repeat 忽略；成对往返式补发的 down/up 流经「松开等待窗」合并为一次按住；
+//   ② 不依赖 compositor 平滑动画：旧实现 scrollBy/scrollIntoView({behavior:'smooth'}) 的动画在部分
+//      机器（VM/无 GPU 渲染）上爬行 = 视觉慢动作（实测仅 ~6% 速度）→ 改自驱积分：直接写 scrollTop，
+//      每秒位移只由墙上时钟决定（与机器快慢/合成器无关）；
+//   ③ 不依赖定时器精确度：驱动帧迟到按整段补足（含被系统隐藏节流到 1Hz 的机器），平均速度守恒。
+//   契约：keydown 首单位即刻成交（1/2 = 可视高 ×0.175 px；q/w = 上/下一层用户楼居中）→ 按住期间
+//   起手 250ms 后进入单位流（每 _HOLD_UNIT_MS 一单位）→ keyup 经松开等待窗确认（走完当前单位即停）。
+//   平均速度 ≈1.84 屏高/秒（= 名义 66ms 步进在真实机器上的历史实测交付速度，用户定案手感）。
+// ★ 悬浮预览层（主窗口）打开期间：面板快捷键整体让路——q/w 反向转发给预览层翻页，1/2 吞（2026-10-05 用户定案）；
+//   层状态由主窗口广播 qqqide-overlay-state（详 core/shell-overlay.js _ovClaimFocus/_ovBroadcastState）。
+var _ovShield = false;
+window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'qqqide-overlay-state') _ovShield = !!e.data.open;
+});
 var _HOLD_KEYS = { '1': 1, '2': 1, 'q': 1, 'w': 1 };
-var _holdKey = null;
-var _physHeld = Object.create(null);   // 物理按住板: keydown 首入 / keyup 出 / blur·隐藏 全清
-var _holdTo = 0, _holdIv = 0;
-var _holdLastAt = 0;    // 时间戳累加器基线（每步仅推进 _HOLD_STEP_MS）
-var _HOLD_DELAY = 250;  // 起手延迟（延迟≠频率；手感锚点）
-var _HOLD_STEP_MS = 66; // 步进节拍：≈15 步/秒（原 33ms/30 步/秒 减半，用户定案）
-var _HOLD_CATCHUP = 3;  // 单 tick 最大补步数（防节流/卡顿解除后跳变）
+var _holdKey = null;          // 当前连发键（含结算期，直到彻底收工才置空）
+var _holdHeld = false;        // 按住态（松开等待窗内仍视作按住）
+var _holdGraceTo = 0;         // 松开等待窗定时器
+var _holdDrv = 0;             // 驱动定时器（16ms）
+var _holdLastT = 0;           // 上一驱动帧时间戳
+var _holdGoal = 0;            // 当前单位目标 scrollTop（px，允许小数）
+var _holdHasGoal = false;
+var _holdNextUnitAt = 0;      // 下一单位边界时刻（起手延迟 / 单位节拍）
+var _HOLD_DELAY = 250;        // 起手延迟（延迟≠频率；手感锚点）
+var _HOLD_UNIT_PCT = 0.175;   // 单位位移 = 可视高 × 0.175
+var _HOLD_UNIT_MS = 95;       // 单位节拍：≈1.84 屏高/秒（= 名义 66ms 步进在真实机器上的历史实测交付速度，跨机器恒定）
+var _HOLD_TAIL_MS = 130;      // 松开等待窗（桥接成对往返式连发；超时=真松开）
 function _stopKeyHold() {
-    if (_holdTo) { clearTimeout(_holdTo); _holdTo = 0; }
-    if (_holdIv) { clearInterval(_holdIv); _holdIv = 0; }
+    if (_holdGraceTo) { clearTimeout(_holdGraceTo); _holdGraceTo = 0; }
+    if (_holdDrv) { clearInterval(_holdDrv); _holdDrv = 0; }
     _holdKey = null;
+    _holdHeld = false;
+    _holdHasGoal = false;
+    _holdNextUnitAt = 0;
 }
-// ★ 失焦/隐藏 = 按住板全清（键态不可知 → 宁停勿粘）
+// ★ 失焦 = 硬停（键态不可知 → 宁停勿粘）；隐藏不再单杀——系统遮挡误判/隐藏抖动不中断按住（真后台由 blur 兜底）
 function _clearKeyHold() {
-    _physHeld = Object.create(null);
     _stopKeyHold();
 }
-function _startKeyHold(key) {
-    _stopKeyHold();
-    _holdKey = key;
-    _holdTo = setTimeout(function () {
-        _holdTo = 0;
-        if (_holdKey !== key) return;
-        _holdLastAt = Date.now();
-        _holdIv = setInterval(function () {
-            if (_holdKey !== key) { _stopKeyHold(); return; }
-            // 时间戳累加：欠几步补几步（封顶）——平均频率 = 墙上时钟，与定时器抖动/机器快慢无关
-            var now = Date.now();
-            var due = Math.floor((now - _holdLastAt) / _HOLD_STEP_MS);
-            if (due < 1) return;
-            if (due > _HOLD_CATCHUP) { due = 1; _holdLastAt = now; }  // 大落后（后台节流/卡顿）→ 丢欠账防跳变
-            else { _holdLastAt += due * _HOLD_STEP_MS; }
-            for (var i = 0; i < due; i++) _panelKeyAction(key);
-        }, _HOLD_STEP_MS);
-    }, _HOLD_DELAY);
+function _holdMax() {
+    return Math.max(0, $messages.scrollHeight - $messages.clientHeight);
 }
-function _panelKeyAction(key) {
-    if (key === '1' || key === '2') {
-        // ★ 用户主动上滚 → 立即停自动跟滚
-        if (key === '1' && cardPool) { var _c1 = cardPool.getActive(); if (_c1) _c1._userScrolledUp = true; }
-        $messages.scrollBy({ top: (key === '1' ? -1 : 1) * $messages.clientHeight * 0.175, behavior: 'smooth' });
-        _showFloorIndicatorBriefly();
-    } else if (key === 'q' || key === 'w') {
-        // ★ q 键往上跳 → 立即停自动跟滚；w 键往下跳 → 交给 scroll 事件检测底部
-        if (key === 'q' && cardPool) { var _cq = cardPool.getActive(); if (_cq) _cq._userScrolledUp = true; }
-        var card = cardPool ? cardPool.getActive() : null;
-        var container = card ? card._contentWrap : $messages;
-        var userMsgs = container.querySelectorAll('.msg-user');
-        if (userMsgs.length === 0) return;
-        var viewCenter = $messages.scrollTop + $messages.clientHeight / 2;
-        var currentIdx = -1;
-        var minDist = Infinity;
-        for (var ui = 0; ui < userMsgs.length; ui++) {
-            var el = userMsgs[ui];
-            var absTop = 0;
-            while (el && el !== container) {
-                absTop += el.offsetTop || 0;
-                el = el.offsetParent;
-            }
-            var dist = Math.abs(viewCenter - absTop);
-            if (dist < minDist) { minDist = dist; currentIdx = ui; }
-        }
-        if (currentIdx < 0) return;
-        var targetIdx = key === 'q' ? Math.max(0, currentIdx - 1) : Math.min(userMsgs.length - 1, currentIdx + 1);
-        if (targetIdx === currentIdx && key === 'w' && currentIdx < userMsgs.length - 1) targetIdx = currentIdx + 1;
-        if (targetIdx === currentIdx && key === 'q' && currentIdx > 0) targetIdx = currentIdx - 1;
-        if (targetIdx !== currentIdx) {
-            var target = userMsgs[targetIdx];
-            target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        }
-        _showFloorIndicatorBriefly();
+// ★ q/w 目标：上/下一层用户楼在 $messages 坐标内的居中位置（矩形换算，免 offsetParent 链失真）
+function _holdFloorGoal(key) {
+    var m = $messages;
+    var card = cardPool ? cardPool.getActive() : null;
+    var container = card ? card._contentWrap : m;
+    var userMsgs = container.querySelectorAll('.msg-user');
+    if (userMsgs.length === 0) return null;
+    var mr = m.getBoundingClientRect();
+    var center = m.scrollTop + m.clientHeight / 2;
+    var idx = -1, best = Infinity, tops = [];
+    for (var i = 0; i < userMsgs.length; i++) {
+        var t = userMsgs[i].getBoundingClientRect().top - mr.top + m.scrollTop;
+        tops.push(t);
+        var d = Math.abs(center - t);
+        if (d < best) { best = d; idx = i; }
     }
+    if (idx < 0) return null;
+    var tIdx = key === 'q' ? idx - 1 : idx + 1;
+    if (tIdx < 0) tIdx = 0;
+    if (tIdx > userMsgs.length - 1) tIdx = userMsgs.length - 1;
+    return Math.max(0, Math.min(_holdMax(), tops[tIdx] - m.clientHeight / 2));
 }
+// ★ 开一个新单位：1/2 = 定量位移（对目标预算累加）；q/w = 重算上/下一楼目标（单目标未完成不排队）
+function _holdBeginUnit(key) {
+    var m = $messages;
+    if (key === '1' || key === '2') {
+        if (key === '1' && cardPool) { var _c1 = cardPool.getActive(); if (_c1) _c1._userScrolledUp = true; }
+        var unit = m.clientHeight * _HOLD_UNIT_PCT;
+        var base = _holdHasGoal ? _holdGoal : m.scrollTop;
+        var goal = key === '1' ? base - unit : base + unit;
+        _holdGoal = Math.max(0, Math.min(_holdMax(), goal));
+        _holdHasGoal = true;
+    } else {
+        if (_holdHasGoal) return;   // q/w 单目标制：上一楼还没走到就不排下一楼
+        if (key === 'q' && cardPool) { var _cq = cardPool.getActive(); if (_cq) _cq._userScrolledUp = true; }
+        var g = _holdFloorGoal(key);
+        if (g !== null) { _holdGoal = g; _holdHasGoal = true; }
+    }
+    _showFloorIndicatorBriefly();
+}
+// ★ 驱动帧（16ms）：单位边界按墙上时钟推进 + 向目标匀速积分（迟到按整段补足 → 平均速度守恒）
+function _holdTick() {
+    if (!_holdKey) { _stopKeyHold(); return; }
+    var now = Date.now();
+    var dt = now - _holdLastT;
+    _holdLastT = now;
+    if (!(dt > 0)) dt = 0;
+    if (dt > 1000) dt = 1000;
+    var m = $messages;
+    if (_holdHeld && _holdNextUnitAt && now >= _holdNextUnitAt) {
+        var guard = 0;
+        while (_holdHeld && now >= _holdNextUnitAt && guard++ < 16) {
+            _holdBeginUnit(_holdKey);
+            _holdNextUnitAt += _HOLD_UNIT_MS;
+        }
+    }
+    if (_holdHasGoal) {
+        var cur = m.scrollTop;
+        var room = _holdGoal - cur;
+        if (room !== 0) {
+            var vpx = (m.clientHeight * _HOLD_UNIT_PCT) / _HOLD_UNIT_MS;   // px/ms（单位位移 / 单位节拍）
+            var step = Math.sign(room) * Math.min(Math.abs(room), vpx * dt);
+            m.scrollTop = cur + step;
+        }
+        if (Math.abs(_holdGoal - m.scrollTop) < 1) _holdHasGoal = false;   // 到达 → 有单位欠账则由边界循环续推进
+    }
+    if (!_holdHeld && !_holdHasGoal && !_holdGraceTo) _stopKeyHold();
+}
+
 document.addEventListener('keydown', function (e) {
+    if (_ovShield) {
+        var _sk = (e.key || '').toLowerCase();
+        if ((_sk === 'q' || _sk === 'w') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            try { parent.postMessage({ type: 'qqqide-overlay-nav', dir: _sk === 'q' ? -1 : 1 }, '*'); } catch (_) { }
+        }
+        return;
+    }
     if (!_panelFocused) return;
     if (document.activeElement === $input || document.activeElement.closest('#input-area')) return;
     if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
     var key = e.key;
     if (!_HOLD_KEYS[key]) return;
     e.preventDefault();
-    // ★ 防叠加双保险：e.repeat + 物理按住板——重复 keydown 绝不动作、绝不重启计时
-    if (e.repeat || _physHeld[key]) return;
-    _physHeld[key] = true;
-    _panelKeyAction(key);
-    _startKeyHold(key);
+    // ★ 按住延续（连发中 / 松开等待窗内回按 / 结算期同键）——一律只续命：不动作、不重启、不叠加
+    if (_holdKey === key) {
+        if (_holdGraceTo) { clearTimeout(_holdGraceTo); _holdGraceTo = 0; }
+        _holdHeld = true;
+        return;
+    }
+    if (e.repeat) return;   // 无按住上下文的孤立 OS 连发 → 忽略
+    // ★ 真·新按下（含换键起手）：首单位即刻成交 + 驱动启动
+    _stopKeyHold();
+    _holdKey = key;
+    _holdHeld = true;
+    _holdLastT = Date.now();
+    _holdNextUnitAt = _holdLastT + _HOLD_DELAY;
+    _holdBeginUnit(key);
+    _holdDrv = setInterval(_holdTick, 16);
 });
-// ★ 松开/失焦/隐藏 = 停发（防连发粘键）
+// ★ 松开 = 进「松开等待窗」：窗内回按（成对往返式连发）视为按住延续；超时 = 真松开（走完当前单位即停）
 document.addEventListener('keyup', function (e) {
     var kk = typeof e.key === 'string' ? e.key.toLowerCase() : '';
-    if (typeof e.key === 'string') delete _physHeld[e.key];
-    if (kk) delete _physHeld[kk];
-    if (_holdKey && kk === _holdKey) _stopKeyHold();
+    if (!kk || !_HOLD_KEYS[kk]) return;
+    if (_holdKey !== kk) return;
+    _holdHeld = false;
+    if (_holdGraceTo) clearTimeout(_holdGraceTo);
+    _holdGraceTo = setTimeout(function () { _holdGraceTo = 0; }, _HOLD_TAIL_MS);
 });
 window.addEventListener('blur', _clearKeyHold);
-document.addEventListener('visibilitychange', function () { if (document.hidden) _clearKeyHold(); });
+// ★ 隐藏不单杀：系统遮挡误判/隐藏抖动（部分 Win11/VM 环境）不再中断按住——真后台由 blur 兜底；
+//   若确被隐藏，驱动被系统节流时按整段补足，平均速度仍守恒（见引擎头注③）。
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden && !document.hasFocus()) _clearKeyHold();
+});
 
 // \u2550\u2550\u2550 \u81ea\u52a8\u8ddf\u7126 \u2550\u2550\u2550
 $input.addEventListener('focus', function () {
@@ -826,9 +880,12 @@ $input.addEventListener('focus', function () {
 });
 
 // \u2550\u2550\u2550 Lightbox \u2550\u2550\u2550
-function openLightbox(src, base64, localPath) {
+function openLightbox(src, base64, localPath, nav) {
     // ★ localPath：图片磁盘路径（dataUrl 缩略图场景 overlay 的文件/路径按钮依赖它）
-    _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: src, base64: base64 || null, localPath: localPath || null });
+    // ★ nav：翻页上下文 {list:[{src,localPath}],index}（来源方给序列；缺席 → 无翻页钮）
+    var _m = { type: 'qqqide-overlay', action: 'open-image', src: src, base64: base64 || null, localPath: localPath || null };
+    if (nav) _m.nav = nav;
+    _postToHost(_m);
 }
 
 function closeLightbox() {

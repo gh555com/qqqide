@@ -91,6 +91,10 @@
         "overlay": {
             "copy": "In Zwischenablage kopieren",
             "copied": "Kopiert",
+            "prevImage": "Vorheriges Bild",
+            "nextImage": "Nächstes Bild",
+            "skipMissing": "{0} nicht anzeigbare Bilder wurden übersprungen",
+            "noMoreImages": "Keine weiteren Bilder zum Anzeigen vorhanden",
             "copyFailed": "Kopieren fehlgeschlagen",
             "zoomIn": "Vergrößern",
             "zoomOut": "Verkleinern",
@@ -845,16 +849,8 @@
             "lockedDecrypt": "Schlüssel kann auf diesem Gerät nicht entschlüsselt werden (möglicherweise von einem anderen Gerät), bitte erneut eingeben"
         },
         "gwWait": {
-            "title": "⏳ Upstream antwortet nicht {0}",
-            "rowLabel": "{0} Ebene {1}",
-            "barMulti": "⏳ {0} Ebenen warten auf Antwort von oben · Maximal {1}",
-            "stop": "■ Stoppen",
-            "expand": "Details anzeigen",
             "collapse": "Einklappen",
             "taskCapsule": "⏳ {0} Tasks werden ausgeführt",
-            "muteTip": "Diesmal nicht mehr hinweisen (neue wartende Ebenen werden erneut angezeigt)",
-            "serverAck": "Warten auf Serverbestätigung",
-            "firstToken": "Warten auf das erste Ausgabezeichen",
             "hangCount": "({0}. Versuch)",
             "hangBroken": "Netzwerkkanal möglicherweise beschädigt{0}. Alle Leitungen wurden automatisch getestet. Die Ebene wurde gespeichert. Wir empfehlen, das Fenster mit Strg+R zu aktualisieren und dann auf „Aufgabe fortsetzen“ zu klicken."
         },

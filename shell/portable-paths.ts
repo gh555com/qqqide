@@ -32,8 +32,9 @@ export function getAppRoot(): string {
  * ★ mac .app 外置托管根（2026-09-16）：往 .app bundle 内写数据会破坏代码签名封条
  *   （TCC csreq 失配 → 已授权限全部失效），且更新换装时数据随旧 app 全灭。
  *   mac bundle 模式 → {.app 同级}/qqqide-data（≈ Windows 的 gh555.com：内含 Data/ + engines/）；
+ *   linux 发行包（2026-10-05）→ {容器}/qqqide-data（同级检测到即用；升级只换程序文件）；
  *   win 绿色包 → root 本身（gh555.com）；dev → 项目根。三者内部结构均为 {host}/Data。
- *   engines/ 经 bundle 内相对符号链接桥接（写穿透到外置，签名不破）。
+ *   engines/ 经程序目录内相对符号链接桥接（写穿透到外置）。
  */
 export function getHostDir(): string {
     const root = getAppRoot();
@@ -42,6 +43,12 @@ export function getHostDir(): string {
     if (idx >= 0) {
         const bundle = norm.slice(0, idx + 4);          // .../qqqide.app
         return path.join(path.dirname(bundle), 'qqqide-data');
+    }
+    // ★ Linux 外置托管根（2026-10-05）：发行布局 = {容器}/qqqide-data（engines 实体外置，
+    //   升级只换程序文件）；同级检测到 qqqide-data 即用之（dev 树 / 其他布局不受影响）。
+    if (process.platform === 'linux') {
+        const cand = path.join(root, 'qqqide-data');
+        try { if (fs.existsSync(cand)) { return cand; } } catch { /* ignore */ }
     }
     return root;
 }
@@ -197,6 +204,9 @@ export function applyPortablePaths(opts?: { sessionDir?: string }): { root: stri
 
     // explicitly disable features that may write registry / appdata
     app.commandLine.appendSwitch('no-default-browser-check');
+    // ★ 遮挡误判免疫（2026-10-05 q361）：被系统误判「被遮挡」的窗口不再降为后台——VM/Win11 上遮挡
+    //   检测误报会触发隐藏节流（timer 被钳到 1Hz，按住连滚变「慢动作/只动两下」）；真最小化语义不变。
+    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
     app.commandLine.appendSwitch('disable-background-networking');
     app.commandLine.appendSwitch('disable-component-update');
     app.commandLine.appendSwitch('disable-domain-reliability');

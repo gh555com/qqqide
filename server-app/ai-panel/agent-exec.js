@@ -32,6 +32,8 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
     //   执行期间保持 true → 停滞看门狗续命；挂死工具由 ghrun 15min 失速看门狗兜底杀（< 20min）
     self._toolExecActive = true;
     self._toolExecSince = Date.now();  // ★ R4: 工具执行起点（AI 面板「工具执行中」卡片计时用）
+    // ★ 实时分段阶段：工具执行 = other（余量段 = 黄）
+    _livePhaseSet(self, 'other');
     try {
         for (var li = 0; li < layers.length; li++) {
             // ★ Stop 守卫：用户点停止后立即中断工具执行

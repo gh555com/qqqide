@@ -150,6 +150,9 @@
     // 地图（小地图开关）
     'map': '<path d="M1.8 4.5l3.9-1.7 4.6 1.7 3.9-1.7v8.8l-3.9 1.7-4.6-1.7-3.9 1.7z" fill="none" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/>' +
       '<path d="M5.7 2.8v8.8M10.3 4.5v8.8" fill="none" stroke="#000" stroke-width="1"/>',
+    // 左右翻页箭头（悬浮预览层贴边翻页钮——线条 chevron，16 网格 @1:1 观感随字号）
+    'chevron-left': '<path d="M10 4L6 8l4 4" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    'chevron-right': '<path d="M6 4l4 4-4 4" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
     // 对话气泡（inbox 空态）
     'chat': '<path d="M2 4.3a1.4 1.4 0 0 1 1.4-1.4h9.2A1.4 1.4 0 0 1 14 4.3v5.3a1.4 1.4 0 0 1-1.4 1.4H7.5l-3.3 2.7v-2.7H3.4A1.4 1.4 0 0 1 2 9.6z" fill="none" stroke="#000" stroke-width="1.25" stroke-linejoin="round"/>',
     // 多人（群聊）

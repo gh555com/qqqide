@@ -78,6 +78,15 @@ const BALANCE_INTERVAL = 180_000;
 const LV_INTERVAL = 180_000;
 const SESSION_POLL_MS = 3_000;
 
+// ★ 2026-10-05: 平台感知设备名（对齐载荷 _buildDeviceName 与服务端 {IDE品类}_{OS}_{arch} 契约）。
+//   旧为硬编码 'qqqide_Win_x64'——mac/linux 上也显示 Win_x64（登录 URL + 设备记录全错）。
+//   映射：win32→Win / darwin→macOS / linux→Linux；arch：arm64 原样，其余 x64。
+function _deviceName(): string {
+    const plat = process.platform === 'darwin' ? 'macOS' : process.platform === 'linux' ? 'Linux' : 'Win';
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+    return `qqqide_${plat}_${arch}`;
+}
+
 // ★ HTTP JSON 拉取（GET）：Electron 22.3.27 的 net 模块无 fetch（该版源码仅 request/isOnline）——
 //   统一走 Node https（wq-ping 同款模式）；返回形状对齐 fetch 最小面 { ok, status, data }。
 function _apiGetJson(url: string, init?: { headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; data: any }> {
@@ -147,7 +156,7 @@ class AuthBrain {
             token, phone,
             country_iso2: countryIso2 || '',
             purchased: !!purchased,
-            device_name: 'qqqide_Win_x64',
+            device_name: _deviceName(),
             ts: Date.now(),
         };
         await this._persist();
@@ -175,7 +184,7 @@ class AuthBrain {
         // ★ mac 安全阀（2026-09-19）: safeStorage 首次访问可能触发系统钥匙串授权弹窗
         //   （应用重签名后 ACL 变更）——同步调用会冻结主进程事件循环 → 窗口永不出现。
         //   与 ipc-secure 同款门：等主窗口可见后再访问钥匙串（弹窗出现在窗口上方而非冻结 boot）。
-        //   非 mac 平台零行为变化（waitMainWindowShown 立即放行）。
+        //   ★ 2026-10-05: 门扩展到 linux（keyring 锁定/locked 时 libsecret 同步调用同样冻结）——其余平台立即放行。
         await waitMainWindowShown();
         if (!safeStorage.isEncryptionAvailable()) return false;
         try {
@@ -183,19 +192,23 @@ class AuthBrain {
             const encrypted = fs.readFileSync(this.authFile);
             const raw = safeStorage.decryptString(encrypted);
             const data = JSON.parse(raw);
-            if (data?.token && data?.phone) {
+              if (data?.token && data?.phone) {
+                // ★ 2026-10-05: 迁移历史值——旧版全平台硬编码 'qqqide_Win_x64'，不符当前平台即重算并回写
+                //   （老 mac/linux 用户自愈；Windows 值本就相符 → 零变化）。
+                const dn = _deviceName();
+                const needFix = data.device_name !== dn;
                 this.authData = {
                     token: data.token, phone: data.phone,
                     country_iso2: data.country_iso2 || '',
                     purchased: !!data.purchased,
-                    device_name: data.device_name || '',
+                    device_name: dn,
                     ts: Date.now(),
                 };
                 this._startPolling();
+                if (needFix) { try { await this._persist(); } catch { /* ignore */ } }
                 this._broadcast('restore');
                 return true;
-            }
-        } catch { /* ignore */ }
+            }       } catch { /* ignore */ }
         return false;
     }
 
@@ -227,7 +240,7 @@ class AuthBrain {
     async openLoginExternal(): Promise<string> {
         const sessionId = this._genSessionId();
         this._sessionId = sessionId;
-        const loginUrl = `${LOGIN_URL}?from=ide&session=${sessionId}&device_name=qqqide_Win_x64&goods=qqqide`;
+        const loginUrl = `${LOGIN_URL}?from=ide&session=${sessionId}&device_name=${_deviceName()}&goods=qqqide`;
 
         console.log('[auth-brain] openLoginExternal: session=' + sessionId.slice(0, 8) + '...');
 
@@ -305,6 +318,8 @@ class AuthBrain {
     }
 
     private async _persist(): Promise<void> {
+        // ★ 2026-10-05: 与 restore 同门——encrypt（store_sync）同样可能冻结主进程（linux keyring / mac 钥匙串）
+        await waitMainWindowShown();
         if (!this.authData || !safeStorage.isEncryptionAvailable()) return;
         try {
             const dir = path.dirname(this.authFile);

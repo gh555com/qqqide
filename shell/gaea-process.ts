@@ -606,9 +606,9 @@ export function startGaeaProcess(
         }
 
         // ★ Qt 防护: 显式指定插件路径 + 运行时 DLL 目录（防客户电脑缺 VC++ 运行时）
-        // ★ mac（2026-09-16）: 运行时为 PySide6，插件在 site-packages/PySide6/Qt/plugins
+        // ★ mac/linux（2026-09-16/2026-10-05）: 运行时为 PySide6，插件在 site-packages/PySide6/Qt/plugins
         const pyEngineDir = path.dirname(exe);
-        const qtPluginDir = process.platform === 'darwin'
+        const qtPluginDir = (process.platform === 'darwin' || process.platform === 'linux')
             ? path.join(pyEngineDir, 'site-packages', 'PySide6', 'Qt', 'plugins')
             : path.join(pyEngineDir, 'site-packages', 'PySide2', 'plugins');
         const envExt: any = {
@@ -619,6 +619,13 @@ export function startGaeaProcess(
             //   （实测 ~750MB 提交/进程，驻留仅 ~13MB）；goods 不做 BLAS 计算，单线程零代价
             OPENBLAS_NUM_THREADS: '1',
         };
+        // ★ linux（2026-10-05）: goods 钉在 XWayland（xcb）——与 Electron 主窗（X11）同域。
+        //   实锤：Wayland 会话下 Qt6 默认选 wayland 平台 → goods 的剪贴板/窗口系统与
+        //   Electron（X11）分裂 → kope-a 监控不到主程序写入的剪贴板（捕获恒 0）。
+        //   xcb 经 XWayland 恒可用（GNOME/KDE Wayland 会话默认起 XWayland）。
+        if (process.platform === 'linux') {
+            envExt.QT_QPA_PLATFORM = 'xcb';
+        }
         if (fs.existsSync(qtPluginDir)) {
             envExt.QT_PLUGIN_PATH = qtPluginDir;
             envExt.QT_QPA_PLATFORM_PLUGIN_PATH = qtPluginDir;

@@ -117,6 +117,7 @@
     if (info && info.platform) {
       if (info.platform === 'darwin') plat = 'macOS';
       else if (info.platform === 'linux') plat = 'Linux';
+      else if (info.platform === 'win32' || info.platform === 'win') plat = 'Win';
       else plat = info.platform.charAt(0).toUpperCase() + info.platform.slice(1);
     }
     var arch = (info && info.arch === 'arm64') ? 'arm64' : 'x64';

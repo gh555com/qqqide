@@ -6,65 +6,25 @@
 // 依赖：AgentLoop（由 agent-loop.js 定义），GATEWAY_URL（由 system-prompt.js 定义）
 // ============================================================================
 
-// ═══ 上游等待可视化（2026-10-01 A 方案：聚合细条）═══
-// 背景：上游高峰期 TTFB 可达 15min，服务器每 25s 心跳保活 → 客户端三道防线全被合法绕过
-//   → 楼层"假死"：钟在走、无报错、无输出（多客户机实锤）。本模块纯展示零副作用：
-//   - 请求发出 → 1s 检查链；120s 无任何首字输出 → 任务坞亮「聚合等待细条」（N 个楼层只出一条，
-//     展开明细逐行 ■ 停止 = 真停该楼层；✕ = 本轮静默，出现新等待楼层才再提示）
-//   - 首字输出（agent-sse 置 _gwGotContent）/ 流结束 / 任何出口（_gwEndWait）→ 摘条自停
-//   - 服务器 B+（qwait 心跳）部署后 _upstreamWaitSec = 上游权威等待秒数（取大显示）
-//   不声称"排队"（证据不足）——"无响应"在任何真实原因下都成立，零误报。
-var GW_WAIT_SHOW_SEC = 120;
-
-function _gwCardId(ag) {
-    return 'gw-wait-' + (ag._questId || 'q') + '-' + (ag._currentFloorNum || 'f');
-}
-
-function _gwRemoveCard(ag) {
-    if (!ag || !ag._gwCardShown) return;
-    try {
-        var io = window.parent && window.parent.qqqideIoast;
-        if (io && io.waitBar) io.waitBar.clear(_gwCardId(ag));
-    } catch (_) { }
-    ag._gwCardShown = false;
-}
-
-function _gwEndWait(ag) {
+// ═══ 实时分段阶段机（唯一记账/写入口；消费端 = panel-clock.js _liveSegs）═══
+// 阶段 = ag._livePhase { k: 'network' | 'ai' | 'other', t0 }（wall-clock ms）。
+// 切换即「结算」：把上一阶段实测时长累加进 _floorTiming.networkMs / aiMs
+//   （'other' 无独立桶 → 落饼图余量段）；非结算型打点（工具/本地）只换阶段。
+// 打点：请求发出 → network；首字节到达 → ai；流结束 / 工具执行 / 本地处理 → other。
+// 意义：饼图与悬停第一行在轮次进行中即可实时增长（等于累计值 + 进行中阶段未入账时长），
+//   且任何阶段切换都不倒跳——轮次实测时长的入账全部归此一处，禁再散落 deferred 累加。
+function _livePhaseSet(ag, kind) {
     if (!ag) return;
-    ag._gwWaitStart = 0;
-    ag._gwGotContent = false;
-    _gwRemoveCard(ag);
-}
-
-function _gwWaitTick(ag) {
-    if (!ag || !ag._gwWaitStart || ag._gwGotContent || ag._stopState !== 'sending') {
-        if (ag) _gwRemoveCard(ag);
-        if (ag && ag._gwUiTimer) { clearInterval(ag._gwUiTimer); ag._gwUiTimer = null; }
-        return;
+    var ph = ag._livePhase;
+    var now = Date.now();
+    if (ph && ph.t0 > 0 && ag._floorTiming) {
+        var dt = now - ph.t0;
+        if (dt > 0) {
+            if (ph.k === 'ai') ag._floorTiming.aiMs = (ag._floorTiming.aiMs || 0) + dt;
+            else if (ph.k === 'network') ag._floorTiming.networkMs = (ag._floorTiming.networkMs || 0) + dt;
+        }
     }
-    var localS = Math.floor((Date.now() - ag._gwWaitStart) / 1000);
-    var waitS = Math.max(localS, ag._upstreamWaitSec || 0);
-    if (waitS < GW_WAIT_SHOW_SEC) {
-        if (ag._gwCardShown) _gwRemoveCard(ag);
-        return;
-    }
-    try {
-        var io = window.parent && window.parent.qqqideIoast;
-        if (!io || !io.waitBar) return;
-        io.waitBar.set(_gwCardId(ag), {
-            text: _qq('ai.gwWait.rowLabel', '{0} 第 {1} 层', { 0: (ag._questId || '?'), 1: (ag._currentFloorNum || '?') }),
-            durS: waitS,
-            note: ag._upstreamWaitSec > 0 ? _qq('ai.gwWait.serverAck', '服务器确认等待中') : _qq('ai.gwWait.firstToken', '等待首字输出'),
-            onStop: function () { try { ag.stop(); } catch (_) { } }
-        });
-        ag._gwCardShown = true;
-    } catch (_) { }
-}
-
-function _gwStartWaitLoop(ag) {
-    if (ag._gwUiTimer) clearInterval(ag._gwUiTimer);
-    ag._gwUiTimer = setInterval(function () { _gwWaitTick(ag); }, 1000);
-    _gwWaitTick(ag);
+    ag._livePhase = { k: kind, t0: now };
 }
 
 // ═══ 上下文硬墙自愈（2026-09-22 q263 f233 实锤）═══
@@ -353,11 +313,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         // ★ Stop 守卫：_stopCtrl 已 abort → 立即退出（替代散落 _floorKilled）
         if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
         _resetFetchDeadline();  // ★ 每次 retry 重置 deadline
-        // ★ 2026-09-06 等待可视化：每轮请求起点（wall-clock）+ 重启 1s 检查链（幂等）
-        self._gwWaitStart = Date.now();
-        self._gwGotContent = false;
-        self._upstreamWaitSec = 0;
-        _gwStartWaitLoop(self);
         // ★ 每轮 retry 创建 _retryCtrl，级联到 _stopCtrl
         //   用户 Stop → _stopCtrl.abort() → 级联 → _retryCtrl.abort() → fetch 立即断
         self.abortController = new AbortController();
@@ -367,6 +322,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             try { self.abortController.abort(); } catch (_) { }
         }, { once: true });
         self._abortSource = '';  // ★ 重置探针
+        // ★ 实时分段阶段：请求已发出 → 等首字节 = network（红）
+        _livePhaseSet(self, 'network');
         try {
             var _fetchStart = performance.now();
             // ★ 经 AiGateway 统一执行 fetch（模型映射 + 线路选择 + auth）
@@ -452,7 +409,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 }
                 self._lastGatewayMessage = _qq('ai.gw.hangTimeout', '连接超时（已自动尝试全部线路，对话完整保留，可点击「继续任务」重试）');
                 self._exitReason = 'deadline';
-                _gwEndWait(self);
                 return null;
             }
             // ★ BYOK 通道标记（byok.js 在响应对象挂 _byokRoute）：本楼层以自带密钥服务
@@ -530,7 +486,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                                 + _qq('ai.gw.geTopupHint', '（充值后点击「继续任务」可从断点续跑）');
                         }
                         clearTimeout(_fetchDeadline);  // ★ 全路径清理（防幽灵中断）
-                        _gwEndWait(self);
                         return null;
                     }
                     if (self._questKeySlot === 0) {
@@ -544,7 +499,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     clearTimeout(_fetchDeadline);  // ★ 全路径清理（防幽灵中断）
                     self._exitReason = 'http_' + resp.status;
                     self._lastGatewayMessage = _serverMsg || _qq('ai.gw.keysDepleted', 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）');
-                    _gwEndWait(self);
                     return null;
                 }
 
@@ -563,7 +517,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                         }
                     } catch (_) {}
                     clearTimeout(_fetchDeadline);  // ★ 全路径清理（防幽灵中断：漏 clear → 1000s 后炸掉任意在飞请求）
-                    _gwEndWait(self);
                     return null;
                 }
                 var friendly = resp.status === 401 ? (_isByok ? (_serverMsg || _qq('ai.byok.authFail', '自带密钥认证失败（API Key 无效或无权限）')) : _qq('ai.gw.authFail', '认证失败，请检查 Token'))
@@ -605,7 +558,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
 
 
                     // ★ 不在此处 onError / _sendTerminated — 让 agent loop 的 auto-repair 先尝试修复
-                    _gwEndWait(self);
                     return null;
                 }
                 // ★ 其他 HTTP 错误（401/402/429等）— 终端错误，统一延迟报错
@@ -616,7 +568,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 self._sendTerminated = true;  // ★ 标记终止
                 self._lastGatewayMessage = friendly + ' Conversation saved.';
                 // ★ 不在此处调 onError — 静默返回 null，交给 agent-loop 统一调（防双重报错）
-                _gwEndWait(self);
                 return null;
             }
 
@@ -638,8 +589,11 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             }
             self._log('✓ gateway ' + resp.status + ' streaming...');
             clearTimeout(_fetchDeadline);  // ★ SSE 流开始，取消 fetch deadline
+            // ★ 实时分段阶段：首字节到达 → 流式接收 = ai（绿）
+            _livePhaseSet(self, 'ai');
             var _result = await self._parseSSE(resp.body, onToken, onReasoning);
-            _gwEndWait(self);  // ★ 流结束（成败皆清）：摘卡，等待态归零
+            // ★ 实时分段阶段：流结束 → 回本地处理（工具/组装 = 余量）
+            _livePhaseSet(self, 'other');
             if (_result) {
                 _result._ttfbMs = _ttfbAccum;
                 _result._streamMs = _result._streamMs || 0;
@@ -661,7 +615,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             clearTimeout(_fetchDeadline);
             return _result;
         } catch (err) {
-            _gwEndWait(self);  // ★ 任何异常出口先清等待态（1s tick 内摘卡自停）
+            // ★ 实时分段阶段：异常退出 → 回本地处理（防阶段悬挂在 ai/network）
+            _livePhaseSet(self, 'other');
             if (err.name === 'AbortError') {
                 clearTimeout(_fetchDeadline);
                 self._log('■ aborted');
@@ -710,8 +665,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     var _retryMsg = '  ⏳ abort retry #' + self._abortRetries + '/3 in ' + (_abortWait / 1000) + 's (same URL: ' + GATEWAY_URL.replace('https://', '').split('/')[0] + ')';
                     self._log(_retryMsg);
                     if (typeof self._writeFileLog === 'function') self._writeFileLog(_retryMsg);
-                    // ★ 退避等待归入网络时间（红）
-                    self._floorTiming.networkMs += _abortWait;
+                    // ★ 退避等待归入网络时间（红）——阶段机结算
+                    _livePhaseSet(self, 'network');
                     await new Promise(function (r) { setTimeout(r, _abortWait); });
                     if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
                     continue;  // 回到 retry 循环顶部，同 URL 重试

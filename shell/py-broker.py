@@ -4,8 +4,8 @@
 """py-broker.py — 跨平台窗口管理 broker for qqqide.
 常驻子进程。stdin 读 JSON 行命令，stdout 返回 JSON 行响应。
 职责:
-  1. DevTools 窗口改名 (Win: ctypes / Mac: osascript / Linux: wmctrl)
-  2. ★ 窗口编队热键 (Win: GetAsyncKeyState 轮询 / mac: pynput 钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+  1. DevTools 窗口改名 (Win: ctypes / Mac: osascript / Linux: Xlib)
+  2. ★ 窗口编队热键 (Win: GetAsyncKeyState 轮询 / mac/Linux: pynput 钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
      ★ 和弦唯一语义（2026-10-02 q319 定案）：空格必须先按下且持续按住（物理键态·心跳续期）→ 槽位键按下才召唤；
        反向/就近时间窗/Alt 修饰键/聚焦声明全部不存在——「没有其他任何逻辑」；目标已在最前 → 跳过。
        播放器窗侧配合：空格按住期间槽位键由其引擎全屏蔽 + 空格松键才切换（响应延迟换和弦纯净，详 core/media-engine.js）
@@ -424,18 +424,41 @@ return "not found"
 
 
 def _linux_rename_devtools(new_title: str) -> dict:
-    """Linux: wmctrl 找 Developer Tools 窗口改名"""
-    import subprocess
+    """Linux: Xlib 枚举 toplevel 改名（零外部依赖——wmctrl 并非各发行版预装，2026-10-05 实测修复）"""
     try:
-        r = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=5)
-        for line in r.stdout.splitlines():
-            if "Developer Tools" in line or "「🔧」" in line:
-                wid = line.split()[0]
-                subprocess.run(["wmctrl", "-i", "-r", wid, "-N", new_title], timeout=5)
-                return {"ok": True}
+        import Xlib.display
+        from Xlib import X
+    except Exception as e:
+        return {"ok": False, "error": f"python-xlib missing: {e}"}
+    try:
+        d = Xlib.display.Display()
+        root = d.screen().root
+        name_atom = d.intern_atom('_NET_WM_NAME')
+        utf8_atom = d.intern_atom('UTF8_STRING')
+        for w in root.query_tree().children:
+            try:
+                t = ''
+                n = w.get_full_property(name_atom, X.AnyPropertyType)
+                if n and n.value:
+                    v = n.value
+                    t = v.decode('utf-8', 'replace') if isinstance(v, bytes) else str(v)
+                if not t:
+                    t = w.get_wm_name() or ''
+            except Exception:
+                continue
+            if 'Developer Tools' not in t and not t.startswith('「🔧」'):
+                continue
+            try:
+                w.change_property(name_atom, utf8_atom, 8, new_title.encode('utf-8'))
+            except Exception:
+                pass
+            try:
+                w.set_wm_name(new_title)
+            except Exception:
+                pass
+            d.sync()
+            return {"ok": True, "renamed": 1}
         return {"ok": False, "error": "No DevTools window"}
-    except FileNotFoundError:
-        return {"ok": False, "error": "wmctrl not installed"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -679,6 +702,147 @@ def _mac_squad_summon(slot, entry):
         return {"ok": False, "folder": folder}
 
 
+def _linux_squad_summon(slot, entry):
+    """Linux: Xlib 窗口级精确 raise（2026-10-05 实测定案，与 mac 版同源代码跨平台对齐）。
+    XWayland 下 qd 全部窗口是 X 客户端：_NET_WM_PID 找进程 toplevel → 标题精确匹配
+    （entry.title；失配退化为同 pid 首窗）→ 还原最小化（_NET_WM_STATE_HIDDEN 移除）
+    + _NET_ACTIVE_WINDOW 标准激活 + 抬升。already = 当前焦点窗上溯 toplevel 即目标窗。"""
+    pid = int(entry.get("pid") or 0)
+    folder = str(entry.get("folder") or "")
+    title = str(entry.get("title") or "")
+    if pid <= 0:
+        return {"ok": False, "folder": folder}
+    try:
+        import Xlib.display
+        from Xlib import X, protocol
+    except Exception as e:
+        _log(f"[Squad] summon {slot} linux xlib missing: {e}")
+        return {"ok": False, "folder": folder}
+    try:
+        d = Xlib.display.Display()
+        root = d.screen().root
+        pid_atom = d.intern_atom('_NET_WM_PID')
+        name_atom = d.intern_atom('_NET_WM_NAME')
+        state_atom = d.intern_atom('_NET_WM_STATE')
+        hidden_atom = d.intern_atom('_NET_WM_STATE_HIDDEN')
+        active_atom = d.intern_atom('_NET_ACTIVE_WINDOW')
+
+        def _win_pid(w):
+            try:
+                p = w.get_full_property(pid_atom, X.AnyPropertyType)
+                return int(p.value[0]) if p and p.value else 0
+            except Exception:
+                return 0
+
+        def _win_title(w):
+            try:
+                n = w.get_full_property(name_atom, X.AnyPropertyType)
+                if n and n.value:
+                    v = n.value
+                    return v.decode('utf-8', 'replace') if isinstance(v, bytes) else str(v)
+            except Exception:
+                pass
+            try:
+                return w.get_wm_name() or ''
+            except Exception:
+                return ''
+
+        def _is_viewable(w):
+            try:
+                return w.get_attributes().map_state == X.IsViewable
+            except Exception:
+                return False
+
+        # ① 首选：注册表 hwnd（Electron 原生句柄 = X 窗口 id，2026-10-05 实测精确；
+        #   同进程常另有隐藏工具窗——纯 pid 扫描会抓错窗，hwnd 直取杜绝歧义）
+        hwnd = 0
+        try:
+            hwnd = int(str(entry.get("hwnd") or "0")) or 0
+        except Exception:
+            hwnd = 0
+        target = None
+        if hwnd:
+            try:
+                w = d.create_resource_object('window', hwnd)
+                w.get_attributes()  # 存在性探测（坏窗口抛 BadWindow）
+                hpid = _win_pid(w)
+                if (not pid) or (not hpid) or (hpid == pid):
+                    target = w
+            except Exception:
+                target = None
+        # ② 回退：pid 扫描（有标题→标题精确匹配；否则优先可见窗——同 pid 可能有多个隐藏窗）
+        if target is None:
+            candidates = []
+            for w in root.query_tree().children:
+                if pid and _win_pid(w) != pid:
+                    continue
+                candidates.append(w)
+            if candidates:
+                if title:
+                    for w in candidates:
+                        if _win_title(w) == title:
+                            target = w
+                            break
+                if target is None:
+                    vis = [w for w in candidates if _is_viewable(w)]
+                    target = vis[0] if vis else candidates[0]
+        if target is None:
+            _log(f"[Squad] summon {slot} miss (window gone) pid={pid} folder={folder}")
+            return {"ok": False, "folder": folder}
+
+        # already：当前活动窗（_NET_ACTIVE_WINDOW — EWMH 权威源，mutter/KDE 一致；
+        # X input-focus 在 XWayland 下不可靠——2026-10-05 实测改用活动窗口属性）
+        try:
+            aw = root.get_full_property(active_atom, X.AnyPropertyType)
+            cur = int(aw.value[0]) if aw and aw.value else 0
+            for _ in range(32):
+                if not cur:
+                    break
+                parent = d.create_resource_object('window', cur).query_tree().parent
+                if parent is None or parent.id == 0 or parent.id == root.id:
+                    break
+                cur = parent.id
+            if cur == target.id:
+                _log(f"[Squad] summon {slot} already-foreground")
+                return {"ok": False, "folder": folder, "already": True}
+        except Exception:
+            pass
+
+        # 还原最小化（_NET_WM_STATE 含 HIDDEN → 发移除请求）
+        try:
+            st = target.get_full_property(state_atom, X.AnyPropertyType)
+            vals = list(st.value) if st and st.value else []
+            if hidden_atom in vals:
+                data = [0, hidden_atom, 0, 1, 0]
+                ev = protocol.event.ClientMessage(window=target, client_type=state_atom, data=(32, data))
+                root.send_event(ev, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
+                d.sync()
+        except Exception:
+            pass
+
+        # 标准激活（EWMH）+ 抬升 + X 层焦点兜底（WM 忽略激活请求时的最后防线）
+        try:
+            data = [1, X.CurrentTime, 0, 0, 0]
+            ev = protocol.event.ClientMessage(window=target, client_type=active_atom, data=(32, data))
+            root.send_event(ev, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
+            target.configure(stack_mode=X.Above)
+            d.sync()
+            try:
+                if _is_viewable(target):
+                    target.set_input_focus(X.RevertToParent, X.CurrentTime)
+                    d.sync()
+            except Exception:
+                pass
+        except Exception as e:
+            _log(f"[Squad] summon {slot} linux raise failed: {e}")
+            return {"ok": False, "folder": folder}
+        _log(f"[Squad] summon {slot} pid={pid} xlib-raise folder={folder}")
+        return {"ok": True, "folder": folder}
+    except Exception as e:
+        _log(f"[Squad] linux summon exception: {e}")
+        return {"ok": False, "folder": folder}
+
+
 def _squad_summon(slot):
     """召回 slot 对应编队窗口 → {ok, folder, already}"""
     reg = _load_squad_registry()
@@ -692,6 +856,8 @@ def _squad_summon(slot):
         return {"ok": False}
     if OS == "Darwin":
         return _mac_squad_summon(slot, entry)
+    if OS == "Linux":
+        return _linux_squad_summon(slot, entry)
     if OS != "Windows":
         return {"ok": False}
     pid = int(entry.get("pid") or 0)
@@ -943,7 +1109,7 @@ def main():
     # ★ 编队热键抢锁 + 监听（先于就绪信号 — ready.hotkeys 必须反映真实监听状态）
     #   mac（2026-09-16）: pynput 监听需「输入监控」TCC 授权 —— 未授权时 tap 静默无效；
     #   启动预检 + 触发系统授权弹窗（CGRequestListenEventAccess，仅首次）
-    if OS in ("Windows", "Darwin"):
+    if OS in ("Windows", "Darwin", "Linux"):
         if OS == "Darwin":
             try:
                 from Quartz import CGPreflightListenEventAccess, CGRequestListenEventAccess

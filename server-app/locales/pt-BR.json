@@ -91,6 +91,10 @@
         "overlay": {
             "copy": "Copiar para a área de transferência",
             "copied": "Copiado",
+            "prevImage": "Anterior",
+            "nextImage": "Próxima",
+            "skipMissing": "{0} imagem(ns) que não puderam ser exibidas foram ignoradas",
+            "noMoreImages": "Não há mais imagens para exibir",
             "copyFailed": "Falha ao copiar",
             "zoomIn": "Aumentar zoom",
             "zoomOut": "Diminuir zoom",
@@ -845,16 +849,8 @@
             "lockedDecrypt": "A chave não pôde ser descriptografada neste dispositivo (pode ter vindo de outro dispositivo). Por favor, insira-a novamente."
         },
         "gwWait": {
-            "title": "⏳ Sem resposta da origem {0}",
-            "rowLabel": "{0} Camada {1}",
-            "barMulti": "⏳ {0} andares aguardando resposta upstream · Máximo {1}",
-            "stop": "■ Parar",
-            "expand": "Expandir detalhes",
             "collapse": "Recolher",
             "taskCapsule": "⏳ {0} tarefas em andamento",
-            "muteTip": "Não alertar novamente nesta sessão (novos andares em espera serão alertados)",
-            "serverAck": "Aguardando confirmação do servidor",
-            "firstToken": "Aguardando o primeiro caractere",
             "hangCount": "(tentativa {0})",
             "hangBroken": "Canal de rede possivelmente danificado{0}, todas as rotas foram testadas automaticamente. O andar foi salvo; recomenda-se pressionar Ctrl+R para atualizar a janela e clicar em \"Continuar tarefa\""
         },

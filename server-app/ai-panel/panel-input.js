@@ -564,11 +564,20 @@ function renderImageStrip() {
         wrap.className = 'img-thumb-wrap';
         var imgEl = document.createElement('img');
         imgEl.src = img.dataUrl;
-        wrap.appendChild(imgEl);
-        var num = document.createElement('span');
-        num.className = 'img-thumb-num';
-        num.textContent = '#' + img.id;
-        num.onclick = function (e) { e.stopPropagation(); openLightbox(img.dataUrl, img.base64); };
+        wrap.appendChild(imgEl);        var num = document.createElement('span');
+        num.className = 'img-thumb-num';
+        num.textContent = '#' + img.id;
+        num.onclick = function (e) {
+            e.stopPropagation();
+            // 翻页上下文 = 编辑框图片条（拟发送批次，按条内顺序）
+            var _nav = null;
+            try {
+                if (pendingImages.length > 1) {
+                    _nav = { list: pendingImages.map(function (im) { return { src: im.dataUrl, localPath: null }; }), index: idx };
+                }
+            } catch (_) { }
+            openLightbox(img.dataUrl, img.base64, null, _nav);
+        };
         wrap.appendChild(num);
         var del = document.createElement('button');
         del.className = 'img-thumb-del';

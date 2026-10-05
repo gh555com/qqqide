@@ -13,8 +13,6 @@
 //   qqqideIoast.done(id, opts)  成功摘要。opts.summary
 //   qqqideIoast.fail(id, opts)  失败摘要。opts.summary
 //   qqqideIoast.remove(id)      立即移除
-//   qqqideIoast.waitBar.set(key, opts)  聚合等待细条（N 个等待只出一条；opts: text/durS/note/onStop）
-//   qqqideIoast.waitBar.clear(key)      条目移除（全空 → 细条自动消失）
 // iframe 内页面经 parent.qqqideIoast 调用（同 qoast 模式）
 // ============================================================================
 
@@ -91,27 +89,6 @@
       '  box-shadow:0 -2px 12px rgba(0,0,0,.18);',
       '}',
       '.qiioast-capsule:hover { background:var(--border-color); }',
-      '.qwbar {',
-      '  pointer-events:auto; width:100%; box-sizing:border-box;',
-      '  background:var(--card-bg); border:1px solid var(--border-color);',
-      '  border-left:3px solid var(--blue); border-radius:6px;',
-      '  padding:6px 12px; font-size:12px; line-height:1.45;',
-      '  box-shadow:0 -2px 12px rgba(0,0,0,.18); color:var(--text-primary);',
-      '}',
-      '.qwbar-head { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }',
-      '.qwbar-txt { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }',
-      '.qwbar-caret { flex-shrink:0; opacity:.5; font-size:11px; }',
-      '.qwbar-close { flex-shrink:0; cursor:pointer; opacity:.4; font-size:14px; line-height:1; padding:2px; }',
-      '.qwbar-close:hover { opacity:1; }',
-      '.qwbar-rows { display:flex; flex-direction:column; gap:5px; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border-color); }',
-      '.qwbar-row { display:flex; align-items:center; gap:8px; }',
-      '.qwbar-row-txt { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-secondary); }',
-      '.qwbar-row-dur { flex-shrink:0; font-variant-numeric:tabular-nums; color:var(--text-secondary); }',
-      '.qwbar-row-stop { flex-shrink:0; padding:1px 8px; font-size:12px; cursor:pointer;',
-      '  border:1px solid var(--border-color); border-radius:4px;',
-      '  background:var(--card-bg); color:var(--text-primary); }',
-      '.qwbar-row-stop:hover { background:var(--border-color); }',
-      '.qwbar-row-stop:disabled { opacity:.5; cursor:default; }',
       '.qiioast-hidden { display:none !important; }',
     ].join('\n');
     document.head.appendChild(s);
@@ -249,152 +226,13 @@
 
   function _updateVisibility() {
     if (!container) return;
-    // waitBar 计入容器可见性（仅它存在时容器也必须显示）
-    var n = Object.keys(_tasks).length + ((_wbVisibleNow() && Object.keys(_wb).length) ? 1 : 0);
+    var n = Object.keys(_tasks).length;
     container.style.display = n > 0 ? 'flex' : 'none';
     _updateCollapse();
   }
 
-  // ═══ waitBar — 聚合等待细条（2026-10-01 定案）═══
-  // 语义：N 个楼层等待上游 → 只出一条 ~30px 细条（聚合零占，不再 N 卡堆角）；点开才展明细
-  //（逐行 ■ 停止 = 真停该楼层）；✕ = 本轮静默（已列条目不再显示；出现新的等待楼层才再提示）；
-  // 条目 15s 无刷新自动清（iframe 重载兜底）；条目只注册 = 行文本由调用方本地化后传入。
-  var _wb = {};          // key -> { text, durS, note, onStop, muted, ts }
-  var _wbRowEls = {};    // key -> row element
-  var _wbEl = null;
-  var _wbExpanded = false;
-  var _wbSweep = null;
-  var WB_STALE_MS = 15000;
-
   function _wbi(key, fb, params) {
     try { return window._i ? window._i(key, fb, params) : fb; } catch (_) { return fb; }
-  }
-
-  function _wbDurText(s) {
-    s = Math.max(0, Math.floor(s || 0));
-    var m = Math.floor(s / 60);
-    return m + 'm' + (s % 60 < 10 ? '0' : '') + (s % 60);
-  }
-
-  function _wbVisibleNow() {
-    var ks = Object.keys(_wb);
-    for (var i = 0; i < ks.length; i++) { if (!_wb[ks[i]].muted) return true; }
-    return false;
-  }
-
-  function _wbEnsureEl() {
-    if (_wbEl) return _wbEl;
-    ensureContainer();
-    injectStyle();
-    var el = document.createElement('div');
-    el.className = 'qwbar';
-    el.innerHTML = [
-      '<div class="qwbar-head">',
-      '  <span class="qwbar-txt"></span>',
-      '  <span class="qwbar-caret"></span>',
-      '  <span class="qwbar-close">\u2715</span>',
-      '</div>',
-      '<div class="qwbar-rows"></div>',
-    ].join('');
-    el.querySelector('.qwbar-close').addEventListener('click', function (e) {
-      e.stopPropagation();
-      // 本轮静默：现有条目全部标记 muted；新条目出现（muted=false）才会再提示
-      var ks = Object.keys(_wb);
-      for (var i = 0; i < ks.length; i++) _wb[ks[i]].muted = true;
-      _wbRender();
-    });
-    el.querySelector('.qwbar-head').addEventListener('click', function () {
-      _wbExpanded = !_wbExpanded;
-      _wbRender();
-    });
-    _wbEl = el;
-    return el;
-  }
-
-  function _wbRenderRows(rowsEl, ks) {
-    var seen = {};
-    for (var i = 0; i < ks.length; i++) {
-      var k = ks[i], e = _wb[k];
-      seen[k] = 1;
-      var row = _wbRowEls[k];
-      if (!row) {
-        row = document.createElement('div');
-        row.className = 'qwbar-row';
-        row.innerHTML = '<span class="qwbar-row-txt"></span><span class="qwbar-row-dur"></span><button type="button" class="qwbar-row-stop"></button>';
-        (function (key) {
-          row.querySelector('.qwbar-row-stop').addEventListener('click', function (ev) {
-            ev.stopPropagation();
-            var ent = _wb[key];
-            if (!ent) return;
-            this.disabled = true;
-            var cb = ent.onStop;
-            ent.onStop = null;
-            try { if (typeof cb === 'function') cb(); } catch (_) { }
-          });
-        })(k);
-        _wbRowEls[k] = row;
-      }
-      row.querySelector('.qwbar-row-txt').textContent = e.text || '';
-      row.querySelector('.qwbar-row-dur').textContent = _wbDurText(e.durS);
-      row.querySelector('.qwbar-row-stop').textContent = _wbi('ai.gwWait.stop', '\u25A0 停止');
-      if (e.note) row.title = e.note; else row.removeAttribute('title');
-      rowsEl.appendChild(row);
-    }
-    Object.keys(_wbRowEls).forEach(function (k2) {
-      if (!seen[k2]) {
-        var r = _wbRowEls[k2];
-        if (r.parentNode) r.parentNode.removeChild(r);
-        delete _wbRowEls[k2];
-      }
-    });
-  }
-
-  function _wbRender() {
-    if (!container) return;
-    var ks = Object.keys(_wb);
-    var visible = ks.length > 0 && _wbVisibleNow();
-    if (!visible) {
-      if (_wbEl && _wbEl.parentNode) _wbEl.parentNode.removeChild(_wbEl);
-      if (!ks.length) {
-        _wbExpanded = false;
-        _wbRowEls = {};
-        if (_wbSweep) { clearInterval(_wbSweep); _wbSweep = null; }
-      }
-      _updateVisibility();
-      return;
-    }
-    var el = _wbEnsureEl();
-    if (el.parentNode !== container) container.appendChild(el);
-    var maxS = 0;
-    for (var i = 0; i < ks.length; i++) { var d = _wb[ks[i]].durS || 0; if (d > maxS) maxS = d; }
-    el.querySelector('.qwbar-txt').textContent = ks.length > 1
-      ? _wbi('ai.gwWait.barMulti', '\u23F3 {0} 个楼层等待上游 · 最长 {1}', { 0: ks.length, 1: _wbDurText(maxS) })
-      : _wbi('ai.gwWait.title', '\u23F3 上游无响应 {0}', { 0: _wbDurText(maxS) });
-    var caret = el.querySelector('.qwbar-caret');
-    caret.textContent = _wbExpanded ? '\u25BE' : '\u25B8';
-    caret.title = _wbExpanded ? _wbi('ai.gwWait.collapse', '收起') : _wbi('ai.gwWait.expand', '展开明细');
-    el.querySelector('.qwbar-close').title = _wbi('ai.gwWait.muteTip', '本次不再提示');
-    var rowsEl = el.querySelector('.qwbar-rows');
-    rowsEl.style.display = _wbExpanded ? '' : 'none';
-    if (_wbExpanded) _wbRenderRows(rowsEl, ks);
-    _updateVisibility();
-  }
-
-  function _wbKickSweep() {
-    if (_wbSweep) return;
-    _wbSweep = setInterval(function () {
-      var now = Date.now(), changed = false;
-      Object.keys(_wb).forEach(function (k) {
-        if (now - (_wb[k].ts || 0) > WB_STALE_MS) {
-          delete _wb[k];
-          var r = _wbRowEls[k];
-          if (r && r.parentNode) r.parentNode.removeChild(r);
-          delete _wbRowEls[k];
-          changed = true;
-        }
-      });
-      if (changed) _wbRender();
-    }, 5000);
   }
 
   window.qqqideIoast = {
@@ -449,30 +287,6 @@
     },
     remove: function (id) {
       _remove(id);
-    },
-    waitBar: {
-      set: function (key, opts) {
-        if (!key || !opts) return;
-        ensureContainer();
-        injectStyle();
-        var e = _wb[key];
-        if (!e) e = _wb[key] = { text: '', durS: 0, note: '', onStop: null, muted: false, ts: 0 };
-        if (opts.text != null) e.text = opts.text;
-        if (typeof opts.durS === 'number') e.durS = opts.durS;
-        if (opts.note != null) e.note = opts.note;
-        if (typeof opts.onStop === 'function') e.onStop = opts.onStop;
-        e.ts = Date.now();
-        _wbKickSweep();
-        _wbRender();
-      },
-      clear: function (key) {
-        if (!key || !_wb[key]) return;
-        delete _wb[key];
-        var r = _wbRowEls[key];
-        if (r && r.parentNode) r.parentNode.removeChild(r);
-        delete _wbRowEls[key];
-        _wbRender();
-      }
     }
   };
 })();

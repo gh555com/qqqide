@@ -300,83 +300,97 @@ async function initQuests() {
             questActiveId = _draftId;
         }
         // else: tryClaim 成功 → 本面板已原子持有，继续加载
-    }
-
-    if (questActiveId && !_isDraft(questActiveId)) {
-        // [silent] loading data for quest
-        _activeAgent = _getOrCreateAgent(questActiveId);
-        // ★ 清除 Ctrl+R 重载后 parent.__qqq_agentPool 中残留的旧 sending 态
-        //   否则 _restoreAgentFromStore 的守卫 (stopState==='sending') 会跳过恢复
-        if (_activeAgent._stopState !== 'idle') {
-            _activeAgent.setStopState('idle');
-            _activeAgent._streaming = false;
-            _activeAgent._floorCompletedCleanly = false;
-        }
-        await cardPool.switchTo(questActiveId);
-        // ★ 恢复 agent 全量状态（conversation + metadata）
-        await _restoreAgentFromStore(questActiveId, _activeAgent);
-
-        // ★ 绑定 _activeAiDiv — 与 switchQuest 一致（init 缺此 → 红框无锚点插入）
-        var _initCard = cardPool.getCard(questActiveId);
-        if (_initCard) {
-            var _initFloorNums = Object.keys(_initCard.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
-            for (var _ifi = 0; _ifi < _initFloorNums.length; _ifi++) {
-                var _ifDom = _initCard.floorDOM[_initFloorNums[_ifi]];
-                if (_ifDom && _ifDom.aiEl) {
-                    _activeAgent._activeAiDiv = _ifDom.aiEl;
-                    if (_activeAgent._floorTimerId) {
-                        clearInterval(_activeAgent._floorTimerId);
-                        _activeAgent._floorTimerId = null;
-                    }
-                    break;
-                }
-            }
-        }
-
-        // ★ V14: 数据驱动重建红框（_renderAllErrorBoxes 从 _questErrorState 全量渲染）
-        if (_activeAgent && _activeAgent._questErrorState && typeof _renderAllErrorBoxes === 'function') {
-            _renderAllErrorBoxes(_activeAgent);
-        }
-        // ★ V14: 重建粉色「继续」气泡（持久化到 _questErrorState 中，card 重建后 restore）
-        if (_activeAgent && _activeAgent._questErrorState) {
-            var _bubbleFloors = Object.keys(_activeAgent._questErrorState).map(Number).sort(function (a, b) { return a - b; });
-            for (var _bfi = 0; _bfi < _bubbleFloors.length; _bfi++) {
-                var _bfn = _bubbleFloors[_bfi];
-                var _bst = _activeAgent._questErrorState[_bfn];
-                if (!_bst || !_bst.bubbleText) continue;
-                var _bCard = cardPool && cardPool.getActive();
-                if (!_bCard || !_bCard.floorDOM || !_bCard.floorDOM[_bfn] || !_bCard.floorDOM[_bfn].aiEl) continue;
-                var _bubbleEl = addMessageEl('user', _bst.bubbleText);
-                if (_bubbleEl) {
-                    _bubbleEl._floor = _bfn;
-                    var _bAiEl = _bCard.floorDOM[_bfn].aiEl;
-                    if (_bAiEl && _bAiEl.parentNode) _bAiEl.parentNode.insertBefore(_bubbleEl, _bAiEl);
-                }
-            }
-        }
-
-        // ★ 刷新按钮状态（init 缺此 → restart 后 fatal 态按钮未被锁死且无视觉反馈）
-        if (typeof setStreaming === 'function') setStreaming(!!(_activeAgent && _activeAgent._streaming));
-
-        await restoreQuestUIState(questActiveId);
-        // ★ 延迟恢复滚动位置（等 DOM 布局完成后）
-        // 自动恢复标记：连接中断自愈 reload 后强制滚到底
-        var _forceBottom = false;
-        try { if (sessionStorage.getItem('__qqq_scroll_bottom') === '1') { _forceBottom = true; sessionStorage.removeItem('__qqq_scroll_bottom'); } } catch (_) { }
-        var _savedState = questUIStates[questActiveId];
-        if (_forceBottom) {
-            _scrollToBottomDeferred(true);
-        } else if (_savedState && typeof _savedState.scrollTop === 'number') {
-            _restoreScrollDeferred(_savedState.scrollTop);
-        } else {
-            _scrollToBottomDeferred(true);
-        }
-        renderQueueStrip();
-        // ★ 声明所有权（仅父注册表；quest.sq3 不再参与）
-        _parentClaimQuest(questActiveId);
-        _broadcast('owner-claimed', questActiveId);
-        updateCostDisplay();
-        updateCtxBtn();
+    }
+
+    if (questActiveId && !_isDraft(questActiveId)) {
+        // [silent] loading data for quest
+        // ★ 启动恢复蒙板 +「召回中」提示（与 switchQuest 共用同一套静态 DOM / 动画 / 令牌——零新建；
+        //   180ms 延迟露面快恢复零闪烁；finally 全路径收口；归属令牌让位手动切换不互抢）
+        var _srHintTok = _swHintArm(questActiveId);
+        var _srOverlay = document.getElementById('qqq-switch-overlay');
+        if (_srOverlay) _srOverlay.classList.add('show');
+        if ($messages) $messages.classList.add('qqq-switching');
+        try {
+            _activeAgent = _getOrCreateAgent(questActiveId);
+            // ★ 清除 Ctrl+R 重载后 parent.__qqq_agentPool 中残留的旧 sending 态
+            //   否则 _restoreAgentFromStore 的守卫 (stopState==='sending') 会跳过恢复
+            if (_activeAgent._stopState !== 'idle') {
+                _activeAgent.setStopState('idle');
+                _activeAgent._streaming = false;
+                _activeAgent._floorCompletedCleanly = false;
+            }
+            await cardPool.switchTo(questActiveId);
+            // ★ 恢复 agent 全量状态（conversation + metadata）
+            await _restoreAgentFromStore(questActiveId, _activeAgent);
+
+            // ★ 绑定 _activeAiDiv — 与 switchQuest 一致（init 缺此 → 红框无锚点插入）
+            var _initCard = cardPool.getCard(questActiveId);
+            if (_initCard) {
+                var _initFloorNums = Object.keys(_initCard.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
+                for (var _ifi = 0; _ifi < _initFloorNums.length; _ifi++) {
+                    var _ifDom = _initCard.floorDOM[_initFloorNums[_ifi]];
+                    if (_ifDom && _ifDom.aiEl) {
+                        _activeAgent._activeAiDiv = _ifDom.aiEl;
+                        if (_activeAgent._floorTimerId) {
+                            clearInterval(_activeAgent._floorTimerId);
+                            _activeAgent._floorTimerId = null;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // ★ V14: 数据驱动重建红框（_renderAllErrorBoxes 从 _questErrorState 全量渲染）
+            if (_activeAgent && _activeAgent._questErrorState && typeof _renderAllErrorBoxes === 'function') {
+                _renderAllErrorBoxes(_activeAgent);
+            }
+            // ★ V14: 重建粉色「继续」气泡（持久化到 _questErrorState 中，card 重建后 restore）
+            if (_activeAgent && _activeAgent._questErrorState) {
+                var _bubbleFloors = Object.keys(_activeAgent._questErrorState).map(Number).sort(function (a, b) { return a - b; });
+                for (var _bfi = 0; _bfi < _bubbleFloors.length; _bfi++) {
+                    var _bfn = _bubbleFloors[_bfi];
+                    var _bst = _activeAgent._questErrorState[_bfn];
+                    if (!_bst || !_bst.bubbleText) continue;
+                    var _bCard = cardPool && cardPool.getActive();
+                    if (!_bCard || !_bCard.floorDOM || !_bCard.floorDOM[_bfn] || !_bCard.floorDOM[_bfn].aiEl) continue;
+                    var _bubbleEl = addMessageEl('user', _bst.bubbleText);
+                    if (_bubbleEl) {
+                        _bubbleEl._floor = _bfn;
+                        var _bAiEl = _bCard.floorDOM[_bfn].aiEl;
+                        if (_bAiEl && _bAiEl.parentNode) _bAiEl.parentNode.insertBefore(_bubbleEl, _bAiEl);
+                    }
+                }
+            }
+
+            // ★ 刷新按钮状态（init 缺此 → restart 后 fatal 态按钮未被锁死且无视觉反馈）
+            if (typeof setStreaming === 'function') setStreaming(!!(_activeAgent && _activeAgent._streaming));
+
+            await restoreQuestUIState(questActiveId);
+            // ★ 延迟恢复滚动位置（等 DOM 布局完成后）
+            // 自动恢复标记：连接中断自愈 reload 后强制滚到底
+            var _forceBottom = false;
+            try { if (sessionStorage.getItem('__qqq_scroll_bottom') === '1') { _forceBottom = true; sessionStorage.removeItem('__qqq_scroll_bottom'); } } catch (_) { }
+            var _savedState = questUIStates[questActiveId];
+            if (_forceBottom) {
+                _scrollToBottomDeferred(true);
+            } else if (_savedState && typeof _savedState.scrollTop === 'number') {
+                _restoreScrollDeferred(_savedState.scrollTop);
+            } else {
+                _scrollToBottomDeferred(true);
+            }
+            renderQueueStrip();
+            // ★ 声明所有权（仅父注册表；quest.sq3 不再参与）
+            _parentClaimQuest(questActiveId);
+            _broadcast('owner-claimed', questActiveId);
+            updateCostDisplay();
+            updateCtxBtn();
+        } finally {
+            _swHintHide(_srHintTok);
+            if (!_switching) {
+                if (_srOverlay) _srOverlay.classList.remove('show');
+                if ($messages) $messages.classList.remove('qqq-switching');
+            }
+        }
     } else {
         // draft 或无活跃 quest：清零上下文显示，不发起 DB 查询
         _activeAgent = null;

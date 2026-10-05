@@ -257,6 +257,28 @@ window.__qqqMdImgFail = function (img) {
   }
 };
 
+// ═══ 悬浮预览翻页序列（本文档内图片按阅读顺序）——随 open-image 透传给主窗口悬浮预览层 ═══
+function _imgNavOf(img) {
+  try {
+    var imgs = $root.querySelectorAll('.img-wrap > img');
+    var list = [], idx = -1;
+    for (var i = 0; i < imgs.length; i++) {
+      var im = imgs[i];
+      if (!im.src) continue;
+      if (im === img) idx = list.length;
+      list.push({ src: im.src, localPath: im.getAttribute('data-local-path') || null });
+    }
+    return (idx >= 0 && list.length > 1) ? { list: list, index: idx } : null;
+  } catch (_) { return null; }
+}
+function _ovOpenImage(img) {
+  if (!img || !img.src) return;
+  var m = { type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.getAttribute('data-local-path') || null };
+  var nav = _imgNavOf(img);
+  if (nav) m.nav = nav;
+  parent.postMessage(m, '*');
+}
+
 // ═══ 点击委托（View / Roam / 图片 / 链接；表格与图片走 qqqide-overlay 标准消息 → 主窗口悬浮预览层）═══
 $root.addEventListener('click', function (e) {
   var t = e.target;
@@ -276,7 +298,7 @@ $root.addEventListener('click', function (e) {
       if (wrap.classList.contains('img-wrap')) {
         var img1 = wrap.querySelector(':scope > img');
         if (img1 && img1.src) {
-          parent.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: img1.src, localPath: img1.getAttribute('data-local-path') || null }, '*');
+          _ovOpenImage(img1);
         }
       } else {
         var pre = wrap.querySelector(':scope > pre');
@@ -290,7 +312,7 @@ $root.addEventListener('click', function (e) {
     return;
   }
   if (t.tagName === 'IMG' && t.closest('.img-wrap')) {
-    parent.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: t.src, localPath: t.getAttribute('data-local-path') || null }, '*');
+    _ovOpenImage(t);
     return;
   }
   var a = t.closest('a');

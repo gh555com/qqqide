@@ -93,6 +93,10 @@
     "overlay": {
       "copy": "复制到剪贴板",
       "copied": "已复制",
+      "prevImage": "上一张",
+      "nextImage": "下一张",
+      "skipMissing": "已跳过 {0} 张无法显示的图片",
+      "noMoreImages": "没有更多可显示的图片了",
       "copyFailed": "复制失败",
       "zoomIn": "放大",
       "zoomOut": "缩小",
@@ -856,16 +860,8 @@
       "lockedDecrypt": "密钥无法在本机解密（可能来自其他设备），请重新输入"
     },
     "gwWait": {
-      "title": "⏳ 上游无响应 {0}",
-      "rowLabel": "{0} 第 {1} 层",
-      "barMulti": "⏳ {0} 个楼层等待上游响应 · 最长 {1}",
-      "stop": "■ 停止",
-      "expand": "展开明细",
       "collapse": "收起",
       "taskCapsule": "⏳ {0} 个任务进行中",
-      "muteTip": "本次不再提示（出现新的等待楼层会再提示）",
-      "serverAck": "服务器确认等待中",
-      "firstToken": "等待首字输出",
       "hangCount": "（第 {0} 次）",
       "hangBroken": "网络通道疑似损坏{0}，已自动尝试全部线路。楼层已保存，建议 Ctrl+R 刷新窗口后点击「继续任务」"
     },

@@ -384,6 +384,16 @@
 	(function() {
 		var scope = 'iframe:roam';
 		document.addEventListener('keydown', function(e) {
+			// ★ 悬浮预览层打开期间（主窗口广播 qqqide-overlay-state）：Roam 一切快捷键整体让路——
+			//   唯一例外 q/w 反向转发给预览层翻页（与层内键帽同源）；Ctrl/Meta 标准剪贴板组合不吞。
+			if (window.__qqqOvOpen) {
+				var _ovk = (e.key || '').toLowerCase();
+				if ((_ovk === 'q' || _ovk === 'w') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+					try { parent.postMessage({ type: 'qqqide-overlay-nav', dir: _ovk === 'q' ? -1 : 1 }, '*'); } catch (_) { }
+				}
+				if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); }
+				return;
+			}
 			// 构建加速器字符串（与 key-hook.js canonAccel 一致）
 			var parts = [];
 			if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
@@ -418,6 +428,8 @@
 
 	// ---- Listen for parent → iframe cmd dispatch ----
 	window.addEventListener('message', function(e) {
+		// ★ 悬浮预览层状态（主窗口广播）：层打开期间 Roam 键盘整体让路（详上方 KeyHook 段）
+		if (e.data && e.data.type === 'qqqide-overlay-state') { window.__qqqOvOpen = !!e.data.open; return; }
 		if (!e.data || e.data.type !== 'qqq-roam-cmd') return;
 		var cmd = e.data.cmd;
 		// Best-effort: dispatch as window event so feature handlers below can react.

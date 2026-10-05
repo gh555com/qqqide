@@ -83,6 +83,12 @@
             "kind": "zip"
           }
         ],
+        "linux-x64": [
+          {
+            "url": "https://gh555.com/dl/qqqide-up/python-linux-x64.zip",
+            "kind": "zip"
+          }
+        ],
         "darwin-arm64": [
           {
             "url": "https://gh555.com/dl/qqqide-up/python-darwin-arm64.zip",

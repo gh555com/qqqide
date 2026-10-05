@@ -25,6 +25,7 @@ import { safeStorage } from 'electron';
 import { APP_VERSION } from './version';
 import { getDataDir, getAppRoot } from './portable-paths';
 import { getAuthPhone } from './auth-state';
+import { mainWindowShownResolved } from './ipc-secure';   // ★ 钥匙串调用窗口门（linux/mac）
 import { getComponentBin } from './component-checker';
 import { vigSnapshot, vigSet, winthereExternal } from './vig';
 import { crashNetSummary } from './crash-net';
@@ -180,9 +181,10 @@ function readDoerID(): string {
     const cached = getAuthPhone();
     if (cached && /^\d{7,20}$/.test(cached)) return cached;
 
-    // ★ 第二优先：safeStorage 直接解密（兜底）
+    // ★ 第二优先：safeStorage 直接解密（兜底；★ 2026-10-05: 窗口未亮相前禁碰钥匙串——
+    //   linux keyring / mac 钥匙串的同步调用可能冻结主进程，此时跳过走 phone.txt 兜底）
     try {
-        if (safeStorage.isEncryptionAvailable()) {
+        if (mainWindowShownResolved() && safeStorage.isEncryptionAvailable()) {
             const fp = authFilePath();
             if (fs.existsSync(fp)) {
                 const encrypted = fs.readFileSync(fp);

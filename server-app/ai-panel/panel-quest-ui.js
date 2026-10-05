@@ -4,14 +4,15 @@
 // \u2550\u2550\u2550 panel-quest-ui.js \u2550\u2550\u2550
 // Quest UI: switchQuest, CRUD, cost/balance, ctx button, guide button, queue system
 
-// ═══ quest 切换提示「召回中」（唯一实现） ═══
-//   设计：切换蒙板期面板正中胶囊 [q{n}] [任务名] [● 召回中]（脉冲点示活）
+// ═══ quest 召回提示「召回中」（唯一实现） ═══
+//   设计：蒙板期面板正中胶囊 [q{n}] [任务名] [● 召回中]（脉冲点示活）
 //   · 延迟 180ms 露面——数据已驻留的快切（<180ms 完成）零闪烁；大型任务（数百层加载 + 重建 DOM）立等可见
 //   · 零性能开销：静态 DOM 预置（index.html）+ 纯 opacity 动画（合成层不触发布局）；
-//     quest 身份从共享索引 parent.__qqq_questIndex 同步零 IO 取（未命中才异步补名，回执校验防串名）
-//   · 生命周期 = switchQuest 蒙板（arm 于蒙板亮起 / hide 于蒙板熄灭与早退路径）；禁第二套切换提示
+//     quest 身份从共享索引 parent.__qqq_questIndex 同步零 IO 取（未命中才异步补名，令牌回执防串名）
+//   · 生命周期 = 蒙板期：switchQuest（arm 于蒙板亮起 / hide 于蒙板熄灭与早退路径）+
+//     initQuests 启动恢复（arm 于恢复开始 / finally 全路径收口）；归属令牌互斥——禁第二套提示
 var _swHintTimer = null;
-var _swHintQuest = null;
+var _swHintToken = 0;  // ★ 归属令牌：后 arm 者接管——带票 hide 只收自己那一份（启动恢复 vs 手动切换互不踩）
 function _swHintFill(el, info) {
     if (!el) return;
     var qEl = el.querySelector('.sw-hint-q');
@@ -31,8 +32,8 @@ function _swHintFill(el, info) {
 }
 function _swHintArm(questId) {
     var el = document.getElementById('qqq-switch-hint');
-    if (!el) return;
-    _swHintQuest = questId;
+    if (!el) return 0;
+    var tok = ++_swHintToken;
     var info = null;
     try {
         var arr = parent && parent.__qqq_questIndex;
@@ -44,10 +45,10 @@ function _swHintArm(questId) {
     } catch (_) { }
     _swHintFill(el, info);
     if (!info && typeof questStore !== 'undefined' && questStore) {
-        // 共享索引未命中 → 异步补名（回执 = 当前提示目标仍为该 quest，防切走/重开后串名）
+        // 共享索引未命中 → 异步补名（回执 = 令牌仍属本次，防切走/重开后串名）
         try {
             questStore.list().then(function (list) {
-                if (_swHintQuest !== questId) return;
+                if (tok !== _swHintToken) return;
                 var q = null;
                 for (var j = 0; list && j < list.length; j++) {
                     if (list[j] && list[j].id === questId) { q = list[j]; break; }
@@ -60,11 +61,15 @@ function _swHintArm(questId) {
     clearTimeout(_swHintTimer);
     _swHintTimer = setTimeout(function () {
         _swHintTimer = null;
+        if (tok !== _swHintToken) return;   // 已被接管/收口 → 不再露面
         el.classList.add('on');
     }, 180);
+    return tok;
 }
-function _swHintHide() {
-    _swHintQuest = null;
+function _swHintHide(tok) {
+    // 带票：已被更新者接管 → 不动（后发操作拥有提示权）；无参：强制收（切换早退 / 收尾）
+    if (tok != null && tok !== _swHintToken) return;
+    _swHintToken++;
     if (_swHintTimer) { clearTimeout(_swHintTimer); _swHintTimer = null; }
     var el = document.getElementById('qqq-switch-hint');
     if (el) el.classList.remove('on');

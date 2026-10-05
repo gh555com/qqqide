@@ -6,8 +6,8 @@
 
 // ★ 全局变量已移除：_floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv
 //   全部移入 agent 对象（agent._floorTimerId / agent._floorStartPerf 等）
-//   保留：_lastPieTiming（canvas 去重缓存，无关 agent）、_autoSaveTimer（面板级）
-var _lastPieTiming = null;
+//   保留：_autoSaveTimer（面板级）
+//   饼图去重缓存已改为 per-canvas（canvas._drawn）——模块级单缓存会跨 canvas 互相误跳过
 var _autoSaveTimer = null;
 
 // ── 保存单个 agent 的当前楼层到 all.json（auto-save + beforeunload 共用）──
@@ -100,23 +100,64 @@ function _hidePieTooltip() {
     _postToHost({ type: 'qqq-pie-tooltip', action: 'hide' });
 }
 
+// ── 悬停第二行时间文本（饼图 hover）──
+//   已完结 → 完结时刻（年月日 + 时分秒，_floorDoneApprox 为近似值时前缀 ≈）
+//   未完结 → AI 最近一次文字变化时刻（仅时分秒）；尚无任何文字变化时用楼层开始时刻兜底
+//   数据源：_floorDoneTs（终结时刻）/ _floorTextTs（正文区文字变化时刻）/ _floorStartMs（楼层开始时刻）
+function _floorTipTimeText(aiDiv) {
+    if (!aiDiv) return '';
+    var _done = aiDiv._floorDoneTs || 0;
+    if (_done > 0) {
+        if (typeof _fmtDateClock !== 'function') return '';
+        return (aiDiv._floorDoneApprox ? '\u2248' : '') + _fmtDateClock(new Date(_done));
+    }
+    var _live = aiDiv._floorTextTs || aiDiv._floorStartMs || 0;
+    if (_live > 0 && typeof _fmtClock === 'function') return _fmtClock(new Date(_live));
+    return '';
+}
+
+// ── 实时分段（饼图 + 悬停第一行唯一数据源）──
+//   累计值（轮次结束入账的 networkMs/aiMs）+ 当前进行中阶段「尚未入账」的时长：
+//   阶段 = ag._livePhase { k: 'network' | 'ai' | 'other', t0 }，由 AI 侧打点
+//     （请求发出 → network；首字节到达 → ai；工具执行/本地处理 → other）
+//   live 恒被「未入账余量」封印：pend = elapsed - n - d，live = min(pend, now - t0)
+//   → 阶段打点漏挂/异常时自动退回旧行为（余量全落 other），绝不虚增分段、绝不越过 elapsed
+//   → 完结楼无打点（stopFloorTimer 清零）→ 返回纯累计值 = 定格
+function _liveSegs(ag, elapsed) {
+    var at = ag && ag._floorTiming;
+    var n = (at && at.networkMs) || 0;
+    var d = (at && at.aiMs) || 0;
+    var live = 0;
+    var pend = elapsed - n - d;
+    var ph = ag && ag._livePhase;
+    if (ph && pend > 0) {
+        var dt = Date.now() - (ph.t0 || 0);
+        if (dt > 0) live = Math.min(pend, dt);
+    }
+    if (live > 0) {
+        if (ph.k === 'ai') d += live;
+        else if (ph.k === 'network') n += live;
+    }
+    return { networkMs: n, aiMs: d, otherMs: 0 };
+}
+
 function drawPie(canvas, timing) {
-    if (_lastPieTiming && timing &&
-        _lastPieTiming.networkMs === timing.networkMs &&
-        _lastPieTiming.aiMs === timing.aiMs &&
-        _lastPieTiming.otherMs === timing.otherMs) return;
-    _lastPieTiming = timing ? { networkMs: timing.networkMs, aiMs: timing.aiMs, otherMs: timing.otherMs } : null;
+    var n = timing.networkMs || 0;
+    var d = timing.aiMs || 0;
+    var total = timing.totalMs;
+    // ★ 防御（2026-09-06）：NaN/负/0 totalMs → 回落真实分段和（跨轴/损坏 record 曾致灰饼假象）
+    if (!(total > 0)) total = (n + d + (timing.otherMs || 0));
+    var t = Math.max(0, total - n - d);
+    // ★ 懒重绘（per-canvas，2026-10-05）：按「最终落屏值」四元组去重——余量段随 elapsed 每秒增长，
+    //   活楼必每秒重绘（饼图 + 悬停第一行靠它实时跳动）；完结楼四值冻结 → 恒跳过，零无效重绘。
+    //   旧实现：模块级单缓存 + 只比入参三元组（不含 total）→ 活楼每秒全等被 early-return（饼图与悬停数字冻结一整轮）。
+    var _pv = canvas._drawn;
+    if (_pv && _pv.networkMs === n && _pv.aiMs === d && _pv.otherMs === t && _pv.totalMs === total) return;
+    canvas._drawn = { networkMs: n, aiMs: d, otherMs: t, totalMs: total };
     var ctx = canvas.getContext('2d');
     var w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    var n = timing.networkMs || 0;
-    var d = timing.aiMs || 0;
-    var t = timing.otherMs || 0;
-    var total = timing.totalMs;
-    // ★ 防御（2026-09-06）：NaN/负/0 totalMs → 回落真实分段和（跨轴/损坏 record 曾致灰饼假象）
-    if (!(total > 0)) total = (n + d + t);
     if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 3, 0, Math.PI * 2); ctx.fill(); canvas._segments = null; return; }
-    t = Math.max(0, total - n - d);
     var parts = [
         { val: d, color: '#859900', label: 'AI', key: 'ai' },
         { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
@@ -301,28 +342,69 @@ function _initClockBlock(aiDiv) {
     });
     clockCost.style.cursor = 'pointer';
     var canvas = aiDiv._clockCanvas;
-    canvas.addEventListener('mousemove', function (e) {
-        if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
+    // ★ 楼层文字变化时刻（悬停第二行数据源）：本楼层 AI 正文区（_contentWrap）内任何可见文字变化 → 记下时刻。
+    //   结构增删（house 分隔条 / 空容器 / 图片框）不含文字 → 不算；电子钟走秒 / A1 计数 / A4 块在正文区之外 → 不算。
+    //   观察挂 aiDiv 且按 _contentWrap 归属过滤：草稿晋升等祖先迁移不丢观察。
+    if (!aiDiv._textWatch && aiDiv._contentWrap) {
+        try {
+            var _cwRef = aiDiv._contentWrap;
+            aiDiv._textWatch = new MutationObserver(function (recs) {
+                for (var _ri = 0; _ri < recs.length; _ri++) {
+                    var _tg = recs[_ri].target;
+                    if (_tg && _cwRef.contains(_tg)) { aiDiv._floorTextTs = Date.now(); _tooltipPoke(); return; }
+                }
+            });
+            aiDiv._textWatch.observe(aiDiv, { childList: true, subtree: true, characterData: true });
+        } catch (_) { }
+    }
+    var _tipOn = false, _tipX = 0, _tipY = 0, _tipTimer = null;
+    function _tooltipHtml() {
         var parts = [
-            { key: 'ai', color: '#859900', label: 'AI' },
-            { key: 'network', color: '#cb4b16', label: 'Net' },
-            { key: 'other', color: '#e6b800', label: 'Other' }
+            { key: 'ai', color: '#859900' },
+            { key: 'network', color: '#cb4b16' },
+            { key: 'other', color: '#e6b800' }
         ];
-        var segs = canvas._segments;
+        var segs = canvas._segments || [];
         var map = {};
         for (var si = 0; si < segs.length; si++) { map[segs[si].key] = segs[si]; }
-        var html = '';
+        var row = '';
         for (var pi = 0; pi < parts.length; pi++) {
             var p = parts[pi];
             var s = map[p.key];
             var ms = s ? s.ms : 0;
-            html += '<span style="display:inline-flex;align-items:center;gap:8px;margin-right:16px">'
+            row += '<span style="display:inline-flex;align-items:center;gap:8px;margin-right:16px">'
                 + '<svg width="20" height="20" style="flex-shrink:0"><circle cx="10" cy="10" r="9" fill="' + p.color + '"/></svg>'
                 + '<span style="color:#fff">' + Math.round(ms / 1000) + 's</span></span>';
         }
-        _showPieTooltip(html, e.clientX, e.clientY);
+        var _t2 = _floorTipTimeText(aiDiv);
+        return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+            + '<div style="display:inline-flex;align-items:center">' + row + '</div>'
+            + (_t2 ? '<div style="font-size:16px;color:#b8b8b8;letter-spacing:1px">' + _t2 + '</div>' : '')
+            + '</div>';
+    }
+    function _tooltipPost() { _showPieTooltip(_tooltipHtml(), _tipX, _tipY); }
+    // 文字变化 → 立即刷新（不等心跳 / 鼠标移动）
+    function _tooltipPoke() { if (_tipOn) _tooltipPost(); }
+    function _tooltipTickerStart() {
+        _tipOn = true;
+        if (_tipTimer) return;
+        _tipTimer = setInterval(function () {
+            // 卡片被裁/重建（鼠标没机会 mouseleave）→ 自灭，不留幽灵框
+            if (!aiDiv._clockBlock || !aiDiv._clockBlock.isConnected) { _tooltipEnd(); _hidePieTooltip(); return; }
+            if (_tipOn) _tooltipPost();   // 心跳：未完结→完结 的换行瞬间不漏（那一刻可能无文字变化）
+        }, 1000);
+    }
+    function _tooltipEnd() {
+        _tipOn = false;
+        if (_tipTimer) { clearInterval(_tipTimer); _tipTimer = null; }
+    }
+    canvas.addEventListener('mousemove', function (e) {
+        if (!canvas._segments || !canvas._total) { _hidePieTooltip(); _tooltipEnd(); return; }
+        _tipX = e.clientX; _tipY = e.clientY;
+        _tooltipPost();
+        _tooltipTickerStart();
     });
-    canvas.addEventListener('mouseleave', function () { _hidePieTooltip(); });
+    canvas.addEventListener('mouseleave', function () { _hidePieTooltip(); _tooltipEnd(); });
 }
 
 function startFloorTimer(aiDiv, ag, resume) {
@@ -336,6 +418,14 @@ function startFloorTimer(aiDiv, ag, resume) {
         ag._floorStartPerf = Date.now();
     }
     ag._floorCurrentTiming = null;
+    // ★ 悬停第二行时间态（详 _initClockBlock/_floorTipTimeText）：新楼/续建 = 未完态
+    //   （完结时刻复位）；起点 = 楼层开始时刻，文字一有变化由 _floorTextTs 接管
+    aiDiv._floorDoneTs = 0;
+    aiDiv._floorDoneApprox = false;
+    aiDiv._floorStartMs = ag._floorStartPerf || 0;
+    // ★ 实时分段阶段起点（详 _liveSegs / agent-gateway.js _livePhaseSet）：楼层起始 = 本地处理（other）
+    //   请求发出 / 首字节到达 / 工具执行 三处由 AI 侧改写
+    _livePhaseSet(ag, 'other');
     _initClockBlock(aiDiv);
     var clockMin = aiDiv._clockMin;
     var clockSec = aiDiv._clockSec;
@@ -389,10 +479,11 @@ function startFloorTimer(aiDiv, ag, resume) {
         var sec = totalS % 60;
         clockMin.textContent = min + 'm';
         clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-        var at = _ag._floorTiming;
-        var n = (at && at.networkMs) || 0;
-        var d = (at && at.aiMs) || 0;
-        var t = (at && at.otherMs) || 0;
+        // ★ 实时分段（详 _liveSegs）：累计 + 进行中阶段未入账时长 → 饼图与悬停第一行每秒自跳
+        var _seg = _liveSegs(_ag, elapsed);
+        var n = _seg.networkMs;
+        var d = _seg.aiMs;
+        var t = Math.max(0, elapsed - n - d);   // 余量段 = 未入账余量（工具/本地处理）——钟色 tool 判据
         if (!_ag._xPieShown && (n > 0 || d > 0 || t > 0)) { _ag._xPieShown = true; canvas.style.visibility = 'visible'; }
         if (!_ag._xPieShown) return;
         var state = 'ai';
@@ -455,13 +546,18 @@ function stopFloorTimer(timing, ag) {
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
     // ★ 幽灵钟令牌作废（2026-09-27）：本 realm 清不掉的跨 realm 钟，最迟 1s 内自行验令牌自停
     ag._clockToken = null;
+    // ★ 完结：最后一笔未入账阶段就地结算（中途叫停/停滞时在飞流式段不被吞 → 分段定格不回落），再清零
+    _livePhaseSet(ag, 'other');
+    ag._livePhase = null;
     ag._floorCurrentTiming = timing;
     // ★ wall-clock 基准（2026-09-06）：与 startFloorTimer 同轴；从未 start（perf=0）→ 0，防 epoch/NaN 写盘
-    var elapsed = (ag._floorStartPerf > 0) ? Math.max(0, Date.now() - ag._floorStartPerf) : 0;
+    var _doneMs = Date.now();   // ★ 尘埃落定时刻（悬停第二行 + timing 记录同源同刻）
+    var elapsed = (ag._floorStartPerf > 0) ? Math.max(0, _doneMs - ag._floorStartPerf) : 0;
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
     var aiDiv = ag._activeAiDiv;
+    if (aiDiv) { aiDiv._floorDoneTs = _doneMs; aiDiv._floorDoneApprox = false; }   // ★ 完结时刻 → 悬停第二行转「年月日+时分秒」
     if (aiDiv && aiDiv._clockBlock) {
         aiDiv._clockBlock.className = 'msg-ai-clock';  // ★ 电子钟变黑 = 尘埃落定 → 音效权威触发点
     }
@@ -481,7 +577,7 @@ function stopFloorTimer(timing, ag) {
         networkMs: (timing && timing.networkMs) || 0,
         aiMs: (timing && timing.aiMs) || 0,
         otherMs: (timing && timing.otherMs) || 0,
-        finishedAt: new Date().toISOString()
+        finishedAt: new Date(_doneMs).toISOString()
     };
     ag._floorTimings = ag._floorTimings || [];
     ag._floorTimings.push(record);
@@ -831,10 +927,10 @@ function _tickCometClocks() {
         var fts = Math.floor(fela / 1000);
         if (aid._clockMin) aid._clockMin.textContent = Math.floor(fts / 60) + 'm';
         if (aid._clockSec) aid._clockSec.textContent = ':' + (fts % 60 < 10 ? '0' : '') + (fts % 60) + 's';
-        var at2 = aj._floorTiming;
-        var n2 = (at2 && at2.networkMs) || 0;
-        var d2 = (at2 && at2.aiMs) || 0;
-        var t2 = (at2 && at2.otherMs) || 0;
+        var _seg2 = _liveSegs(aj, fela);
+        var n2 = _seg2.networkMs;
+        var d2 = _seg2.aiMs;
+        var t2 = Math.max(0, fela - n2 - d2);
         if (!aj._xPieShown && (n2 > 0 || d2 > 0 || t2 > 0)) {
             aj._xPieShown = true;
             if (aid._clockCanvas) aid._clockCanvas.style.visibility = 'visible';

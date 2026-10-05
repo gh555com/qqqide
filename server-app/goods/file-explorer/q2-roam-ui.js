@@ -326,6 +326,7 @@ async function updateDriveDisplay() {
 
 	// Keys 1/2: scroll to top/bottom (split jump based on midpoint)
 	document.addEventListener('keydown', function(e) {
+		if (window.__qqqOvOpen) return;   // 悬浮预览层打开：Roam 快捷键整体让路（唯一例外 q/w 由 boot 转发层内翻页）
 		var active = document.activeElement;
 		if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
 		var maxScroll = container.scrollHeight - container.clientHeight;
@@ -366,6 +367,7 @@ async function updateDriveDisplay() {
 		return tag === 'input' || tag === 'textarea' || a.isContentEditable || (a.classList && a.classList.contains('rename-input'));
 	}
 	document.addEventListener('keydown', function(e) {
+		if (window.__qqqOvOpen) return;   // 悬浮预览层打开：Roam 快捷键整体让路
 		if (isInputActive()) return;
 		var k = (e.key || '').toLowerCase();
 

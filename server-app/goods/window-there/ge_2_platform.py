@@ -325,14 +325,30 @@ elif sys.platform == 'linux':
             if self.display_server == "Wayland":
                 # 尝试检测是否支持XWayland
                 if self._check_xwayland_support():
-                    show_message_callback(
-                        _t('goods.winthere.titleLimitedSupport', 'kqs 窗口布局 - 有限支持'),
-                        _t('goods.winthere.waylandLimited',
-                           "检测到 Wayland 显示服务器，但检测到 XWayland 支持。\n\n"
-                           "程序将以有限模式运行，仅支持 XWayland 应用程序。\n\n"
-                           "对于原生 Wayland 应用程序，窗口管理功能可能不可用。"),
-                        "ok"
-                    )
+                    # ★ 仅首次提示（幂等标记）——之后静默进入 XWayland 模式（2026-10-05：
+                    #   每次启动弹窗属噪音；有限性只影响「原生 Wayland 应用」，提示一次足够）
+                    import os as _os
+                    _mark = _os.path.join(_os.path.expanduser("~"), ".local", "share", "window-there", ".wayland-warned")
+                    _warned = False
+                    try:
+                        _warned = _os.path.exists(_mark)
+                    except Exception:
+                        _warned = False
+                    if not _warned:
+                        show_message_callback(
+                            _t('goods.winthere.titleLimitedSupport', 'kqs 窗口布局 - 有限支持'),
+                            _t('goods.winthere.waylandLimited',
+                               "检测到 Wayland 显示服务器，但检测到 XWayland 支持。\n\n"
+                               "程序将以有限模式运行，仅支持 XWayland 应用程序。\n\n"
+                               "对于原生 Wayland 应用程序，窗口管理功能可能不可用。"),
+                            "ok"
+                        )
+                        try:
+                            _os.makedirs(_os.path.dirname(_mark), exist_ok=True)
+                            with open(_mark, "w", encoding="utf-8") as _f:
+                                _f.write("1")
+                        except Exception:
+                            pass
                     self.wayland_mode = "XWayland"
                     return True
                 else:
@@ -677,6 +693,7 @@ elif sys.platform == 'linux':
             """
             try:
                 import Xlib.display
+                from Xlib import X
 
                 # 连接到X11显示
                 display = Xlib.display.Display()
@@ -686,10 +703,25 @@ elif sys.platform == 'linux':
                 # 获取键入焦点窗口
                 focused_window = display.get_input_focus().focus
 
-                if focused_window == X.NONE:
+                if focused_window is None:
+                    return None
+                fw_id = focused_window.id if hasattr(focused_window, 'id') else int(focused_window)
+                if fw_id == X.NONE or fw_id == 0:
                     return None
 
-                return focused_window.id
+                # 焦点可能是子窗口 → 上溯到根窗口的直接子窗（toplevel）——与 Windows 句柄语义对齐
+                # （2026-10-05 修复：原实现引用 X.NONE 但函数内未导入 X → 恒 NameError →
+                #   活跃窗口恒 None → 3W 防误触 / 选择器自动收起 / 3Shift 全链失效 + 日志刷屏）
+                try:
+                    win = display.create_resource_object('window', fw_id)
+                    for _ in range(32):
+                        parent = win.query_tree().parent
+                        if parent is None or parent.id == 0 or parent.id == root.id:
+                            break
+                        win = parent
+                    return win.id
+                except Exception:
+                    return fw_id
 
             except ImportError:
                 print("错误: 需要安装 python-xlib 库")

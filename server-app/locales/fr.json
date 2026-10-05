@@ -91,6 +91,10 @@
         "overlay": {
             "copy": "Copier dans le presse-papiers",
             "copied": "Copié",
+            "prevImage": "Précédente",
+            "nextImage": "Suivante",
+            "skipMissing": "{0} image(s) impossible(s) à afficher ont été ignorées",
+            "noMoreImages": "Aucune autre image à afficher",
             "copyFailed": "Échec de la copie",
             "zoomIn": "Zoom avant",
             "zoomOut": "Zoom arrière",
@@ -845,16 +849,8 @@
             "lockedDecrypt": "La clé ne peut pas être déchiffrée sur cet appareil (elle provient peut-être d'un autre appareil), veuillez la saisir à nouveau"
         },
         "gwWait": {
-            "title": "⏳ Pas de réponse en amont {0}",
-            "rowLabel": "{0} Étage {1}",
-            "barMulti": "⏳ {0} étages en attente de réponse amont · Durée max. {1}",
-            "stop": "■ Arrêter",
-            "expand": "Afficher les détails",
             "collapse": "Réduire",
             "taskCapsule": "⏳ {0} tâche(s) en cours",
-            "muteTip": "Ne plus afficher cette alerte pour cette session (les nouveaux étages en attente déclencheront une nouvelle alerte)",
-            "serverAck": "En attente de confirmation du serveur",
-            "firstToken": "En attente du premier jeton",
             "hangCount": "({0}e tentative)",
             "hangBroken": "Le canal réseau semble endommagé{0}, toutes les lignes ont été automatiquement tentées. Le niveau a été sauvegardé, il est recommandé de rafraîchir la fenêtre avec Ctrl+R puis de cliquer sur « Continuer la tâche »"
         },

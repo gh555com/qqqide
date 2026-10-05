@@ -8,7 +8,10 @@
 //   ★ 2026-09-18 mac 应用内更新配套：mac 上 safeStorage 读写可能触发系统钥匙串授权
 //     弹窗（重签名后 ACL 变更）。同步调用会冻结主进程事件循环 → 窗口永不出现
 //     （表现为「更新后首启应用打不开」）。故 mac 上把加/解密推迟到主窗口可见之后
-//     ——弹窗出现在窗口上方而非冻结 boot；非 mac 平台零行为变化（立即放行）。
+//     ——弹窗出现在窗口上方而非冻结 boot。
+//   ★ 2026-10-05 linux 扩展：GNOME keyring 锁定/未解锁时 libsecret 的 secret_password_*_sync
+//     会卡进嵌套 GLib 主循环（gdb 实测栈证）→ 主线程冻结 → 窗口永不亮相 + 调试口无响应。
+//     同款门扩展到 linux（放行条件：任一主窗口可见；30s 兜底不变）。
 // ============================================================================
 
 import { ipcMain, safeStorage, BrowserWindow } from 'electron';
@@ -19,15 +22,19 @@ function _reason(e: unknown): string {
 
 let _winShownPromise: Promise<void> | null = null;
 
-/** mac: 等待任一主窗口可见（最多 30s 兜底放行；非 mac 立即放行）。
+/** mac/linux: 等待任一主窗口可见（最多 30s 兜底放行；其余平台立即放行）。
  *  ★ 2026-09-19 导出共享: auth-brain.restore() 同款场景——重签名后 safeStorage 首次
  *  访问触发系统钥匙串授权弹窗，同步调用冻结主进程事件循环 → 窗口永不出现。
- *  一切「可能触发钥匙串弹窗」的主进程调用都必须先等窗口可见。 */
+ *  一切「可能触发钥匙串弹窗」的主进程调用都必须先等窗口可见。
+ *  ★ 2026-10-05: 同步守卫 mainWindowShownResolved() 供同步调用点（如 wq-ping 兜底读）。 */
+let _winShownResolved = false;
+export function mainWindowShownResolved(): boolean { return _winShownResolved; }
 export function waitMainWindowShown(): Promise<void> {
-    if (process.platform !== 'darwin') { return Promise.resolve(); }
+    if (process.platform !== 'darwin' && process.platform !== 'linux') { return Promise.resolve(); }
     if (_winShownPromise) { return _winShownPromise; }
     _winShownPromise = new Promise<void>((resolve) => {
         const t0 = Date.now();
+        const done = () => { _winShownResolved = true; resolve(); };
         const check = (): boolean => {
             try {
                 for (const w of BrowserWindow.getAllWindows()) {
@@ -36,8 +43,8 @@ export function waitMainWindowShown(): Promise<void> {
             } catch (_) { }
             return Date.now() - t0 > 30000;
         };
-        if (check()) { resolve(); return; }
-        const iv = setInterval(() => { if (check()) { clearInterval(iv); resolve(); } }, 500);
+        if (check()) { done(); return; }
+        const iv = setInterval(() => { if (check()) { clearInterval(iv); done(); } }, 500);
     });
     return _winShownPromise;
 }

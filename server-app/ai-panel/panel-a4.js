@@ -538,6 +538,7 @@ function _a4RenderLive(ag, _aiDiv) {
         var row = document.createElement('div');
         row.className = 'msg-a4-row';
         row.dataset.path = snap.path;
+        row.dataset.op = snap.op || '';
 
         // Filename (middle truncation for long names)
         var fname = snap.path.replace(/\\/g, '/').split('/').pop() || snap.path;
@@ -576,18 +577,38 @@ function _a4RenderLive(ag, _aiDiv) {
         row.appendChild(statsSpan);
 
         // Click → open diff in X zone
-        (function (s) {
+        (function (s, rEl) {
             row.addEventListener('click', function (e) {
                 e.stopPropagation();
-                _a4OpenDiff(s);
+                _a4OpenDiff(s, rEl);
             });
-        })(snap);
+        })(snap, row);
 
         block.appendChild(row);
     }
 
     // Show block
     block.classList.add('has-files');
+}
+
+// ═══ 悬浮预览翻页序列（A4 文件列表唯一实现）═══
+//   同一 A4 块内图片行按显示顺序（已删除行不入列）；返回 {list:[{src,localPath}], index}，不足两张 → null。
+function _a4ImgNav(row) {
+    try {
+        if (!row || !row.closest) return null;
+        var block = row.closest('.msg-a4');
+        if (!block) return null;
+        var rows = block.querySelectorAll('.msg-a4-row');
+        var list = [], index = -1;
+        for (var i = 0; i < rows.length; i++) {
+            var p = rows[i].dataset.path || '';
+            if (!p || !_isImageFile(p)) continue;
+            if (rows[i].dataset.op === 'delete_file') continue;
+            if (rows[i] === row) index = list.length;
+            list.push({ src: 'file:///' + p.replace(/\\/g, '/'), localPath: p });
+        }
+        return (index >= 0 && list.length > 1) ? { list: list, index: index } : null;
+    } catch (_) { return null; }
 }
 
 // ═══ 判断是否为图片文件 ═══
@@ -597,7 +618,7 @@ function _isImageFile(filePath) {
 }
 
 // ═══ 图片文件 → 打开悬浮预览层 ═══
-async function _openImagePreview(filePath) {
+async function _openImagePreview(filePath, nav) {
     var bridge = _getBridge();
     if (!bridge || !bridge.fs) return false;
     try {
@@ -607,7 +628,9 @@ async function _openImagePreview(filePath) {
         return false; // 文件不存在
     }
     var fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
-    _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: fileUrl });
+    var _m = { type: 'qqqide-overlay', action: 'open-image', src: fileUrl };
+    if (nav) _m.nav = nav;
+    _postToHost(_m);
     return true;
 }
 
@@ -618,11 +641,11 @@ function _a4Qoast(msg) {
 
 // ---- 打开 diff 查看器（独立 BrowserWindow）----
 // ★ 同时传 beforeBlobHash + afterBlobHash：左右各精确选中对应版本
-async function _a4OpenDiff(snap) {
+async function _a4OpenDiff(snap, rowEl) {
     // 图片文件特殊处理
     if (_isImageFile(snap.path)) {
         if (snap.op === 'delete_file') return; // 已删除→无原文件→不响应
-        var opened = await _openImagePreview(snap.path);
+        var opened = await _openImagePreview(snap.path, _a4ImgNav(rowEl));
         if (opened) return; // 已打开预览→不再开 diff
     }
     var bridge = _getBridge();
@@ -729,6 +752,7 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
         var row = document.createElement('div');
         row.className = 'msg-a4-row';
         row.dataset.path = meta.path;
+        row.dataset.op = meta.op || '';
 
         var fname = meta.path.replace(/\\/g, '/').split('/').pop() || meta.path;
         var nameSpan = document.createElement('span');
@@ -764,12 +788,12 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
         row.appendChild(statsSpan);
 
         // Click → load from disk + open diff
-        (function (m, qId, fNum) {
+        (function (m, qId, fNum, rEl) {
             row.addEventListener('click', function (e) {
                 e.stopPropagation();
-                _a4OpenHistoricalDiff(m, qId, fNum);
+                _a4OpenHistoricalDiff(m, qId, fNum, rEl);
             });
-        })(meta, questNumericId, floorNum);
+        })(meta, questNumericId, floorNum, row);
 
         block.appendChild(row);
     }
@@ -777,11 +801,11 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
 }
 
 // ---- 历史楼层 diff：唯一路径 bridge.timeline ----
-async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
+async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum, rowEl) {
     // 图片文件特殊处理
     if (_isImageFile(meta.path)) {
         if (meta.op === 'delete_file') return; // 已删除→无原文件→不响应
-        var opened = await _openImagePreview(meta.path);
+        var opened = await _openImagePreview(meta.path, _a4ImgNav(rowEl));
         if (opened) return; // 已打开预览→不再开 diff
     }
     var bridge = getBridge();

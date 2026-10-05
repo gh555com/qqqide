@@ -91,6 +91,10 @@
         "overlay": {
             "copy": "複製到剪貼簿",
             "copied": "已複製",
+            "prevImage": "上一張",
+            "nextImage": "下一張",
+            "skipMissing": "已跳過 {0} 張無法顯示的圖片",
+            "noMoreImages": "沒有更多可顯示的圖片了",
             "copyFailed": "複製失敗",
             "zoomIn": "放大",
             "zoomOut": "縮小",
@@ -845,16 +849,8 @@
             "lockedDecrypt": "金鑰無法在本機解密（可能來自其他裝置），請重新輸入"
         },
         "gwWait": {
-            "title": "⏳ 上游無回應 {0}",
-            "rowLabel": "{0} 第 {1} 層",
-            "barMulti": "⏳ {0} 個樓層等待上游回應 · 最長 {1}",
-            "stop": "■ 停止",
-            "expand": "展開明細",
             "collapse": "收起",
             "taskCapsule": "⏳ {0} 個任務進行中",
-            "muteTip": "本次不再提示（出現新的等待樓層會再提示）",
-            "serverAck": "伺服器確認等待中",
-            "firstToken": "等待首字輸出",
             "hangCount": "（第 {0} 次）",
             "hangBroken": "網路通道疑似損壞{0}，已自動嘗試全部線路。樓層已儲存，建議 Ctrl+R 重新整理視窗後點擊「繼續任務」"
         },

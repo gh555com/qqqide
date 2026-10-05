@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# _qqq_pyside2_shim.py — qqqide macOS PySide2 → PySide6 透明垫片
-# 由 site-packages/_qqq_pyside2_shim.pth 在解释器启动时自动加载（仅 darwin 生效）。
+# _qqq_pyside2_shim.py — qqqide macOS/Linux PySide2 → PySide6 透明垫片
+# 由 site-packages/_qqq_pyside2_shim.pth 在解释器启动时自动加载（仅 darwin/linux 生效）。
 #
 # 机制: meta_path finder 惰性映射 PySide2[*] → PySide6[*]（不 import 者零开销，
 #       绝不提前导入 PySide6）+ 常用 API 差异就地补丁。
@@ -16,7 +16,7 @@ import sys
 
 
 def _install():
-    if sys.platform != 'darwin':
+    if sys.platform not in ('darwin', 'linux'):
         return
     if 'PySide2' in sys.modules:
         return

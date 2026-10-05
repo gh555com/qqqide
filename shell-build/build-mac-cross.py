@@ -1,19 +1,25 @@
 # -*- coding: utf-8 -*-
 # ============================================================================
-# build-mac-cross.py — cross-build mac (arm64) engine artifacts on a Windows host
+# build-mac-cross.py — cross-build mac + linux engine artifacts on a Windows host
 #
 # Outputs (dist-pack/, arch = arm64 默认 | x64 via --arch=x64):
 #   cross/python-darwin-{arch}/  unpacked component tree (=> engines/python layout)
 #   python-darwin-{arch}.zip     CDN-bound rank0 artifact (component recovery)
 #   cross/git-darwin-{arch}/     unpacked git component (mac build; universal 制品物化两份)
+#   ── linux（--os=linux，首发仅 x64，2026-10-05）──
+#   cross/python-linux-x64/      unpacked component tree
+#   python-linux-x64.zip         CDN-bound rank0 artifact
+#   cross/git-linux-x64/         unpacked git component (MinGit 形态)
 #
 # Sources (verified 2026-09-14):
 #   python-build-standalone cpython-3.11.16+20260901 aarch64 install_only_stripped
 #     sha256 768f05cf200273bbdda9a5955a5a6892a4b22f2a0b1e4b0a9160f5c7fce86816
 #   mac git     https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz
 #   linux git   https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/WWJCJGF4LJWUS.gz
+#   linux python-build-standalone cpython-3.11.16+20260901 x86_64-unknown-linux-gnu
+#     sha256 64427febea27864d136db46c8efe968eb6fa5ca2813ce1dca4bb95aec31cb2e4
 #
-# usage: python shell-build/build-mac-cross.py [python|git|all] [--arch=arm64|x64]
+# usage: python shell-build/build-mac-cross.py [python|git|all] [--arch=arm64|x64] [--os=mac|linux]
 # ============================================================================
 import hashlib
 import json
@@ -41,7 +47,11 @@ DL = os.path.join(CROSS, '_dl')
 # → miniaudio 不可用；3.11 = cffi/miniaudio/pyobjc 全有 arm64 原生轮子，
 #   PySide6 6.6.3.1 是 cp38-abi3（≥3.8 全兼容），支持线到 2027。
 # ★ --arch=arm64|x64（默认 arm64；2026-09-14 增补 x64 —— Mac 虚拟机 / Intel 测试）
+# ★ --os=mac|linux（2026-10-05 增补 linux —— Ubuntu 24.04 x64 移植；linux 首发仅 x64）
 ARCH = 'x64' if '--arch=x64' in sys.argv else 'arm64'
+OS_TARGET = 'linux' if '--os=linux' in sys.argv else 'mac'
+if OS_TARGET == 'linux':
+    ARCH = 'x64'
 PBS_TABLE = {
     'arm64': (
         'https://github.com/astral-sh/python-build-standalone/releases/download/'
@@ -54,7 +64,17 @@ PBS_TABLE = {
         # 2026-09-14 官方 SHA256SUMS 校验
         '908b381433f78b832c8d64960ced0f85871893cc8779f413f963e0c9e293c258'),
 }
+PBS_TABLE_LINUX = {
+    'x64': (
+        'https://github.com/astral-sh/python-build-standalone/releases/download/'
+        '20260901/cpython-3.11.16%2B20260901-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz',
+        # 2026-10-05 官方 SHA256SUMS 校验（ghproxy 镜像取回）
+        '64427febea27864d136db46c8efe968eb6fa5ca2813ce1dca4bb95aec31cb2e4'),
+}
+if OS_TARGET == 'linux':
+    PBS_TABLE = PBS_TABLE_LINUX
 PBS_URL, PBS_SHA = PBS_TABLE[ARCH]
+PLAT_TAG = ('linux-%s' % ARCH) if OS_TARGET == 'linux' else ('darwin-%s' % ARCH)
 PBS_PY_SERIES = '3.11'
 PBS_SOURCES = [
     'https://ghproxy.net/' + PBS_URL,
@@ -170,6 +190,37 @@ def extract_tar_gz(path, dest):
     return made, failed
 
 
+def _prune_broken_links(tree, label=''):
+    """删掉断链/不可读的符号链接（stripped tar 常见：terminfo 大量悬空链接——
+    Windows 上读取悬空链接直接 OSError → zip/tar 打包全崩）。terminfo 为交互终端
+    遗产，非运行时必需；删除零影响。"""
+    removed = 0
+    for root, dirs, files in os.walk(tree):
+        for name in list(files) + list(dirs):
+            p = os.path.join(root, name)
+            if not os.path.islink(p):
+                continue
+            ok = False
+            try:
+                if os.path.isdir(p):
+                    ok = True
+                else:
+                    with open(p, 'rb') as f:
+                        f.read(1)
+                    ok = True
+            except (OSError, ValueError):
+                ok = False
+            if not ok:
+                try:
+                    os.unlink(p)
+                    removed += 1
+                except OSError:
+                    pass
+    if removed:
+        log('[clean] %s pruned %d broken symlinks' % (label, removed))
+    return removed
+
+
 def dir_size(p):
     total = 0
     for root, dirs, files in os.walk(p):
@@ -183,8 +234,14 @@ def dir_size(p):
 
 
 def pip_cross_install(target_sp, pkgs, tag):
-    plats = (['macosx_11_0_arm64', 'macosx_11_0_universal2'] if ARCH == 'arm64'
-             else ['macosx_11_0_x86_64', 'macosx_10_9_x86_64', 'macosx_11_0_universal2'])
+    if OS_TARGET == 'linux':
+        # 宽 manylinux tag 集合（不同包上传时用的 tag 不一：2_17 / 2_28 / 2014…）
+        plats = ['manylinux_2_28_x86_64', 'manylinux_2_27_x86_64', 'manylinux_2_24_x86_64',
+                 'manylinux_2_17_x86_64', 'manylinux2014_x86_64', 'manylinux_2_12_x86_64',
+                 'manylinux2010_x86_64', 'linux_x86_64']
+    else:
+        plats = (['macosx_11_0_arm64', 'macosx_11_0_universal2'] if ARCH == 'arm64'
+                 else ['macosx_11_0_x86_64', 'macosx_10_9_x86_64', 'macosx_11_0_universal2'])
     cmd = [sys.executable, '-m', 'pip', 'install', '--target', target_sp]
     for _pl in plats:
         cmd += ['--platform', _pl]
@@ -255,6 +312,17 @@ def zip_tree(src, out):
     if os.path.exists(out):
         os.remove(out)
     count = 0
+    skipped = 0
+
+    def _add(z, fp, arc):
+        nonlocal count, skipped
+        try:
+            z.write(fp, arc)
+            count += 1
+        except OSError as e:
+            skipped += 1
+            log('[zip] skip %s (%s)' % (arc, e))
+
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as z:
         for root, dirs, files in os.walk(src):
             # symlinked dirs are listed in dirs but not walked — materialize them
@@ -267,20 +335,18 @@ def zip_tree(src, out):
                         for ff in f2:
                             fpp = os.path.join(r2, ff)
                             arc2 = arc_d + '/' + os.path.relpath(fpp, real).replace(os.sep, '/')
-                            z.write(fpp, arc2)
-                            count += 1
+                            _add(z, fpp, arc2)
                     dirs.remove(d)
             for f in files:
                 fp = os.path.join(root, f)
-                arc = os.path.relpath(fp, src).replace(os.sep, '/')
-                z.write(fp, arc)
-                count += 1
-    log('[zip] %s (%d entries, %.1f MB)' % (os.path.basename(out), count, os.path.getsize(out) / 1048576.0))
+                _add(z, fp, os.path.relpath(fp, src).replace(os.sep, '/'))
+    log('[zip] %s (%d entries, %d skipped, %.1f MB)' % (
+        os.path.basename(out), count, skipped, os.path.getsize(out) / 1048576.0))
 
 
 def build_python():
     os.makedirs(DL, exist_ok=True)
-    dl = os.path.join(DL, 'cpython-3.11.16-darwin-%s.tar.gz' % ARCH)
+    dl = os.path.join(DL, 'cpython-3.11.16-%s-%s.tar.gz' % (OS_TARGET, ARCH))
     if not (os.path.exists(dl) and sha256_file(dl) == PBS_SHA):
         ok = False
         for u in PBS_SOURCES:
@@ -297,7 +363,7 @@ def build_python():
             raise SystemExit('pb-s download failed from all sources')
     log('[ok] pb-s sha256 verified')
 
-    out_dir = os.path.join(CROSS, 'python-darwin-%s' % ARCH)
+    out_dir = os.path.join(CROSS, 'python-%s' % PLAT_TAG)
     tmp_x = os.path.join(CROSS, '_x_python')
     shutil.rmtree(tmp_x, ignore_errors=True)
     extract_tar_gz(dl, tmp_x)
@@ -317,13 +383,25 @@ def build_python():
     # ★ pip/setuptools 不装：pb-s 自带（较新），避免 overlay 半混合状态。
     # ★ PySide6-Addons 不装：goods 仅用 QtCore/QtGui/QtWidgets（纯 widgets，
     #   零 QML/零 WebEngine/零 Charts）——Addons 是最大的一块肥肉（~450MB）。
-    wheels = [
+    common = [
         'wheel==0.45.1',
         'six==1.17.0',
         'pynput==1.8.2',
         'miniaudio==1.61',
         'cffi==1.17.1', 'pycparser==2.22',
         'PySide6==6.6.3.1', 'shiboken6==6.6.3.1', 'PySide6-Essentials==6.6.3.1',
+    ]
+    if OS_TARGET == 'linux':
+        # linux：无 pyobjc（darwin 专属）；补 pynput 的 X11 / uinput 后端依赖
+        # （--no-deps 手工清单，缺失时 pynput import 直接炸）
+        wheels = common + [
+            'python-xlib==0.33',
+            # evdev 无 manylinux 轮子（PyPI 仅 sdist，无法跨平台装）——弃。
+            # pynput 的 X11 后端（键盘/鼠标监听 + XTEST 注入）仅依赖 python-xlib；
+            # evdev 仅 uinput 可选后端需要（缺失时 pynput 自动回退 xorg）。
+        ]
+    else:
+        wheels = common + [
         'pyobjc-core==10.3.2',
         'pyobjc-framework-Cocoa==10.3.2',
         'pyobjc-framework-Quartz==10.3.2',
@@ -334,7 +412,7 @@ def build_python():
         #   window-there 的依赖检测与 AX 辅助功能 API 全部不可用）。
         #   2026-09-16 实测补齐（Quartz 轮子内只有 Quartz/CoreGraphics 子包，
         #   顶层 CoreText 是独立轮子）。
-    ]
+        ]
     pip_cross_install(sp, wheels, 'core')
     mini_used = '1.61'
 
@@ -343,8 +421,27 @@ def build_python():
                 'import site\n'
                 'site.ENABLE_USER_SITE = False\n')
 
-    with open(os.path.join(out_dir, 'requirements-frozen-mac.txt'), 'w', encoding='utf-8', newline='\n') as f:
-        f.write('# qqq-shell-v2 Embedded Python (macOS ' + ARCH + ') — Frozen Requirements\n'
+    if OS_TARGET == 'linux':
+        req_txt = (
+            '# qqq-shell-v2 Embedded Python (Linux x64) — Frozen Requirements\n'
+            '# Python 3.11.16 (python-build-standalone 20260901, install_only_stripped)\n'
+            '# 与 mac 同一版本线（PySide6 abi3 + 全生态 wheel 覆盖；goods 源码零改动）\n'
+            '# pip/setuptools = pb-s 自带（未 overlay）；Addons 不装（纯 widgets 方针）\n'
+            'pip==26.2.1\n'
+            'setuptools==84.0.0\n'
+            'wheel==0.45.1\n'
+            'pynput==1.8.2\n'
+            'six==1.17.0\n'
+            'miniaudio==1.61\n'
+            'cffi==1.17.1\n'
+            'pycparser==2.22\n'
+            'manual:PySide6==6.6.3.1\n'
+            'manual:shiboken6==6.6.3.1\n'
+            'manual:PySide6-Essentials==6.6.3.1\n'
+            'manual:python-xlib==0.33\n'
+            'manual:sitecustomize\n')
+    else:
+        req_txt = ('# qqq-shell-v2 Embedded Python (macOS ' + ARCH + ') — Frozen Requirements\n'
                 '# Python 3.11.16 (python-build-standalone 20260901, install_only_stripped)\n'
                 '# 3.11 定案理由：cffi cp38 mac 无 arm64 轮子 → miniaudio 不可用；\n'
                 '# 3.11 全生态 arm64 原生 + PySide6 abi3(cp38) 兼容 + 支持线到 2027\n'
@@ -366,6 +463,8 @@ def build_python():
         'manual:pyobjc-framework-CoreText==10.3.2\n'
         'manual:pyobjc-framework-ApplicationServices==10.3.2\n'
                 'manual:sitecustomize\n')
+    with open(os.path.join(out_dir, 'requirements-frozen-%s.txt' % ('linux' if OS_TARGET == 'linux' else 'mac')), 'w', encoding='utf-8', newline='\n') as f:
+        f.write(req_txt)
 
     slim_tree(sp)
 
@@ -378,8 +477,9 @@ def build_python():
     log('[py] pyside2 shim injected (2 files)')
 
     _fix_shebang_and_junk(out_dir)
+    _prune_broken_links(out_dir, label='py')
 
-    zip_out = os.path.join(DIST, 'python-darwin-%s.zip' % ARCH)
+    zip_out = os.path.join(DIST, 'python-%s.zip' % PLAT_TAG)
     zip_tree(out_dir, zip_out)
     log('[py] tree size: %.1f MB | zip: %.1f MB | miniaudio=%s' % (
         dir_size(out_dir) / 1048576.0, os.path.getsize(zip_out) / 1048576.0, mini_used))
@@ -387,9 +487,12 @@ def build_python():
 
 def fetch_git():
     os.makedirs(DL, exist_ok=True)
-    for label, url, dest_dir, keep in (
-            ('mac', GIT_MAC_URL, os.path.join(CROSS, 'git-darwin-arm64'), True),
-            ('linux', GIT_LINUX_URL, os.path.join(CROSS, '_x_git_linux'), False)):
+    if OS_TARGET == 'linux':
+        jobs = (('linux', GIT_LINUX_URL, os.path.join(CROSS, 'git-linux-x64'), True),)
+    else:
+        jobs = (('mac', GIT_MAC_URL, os.path.join(CROSS, 'git-darwin-arm64'), True),
+                ('linux', GIT_LINUX_URL, os.path.join(CROSS, '_x_git_linux'), False))
+    for label, url, dest_dir, keep in jobs:
         dl = os.path.join(DL, 'git-%s.tar.gz' % label)
         if not os.path.exists(dl):
             http_get(url, dl)
@@ -405,10 +508,11 @@ def fetch_git():
         if keep:
             shutil.rmtree(dest_dir, ignore_errors=True)
             shutil.copytree(extract_dir_src, dest_dir, symlinks=True)
-            # mac git = universal (Mach-O FAT) → 同时物化 x64 树（两架构共用同一制品）
-            _gx64 = os.path.join(CROSS, 'git-darwin-x64')
-            shutil.rmtree(_gx64, ignore_errors=True)
-            shutil.copytree(dest_dir, _gx64, symlinks=True)
+            if label == 'mac':
+                # mac git = universal (Mach-O FAT) → 同时物化 x64 树（两架构共用同一制品）
+                _gx64 = os.path.join(CROSS, 'git-darwin-x64')
+                shutil.rmtree(_gx64, ignore_errors=True)
+                shutil.copytree(dest_dir, _gx64, symlinks=True)
         # report layout (top 2 levels) + git binary magic
         log('--- git-%s layout ---' % label)
         src = dest_dir if keep else extract_dir_src
@@ -435,9 +539,9 @@ def fetch_git():
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith('--arch=')]
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
     cmd = args[0] if args else 'all'
-    log('[arch] target = mac %s' % ARCH)
+    log('[target] = %s %s' % (OS_TARGET, ARCH))
     os.makedirs(CROSS, exist_ok=True)
     if cmd in ('python', 'all'):
         build_python()
