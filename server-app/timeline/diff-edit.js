@@ -468,3 +468,10 @@
     if ($titleInput && typeof window._qqqUndoAttach === "function") {
         window._qqqUndoAttach($titleInput);
     }
+
+    // ★ 语言切换：编辑钮文案按当前模式重取（静态 data-i18n 会先把文本刷回「编辑」——本钩子随后按真实模式校正）
+    try {
+        window.addEventListener('qqq-lang-change', function () {
+            try { if ($btnEdit) { $btnEdit.textContent = _editing ? _i('timeline.cancelEdit', '退出编辑') : _i('timeline.editBtn', '编辑'); } } catch (_) { }
+        });
+    } catch (_) { }

@@ -365,6 +365,7 @@
             btn.type = 'button';
             btn.className = 'tl-float-btn';
             btn.title = _i('timeline.findBtn', '查找 (Ctrl+F)');
+            btn.setAttribute('data-i18n-title', 'timeline.findBtn');   // ★ 语言切换自动保鲜（diff 窗 updateDom 直刷）
             var ico = document.createElement('span');
             ico.className = 'qqi qqi-search';
             btn.appendChild(ico);

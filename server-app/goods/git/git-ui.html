@@ -528,10 +528,12 @@ async function _refreshGitStatus() {
   }
 }
 
-function _makeIconBtn(svgHtml, title, clickFn) {
+function _makeIconBtn(svgHtml, title, clickFn, tipKey) {
   var btn = document.createElement('button');
   btn.className = 'icon-btn';
   btn.title = title;
+  // ★ tipKey 有值 → 挂 data-i18n-title：语言切换时父窗 updateDom 直刷（长命文件行 tooltip 禁旧语言快照）
+  if (tipKey) btn.setAttribute('data-i18n-title', tipKey);
   btn.innerHTML = svgHtml;
   btn.addEventListener('click', function(e) { e.stopPropagation(); clickFn(e); });
   return btn;
@@ -557,24 +559,24 @@ function _renderFileList(elId, files, isStaged) {
       var acts = document.createElement('span'); acts.className = 'file-actions';
       var uBtn = _makeIconBtn(_ICON_UNSTAGE, _kk('goods.git.actUnstage', '移回工作区'), function(e) {
         _gitCmd(['reset', 'HEAD', '--', f.path]).then(function() { _refreshGitStatus(); });
-      });
+      }, 'goods.git.actUnstage');
       acts.appendChild(uBtn); li.appendChild(acts);
     } else if (f.status !== '?') {
       var acts = document.createElement('span'); acts.className = 'file-actions';
       var sBtn = _makeIconBtn(_ICON_STAGE, _kk('goods.git.actStage', '移至暂存区'), function(e) {
         _gitCmd(['add', '--', f.path]).then(function() { _refreshGitStatus(); });
-      });
+      }, 'goods.git.actStage');
       acts.appendChild(sBtn);
       var dBtn = _makeIconBtn(_ICON_DISCARD, _kk('goods.git.actDiscard', '放弃更改'), function(e) {
         if (!confirm(_kk('goods.git.discardConfirm', '丢弃对 {0} 的修改？（不可恢复）', f.path))) return;
         _gitCmd(['checkout', '--', f.path]).then(function() { _refreshGitStatus(); document.getElementById('inline-diff').style.display = 'none'; });
-      });
+      }, 'goods.git.actDiscard');
       acts.appendChild(dBtn); li.appendChild(acts);
     } else {
       var acts = document.createElement('span'); acts.className = 'file-actions';
       var aBtn = _makeIconBtn(_ICON_ADD, _kk('goods.git.actTrack', '跟踪此文件'), function(e) {
         _gitCmd(['add', '--', f.path]).then(function() { _refreshGitStatus(); });
-      });
+      }, 'goods.git.actTrack');
       acts.appendChild(aBtn); li.appendChild(acts);
     }
 

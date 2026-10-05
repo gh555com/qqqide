@@ -402,10 +402,11 @@ function bootThemeToggle() {
   function syncBtn(dark) {
     $btn.textContent = dark ? '\u263C' : '\u263D';
     $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
+    $btn.setAttribute('data-i18n-title', dark ? 'shell.theme.switchToLight' : 'shell.theme.switchToDark');   // ★ 语言切换自动保鲜（动态态 = 属性随态换键）
   }
   syncBtn(T.isDark());
   T.onChange(function (dark) {
-    $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
+    syncBtn(dark);
   });
   $btn.addEventListener('click', function () { T.apply(!T.isDark()); });
 }

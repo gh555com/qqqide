@@ -1083,6 +1083,10 @@
             "winMax": "Maximize",
             "winDrag": "Drag to Move Window",
             "readingData": "Reading git data...",
+            "winLoadingMonaco": "Loading Monaco…",
+            "winMonacoFail": "Failed to load Monaco",
+            "winBridgeNotReady": "Bridge not ready — please restart the IDE",
+            "winNoDiffNote": "(File may be untracked)",
             "diffOnly": "Diff Only"
         },
         "search": {

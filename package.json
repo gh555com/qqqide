@@ -1,6 +1,6 @@
 {
   "name": "qqqide",
-  "version": "0.4.11",
+  "version": "0.4.13",
   "description": "qqqide — portable AI-powered IDE. Win7+ compatible, zero C-drive write.",
   "private": true,
   "main": "shell-out/bootstrap.js",

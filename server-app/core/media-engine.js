@@ -313,7 +313,7 @@
   var _ovTxReqId = null;
   var _ovTxUnsub = null;
   var _ovTxLastHost = null;   // 在飞转码的宿主（进度条落点/取消桥引用——同页多宿主时归发起方）
-  var _ovTxBarEl = null, _ovTxBarText = null;   // 旧浮动形态元素（无 dock 宿主专用——如悬浮层图片转码）
+  var _ovTxBarEl = null, _ovTxBarText = null, _ovTxCancelBtn = null;   // 旧浮动形态元素（无 dock 宿主专用——如悬浮层图片转码；取消钮引用供语言切换重取）
   // ★ 转码行文字唯一入口（2026-10-03）：宿主提供底部提示框槽（H._ovTxSlot——播放器窗）→ 投递进框内转码行；
   //   无槽宿主（悬浮层图片转码）→ 回落旧浮动形态
   function _ovTxSetText(t) {
@@ -339,17 +339,17 @@
         'padding:10px 16px;font-size:13px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 4px 24px rgba(0,0,0,0.5);';
       _ovTxBarText = document.createElement('span');
       _ovTxBarText.textContent = _ifor(_ovTxLastHost || HOST, 'shell.overlay.transcoding', '正在转码');
-      var _txCancelBtn = document.createElement('button');
-      _txCancelBtn.textContent = _ifor(_ovTxLastHost || HOST, 'common.cancel', '取消');
-      _txCancelBtn.setAttribute('data-no-cd', '');
-      _txCancelBtn.style.cssText = 'padding:3px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.35);' +
+      _ovTxCancelBtn = document.createElement('button');
+      _ovTxCancelBtn.textContent = _ifor(_ovTxLastHost || HOST, 'common.cancel', '取消');
+      _ovTxCancelBtn.setAttribute('data-no-cd', '');
+      _ovTxCancelBtn.style.cssText = 'padding:3px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.35);' +
         'background:transparent;color:#fff;font-size:12px;cursor:pointer;';
-      _txCancelBtn.addEventListener('click', function () {
+      _ovTxCancelBtn.addEventListener('click', function () {
         _ovTxAbort();
         try { _closeHostFor(_ovTxLastHost || HOST); } catch (_) { }
       });
       _ovTxBarEl.appendChild(_ovTxBarText);
-      _ovTxBarEl.appendChild(_txCancelBtn);
+      _ovTxBarEl.appendChild(_ovTxCancelBtn);
       _txRootFor(_ovTxLastHost || HOST).appendChild(_ovTxBarEl);
     }
     _ovTxBarEl.style.display = show ? 'flex' : 'none';
@@ -2094,6 +2094,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     }
 
     function cleanup() {
+      try { if (window.__qqqMediaRelang === _relangTips) { window.__qqqMediaRelang = null; } } catch (_) { }
       try { _abStop(); } catch (_) { }
       // ★ 增压图卸载（2026-10-01 q319）：断开增益/源——防共享 ctx 经 destination 强引用链保活（节点泄漏）
       try { if (_volTipTimer) { clearTimeout(_volTipTimer); _volTipTimer = 0; } } catch (_) { }
@@ -2123,6 +2124,34 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       _persistTick();
     }
     function resetAB() { _abA = null; _abB = null; _abStop(); _abRender(); }
+
+    // ★ 语言切换重取：整条按钮 tooltip 全量现算（静态键位 + 动态状态家族；旧语言快照零残留——控制条随媒体加载重建前的全程保鲜）
+    function _relangTips() {
+      function _tip(b, k, fb) { try { if (b) { b.title = _i(k, fb); } } catch (_) { } }
+      _tip(volS, 'shell.overlay.mvolume', '音量（最大可增强至 150%）');
+      _tip(rateB, 'shell.overlay.mspeed', '倍速播放（点击选择）');
+      _tip(pipB, 'shell.overlay.mpip', '画中画');
+      _tip(fsB, 'shell.overlay.mfs', '全屏');
+      _tip(shotB, 'shell.overlay.mshot', '单帧截图（快捷键 S）');
+      _tip(slowB, 'shell.overlay.mslow', '减速 0.5×（快捷键 Z）');
+      _tip(seekBB, 'shell.overlay.mseekB', '后退 4 秒（快捷键 Q）');
+      _tip(stepBB, 'shell.overlay.mstepB', '后退一帧');
+      _tip(stopB, 'shell.overlay.mstop', '停止（暂停并回到开头）');
+      _tip(stepFB, 'shell.overlay.mstepF', '前进一帧');
+      _tip(seekFB, 'shell.overlay.mseekF', '前进 4 秒（快捷键 W）');
+      _tip(fastB, 'shell.overlay.mfast', '加速 0.5×（快捷键 X）');
+      try { _dockPrevB.title = _i('shell.overlay.mprev', '上一个') + ' (P)'; } catch (_) { }
+      try { _dockNextB.title = _i('shell.overlay.mnext', '下一个') + ' (N)'; } catch (_) { }
+      // 动态族 → 既有同步函数现算（幂等）
+      try { syncPlay(); } catch (_) { }
+      try { syncVol(); } catch (_) { }
+      try { _abRender(); } catch (_) { }
+      try { _syncLoopBtn(); } catch (_) { }
+      try { _syncShufBtn(); } catch (_) { }
+      try { _syncFollowBtn(); } catch (_) { }
+      try { _fillPlRows(); } catch (_) { }   // 行尾三钮（上移/下移/移除）tooltip 随行重建
+    }
+    try { window.__qqqMediaRelang = _relangTips; } catch (_) { }
 
     // 初始同步
     syncPlay(); syncVol(); syncProg(); syncRate(); syncMode(); _abRender(); _refreshEscapeHook();
@@ -2577,6 +2606,15 @@ function mount(opts) {
   _plApi.getBase = function () { return _curShotBase || _curLocalPath || ''; };
   return _api;
 }
+
+// ★ 语言切换：长命按钮 tooltip / 转码条文案重取（禁旧语言快照残留——控制条/mount 后全程保鲜）
+try {
+  window.addEventListener('qqq-lang-change', function () {
+    try { if (typeof window.__qqqMediaRelang === 'function') { window.__qqqMediaRelang(); } } catch (_) { }
+    try { if (_ovTxBarText) { _ovTxBarText.textContent = _ifor(_ovTxLastHost || HOST, 'shell.overlay.transcoding', '正在转码'); } } catch (_) { }
+    try { if (_ovTxCancelBtn) { _ovTxCancelBtn.textContent = _ifor(_ovTxLastHost || HOST, 'common.cancel', '取消'); } } catch (_) { }
+  });
+} catch (_) { }
 
 var API = {
   mount: mount,

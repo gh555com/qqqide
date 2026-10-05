@@ -1083,6 +1083,10 @@
             "winMax": "अधिकतम करें",
             "winDrag": "विंडो खिसकाने के लिए ड्रैग करें",
             "readingData": "git डेटा पढ़ा जा रहा है…",
+            "winLoadingMonaco": "Monaco लोड हो रहा है…",
+            "winMonacoFail": "Monaco लोड करने में विफल",
+            "winBridgeNotReady": "ब्रिज तैयार नहीं है—कृपया IDE को पुनः आरंभ करें",
+            "winNoDiffNote": "(फ़ाइल ट्रैक नहीं की गई हो सकती है)",
             "diffOnly": "केवल अंतर"
         },
         "search": {

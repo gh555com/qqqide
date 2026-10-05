@@ -114,6 +114,8 @@
       _btn.addEventListener('click', onClick);
       renderBtn();
     }
+    // ★ 语言切换：动态标题按当前状态重算（旧语言快照禁残留——接替已摘除的 data-i18n-title 机）
+    try { window.addEventListener('qqq-lang-change', function () { try { renderBtn(); } catch (_) { } }); } catch (_) { }
     try { b.update.onMacState(render); } catch (_) { }
     Promise.resolve(b.update.macState()).then(render)['catch'](function () { });
   }

@@ -1083,6 +1083,10 @@
             "winMax": "최대화",
             "winDrag": "드래그하여 창 이동",
             "readingData": "git 데이터 읽는 중…",
+            "winLoadingMonaco": "Monaco 로딩 중…",
+            "winMonacoFail": "Monaco 로딩 실패",
+            "winBridgeNotReady": "브리지 준비 안 됨 — IDE를 재시작하세요",
+            "winNoDiffNote": "(파일이 추적되지 않았을 수 있음)",
             "diffOnly": "변경 사항만"
         },
         "search": {

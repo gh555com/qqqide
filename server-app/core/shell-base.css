@@ -1055,10 +1055,11 @@ html[data-theme="dark"] .qc-pop {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 700px;
+  width: 860px;
   max-width: 94vw;
   max-height: 80vh;
   overflow-y: auto;
+  overflow-x: hidden;   /* ★ 定宽列契约兜底：任何语言禁横向滚动条（列宽恒由 colgroup 百分比驱动，详 shell-statusbar.js） */
   z-index: 9999;
   border-radius: 6px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
@@ -1184,9 +1185,12 @@ html[data-theme="dark"] .qc-pop {
   padding: 20px;
   color: var(--text-dim);
 }
+/* ★ 定宽列契约（2026-10-05 用户定案）：列宽恒由 <colgroup> 百分比驱动 → 任何语言列宽恒一致；
+   数据格恒单行（nowrap + 省略号兜底），表头允许折行（禁因长译文改列宽）——配比值在 shell-statusbar.js */
 .qqq-onl-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 .qqq-onl-table thead tr {
   border-bottom: 1px solid var(--border-color);
@@ -1194,6 +1198,8 @@ html[data-theme="dark"] .qc-pop {
 .qqq-onl-table th {
   padding: 4px 6px;
   text-align: left;
+  font-size: 12px;
+  overflow-wrap: break-word;
 }
 .qqq-onl-table th.r,
 .qqq-onl-table td.r {
@@ -1209,6 +1215,9 @@ html[data-theme="dark"] .qc-pop {
 }
 .qqq-onl-table td {
   padding: 4px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .qqq-onl-table td.mono {
   font-family: Consolas, monospace;

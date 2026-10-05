@@ -1083,6 +1083,10 @@
             "winMax": "最大化",
             "winDrag": "拖曳以移動視窗",
             "readingData": "正在讀取 git 資料…",
+            "winLoadingMonaco": "正在載入 Monaco…",
+            "winMonacoFail": "Monaco 載入失敗",
+            "winBridgeNotReady": "橋接未就緒——請重啟 IDE",
+            "winNoDiffNote": "（檔案可能未被追蹤）",
             "diffOnly": "僅差異"
         },
         "search": {

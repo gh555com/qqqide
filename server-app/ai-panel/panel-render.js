@@ -96,6 +96,7 @@ function _addCopyBtnToUserMsg(el) {
     btn.className = 'msg-user-copy';
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     btn.title = typeof _i === 'function' ? _i('qqq.user.copy', '复制') : '复制';
+    btn.setAttribute('data-i18n-title', 'qqq.user.copy');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
     btn.onclick = function (e) {
         e.stopPropagation();
         var text = el.textContent || '';
@@ -133,6 +134,7 @@ function _addCopyBtnToAiMsg(el, rawMarkdown) {
     btn.className = 'msg-ai-copy';
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     btn.title = typeof _i === 'function' ? _i('qqq.ai.copy', '复制 Markdown') : '复制 Markdown';
+    btn.setAttribute('data-i18n-title', 'qqq.ai.copy');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
     btn.onclick = function (e) {
         e.stopPropagation();
         // ★ Markdown：优先从 _rawMarkdown，兜底 _fullText（流式缓冲区），再兜底 textContent

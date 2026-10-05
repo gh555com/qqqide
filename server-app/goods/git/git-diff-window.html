@@ -78,6 +78,7 @@ if(_mode==='commit')_parts.push('[commit]');else if(_staged)_parts.push('[staged
 _ti.textContent=_parts.join('  ');
 
 var _br=null;try{_br=window.qqqideBridge;}catch(_){}if(!_br)try{_br=window.top.qqqideBridge;}catch(_){}
+var _kk=function(k,fb){try{return window._i?window._i(k,fb):fb;}catch(_){return fb;}};   // i18n 小助手（本窗 i18n.js 实例；缺失回退原文）
 
 function _cw(){window.close();}
 document.getElementById('big-close').onclick=_cw;
@@ -106,13 +107,13 @@ function _sfc(){if(!_ed)return;var c=_ed.getLineChanges();if(!c||!c.length)retur
 var _ed=null,_ml=false,_do=false,_fs=13;
 document.getElementById('btn-diff-only').onclick=function(){_do=!_do;var b=this;if(_do)b.classList.add('checked');else b.classList.remove('checked');_aha();setTimeout(_sfc,50);};
 function _aha(){if(!_ed)return;var oe=_ed.getOriginalEditor(),me=_ed.getModifiedEditor();if(!_do){try{oe.setHiddenAreas([]);}catch(_){}try{me.setHiddenAreas([]);}catch(_){}return;}var c=_ed.getLineChanges();if(!c||!c.length)return;var mc=window.monaco;if(!mc)return;var om=oe.getModel(),mm=me.getModel(),ot=om?om.getLineCount():0,mt=mm?mm.getLineCount():0,oc=[],mc2=[];for(var i=0;i<c.length;i++){var cc=c[i];if(cc.originalEndLineNumber>0)oc.push({s:cc.originalStartLineNumber,e:cc.originalEndLineNumber});if(cc.modifiedEndLineNumber>0)mc2.push({s:cc.modifiedStartLineNumber,e:cc.modifiedEndLineNumber});}function inv(ch,total){if(!total)return[];var r=[],cur=1;for(var j=0;j<ch.length;j++){if(ch[j].s>cur)r.push({s:cur,e:ch[j].s-1});cur=ch[j].e+1;}if(cur<=total)r.push({s:cur,e:total});return r;}function sh(rr){var o=[];for(var k=0;k<rr.length;k++){var r=rr[k],len=r.e-r.s+1;if(len<3)continue;if(len<=6)continue;o.push({s:r.s+3,e:r.e-3});}return o;}var ou=sh(inv(oc,ot)),mu=sh(inv(mc2,mt));function tR(arr){return arr.map(function(r){return new mc.Range(r.s,1,r.e,1);});}try{oe.setHiddenAreas(tR(ou));}catch(_){}try{me.setHiddenAreas(tR(mu));}catch(_){}}
-function _lm(){return new Promise(function(resolve){if(_ml&&window.monaco){resolve();return;}var s=document.createElement('script');s.src='qqqide-asset://monaco/vs/loader.js';s.onload=function(){require.config({paths:{vs:'qqqide-asset://monaco/vs'}});window.MonacoEnvironment={getWorker:function(){return new Worker('qqqide-asset://monaco/vs/base/worker/workerMain.js');}};require(['vs/editor/editor.main'],function(){_ml=true;_dmt(window.monaco);resolve();},function(){_msg.textContent='Monaco failed';resolve();});};s.onerror=function(){_msg.textContent='Monaco failed';resolve();};document.head.appendChild(s);});}
+function _lm(){return new Promise(function(resolve){if(_ml&&window.monaco){resolve();return;}var s=document.createElement('script');s.src='qqqide-asset://monaco/vs/loader.js';s.onload=function(){require.config({paths:{vs:'qqqide-asset://monaco/vs'}});window.MonacoEnvironment={getWorker:function(){return new Worker('qqqide-asset://monaco/vs/base/worker/workerMain.js');}};require(['vs/editor/editor.main'],function(){_ml=true;_dmt(window.monaco);resolve();},function(){_msg.textContent=_kk('goods.git.winMonacoFail','Monaco 加载失败');resolve();});};s.onerror=function(){_msg.textContent=_kk('goods.git.winMonacoFail','Monaco 加载失败');resolve();};document.head.appendChild(s);});}
 
 (async function(){
-if(!_br||!_br.qz){_msg.textContent='Bridge not ready\n\nPlease restart IDE';return;}
-try{_msg.textContent='Reading git data\u2026';await _rgr();var b='',a='';try{b=await _bf()||'';}catch(e){}try{a=await _af()||'';}catch(e){}
-if(!b&&!a){_msg.textContent='No diff\n\n'+_fn+(_mode!=='commit'?'\n(file may not be tracked)':'');return;}
-_msg.textContent='Loading Monaco\u2026';await _lm();if(!window.monaco){return;}
+if(!_br||!_br.qz){_msg.textContent=_kk('goods.git.winBridgeNotReady','桥接未就绪——请重启 IDE');return;}
+try{_msg.textContent=_kk('goods.git.readingData','正在读取 git 数据…');await _rgr();var b='',a='';try{b=await _bf()||'';}catch(e){}try{a=await _af()||'';}catch(e){}
+if(!b&&!a){_msg.textContent=_kk('goods.git.noDiff','无差异')+'\n\n'+_fn+(_mode!=='commit'?'\n'+_kk('goods.git.winNoDiffNote','（文件可能未被跟踪）'):'');return;}
+_msg.textContent=_kk('goods.git.winLoadingMonaco','正在加载 Monaco…');await _lm();if(!window.monaco){return;}
 _msg.style.display='none';var dk=document.documentElement.getAttribute('data-theme')==='dark',th=dk?'solarized-dark':'solarized-light',lg=_l(_fn);
 try{if(_br&&_br.zoom){var sz=await _br.zoom.get();if(typeof sz==='number')_fs=Math.round(sz);}}catch(_){}
 var m1=monaco.editor.createModel(b||'',lg),m2=monaco.editor.createModel(a||'',lg);
@@ -121,8 +122,8 @@ _ed.setModel({original:m1,modified:m2});_se(_ed.getOriginalEditor());_se(_ed.get
 var fd=false;_ed.onDidUpdateDiff(function(){_aha();if(!fd){fd=true;_sfc();}});
 if(_br&&_br.sync&&_br.sync.onMessage){_br.sync.onMessage(function(ch,data){if(ch!=='theme-change')return;var d=!!(data&&data.dark),t=d?'solarized-dark':'solarized-light';document.documentElement.setAttribute('data-theme',d?'dark':'light');if(_ed)try{_ed.updateOptions({theme:t});}catch(_){}});}
 if(_br&&_br.zoom&&_br.zoom.onChanged){_br.zoom.onChanged(function(s){if(typeof s==='number'){_fs=Math.round(s);if(_ed)try{_ed.updateOptions({fontSize:_fs});}catch(_){}}});}
-_msg.style.display='none';}catch(e){_msg.textContent='Error: '+(e&&e.message||e);}
-})().catch(function(e){_msg.textContent='Crash: '+(e&&e.message||e);});
+_msg.style.display='none';}catch(e){_msg.textContent=_kk('common.error','错误')+': '+(e&&e.message||e);}
+})().catch(function(e){_msg.textContent=_kk('common.error','错误')+': '+(e&&e.message||e);});
 </script>
 </body>
 </html>

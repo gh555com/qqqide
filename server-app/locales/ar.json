@@ -1083,6 +1083,10 @@
             "winMax": "تكبير النافذة",
             "winDrag": "اسحب لتحريك النافذة",
             "readingData": "جاري قراءة بيانات git...",
+            "winLoadingMonaco": "جارٍ تحميل Monaco…",
+            "winMonacoFail": "فشل تحميل Monaco",
+            "winBridgeNotReady": "الجسر غير جاهز - يرجى إعادة تشغيل بيئة التطوير المتكاملة (IDE)",
+            "winNoDiffNote": "(قد لا يكون الملف متابعاً)",
             "diffOnly": "الاختلافات فقط"
         },
         "search": {

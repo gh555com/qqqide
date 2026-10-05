@@ -765,6 +765,7 @@ async function renderQuestDrop() {
                 var bean = document.createElement('span');
                 bean.className = 'quest-drop-draft-bean';
                 bean.title = (typeof _i === 'function') ? _i('ai.draftBean', '有未发送的编辑内容') : '有未发送的编辑内容';
+                bean.setAttribute('data-i18n-title', 'ai.draftBean');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
                 item.appendChild(bean);
             }
         })(filtered[i]);

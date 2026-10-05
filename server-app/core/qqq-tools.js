@@ -512,7 +512,8 @@
     var idleLine = hasTarget ? '' : ('\n\u25B8 ' + _i('workbench.noTargetTab', '无目标文档（当前标签不是文件编辑器）'));
     for (var c = 0; c < _expCards.length; c++) {
       var _k = _expCards[c].kind;
-      _expCards[c].el.title = _expCards[c].base + (_k === 'export' ? (nameLineExp || idleLine) : (nameLineOp || idleLine));
+      // ★ base 每次现算（禁构建期快照——切语言后状态重刷不复写旧语言）
+      _expCards[c].el.title = _i(_expCards[c].tipKey, _expCards[c].tipFb) + (_k === 'export' ? (nameLineExp || idleLine) : (nameLineOp || idleLine));
     }
     for (var h = 0; h < _hingeEls.length; h++) {
       _hingeRender(_hingeEls[h], groups, fillIdx);
@@ -527,6 +528,9 @@
       try { _dimEls[d].classList.toggle('qqq-tools-idle', !hasTarget); } catch (_) { /* */ }
     }
   }
+  // ★ 语言切换：卡片/合页 tooltip 整体重刷（现算 base；旧语言快照零残留）
+  try { window.addEventListener('qqq-lang-change', function () { try { _refreshExportCards(); } catch (_) { } }); } catch (_) { }
+
   function _expOvEnsure() {
     if (_expOvEl && _expOvEl.parentNode) { return _expOvEl; }
     var d = document.createElement('div');
@@ -573,10 +577,9 @@
     _expOvHide();
   }
   function _expWireCard(el, tipKey, tipFb, kind) {
-    var base = _i(tipKey, tipFb);
-    el.title = base;
-    _expCards.push({ el: el, base: base, kind: kind || 'op' });
-    // 语言切换后 hover 现算（工作台开启期间切语言不留旧语言快照）
+    el.title = _i(tipKey, tipFb);
+    // ★ 禁构建期快照：存键位，hover 与状态重刷均现算（切语言零残留）
+    _expCards.push({ el: el, tipKey: tipKey, tipFb: tipFb, kind: kind || 'op' });
     el.addEventListener('mouseenter', function () { el.title = _i(tipKey, tipFb); });
     el.addEventListener('mouseenter', _expCardEnter);
     el.addEventListener('mouseleave', _expCardLeave);

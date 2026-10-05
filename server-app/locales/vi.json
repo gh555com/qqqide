@@ -1083,6 +1083,10 @@
             "winMax": "Phóng to",
             "winDrag": "Kéo thả để di chuyển cửa sổ",
             "readingData": "Đang đọc dữ liệu git…",
+            "winLoadingMonaco": "Đang tải Monaco…",
+            "winMonacoFail": "Tải Monaco thất bại",
+            "winBridgeNotReady": "Cầu nối chưa sẵn sàng — vui lòng khởi động lại IDE",
+            "winNoDiffNote": "(Tệp có thể chưa được theo dõi)",
             "diffOnly": "Chỉ hiển thị khác biệt"
         },
         "search": {

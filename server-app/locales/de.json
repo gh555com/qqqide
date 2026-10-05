@@ -1083,6 +1083,10 @@
             "winMax": "Maximieren",
             "winDrag": "Fenster per Drag & Drop verschieben",
             "readingData": "Lese Git-Daten…",
+            "winLoadingMonaco": "Monaco wird geladen…",
+            "winMonacoFail": "Monaco konnte nicht geladen werden",
+            "winBridgeNotReady": "Brücke nicht bereit – bitte IDE neu starten",
+            "winNoDiffNote": "(Datei wird möglicherweise nicht verfolgt)",
             "diffOnly": "Nur Unterschiede"
         },
         "search": {

@@ -516,6 +516,7 @@
     input.type = 'text';
     input.className = 'aiv-filter-input';
     input.placeholder = window._i('shell.viewport.filterPh', '筛选...');
+    input.setAttribute('data-i18n-placeholder', 'shell.viewport.filterPh');   // ★ 语言切换自动保鲜
     input.style.cssText =
       'flex:1; background:var(--base2); border:1px solid var(--border-color); ' +
       'border-radius:2px; padding:4px 6px; font-size:12px; color:var(--text-primary); ' +
@@ -544,6 +545,7 @@
       btn.className = 'aiv-sort-btn';
       btn.textContent = label;
       btn.title = mode === 'n' ? window._i('shell.viewport.sortByName', '按文件名排序') : window._i('shell.viewport.sortByMtime', '按修改时间排序');
+      btn.setAttribute('data-i18n-title', mode === 'n' ? 'shell.viewport.sortByName' : 'shell.viewport.sortByMtime');   // ★ 语言切换自动保鲜
       btn.style.cssText =
         'width:24px; height:24px; border:1px solid var(--border-color); border-radius:2px; ' +
         'color:var(--text-primary); font-size:12px; font-weight:bold; ' +
@@ -2147,10 +2149,12 @@
       // 主文件夹未可删除，显示 ★ 标记
       rmBtn.textContent = '★';
       rmBtn.title = window._i('shell.viewport.mainFolder', '主文件夹（未可移除）');
+      rmBtn.setAttribute('data-i18n-title', 'shell.viewport.mainFolder');   // ★ 语言切换自动保鲜（updateDom）
       rmBtn.style.cssText = 'color:var(--yellow,#b58900);font-size:14px;cursor:default;font-weight:bold;';
     } else {
       rmBtn.textContent = '−';
       rmBtn.title = window._i('shell.viewport.removeProject', '移除此项目');
+      rmBtn.setAttribute('data-i18n-title', 'shell.viewport.removeProject');   // ★ 语言切换自动保鲜
       rmBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const ok = await confirmRemove(proj);
@@ -2213,6 +2217,7 @@
     const block = document.createElement('div');
     block.className = 'aiv-block aiv-block-empty';
     block.title = window._i('shell.viewport.addProject', '添加项目文件夹到 AI 视口');
+    block.setAttribute('data-i18n-title', 'shell.viewport.addProject');   // ★ 语言切换自动保鲜
 
     const plus = document.createElement('span');
     plus.className = 'aiv-block-plus';

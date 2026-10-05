@@ -203,6 +203,7 @@
     copyIco.className = 'qqi qqi-copy';
     copyBtn.appendChild(copyIco);
     copyBtn.title = _i('editor.copyPath', '复制路径');
+    copyBtn.setAttribute('data-i18n-title', 'editor.copyPath');   // ★ 语言切换自动保鲜（面包屑常驻期间）
     copyBtn.setAttribute('data-no-cd', '');
     copyBtn.addEventListener('click', function (e) {
       e.preventDefault();
@@ -410,11 +411,12 @@
     var btns = document.createElement('div');
     btns.setAttribute('data-qqq-editor-float-btns', '1');
 
-    function _makeFloatBtn(text, title, onPress) {
+    function _makeFloatBtn(text, titleKey, titleFb, onPress) {
       var btn = document.createElement('button');
       btn.className = 'qqq-editor-float-btn';
       btn.textContent = text;
-      btn.title = title;
+      btn.title = _i(titleKey, titleFb);
+      btn.setAttribute('data-i18n-title', titleKey);   // ★ 语言切换自动保鲜
       btn.setAttribute('data-no-cd', '');
       btn.addEventListener('mousedown', function (e) {
         e.preventDefault(); e.stopPropagation();
@@ -437,6 +439,7 @@
       mdIco.className = 'qqi qqi-eye';
       mdBtn.appendChild(mdIco);
       mdBtn.title = _i('mdview.action', '预览 Markdown');
+      mdBtn.setAttribute('data-i18n-title', 'mdview.action');   // ★ 语言切换自动保鲜
       mdBtn.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
         try { window.qqqMdPreview.open(filePath); } catch (_) { }
@@ -446,7 +449,7 @@
 
     // Undo ↶
     btns.appendChild(_makeFloatBtn('\u21B6',
-      _i('editor.undo', '撤销 (Ctrl+Z)'),
+      'editor.undo', '撤销 (Ctrl+Z)',
       function () {
         if (window.qqqCharUndo) { window.qqqCharUndo.undo(monacoEditor); }
         else { try { monacoEditor.trigger('keyboard', 'undo', null); } catch (_) { } }
@@ -454,7 +457,7 @@
 
     // Redo ↷
     btns.appendChild(_makeFloatBtn('\u21B7',
-      _i('editor.redo', '重做 (Ctrl+Y)'),
+      'editor.redo', '重做 (Ctrl+Y)',
       function () {
         if (window.qqqCharUndo) { window.qqqCharUndo.redo(monacoEditor); }
         else { try { monacoEditor.trigger('keyboard', 'redo', null); } catch (_) { } }
@@ -470,6 +473,7 @@
     mmIco.className = 'qqi qqi-map';
     if (mmOn) mmBtn.appendChild(mmIco); else mmBtn.textContent = '\u25A1';
     mmBtn.title = _i('editor.minimap', '小地图');
+    mmBtn.setAttribute('data-i18n-title', 'editor.minimap');   // ★ 语言切换自动保鲜
     mmBtn.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       try {

@@ -1083,6 +1083,10 @@
             "winMax": "Agrandir",
             "winDrag": "Glisser pour déplacer la fenêtre",
             "readingData": "Lecture des données git…",
+            "winLoadingMonaco": "Chargement de Monaco…",
+            "winMonacoFail": "Échec du chargement de Monaco",
+            "winBridgeNotReady": "Le pont n'est pas prêt — veuillez redémarrer l'IDE",
+            "winNoDiffNote": "(Le fichier peut ne pas être suivi)",
             "diffOnly": "Différences uniquement"
         },
         "search": {

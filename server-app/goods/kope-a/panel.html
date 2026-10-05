@@ -408,6 +408,17 @@ body {
         _offlineBanner = false;
     }
 
+    // ★ 语言切换：离线横幅重取（横幅在才重建——文案/启动钮按新语言重渲染，禁旧语言快照）
+    try {
+        window.addEventListener('qqq-lang-change', function () {
+            try {
+                if (!el.historyContainer.querySelector('.kope-offline-banner')) return;
+                hideOfflineBanner();
+                showOfflineBanner();
+            } catch (_) { }
+        });
+    } catch (_) { }
+
     function connectSSE() {
         if (!_apiPort) return;
         if (_eventSource) { _eventSource.close(); _eventSource = null; }

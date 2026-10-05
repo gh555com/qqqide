@@ -471,8 +471,10 @@
   //   x1 = 视频像素物理 1:1（win32 DSF=1 无视系统缩放）；✓ 角标由引擎实测几何回推（onZoomState 统一刷新——引擎推 zoom 值本身）；
   //   音轨/元数据未就绪 → 禁用；快捷键 1/2/3/4 与 `（1 左侧键）/回车（=x0.5）同源（键在引擎键位表）
   var zoomBtns = ['pl-z05', 'pl-z1', 'pl-z2', 'pl-z3', 'pl-z4'].map(function (id) { return document.getElementById(id); });
+  var _zoomSync_st = null;   // 最近一次拉伸状态（语言切换重取 tooltip 用）
   function _zoomZv(zb) { var v = parseFloat(zb && zb.getAttribute('data-z')); return (isFinite(v) && v > 0) ? v : 0; }
   function _zoomSync(st) {
+    _zoomSync_st = st;
     if (!zoomBtns) { return; }
     var avail = !!(st && st.avail);
     var active = (st && st.active) || 0;
@@ -498,6 +500,18 @@
     })(zoomBtns[zj]);
   }
   _zoomSync(null);
+
+  // ★ 语言切换：头部钮/拉伸钮/空态文案重取（建期取词的 tooltip 禁旧语言快照残留）
+  try {
+    window.addEventListener('qqq-lang-change', function () {
+      try { pinBtn.title = _tt('shell.player.pin', '置顶'); } catch (_) { }
+      try { minBtn.title = _tt('shell.player.minimize', '最小化'); } catch (_) { }
+      try { closeBtn.title = _tt('shell.player.close', '关闭'); } catch (_) { }
+      try { _maxUI(maxBtn.classList.contains('pl-maxed')); } catch (_) { }
+      try { _zoomSync(_zoomSync_st); } catch (_) { }
+      try { if (emptyEl && emptyEl.style.display !== 'none') { emptyTextEl.textContent = _tt('shell.player.empty', '播放列表为空'); } } catch (_) { }
+    });
+  } catch (_) { }
 
   // ── 媒体信息（[!] 钮，2026-10-03 q319 用户定案）：悬停 = 即时详情框（光标移开即隐）；点击 = Roam 定位原文件 ──
   //   数据 = 主进程 ffprobe 全量（bridge.media.info：编码/分辨率/帧率/像素格式/色彩/码率/声道/采样率/容器/大小/时间）；

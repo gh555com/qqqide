@@ -1083,6 +1083,10 @@
             "winMax": "Развернуть",
             "winDrag": "Перетаскивание для перемещения окна",
             "readingData": "Чтение данных git…",
+            "winLoadingMonaco": "Загрузка Monaco…",
+            "winMonacoFail": "Не удалось загрузить Monaco",
+            "winBridgeNotReady": "Мост не готов — перезапустите IDE",
+            "winNoDiffNote": "(файл, возможно, не отслеживается)",
             "diffOnly": "Только изменения"
         },
         "search": {

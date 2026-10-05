@@ -479,6 +479,7 @@ var CardPool = (function () {
     b.className = 'table-roam-btn';
     b.textContent = 'Roam';
     b.title = _qq('ai.roamLocate', '在 Roam 中定位此文件');
+    b.setAttribute('data-i18n-title', 'ai.roamLocate');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
     wrap.insertBefore(b, wrap.firstChild);
   }
 
@@ -873,6 +874,7 @@ var CardPool = (function () {
         _rbtn.className = 'table-roam-btn';
         _rbtn.textContent = 'Roam';
         _rbtn.title = _qq('ai.roamLocate', '在 Roam 中定位此文件');
+        _rbtn.setAttribute('data-i18n-title', 'ai.roamLocate');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
         _twrap.appendChild(_rbtn);
       }
       _twrap.appendChild(_bImg);

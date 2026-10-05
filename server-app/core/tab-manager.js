@@ -562,6 +562,8 @@
   //   showDefault=true （面包屑徽标）：恒显（证据未到 → 默认态占位；证据到达即校正真值）
   function _applyEncChip(chip, filePath, info, showDefault) {
     if (!chip) return;
+    // ★ 语言切换重取用：路径 + 展示模式落在 DOM 上（弹层/长命徽标 title 均为 _miT 现取）
+    try { chip.setAttribute('data-qqq-enc-path', filePath); chip.setAttribute('data-qqq-enc-def', showDefault ? '1' : '0'); } catch (_) { }
     // ★ 恒显档（面包屑）证据未到 → 默认态占位（utf8 自动）——芯片恒在、绝不空缺；
     //   真实证据到达（setFileEnc → _renderEncChipsFor）即覆盖校正（GBK/固定/BOM 真值）
     if (!info && showDefault) info = { enc: 'utf8', bom: false, pinned: null };
@@ -610,6 +612,19 @@
       }
     }
   }
+
+  // ★ 语言切换：编码徽标 title 重取（本窗全体 tab 徽标 + 面包屑徽标统一重走 _applyEncChip；旧语言快照零残留）
+  try { window.addEventListener('qqq-lang-change', function () {
+    try {
+      var _chips = document.querySelectorAll('.qqq-enc-chip[data-qqq-enc-path]');
+      for (var _ci = 0; _ci < _chips.length; _ci++) {
+        var _ch = _chips[_ci];
+        var _cp = _ch.getAttribute('data-qqq-enc-path');
+        if (!_cp) continue;
+        try { _applyEncChip(_ch, _cp, _pathEnc[_cp], _ch.getAttribute('data-qqq-enc-def') === '1'); } catch (_) { }
+      }
+    } catch (_) { }
+  }); } catch (_) { }
 
   // 渲染层证据入口：文件 read 成功后调用（数据来自主进程 qqqide:fs:encoding）
   function setFileEnc(filePath, info) {

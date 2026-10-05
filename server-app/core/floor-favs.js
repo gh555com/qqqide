@@ -234,6 +234,7 @@
     var stars = document.createElement('div');
     stars.className = 'qqq-fav-namer-stars';
     stars.title = _i('fav.level', '重要级别');
+    stars.setAttribute('data-i18n-title', 'fav.level');   // ★ 语言切换自动保鲜
     var starEls = [];
     for (var _si = 1; _si <= 3; _si++) {
       (function (idx) {

@@ -117,7 +117,12 @@
 		var _onlSparkSvg = null;   // 微型曲线 <svg>（懒创建一次复用，仅弹窗可见时渲染）
 		var _onlShowBal = false;   // ★ 隐藏功能：弹窗开启时连按 3 下 q → day 右侧显示「余额」列（服务端 balance_ge 四舍五入取整）
 		var _onlQCount = 0;        // 连按计数（超时/弹窗关闭清零）
-		var _onlQAt = 0;
+		var _onlQAt = 0;
+		// ★ 定宽列配比（2026-10-05 用户定案；勿随手改）：table-layout:fixed 由 <colgroup> 百分比驱动——
+		//   任何语言列宽恒一致、永不横向滚动条。值 = 同引擎实测：13 语言最坏列头/数据 + 5px 滚动条在场余量；
+		//   10 列 = 含余额列（三连 q 展开）/ 9 列 = 余额隐藏。改值必须重跑实测（列内文本恒不得裁切）。
+		var _ONL_COLS10 = [13.4, 5.0, 7.8, 11.6, 10.7, 15.2, 10.1, 10.7, 8.8, 6.7];
+		var _ONL_COLS9 = [14.5, 5.4, 12.6, 11.6, 16.5, 11.0, 11.6, 9.5, 7.3];
 
 		function fetchOnline(force) {
 			if (!force && document.hidden) return; // ★ 2026-10-02: 隐藏窗零请求（回前台 visibilitychange 补拉）
@@ -291,7 +296,24 @@
 			_renderSpark(); // 先画缓存曲线（开箱即见），随后 fetchOnline 刷新重绘
 			fetchOnline(true); // 弹窗打开即拉最新（绕过 240s 轮询限频，面板首行人数+24h平均立即刷新）
 			fetchOnlineUsers();
-		}
+		}
+
+		// ★ 语言切换：面板销毁重建（建一次永久缓存的面板禁烧字——与状态区内存卡同规；开着则原态恢复）
+		try { window.addEventListener('qqq-lang-change', function () {
+			try {
+				if (!_onlOverlay) { return; }
+				var _wasOpen = !!_onlUsersOpen;
+				try { if (_onlOverlay.parentNode) { _onlOverlay.parentNode.removeChild(_onlOverlay); } } catch (_) { }
+				_onlOverlay = null; _onlPanel = null; _onlSparkSvg = null; _onlUsersOpen = false;
+				if (!_wasOpen) { return; }
+				buildOnlineUsersPanel();
+				_onlUsersOpen = true;
+				_onlOverlay.style.display = '';
+				if (_onlUsersCache && _onlUsersCache.length) { renderOnlineUsers(_onlUsersCache); }   // 缓存数据重放（零额外请求）
+				_renderSpark();
+				fetchOnline(true);   // 首行人数/24h平均按新语言回填
+			} catch (_) { }
+		}); } catch (_) { }
 
 		function renderOnlineUsers(users) {
 			_onlUsersCache = users;
@@ -308,7 +330,12 @@
 			var $now = document.getElementById('qqq-onl-now');
 			if ($now && $onl) $now.textContent = $onl.textContent || '0';
 			var balTh = _onlShowBal ? '<th class="r">' + _T('shell.onl.thBalance', '余额') + '</th>' : '';
-			var html = '<table class="qqq-onl-table"><thead><tr>' +
+			// ★ 定宽列（禁改）：colgroup 百分比 → 列宽与语言/内容无关（配比唯一源 = _ONL_COLS*，样式契约在 shell-base.css）
+			var _cw = _onlShowBal ? _ONL_COLS10 : _ONL_COLS9;
+			var colHtml = '<colgroup>';
+			for (var ci = 0; ci < _cw.length; ci++) colHtml += '<col style="width:' + _cw[ci] + '%">';
+			colHtml += '</colgroup>';
+			var html = '<table class="qqq-onl-table">' + colHtml + '<thead><tr>' +
 				'<th>' + _T('shell.onl.thPhone', '手机号') + '</th><th class="r">' + _T('shell.onl.thDay', 'day') + '</th>' + balTh + '<th class="r">' + _T('shell.onl.thCost', '消耗') + '</th><th class="r">' + _T('shell.onl.thIndepCost', '独立消耗') + '</th>' +
 				'<th class="r">' + _T('shell.onl.thLastSeen', '最近在线') + '</th><th class="r">' + _T('shell.onl.thCont', '连续(m)') + '</th><th class="r">' + _T('shell.onl.thIndep', '独立') + '</th><th class="r">' + _T('shell.onl.thVer', '版本') + '</th><th class="r">' + _T('shell.onl.thTotal', '累计(h)') + '</th>' +
 				'</tr></thead><tbody>';

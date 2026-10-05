@@ -342,9 +342,9 @@ function _stDone(d){
   var frag=document.createDocumentFragment();
   if(d.error){var eb=document.createElement('span');eb.style.cssText='color:var(--red);overflow:hidden;text-overflow:ellipsis';eb.textContent='⚠️ '+d.error;frag.appendChild(eb);}
   else{
-    var b1=document.createElement('button');b1.className='cbtn';b1.textContent='⊞';b1.title=_kk('goods.search.expandAll','全部展开');
+    var b1=document.createElement('button');b1.className='cbtn';b1.textContent='⊞';b1.title=_kk('goods.search.expandAll','全部展开');b1.setAttribute('data-i18n-title','goods.search.expandAll');   // ★ 语言切换自动保鲜
     b1.style.cssText='margin:0';b1.addEventListener('click',_expAll);frag.appendChild(b1);
-    var b2=document.createElement('button');b2.className='cbtn';b2.textContent='⊟';b2.title=_kk('goods.search.collapseAll','全部折叠');
+    var b2=document.createElement('button');b2.className='cbtn';b2.textContent='⊟';b2.title=_kk('goods.search.collapseAll','全部折叠');b2.setAttribute('data-i18n-title','goods.search.collapseAll');   // ★ 语言切换自动保鲜
     b2.style.cssText='margin:0 4px 0 2px';b2.addEventListener('click',_colAll);frag.appendChild(b2);
     var sp=document.createElement('span');sp.className='n';sp.textContent=_kk('goods.search.matchesN',' {0} 个匹配',d.total||0);frag.appendChild(sp);
     frag.appendChild(document.createTextNode(_kk('goods.search.filesN',' · {0} 个文件 ',_groups?_groups.size:0)));

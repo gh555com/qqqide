@@ -233,16 +233,16 @@
   init();
   function init() {
     getAuth(function(tok, did, name) {
-      if (!tok) { setConnStatus(false, _kk('goods.dm.notLoggedIn', '未登录')); return; }
+      if (!tok) { setConnStatus(false, _kk('goods.dm.notLoggedIn', '未登录'), function () { setConnStatus(false, _kk('goods.dm.notLoggedIn', '未登录')); }); return; }
       _token = tok;
       _doerID = did;
       _doerName = name || did;
       _doerPhoneMask = (name && name.indexOf('****') >= 0) ? name : '';
-      if (!_doerID) { setConnStatus(false, _kk('goods.dm.authAbnormal', '登录信息异常')); return; }
+      if (!_doerID) { setConnStatus(false, _kk('goods.dm.authAbnormal', '登录信息异常'), function () { setConnStatus(false, _kk('goods.dm.authAbnormal', '登录信息异常')); }); return; }
       _cacheLoad();   // 本地缓存秒开（离线也能看历史，服务器随后增量修正）
       if (Object.keys(_convMap).length) {
         renderConvList();
-        setConnStatus(false, _kk('goods.dm.cacheSync', '缓存模式 · 同步中…'));
+        setConnStatus(false, _kk('goods.dm.cacheSync', '缓存模式 · 同步中…'), function () { setConnStatus(false, _kk('goods.dm.cacheSync', '缓存模式 · 同步中…')); });
       }
       connectWS();
       loadConversations();
@@ -302,14 +302,14 @@
 
     var wsUrl = 'wss://cnk.gh555.com/ws?token=' + encodeURIComponent(_token);
     var ws = _ws = new WebSocket(wsUrl);
-    setConnStatus(false, _kk('goods.dm.connecting', '连接中…'));
+    setConnStatus(false, _kk('goods.dm.connecting', '连接中…'), function () { setConnStatus(false, _kk('goods.dm.connecting', '连接中…')); });
 
     ws.onopen = function() {
       // ★ 节能握手窗口废弃（2026-09-14）：窗口隐藏时连接仍在 CONNECTING → 不立即 close（Chrome 打
       //   "closed before the connection is established" 噪音）→ 置 _qqqDead 标记，握手完成瞬间在此自关，零噪音零副作用
       if (ws._qqqDead) { try { ws.close(); } catch(_) {} return; }
       _wsReconnectDelay = 0;  // 连上即重置退避
-      setConnStatus(true, _kk('goods.dm.connected', '已连接'));
+         setConnStatus(true, _kk('goods.dm.connected', '已连接'), function () { setConnStatus(true, _kk('goods.dm.connected', '已连接')); });
       ws.send(JSON.stringify({type:'sub',ch:'inbox:'+_doerID}));
       startBeat();
     };
@@ -322,7 +322,7 @@
         } else if (msg.type === 'group_msg' && msg.data) {
           handleGroupPush(msg.data);
         } else if (msg.type === 'ok' && msg.ref === 'sub') {
-          setConnStatus(true, _kk('goods.dm.inboxReady', '收件箱已就绪'));
+          setConnStatus(true, _kk('goods.dm.inboxReady', '收件箱已就绪'), function () { setConnStatus(true, _kk('goods.dm.inboxReady', '收件箱已就绪')); });
  		}
 		// 在线状态唯一真理 = 服务端 wq.doer_state 最近1h ping（随 conversations 批量下发）
 		// WS 不再携带任何在线/离线事件
@@ -331,15 +331,20 @@
 
     ws.onclose = function() {
       stopBeat();
-      if (_bgMode) { setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数')); return; }  // 节能不重连
-      setConnStatus(false, _kk('goods.dm.reconnecting', '断开 · {0}s 重连', Math.round(_wsReconnectDelay/1000)));
+      if (_bgMode) { var _rf1 = function () { setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'), _rf1); }; setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'), _rf1); return; }  // 节能不重连
+      var _rf2 = function () { setConnStatus(false, _kk('goods.dm.reconnecting', '断开 · {0}s 重连', Math.round(_wsReconnectDelay/1000)), _rf2); };
+      setConnStatus(false, _kk('goods.dm.reconnecting', '断开 · {0}s 重连', Math.round(_wsReconnectDelay/1000)), _rf2);
       _wsReconnectTimer = setTimeout(connectWS, _wsReconnectDelay);
     };
 
     ws.onerror = function() { /* onclose fires next */ };
   }
 
-  function setConnStatus(ok, text) {
+  // ★ 语言切换重取机：每次设置状态时登记一个「同态重放」闭包，切语言后重算文案（常驻状态文字禁旧语言快照）
+  var _connReFn = null;
+  try { window.addEventListener('qqq-lang-change', function () { if (_connReFn) { try { _connReFn(); } catch (_) { } } }); } catch (_) { }
+  function setConnStatus(ok, text, reFn) {
+    _connReFn = (typeof reFn === 'function') ? reFn : null;
     $connDot.className = ok ? '' : 'offline';
     $connText.textContent = text;
   }
@@ -364,7 +369,8 @@
       try { _w._qqqDead = true; } catch(_) {}
       try { if (_w.readyState === WebSocket.OPEN) _w.close(); } catch(_) {}
     }
-    setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'));
+    var _rfb = function () { setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'), _rfb); };
+    setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'), _rfb);
     startBgPoll();
   }
   function exitBg() {

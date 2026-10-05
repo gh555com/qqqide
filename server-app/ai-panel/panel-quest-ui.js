@@ -1763,6 +1763,7 @@ function renderQueueStrip() {
     pauseBtn.className = 'queue-header-btn';
     pauseBtn.textContent = _queuePaused ? ('▶ ' + _i('ai.queue.resume', '继续')) : ('⏸ ' + _i('ai.queue.pause', '暂停'));
     pauseBtn.title = _queuePaused ? _qq('ai.queue.resumeTip', '恢复自动发送') : _qq('ai.queue.pauseTip', '暂停自动发送');
+    pauseBtn.setAttribute('data-i18n-title', _queuePaused ? 'ai.queue.resumeTip' : 'ai.queue.pauseTip');   // ★ 语言切换自动保鲜（属性随态换键）
     pauseBtn.onclick = function (e) {
         e.stopPropagation();
         if (_queuePaused) {
@@ -1788,6 +1789,7 @@ function renderQueueStrip() {
     clearBtn.className = 'queue-header-btn';
     clearBtn.textContent = _i('ai.queue.clear', '清空');
     clearBtn.title = _qq('ai.queue.clearTip', '清空所有排队消息');
+    clearBtn.setAttribute('data-i18n-title', 'ai.queue.clearTip');   // ★ 语言切换自动保鲜
     clearBtn.onclick = function (e) {
         e.stopPropagation();
         _queue.length = 0;

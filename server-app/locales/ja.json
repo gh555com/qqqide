@@ -1083,6 +1083,10 @@
             "winMax": "最大化",
             "winDrag": "ドラッグしてウィンドウを移動",
             "readingData": "Git データを読み込んでいます…",
+            "winLoadingMonaco": "Monacoを読み込んでいます…",
+            "winMonacoFail": "Monacoの読み込み失敗",
+            "winBridgeNotReady": "ブリッジが準備できていません——IDEを再起動してください",
+            "winNoDiffNote": "（ファイルは追跡されていない可能性があります）",
             "diffOnly": "差分のみ"
         },
         "search": {

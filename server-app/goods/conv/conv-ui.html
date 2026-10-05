@@ -574,6 +574,14 @@ try {
         .observe(window.parent.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 } catch (e) {}
 
+// ★ 语言切换：整窗重构建（格子组的 group/label 在 buildCells 取词——必须重跑才能换语言；禁旧语言快照残留）
+try {
+    window.addEventListener('qqq-lang-change', function () {
+        try { refresh(); } catch (_) {}
+        try { if (typeof updateCompressBtns === 'function') updateCompressBtns(); } catch (_) {}
+    });
+} catch (_) {}
+
 // 刷新消息（支持 questId 更新 — 同一 tab 切到不同 quest）
 window.addEventListener('message', function (e) {
     if (!e.data) return;

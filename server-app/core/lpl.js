@@ -206,6 +206,7 @@ function _lplWrapTextNode(node, lastByBlock, block) {
     var ctxRaw = lastByBlock.get(block) || '';
     if (ctxRaw) a.setAttribute('data-c', ctxRaw);
     a.title = _t('ai.roamOpen', '在 Roam 中打开');
+    a.setAttribute('data-i18n-title', 'ai.roamOpen');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
     a.appendChild(node.ownerDocument.createTextNode(m.raw));
     frag.appendChild(a);
     lastByBlock.set(block, pv);
@@ -279,6 +280,7 @@ function linkifyLocalPaths(root) {
           var pvc = _lplSetP(ca, whole);
           if (ctxCode) ca.setAttribute('data-c', ctxCode);
           ca.title = _t('ai.roamOpen', '在 Roam 中打开');
+          ca.setAttribute('data-i18n-title', 'ai.roamOpen');   // ★ 语言切换自动保鲜
           ca.textContent = whole;
           pe.appendChild(ca);
           lastByBlock.set(blockCode, pvc);
@@ -317,6 +319,7 @@ function linkifyLocalPaths(root) {
             var pv3 = _lplSetP(a3, hit.raw);
             if (ctxRaw) a3.setAttribute('data-c', ctxRaw);
             a3.title = _t('ai.roamOpen', '在 Roam 中打开');
+            a3.setAttribute('data-i18n-title', 'ai.roamOpen');   // ★ 语言切换自动保鲜
             a3.appendChild(tailN);
             loc.node.parentNode.insertBefore(a3, restN);
             void pv3;
@@ -346,7 +349,7 @@ function _lplApplyResult(el, ok) {
     if (!el || !el.isConnected) return;
     if (ok) {
       el.classList.add('qqq-path-ok');
-      if (!el.title) el.title = _t('ai.roamOpen', '在 Roam 中打开');
+      if (!el.title) { el.title = _t('ai.roamOpen', '在 Roam 中打开'); el.setAttribute('data-i18n-title', 'ai.roamOpen'); }
     } else {
       var tn = el.ownerDocument.createTextNode(el.textContent || '');
       if (el.parentNode) el.parentNode.replaceChild(tn, el);
