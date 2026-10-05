@@ -131,7 +131,7 @@
                     _tabs[sid] = tab;
                     try {
                         // ★ 2026-09-16：默认 shell 按平台（mac → zsh；win → cmd）
-                        var _kmdDefShell = (/Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '')) ? 'zsh' : 'cmd';
+                        var _kmdDefShell = (/Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '')) ? 'zsh' : (/Win/i.test(navigator.platform || '') ? 'cmd' : 'bash');
                         iframe.contentWindow.postMessage({ type: 'kmd:init', sessionId: sid, cwd: root, shellType: _kmdDefShell, title: tab.title, fileName: kmdFile, active: !!tab.active }, '*');
                     } catch (_) { }
                 };

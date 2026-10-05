@@ -161,9 +161,56 @@ if '\u9996\u6b21\u542f\u52a8.sh' in nameset:
     sh_txt = tf.extractfile('\u9996\u6b21\u542f\u52a8.sh').read().decode('utf-8', 'replace')
     check('chrome-sandbox' in sh_txt and 'chmod 4755' in sh_txt and '--no-sandbox' in sh_txt,
           'launcher sh: sandbox fix chain (setuid + userns + fallback) present')
+    check('\u5b89\u88c5\u8f93\u5165\u6743\u9650.sh' in sh_txt, 'launcher sh: input-permission step wired')
 else:
     check(False, 'launcher sh present')
 check('\u5b89\u88c5\u684c\u9762\u56fe\u6807.sh' in nameset, 'desktop-install sh present')
+
+try:
+    _first_txt = tf.extractfile('\u9996\u6b21\u542f\u52a8.sh').read().decode('utf-8', 'replace') if '\u9996\u6b21\u542f\u52a8.sh' in nameset else ''
+except Exception:
+    _first_txt = ''
+check('\u5b89\u88c5\u8f93\u5165\u6743\u9650.sh' in nameset and '\u5b89\u88c5\u8f93\u5165\u6743\u9650.sh' in _first_txt,
+      'input-permission sh present + wired into first-run (udev uaccess)')
+
+# ── 全局热键链（evdev 内核级按键源 —— Wayland 会话下 X11 监听对 Wayland 原生窗口失聪）──
+check((EP + 'shell-out/qqqide_evdev.py') in nameset, 'shell-out/qqqide_evdev.py present')
+try:
+    _brk = tf.extractfile(EP + 'shell-out/py-broker.py').read().decode('utf-8', 'replace')
+    check('qqqide_evdev' in _brk and 'evdev' in _brk, 'py-broker: evdev key source wired (X11 fallback kept)')
+except Exception as e:
+    check(False, 'py-broker readable (%s)' % e)
+
+try:
+    _q3 = tf.extractfile(EP + 'webapp/goods/window-there/q3.py').read().decode('utf-8', 'replace')
+    check('qqqide_evdev' in _q3, 'window-there: evdev key source wired')
+except Exception as e:
+    check(False, 'window-there readable (%s)' % e)
+check((EP + 'webapp/goods/window-there/qqqide_evdev.py') in nameset, 'window-there/qqqide_evdev.py present')
+
+# ── VIG 遥测链 + goods OS 级根三分支对齐（缺 linux 分支 = 数据分裂/遥测读空）──
+_mj = EP + 'shell-out/main.js'
+if _mj in nameset:
+    _mj_txt = tf.extractfile(_mj).read().decode('utf-8', 'replace')
+    check('XDG_DATA_HOME' in _mj_txt, 'shell: getOsBaseDir linux path (XDG_DATA_HOME)')
+    check('winthereExternal' in _mj_txt, 'shell: vig winthereExternal (window-there stats readback)')
+    check('vigSquadSummon' in _mj_txt, 'shell: vig squad-summon counting wired')
+    _gi = _mj_txt.find('resolveGhrunBin')
+    check(_gi >= 0 and 'getAppPath' in _mj_txt[_gi:_gi + 1600],
+          'shell: ghrun linux fallback (app.getAppPath in resolver)')
+    check('migrateLegacyOsDirs' in _mj_txt, 'shell: legacy OS-dir migration (mac/linux) present')
+else:
+    check(False, 'shell-out/main.js present')
+for _vlab, _vrel in (
+        ('window-there store', EP + 'webapp/goods/window-there/window_there_store.py'),
+        ('kope store', EP + 'webapp/goods/kope-a/kope_store.py'),
+        ('kope settings', EP + 'webapp/goods/kope-a/q3.py')):
+    if _vrel in nameset:
+        _vtxt = tf.extractfile(_vrel).read().decode('utf-8', 'replace')
+        check('XDG_DATA_HOME' in _vtxt and '.local' in _vtxt,
+              _vlab + ': linux OS-dir branch present (XDG, aligns shell getOsBaseDir)')
+    else:
+        check(False, _vlab + ' present (%s)' % _vrel)
 check('qqqide.desktop' in nameset, 'qqqide.desktop present')
 check('README-\u4f7f\u7528\u8bf4\u660e.txt' in nameset, 'README present')
 check('qqqide.png' in nameset, 'qqqide.png icon present')

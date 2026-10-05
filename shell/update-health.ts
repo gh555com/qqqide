@@ -64,6 +64,11 @@ function deriveHostRoots(portableRoot: string): HostRoots {
             liveDir = path.join(path.dirname(bundle), 'qqqide-data');
         }
     }
+    // ★ linux 外置托管根（2026-10-05，与 portable-paths.getHostDir 同口径）：发行布局 = {容器}/qqqide-data
+    if (process.platform === 'linux') {
+        const cand = path.join(liveDir, 'qqqide-data');
+        if (_exists(cand)) { liveDir = cand; }
+    }
     const packRoot = path.dirname(liveDir);
     const dataDir = path.join(liveDir, 'Data');
     const isPack = mac

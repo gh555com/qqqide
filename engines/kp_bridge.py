@@ -57,6 +57,21 @@ def _get_desktop_path():
             d = os.path.join(userprofile, 'Desktop')
             if os.path.isdir(d):
                 return d
+    # Linux: 桌面名本地化（中文系统 ~/桌面 等）——XDG user-dirs.dirs 是唯一权威
+    if platform.system() == "Linux":
+        try:
+            cfg = os.path.expanduser('~/.config/user-dirs.dirs')
+            with open(cfg, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('XDG_DESKTOP_DIR='):
+                        v = line.split('=', 1)[1].strip().strip('"')
+                        v = v.replace('$HOME', os.path.expanduser('~'))
+                        if v and os.path.isdir(v):
+                            return v
+                        break
+        except OSError:
+            pass
     d = os.path.expanduser('~/Desktop')
     if os.path.isdir(d):
         return d

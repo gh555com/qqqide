@@ -10,7 +10,8 @@
 //   验证 = 逐扩展 AssocQueryString 回调含 '--qqqide-play' 标记。
 //   ★ 其他播放器可随时覆盖我们 → 打勾/取消均无意义（用户定案）：check/remove 机构整体
 //   废除；按钮恒 = 「设为默认」，可反复点击重夺。
-//   可达性: Windows（fa-ps.ts PS 机）+ macOS（fa-mac.ts LaunchServices 机）；结果恒上报
+//   可达性: Windows（fa-ps.ts PS 机）+ macOS（fa-mac.ts LaunchServices 机）+
+//   Linux（fa-linux.ts freedesktop 机——桌面条目 + xdg-mime）；结果恒上报
 //   {total, taken}，系统保护拦截（Win11）如实报 partial。
 //   PS 脚本体 = shell/fa-ps.ts（纯文本，探针可整体导入做沙箱验证）。
 // ============================================================================
@@ -18,6 +19,7 @@ import { app, ipcMain, shell } from 'electron';
 import { runPs, b64d } from './ipc-syspy';
 import { FA_PS } from './fa-ps';
 import { faMacApply } from './fa-mac';
+import { faLinuxApply } from './fa-linux';
 
 // 「一切媒体」= 播放器全谱扩展名（与 ipc-player._VIDEO_EXTS / _AUDIO_EXTS 同口径，
 //   media-engine / roam 白名单三方一致；新增可播格式必须四处同改）
@@ -77,6 +79,17 @@ export function registerFileAssocIpc(portableRoot: string): void {
             try { await shell.openExternal('x-apple.systempreferences:'); return { ok: true }; }
             catch (e: any) { return { ok: false, error: (e && e.message) || 'open-failed' }; }
         });
+        return;
+    }
+    // ── Linux 实现（2026-10-05 补）：freedesktop 机（fa-linux.ts——桌面条目 + xdg-mime）；
+    //   本平台无系统保护拦截 → 预期一次全量；设置页无统一入口（settings 保持 unsupported）。──
+    if (process.platform === 'linux') {
+        ipcMain.handle('qqqide:fileassoc:apply', () => _serial(async () => {
+            const r = await faLinuxApply(MEDIA_ASSOC_EXTS);
+            if (!r.ok) { console.warn('[fileassoc] linux apply fail:', r.code || '', r.err || '', (r.fails || []).slice(0, 6).join(' ')); }
+            return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
+        }));
+        ipcMain.handle('qqqide:fileassoc:settings', () => ({ ok: false, code: 'unsupported' }));
         return;
     }
     // 其余平台如实报 unsupported

@@ -1503,6 +1503,8 @@ function externalizeLinuxBundle(unpacked) {
 // 3.9c2) writeLinuxLaunchers — linux 一键启动脚本 + 桌面集成 + 使用说明（2026-10-05）
 //   首次启动.sh: chrome-sandbox setuid 修复（tar 非 root 解压必丢 setuid 位）→ userns 探测
 //     → 降级 --no-sandbox；然后启动。安装桌面图标.sh: .desktop + 图标落 ~/.local/share。
+//   安装输入权限.sh: udev uaccess 规则安装（全局热键读 /dev/input 所需；一次性；幂等）。
+//     Wayland 会话下 X11 监听器对 Wayland 原生窗口获焦时的按键失聪——内核级按键源是唯一可靠形态。
 function writeLinuxLaunchers(unpacked) {
   if (!target.startsWith('linux-')) { return; }
   const firstSh = [
@@ -1553,6 +1555,9 @@ function writeLinuxLaunchers(unpacked) {
     '  bash "$PWD/安装桌面图标.sh" >/dev/null 2>&1 || true',
     'fi',
     '',
+    '# 4) 输入设备权限（全局热键：编队召回 / 窗口布局 3W 3X）——一次性 udev 规则；已就绪则秒过',
+    'bash "$PWD/安装输入权限.sh" || true',
+    '',
     'if [ -t 0 ] || [ -t 1 ]; then',
     '  exec ./qqqide "${LAUNCH_ARGS[@]}" "$@"',
     'else',
@@ -1597,6 +1602,31 @@ function writeLinuxLaunchers(unpacked) {
     'echo "卸载：删除 ~/.local/share/applications/qqqide.desktop 与桌面的 qqqide.desktop。"',
     ''
   ].join('\n');
+  const inputSh = [
+    '#!/bin/bash',
+    '# 输入设备读取权限——全局热键（编队召回 / 窗口布局 3W 3X）需要读 /dev/input。',
+    '# 一次性安装 udev uaccess 规则后，登录用户自动获得权限（无需重登录）；幂等可反复运行。',
+    '',
+    'INPUT_OK=0',
+    'for f in /dev/input/event*; do',
+    '  if [ -r "$f" ]; then INPUT_OK=1; break; fi',
+    'done',
+    'if [ $INPUT_OK -eq 1 ]; then',
+    '  echo "输入设备权限：已就绪（跳过）"',
+    '  exit 0',
+    'fi',
+    'echo "安装输入设备权限（全局热键需要，一次性）..."',
+    'echo \'SUBSYSTEM=="input", ENV{ID_INPUT_KEYBOARD}=="1", TAG+="uaccess"\' | sudo tee /etc/udev/rules.d/71-qqqide-input.rules >/dev/null',
+    'sudo udevadm control --reload-rules >/dev/null 2>&1',
+    'sudo udevadm trigger --subsystem-match=input >/dev/null 2>&1',
+    'sleep 1',
+    'INPUT_OK=0',
+    'for f in /dev/input/event*; do',
+    '  if [ -r "$f" ]; then INPUT_OK=1; break; fi',
+    'done',
+    'if [ $INPUT_OK -eq 1 ]; then echo "输入设备权限：OK（全局热键已就绪）"; else echo "输入设备权限：未生效——编队/窗口布局热键可能不可用"; fi',
+    ''
+  ].join('\n');
   const desktop = [
     '[Desktop Entry]',
     'Type=Application',
@@ -1631,20 +1661,24 @@ function writeLinuxLaunchers(unpacked) {
     '',
     '【终端】kmd 标签页；qmd（PowerShell 集成）为 Windows 专属，linux 自动隐藏。',
     '【快捷键】键盘组合 = Ctrl；编队召回 = 按住空格再按槽位键。',
+    '【全局热键】首次启动会自动安装输入设备权限（一次性 udev 规则，需管理员密码）。',
+    '  若热键不工作，手动运行 ./安装输入权限.sh 后再试。（热键读取内核输入，X11/Wayland 通用）',
     '【系统依赖】首次启动会自动补装 libxcb-cursor0（Qt 图形组件需要；Debian/Ubuntu 系）。',
-    '【注意】Wayland 会话下已自动走 XWayland（X11）兼容层，剪贴板/热键正常；',
+    '【注意】Wayland 会话下已自动走 XWayland（X11）兼容层；剪贴板正常；',
+    '全局热键走内核级输入源（Wayland/X11 通用）；',
     '如遇显示异常可在登录界面右下角切换 X11 会话。',
     ''
   ].join('\n');
   try {
     fs.writeFileSync(path.join(unpacked, '首次启动.sh'), firstSh);
     fs.writeFileSync(path.join(unpacked, '安装桌面图标.sh'), installSh);
+    fs.writeFileSync(path.join(unpacked, '安装输入权限.sh'), inputSh);
     fs.writeFileSync(path.join(unpacked, 'qqqide.desktop'), desktop);
     fs.writeFileSync(path.join(unpacked, 'README-使用说明.txt'), readme, 'utf8');
     const iconSrc = path.join(ROOT, 'shell', 'icon.png');
     if (fs.existsSync(iconSrc)) {
       fs.copyFileSync(iconSrc, path.join(unpacked, 'qqqide.png'));
-      console.log('[pack] linux: launchers written (首次启动.sh + 安装桌面图标.sh + desktop + README + icon)');
+      console.log('[pack] linux: launchers written (首次启动.sh + 安装桌面图标.sh + 安装输入权限.sh + desktop + README + icon)');
     } else {
       console.warn('[pack] linux: launchers written (shell/icon.png missing — desktop icon will be generic)');
     }

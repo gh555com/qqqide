@@ -9,12 +9,16 @@ import sys
 import time
 
 def _get_db_dir():
-    # OS 级根与 shell portable-paths.getOsBaseDir 对齐：mac → Library/Application Support
+    # OS 级根与 shell portable-paths.getOsBaseDir 逐字对齐（三分支恒全）：win → AppData/Local
+    # ｜ mac → Library/Application Support ｜ linux → XDG_DATA_HOME 或 ~/.local/share。
+    # 缺 linux 分支 = stats.json/pz.sq3 写错根 → 壳层 VIG（winthere）读空、跨进程读不一致。
     home = os.path.expanduser('~')
     if sys.platform == 'darwin':
         base = os.path.join(home, 'Library', 'Application Support')
-    else:
+    elif sys.platform == 'win32':
         base = os.path.join(home, 'AppData', 'Local')
+    else:
+        base = os.environ.get('XDG_DATA_HOME') or os.path.join(home, '.local', 'share')
     return os.path.join(base, 'window-there')
 
 def _get_db_path():

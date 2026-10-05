@@ -25,6 +25,10 @@
 //      旧明文存量加载自动迁移；桥缺失/加密失败自动回退明文（零破坏）
 //   8. 身份头（2026-09-16）：对话请求 index 0 注入最小身份声明（qqq AI + 语言 + 工具指引）；
 //      服务端甲壳绝不经本通道外发（防提取 + 用户自付 token）；_ 前缀内部标记字段外发前剥离
+//   9. 模型名助手（2026-10-05）：「获取模型列表」GET {base}/models + 测试连接成功自动拉取 → 自绘下拉
+//      一键选模型；「检测本机模型」探测常见本机端口（11434/1234/1337/8000/8080）一键填入；
+//      平台代理无 /models（白名单仅 chat 路径）→ relay 如实提示、禁旁路直连；
+//      弹窗一切下拉（思考档等）恒自绘（禁原生 select，铁律 §5）
 //
 // 边界：本模块只管【对话】通道；贴图识别/生图/抠图/搜索等仍走平台内置通道。
 // ============================================================================
@@ -40,6 +44,13 @@
         try { if (typeof _i === 'function') return _i(key, fb); } catch (_) { }
         try { if (parent && parent._i) return parent._i(key, fb); } catch (_) { }
         return fb;
+    }
+    // i18n 带参助手（{name} 插值）：直取父窗口 _i（面板本帧 _i 无插值能力）；失败回退字面量自替换
+    function _tp(key, fb, params) {
+        try { if (parent && parent._i) { var r = parent._i(key, fb, params); if (r !== undefined && r !== null) return String(r); } } catch (_) { }
+        var s = (fb !== undefined && fb !== null) ? String(fb) : String(key);
+        if (params) { Object.keys(params).forEach(function (k) { s = s.split('{' + k + '}').join(String(params[k])); }); }
+        return s;
     }
 
     // ── 配置内存缓存 ──
@@ -198,6 +209,7 @@
 
     async function save(patch) {
         await _load();
+        var wasActive = isActive();   // ★ VIG（2026-10-05）：配置采用检测——保存前是否已处于「启用」态
         var next = Object.assign({}, _cfg, patch || {});
         next.baseUrl = String(next.baseUrl || '').trim();
         if (_isLocalBase(next.baseUrl)) next.route = 'direct';   // 本地模型：平台代理无意义（服务端到不了你的本机），一律直连
@@ -209,6 +221,13 @@
         _cfg.apiKeyEnc = stored.apiKeyEnc || '';
         _cfg._locked = (!_cfg.apiKey && stored.apiKeyEnc) ? (next._locked || 'bridge') : '';
         _refreshButton();
+        // ★ VIG 履历（2026-10-05）：配置采用事件——「未启用 → 启用且已配置」的转变计一次（仅计数）
+        if (!wasActive && isActive()) {
+            try {
+                var vb = (parent && parent.qqqideBridge) || window.qqqideBridge;
+                if (vb && vb.vig && typeof vb.vig.bump === 'function') { vb.vig.bump('byok', { cfg: 1 }); }
+            } catch (_) { }
+        }
         var st = _store || _qgsSimple();
         _store = st;
         try { if (st) await st.setNow(KEY, stored); } catch (_) { }
@@ -244,6 +263,62 @@
         if (/\/chat\/completions$/.test(u)) return u;
         if (/^[a-z][a-z0-9+.-]*:\/\/[^\/]+$/i.test(u)) u += '/v1';
         return u + '/chat/completions';
+    }
+
+    // ── 模型列表端点归一：同 _endpoint 规则收敛到 …/models（含 /chat/completions 剥离 / 仅 host 补 /v1）──
+    function _modelsEndpoint(baseUrl) {
+        var raw = String(baseUrl || '').trim();
+        if (!raw) return '';
+        var u = raw;
+        if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) u = (_isLocalBase(u) ? 'http://' : 'https://') + u;
+        u = u.replace(/\/+$/, '');
+        if (/\/chat\/completions$/.test(u)) u = u.replace(/\/chat\/completions$/, '');
+        if (/^[a-z][a-z0-9+.-]*:\/\/[^\/]+$/i.test(u)) u += '/v1';
+        return u + '/models';
+    }
+
+    // ── 模型列表解析：OpenAI 形态（{data:[{id}]}）为主；兼容 {models:[{id|name|model}]} 与字符串数组 ──
+    function _parseModels(j) {
+        var out = [], seen = {};
+        function _walk(arr) {
+            if (!Array.isArray(arr)) return;
+            for (var i = 0; i < arr.length; i++) {
+                var it = arr[i], id = '';
+                if (typeof it === 'string') id = it;
+                else if (it && typeof it === 'object') id = it.id || it.name || it.model || '';
+                id = String(id || '').trim();
+                if (!id || seen[id]) continue;
+                seen[id] = 1;
+                out.push(id);
+            }
+        }
+        if (j && Array.isArray(j.data)) _walk(j.data);
+        if (!out.length && j && Array.isArray(j.models)) _walk(j.models);
+        return out;
+    }
+
+    // ── 拉取模型列表（GET {base}/models）——直连/本地专用：
+    //    平台代理白名单仅 chat 路径（服务端 SSRF 白名单硬编码，无 /models）→ relay 模式不适用（如实提示，禁旁路直连）
+    async function _fetchModels(c, timeoutMs) {
+        var isRelay = ((String(c.route || 'direct')) === 'relay' && !_isLocalBase(c.baseUrl));
+        if (isRelay) return { ok: false, err: 'relay' };
+        var url = _modelsEndpoint(c.baseUrl);
+        if (!url) return { ok: false, err: 'nobase' };
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { try { ctrl.abort(); } catch (_) { } }, timeoutMs || 15000);
+        try {
+            var hdr = { 'Accept': 'application/json' };
+            if (c.apiKey) hdr['Authorization'] = 'Bearer ' + c.apiKey;   // 本地模型可无 Key
+            var resp = await fetch(url, { method: 'GET', headers: hdr, signal: ctrl.signal });
+            if (!resp.ok) return { ok: false, err: 'HTTP ' + resp.status };
+            var j = null;
+            try { j = await resp.json(); } catch (_) { }
+            var models = _parseModels(j);
+            if (!models.length) return { ok: false, err: 'empty' };
+            return { ok: true, models: models };
+        } catch (err) {
+            return { ok: false, err: (err && err.name === 'AbortError') ? 'timeout' : ((err && err.message) || String(err)) };
+        } finally { clearTimeout(timer); }
     }
 
     // ── max_tokens 帽：镜像服务端 handlers_ai_chat.go 防御纵深（estPrompt+max ≤ 1048565-10000）──
@@ -470,23 +545,38 @@
         var url = _endpoint(cfg.baseUrl);
         if (!url) return null;
         var outBody = _buildBody(body, opts, cfg);
-        // ★ VIG 履历（2026-09-22）：自带密钥请求计数（直连/平台代理同计；尝试即计）
-        try {
-            var _vbr = (parent && parent.qqqideBridge) || window.qqqideBridge;
-            if (_vbr && _vbr.vig && typeof _vbr.vig.bump === 'function') { _vbr.vig.bump('byok', { n: 1 }); }
-        } catch (_) { }
+
+        // ★ VIG 履历（2026-09-22 上线 / 拆分 2026-10-05）：自带密钥请求计数
+        //   口径：尝试即计（成功/失败都计 n；测试连接不计）；仅计数——内容/token/金额永不外报
+        //   拆分：通道 d（直连）/ r（平台代理）/ l（本地模型）；结果 ok / f + 失败桶 fa·fn·fh·ft
+        var _isRelay = (cfg.route === 'relay' && !_isLocalBase(cfg.baseUrl));
+        var _chan = _isRelay ? 'r' : (_isLocalBase(cfg.baseUrl) ? 'l' : 'd');
+        var _vb = null;
+        try { _vb = (parent && parent.qqqideBridge) || window.qqqideBridge; } catch (_) { }
+        function _vig(add) {
+            try { if (_vb && _vb.vig && typeof _vb.vig.bump === 'function') { _vb.vig.bump('byok', add); } } catch (_) { }
+        }
+        function _vigFail(bucket) { var o = { f: 1 }; o[bucket] = 1; _vig(o); }
+        function _vigDone(r) {
+            if (r && r.ok) { _vig({ ok: 1 }); return; }
+            var st = r ? r.status : 0;
+            _vigFail((st === 401 || st === 403) ? 'fa' : 'fh');
+        }
+        var _chAdd = { n: 1 }; _chAdd[_chan] = 1; _vig(_chAdd);
         var resp;
 
         // ── 平台代理通道（网络通道=平台代理；直连为默认推荐；本地模型强制直连）──
-        if (cfg.route === 'relay' && !_isLocalBase(cfg.baseUrl)) {
+        if (_isRelay) {
             try {
                 resp = await _relayPost(url, { authorization: 'Bearer ' + cfg.apiKey }, JSON.stringify(outBody),
                     (opts && opts.signal) || null, (body && body.floor_id) || '');
             } catch (err) {
+                _vigFail(((opts && opts.signal && opts.signal.aborted) || (err && err.name === 'AbortError')) ? 'ft' : 'fn');
                 if (err && err._byok) throw err;
                 throw _relayErr(_t('ai.byok.relayUnreachable', '平台代理连接失败'), (err && err.message) || String(err));
             }
             if (!resp.ok) resp = await _relayErrorNormalize(resp);
+            _vigDone(resp);
             try { resp._byokRoute = 'relay'; } catch (_) { }   // ★ 通道标记：agent-gateway 据此标楼层 ' BYOK' + 详单行
             return resp;
         }
@@ -502,12 +592,14 @@
                 signal: (opts && opts.signal) || null
             });
         } catch (err) {
+            _vigFail(((opts && opts.signal && opts.signal.aborted) || (err && err.name === 'AbortError')) ? 'ft' : 'fn');
             var msg = (err && err.message) || String(err);
             var e2 = new Error('[' + _t('ai.byok.tag', '自带密钥') + '] ' + _t('ai.byok.errReach', '无法连接你配置的 AI 端点') + ': ' + msg);
             e2._byok = true;
             throw e2;
         }
         if (!resp.ok) resp = await _normalizeError(resp);
+        _vigDone(resp);
         try { resp._byokRoute = 'direct'; } catch (_) { }   // ★ 通道标记：agent-gateway 据此标楼层 ' BYOK' + 详单行
         return resp;
     }
@@ -559,6 +651,7 @@
                 try { modelEcho = (JSON.parse(txt || '{}').model) || ''; } catch (_) { }
                 _st('✅ ' + _t('ai.byok.testOk', '连接成功') + ' · ' + (modelEcho || c.model) + ' · ' + ms + 'ms', 'var(--green)');
                 try { await save({ testedAt: Date.now() }); } catch (_) { }
+                try { _pullModels(true); } catch (_) { }   // 模型名助手：成功即静默拉 {base}/models，弹出下拉一键选（relay 下自动跳过）
             } else {
                 var emsg = '';
                 try {
@@ -599,9 +692,23 @@
             '#byok-panel .bk-label{display:block;margin:0 0 4px;color:var(--base01);font-size:12px}',
             '#byok-panel input[type=text],#byok-panel input[type=password]{width:100%;box-sizing:border-box;background:var(--background-color);',
             'border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);padding:6px 8px;font-size:12.5px;font-family:Consolas,monospace}',
-            '#byok-panel input:focus,#byok-panel select:focus{outline:1px solid var(--blue)}',
+            '#byok-panel input:focus{outline:1px solid var(--blue)}',
             '#byok-panel input[type=checkbox],#byok-panel input[type=radio]{accent-color:var(--blue)}',
-            '#byok-panel select.bk-select{width:100%;box-sizing:border-box;background:var(--background-color);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);padding:5px 8px;font-size:12.5px;font-family:Consolas,monospace}',
+            '#byok-panel .bk-model-tools{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}',
+            '#byok-panel button.bk-mini{height:24px;padding:0 10px;font-size:12px}',
+            '#byok-panel .bk-model-note{margin-top:6px;color:var(--base01);font-size:11.5px;line-height:1.5;word-break:break-all}',
+            '#byok-panel .bk-model-note:empty{display:none}',
+            '#byok-panel .bk-sel{width:100%;box-sizing:border-box;display:flex;align-items:center;gap:6px;text-align:left;background:var(--background-color);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);padding:5px 8px;font-size:12.5px;font-family:Consolas,monospace;cursor:pointer}',
+            '#byok-panel .bk-sel:hover,#byok-panel .bk-sel.open{outline:none;border-color:var(--blue)}',
+            '#byok-panel .bk-sel-txt{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '#byok-panel .bk-sel-caret{flex-shrink:0;display:inline-flex;color:var(--text-secondary)}',
+            '.bk-pop{position:fixed;z-index:100001;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 6px 22px rgba(0,0,0,0.25);padding:4px;box-sizing:border-box;font-size:12px;line-height:1.4;font-family:inherit;max-height:280px;overflow-y:auto;overflow-x:hidden}',
+            '.bk-pop:focus{outline:none}',
+            '.bk-pop-item{display:flex;align-items:flex-start;gap:7px;padding:5px 9px;border-radius:4px;word-break:break-all}',
+            '.bk-pop-item:hover,.bk-pop-item.act{background:var(--gold-hover-bg,rgba(181,137,0,0.12))}',
+            '.bk-pop-item.sel{color:var(--blue)}',
+            '.bk-pop-item .bk-tick{flex-shrink:0;width:12px;visibility:hidden}',
+            '.bk-pop-item.sel .bk-tick{visibility:visible}',
             '#byok-panel .bk-keywrap{display:flex;gap:6px;align-items:center}',
             '#byok-panel .bk-eye{flex:0 0 auto;width:30px;height:28px;border:1px solid var(--border-color);border-radius:3px;background:transparent;color:var(--text-primary);cursor:pointer}',
             '#byok-panel .bk-chk{display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none}',
@@ -634,6 +741,211 @@
 
     var _overlay = null;
     var _escBound = false;   // ESC 监听单例（弹窗支持销毁重建——防 document 级 keydown 堆积）
+
+    // ════════════════════════════════════════════════════════════
+    // 自绘下拉浮层（铁律 §5：禁原生 select）——单例 + 先量后位 + 点外/Esc/面板滚动即收
+    // 复用面：思考档档位 / 模型列表一键选 / 本机服务探测结果
+    // ════════════════════════════════════════════════════════════
+    var _bkPop = null;              // 当前浮层 { pop, btn }
+    var _bkPopBound = false;        // document 级监听单例
+    var _thinkSel = null;           // 思考档自绘下拉实例（弹窗销毁重建时随之重建）
+    function _closeBkPop() {
+        if (!_bkPop) return;
+        var p = _bkPop; _bkPop = null;
+        try { if (p.btn && p.btn.classList) p.btn.classList.remove('open'); } catch (_) { }
+        try { if (p.pop && p.pop.parentNode) p.pop.parentNode.removeChild(p.pop); } catch (_) { }
+    }
+    function _bindBkPopGlobals() {
+        if (_bkPopBound) return;
+        _bkPopBound = true;
+        document.addEventListener('mousedown', function (e) {
+            if (!_bkPop) return;
+            try { if (_bkPop.pop.contains(e.target) || _bkPop.btn.contains(e.target)) return; } catch (_) { }
+            _closeBkPop();
+        }, true);
+        window.addEventListener('resize', _closeBkPop);
+        window.addEventListener('blur', _closeBkPop);
+    }
+    // items: [{ v, label, sel }]；toggle=true（选择器按钮）时再点收起，其余恒「先关再开」
+    function _bkOpenMenu(anchor, items, onPick, toggle) {
+        if (!anchor || !items || !items.length) return;
+        if (toggle && _bkPop && _bkPop.btn === anchor) { _closeBkPop(); return; }
+        _closeBkPop();
+        _bindBkPopGlobals();
+        var pop = document.createElement('div');
+        pop.className = 'bk-pop';
+        pop.tabIndex = -1;
+        var rows = [], actIdx = 0;
+        function _setAct(i) {
+            actIdx = i;
+            for (var k = 0; k < rows.length; k++) { try { rows[k].classList.toggle('act', k === i); } catch (_) { } }
+            try { if (rows[i]) rows[i].scrollIntoView({ block: 'nearest' }); } catch (_) { }
+        }
+        for (var i = 0; i < items.length; i++) {
+            (function (it) {
+                var row = document.createElement('div');
+                row.className = 'bk-pop-item' + (it.sel ? ' sel' : '');
+                var tick = document.createElement('span');
+                tick.className = 'bk-tick';
+                tick.textContent = '✓';
+                var lb = document.createElement('span');
+                lb.className = 'bk-pop-label';
+                lb.textContent = it.label;
+                row.appendChild(tick);
+                row.appendChild(lb);
+                row.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    _closeBkPop();
+                    try { onPick(it); } catch (_) { }
+                });
+                pop.appendChild(row);
+                rows.push(row);
+            })(items[i]);
+        }
+        pop.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); _setAct(Math.min(actIdx + 1, rows.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); _setAct(Math.max(actIdx - 1, 0)); }
+            else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (rows[actIdx]) rows[actIdx].click(); }
+            else if (e.key === 'Tab') { _closeBkPop(); }
+        });
+        document.body.appendChild(pop);
+        // 先量后位（锚点下缘 → 越界翻上 → 四边距恒 ≥8px）
+        var r = anchor.getBoundingClientRect();
+        pop.style.width = Math.max(r.width, 220) + 'px';
+        pop.style.left = '0px';
+        pop.style.top = '0px';
+        pop.style.visibility = 'hidden';
+        var pr = pop.getBoundingClientRect();
+        var vw = window.innerWidth, vh = window.innerHeight;
+        var top = r.bottom + 2;
+        if (top + pr.height > vh - 8) top = r.top - pr.height - 2;
+        if (top < 8) top = 8;
+        var left = r.left;
+        if (left + pr.width > vw - 8) left = Math.max(8, vw - 8 - pr.width);
+        pop.style.left = left + 'px';
+        pop.style.top = top + 'px';
+        pop.style.visibility = '';
+        try { anchor.classList.add('open'); } catch (_) { }
+        _bkPop = { pop: pop, btn: anchor };
+        var cur = 0;
+        for (var j = 0; j < items.length; j++) { if (items[j].sel) { cur = j; break; } }
+        _setAct(cur);
+        try { pop.focus({ preventScroll: true }); } catch (_) { }
+    }
+    // 自绘选择器（按钮 + 浮层）——枚举位专用（思考档等）
+    function _bkSelect(opts, curVal, onPick) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'bk-sel';
+        var txt = document.createElement('span');
+        txt.className = 'bk-sel-txt';
+        var caret = document.createElement('span');
+        caret.className = 'bk-sel-caret';
+        caret.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+        btn.appendChild(txt);
+        btn.appendChild(caret);
+        var value = (curVal === undefined || curVal === null) ? '' : String(curVal);
+        function _paint() {
+            var lab = value;
+            for (var i = 0; i < opts.length; i++) { if (String(opts[i][0]) === value) { lab = opts[i][1]; break; } }
+            txt.textContent = lab;
+        }
+        _paint();
+        function _open() {
+            var items = [];
+            for (var i = 0; i < opts.length; i++) items.push({ v: String(opts[i][0]), label: opts[i][1], sel: String(opts[i][0]) === value });
+            _bkOpenMenu(btn, items, function (it) {
+                value = it.v;
+                _paint();
+                try { onPick(it.v); } catch (_) { }
+            }, true);
+        }
+        btn.addEventListener('click', function (e) { e.stopPropagation(); _open(); });
+        btn.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); _open(); }
+        });
+        return { el: btn, set: function (v) { value = (v === undefined || v === null) ? '' : String(v); _paint(); }, get: function () { return value; } };
+    }
+
+    // ── 模型名助手（状态行 + 拉列表 + 本机探测）──
+    function _modelNote(text, color) {
+        var el = document.getElementById('byok-model-note');
+        if (!el) return;
+        el.textContent = text || '';
+        el.style.color = color || 'var(--base01)';
+    }
+    function _pickModel(m) {
+        var el = document.getElementById('byok-model');
+        if (!el) return;
+        el.value = m;
+        _saveForm();
+    }
+    // 拉取模型列表。silent=true（测试连接成功后的自动拉取）：失败静默、不写状态行
+    async function _pullModels(silent) {
+        try {
+            if (silent && !document.getElementById('byok-model-note')) return;   // 弹窗已关：不做无谓网络
+            var c = _readForm();
+            if (!c.baseUrl) { if (!silent) _modelNote(_t('ai.byok.needBase', '请先填写接口地址'), 'var(--red)'); return; }
+            if (String(c.route || 'direct') === 'relay' && !_isLocalBase(c.baseUrl)) {
+                if (!silent) _modelNote(_t('ai.byok.modelsRelay', '平台代理通道暂不支持获取模型列表，请手动填写模型名（或改用直连）'), 'var(--red)');
+                return;
+            }
+            if (!silent) _modelNote('⏳ ' + _t('ai.byok.modelsLoading', '正在获取模型列表…'));
+            var r = await _fetchModels(c, 15000);
+            if (!document.getElementById('byok-model-note')) return;   // 弹窗已关：丢弃 UI 更新
+            if (!r.ok) {
+                if (!silent) {
+                    if (r.err === 'timeout') _modelNote(_t('ai.byok.modelsTimeout', '获取超时（端点无响应）'), 'var(--red)');
+                    else if (r.err === 'empty') _modelNote(_t('ai.byok.modelsEmpty', '未获取到可用模型列表（请手动填写模型名）'), 'var(--red)');
+                    else _modelNote(_tp('ai.byok.modelsFail', '获取失败：{msg}', { msg: r.err }), 'var(--red)');
+                }
+                return;
+            }
+            _modelNote(_tp('ai.byok.modelsFound', '已获取 {n} 个模型 · 点击选择', { n: r.models.length }), 'var(--green)');
+            var anchor = document.getElementById('byok-model');
+            if (!anchor) return;
+            var curM = String(anchor.value || '').trim();
+            var items = r.models.map(function (m) { return { v: m, label: m, sel: (m === curM) }; });
+            _bkOpenMenu(anchor, items, function (it) { _pickModel(it.v); }, false);
+        } catch (_) { }
+    }
+    // 本机模型探测：常见本机端口并行探活（1.8s 超时）；单个即自动填入，多个下拉选
+    var _LOCAL_MODEL_PORTS = [11434, 1234, 1337, 8000, 8080];
+    function _applyLocalPick(f) {
+        var baseIn = document.getElementById('byok-baseurl');
+        if (baseIn) baseIn.value = f.base;
+        _saveForm().then(function () { _refreshRouteNote(); _syncRouteRadios(); }).catch(function () { });
+        _modelNote('✅ ' + _t('ai.byok.probeFilled', '已填入本机模型地址'), 'var(--green)');
+        var anchor = document.getElementById('byok-model');
+        if (!anchor) return;
+        var curM = String(anchor.value || '').trim();
+        var items = f.models.map(function (m) { return { v: m, label: m, sel: (m === curM) }; });
+        _bkOpenMenu(anchor, items, function (it) { _pickModel(it.v); }, false);
+    }
+    async function _probeLocalModels() {
+        var btn = document.getElementById('byok-probe');
+        if (btn) btn.disabled = true;
+        _modelNote('⏳ ' + _t('ai.byok.probeScanning', '正在探测本机模型服务…'));
+        try {
+            var results = await Promise.all(_LOCAL_MODEL_PORTS.map(function (port) {
+                return _fetchModels({ baseUrl: 'http://127.0.0.1:' + port, apiKey: '', route: 'direct' }, 1800).then(function (r) {
+                    return r.ok ? { base: 'http://127.0.0.1:' + port + '/v1', models: r.models } : null;
+                });
+            }));
+            if (!document.getElementById('byok-model-note')) return;   // 弹窗已关：丢弃 UI 更新
+            var found = results.filter(function (x) { return !!x; });
+            if (!found.length) { _modelNote(_t('ai.byok.probeNone', '未发现本机模型服务（可先启动本机模型服务，或手动填写地址）'), 'var(--base01)'); return; }
+            if (found.length === 1) { _applyLocalPick(found[0]); return; }
+            _modelNote(_tp('ai.byok.probeFound', '发现 {n} 个本机模型服务 · 点击填入', { n: found.length }), 'var(--green)');
+            var anchor = document.getElementById('byok-probe');
+            var items = found.map(function (f) {
+                return { v: f.base, label: _tp('ai.byok.probeItem', '{url} · {n} 个模型', { url: f.base, n: f.models.length }), sel: false, _f: f };
+            });
+            _bkOpenMenu(anchor, items, function (it) { if (it && it._f) _applyLocalPick(it._f); }, false);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
     function _buildPopup() {
         if (_overlay) return;
         _injectStyle();
@@ -652,7 +964,12 @@
             '<div class="bk-keywrap"><input type="password" id="byok-key" placeholder="sk-…" spellcheck="false" autocomplete="off">' +
             '<button class="bk-eye" id="byok-eye" title="' + _t('ai.byok.showKey', '显示/隐藏') + '">👁</button></div></div>' +
             '<div class="bk-row"><label class="bk-label">' + _t('ai.byok.model', '模型名') + '</label>' +
-            '<input type="text" id="byok-model" placeholder="' + _t('ai.byok.modelPh', '服务商文档中的模型名') + '" spellcheck="false"></div>' +
+            '<input type="text" id="byok-model" placeholder="' + _t('ai.byok.modelPh', '服务商文档中的模型名') + '" spellcheck="false">' +
+            '<div class="bk-model-tools">' +
+            '<button class="bk-btn bk-mini" id="byok-fetch">' + _t('ai.byok.fetchModels', '获取模型列表') + '</button>' +
+            '<button class="bk-btn bk-mini" id="byok-probe">' + _t('ai.byok.probeLocal', '检测本机模型') + '</button>' +
+            '</div>' +
+            '<div class="bk-model-note" id="byok-model-note"></div></div>' +
             '<div class="bk-row"><label class="bk-label">' + _t('ai.byok.route', '网络通道') + '</label>' +
             '<div class="bk-routes">' +
             '<label class="bk-radio"><input type="radio" name="byok-route" value="direct"><span>' + _t('ai.byok.routeDirect', '直连（推荐）') + '</span></label>' +
@@ -662,7 +979,8 @@
             _t('ai.byok.think', '上送思考参数（服务商不支持请关闭）') + '</span></label>' +
             '<div id="byok-think-cfg" style="display:none">' +
             '<label class="bk-label" style="margin-top:6px">' + _t('ai.byok.thinkLevel', '思考档（reasoning_effort）') + '</label>' +
-            '<select id="byok-think-level" class="bk-select"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="max">max</option></select>' +
+            '<div id="byok-think-level-host"></div>' +
+            '<input type="hidden" id="byok-think-level" value="high">' +
             '<label class="bk-label" style="margin-top:6px">' + _t('ai.byok.thinkJson', '自定义参数 JSON（可选，填写后优先于档位）') + '</label>' +
             '<input type="text" id="byok-think-json" placeholder="&quot;thinking&quot;:{&quot;type&quot;:&quot;enabled&quot;}" spellcheck="false">' +
             '</div></div>' +
@@ -678,12 +996,22 @@
 
         var $ = function (id) { return document.getElementById(id); };
         _overlay.addEventListener('click', function (e) { if (e.target === _overlay) _closePopup(); });
+        p.addEventListener('scroll', function () { _closeBkPop(); }, true);   // 面板滚动 → 浮层关闭（防错位）
         if (!_escBound) {
             _escBound = true;
             document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape' && _overlay && _overlay.style.display !== 'none') _closePopup();
+                if (e.key !== 'Escape') return;
+                if (_bkPop) { _closeBkPop(); return; }   // 浮层开着：第一击先收浮层（同设置中心语义）
+                if (_overlay && _overlay.style.display !== 'none') _closePopup();
             });
         }
+        // 思考档：自绘下拉（禁原生 select，铁律 §5；隐藏 input 承值——_readForm/_openPopup/_relang 零改动）
+        var _tlHost = $('byok-think-level-host');
+        _thinkSel = _bkSelect([['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['max', 'max']], $('byok-think-level').value || 'high', function (v) {
+            $('byok-think-level').value = v;
+            _saveForm();
+        });
+        if (_tlHost) _tlHost.appendChild(_thinkSel.el);
         // 关闭仅：点遮罩外 / Esc（铁律 §4.1——内置面板不设 ✕）
         $('byok-eye').onclick = function () {
             var k = $('byok-key');
@@ -709,20 +1037,18 @@
         $('byok-test').onclick = function () {
             _testConnection(_readForm(), $('byok-test-status'), $('byok-test'));
         };
+        $('byok-fetch').onclick = function () { _pullModels(false); };
+        $('byok-probe').onclick = function () { _probeLocalModels(); };
         // 输入即存（change = 失焦/回车触发；防抖在输入路径之外，频率极低）
         ['byok-baseurl', 'byok-key', 'byok-model'].forEach(function (id) {
             $(id).addEventListener('change', function () { _saveForm().then(function () { _refreshRouteNote(); }); });
         });
         $('byok-think').addEventListener('change', function () { _syncThinkVis(); _saveForm(); });
-        $('byok-think-level').addEventListener('change', function () { _saveForm(); });
-        $('byok-think-json').addEventListener('change', function () { _saveForm(); });
+        $('byok-think-json').addEventListener('change', function () { _saveForm(); });   // 思考档保存走自绘下拉 onPick
         Array.prototype.forEach.call(_overlay.querySelectorAll('input[name="byok-route"]'), function (r) {
             r.addEventListener('change', function () {
                 _saveForm().then(function () {
-                    // 本地地址会被强制直连 → 单选态回同步（视觉与实况一致）
-                    var cur = get().route || 'direct';
-                    var rr = document.querySelector('input[name="byok-route"][value="' + cur + '"]');
-                    if (rr) rr.checked = true;
+                    _syncRouteRadios();   // 本地地址会被强制直连 → 单选态回同步（视觉与实况一致）
                     _refreshRouteNote();
                 });
             });
@@ -735,6 +1061,13 @@
         var box = document.getElementById('byok-think-cfg');
         if (!box) return;
         box.style.display = (on && on.checked) ? 'block' : 'none';
+    }
+
+    // 单选态回同步（保存后本地地址会被强制直连——视觉与实况一致）
+    function _syncRouteRadios() {
+        var cur = get().route || 'direct';
+        var rr = document.querySelector('input[name="byok-route"][value="' + cur + '"]');
+        if (rr) rr.checked = true;
     }
 
     function _refreshRouteNote() {
@@ -791,6 +1124,7 @@
         $('byok-model').value = c.model || '';
         $('byok-think').checked = !!c.sendThinking;
         $('byok-think-level').value = /^(low|medium|high|max)$/.test(c.thinkLevel || '') ? c.thinkLevel : 'high';
+        if (_thinkSel) _thinkSel.set($('byok-think-level').value);
         $('byok-think-json').value = c.thinkJson || '';
         _syncThinkVis();
         var rSel = document.querySelector('input[name="byok-route"][value="' + (c.route === 'relay' ? 'relay' : 'direct') + '"]');
@@ -807,13 +1141,14 @@
         st.style.color = 'var(--base01)';
         _overlay.style.display = 'block';  // ★ 修复（2026-09-16）：置 '' 会被样式表 #byok-overlay{display:none} 吃掉 → 弹窗永不显示（点击无反应根因）
     }
-    function _closePopup() { if (_overlay) _overlay.style.display = 'none'; }
+    function _closePopup() { _closeBkPop(); if (_overlay) _overlay.style.display = 'none'; }
 
     // ★ 语言切换 → 弹窗销毁重建（文案在构建期烧入 HTML；缓存 DOM 复用会锁死旧语言）
     //   开着 → 保留用户正在编辑的表单值重建后恢复；关着 → 直接销毁，下次打开自是新语言
     function _relang() {
         _refreshButton();
         if (!_overlay) return;
+        _closeBkPop();
         var wasOpen = _overlay.style.display === 'block';
         var form = null;
         if (wasOpen) { try { form = _readForm(); } catch (_) { } }
@@ -827,6 +1162,7 @@
         $('byok-model').value = form.model || '';
         $('byok-think').checked = !!form.sendThinking;
         $('byok-think-level').value = /^(low|medium|high|max)$/.test(form.thinkLevel || '') ? form.thinkLevel : 'high';
+        if (_thinkSel) _thinkSel.set($('byok-think-level').value);
         $('byok-think-json').value = form.thinkJson || '';
         _syncThinkVis();
         var rr = document.querySelector('input[name="byok-route"][value="' + (form.route === 'relay' ? 'relay' : 'direct') + '"]');
@@ -874,6 +1210,9 @@
         open: _openPopup,
         close: _closePopup,
         endpoint: _endpoint,
+        modelsEndpoint: _modelsEndpoint,   // 供测试/审计
+        parseModels: _parseModels,         // 供测试/审计
+        fetchModels: _fetchModels,         // 供测试/审计
         isLocalBase: _isLocalBase,   // 供测试/审计
         buildBody: _buildBody   // 供测试/审计
     };

@@ -160,14 +160,29 @@ function _hasDraftFlag(id) {
 }
 
 // ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══
-var questUIStates = {};
-
-function saveQuestUIState(id) {
-    if (!id) return;
-    var imgs = new Array(pendingImages.length);
-    for (var i = 0; i < pendingImages.length; i++) {
-        var pi = pendingImages[i];
-        imgs[i] = { id: pi.id, base64: pi.base64, dataUrl: pi.dataUrl };
+var questUIStates = {};
+
+function saveQuestUIState(id) {
+    if (!id) return;
+    // ★ 2026-10-05 草稿图片瘦身与预算：dataUrl = mime + base64 可无损重建 → 不再落盘第二份（省一半）；
+    //   图片总量超预算（大图和文字不同量级）→ 只留占位标记，恢复时如实提示（防 sq3 写爆炸）
+    var imgs = new Array(pendingImages.length);
+    var _imgBudget = 28000000;   // 草稿内图片 base64 总量预算（字符）
+    var _used = 0;
+    for (var i = 0; i < pendingImages.length; i++) {
+        var pi = pendingImages[i];
+        var _b64 = pi.base64 || '';
+        if (_b64.length > 0 && _used + _b64.length > _imgBudget) {
+            imgs[i] = { id: pi.id, dropped: true };
+            continue;
+        }
+        _used += _b64.length;
+        var _mime = 'image/png';
+        try {
+            var _m = /^data:([^;,]+)/.exec(pi.dataUrl || '');
+            if (_m && _m[1]) _mime = _m[1];
+        } catch (_) { }
+        imgs[i] = { id: pi.id, base64: _b64, mime: _mime };
     }
     questUIStates[id] = {
         inputValue: $input.value,
@@ -207,12 +222,34 @@ async function restoreQuestUIState(id) {
     if (state) {
         $input.value = state.inputValue || '';
         $input._resetUndo();
-        pendingImages = state.pendingImages || [];
+        // ★ 2026-10-05：草稿图片重建——新格式 dataUrl 由 mime+base64 无损重建；超预算未落盘的如实提示
+        var _imgs = [];
+        var _dropped = 0;
+        var _rawImgs = state.pendingImages || [];
+        for (var _ri = 0; _ri < _rawImgs.length; _ri++) {
+            var _rw = _rawImgs[_ri];
+            if (!_rw || _rw.dropped) { _dropped++; continue; }
+            var _dUrl = _rw.dataUrl;
+            if (!_dUrl && _rw.base64) _dUrl = 'data:' + (_rw.mime || 'image/png') + ';base64,' + _rw.base64;
+            if (!_dUrl) { _dropped++; continue; }
+            _imgs.push({ id: _rw.id, base64: _rw.base64 || '', dataUrl: _dUrl });
+        }
+        pendingImages = _imgs;
         // ★ 旧数据可能为 null（A 已改为信息弹窗），回退默认
         selectedTier = tier;
         updateTierButtons(tier);
         renderImageStrip();
         updateQueueBtn();
+        if (_dropped > 0) {
+            try {
+                var _dMsg = (typeof _qq === 'function')
+                    ? _qq('ai.draftImagesDropped', '有 {0} 张图片因体积过大未随草稿恢复')
+                    : '有 {0} 张图片因体积过大未随草稿恢复';
+                if (parent && parent.qqqideQoast) {
+                    parent.qqqideQoast.show(_dMsg.replace('{0}', String(_dropped)), { type: 'warning', duration: 5000 });
+                }
+            } catch (_) { }
+        }
         if (typeof state.inputCaret === 'number') {
             $input.setSelectionRange(state.inputCaret, state.inputCaret);
         }

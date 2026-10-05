@@ -1134,8 +1134,9 @@ function bootAiOverlay() {
     return b + '/' + r;
   }
   // ★ 平台：POSIX 绝对路径判定（mac/linux 首字符 '/'）——2026-09-17；Windows 平台恒 false（q2-roam.js _ROAM_IS_MAC 同口径）
-  var _ROAM_MAC = /Mac/i.test(String(navigator.platform || '') + ' ' + String(navigator.userAgent || ''));
-  function _roamPosixAbs(t) { return _ROAM_MAC && String(t || '').charAt(0) === '/'; }
+  // ★ POSIX 绝对路径判定（mac + linux）——Windows 首字符 '/' 维持逐根相对解析
+  var _ROAM_WIN = /Win/i.test(String(navigator.platform || ''));
+  function _roamPosixAbs(t) { return !_ROAM_WIN && String(t || '').charAt(0) === '/'; }
   function _roamParent(p) {
     var s = String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
     var i = s.lastIndexOf('/');

@@ -80,10 +80,11 @@ export function getOsBaseDir(): string {
     return path.join(os.homedir(), 'AppData', 'Local');
 }
 
-/** mac 一次性迁移：旧 ~/AppData/Local/* → ~/Library/Application Support/*（该目录全部为本产品系产物）。
+/** 一次性迁移（mac/linux）：旧 ~/AppData/Local/* → 本平台 OS 根（mac ~/Library/Application Support
+ *  ｜ linux XDG_DATA_HOME 或 ~/.local/share）——该目录全部为本产品系历史产物（早期平台分支缺失时写成）。
  *  条目级 rename；目标已存在时只补迁缺失子项（不覆盖）；最后仅清理空壳目录。 */
-function migrateMacOsDirs(): void {
-    if (process.platform !== 'darwin') { return; }
+function migrateLegacyOsDirs(): void {
+    if (process.platform !== 'darwin' && process.platform !== 'linux') { return; }
     const legacyRoot = path.join(os.homedir(), 'AppData', 'Local');
     try { if (!fs.existsSync(legacyRoot)) { return; } } catch { return; }
     const targetRoot = getOsBaseDir();
@@ -109,7 +110,7 @@ function migrateMacOsDirs(): void {
         try { fs.rmdirSync(legacyRoot); } catch { /* 非空/占用则保留 */ }
         try { fs.rmdirSync(path.dirname(legacyRoot)); } catch { /* ~/AppData 空壳 */ }
     } catch { /* ignore */ }
-    if (migrated > 0) { console.log('[portable-paths] mac: migrated ' + migrated + ' OS-dir entries -> ' + targetRoot); }
+    if (migrated > 0) { console.log('[portable-paths] ' + process.platform + ': migrated ' + migrated + ' OS-dir entries -> ' + targetRoot); }
 }
 
 /** mac 一次性迁移：bundle 内旧 Data → 外置托管根（原地覆盖升级场景兜底）。 */
@@ -136,7 +137,7 @@ function migrateMacLegacyData(): void {
 export function applyPortablePaths(opts?: { sessionDir?: string }): { root: string; userData: string; cache: string; logs: string } {
     const root = getAppRoot();
     migrateMacLegacyData();
-    migrateMacOsDirs();
+    migrateLegacyOsDirs();
     const baseData = getDataDir();
     const userData = (opts && opts.sessionDir) ? path.join(baseData, opts.sessionDir) : baseData;
     // ★ 所有运行时目录收进 userData/，根目录保持干净（宿主域 Cache/Temp/Logs 仍挂共享 Data 根）

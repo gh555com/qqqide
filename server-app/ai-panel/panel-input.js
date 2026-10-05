@@ -250,9 +250,8 @@ function _i18nQ(key, fallback) {
 
 function _limitQoast(reason, args) {
     var now = Date.now();
-    // 图片类提示豁免 3s 防抖：可与字符上限提示连续出现（不同原因不互相吞）
-    if (reason !== 'paste-truncated' && reason !== 'paste-full'
-        && reason !== 'image-cap' && reason !== 'image-size') {
+    // 粘贴类提示豁免 3s 防抖：可与键入上限提示连续出现（不同原因不互相吞）
+    if (reason !== 'paste-truncated' && reason !== 'paste-full') {
         if (now - _lastLimitQoastTs < _LIMIT_QOAST_COOLDOWN) return;
     }
     _lastLimitQoastTs = now;
@@ -261,10 +260,6 @@ function _limitQoast(reason, args) {
         msg = _i18nQ('ai.inputLimitQoastFull', '已达编辑框字符上限，无法继续粘贴');
     } else if (reason === 'paste-truncated') {
         msg = _i18nQ('ai.inputLimitQoastTruncated', '已达编辑框字符上限，多余内容已截断');
-    } else if (reason === 'image-cap') {
-        msg = _i18nQ('ai.inputLimitQoastImageCap', '图片已达上限（{0} 张），多余图片未粘贴');
-    } else if (reason === 'image-size') {
-        msg = _i18nQ('ai.inputLimitQoastImageSize', '有 {0} 张图片超出单张大小上限，已跳过');
     } else if (reason === 'send-busy') {
         msg = _i18nQ('ai.inputSendBusy', 'AI 正在处理中，请稍候…');
     } else if (reason === 'paste-busy') {
@@ -285,6 +280,17 @@ function _limitQoast(reason, args) {
     } catch (_) { }
 }
 
+// 直接展示一条警告 qoast（组装文案专用；不加冷却——内容为单条汇总，防重复弹靠调用方收敛）
+function _limitQoastMsg(msg) {
+    if (!msg) return;
+    _lastLimitQoastTs = Date.now();
+    try {
+        if (parent && parent.window && parent.window.qqqideQoast) {
+            parent.window.qqqideQoast.show(msg, { duration: 3500, type: 'warning' });
+        }
+    } catch (_) { }
+}
+
 // ═══ 硬上限键前拦截：已达上限且键入可打印字符→阻止（防字母先入再截）══
 $input.addEventListener('keydown', function (e) {
     // 可打印字符：key.length===1 且非修饰键；Backspace/Delete/Enter/方向键等 length>1 放行
@@ -401,12 +407,18 @@ if ($newlineBtn) {
 var pendingImages = []; // [{id, base64, dataUrl}]
 var MAX_IMAGES = 20;
 
-// ══ 多图粘贴三重硬帽（2026-08-07 多图粘贴架构）══
-var MAX_SINGLE_IMAGE_BYTES = 30 * 1024 * 1024; // 单张硬帽：FileReader 全量读入内存，防卡死/OOM
-var MAX_IMG_EDGE = 4096;                       // 像素保护边：<2MB 但像素爆炸图（纯色大 PNG）→ canvas 崩溃点
-var COMPRESS_EDGE = 2048;                      // >2MB 压缩目标最长边（原行为：2048 宽）
-var _pasteChain = Promise.resolve();           // 粘贴串行队列：防快速连按 Ctrl+V 并发乱序
-var _pasteInFlight = 0;                        // ★ 2026-09-30：粘贴/拖放处理在飞计数（>0 时发送入口一律拦下——内容尚未入条）
+// ══ 多图粘贴硬帽（2026-10-05 重构：原图直通，仅在会撞硬限时才重编码）══
+// 口径：识图服务对单条 data-uri 有 20MiB 上限（≈ 文件 14MiB，实测边界）；链路单请求 ≈50MiB。
+// 所以废除「>2MB 一律压 2048」的画质预损——阈值内原图直通；越界就近重编码（保最大分辨率，
+// JPEG 白底 q0.92 起、带透明通道优先 PNG）；仅 >64MiB 才跳过（FileReader 全量读入内存硬帽）。
+var PASS_MAX_BYTES = 14 * 1024 * 1024;   // 直通上限：文件字节（base64 ≈19.5MB，贴 data-uri 20MiB 上限内留余量）
+var PASS_MAX_EDGE = 16384;               // 直通上限：长边像素（超 → 等比重编码）
+var PASS_MAX_PIXELS = 64 * 1000 * 1000;  // 直通上限：总面积 64MP（防解码内存炸弹；超 → 重编码）
+var HARD_LOAD_BYTES = 64 * 1024 * 1024;  // 读取硬帽：>64MiB 直接跳过（全量读入内存，防卡死/OOM）
+var ENC_TARGET_B64 = 19200000;           // 重编码目标：base64 字符数（20MiB 上限内留足余量）
+var _IMG_STEP_TIMEOUT = 90000;           // 单步超时：读取/解码/头部嗅探（防粘贴链被挂死 promise 永久堵死）
+var _pasteChain = Promise.resolve();     // 粘贴串行队列：防快速连按 Ctrl+V 并发乱序
+var _pasteInFlight = 0;                  // ★ 2026-09-30：粘贴/拖放处理在飞计数（>0 时发送入口一律拦下——内容尚未入条）
 
 // 粘贴队列入口：所有异步粘贴路径（Ctrl+V / 右键菜单）串行执行
 function _enqueuePaste(fn) {
@@ -429,83 +441,227 @@ function _enqueuePasteBusy(fn) {
     });
 }
 
-function _readAsDataURL(blob) {
+// 单步超时包装（2026-10-05）：粘贴链任何一环挂死不得永久占住串行队列
+// （旧症状：一次读取/解码卡死 → 后续所有 Ctrl+V 全哑 + 发送恒被 paste-busy 拦下，无看门狗可救）
+function _withStepTimeout(p, ms, tag) {
     return new Promise(function (resolve, reject) {
+        var done = false;
+        var timer = setTimeout(function () {
+            if (done) return; done = true;
+            reject(new Error(tag + ' timed out'));
+        }, ms);
+        Promise.resolve(p).then(
+            function (v) { if (done) return; done = true; clearTimeout(timer); resolve(v); },
+            function (e) { if (done) return; done = true; clearTimeout(timer); reject(e); }
+        );
+    });
+}
+
+function _readAsDataURL(blob) {
+    return _withStepTimeout(new Promise(function (resolve, reject) {
         var r = new FileReader();
         r.onload = function () { resolve(r.result); };
         r.onerror = function () { reject(r.error || new Error('read failed')); };
         r.readAsDataURL(blob);
-    });
+    }), _IMG_STEP_TIMEOUT, 'read');
 }
 
 function _loadImage(src) {
-    return new Promise(function (resolve, reject) {
+    return _withStepTimeout(new Promise(function (resolve, reject) {
         var img = new Image();
         img.onload = function () { resolve(img); };
         img.onerror = function () { reject(new Error('img decode failed')); };
         img.src = src;
-    });
+    }), _IMG_STEP_TIMEOUT, 'decode');
 }
 
-// 单张图片处理：30MB 硬帽 → 解码 → 像素保护/2MB 压缩 → 入条
-// 返回 {added:true} 或 {skipped:'size'}；解码失败直接 throw（外层隔离）
+// ══ 图片头部嗅探（只读 ≤64KB，不整图解码）——拿宽高/透明通道 ══
+// 返回 {w,h,alpha} 或 null（识别不了 → 走解码探测回退）
+async function _sniffImageDims(blob) {
+    try {
+        var buf = await _withStepTimeout(blob.slice(0, 65536).arrayBuffer(), 15000, 'sniff');
+        var b = new Uint8Array(buf), n = b.length;
+        function u16(o) { return (b[o] << 8) | b[o + 1]; }
+        function u32(o) { return b[o] * 0x1000000 + ((b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]); }
+        // PNG
+        if (n >= 26 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) {
+            var ct = b[25];
+            return { w: u32(16), h: u32(20), alpha: (ct === 4 || ct === 6) };
+        }
+        // GIF
+        if (n >= 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) {
+            return { w: b[6] | (b[7] << 8), h: b[8] | (b[9] << 8), alpha: true };
+        }
+        // JPEG：扫段找 SOF
+        if (n >= 4 && b[0] === 0xFF && b[1] === 0xD8) {
+            var i = 2;
+            while (i + 9 < n) {
+                if (b[i] !== 0xFF) { i++; continue; }
+                var m = b[i + 1];
+                if (m === 0xFF) { i++; continue; }
+                if (m === 0x01 || (m >= 0xD0 && m <= 0xD9)) { i += 2; continue; }
+                if (m === 0xDA) break;
+                var len = (b[i + 2] << 8) | b[i + 3];
+                if ((m >= 0xC0 && m <= 0xC3) || (m >= 0xC5 && m <= 0xC7) || (m >= 0xC9 && m <= 0xCB) || (m >= 0xCD && m <= 0xCF)) {
+                    return { w: u16(i + 7), h: u16(i + 5), alpha: false };
+                }
+                i += 2 + len;
+            }
+            return null;
+        }
+        // WebP（VP8X 需读到 b[29]；VP8/VP8L 更短，统一 n ≥ 30 门槛）
+        if (n >= 30 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) {
+            var cc = String.fromCharCode(b[12], b[13], b[14], b[15]);
+            if (cc === 'VP8X') {
+                return {
+                    w: 1 + (b[24] | (b[25] << 8) | (b[26] << 16)),
+                    h: 1 + (b[27] | (b[28] << 8) | (b[29] << 16)),
+                    alpha: !!(b[20] & 0x10)
+                };
+            }
+            if (cc === 'VP8L') {
+                return {
+                    w: 1 + ((b[21] | (b[22] << 8)) & 0x3FFF),
+                    h: 1 + ((((b[22] >> 6) | (b[23] << 2) | (b[24] << 10)) & 0x3FFF)),
+                    alpha: true
+                };
+            }
+            if (cc === 'VP8 ') {
+                return { w: (b[26] | (b[27] << 8)) & 0x3FFF, h: (b[28] | (b[29] << 8)) & 0x3FFF, alpha: false };
+            }
+            return null;
+        }
+        // BMP
+        if (n >= 26 && b[0] === 0x42 && b[1] === 0x4D) {
+            var bw = b[18] | (b[19] << 8) | (b[20] << 16) | (b[21] << 24);
+            var bh = b[22] | (b[23] << 8) | (b[24] << 16) | (b[25] << 24);
+            return { w: bw, h: Math.abs(bh), alpha: false };
+        }
+        return null;
+    } catch (_) { return null; }
+}
+
+// ══ 重编码（越界路径）：保最大分辨率，压回链路安全区 ══
+// 透明通道优先 PNG（保住 alpha）；PNG 两轮仍压不动 → JPEG 白底（防透明区变黑）
+function _encodeScaled(img, scale, usePng, quality) {
+    var w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+    var h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    var ctx = canvas.getContext('2d');
+    if (!usePng) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); }
+    ctx.drawImage(img, 0, 0, w, h);
+    return usePng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', quality);
+}
+function _reencodeToTarget(img, hasAlpha) {
+    var w0 = img.naturalWidth || 0, h0 = img.naturalHeight || 0;
+    var edge = Math.max(w0, h0) || 1;
+    var px = (w0 * h0) || 1;
+    var scale = Math.min(1, PASS_MAX_EDGE / edge, Math.sqrt(PASS_MAX_PIXELS / px));
+    var quality = 0.92;
+    var usePng = !!hasAlpha;
+    var out = '';
+    for (var step = 0; step < 6; step++) {
+        out = _encodeScaled(img, scale, usePng, quality);
+        var b64len = ((out.split(',')[1]) || '').length;
+        if (b64len <= ENC_TARGET_B64) return out;
+        if (usePng) {
+            if (step >= 1) { usePng = false; quality = 0.9; continue; }
+            scale *= 0.8;
+            continue;
+        }
+        if (quality > 0.5) { quality -= 0.1; }
+        else { scale *= 0.75; quality = 0.82; }
+    }
+    return out;
+}
+
+// 单张图片处理（2026-10-05 重构）：原图直通优先，只有会撞链路/内存/服务硬限时才重编码
+// 返回 {added:true} 或 {skipped:'size'|'fail'|'cap'}
 async function _processImageFile(blob) {
-    if (blob.size > MAX_SINGLE_IMAGE_BYTES) return { skipped: 'size' };
-    var dataUrl = await _readAsDataURL(blob);
-    var img = await _loadImage(dataUrl);
-    var w = img.naturalWidth || 0;
-    var h = img.naturalHeight || 0;
-    var needCompress = blob.size > 2 * 1024 * 1024;
-    var edge = COMPRESS_EDGE;
-    // 像素保护：文件小但像素爆炸（纯色大图 PNG）→ 防 canvas 崩溃
-    if (!needCompress && (w > MAX_IMG_EDGE || h > MAX_IMG_EDGE)) {
-        needCompress = true;
-        edge = MAX_IMG_EDGE;
+    if (blob.size > HARD_LOAD_BYTES) return { skipped: 'size' };
+    try {
+        var dims = await _sniffImageDims(blob);
+        var dataUrl = null, img = null;
+        // 头部拿不到尺寸的格式（AVIF/SVG 等）→ 解码探测兜底
+        if (!dims || !(dims.w > 0) || !(dims.h > 0)) {
+            dataUrl = await _readAsDataURL(blob);
+            img = await _loadImage(dataUrl);
+            var w0 = img.naturalWidth || 0, h0 = img.naturalHeight || 0;
+            if (!(w0 > 0 && h0 > 0)) {
+                // SVG 等无 intrinsic size → 原样入条
+                return addImage(dataUrl, dataUrl.split(',')[1] || '') ? { added: true } : { skipped: 'cap' };
+            }
+            dims = { w: w0, h: h0, alpha: false };
+        }
+        var over = blob.size > PASS_MAX_BYTES
+            || Math.max(dims.w, dims.h) > PASS_MAX_EDGE
+            || (dims.w * dims.h) > PASS_MAX_PIXELS;
+        if (!over) {
+            // 直通：不做整图解码（超大位图解码是内存炸弹来源）；小文件（≤2MiB）做一次解码校验，坏图尽早如实报
+            if (!dataUrl) {
+                dataUrl = await _readAsDataURL(blob);
+                if (blob.size <= 2 * 1024 * 1024) {
+                    try { await _loadImage(dataUrl); } catch (_de) { return { skipped: 'fail' }; }
+                }
+            }
+            return addImage(dataUrl, dataUrl.split(',')[1] || '') ? { added: true } : { skipped: 'cap' };
+        }
+        // 越界 → 重编码（保最大分辨率）
+        if (!dataUrl) dataUrl = await _readAsDataURL(blob);
+        if (!img) img = await _loadImage(dataUrl);
+        var out = _reencodeToTarget(img, dims.alpha);
+        return addImage(out, out.split(',')[1] || '') ? { added: true } : { skipped: 'cap' };
+    } catch (_e) {
+        return { skipped: 'fail' };
     }
-    if (needCompress && w > 0 && h > 0) {
-        // 按最长边等比缩放（修复原 bug：>2MB 竖长图只缩宽不缩高）
-        var scale = Math.min(1, edge / w, edge / h);
-        var canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(w * scale));
-        canvas.height = Math.max(1, Math.round(h * scale));
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        var out = canvas.toDataURL('image/jpeg', 0.85);
-        addImage(out, out.split(',')[1]);
-    } else {
-        // SVG 等无 intrinsic size 或无需压缩 → 原样入条
-        addImage(dataUrl, dataUrl.split(',')[1]);
-    }
-    return { added: true };
 }
 
-// 批量粘贴图片：槽位上限裁剪 + 逐张串行保序 + 失败隔离 + 汇总提示
+// 批量粘贴图片：槽位上限裁剪 + 逐张串行保序 + 失败隔离 + 单条分桶汇总提示（2026-10-05）
+// 分桶语义（各自如实、不再互相冒充）：cap=槽位满 / size=超出体积硬帽（>64MiB）/ fail=无法读取（损坏或超时）
 async function _pasteImages(imageFiles) {
     if (!imageFiles || imageFiles.length === 0) return;
     var slot = MAX_IMAGES - pendingImages.length;
     var toProcess = imageFiles;
+    var capDropped = 0;
     if (slot <= 0) {
-        _limitQoast('image-cap', [MAX_IMAGES]);
+        _pasteSkipQoast(imageFiles.length, 0, 0);
         return;
     } else if (imageFiles.length > slot) {
+        capDropped = imageFiles.length - slot;
         toProcess = imageFiles.slice(0, slot);
-        _limitQoast('image-cap', [MAX_IMAGES]);
     }
-    var skip = 0;
+    var sizeSkip = 0, failSkip = 0;
     for (var k = 0; k < toProcess.length; k++) {
         try {
             var r = await _processImageFile(toProcess[k]);
-            if (!r || !r.added) skip++;
-        } catch (_e) { skip++; }
+            if (!r || !r.added) {
+                if (r && r.skipped === 'size') sizeSkip++;
+                else if (r && r.skipped === 'cap') capDropped++;
+                else failSkip++;
+            }
+        } catch (_e) { failSkip++; }
     }
-    if (skip > 0) _limitQoast('image-size', [skip]);
+    if (capDropped || sizeSkip || failSkip) _pasteSkipQoast(capDropped, sizeSkip, failSkip);
+}
+
+// 粘贴跳过汇总（唯一实现）：组装成单条 qoast（防「槽位满 + 超大小」各弹一条）
+function _pasteSkipQoast(capN, sizeN, failN) {
+    var parts = [];
+    if (capN > 0) parts.push(_i18nQ('ai.inputLimitQoastImageCap', '图片已达上限（{0} 张），多余图片未粘贴').replace('{0}', String(MAX_IMAGES)));
+    if (sizeN > 0) parts.push(_i18nQ('ai.inputLimitQoastImageSize', '有 {0} 张图片超出单张大小上限，已跳过').replace('{0}', String(sizeN)));
+    if (failN > 0) parts.push(_i18nQ('ai.inputLimitQoastImageFail', '有 {0} 张图片无法读取（格式不支持或已损坏），已跳过').replace('{0}', String(failN)));
+    if (parts.length === 0) return;
+    _limitQoastMsg(parts.join('；'));
 }
 
 function addImage(dataUrl, base64) {
-    if (pendingImages.length >= MAX_IMAGES) return;
+    if (pendingImages.length >= MAX_IMAGES) return false;
     var id = pendingImages.length + 1;
     pendingImages.push({ id: id, base64: base64, dataUrl: dataUrl });
     renderImageStrip();
     _scheduleDraftSave(true);  // ★ 图片变更 → 完整快照（低频，1.2s 合并）
+    return true;
 }
 
 function removeImage(idx) {
@@ -550,6 +706,43 @@ function _syncImgTokensAfterRemove(removedId) {
     } catch (_) { }
 }
 
+// ══ 剪贴板文件附加（唯一实现，2026-10-05）：非图片文件 → 📎"path" 锚点（多选按序，与拖放同语义）══
+// 路径解析：① 事件的 File.path（Electron）→ ② 系统剪贴板文件表直读（CF_HDROP，子毫秒、覆盖目录/多选）
+async function _attachClipboardFiles(files) {
+    var paths = [];
+    for (var i = 0; i < files.length; i++) {
+        try { if (files[i].path) paths.push(String(files[i].path)); } catch (_) { }
+    }
+    if (paths.length < files.length) {
+        try {
+            var b = (window.parent && window.parent.qqqideBridge) || window.qqqideBridge;
+            if (b && b.clipboard && b.clipboard.readFiles) {
+                var more = await _withStepTimeout(b.clipboard.readFiles(), 10000, 'clipFiles');
+                if (more && more.length) {
+                    for (var j = 0; j < more.length; j++) {
+                        if (paths.indexOf(more[j]) === -1) paths.push(more[j]);
+                    }
+                }
+            }
+        } catch (_) { }
+    }
+    if (paths.length === 0) {
+        _limitQoastMsg(_i18nQ('ai.inputLimitQoastFilePath', '有 {0} 个文件无法获取路径，未附加').replace('{0}', String(files.length)));
+        return;
+    }
+    if (typeof insertChipAtCursor !== 'function') return;
+    var b2 = (window.parent && window.parent.qqqideBridge) || window.qqqideBridge;
+    for (var k = 0; k < paths.length; k++) {
+        try {
+            var isDir = null;
+            if (b2 && b2.fs && b2.fs.stat) {
+                try { var st = await b2.fs.stat(paths[k]); isDir = !!(st && st.isDir); } catch (_) { isDir = null; }
+            }
+            insertChipAtCursor(paths[k], isDir, null);
+        } catch (_) { }
+    }
+}
+
 function renderImageStrip() {
     var strip = document.getElementById('image-strip');
     strip.innerHTML = '';
@@ -628,7 +821,7 @@ function _insertPlainText(text) {
     if (wasTruncated) _limitQoast('paste-truncated');
 }
 
-// 粘贴图片（多图全量收集 + 串行保序 + 三重硬帽）/ 纯文本粘贴
+// 粘贴图片（多图全量收集 + 串行保序 + 直通/重编码硬帽）/ 纯文本 / 文件锚点粘贴
 $input.addEventListener('paste', function (e) {
     // ★ 铁律：任何粘贴一律先阻止原生行为，再由我们手动插入
     e.preventDefault();
@@ -636,6 +829,7 @@ $input.addEventListener('paste', function (e) {
     // ★ 同步收集剪贴板（clipboardData 仅事件回调内有效，必须同步读）
     var plainText = '';
     var imageFiles = [];
+    var otherFiles = [];   // ★ 2026-10-05：非图片文件（资源管理器复制的文件/文件夹）→ 📎 锚点附加
     try {
         var cd = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
         if (!cd) return;
@@ -644,9 +838,11 @@ $input.addEventListener('paste', function (e) {
         if (items) {
             for (var i = 0; i < items.length; i++) {
                 var it = items[i];
-                if (it.kind === 'file' && it.type && it.type.indexOf('image/') === 0) {
+                if (it.kind === 'file') {
                     var f = it.getAsFile();
-                    if (f) imageFiles.push(f);
+                    if (!f) continue;
+                    if (it.type && it.type.indexOf('image/') === 0) imageFiles.push(f);
+                    else otherFiles.push(f);
                 }
             }
         }
@@ -654,14 +850,18 @@ $input.addEventListener('paste', function (e) {
 
     // ★ 串行队列：快速连按 Ctrl+V 时逐次处理，防并发乱序/超限（busy 包装：处理期间发送入口拦截）
     _enqueuePasteBusy(async function () {
-        // 图片分支：串行处理保序，三重硬帽（30MB / 4096px / 20张槽位）
+        // 图片分支：串行处理保序（原图直通硬帽 + 越界重编码）
         if (imageFiles.length > 0) {
             await _pasteImages(imageFiles);
         }
 
         // 纯文本分支：硬上限保护（唯一插入机 _insertPlainText——右键菜单/外拖文本同源）
-        if (!plainText) return;
-        _insertPlainText(plainText);
+        if (plainText) _insertPlainText(plainText);
+
+        // 文件分支（2026-10-05）：非图片文件 → 📎 锚点附加（与拖放同语义；路径经系统剪贴板文件表直读）
+        if (otherFiles.length > 0) {
+            await _attachClipboardFiles(otherFiles);
+        }
     });
 });
 
@@ -703,10 +903,10 @@ $input.addEventListener('contextmenu', function (e) {
         $input.focus();
         // ★ 串行队列：与 Ctrl+V 共用同一队列，防并发乱序（busy 包装：处理期间发送入口拦截）
         _enqueuePasteBusy(async function () {
-        // ★ 先尝试读剪贴板图片（navigator.clipboard.read 支持 text+image）
+        // ★ 先尝试读剪贴板图片（navigator.clipboard.read 支持 text+image）——15s 超时兜底（防挂死堵住串行队列）
         var imageBlobs = [], txt = '';
         try {
-            var items = await navigator.clipboard.read();
+            var items = await _withStepTimeout(navigator.clipboard.read(), 15000, 'clipboard.read');
             for (var i = 0; i < items.length; i++) {
                 for (var t = 0; t < items[i].types.length; t++) {
                     var mt = items[i].types[t];
@@ -723,14 +923,14 @@ $input.addEventListener('contextmenu', function (e) {
             try {
                 var b = _getBridge();
                 if (b && b.clipboard && b.clipboard.readText) {
-                    txt = await b.clipboard.readText();
+                    txt = await _withStepTimeout(b.clipboard.readText(), 8000, 'clipboard.readText');
                 } else {
-                    txt = await navigator.clipboard.readText();
+                    txt = await _withStepTimeout(navigator.clipboard.readText(), 8000, 'clipboard.readText');
                 }
             } catch (_2) { return; }
         }
 
-        // 图片分支：复用 _pasteImages（串行保序 + 三重硬帽）
+        // 图片分支：复用 _pasteImages（串行保序 + 直通/重编码硬帽）
         if (imageBlobs.length > 0) {
             await _pasteImages(imageBlobs);
         }

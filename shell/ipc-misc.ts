@@ -144,6 +144,32 @@ export function registerMiscIpc(
     //   FileNameW = Explorer 复制文件的标准 CF_HDROP 格式（UTF-16LE 双 NUL 路径列表）。
     ipcMain.handle('qqqide:clipboard:readFiles', async () => {
         if (process.platform === 'darwin') return await _readFilesMac();
+        // ★ Linux（2026-10-05）：freedesktop 文件剪贴板——GNOME/Nautilus/KDE 复制文件 = text/uri-list
+        //   （GNOME 另置 x-special/gnome-copied-files）；两目标依次尝试，file:// URI → 本地路径
+        if (process.platform === 'linux') {
+            try {
+                const parseUris = (buf: Buffer | null): string[] => {
+                    if (!buf || !buf.length) return [];
+                    const out: string[] = [];
+                    const lines = buf.toString('utf8').split(/\r?\n/);
+                    for (const raw of lines) {
+                        const s = raw.trim();
+                        if (!s || s.charAt(0) === '#') continue;
+                        if (s === 'copy' || s === 'cut') continue; // gnome-copied-files 首行语义标记
+                        if (s.indexOf('file://') !== 0) continue;
+                        let p = s.slice(7);
+                        if (p.charAt(0) !== '/') { const sl = p.indexOf('/'); p = sl >= 0 ? p.slice(sl) : ''; }
+                        try { p = decodeURIComponent(p); } catch { /* 保持原样 */ }
+                        if (!p) continue;
+                        try { if (fs.existsSync(p)) out.push(p); } catch { /* skip */ }
+                    }
+                    return out;
+                };
+                let found = parseUris(clipboard.readBuffer('text/uri-list'));
+                if (found.length === 0) { try { found = parseUris(clipboard.readBuffer('x-special/gnome-copied-files')); } catch { /* ignore */ } }
+                return found;
+            } catch (e) { console.warn('[klipzap] readFiles(linux) failed:', e); return []; }
+        }
         if (process.platform !== 'win32') return [];
         try {
             const rawBuf = clipboard.readBuffer('FileNameW');
@@ -221,6 +247,15 @@ if ($list -and $list.Count -gt 0) {
                 }
             } catch (e) { console.warn('[klipzap] writeFiles(mac) error:', e); }
             return false;
+        }
+        // ★ Linux（2026-10-05）：写 freedesktop 文件剪贴板——text/uri-list（Nautilus/KDE/GTK 粘贴通用标准；
+        //   Electron 单次 writeBuffer 仅能持单格式 → 取覆盖面最广的 uri-list；路径段转义 # ? 防 URI 截断）
+        if (process.platform === 'linux') {
+            try {
+                const uriBuf = Buffer.from(list.map((p) => 'file://' + encodeURI(String(p).replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F')).join('\r\n') + '\r\n', 'utf8');
+                clipboard.writeBuffer('text/uri-list', uriBuf);
+                return true;
+            } catch (e) { console.warn('[klipzap] writeFiles(linux) failed:', e); return false; }
         }
         if (process.platform !== 'win32') return false;
 

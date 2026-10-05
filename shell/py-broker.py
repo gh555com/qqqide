@@ -6,6 +6,7 @@
 职责:
   1. DevTools 窗口改名 (Win: ctypes / Mac: osascript / Linux: Xlib)
   2. ★ 窗口编队热键 (Win: GetAsyncKeyState 轮询 / mac/Linux: pynput 钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+  3. 启动包内存+CPU 快照 (Win: NtQuerySystemInformation / mac: libproc / Linux: /proc) — mem-meter 每 5s 调用
      ★ 和弦唯一语义（2026-10-02 q319 定案）：空格必须先按下且持续按住（物理键态·心跳续期）→ 槽位键按下才召唤；
        反向/就近时间窗/Alt 修饰键/聚焦声明全部不存在——「没有其他任何逻辑」；目标已在最前 → 跳过。
        播放器窗侧配合：空格按住期间槽位键由其引擎全屏蔽 + 空格松键才切换（响应延迟换和弦纯净，详 core/media-engine.js）
@@ -323,6 +324,157 @@ def _mac_mem_snapshot(root_pid: int):
     _snap_log_n += 1
     if _snap_log_n % 12 == 1:
         _log(f"mem-snapshot(mac): root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
+    return {'totalMB': total_mb, 'nodes': len(rows), 'ncpu': os.cpu_count() or 0,
+            'rows': rows, 'nwin': nwin}
+
+
+def _linux_proc_mem_kb(pid: int) -> int:
+    """单进程内存 KB（去重口径）：smaps_rollup Pss 优先（共享页按比例摊分 =
+    Win 专用工作集 / mac phys_footprint 对应物）；回退 status VmRSS → statm。"""
+    try:
+        with open(f'/proc/{pid}/smaps_rollup') as f:
+            for line in f:
+                if line.startswith('Pss:'):
+                    return int(line.split()[1])
+    except Exception:
+        pass
+    try:
+        with open(f'/proc/{pid}/status') as f:
+            for line in f:
+                if line.startswith('VmRSS:'):
+                    return int(line.split()[1])
+    except Exception:
+        pass
+    try:
+        with open(f'/proc/{pid}/statm') as f:
+            return int(f.read().split()[1]) * (os.sysconf('SC_PAGE_SIZE') // 1024)
+    except Exception:
+        return 0
+
+
+def _linux_proc_name(pid: int, comm: str) -> str:
+    """进程显示名：cmdline 首段 basename（+ --type= 子类型后缀，区分 Electron 各进程）
+    → 回退 stat comm。★ Chromium 子进程会把整个 cmdline 重写成空格拼接标题
+    （NUL 变空格）——按空白分词解析，禁按 NUL 分段（否则吃到半截字符串）。"""
+    try:
+        with open(f'/proc/{pid}/cmdline', 'rb') as f:
+            chunk = f.read(65536).split(b'\x00', 1)[0].decode('utf-8', 'replace')
+        tokens = chunk.split()
+        if tokens:
+            name = os.path.basename(tokens[0]) or comm
+            for tok in tokens[1:]:
+                if tok.startswith('--type='):
+                    return name + ' [' + tok.split('=', 1)[1] + ']'
+            return name
+    except Exception:
+        pass
+    return comm
+
+
+_X_CACHE = None  # 复用 X 连接 (display, pid_atom)——python-xlib 建连实测 210ms/次，
+                 # 缓存后每次快照只剩几个 round-trip（~10ms）；失效自动重建（X 重启等罕见场景）
+
+
+def _linux_window_count(root_pid: int) -> int:
+    """顶层可见窗口数（X11/XWayland）：_NET_WM_PID == root_pid 且 map_state=IsViewable，
+    override_redirect（菜单/提示浮层）不计——Chromium 顶层窗均由主进程创建，与 Win
+    EnumWindows「用户可见窗口」口径同语义。X 不可达 → 0（调用方保留旧值）。"""
+    global _X_CACHE
+    try:
+        import Xlib.display
+        from Xlib import X as _X
+    except Exception:
+        return 0
+    for attempt in (0, 1):
+        if _X_CACHE is None:
+            try:
+                d = Xlib.display.Display()
+                _X_CACHE = (d, d.intern_atom('_NET_WM_PID'))
+            except Exception:
+                _X_CACHE = None
+                return 0
+        d, pid_atom = _X_CACHE
+        try:
+            root = d.screen().root
+            n = 0
+            for w in root.query_tree().children:
+                try:
+                    p = w.get_full_property(pid_atom, _X.AnyPropertyType)
+                    if not p or not p.value or int(p.value[0]) != root_pid:
+                        continue
+                    at = w.get_attributes()
+                    if at.override_redirect or at.map_state != _X.IsViewable:
+                        continue
+                    n += 1
+                except Exception:
+                    continue
+            return n
+        except Exception:
+            _X_CACHE = None  # 连接失效 → 重建一次（重试后仍败则本 tick 返回 0）
+            if attempt == 1:
+                return 0
+    return 0
+
+
+def _linux_mem_snapshot(root_pid: int):
+    """Linux: /proc 全系统扫描 → root_pid + 全部后代（纯血缘进程树，与 Win/mac 同口径）。
+    - 进程表: /proc/<pid>/stat（ppid + utime/stime；USER_HZ ticks × (1e7/CLK_TCK)
+      → 100ns ticks，与 mem-meter 差分公式 dt/1e7 同量纲）
+    - 内存: Pss（见 _linux_proc_mem_kb，共享页去重）
+    - 窗口数: Xlib 顶层可见窗口（见 _linux_window_count）
+    返回 {totalMB, nodes, ncpu, rows, nwin} 或 None；rows 的 ws 单位 KB。"""
+    try:
+        clk = int(os.sysconf('SC_CLK_TCK')) or 100
+    except Exception:
+        clk = 100
+    tick_100ns = 10000000 // clk  # 1 USER_HZ tick → 100ns 单位
+    try:
+        pids = [int(x) for x in os.listdir('/proc') if x.isdigit()]
+    except Exception:
+        _log("mem-snapshot(linux): /proc scan failed")
+        return None
+    procs = {}
+    for pid in pids:
+        try:
+            with open(f'/proc/{pid}/stat', 'rb') as f:
+                st = f.read()
+            rp = st.rfind(b')')
+            if rp < 0:
+                continue
+            rest = st[rp + 2:].split()
+            comm = st[st.find(b'(') + 1:rp].decode('utf-8', 'replace')
+            procs[pid] = (int(rest[1]), comm, int(rest[11]) * tick_100ns, int(rest[12]) * tick_100ns)
+        except Exception:
+            continue  # 进程刚退出 / 读失败 → 跳过（下一 tick 自然收敛）
+    children = {}
+    for pid, (ppid, _nm, _ut, _kt) in procs.items():
+        children.setdefault(ppid, []).append(pid)
+    # 单遍 BFS：主进程 + 全部后代（纯血缘——与 Win/mac 同语义）
+    queue = [root_pid]
+    seen = set()
+    rows = []
+    total = 0
+    while queue:
+        p = queue.pop(0)
+        if p in seen:
+            continue
+        seen.add(p)
+        info = procs.get(p)
+        if info:
+            ppid, comm, ut, kt = info
+            ws = _linux_proc_mem_kb(p)
+            total += ws
+            rows.append({'pid': p, 'ppid': ppid, 'ws': ws,
+                         'n': _linux_proc_name(p, comm), 'ut': ut, 'kt': kt})
+        for c in children.get(p, []):
+            if c not in seen:
+                queue.append(c)
+    nwin = _linux_window_count(root_pid)
+    total_mb = round(total / 1024)  # ws 单位 KB
+    global _snap_log_n   # ★ 降频（2026-09-24，同 Win/mac）：每 12 次快照记一行
+    _snap_log_n += 1
+    if _snap_log_n % 12 == 1:
+        _log(f"mem-snapshot(linux): root={root_pid} nodes={len(rows)} total={total_mb}MB nwin={nwin}")
     return {'totalMB': total_mb, 'nodes': len(rows), 'ncpu': os.cpu_count() or 0,
             'rows': rows, 'nwin': nwin}
 
@@ -1055,6 +1207,51 @@ def _hotkey_guard_loop():
                 _log(f"[Squad] takeover listener start failed: {e}")
 
 
+def _start_evdev_listener(_evdev, _probe):
+    """Linux evdev 内核级按键源（X11/Wayland 通用）+ 按住心跳。
+    ★ 与 Windows 轮询同一状态机语义（2026-10-02 q319）：边沿 = press/release 事件；
+      按住心跳逐 tick 刷新时间戳（绕过裁决函数，不重复触发）→「空格一直按住不放」恒有效。"""
+    _held = set()
+    _held_lock = threading.Lock()
+
+    def _ev_to_norm(name):
+        if name == "space":
+            return "special:space"
+        if len(name) == 1:
+            return "char:" + name
+        return "special:" + name
+
+    def _on_press(name):
+        _norm = _ev_to_norm(name)
+        with _held_lock:
+            _held.add(_norm)
+        _hotkey_note_press(_norm)
+
+    def _on_release(name):
+        _norm = _ev_to_norm(name)
+        with _held_lock:
+            _held.discard(_norm)
+        _hotkey_note_release(_norm)
+
+    def _heartbeat():
+        while True:
+            time.sleep(0.05)
+            with _held_lock:
+                _now_held = list(_held)
+            if not _now_held:
+                continue
+            _now_ms = time.time() * 1000
+            with _HOTKEY_LOCK:
+                for _n in _now_held:
+                    _HOTKEY_PRESSED_KEYS[_n] = _now_ms
+
+    _src = _evdev.KeySource(on_press=_on_press, on_release=_on_release)
+    _src.start()
+    threading.Thread(target=_heartbeat, daemon=True).start()
+    _log("[Squad] hotkey listener started (evdev %s; Space+1/2/q/w/a/s/z/x)" % ",".join(_probe.get("readable", [])))
+    return _src
+
+
 def _start_hotkey_listener():
     global _HOTKEY_LISTENER, _HOTKEY_LISTENING
     if OS == "Windows":
@@ -1065,6 +1262,31 @@ def _start_hotkey_listener():
         _HOTKEY_LISTENING = True
         _log("[Squad] hotkey poller started (GetAsyncKeyState %dms)" % int(_POLL_TICK_S * 1000))
         return {"status": "started"}
+    # ★ Linux 触发源（2026-10-05）：Wayland 会话下 X11 监听器（XRecord）只能看到「X11 窗口
+    #   获焦」时的按键——Wayland 原生窗口获焦时按键不经 Xwayland → 全局热键天然失聪（实测
+    #   真实按键零到达；此前测试用 XTEST 合成按键恰好绕过了这个盲区）。首选 evdev 内核级
+    #   按键源（/dev/input，与焦点/合成器无关，X11/Wayland 通用）；无读权限回退 X11 监听。
+    if OS == "Linux":
+        if _HOTKEY_LISTENER is not None:
+            return {"status": "already_running"}
+        _evdev = None
+        _probe = {}
+        try:
+            import qqqide_evdev as _evdev
+            _probe = _evdev.probe()
+        except Exception as e:
+            _log(f"[Squad] evdev probe failed: {e} -> X11 listener fallback")
+            _evdev = None
+        if _evdev is not None and _probe.get("ok"):
+            try:
+                _src = _start_evdev_listener(_evdev, _probe)
+                _HOTKEY_LISTENER = _src
+                _HOTKEY_LISTENING = True
+                return {"status": "started"}
+            except Exception as e:
+                _log(f"[Squad] evdev listener failed: {e} -> X11 listener fallback")
+        elif _evdev is not None:
+            _log("[Squad] evdev: no readable keyboard devices -> X11 listener fallback | " + _evdev.permission_hint())
     if not _HAS_PYNPUT:
         _log("[Squad] pynput not available, hotkeys disabled")
         return {"status": "error", "error": "pynput not installed"}
@@ -1075,7 +1297,7 @@ def _start_hotkey_listener():
         _HOTKEY_LISTENER.daemon = True  # 不阻塞进程退出
         _HOTKEY_LISTENER.start()
         _HOTKEY_LISTENING = True
-        _log("[Squad] hotkey listener started (Space+1/2/q/w/a/s/z/x)")
+        _log("[Squad] hotkey listener started (x11; Space+1/2/q/w/a/s/z/x)")
         return {"status": "started"}
     except Exception as e:
         _log(f"[Squad] hotkey listener failed: {e}")
@@ -1169,6 +1391,9 @@ def main():
                     elif OS == "Darwin":
                         r = _mac_mem_snapshot(root_pid)
                         err = "libproc snapshot failed"
+                    elif OS == "Linux":
+                        r = _linux_mem_snapshot(root_pid)
+                        err = "/proc snapshot failed"
                 if r is None:
                     result["ok"] = False
                     result["error"] = err

@@ -13,6 +13,11 @@
 //   不推进 x 轴——程序没运行的时间在图上不占任何宽度，曲线恒铺满；刻度语义 = 运行时长
 //   （-24h = 24h 运行时长前）。60s 一点 × 1440 点 cap = 24h 运行时长（点数即运行时长，
 //   墙钟修剪已删除）。
+// ★ 语言与限宽（2026-10-05）：① 卡片文案在 ensurePanel 建卡时一次性取词烧入 DOM → 切语言必须
+//   整卡销毁重建（rebuildForLang；开着/固定态原样恢复，gridBuilt 清零重画网格）——否则旧语言
+//   永久残留（实锤：选英文后 CPU 单位标签仍显示中文）；② 数值+单位拼接 numUnit：单位首字符为
+//   西文字母时补空格（'6.2核' / '6.2 Cores'）；③ 限宽：大数值恒不断行 / 单位可折行 / 均值徽
+//   章整块折行；CPU 刻度文案超 40px 刻度区就去单位（fmtCoresTick）——详 shell-main.css。
 // 数据源: 主进程 mem-meter 真理机器（qqqide:mem:history 首拉全量 + qqqide:mem:metrics
 //   增量广播），py-broker NtQuerySystemInformation（内核原生 ~7.5ms/次）启动包进程树
 //   Σ 专用工作集（任务管理器「内存」列同口径）+ 行级 ut/kt 差分（CPU 核数/累计时间）。
@@ -83,15 +88,37 @@
     var h = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60);
     return h + 'h' + (mm ? mm + 'm' : '');
   }
+  // 数值+单位拼接：单位首字符为西文字母时补一个空格（CJK 单位零空格）——
+  // 同一行代码覆盖 13 语言：'6.2核' / '6.2 Cores' / '6.2 Ядра'（禁在译文里塞前导空格：翻译管道会归一）。
+  function numUnit(num, unit) {
+    return (/^[A-Za-z]/.test(unit) ? num + ' ' : num + '') + unit;
+  }
+  // 12px 等宽文本量宽（canvas 测量，懒建 ctx；异常退「字符数×6.6 字宽」）——
+  // 用途：y 轴刻度区恒 40px（PAD_L=40），刻度文案必须落区内（多语言长单位自适应）。
+  var _measCtx = null;
+  function measTextWidth(s) {
+    try {
+      if (!_measCtx) { _measCtx = document.createElement('canvas').getContext('2d'); _measCtx.font = '12px Consolas, monospace'; }
+      return _measCtx.measureText(s).width;
+    } catch (e) { return String(s).length * 6.6; }
+  }
   // 核数：<10 一位小数（0.4核），≥10 整数（12核）
   function fmtCores(c) {
     if (c === null || typeof c !== 'number' || c < 0) return '--';
-    return (c < 10 ? c.toFixed(1) : Math.round(c)) + _T('shell.mem.coresUnit', '核');
+    return numUnit((c < 10 ? c.toFixed(1) : String(Math.round(c))), _T('shell.mem.coresUnit', '核'));
   }
   // 核数三位小数（均占徽章专用：10h55m均占 0.056核，2026-09-03 用户定案）
   function fmtCores3(c) {
     if (c === null || typeof c !== 'number' || c < 0) return '--';
-    return c.toFixed(3) + _T('shell.mem.coresUnit', '核');
+    return numUnit(c.toFixed(3), _T('shell.mem.coresUnit', '核'));
+  }
+  // CPU y 轴刻度专用：刻度区恒 40px（文案起点 x=2）——单位是长词（'Cores' 等），全串放不下时
+  // 省略单位（数值行/徽章已带完整单位）；数值本体恒完整不断行。
+  function fmtCoresTick(c) {
+    if (c === null || typeof c !== 'number' || c < 0) return '--';
+    var numTxt = (c < 10 ? c.toFixed(1) : String(Math.round(c)));
+    var full = numUnit(numTxt, _T('shell.mem.coresUnit', '核'));
+    return measTextWidth(full) <= 38 ? full : numTxt;
   }
   // 行级累计时间
   function fmtRowTime(sec) {
@@ -269,10 +296,13 @@
   // 定位：锚定状态区 a 区域上方右对齐（元素位置变化实时跟随）
   function position() {
     var r = $mem.getBoundingClientRect();
-    var w = 360;
+    // 实测宽（offsetWidth 含内距/边框）——旧硬编 360 是内容宽，CSS 为 content-box（实际 386px）
+    // → 右缘比预期外凸 26px（与「右对齐」语义不符）；与下方实测高同口径。
+    var w = $panel ? $panel.offsetWidth : 360;
     var h = $panel ? $panel.offsetHeight : PANEL_H; // 实测高（content-box padding 含入双保险）
     var x = r.right - w + 4;
     if (x < 4) x = 4;
+    if (x + w > window.innerWidth - 4) x = window.innerWidth - 4 - w; // 右缘不越窗口
     var y = r.top - h - 10;
     if (y < 4) y = 4; // 恒上弹不遮状态区——空间不足贴顶
     $panel.style.left = x + 'px';
@@ -406,11 +436,12 @@
     var totalRun = runTArr[runTArr.length - 1];
     function xAt(rt) { return W - PAD_R - (totalRun - rt) / 60000 * step; }
     function yAt(v) { if (v > max) v = max; if (v < min) v = min; return PLOT_H - PAD_B - (v - min) / range * plotH; }
-    // y 轴刻度
+    // y 轴刻度（tickFmt = 刻度专用文案，缺省同正文读数——刻度文案恒限在左缘 40px 刻度区内）
+    var tf = o.tickFmt || o.fmt;
     if (o.ylbl) {
-      o.ylbl[0].textContent = o.fmt(max);
-      o.ylbl[1].textContent = o.fmt((max + min) / 2);
-      o.ylbl[2].textContent = o.fmt(min);
+      o.ylbl[0].textContent = tf(max);
+      o.ylbl[1].textContent = tf((max + min) / 2);
+      o.ylbl[2].textContent = tf(min);
     }
     var line = [], areaPts = [];
     var segStart = 0;
@@ -575,7 +606,7 @@
       var cdom = cpuYDomain(cpuPts);
       drawChart(cpuPts, cpuRunT, cdom, {
         poly: $cPoly, area: $cArea, dot: $cDot, dotPulse: $cDotPulse, curVal: $cCurVal, ylbl: $cGrid._ylbl,
-        valOf: function (p) { return p.cu; }, fmt: fmtCores
+        valOf: function (p) { return p.cu; }, fmt: fmtCores, tickFmt: fmtCoresTick
       }, spanOf(cpuPts, cpuRunT));
 
       var cpi = 0, cvi = 0, i;
@@ -979,6 +1010,27 @@
     });
   }
 
+  // ── 语言切换（qqq-lang-change）：卡片文案在 ensurePanel 建卡时一次性取词烧入 DOM（含 reset 按钮
+  //    title / CPU 单位标签 / 列表头）→ 切语言后必须整卡销毁重建（与 wq 卡片同规则），否则旧语言
+  //    永久残留；开着/固定态原样恢复。重建前 gridBuilt 清零——网格与 y 轴刻度文本随新 DOM 重画
+  //    （否则新卡无网格）。限宽/换行策略见 shell-main.css「数值行换行策略」。
+  function rebuildForLang() {
+    if (!$panel) return; // 从未建卡：下次首建即取新语言，零动作
+    var wasShown = shown, wasPinned = pinned;
+    if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    shown = false; // 先落旗：重建期间（panel 暂缺）旧 show/hide 状态零串台
+    try { $panel.parentNode.removeChild($panel); } catch (e) { /* 已摘除 */ }
+    $panel = null;
+    gridBuilt = false;
+    pinned = wasPinned;
+    if (wasShown) {
+      show(); // ensurePanel 重建 + 全量渲染（曲线/统计/进程列表/q 行三项）
+      if (pinned) $panel.classList.add('qqq-mem-hover-pinned');
+    }
+  }
+  window.addEventListener('qqq-lang-change', rebuildForLang);
+
   // ── 进程数显示：当前 N 进程（窗口内峰值 M 进程）——峰值 = max(曲线点 n, 当前瞬时) ──
   function peakProcs() {
     var mx = latest.procs;
@@ -1009,7 +1061,8 @@
   //（IDE 各窗 + DevTools 独立窗；dock 内嵌 DevTools 非独立窗不计）——5s 广播真值
   function renderWinText() {
     if (!$phWin) return;
-    $phWin.textContent = (latest.win > 0) ? (latest.win + _T('shell.mem.winUnit', '窗口')) : '--' + _T('shell.mem.winUnit', '窗口');
+    var wu = _T('shell.mem.winUnit', '窗口');
+    $phWin.textContent = (latest.win > 0) ? numUnit(latest.win, wu) : numUnit('--', wu); // '3窗口' / '3 Window'
   }
 
   // ── v30 窗口数图标（状态区 a 区域最左；2026-09-27 用户定案「开几个窗口画几个小黑块」）──

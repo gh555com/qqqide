@@ -7,7 +7,7 @@
 //   node：把 .js 关联一次性指向「引擎同源 Node 门面」（engines/node/node.exe[win] / engines/node/node[mac]，
 //     = Electron 的 ELECTRON_RUN_AS_NODE；双击 = cmd 包裹 + pause，跑完窗口不关；零下载零维护）
 //
-// ★ 双平台（2026-09-26）：
+// ★ 平台分派（win/mac 2026-09-26；linux 2026-10-05）：
 //   win32：把 .py/.js 关联一次性指向内置解释器，只管当：
 //     ① HKCU\Software\Classes（Python.File 命令 + .py 默认值）
 //     ② UserChoice：hash 强写（Deny ACL 突破 → 写 ProgId + 重算 hash，防跨分钟重试）
@@ -19,6 +19,10 @@
 //     → Launcher on open → run.sh → Terminal 窗口 → 内置 Python -i（跑完窗口不关）。
 //     免管理员/无 UAC；PATH 前置 ~/.zprofile（bash 用户 ~/.bash_profile）；
 //     runner 钉清单稳定路径 bin/python3（symlink）——引擎目录内升级不断链。
+//   linux：用户级三手印——① ~/.local/bin 符号链接（python/python3/node）② shell PATH 块
+//     （bash=~/.bashrc / zsh=~/.zshrc）③ XDG 关联（desktop 文件 + mimeapps 默认程序）
+//     → 双击 = 终端窗口 → 内置解释器 -i（跑完窗口不关）；只读检查 = xdg-mime 回读 + 登录/交互壳解析
+//     双轴（两轴齐 = ours）；解除 = 反撤三手印（白板化）。详 linux* 函数区。
 // 只管当：不维护、不追搬迁；用户再点一次 = 幂等刷新重写。
 // hash 算法 = Windows UserChoice 公开逆向格式（1803+ 主版 + 1507 旧版回退）。
 //
@@ -35,7 +39,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { getComponentBin } from './component-checker';
-import { getHostDir } from './portable-paths';
+import { getHostDir, getDataDir } from './portable-paths';
 import * as syspyReport from './syspy-report';
 import { notifySyspyFailed } from './wq-ping';
 import { PS_HEAD, PS_BODY } from './syspy-ps';
@@ -123,8 +127,8 @@ function resolveEnginesRoot(portableRoot: string): string | null {
         const pyBin = getComponentBin(portableRoot, 'python');
         if (!pyBin) return null;
         let root = path.dirname(pyBin);
-        root = path.dirname(root);                                     // win: engines/python -> engines
-        if (process.platform === 'darwin') root = path.dirname(root);  // mac: engines/python/bin -> engines
+        root = path.dirname(root);                                                                    // win: engines/python -> engines
+        if (process.platform === 'darwin' || process.platform === 'linux') root = path.dirname(root);  // mac/linux: engines/python/bin -> engines
         return root;
     } catch { return null; }
 }
@@ -613,6 +617,432 @@ async function macSysInterpRemove(portableRoot: string, target: 'python' | 'node
     return { ok: false, code: 'verify-failed' };
 }
 
+// ══════════════════════════════════════════════════════════════
+// Linux 分支（2026-10-05）——同一按钮、第三套系统机制（用户级、免管理员）
+//   三手印（幂等；再点 = 刷新重写；只管当，不追踪搬迁）：
+//     ① ~/.local/bin/{python,python3 | node} 符号链接 → 引擎内解释器/门面（目标 = 目录真身 + 清单名，
+//        引擎内小版本升级不断链；会话 PATH 含 ~/.local/bin 的机器即时生效）
+//     ② shell 配置 PATH 块（bash=~/.bashrc / zsh=~/.zshrc；guard 标记幂等）——gnome-terminal 新标签
+//        （交互非登录壳）必读；登录壳经 ~/.profile 源入同样命中
+//     ③ XDG 双写：~/.local/share/applications/qqqide-syspy-*.desktop +
+//        ~/.config/mimeapps.list 默认程序（text/x-python / .js 真实 MIME）——双击 = 终端窗口 →
+//        内置解释器 -i（跑完窗口不关，与 win/mac 同款语义）
+//   只读检查：双击轴 xdg-mime 回读 + 终端轴 登录/交互壳解析；两轴齐 = ours。
+//   解除 = 白板化：只撤手印，不还原旧值。
+// ══════════════════════════════════════════════════════════════
+const LINUX_PATH_BEGIN = '# >>> qqqide syspy >>>';
+const LINUX_PATH_END = '# <<< qqqide syspy <<<';
+const LINUX_DESKTOP_PY = 'qqqide-syspy-python.desktop';
+const LINUX_DESKTOP_NODE = 'qqqide-syspy-node.desktop';
+const LINUX_TYPES: Record<string, string[]> = {
+    python: ['text/x-python', 'application/x-python'],
+    node: ['text/javascript', 'application/javascript', 'application/x-javascript'],
+};
+// 系统自带解释器路径前缀（不算「第三方」；/usr/local、/snap 等视为真第三方触发覆盖确认）
+const LINUX_STUB_PREFIXES = ['/usr/bin/', '/bin/', '/usr/sbin/', '/sbin/', '/usr/libexec/', '/usr/games/'];
+
+function linuxDesktopId(t: 'python' | 'node'): string {
+    return t === 'node' ? LINUX_DESKTOP_NODE : LINUX_DESKTOP_PY;
+}
+function linuxBinDir(): string { return path.join(os.homedir(), '.local', 'bin'); }
+function linuxAppsDir(): string {
+    const xdg = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
+    return path.join(xdg, 'applications');
+}
+function linuxMimeappsPath(): string {
+    const xdg = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+    return path.join(xdg, 'mimeapps.list');
+}
+/** 交互壳配置（bash=~/.bashrc / zsh=~/.zshrc；其余 shell 跳过——与 mac「只写 zsh/bash」同语义）。 */
+function linuxRcFile(): string {
+    let sh = '/bin/bash';
+    try { const u = os.userInfo(); if (u && (u as any).shell) sh = (u as any).shell; } catch { /* ignore */ }
+    const base = path.basename(sh).toLowerCase();
+    if (base.indexOf('bash') >= 0) return path.join(os.homedir(), '.bashrc');
+    if (base.indexOf('zsh') >= 0) return path.join(os.homedir(), '.zshrc');
+    return '';
+}
+function linuxNorm(p: string): string { return String(p || '').replace(/\\/g, '/'); }
+function linuxReal(p: string): string {
+    try { return linuxNorm(fs.realpathSync(p)); } catch { return linuxNorm(p); }
+}
+/** 稳定目标 = 目录真身 + 清单名（保留 python3 相对符号链接——引擎内升级不断链；禁 realpath 钉死小版本）。 */
+function linuxStableTarget(binPath: string): string {
+    let dir = path.dirname(binPath);
+    try { dir = fs.realpathSync(dir); } catch { /* keep */ }
+    return path.join(dir, path.basename(binPath));
+}
+/** 确保符号链接指向目标（幂等）；占用者（实体文件/异主链接）让位 .qqqide-bak，绝不静默覆盖。 */
+function linuxEnsureSymlink(linkPath: string, target: string): { ok: boolean; prev: string | null; err?: string } {
+    let prev: string | null = null;
+    try {
+        const st = fs.lstatSync(linkPath);
+        if (st.isSymbolicLink()) {
+            try { prev = fs.readlinkSync(linkPath); } catch { prev = null; }
+            if (prev === target) return { ok: true, prev };
+        } else {
+            const bak = linkPath + '.qqqide-bak';
+            try {
+                try { fs.rmSync(bak, { recursive: true, force: true }); } catch { /* ignore */ }
+                fs.renameSync(linkPath, bak);
+                prev = '(regular file -> ' + bak + ')';
+            } catch (e: any) {
+                return { ok: false, prev: null, err: 'occupied: ' + String((e && e.message) || e) };
+            }
+        }
+    } catch { /* 不存在 → 直接创建 */ }
+    try {
+        fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+        const tmp = linkPath + '.qqqide-tmp';
+        try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
+        fs.symlinkSync(target, tmp);
+        fs.renameSync(tmp, linkPath);
+        return { ok: true, prev };
+    } catch (e: any) {
+        return { ok: false, prev, err: String((e && e.message) || e) };
+    }
+}
+/** 只撤「指向引擎树内」的符号链接（悬空但链接文本指向引擎 = 搬迁残留，一并撤）。 */
+function linuxRemoveSymlink(linkPath: string, enginesRoot: string): boolean {
+    try {
+        const st = fs.lstatSync(linkPath);
+        if (!st.isSymbolicLink()) return false;
+        const rootReal = linuxReal(enginesRoot);
+        const rootRaw = linuxNorm(enginesRoot);
+        const real = linuxReal(linkPath);
+        if (real === rootReal || real.startsWith(rootReal + '/') || real.startsWith(rootRaw + '/')) { fs.unlinkSync(linkPath); return true; }
+        let txt = ''; try { txt = fs.readlinkSync(linkPath); } catch { /* ignore */ }
+        if (txt) {
+            const abs = linuxNorm(path.resolve(path.dirname(linkPath), txt));
+            if (abs === rootReal || abs.startsWith(rootReal + '/') || abs.startsWith(rootRaw + '/')) { fs.unlinkSync(linkPath); return true; }
+        }
+        return false;
+    } catch { return false; }
+}
+/** PATH 块重写（幂等；只保留仍归我们的目标；全不归 → 整块删除）。 */
+function linuxRewritePathBlock(enginesRoot: string | null, wantPy: boolean, wantNode: boolean): void {
+    const file = linuxRcFile();
+    if (!file) return;
+    let prev = '';
+    try { prev = fs.readFileSync(file, 'utf8'); } catch { /* 不存在 → 新建 */ }
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let next = prev.replace(new RegExp(esc(LINUX_PATH_BEGIN) + '[\\s\\S]*?' + esc(LINUX_PATH_END) + '\\n?', 'g'), '');
+    const lines: string[] = [];
+    if (enginesRoot) {
+        if (wantPy) lines.push('export PATH="' + enginesRoot + '/python/bin:$PATH"');
+        if (wantNode) lines.push('export PATH="' + enginesRoot + '/node:$PATH"');
+    }
+    if (lines.length) {
+        if (next && !next.endsWith('\n')) next += '\n';
+        next += LINUX_PATH_BEGIN + '\n' + lines.join('\n') + '\n' + LINUX_PATH_END + '\n';
+    }
+    if (next !== prev) { try { fs.writeFileSync(file, next, 'utf8'); } catch { /* ignore */ } }
+}
+/** Runner（双击真实入口）：脚本 → 终端窗口 → 内置解释器 -i；跑完窗口不关（read 兜底）。 */
+function linuxRunnerScript(enginesRoot: string): string {
+    const sq = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
+    const pyExe = enginesRoot + '/python/bin/python3';
+    const nodeExe = enginesRoot + '/node/node';
+    return [
+        '#!/bin/bash',
+        '# qqqide 内置解释器 runner — argv1 = 脚本路径（.js/.mjs → 内置 Node；其余 → 内置 Python；可重新生成覆盖）',
+        'SRC="$1"; [ -n "$SRC" ] || exit 0',
+        'case "$SRC" in',
+        '  *.js|*.mjs) EXE=' + sq(nodeExe) + '; LABEL="Node" ;;',
+        '  *) EXE=' + sq(pyExe) + '; LABEL="Python" ;;',
+        'esac',
+        'if [ ! -x "$EXE" ]; then',
+        '  if command -v zenity >/dev/null 2>&1; then zenity --error --title="qd (qqqide)" --text="内置解释器已失效（安装目录可能被移动）：请在 qd (qqqide) 设置里重新点击「做系统 Node 解释器」或「做系统 Python 解释器」" >/dev/null 2>&1; fi',
+        '  exit 1',
+        'fi',
+        'CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/qqqide-syspy"; mkdir -p "$CACHE" 2>/dev/null',
+        'find "$CACHE" -name "run-*.sh" -mtime +7 -delete 2>/dev/null',
+        'RS="$CACHE/run-$(date +%s)-$$.sh"',
+        'cat > "$RS" <<RUNEOF',
+        '#!/bin/bash',
+        'echo "* qd (qqqide) · 内置 $LABEL · $SRC"',
+        '"$EXE" -i "$SRC"',
+        'rc=\\$?',
+        'echo',
+        'echo "[解释器已退出 rc=\\$rc] —— 按回车关闭窗口"',
+        'read -r _',
+        'RUNEOF',
+        'chmod 755 "$RS" 2>/dev/null',
+        'if command -v gnome-terminal >/dev/null 2>&1; then exec gnome-terminal -- bash "$RS"; fi',
+        'if command -v konsole >/dev/null 2>&1; then exec konsole -e bash "$RS"; fi',
+        'if command -v xfce4-terminal >/dev/null 2>&1; then exec xfce4-terminal -x bash "$RS"; fi',
+        'if command -v x-terminal-emulator >/dev/null 2>&1; then exec x-terminal-emulator -e bash "$RS"; fi',
+        'if command -v xterm >/dev/null 2>&1; then exec xterm -e bash "$RS"; fi',
+        'if command -v zenity >/dev/null 2>&1; then zenity --error --title="qd (qqqide)" --text="未找到可用终端模拟器（gnome-terminal / konsole / xterm）" >/dev/null 2>&1; fi',
+        'exit 1',
+        '',
+    ].join('\n');
+}
+/** desktop 文件（Open With 显示名 + 关联声明；NoDisplay = 不进应用菜单）。 */
+function linuxDesktopContent(t: 'python' | 'node', runner: string): string {
+    const py = t === 'python';
+    const exe = runner.indexOf(' ') >= 0 ? '"' + runner + '"' : runner;
+    return [
+        '[Desktop Entry]',
+        'Type=Application',
+        'Version=1.0',
+        'Name=' + (py ? 'qd (qqqide) Python' : 'qd (qqqide) Node'),
+        'Comment=' + (py ? 'Run Python scripts with the built-in Python (qd)' : 'Run JavaScript files with the built-in Node (qd)'),
+        'Exec=' + exe + ' %f',
+        'Icon=qqqide',
+        'Terminal=false',
+        'NoDisplay=true',
+        'MimeType=' + LINUX_TYPES[t].join(';') + ';',
+        'Categories=Utility;',
+        '',
+    ].join('\n');
+}
+/** mimeapps.list 手术（只动 [Default Applications]：set=覆盖为本程序 / clear=只摘我们的手印；其余行/节原样保留）。 */
+function linuxMimeappsUpdate(types: string[], desktopId: string, mode: 'set' | 'clear'): void {
+    const p = linuxMimeappsPath();
+    let src = ''; try { src = fs.readFileSync(p, 'utf8'); } catch { src = ''; }
+    const lines = src.length ? src.split(/\r?\n/) : [];
+    const DROP = '\u0000__qqq_drop__';
+    const escRx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const getVals = (v: string) => v.split(';').map((x) => x.trim()).filter(Boolean);
+    let section = '';
+    let defIdx = -1;
+    const done: Record<string, boolean> = {};
+    for (let i = 0; i < lines.length; i++) {
+        const h = /^\s*\[(.+?)\]\s*$/.exec(lines[i]);
+        if (h) { section = h[1].trim(); if (section === 'Default Applications') defIdx = i; continue; }
+        if (section !== 'Default Applications') continue;
+        for (const tt of types) {
+            if (!(new RegExp('^\\s*' + escRx(tt) + '\\s*=')).test(lines[i])) continue;
+            const eq = lines[i].indexOf('=');
+            const vals = getVals(lines[i].slice(eq + 1));
+            if (mode === 'set') { lines[i] = tt + '=' + desktopId + ';'; done[tt] = true; }
+            else {
+                const kept = vals.filter((v) => v !== desktopId);
+                if (kept.length) lines[i] = tt + '=' + kept.join(';') + ';';
+                else lines[i] = DROP;
+            }
+        }
+    }
+    const out = lines.filter((x) => x !== DROP);
+    if (mode === 'set') {
+        const missing = types.filter((tt) => !done[tt]);
+        if (missing.length) {
+            if (defIdx >= 0) {
+                let end = defIdx + 1;
+                while (end < out.length && !/^\s*\[/.test(out[end])) end++;
+                out.splice(end, 0, ...missing.map((tt) => tt + '=' + desktopId + ';'));
+            } else {
+                if (out.length && out[out.length - 1].trim() !== '') out.push('');
+                out.push('[Default Applications]');
+                for (const tt of missing) out.push(tt + '=' + desktopId + ';');
+            }
+        }
+    }
+    const next = out.join('\n');
+    if (next === src) return;
+    try {
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        const tmp = p + '.qqqide-tmp';
+        fs.writeFileSync(tmp, next, 'utf8');
+        fs.renameSync(tmp, p);
+    } catch { /* ignore */ }
+}
+function linuxProbeFile(target: 'python' | 'node'): string {
+    return path.join(os.tmpdir(), target === 'node' ? 'qqqide-syspy-probe.js' : 'qqqide-syspy-probe.py');
+}
+/** 双击轴：探针文件真实 MIME → 系统此刻会用的默认程序（xdg-mime = 该轴权威）。 */
+async function linuxHandlerProbe(target: 'python' | 'node'): Promise<{ id: string; ours: boolean; type: string }> {
+    const probe = linuxProbeFile(target);
+    try { if (!fs.existsSync(probe)) fs.writeFileSync(probe, target === 'node' ? '// qqqide sysnode probe\n' : '# qqqide syspy probe\n', 'utf8'); } catch { /* 容错 */ }
+    let type = LINUX_TYPES[target][0];
+    try {
+        const ft = await runCmd('xdg-mime', ['query', 'filetype', probe], 10000);
+        const ftv = (ft.out || '').trim().split(/\s+/)[0];
+        if (ftv) type = ftv;
+    } catch { /* ignore */ }
+    const queried: string[] = [];
+    let id = '';
+    const tryType = async (tt: string) => {
+        if (!tt || queried.indexOf(tt) >= 0) return;
+        queried.push(tt);
+        try { const r = await runCmd('xdg-mime', ['query', 'default', tt], 10000); const v = (r.out || '').trim(); if (v) id = v; } catch { /* ignore */ }
+    };
+    await tryType(type);
+    if (!id) { for (const tt of LINUX_TYPES[target]) { await tryType(tt); if (id) break; } }
+    return { id, ours: id === linuxDesktopId(target), type };
+}
+/** 终端轴：登录/交互壳命令解析（bash/zsh -lic；其余 shell 退 bash 代理——如实记录）。 */
+async function linuxShellResolve(target: 'python' | 'node', enginesRoot: string): Promise<{ ours: boolean; other: boolean; resolved: string }> {
+    let sh = '/bin/bash';
+    try { const u = os.userInfo(); if (u && (u as any).shell) sh = (u as any).shell; } catch { /* ignore */ }
+    const base = path.basename(sh).toLowerCase();
+    if (base.indexOf('bash') < 0 && base.indexOf('zsh') < 0) sh = '/bin/bash';
+    const cmd = (target === 'node')
+        ? 'command -v node 2>/dev/null'
+        : 'command -v python3 2>/dev/null; command -v python 2>/dev/null';
+    const r = await runCmd(sh, ['-lic', cmd], 12000);
+    const rootReal = linuxReal(enginesRoot);
+    const rootRaw = linuxNorm(enginesRoot);
+    let ours = false; let other = false; let resolved = '';
+    for (const raw of String(r.out || '').split(/\r?\n/)) {
+        const pth = raw.trim();
+        if (!pth || pth.indexOf('/') < 0) continue;
+        const real = linuxReal(pth);
+        if (real === rootReal || real.startsWith(rootReal + '/') || real === rootRaw || real.startsWith(rootRaw + '/')) { ours = true; resolved = pth; continue; }
+        if (LINUX_STUB_PREFIXES.some((x) => linuxNorm(pth).startsWith(x) || real.startsWith(x))) continue;
+        other = true;
+        if (!resolved) resolved = pth;
+    }
+    return { ours, other, resolved };
+}
+async function linuxVerifyApplied(portableRoot: string, target: 'python' | 'node'): Promise<boolean> {
+    const enginesRoot = resolveEnginesRoot(portableRoot);
+    if (!enginesRoot) return false;
+    const reg = await linuxHandlerProbe(target);
+    if (!reg.ours) return false;
+    const sh = await linuxShellResolve(target, enginesRoot);
+    return sh.ours;
+}
+async function linuxVerifyRemoved(portableRoot: string, target: 'python' | 'node'): Promise<boolean> {
+    try {
+        const reg = await linuxHandlerProbe(target);
+        if (reg.ours) return false;
+        const enginesRoot = resolveEnginesRoot(portableRoot);
+        if (enginesRoot) {
+            const sh = await linuxShellResolve(target, enginesRoot);
+            if (sh.ours) return false;
+        }
+        return true;
+    } catch { return false; }
+}
+
+async function linuxSysInterpCheck(portableRoot: string, target: 'python' | 'node'): Promise<{ ok: boolean; mode: string; exeOk: boolean; aq: string }> {
+    let exe: string | null = null;
+    if (target === 'node') exe = nodeFacadePath(portableRoot);
+    else { try { exe = getComponentBin(portableRoot, 'python'); } catch { exe = null; } }
+    const exeOk = !!exe && fs.existsSync(exe);
+    const enginesRoot = resolveEnginesRoot(portableRoot);
+    let reg = { id: '', ours: false, type: '' };
+    let shRes = { ours: false, other: false, resolved: '' };
+    try { reg = await linuxHandlerProbe(target); } catch { /* ignore */ }
+    if (enginesRoot) { try { shRes = await linuxShellResolve(target, enginesRoot); } catch { /* ignore */ } }
+    let mode = 'none';
+    if (reg.ours && shRes.ours) mode = 'ours';
+    else if (reg.id || shRes.other) mode = 'other';
+    return { ok: true, mode, exeOk, aq: reg.id };
+}
+
+async function linuxSysInterpApply(portableRoot: string, target: 'python' | 'node'): Promise<{ ok: boolean; code: string; via?: string; err?: string }> {
+    const enginesRoot = resolveEnginesRoot(portableRoot);
+    let exe: string | null = null;
+    if (target === 'node') exe = nodeFacadePath(portableRoot);
+    else { try { exe = getComponentBin(portableRoot, 'python'); } catch { exe = null; } }
+    if (!enginesRoot || !exe || !fs.existsSync(exe)) return { ok: false, code: target === 'node' ? 'no-node' : 'no-python' };
+    if (target === 'node') {
+        try { fs.chmodSync(exe, 0o755); } catch { /* ignore */ }
+        try { fs.writeFileSync(path.join(path.dirname(exe), 'node-target.txt'), process.execPath + '\n', 'utf8'); } catch { /* 容错 */ }
+    }
+
+    // 0) 首写快照（改动任何状态之前采集——供人工还原；与 mac/win 同文件分区分目标）
+    const bakPath = path.join(getDataDir(), 'alphal', 'syspy-backup.json');
+    let bakObj: any = null;
+    try { bakObj = JSON.parse(fs.readFileSync(bakPath, 'utf8')); } catch { bakObj = null; }
+    const needBackup = !(bakObj && bakObj.linux && bakObj.linux[target]);
+    let snap: Record<string, any> | null = null;
+    if (needBackup) {
+        snap = { ts: new Date().toISOString(), enginesRoot, exe, prevHandler: '' };
+        try { snap.prevHandler = (await linuxHandlerProbe(target)).id; } catch { /* ignore */ }
+        try { snap.rcFile = linuxRcFile() || null; } catch { snap.rcFile = null; }
+        try { snap.rcContentB64 = snap.rcFile && fs.existsSync(snap.rcFile) ? Buffer.from(fs.readFileSync(snap.rcFile, 'utf8'), 'utf8').toString('base64') : ''; } catch { snap.rcContentB64 = ''; }
+        try { snap.mimeappsContentB64 = fs.existsSync(linuxMimeappsPath()) ? Buffer.from(fs.readFileSync(linuxMimeappsPath(), 'utf8'), 'utf8').toString('base64') : ''; } catch { snap.mimeappsContentB64 = ''; }
+        const links: Record<string, any> = {};
+        const names0 = target === 'python' ? ['python', 'python3'] : ['node'];
+        for (const nm of names0) {
+            const lp = path.join(linuxBinDir(), nm);
+            try { const st = fs.lstatSync(lp); links[nm] = st.isSymbolicLink() ? fs.readlinkSync(lp) : '(regular)'; } catch { links[nm] = null; }
+        }
+        snap.symlinksBefore = links;
+    }
+
+    const errs: string[] = [];
+    // 1) 符号链接（稳定目标）
+    const tgt = linuxStableTarget(exe);
+    const linkNames = target === 'python' ? ['python', 'python3'] : ['node'];
+    for (const nm of linkNames) {
+        const r = linuxEnsureSymlink(path.join(linuxBinDir(), nm), tgt);
+        if (!r.ok) errs.push('link ' + nm + ': ' + (r.err || 'failed'));
+    }
+    // 2) runner（两目标共用；恒刷新为当前引擎路径）
+    const runnerPath = path.join(getHostDir(), 'syspy', 'qqqide-syspy-run');
+    try {
+        fs.mkdirSync(path.dirname(runnerPath), { recursive: true });
+        fs.writeFileSync(runnerPath, linuxRunnerScript(enginesRoot), 'utf8');
+        fs.chmodSync(runnerPath, 0o755);
+    } catch (e: any) { errs.push('runner: ' + String((e && e.message) || e)); }
+    // 3) desktop 文件 + 4) mimeapps 默认程序
+    try {
+        fs.mkdirSync(linuxAppsDir(), { recursive: true });
+        fs.writeFileSync(path.join(linuxAppsDir(), linuxDesktopId(target)), linuxDesktopContent(target, runnerPath), 'utf8');
+    } catch (e: any) { errs.push('desktop: ' + String((e && e.message) || e)); }
+    try { linuxMimeappsUpdate(LINUX_TYPES[target], linuxDesktopId(target), 'set'); } catch (e: any) { errs.push('mimeapps: ' + String((e && e.message) || e)); }
+    await runCmd('update-desktop-database', [linuxAppsDir()], 15000);
+    // 5) PATH 块（本目标确保；另一目标按现状保留）
+    const otherT: 'python' | 'node' = target === 'python' ? 'node' : 'python';
+    const otherActive = fs.existsSync(path.join(linuxAppsDir(), linuxDesktopId(otherT)));
+    try { linuxRewritePathBlock(enginesRoot, target === 'python' ? true : otherActive, target === 'node' ? true : otherActive); } catch (e: any) { errs.push('path: ' + String((e && e.message) || e)); }
+    // 6) 回读验证（失配重试一轮——桌面数据库传播延迟）
+    let pass = await linuxVerifyApplied(portableRoot, target);
+    if (!pass) {
+        await new Promise((r) => setTimeout(r, 400));
+        await runCmd('update-desktop-database', [linuxAppsDir()], 15000);
+        pass = await linuxVerifyApplied(portableRoot, target);
+    }
+    // 7) 备份落盘（首写）
+    if (needBackup && snap) {
+        try {
+            if (!bakObj || typeof bakObj !== 'object') bakObj = {};
+            if (!bakObj.linux || typeof bakObj.linux !== 'object') bakObj.linux = {};
+            bakObj.linux[target] = snap;
+            try { fs.mkdirSync(path.dirname(bakPath), { recursive: true }); } catch { /* ignore */ }
+            fs.writeFileSync(bakPath, JSON.stringify(bakObj, null, 2), 'utf8');
+        } catch { /* 备份失败不影响主流程 */ }
+    }
+    if (pass) return { ok: true, code: 'ok', via: 'linux' };
+    console.warn('[syspy] linux apply verify failed:', 'target=' + target, 'errs=' + errs.join('; '));
+    return { ok: false, code: 'verify-failed', err: (errs.join('; ') || 'verify').slice(0, 400) };
+}
+
+async function linuxSysInterpRemove(portableRoot: string, target: 'python' | 'node'): Promise<{ ok: boolean; code: string; err?: string }> {
+    const enginesRoot = resolveEnginesRoot(portableRoot) || '';
+    // 1) 符号链接（仅撤指向引擎内的）
+    const linkNames = target === 'python' ? ['python', 'python3'] : ['node'];
+    if (enginesRoot) {
+        for (const nm of linkNames) {
+            try { linuxRemoveSymlink(path.join(linuxBinDir(), nm), enginesRoot); } catch { /* ignore */ }
+        }
+    }
+    // 2) desktop 文件 + mimeapps 手印
+    try { fs.unlinkSync(path.join(linuxAppsDir(), linuxDesktopId(target))); } catch { /* ignore */ }
+    try { linuxMimeappsUpdate(LINUX_TYPES[target], linuxDesktopId(target), 'clear'); } catch { /* ignore */ }
+    await runCmd('update-desktop-database', [linuxAppsDir()], 15000);
+    // 3) PATH 块（另一目标仍在 → 保留其行）
+    const otherT: 'python' | 'node' = target === 'python' ? 'node' : 'python';
+    const otherActive = fs.existsSync(path.join(linuxAppsDir(), linuxDesktopId(otherT)));
+    try { linuxRewritePathBlock(enginesRoot || null, target === 'python' ? false : otherActive, target === 'node' ? false : otherActive); } catch { /* ignore */ }
+    // 4) 末位解除 → 拆共享 runner/探针目录 + 运行缓存
+    if (!otherActive) {
+        try { fs.rmSync(path.join(getHostDir(), 'syspy'), { recursive: true, force: true }); } catch { /* ignore */ }
+        try { fs.rmSync(path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'qqqide-syspy'), { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+    // 5) 回读验证（失配重试一轮）
+    let pass = await linuxVerifyRemoved(portableRoot, target);
+    if (!pass) { await new Promise((r) => setTimeout(r, 300)); pass = await linuxVerifyRemoved(portableRoot, target); }
+    if (pass) return { ok: true, code: 'ok' };
+    console.warn('[syspy] linux remove verify failed:', 'target=' + target);
+    return { ok: false, code: 'verify-failed' };
+}
+
 // Windows 解除：python = .py + .pyw 两遍；node = .js + .mjs/.cjs 尽力而为
 async function winSysInterpRemove(portableRoot: string, target: 'python' | 'node'): Promise<{ ok: boolean; code: string; err?: string }> {
     if (target === 'node') {
@@ -686,7 +1116,7 @@ function noteSyspyOutcome(portableRoot: string, t: 'python' | 'node', op: 'check
             exeOk: (typeof res.exeOk === 'boolean') ? res.exeOk : undefined,
             env: ok ? undefined : buildSyspyEnv(portableRoot, t),
         };
-        try { syspyReport.recordSyspyEvent(path.join(portableRoot, 'Data'), evt); } catch { /* ignore */ }
+        try { syspyReport.recordSyspyEvent(getDataDir(), evt); } catch { /* ignore */ }
         if (!ok) { try { notifySyspyFailed(); } catch { /* ignore */ } }
     } catch { /* 遥测绝不影响主流程 */ }
 }
@@ -706,6 +1136,13 @@ export function registerSysPyIpc(portableRoot: string): void {
             _inFlight = true;
             try { const out = await macSysInterpCheck(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'check', out); return out; }
             catch (e: any) { console.warn('[syspy] mac check err:', (e && e.message) || e); return { ok: false, code: 'check-failed' }; }
+            finally { _inFlight = false; }
+        }
+        if (process.platform === 'linux') {
+            if (_inFlight) return { ok: false, code: 'busy' };
+            _inFlight = true;
+            try { const out = await linuxSysInterpCheck(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'check', out); return out; }
+            catch (e: any) { console.warn('[syspy] linux check err:', (e && e.message) || e); return { ok: false, code: 'check-failed' }; }
             finally { _inFlight = false; }
         }
         if (process.platform !== 'win32') return { ok: true, mode: 'unsupported' };
@@ -744,6 +1181,13 @@ export function registerSysPyIpc(portableRoot: string): void {
             _inFlight = true;
             try { const out = await macSysInterpApply(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'apply', out); return out; }
             catch (e: any) { console.warn('[syspy] mac apply err:', (e && e.message) || e); return { ok: false, code: 'verify-failed' }; }
+            finally { _inFlight = false; }
+        }
+        if (process.platform === 'linux') {
+            if (_inFlight) return { ok: false, code: 'busy' };
+            _inFlight = true;
+            try { const out = await linuxSysInterpApply(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'apply', out); return out; }
+            catch (e: any) { console.warn('[syspy] linux apply err:', (e && e.message) || e); return { ok: false, code: 'verify-failed' }; }
             finally { _inFlight = false; }
         }
         if (process.platform !== 'win32') return { ok: false, code: 'unsupported' };
@@ -869,6 +1313,13 @@ export function registerSysPyIpc(portableRoot: string): void {
             _inFlight = true;
             try { const out = await macSysInterpRemove(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'remove', out); return out; }
             catch (e: any) { console.warn('[syspy] mac remove err:', (e && e.message) || e); return { ok: false, code: 'remove-failed' }; }
+            finally { _inFlight = false; }
+        }
+        if (process.platform === 'linux') {
+            if (_inFlight) return { ok: false, code: 'busy' };
+            _inFlight = true;
+            try { const out = await linuxSysInterpRemove(portableRoot, t); noteSyspyOutcome(portableRoot, t, 'remove', out); return out; }
+            catch (e: any) { console.warn('[syspy] linux remove err:', (e && e.message) || e); return { ok: false, code: 'remove-failed' }; }
             finally { _inFlight = false; }
         }
         if (process.platform !== 'win32') return { ok: false, code: 'unsupported' };

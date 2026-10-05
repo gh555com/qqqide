@@ -172,15 +172,18 @@ def _read_ide_volume():
 
 def _read_show_card_setting():
     """读取 OS 级 goods 设置：是否弹出卡片。
-    路径: {OS根}/kope-a/.gaea-settings.json（win %LOCALAPPDATA% / mac ~/Library/Application Support）
+    路径: {OS根}/kope-a/.gaea-settings.json（win %LOCALAPPDATA% / mac ~/Library/Application Support
+    / linux XDG_DATA_HOME 或 ~/.local/share——与 shell getOsBaseDir 逐字对齐；缺 linux 分支 = 设置恒失效）
     默认 True（弹出卡片）。
     """
     try:
         import json
         if sys.platform == 'darwin':
             _os_base = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support')
-        else:
+        elif sys.platform == 'win32':
             _os_base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+        else:
+            _os_base = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
         settings_path = os.path.join(_os_base, 'kope-a', '.gaea-settings.json')
         if os.path.exists(settings_path):
             with open(settings_path, 'r', encoding='utf-8') as f:

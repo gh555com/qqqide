@@ -9,6 +9,9 @@
 //   macOS（2026-09-16）: py-broker _mac_mem_snapshot —— libproc（proc_listpids +
 //   bsdinfo + pid_rusage/pidinfo），内存 = phys_footprint（活动监视器口径），
 //   CPU 时间 = rusage 纳秒，同一树 Σ 口径；此前 mac 恒 --。
+//   Linux（2026-10-05）: py-broker _linux_mem_snapshot —— /proc 扫描（stat 取
+//   ppid + USER_HZ ticks→100ns 换算；内存 = smaps_rollup Pss 去重，回退 VmRSS），
+//   窗口数 = Xlib 顶层可见窗（_NET_WM_PID 过滤）；此前 linux 恒空。
 // ★ v6 CPU 口径定案（2026-08-29 用户要求「更直观更好量化，不用单核百分比」）：
 //   单核百分比在 64 核机上 1% = 0.64 核，四舍五入全显示 0% → 无价值。
 //   改为三个量化维度（任务管理器/资源监视器认知模型）：

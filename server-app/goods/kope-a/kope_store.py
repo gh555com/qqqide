@@ -16,11 +16,15 @@ import queue
 def _get_db_dir():
     # ★ 不用 LOCALAPPDATA 环境变量 (Electron 便携模式会劫持到 <app>/Data/LocalAppData)
     # 直接用 expanduser('~') 拿真实路径，保证所有窗口/进程共享同一个 kope.sq3。
-    # OS 级根与 shell portable-paths.getOsBaseDir 对齐：mac → Library/Application Support
+    # OS 级根与 shell portable-paths.getOsBaseDir 逐字对齐（三分支恒全）：win → AppData/Local
+    # ｜ mac → Library/Application Support ｜ linux → XDG_DATA_HOME 或 ~/.local/share。
+    # 缺 linux 分支 = 库写错根（壳层读 XDG 根）→ 剪贴板捕获对面板不可见 + card 遥测漏计。
     if sys.platform == 'darwin':
         base = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support')
-    else:
+    elif sys.platform == 'win32':
         base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    else:
+        base = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
     db_dir = os.path.join(base, 'kope-a')
     os.makedirs(db_dir, exist_ok=True)
     return db_dir

@@ -83,6 +83,14 @@ async function build() {
     console.log('[esbuild] copied win-pasteboard.py ->', OUT);
   }
 
+  // Copy qqqide_evdev.py (Linux 内核级按键源，py-broker / window-there 共用，not bundled)
+  var evdevSrc = path.join(SRC, 'qqqide_evdev.py');
+  var evdevDst = path.join(OUT, 'qqqide_evdev.py');
+  if (fs.existsSync(evdevSrc)) {
+    fs.copyFileSync(evdevSrc, evdevDst);
+    console.log('[esbuild] copied qqqide_evdev.py ->', OUT);
+  }
+
   // Copy qmd-pty.py (ConPTY bridge for goods qmd, not bundled)
   var qmdPtySrc = path.join(SRC, 'qmd-pty.py');
   var qmdPtyDst = path.join(OUT, 'qmd-pty.py');

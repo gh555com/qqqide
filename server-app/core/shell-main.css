@@ -1639,12 +1639,16 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   opacity: 1;
 }
 
-/* v8: 徽章放大后行占用反而压缩（1px 3px，配合徽章 translateY(-8px)） */
+/* ★ 数值行换行策略（MEM/CPU 双段同款；360px 固定卡宽 × 13 语言长译文，禁一切横向溢出）：
+   ① 大数值 = 恒不断行、恒不收缩（值+单位是一对，绝不离散）
+   ② 单位 = 纯标签 → 允许内部折行（德/西/阿等长译文不撑破卡片）
+   ③ 均值徽章 = 独立信息块 → 空间不足时整块折到下一行、贴右（绝不被压扁或裁切）
+   v8: 徽章放大后行占用反而压缩（1px 3px，配合徽章 translateY(-8px)） */
 .qqq-mem-hover-num {
   display: flex;
+  flex-wrap: wrap; /* 徽章整块折行（禁横向溢出） */
   align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 0 6px; /* 折行后行距 0（换行自收口，不加空气） */
   margin: 1px 0 3px;
 }
 
@@ -1652,6 +1656,8 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 /* 均值徽章（右上）：当前窗口均值，满 24h 即「24h 均值」；v8 字号 15px + 上移 8px + 压缩行高（放大不增占用） */
@@ -1664,9 +1670,13 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   border: 1px solid rgba(133, 153, 0, 0.35);
   border-radius: 6px;
   padding: 2px 6px 0; /* v12: 文字再下移 1px（豆腐块位置不变，padding-top 1→2px） */
-  white-space: nowrap;
   letter-spacing: 0.3px;
   transform: translateY(-4px); /* v11: 5px → 4px（用户定案再下移 1px） */
+  margin-left: auto; /* 同排贴右；折行后独占次行同样贴右 */
+  flex: 0 0 auto; /* 恒不收缩（整块折行，禁压扁） */
+  max-width: 100%; /* 自身永不越卡缘 */
+  white-space: normal; /* 极端长译文（独占一行仍放不下）时允许章内折行 */
+  overflow-wrap: break-word;
 }
 .qqq-mem-hover-avg b {
   font-weight: 800;
@@ -1752,12 +1762,18 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   color: var(--text-primary);
   line-height: 1;
   letter-spacing: 0.5px;
+  flex: 0 0 auto;
+  white-space: nowrap; /* 数值恒不断行 */
 }
 
 .qqq-mem-hover-unit {
   font-family: Consolas, monospace;
   font-size: 12px;
   color: var(--text-secondary);
+  flex: 0 1 auto;
+  line-height: 1.35;
+  white-space: normal; /* 单位=标签：长译文允许折行 */
+  overflow-wrap: break-word; /* 无空格长词兜底断行 */
 }
 
 .qqq-mem-hover-chart svg {
@@ -1832,9 +1848,10 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 
 .qqq-mem-hover-stats {
   display: flex;
+  flex-wrap: wrap; /* 峰值/谷值两枚之间可折行；每枚自身恒不断行（章内 nowrap） */
   align-items: center;
   justify-content: center; /* v11: 峰值/谷值居中靠近（用户定案：放下方中央区域） */
-  gap: 26px;
+  gap: 2px 26px; /* 折行后行距 2px（两枚仍各自完整） */
   margin-top: 4px;
   font-family: Consolas, monospace;
   font-size: 12px;
@@ -1857,8 +1874,9 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 }
 .qqq-mem-hover-ph-row {
   display: flex;
+  flex-wrap: wrap; /* 三枚（N窗口 / N(峰值N)进程 / ■已启动 X）各自恒完整（nowrap），语言长时枚间折行 */
   align-items: baseline;
-  gap: 18px; /* v14: 三项间距拉大（2026-09-05 用户定案「3窗口 | 30(峰值40)进程 | 已启动」中间间隔稍微拉大）——配合各 span margin-left 4px 实际视觉 ~22px 均距；行1 标题单子元素零影响 */
+  gap: 1px 18px; /* v14: 三项间距拉大（2026-09-05 用户定案「3窗口 | 30(峰值40)进程 | 已启动」中间间隔稍微拉大）——配合各 span margin-left 4px 实际视觉 ~22px 均距；行1 标题单子元素零影响 */
   overflow: hidden;
   white-space: nowrap;
 }
@@ -1962,11 +1980,12 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   50% { box-shadow: 0 0 6px 1px var(--cpu); opacity: 0.75; }
 }
 
+/* 数值行限宽/换行策略同 .qqq-mem-hover-num（值恒不断行 / 单位可折行 / 徽章整块折行） */
 .qqq-cpu-hover-num {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 0 6px;
   margin: 1px 0 3px;
 }
 
@@ -1974,6 +1993,8 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 /* 均值徽章（右上）：窗口平均核数——橙色系 */
@@ -1986,9 +2007,13 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   border: 1px solid rgba(203, 143, 22, 0.35);
   border-radius: 6px;
   padding: 2px 6px 0;
-  white-space: nowrap;
   letter-spacing: 0.3px;
   transform: translateY(-4px);
+  margin-left: auto;
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 .qqq-cpu-hover-avg b {
   font-weight: 800;
@@ -2001,12 +2026,18 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   color: var(--text-primary);
   line-height: 1;
   letter-spacing: 0.5px;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .qqq-cpu-hover-unit {
   font-family: Consolas, monospace;
   font-size: 12px;
   color: var(--text-secondary);
+  flex: 0 1 auto;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .qqq-cpu-hover-chart svg {
@@ -2081,9 +2112,10 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 
 .qqq-cpu-hover-stats {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center; /* v11: 峰值/谷值居中靠近（用户定案） */
-  gap: 26px;
+  gap: 2px 26px;
   margin-top: 4px;
   font-family: Consolas, monospace;
   font-size: 12px;
@@ -2095,6 +2127,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 .qqq-mem-hover-prow .qqq-mem-hover-pmb {
   width: 58px;
   text-align: right;
+  white-space: nowrap; /* 列值恒单行（进程行禁双行：行高恒定） */
 }
 
 .qqq-mem-hover-prow .qqq-mem-hover-pcpu {
@@ -2104,6 +2137,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   width: 64px;
   text-align: right;
   margin-right: 6px; /* CPU 列整体往左移 6px（右缘离容器右缘 6px） */
+  white-space: nowrap;
 }
 
 /* ★ ⟳ 刷新释放（2026-10-02 定案）：窗口渲染进程行尾孔——点击 = 该窗口 webContents.reload()（内存全回收，

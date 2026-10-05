@@ -23,6 +23,11 @@ function bootstrapLog(msg) {
         var idx = norm.indexOf('.app/Contents/MacOS');
         if (idx >= 0) {
             rootDir = path.join(path.dirname(norm.slice(0, idx)), 'qqqide-data');
+        } else if (process.platform === 'linux') {
+            // Linux 发布布局：容器根旁即 qqqide-data（数据/日志统一外置，程序目录免写）；
+            // dev 树无此目录时保持原样。
+            var linHost = path.join(rootDir, 'qqqide-data');
+            try { if (fs.existsSync(linHost)) { rootDir = linHost; } } catch (e1) { }
         }
         var logDir = path.join(rootDir, 'Data', 'Logs');
         fs.mkdirSync(logDir, { recursive: true });

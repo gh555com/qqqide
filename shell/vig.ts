@@ -17,6 +17,9 @@
 //   card              { times, count }   ← count 由 wq-ping 动态从 kope 读取回写
 //   cache             { hit, miss }
 //   squad             { '1'..'x': n }     ← 键 = 编队槽位字符；上报为 c 数组（8 槽位固定顺序）
+//   byok              { n, ok, f, fa, fn, fh, ft, d, r, l, cfg, t0 }
+//                       ← 请求数 n（尝试即计）；成败 ok/f + 失败桶 fa·fn·fh·ft（认证·网络·HTTP·超时中止）；
+//                         通道 d·r·l（直连·平台代理·本地模型）；cfg = 配置启用事件（关→开 +1）
 //
 // 语义铁律（老项目对齐）:
 //   · 全量快照不是增量上报——本地只负责累加，幂等覆盖交给服务端 UPSERT
@@ -45,6 +48,8 @@ const MOD_OPTIONAL_KEYS: Record<string, string[]> = {
   paste: ['b'],
   video: ['b'],
   roam: ['f', 'fc', 'q', 'w', 'x', 'k'],
+  // byok 拆分字段（>0 才上报）：ok=成功 / f=失败总 / fa·fn·fh·ft=失败桶 / d·r·l=通道 / cfg=配置启用
+  byok: ['ok', 'f', 'fa', 'fn', 'fh', 'ft', 'd', 'r', 'l', 'cfg'],
 };
 
 let _vig: VigStore | null = null;

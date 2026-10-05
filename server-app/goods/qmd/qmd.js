@@ -34,16 +34,16 @@
     registerQmd();
 
     function registerQmd() {
-        // ★ 2026-09-16 mac: ConPTY 为 Windows OS API —— mac 不注册 qmd（终端用 kmd 行模式）
-        var _isMac = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
-        if (_isMac) {
-            // ★ 2026-09-27 x 长按优雅退化：mac 无 ConPTY —— 仍须响应召回协议（否则长按 x 成死键）→ 回退 kmd
+        // ★ 2026-09-16 mac / 2026-10-05 linux：ConPTY 为 Windows OS API —— 非 Windows 不注册 qmd（终端用 kmd 行模式）
+        var _isWin = /Win/i.test(navigator.platform || '');
+        if (!_isWin) {
+            // ★ 2026-09-27 x 长按优雅退化：非 Windows 无 ConPTY —— 仍须响应召回协议（否则长按 x 成死键）→ 回退 kmd
             window.__qqqQmdOpen = function (path) { try { if (window.__qqqKmdOpen) window.__qqqKmdOpen(path); } catch (_) { } return false; };
             window.addEventListener('message', function (e) {
                 var d = e.data; if (!d || d.type !== 'qqq-roam-open-qmd') return;
                 try { if (window.__qqqKmdOpen) window.__qqqKmdOpen(d.path || null); } catch (_) { }
             });
-            console.log('[qmd] ConPTY 仅 Windows 支持 —— 跳过注册（mac 请用 kmd；x 长按召回已退化到 kmd）');
+            console.log('[qmd] ConPTY 仅 Windows 支持 —— 跳过注册（mac/linux 请用 kmd；x 长按召回已退化到 kmd）');
             return;
         }
         var bridge = window.qqqideBridge;

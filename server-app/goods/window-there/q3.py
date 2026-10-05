@@ -6,6 +6,7 @@
 # (R22 修复): 导入 signal 和 QTimer 以修复 Ctrl+C
 # (R21 修复): 使用 pyqtSignal 替换 QTimer.singleShot 来实现线程安全
 # (R28 改档): Windows 触发源改 GetAsyncKeyState 轮询（pynput WH_KEYBOARD_LL 钩子在部分 Win10/11 会随前台状态静默失聪，桌面焦点下 3W/3X 全灭即此病）；mac/Linux 保留 pynput
+# (R29 改档): Linux 触发源首选 evdev（/dev/input 内核级读取）——Wayland 会话下 X11 监听器对「Wayland 原生窗口获焦」时的按键天然失聪；无读权限时自动回退 pynput
 
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
@@ -58,6 +59,7 @@ last_w_key_time, last_x_key_time, last_shift_key_time = 0, 0, 0
 g_platform = None
 g_qt_aqq = None
 g_listener_thread = None
+g_evdev_source = None
 stop_listener_flag = threading.Event()
 
 # --- (R21) 线程安全信号发射器 ---
@@ -154,13 +156,41 @@ def _poll_key_loop():
 
 
 def start_key_listener():
-    global g_listener_thread
+    global g_listener_thread, g_evdev_source
     if sys.platform == 'win32':
         print("R28: Windows 使用 GetAsyncKeyState 轮询触发源（规避 WH_KEYBOARD_LL 静默失聪）...")
         g_listener_thread = threading.Thread(target=_poll_key_loop, daemon=True)
         g_listener_thread.start()
         print("R28: 按键轮询器已在后台线程启动。")
         return
+    # ★ (R29) Linux 触发源首选 evdev 内核级读取（/dev/input）——Wayland 会话下 X11 监听器
+    #   对「Wayland 原生窗口获焦」时的按键天然失聪；evdev 与焦点/合成器无关，X11/Wayland 通用。
+    #   无读权限（缺 udev uaccess 规则）时回退原有 X11 监听（X11 会话下仍完整可用）。
+    if sys.platform.startswith('linux'):
+        try:
+            import qqqide_evdev as _evdev
+        except Exception:
+            _evdev = None
+        if _evdev is not None:
+            try:
+                if _evdev.available():
+                    def _ev_release(name):
+                        if name in ('shift_l', 'shift_r'):
+                            on_key_release(keyboard.Key.shift_l)
+                        elif name == 'w':
+                            on_key_release(keyboard.KeyCode.from_char('w'))
+                        elif name == 'x':
+                            on_key_release(keyboard.KeyCode.from_char('x'))
+                    g_evdev_source = _evdev.KeySource(on_press=None, on_release=_ev_release)
+                    g_evdev_source.start()
+                    print("R29: evdev 内核级监听器已启动（Wayland/X11 通用，与焦点无关）。")
+                    return
+                print("R29: evdev 无可用键盘设备 → 回退 X11 监听。")
+                print("R29: " + _evdev.permission_hint())
+            except Exception as e:
+                print(f"R29: evdev 启动失败: {e} → 回退 X11 监听。")
+        else:
+            print("R29: qqqide_evdev 模块缺失 → 回退 X11 监听。")
     print("R24: 正在启动 pynput 键盘监听器...")
 
     def listener_loop():
@@ -359,7 +389,7 @@ def main():
     # --- (R22) 修复 Ctrl+C 结束 ---
 
     print("程序已启动，正在监听按键事件...");
-    print(f"  - (R24) 使用 pynput + pyqtSignal 监听器...")
+    print(f"  - (R29) 使用全局按键监听器 (evdev/X11) + pyqtSignal...")
     print(f"  - 连续按 'W' 键 {W_KEY_COUNT_CONFIRM_THRESHOLD} 次以 (提示) 保存 (光标下) 窗口布局。");
     print(f"  - 连续按 'X' 键 {X_KEY_COUNT_THRESHOLD} 次以还原 (光标下) 窗口布局。");
     print(f"  - 连续按 'Shift' 键 {SHIFT_KEY_COUNT_THRESHOLD} 次以还原 (焦点) 窗口布局。");

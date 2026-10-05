@@ -84,6 +84,21 @@ export function _resolveShell(shellType: string, appRoot: string): { cmd: string
         if (shellType === 'bash' && fs.existsSync('/bin/bash')) { return { cmd: '/bin/bash', args: ['-i'], env }; }
         return null; // cmd/powershell/gitbash = Windows 专属
     }
+    // ★ Linux（2026-10-05）：zsh/bash 原生宿主（与 mac 同款行模式架构）——bash 恒在（发行版基线）；
+    //   zsh 仅当系统确实安装时可用，缺失返回 null（UI 如实报不可用）。
+    if (process.platform === 'linux') {
+        env.TERM = env.TERM || 'xterm-256color';
+        if (!('PROMPT_EOL_MARK' in env)) { env.PROMPT_EOL_MARK = ''; }
+        if (shellType === 'zsh') {
+            for (const c of ['/bin/zsh', '/usr/bin/zsh', '/usr/local/bin/zsh']) { if (fs.existsSync(c)) { return { cmd: c, args: ['-i'], env }; } }
+            return null;
+        }
+        if (shellType === 'bash') {
+            for (const c of ['/bin/bash', '/usr/bin/bash']) { if (fs.existsSync(c)) { return { cmd: c, args: ['-i'], env }; } }
+            return null;
+        }
+        return null; // cmd/powershell/gitbash = Windows 专属
+    }
     if (shellType === 'gitbash') {
         // ① 自带组件：git = Git for Windows Portable（2026-08-11 B 方案）→ bin/bash.exe
         //    登录 shell（--login）加载 /etc/profile 构建 MSYS PATH；MSYSTEM=MINGW64 选中 64 位运行时；

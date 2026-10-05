@@ -101,9 +101,12 @@ function _enginesRoot(portableRoot: string): string {
 // ── 有效完整性阈值 — min_size_mb 的语义 = Windows PortableGit 全量树（≥180MB）。
 //    unix 二进制是精简形态（mac git ~37MB / linux ~12MB），拿 180 判必然失败 →
 //    误判「missing」→ 触发 CDN 恢复 → 破坏性重建（mac 实测事故 2026-09-14）。
-//    unix 走 min_size_mb_unix（可缺省 = 不检查）。
+//    unix 走 min_size_mb_unix（可缺省 = 不检查）；linux 制品与 mac 树尺寸不同（扁平单二进制 vs mac 版），
+//    有 min_size_mb_linux 时优先（防阈值不符 → 每启动误判 missing 重复下载，2026-10-05 VM 实锤）。
 function _effMinMB(def: any): number | undefined {
-    return process.platform === 'win32' ? def.min_size_mb : def.min_size_mb_unix;
+    if (process.platform === 'win32') { return def.min_size_mb; }
+    if (process.platform === 'linux' && def.min_size_mb_linux !== undefined) { return def.min_size_mb_linux; }
+    return def.min_size_mb_unix;
 }
 
 // ── 清单加载（缓存） ──

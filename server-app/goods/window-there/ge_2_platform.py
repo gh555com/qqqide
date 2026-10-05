@@ -690,6 +690,10 @@ elif sys.platform == 'linux':
         def get_foreground_window_handle(self):
             """
             (R24) Linux实现：获取当前活动窗口的句柄
+            ★ R29（2026-10-05）：权威源改 EWMH _NET_ACTIVE_WINDOW —— Wayland 会话下
+              XGetInputFocus 不可信（XWayland 输入焦点可被任意 X 客户端直写、且不随
+              Wayland 焦点回清 —— 实测导致 3W/3X 误判「光标下窗口即焦点窗口」恒触发跳过）；
+              _NET_ACTIVE_WINDOW 由合成器维护（无 X11 窗口活跃时清 0）。属性缺失时回退原实现。
             """
             try:
                 import Xlib.display
@@ -700,7 +704,18 @@ elif sys.platform == 'linux':
                 screen = display.screen()
                 root = screen.root
 
-                # 获取键入焦点窗口
+                # ① EWMH 权威源（合成器维护）
+                try:
+                    prop = root.get_full_property(display.intern_atom('_NET_ACTIVE_WINDOW'), X.AnyPropertyType)
+                    if prop and prop.value is not None and len(prop.value) >= 1:
+                        active_id = int(prop.value[0])
+                        if active_id and active_id not in (X.NONE, 0):
+                            return active_id
+                        return None  # 0 = 当前无 X11 窗口活跃（焦点在 Wayland 原生侧）
+                except Exception:
+                    pass
+
+                # ② 回退：XGetInputFocus（无 EWMH 的 X11 WM）
                 focused_window = display.get_input_focus().focus
 
                 if focused_window is None:
