@@ -97,6 +97,8 @@
       "nextImage": "下一张",
       "skipMissing": "已跳过 {0} 张无法显示的图片",
       "noMoreImages": "没有更多可显示的图片了",
+      "rotateLeft": "逆时针旋转 90°",
+      "rotateRight": "顺时针旋转 90°",
       "copyFailed": "复制失败",
       "zoomIn": "放大",
       "zoomOut": "缩小",
@@ -293,6 +295,16 @@
       "loading": "加载中...",
       "empty": "暂无用户",
       "loadFail": "加载失败，请重试"
+    },
+    "tmp": {
+      "swept": "临时区轮转：清理 {n} 项，释放 {mb}",
+      "trash": "（{n} 项在隔离区，7 天内可捞回）",
+      "occupied": "{n} 项被占用，稍后重试",
+      "pinned": "清理后仍超线；钉子占用 {mb}",
+      "running": "临时区轮转中…",
+      "busy": "轮转正在运行，请稍候",
+      "fail": "轮转失败，请稍后重试",
+      "clean": "临时区干净，无需清理"
     },
     "mem": {
       "qTitle": "qqqide 专用工作集（包含一切子进程）",
@@ -853,6 +865,10 @@
       "probeFound": "发现 {n} 个本机模型服务 · 点击填入",
       "probeItem": "{url} · {n} 个模型",
       "probeFilled": "已填入本机模型地址",
+      "needActivation": "自带 API Key 与本地模型是正版功能（激活后可用）",
+      "actDeny": "该功能需先激活（已为你打开激活页）",
+      "actToast": "自带 API Key 为激活用户专享：请先激活，或关闭自带 Key 后改用平台通道",
+      "relayNeedActivation": "自带 API Key 为激活用户专享，请激活后使用",
       "think": "上送思考参数（服务商不支持请关闭）",
       "thinkLevel": "思考档（reasoning_effort）",
       "thinkJson": "自定义参数 JSON（可选，填写后优先于档位）",
@@ -1575,7 +1591,7 @@
       "popWindowLocal": "📅 ({tz}) 周日全天+每日{span}",
       "histTitle": "前 8 次免费窗口：{used} / {budget}",
       "histUsed": "已用 {v}",
-      "popBonus": "季节加成 +{v} ge",
+      "popBonus": "赛季{n}加成 +{v} ge",
       "popLogin": "登录后查看随机捞到滴免费余额",
       "popLoading": "随机免费余额加载中…",
       "popNoBudget": "随机免费额度在免费时间窗发放"

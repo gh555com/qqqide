@@ -20,6 +20,7 @@ const ENTRIES = [
   { name: 'player-prefs', src: path.join(ROOT, 'shell', 'player-prefs.ts') },
   { name: 'player-reveal', src: path.join(ROOT, 'shell', 'player-reveal.ts') },
   { name: 'paste-fetch', src: path.join(ROOT, 'shell', 'paste-fetch.ts') },
+  { name: 'tmp-machine', src: path.join(ROOT, 'shell', 'tmp-machine.ts') },
 ];
 
 async function buildAll() {

@@ -370,6 +370,16 @@ $input.addEventListener('keydown', function (e) {
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
             return;
         }
+        // ★ 激活门（2026-10-06）：自带 API Key（自定义模型）= 激活用户专享——未激活在冻结前拦下（不消费编辑框）
+        if (window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()) {
+            try {
+                var _entBk = (window.parent && window.parent.qqqEntitlement) || null;
+                if (_entBk && typeof _entBk.canUse === 'function' && !_entBk.canUse('byok')) {
+                    if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.byok.actToast', '自带 API Key 为激活用户专享：请先激活，或关闭自带 Key 后改用平台通道'), { type: 'warning', duration: 6000 });
+                    return;
+                }
+            } catch (_eBk) { }
+        }
         // ★ 粘贴在飞拦截（2026-09-30）：大图/剪贴板读取处理中按回车 → 图尚未入条，本条会静默漏图。
         //   同步拦下（内容零消费），处理完成后再发送即可带上图片。
         if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
@@ -984,6 +994,16 @@ $sendBtn.onclick = function () {
         if (!_isLoggedIn()) {
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
             return;
+        }
+        // ★ 激活门（2026-10-06，与 Enter 同规）：自带 API Key = 激活用户专享
+        if (window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()) {
+            try {
+                var _entBk = (window.parent && window.parent.qqqEntitlement) || null;
+                if (_entBk && typeof _entBk.canUse === 'function' && !_entBk.canUse('byok')) {
+                    if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.byok.actToast', '自带 API Key 为激活用户专享：请先激活，或关闭自带 Key 后改用平台通道'), { type: 'warning', duration: 6000 });
+                    return;
+                }
+            } catch (_eBk) { }
         }
         // ★ 粘贴在飞拦截（2026-09-30，与 Enter 同规）：处理中不消费
         if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }

@@ -95,6 +95,8 @@
             "nextImage": "Suivante",
             "skipMissing": "{0} image(s) impossible(s) à afficher ont été ignorées",
             "noMoreImages": "Aucune autre image à afficher",
+            "rotateLeft": "Rotation de 90° dans le sens antihoraire",
+            "rotateRight": "Rotation de 90° dans le sens horaire",
             "copyFailed": "Échec de la copie",
             "zoomIn": "Zoom avant",
             "zoomOut": "Zoom arrière",
@@ -291,6 +293,16 @@
             "loading": "Chargement...",
             "empty": "Aucun utilisateur pour le moment",
             "loadFail": "Échec du chargement, veuillez réessayer"
+        },
+        "tmp": {
+            "swept": "Rotation de la zone temporaire : {n} éléments supprimés, {mb} libérés",
+            "trash": "({n} éléments en quarantaine, récupérables sous 7 jours)",
+            "occupied": "{n} éléments sont verrouillés, réessayez plus tard",
+            "pinned": "Dépassement du seuil après nettoyage ; les épingles occupent {mb}",
+            "running": "Rotation de la zone temporaire en cours…",
+            "busy": "La rotation est en cours, veuillez patienter",
+            "fail": "Échec de la rotation, veuillez réessayer ultérieurement",
+            "clean": "La zone temporaire est propre, aucun nettoyage nécessaire"
         },
         "mem": {
             "qTitle": "Ensemble de travail dédié qqqide (incluant tous les sous-processus)",
@@ -842,6 +854,10 @@
             "probeFound": "{n} services de modèles locaux détectés · Cliquez pour remplir",
             "probeItem": "{url} · {n} modèles",
             "probeFilled": "Adresse du modèle local remplie",
+            "needActivation": "L'utilisation de votre propre clé API et des modèles locaux est une fonctionnalité premium (disponible après activation).",
+            "actDeny": "Cette fonctionnalité nécessite une activation préalable (la page d'activation a été ouverte pour vous).",
+            "actToast": "L'utilisation de votre propre clé API est réservée aux utilisateurs activés : veuillez d'abord activer votre compte, ou désactiver votre clé personnelle pour utiliser le canal de la plateforme.",
+            "relayNeedActivation": "L'utilisation de votre propre clé API est réservée aux utilisateurs activés. Veuillez activer votre compte pour continuer.",
             "think": "Envoyer le paramètre de réflexion (désactiver si non pris en charge par le fournisseur)",
             "thinkLevel": "Niveau de réflexion (reasoning_effort)",
             "thinkJson": "Paramètres JSON personnalisés (optionnel, priorité sur le niveau s'il est renseigné)",
@@ -1558,7 +1574,7 @@
             "popWindowLocal": "📅 ({tz}) Dimanche toute la journée + quotidiennement {span}",
             "histTitle": "8 premières fenêtres gratuites : {used} / {budget}",
             "histUsed": "{v} utilisé(s)",
-            "popBonus": "Bonus saisonnier +{v} ge",
+            "popBonus": "Bonus de la saison {n} +{v} ge",
             "popLogin": "Connectez-vous pour voir le solde gratuit aléatoire récupéré",
             "popLoading": "Chargement du solde gratuit aléatoire…",
             "popNoBudget": "Le quota gratuit aléatoire est attribué pendant les fenêtres de temps gratuites"

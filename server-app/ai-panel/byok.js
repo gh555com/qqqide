@@ -29,6 +29,9 @@
 //      一键选模型；「检测本机模型」探测常见本机端口（11434/1234/1337/8000/8080）一键填入；
 //      平台代理无 /models（白名单仅 chat 路径）→ relay 如实提示、禁旁路直连；
 //      弹窗一切下拉（思考档等）恒自绘（禁原生 select，铁律 §5）
+//  10. 激活门（2026-10-06）：自带 API Key / 本地模型 = 激活用户专享（qqqEntitlement 注册表 'byok'）——
+//      启用复选框守卫（guard force 现查 → 拒绝红字 + 激活页；买完回来即解锁）、保存防旁路、
+//      intercept 纵深（enabled 残余态不静默回落平台计费通道）；平台代理另有服务端真裁决（403 BYOK_NEED_ACTIVATION）。
 //
 // 边界：本模块只管【对话】通道；贴图识别/生图/抠图/搜索等仍走平台内置通道。
 // ============================================================================
@@ -179,6 +182,43 @@
     }
     function isActive() { var c = get(); return !!(c.enabled && _isConfigured(c)); }
 
+    // ════════════════════════════════════════════════════════════
+    // 激活门（2026-10-06）：自带 API Key / 本地模型 = 激活用户专享
+    //   门面唯一真理机器 = 父窗口 qqqEntitlement（注册表 FEATURES['byok']）；
+    //   拒绝路径 = 机器统一口径（onDeny 红字 + 打开激活页）；启用/发送/管线三入口 + intercept 逐点拦截。
+    //   诚实边界：直连/本地不经平台——客户端门面即唯一门；relay 另有服务端真裁决。
+    // ════════════════════════════════════════════════════════════
+    function _ent() {
+        try { if (parent && parent.qqqEntitlement) return parent.qqqEntitlement; } catch (_) { }
+        try { if (window.qqqEntitlement) return window.qqqEntitlement; } catch (_) { }
+        return null;
+    }
+    function _actOk() {
+        try { var e = _ent(); if (e && typeof e.canUse === 'function') return !!e.canUse('byok'); } catch (_) { }
+        return true;   // 机器缺失（旧载荷）→ 放行门面（真正裁决在服务端；禁砖化）
+    }
+    function _syncActHint() {
+        var el = document.getElementById('byok-act-hint');
+        if (!el) return;
+        if (_actOk()) { el.style.display = 'none'; el.textContent = ''; return; }
+        el.style.display = '';
+        el.textContent = '🔒 ' + _t('ai.byok.needActivation', '自带 API Key 与本地模型是正版功能（激活后可用）');
+    }
+    // 启用许可：本地缓存先行；拒绝 → 机器 guard（force 现查）→ onDeny 红字 + 激活页
+    function _ensureActivation() {
+        if (_actOk()) return Promise.resolve(true);
+        var st = document.getElementById('byok-test-status');
+        var deny = function () {
+            if (st) {
+                st.textContent = '🔒 ' + _t('ai.byok.actDeny', '该功能需先激活（已为你打开激活页）');
+                st.style.color = 'var(--red)';
+            }
+        };
+        var e = _ent();
+        if (!e || typeof e.guard !== 'function') { deny(); return Promise.resolve(false); }
+        return e.guard('byok', { force: true, onDeny: deny });
+    }
+
     // 内存配置 → 磁盘形态（有 Key：可加密则仅存密文，否则明文兜底；无 Key：保留既有密文防误清）
     async function _buildStored(next) {
         var stored = {
@@ -211,6 +251,8 @@
         await _load();
         var wasActive = isActive();   // ★ VIG（2026-10-05）：配置采用检测——保存前是否已处于「启用」态
         var next = Object.assign({}, _cfg, patch || {});
+        // ★ 激活门防旁路（2026-10-06）：显式启用请求仅在激活态成立（唯一入口=复选框守卫；此处为纵深防线）
+        if (patch && patch.enabled === true && !_actOk()) next.enabled = false;
         next.baseUrl = String(next.baseUrl || '').trim();
         if (_isLocalBase(next.baseUrl)) next.route = 'direct';   // 本地模型：平台代理无意义（服务端到不了你的本机），一律直连
         next.apiKey = String(next.apiKey || '').trim();
@@ -513,6 +555,8 @@
             msg = _t('ai.byok.relayBalance', 'ge 余额不足，请赞助');
         } else if (code === 'BYOK_BAD_TARGET') {
             msg = _t('ai.byok.relayBadTarget', '该地址不在平台代理名单内（仅海外主流服务商），建议改用直连');
+        } else if (code === 'BYOK_NEED_ACTIVATION') {
+            msg = _t('ai.byok.relayNeedActivation', '自带 API Key 为激活用户专享，请激活后使用');
         }
         return msg;
     }
@@ -542,6 +586,18 @@
         await _load();
         var cfg = get();
         if (!cfg.enabled || !_isConfigured(cfg)) return null;
+        // ★ 激活门（2026-10-06 纵深防线）：enabled 仅在激活态可成立——换号/掉激活残余态在此拦下；
+        //   不静默回落平台通道（会悄悄计 ge），如实返回 403 由楼层呈现
+        if (!_actOk()) {
+            var _lockMsg = '🔒 ' + _t('ai.byok.relayNeedActivation', '自带 API Key 为激活用户专享，请激活后使用');
+            try {
+                return new Response(JSON.stringify({ error: _lockMsg }), { status: 403, statusText: 'BYOK_NEED_ACTIVATION', headers: { 'Content-Type': 'application/json' } });
+            } catch (_) {
+                var _le = new Error('[' + _t('ai.byok.tag', '自带密钥') + '] ' + _lockMsg);
+                _le._byok = true;
+                throw _le;
+            }
+        }
         var url = _endpoint(cfg.baseUrl);
         if (!url) return null;
         var outBody = _buildBody(body, opts, cfg);
@@ -958,6 +1014,7 @@
             '<div class="bk-hint" style="margin-top:2px">' + _t('ai.byok.subtitle', '配置你自己的 AI 服务端点，对话请求直连你的服务商') + '</div>' +
             '<div class="bk-row"><label class="bk-chk"><input type="checkbox" id="byok-enable"><span>' +
             _t('ai.byok.enable', '启用（对话走你的 Key，不计 ge 费用）') + '</span></label></div>' +
+            '<div class="bk-hint" id="byok-act-hint" style="display:none;margin-top:4px"></div>' +
             '<div class="bk-row"><label class="bk-label">' + _t('ai.byok.baseUrl', '接口地址（OpenAI 兼容）') + '</label>' +
             '<input type="text" id="byok-baseurl" placeholder="https://…/v1" spellcheck="false"></div>' +
             '<div class="bk-row"><label class="bk-label">' + _t('ai.byok.apiKey', 'API Key') + '</label>' +
@@ -1019,6 +1076,11 @@
         };
         $('byok-enable').onchange = async function () {
             var on = $('byok-enable').checked;
+            // ★ 激活门（2026-10-06）：自带 API Key / 本地模型 = 激活用户专享——先过激活门，再过配置门
+            if (on && !(await _ensureActivation())) {
+                $('byok-enable').checked = false;
+                return;
+            }
             if (on && !_formConfigured()) {
                 $('byok-enable').checked = false;
                 var st = $('byok-test-status');
@@ -1139,6 +1201,16 @@
             st.textContent = c.enabled ? ('● ' + _t('ai.byok.tipOn', '自带 API Key：已启用')) : '';
         }
         st.style.color = 'var(--base01)';
+        _syncActHint();   // ★ 激活门（2026-10-06）：锁提示随激活态现算
+        // ★ 激活门闭环（2026-10-06）：未激活打开弹窗 → 静默服务端现查一次（买完回来打开弹窗即解锁，免重启）
+        if (!_actOk()) {
+            try {
+                var _ebk = _ent();
+                if (_ebk && typeof _ebk.check === 'function') {
+                    _ebk.check('byok', true).then(function () { try { _syncActHint(); } catch (_) { } }).catch(function () { });
+                }
+            } catch (_) { }
+        }
         _overlay.style.display = 'block';  // ★ 修复（2026-09-16）：置 '' 会被样式表 #byok-overlay{display:none} 吃掉 → 弹窗永不显示（点击无反应根因）
     }
     function _closePopup() { _closeBkPop(); if (_overlay) _overlay.style.display = 'none'; }
@@ -1188,6 +1260,11 @@
     function _boot() {
         _load().catch(function () { });
         _injectButton();
+        // ★ 激活门（2026-10-06）：登录/激活态变更（onChange 广播）→ 弹窗锁提示即时刷新
+        try {
+            var _ebk = _ent();
+            if (_ebk && typeof _ebk.onChange === 'function') _ebk.onChange(function () { try { _syncActHint(); } catch (_) { } });
+        } catch (_) { }
         // ★ 语言切换（父窗口广播 qqq-lang-change）→ 按钮 tooltip + 弹窗文案即时刷新
         window.addEventListener('message', function (e) {
             if (e.data && e.data.type === 'qqq-lang-change') { try { _relang(); } catch (_) { } }

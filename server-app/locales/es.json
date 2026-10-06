@@ -95,6 +95,8 @@
             "nextImage": "Siguiente",
             "skipMissing": "Se han omitido {0} imágenes que no se pueden mostrar",
             "noMoreImages": "No hay más imágenes para mostrar",
+            "rotateLeft": "Girar 90° en sentido antihorario",
+            "rotateRight": "Girar 90° en sentido horario",
             "copyFailed": "Error al copiar",
             "zoomIn": "Acercar",
             "zoomOut": "Alejar",
@@ -291,6 +293,16 @@
             "loading": "Cargando...",
             "empty": "No hay usuarios por el momento",
             "loadFail": "Error al cargar, inténtelo de nuevo"
+        },
+        "tmp": {
+            "swept": "Rotación de la zona temporal: {n} elementos eliminados, {mb} liberados",
+            "trash": "({n} elementos en cuarentena, recuperables durante 7 días)",
+            "occupied": "{n} elementos están en uso, inténtelo de nuevo más tarde",
+            "pinned": "Se supera el límite tras la limpieza; los elementos fijos ocupan {mb}",
+            "running": "Rotación de la zona temporal en curso…",
+            "busy": "La rotación está en ejecución, espere por favor",
+            "fail": "Error en la rotación, inténtelo de nuevo más tarde",
+            "clean": "La zona temporal está limpia, no es necesario limpiar"
         },
         "mem": {
             "qTitle": "Conjunto de trabajo dedicado de qqqide (incluye todos los subprocesos)",
@@ -842,6 +854,10 @@
             "probeFound": "Se han detectado {n} servicios de modelo locales · Haz clic para rellenar",
             "probeItem": "{url} · {n} modelos",
             "probeFilled": "Dirección del modelo local rellenada",
+            "needActivation": "El uso de tu propia clave API y los modelos locales son funciones premium (disponibles tras la activación).",
+            "actDeny": "Esta función requiere activación previa (se ha abierto la página de activación para ti).",
+            "actToast": "El uso de tu propia clave API está reservado para usuarios activados: por favor, activa tu cuenta primero o desactiva la clave propia y utiliza el canal de la plataforma.",
+            "relayNeedActivation": "El uso de tu propia clave API está reservado para usuarios activados. Por favor, activa tu cuenta para utilizar esta función.",
             "think": "Enviar parámetro de razonamiento (desactivar si el proveedor no lo admite)",
             "thinkLevel": "Nivel de razonamiento (reasoning_effort)",
             "thinkJson": "JSON de parámetros personalizados (opcional, tiene prioridad sobre el nivel si se completa)",
@@ -1558,7 +1574,7 @@
             "popWindowLocal": "📅 ({tz}) Domingo todo el día + diario {span}",
             "histTitle": "Primeras 8 ventanas gratuitas: {used} / {budget}",
             "histUsed": "{v} utilizado(s)",
-            "popBonus": "Bonificación de temporada +{v} ge",
+            "popBonus": "Bonificación de temporada {n} +{v} ge",
             "popLogin": "Inicia sesión para ver tu saldo gratuito aleatorio",
             "popLoading": "Cargando saldo gratuito aleatorio…",
             "popNoBudget": "La cuota gratuita aleatoria se otorga durante la ventana de tiempo gratuito"

@@ -1,9 +1,9 @@
 // ============================================================================
 // core/entitlement.js — 正版验证唯一真理机器（2026-09-07）
-//   一切「激活/VIP 专属功能」门（当前: 显示楼层 32/64；将来: 去水印等）必须走本机:
+//   一切「激活/VIP 专属功能」门（显示楼层 32/64、no-watermark、roam-name、byok）必须走本机:
 //   功能注册表一行声明 → canUse（本地缓存同步）/ check（服务端确认）/ guard（标准拒绝 UX）。
 //   真值校验唯一源 = window.qqqLogin（isPurchased 本地缓存 + checkPurchased 服务端
-//   每窗口生命周期一次 + onStateChange 状态广播）；本机只收敛「门」与激活页 URL，
+//   每窗口生命周期一次，force 可强制现查——激活门闭环 + onStateChange 状态广播）；本机只收敛「门」与激活页 URL，
 //   不重复造真值、不做 tier/角色/灰度重框架。
 //   诚实边界: 客户端门是 UX 门——有服务端成本的功能（如云端去水印）真正裁决
 //   在服务端计费点，本机只管门面一致 + 诚实提示。
@@ -25,7 +25,8 @@
     'floor-cap-32': 1,
     'floor-cap-64': 1,
     'no-watermark': 1,  // 消除相框水印（2026-09-28 设置本地化：客户端行为门 = 设置中心 💎 行；真正裁决在服务端计费点）
-    'roam-name': 1      // 自定义漫游名字（2026-09-29：Roam 常驻标签标题可改；未激活/未设置恒「Roam」+ set 拒绝）
+    'roam-name': 1,     // 自定义漫游名字（2026-09-29：Roam 常驻标签标题可改；未激活/未设置恒「Roam」+ set 拒绝）
+    'byok': 1           // 自带 API Key / 本地模型（2026-10-06：BYOK 层启用/发送/管线门 + intercept 纵深；平台代理通道另有服务端真裁决）
   };
 
   function _login() { return window.qqqLogin || null; }
@@ -50,11 +51,11 @@
       var login = _login();
       return !!(login && login.isPurchased && login.isPurchased());
     },
-    // 服务端确认（共享 qqqLogin 窗口级去重），失败诚实回退本地缓存
-    check: function (feat) {
+    // 服务端确认（共享 qqqLogin 窗口级去重；force=true 强制现查——激活门闭环：买完回来即解锁）
+    check: function (feat, force) {
       var login = _login();
       if (!login || !login.checkPurchased) return Promise.resolve(api.canUse(feat));
-      return login.checkPurchased().then(function () { return api.canUse(feat); });
+      return login.checkPurchased(force).then(function () { return api.canUse(feat); });
     },
     // 门卫: 允许 → resolve(true)；拒绝 → onDeny（消费方红字等）+ 外部浏览器激活页 → resolve(false)
     guard: function (feat, opts) {
@@ -66,7 +67,7 @@
       };
       var login = _login();
       if (!login || !login.checkPurchased) { deny(); return Promise.resolve(false); }
-      return login.checkPurchased().then(function (ok) {
+      return login.checkPurchased(opts.force === true).then(function (ok) {
         if (ok) return true;
         deny();
         return false;

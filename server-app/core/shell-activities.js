@@ -941,6 +941,27 @@ function bootActivities(boot) {
     return { rem: rem, bud: bud, valid: isFinite(rem) && rem >= 0, bonus: bonus };
   }
 
+  // 当前赛季号（与官网「赛季N」、Solar House「第 N 季」同口径 = 服务端累计序号 + 1）
+  //   ① 免费预算响应 season_idx（与 bonus 同一次拉取，恒最新）→ ② LV 快照 season_short 尾号（服务端下发的累计序号）
+  //   两源皆服务端真值；都拿不到返回 0 → 标签退化为不带数字（禁本地推算、禁出错数字）
+  function vibeSeasonNo() {
+    var d = _vibeFree;
+    if (d && typeof d.season_idx === 'number' && d.season_idx >= 0) return d.season_idx + 1;
+    try {
+      var lv = window.qqqLogin && window.qqqLogin.getLvData ? window.qqqLogin.getLvData() : null;
+      var m = lv && lv.season_short ? /W(\d+)\s*$/.exec(String(lv.season_short)) : null;
+      if (m) return parseInt(m[1], 10) + 1;
+    } catch (e) { }
+    return 0;
+  }
+
+  // 加成标签（赛季号现算，禁写死）
+  function vibeBonusLabel(bonus) {
+    var sn = vibeSeasonNo();
+    return tp('act.vibe.popBonus', { n: sn > 0 ? sn : '', v: fmt(bonus) },
+      '赛季' + (sn > 0 ? sn : '') + '加成 +' + fmt(bonus) + ' ge');
+  }
+
   function renderVibe() {
     if (!$vibe || !$vibeNum) return;
     var st = vibeState(vibeUtcNow());
@@ -1060,7 +1081,7 @@ function bootActivities(boot) {
       budgetHtml =
         '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-vibe-fill" style="width:' + pct + '%"></span></div>' +
         '<div class="qqq-act-bignum">💎 ' + fmt(b.rem) + ' / ' + fmt(b.bud) + ' ge' +
-        (b.bonus > 0 ? ' <span style="font-size:14px;font-weight:700;color:#e0b400;">' + tp('act.vibe.popBonus', { v: fmt(b.bonus) }, '季节加成 +' + fmt(b.bonus) + ' ge') + '</span>' : '') +
+        (b.bonus > 0 ? ' <span style="font-size:14px;font-weight:700;color:#e0b400;">' + vibeBonusLabel(b.bonus) + '</span>' : '') +
         '</div>';
     } else if (st.free) {
       // 免费中但余额尚未拉到（请求中/失败）→ 加载态，不误报未登录

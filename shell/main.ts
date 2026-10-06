@@ -65,6 +65,7 @@ import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcess
 import { registerKopeIpc, kopeWarmup } from './ipc-kope';
 import { registerVigIpc } from './ipc-vig';
 import { vigFlush, vigSquadSummon, vigStartFloorsSeed } from './vig';
+import { registerTmpMachineIpc, startTmpMachine } from './tmp-machine';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
 import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
@@ -458,6 +459,7 @@ function registerAllIpc(): void {
     registerSecureIpc();
     registerProjectLockIpc();
     registerUiZoomIpc();
+    registerTmpMachineIpc(stateStore);   // _qqq/tmp 轮转机器（手动 sweep + 状态快照）
 }
 
 // ── wq 偿还 IPC — Savor 播放状态 → ping playing=true（2026-09-19） ──
@@ -799,6 +801,8 @@ app.whenReady().then(async () => {
         setTimeout(() => { try { checkRank0Components(portable.root); } catch { /* ignore */ } }, 1500);
         // 旧槽异步清理: 交换后 gh555.com-old* 由启动器交换期同步删改为壳层就绪后台删
         scheduleOldSlotCleanup(portable.root);
+        // ★ tmp 轮转机器（2026-10-05）：_qqq/tmp 唯一守夜人——就绪后 60s 首扫 + 每 6h（详 shell/tmp-machine.ts）
+        try { startTmpMachine(stateStore); } catch { /* ignore */ }
     });
 
     // ★ 时序修复（2026-09-16）：webapp 运行副本先就位，再 spawn 任何 stdio 组件与 process goods——

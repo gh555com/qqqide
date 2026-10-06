@@ -95,6 +95,8 @@
             "nextImage": "Próxima",
             "skipMissing": "{0} imagem(ns) que não puderam ser exibidas foram ignoradas",
             "noMoreImages": "Não há mais imagens para exibir",
+            "rotateLeft": "Girar 90° no sentido anti-horário",
+            "rotateRight": "Girar 90° no sentido horário",
             "copyFailed": "Falha ao copiar",
             "zoomIn": "Aumentar zoom",
             "zoomOut": "Diminuir zoom",
@@ -291,6 +293,16 @@
             "loading": "Carregando...",
             "empty": "Nenhum usuário no momento",
             "loadFail": "Falha ao carregar. Tente novamente."
+        },
+        "tmp": {
+            "swept": "Rotação da área temporária: {n} itens removidos, {mb} liberados",
+            "trash": "({n} itens na quarentena, recuperáveis em até 7 dias)",
+            "occupied": "{n} itens estão em uso. Tente novamente mais tarde",
+            "pinned": "Ainda acima do limite após a limpeza; itens fixos ocupam {mb}",
+            "running": "Rotação da área temporária em andamento…",
+            "busy": "Rotação em execução. Aguarde",
+            "fail": "Falha na rotação. Tente novamente mais tarde",
+            "clean": "Área temporária limpa, não é necessário limpar"
         },
         "mem": {
             "qTitle": "Conjunto de trabalho dedicado do qqqide (inclui todos os subprocessos)",
@@ -842,6 +854,10 @@
             "probeFound": "{n} serviços de modelo local detectados · Clique para preencher",
             "probeItem": "{url} · {n} modelos",
             "probeFilled": "Endereço do modelo local preenchido",
+            "needActivation": "Chave API própria e modelo local são recursos premium (disponíveis após ativação).",
+            "actDeny": "Este recurso requer ativação prévia (a página de ativação foi aberta para você).",
+            "actToast": "O uso de chave API própria é exclusivo para usuários ativados: ative primeiro ou desative a chave própria e use o canal da plataforma.",
+            "relayNeedActivation": "O uso de chave API própria é exclusivo para usuários ativados. Ative para utilizar.",
             "think": "Enviar parâmetros de pensamento (thinking / reasoning_effort; desative se o provedor não suportar)",
             "thinkLevel": "Nível de raciocínio (reasoning_effort)",
             "thinkJson": "JSON de parâmetros personalizados (opcional; se preenchido, tem prioridade sobre o nível)",
@@ -1558,7 +1574,7 @@
             "popWindowLocal": "📅 ({tz}) Domingo o dia todo + diariamente {span}",
             "histTitle": "Primeiras 8 janelas gratuitas: {used} / {budget}",
             "histUsed": "Usado {v}",
-            "popBonus": "Bônus da temporada +{v} ge",
+            "popBonus": "Bônus da temporada {n} +{v} ge",
             "popLogin": "Faça login para verificar seu saldo gratuito aleatório",
             "popLoading": "Carregando saldo gratuito aleatório…",
             "popNoBudget": "Cota gratuita aleatória distribuída durante a janela de tempo gratuito"

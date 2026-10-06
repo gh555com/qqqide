@@ -95,6 +95,8 @@
             "nextImage": "Ảnh sau",
             "skipMissing": "Đã bỏ qua {0} ảnh không thể hiển thị",
             "noMoreImages": "Không còn ảnh nào để hiển thị",
+            "rotateLeft": "Xoay 90° ngược chiều kim đồng hồ",
+            "rotateRight": "Xoay 90° theo chiều kim đồng hồ",
             "copyFailed": "Sao chép thất bại",
             "zoomIn": "Phóng to",
             "zoomOut": "Thu nhỏ",
@@ -291,6 +293,16 @@
             "loading": "Đang tải...",
             "empty": "Chưa có người dùng",
             "loadFail": "Tải thất bại, vui lòng thử lại"
+        },
+        "tmp": {
+            "swept": "Xoay vòng khu vực tạm thời: Đã dọn {n} mục, giải phóng {mb}",
+            "trash": "({n} mục trong vùng cách ly, có thể khôi phục trong vòng 7 ngày)",
+            "occupied": "{n} mục đang bị chiếm dụng, vui lòng thử lại sau",
+            "pinned": "Vẫn vượt quá giới hạn sau khi dọn dẹp; các mục cố định chiếm {mb}",
+            "running": "Đang xoay vòng khu vực tạm thời…",
+            "busy": "Quá trình xoay vòng đang chạy, vui lòng đợi",
+            "fail": "Xoay vòng thất bại, vui lòng thử lại sau",
+            "clean": "Khu vực tạm thời đã sạch, không cần dọn dẹp"
         },
         "mem": {
             "qTitle": "Bộ nhớ làm việc dành riêng cho qqqide (bao gồm tất cả các tiến trình con)",
@@ -842,6 +854,10 @@
             "probeFound": "Đã phát hiện {n} dịch vụ mô hình cục bộ · Nhấp để điền",
             "probeItem": "{url} · {n} mô hình",
             "probeFilled": "Đã điền địa chỉ mô hình cục bộ",
+            "needActivation": "Sử dụng API Key riêng và mô hình cục bộ là tính năng cao cấp (khả dụng sau khi kích hoạt)",
+            "actDeny": "Tính năng này yêu cầu kích hoạt trước (trang kích hoạt đã được mở cho bạn)",
+            "actToast": "Sử dụng API Key riêng là đặc quyền dành cho người dùng đã kích hoạt: vui lòng kích hoạt trước, hoặc tắt Key riêng và chuyển sang dùng kênh nền tảng",
+            "relayNeedActivation": "Sử dụng API Key riêng là đặc quyền dành cho người dùng đã kích hoạt, vui lòng kích hoạt để sử dụng",
             "think": "Gửi tham số suy nghĩ (thinking / reasoning_effort; tắt nếu nhà cung cấp dịch vụ không hỗ trợ)",
             "thinkLevel": "Mức độ suy luận (reasoning_effort)",
             "thinkJson": "JSON tham số tùy chỉnh (tùy chọn, nếu điền sẽ ưu tiên hơn gói)",
@@ -1558,7 +1574,7 @@
             "popWindowLocal": "📅 ({tz}) Cả ngày Chủ Nhật + mỗi ngày {span}",
             "histTitle": "8 lượt cửa sổ miễn phí trước đó: {used} / {budget}",
             "histUsed": "Đã dùng {v}",
-            "popBonus": "Thưởng theo mùa +{v} ge",
+            "popBonus": "Mùa {n} thưởng thêm +{v} ge",
             "popLogin": "Đăng nhập để xem số dư miễn phí ngẫu nhiên",
             "popLoading": "Đang tải số dư miễn phí ngẫu nhiên…",
             "popNoBudget": "Hạn mức miễn phí ngẫu nhiên được cấp trong khung giờ miễn phí"

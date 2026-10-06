@@ -95,6 +95,8 @@
             "nextImage": "下一張",
             "skipMissing": "已跳過 {0} 張無法顯示的圖片",
             "noMoreImages": "沒有更多可顯示的圖片了",
+            "rotateLeft": "逆時針旋轉 90°",
+            "rotateRight": "順時針旋轉 90°",
             "copyFailed": "複製失敗",
             "zoomIn": "放大",
             "zoomOut": "縮小",
@@ -291,6 +293,16 @@
             "loading": "載入中...",
             "empty": "暫無使用者",
             "loadFail": "載入失敗，請重試"
+        },
+        "tmp": {
+            "swept": "暫存區輪替：已清理 {n} 項，釋放 {mb}",
+            "trash": "（{n} 項位於隔離區，7 天內可還原）",
+            "occupied": "{n} 項被佔用，請稍後重試",
+            "pinned": "清理後仍超出上限；釘選項目佔用 {mb}",
+            "running": "暫存區輪替中…",
+            "busy": "輪替作業執行中，請稍候",
+            "fail": "輪替失敗，請稍後重試",
+            "clean": "暫存區已清空，無需清理"
         },
         "mem": {
             "qTitle": "qqqide 專用工作集（包含所有子行程）",
@@ -842,6 +854,10 @@
             "probeFound": "偵測到 {n} 個本機模型服務 · 點擊填入",
             "probeItem": "{url} · {n} 個模型",
             "probeFilled": "已填入本機模型位址",
+            "needActivation": "自帶 API Key 與本地模型是正版功能（啟動後可用）",
+            "actDeny": "該功能需先啟動（已為你開啟啟動頁）",
+            "actToast": "自帶 API Key 為啟動用戶專享：請先啟動，或關閉自帶 Key 後改用平台通道",
+            "relayNeedActivation": "自帶 API Key 為啟動用戶專享，請啟動後使用",
             "think": "上傳思考參數（thinking / reasoning_effort；若不支援請關閉）",
             "thinkLevel": "思考檔位（reasoning_effort）",
             "thinkJson": "自訂參數 JSON（選填，填寫後優先於檔位）",
@@ -1558,7 +1574,7 @@
             "popWindowLocal": "📅 ({tz}) 週日全天 + 每日{span}",
             "histTitle": "前 8 次免費窗口：{used} / {budget}",
             "histUsed": "已用 {v}",
-            "popBonus": "季節加成 +{v} ge",
+            "popBonus": "賽季{n}加成 +{v} ge",
             "popLogin": "登入後查看隨機獲取的免費餘額",
             "popLoading": "隨機免費餘額載入中…",
             "popNoBudget": "隨機免費額度在免費時間窗發放"

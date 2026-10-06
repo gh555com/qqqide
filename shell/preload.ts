@@ -167,6 +167,17 @@ const QQQ = {    // ---- app info ----
         },
     },
 
+    // ---- tmpMachine (_qqq/tmp 轮转 — shell/tmp-machine.ts) ----
+    tmpMachine: {
+        sweep: () => ipcRenderer.invoke('qqqide:tmp:sweep'),
+        status: () => ipcRenderer.invoke('qqqide:tmp:status'),
+        onSwept: (cb: (payload: any) => void) => {
+            const handler = (_e: any, payload: any) => { try { cb(payload || {}); } catch (_) {} };
+            ipcRenderer.on('qqqide:tmp:swept', handler);
+            return () => ipcRenderer.removeListener('qqqide:tmp:swept', handler);
+        },
+    },
+
     // ---- zoom (editor font size; was UI scale — 旧名保留) ----
     zoom: {
         get: () => ipcRenderer.invoke('qqqide:zoom:get'),

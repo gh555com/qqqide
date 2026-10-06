@@ -95,6 +95,8 @@
             "nextImage": "Next",
             "skipMissing": "Skipped {0} image(s) that could not be displayed",
             "noMoreImages": "No more images to display",
+            "rotateLeft": "Rotate 90° Counter-Clockwise",
+            "rotateRight": "Rotate 90° Clockwise",
             "copyFailed": "Copy Failed",
             "zoomIn": "Zoom In",
             "zoomOut": "Zoom Out",
@@ -291,6 +293,16 @@
             "loading": "Loading...",
             "empty": "No users yet",
             "loadFail": "Load failed, please retry"
+        },
+        "tmp": {
+            "swept": "Temp area rotation: cleaned {n} items, freed {mb}",
+            "trash": "({n} items in quarantine, recoverable within 7 days)",
+            "occupied": "{n} items are locked, please try again later",
+            "pinned": "Still over limit after cleanup; pinned items occupy {mb}",
+            "running": "Rotating temp area…",
+            "busy": "Rotation in progress, please wait",
+            "fail": "Rotation failed, please try again later",
+            "clean": "Temp area is clean, no cleanup needed"
         },
         "mem": {
             "qTitle": "qqqide Dedicated Working Set (includes all child processes)",
@@ -842,6 +854,10 @@
             "probeFound": "{n} local model services detected · Click to fill in",
             "probeItem": "{url} · {n} models",
             "probeFilled": "Local model address filled in",
+            "needActivation": "Using your own API Key and local models are premium features (available after activation).",
+            "actDeny": "This feature requires activation first (the activation page has been opened for you).",
+            "actToast": "Using your own API Key is exclusive to activated users: please activate first, or disable your custom Key to use the platform channel instead.",
+            "relayNeedActivation": "Using your own API Key is exclusive to activated users. Please activate to use this feature.",
             "think": "Send reasoning parameters (disable if unsupported by provider)",
             "thinkLevel": "Reasoning Effort Level",
             "thinkJson": "Custom Parameters JSON (optional; overrides level if provided)",
@@ -1558,7 +1574,7 @@
             "popWindowLocal": "📅 ({tz}) All day Sunday + Daily {span}",
             "histTitle": "First 8 free windows: {used} / {budget}",
             "histUsed": "Used {v}",
-            "popBonus": "Seasonal bonus +{v} ge",
+            "popBonus": "Season {n} Bonus +{v} ge",
             "popLogin": "Log in to check your random free balance drop",
             "popLoading": "Loading random free balance…",
             "popNoBudget": "Random free quota is distributed during free hours"

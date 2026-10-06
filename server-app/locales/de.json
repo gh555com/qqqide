@@ -95,6 +95,8 @@
             "nextImage": "Nächstes Bild",
             "skipMissing": "{0} nicht anzeigbare Bilder wurden übersprungen",
             "noMoreImages": "Keine weiteren Bilder zum Anzeigen vorhanden",
+            "rotateLeft": "90° gegen den Uhrzeigersinn drehen",
+            "rotateRight": "90° im Uhrzeigersinn drehen",
             "copyFailed": "Kopieren fehlgeschlagen",
             "zoomIn": "Vergrößern",
             "zoomOut": "Verkleinern",
@@ -291,6 +293,16 @@
             "loading": "Wird geladen...",
             "empty": "Derzeit keine Benutzer",
             "loadFail": "Laden fehlgeschlagen, bitte erneut versuchen"
+        },
+        "tmp": {
+            "swept": "Rotation des Temporärbereichs: {n} Elemente bereinigt, {mb} freigegeben",
+            "trash": "({n} Elemente im Quarantänebereich, innerhalb von 7 Tagen wiederherstellbar)",
+            "occupied": "{n} Elemente sind belegt, bitte später erneut versuchen",
+            "pinned": "Nach der Bereinigung immer noch über dem Limit; angepinnte Elemente belegen {mb}",
+            "running": "Temporärbereich wird rotiert…",
+            "busy": "Rotation läuft bereits, bitte warten",
+            "fail": "Rotation fehlgeschlagen, bitte später erneut versuchen",
+            "clean": "Temporärbereich ist sauber, keine Bereinigung erforderlich"
         },
         "mem": {
             "qTitle": "Dedizierter Arbeitssatz für qqqide (inklusive aller Unterprozesse)",
@@ -842,6 +854,10 @@
             "probeFound": "{n} lokale Modell-Dienste gefunden · Zum Einfügen klicken",
             "probeItem": "{url} · {n} Modelle",
             "probeFilled": "Adresse des lokalen Modells wurde eingefügt",
+            "needActivation": "Eigene API-Schlüssel und lokale Modelle sind Premium-Funktionen (nach Aktivierung verfügbar).",
+            "actDeny": "Für diese Funktion ist eine Aktivierung erforderlich (die Aktivierungsseite wurde für Sie geöffnet).",
+            "actToast": "Die Nutzung eines eigenen API-Schlüssels ist exklusiv für aktivierte Benutzer: Bitte aktivieren Sie Ihre Lizenz zuerst oder deaktivieren Sie den eigenen Schlüssel und verwenden Sie stattdessen die Plattform-Route.",
+            "relayNeedActivation": "Die Nutzung eines eigenen API-Schlüssels ist exklusiv für aktivierte Benutzer. Bitte aktivieren Sie Ihre Lizenz, um diese Funktion zu nutzen.",
             "think": "Denk-Parameter senden (deaktivieren, wenn vom Anbieter nicht unterstützt)",
             "thinkLevel": "Denk-Level (reasoning_effort)",
             "thinkJson": "Benutzerdefinierte Parameter als JSON (optional, hat Vorrang vor dem Level)",
@@ -1558,7 +1574,7 @@
             "popWindowLocal": "📅 ({tz}) Sonntag ganztägig + täglich {span}",
             "histTitle": "Erste 8 kostenlose Fenster: {used} / {budget}",
             "histUsed": "{v} verwendet",
-            "popBonus": "Saisonbonus +{v} ge",
+            "popBonus": "Saison{n}-Bonus +{v} ge",
             "popLogin": "Melden Sie sich an, um zufälliges kostenloses Guthaben zu erhalten",
             "popLoading": "Zufälliges kostenloses Guthaben wird geladen…",
             "popNoBudget": "Zufälliges kostenloses Guthaben wird während der kostenlosen Zeitfenster ausgegeben"

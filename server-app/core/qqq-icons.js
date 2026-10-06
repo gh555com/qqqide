@@ -153,6 +153,11 @@
     // 左右翻页箭头（悬浮预览层贴边翻页钮——线条 chevron，16 网格 @1:1 观感随字号）
     'chevron-left': '<path d="M10 4L6 8l4 4" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
     'chevron-right': '<path d="M6 4l4 4-4 4" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    // 旋转（悬浮预览层旋转钮——镜像对称对：270° 弧线 + 直角箭头；stroke 语言同 chevron；仅该语义可用）
+    'rotate-ccw': '<path d="M2 8a6 6 0 1 0 6-6c-1.68 0 -3.29 0.67 -4.49 1.83L2 5.33" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M2 2v3.33h3.33" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    'rotate-cw': '<path d="M14 8a6 6 0 1 1-6-6c1.68 0 3.29 0.67 4.49 1.83L14 5.33" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M14 2v3.33h-3.33" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
     // 对话气泡（inbox 空态）
     'chat': '<path d="M2 4.3a1.4 1.4 0 0 1 1.4-1.4h9.2A1.4 1.4 0 0 1 14 4.3v5.3a1.4 1.4 0 0 1-1.4 1.4H7.5l-3.3 2.7v-2.7H3.4A1.4 1.4 0 0 1 2 9.6z" fill="none" stroke="#000" stroke-width="1.25" stroke-linejoin="round"/>',
     // 多人（群聊）

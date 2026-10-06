@@ -119,6 +119,10 @@ function bootAiOverlay() {
   var _ovShowGen = 0;
   // ★ 本轮连续跳过计数（文件被外部删除/移动/损坏 → 标死续跳；落定到可显示图片后一次性如实提示）
   var _ovNavSkips = 0;
+  // ★ 旋转机器（图片专属）：当前图旋转角——连续累计（保旋转动画恒走短边）；归一值 0/90/180/270 仅用于适配/记忆
+  var _ovRotDeg = 0;
+  // ★ 旋转视图记忆（path 键；app 运行期内存表——关层重开/跨来源保持，重启清零，绝不落盘；FIFO 上限 500）
+  var _ovRotMemo = new Map();
 
   function _ovApplyHighlights(text) {
     _ovClearHighlights();
@@ -168,10 +172,58 @@ function bootAiOverlay() {
     var isSvg = /\.svg$/i.test(String(_ovLocalPath || '')) || /^data:image\/svg/i.test(String(img.src || ''));
     img.style.imageRendering = (total > 1.0001 && !isSvg) ? 'pixelated' : 'auto';
   }
+  // ═══ ★ 旋转机器（图片专属）═══
+  // 变换链恒 = scale(z)·translate(d)·rotate(θ)：rotate 恒最内——拖拽补偿恒 /z 不变、拖动恒屏幕方向；
+  // 旋转轴 = 元素中心；旋转即回中（d=0）→ 轴 = 视口中心（正在注视的内容原地旋转）。
+  function _ovImgTransform() {
+    return 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px) rotate(' + _ovRotDeg + 'deg)';
+  }
+  // 适配盒（旋转感知：90/270 视觉宽高互换 → 100% 视图恒整图可见；2x 上采样封顶与旧口径等价）
+  function _ovFitBox(nw, nh) {
+    var rn = ((_ovRotDeg % 360) + 360) % 360;
+    var swap = (rn === 90 || rn === 270);
+    var availW = Math.max(200, (overlay.clientWidth || window.innerWidth) - 64);
+    var availH = Math.max(150, (overlay.clientHeight || window.innerHeight) - 64 - 64);
+    var rw = swap ? nh : nw, rh = swap ? nw : nh;
+    var scale = Math.min(availW / Math.max(1, rw), availH / Math.max(1, rh), 2.0);
+    var w = Math.round(nw * scale), h = Math.round(nh * scale);
+    return { w: w, h: h, base: nw > 0 ? w / nw : 1 };
+  }
+  // 旋转后重算适配盒（元素盒宽高 + 基础倍率；filter 裁定基准同步）
+  function _ovRefitImg(img) {
+    var nw = img.naturalWidth, nh = img.naturalHeight;
+    if (!nw || !nh) return;
+    var f = _ovFitBox(nw, nh);
+    img.style.width = f.w + 'px';
+    img.style.height = f.h + 'px';
+    img._ovBaseScale = f.base;
+  }
+  // 视图记忆读取（path 键；无路径不记忆——剪贴板/内存图天然瞬态）
+  function _ovRotGet(lp) { try { return (lp && _ovRotMemo.get(lp)) || 0; } catch (_) { return 0; } }
+  // 旋转唯一入口（dir：-1 逆时针 / +1 顺时针；四态循环；无键盘监听——纯钮操作）
+  // 记忆两层：翻页序列项 rot（本序列往返保持）+ path 键运行期表（关层重开保持；重启清零、绝不落盘）
+  function _ovRotate(dir) {
+    if (_ovTablePanMode) return;
+    _ovRotDeg += (dir > 0 ? 90 : -90);
+    var rn = ((_ovRotDeg % 360) + 360) % 360;
+    if (_ovNav && _ovNav.list && _ovNav.list[_ovNav.index]) _ovNav.list[_ovNav.index].rot = rn;
+    var _rp = _ovLocalPath;
+    if (_rp) {
+      if (rn) {
+        _ovRotMemo.set(_rp, rn);
+        if (_ovRotMemo.size > 500) { var _fk = _ovRotMemo.keys().next(); if (!_fk.done) _ovRotMemo.delete(_fk.value); }
+      } else { _ovRotMemo.delete(_rp); }
+    }
+    var img = contentEl.querySelector('img');
+    if (!img) return;   // 图未就绪（加载中）：状态先落，onload 按当前状态显示
+    _ovRefitImg(img);
+    _dragX = 0; _dragY = 0;   // 旋转即回中
+    applyZoom();
+  }
   function applyZoom() {
     var img = contentEl.querySelector('img');
     if (img) {
-      img.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
+      img.style.transform = _ovImgTransform();
       img.style.transition = 'transform 0.15s ease';
       _ovApplyImgFilter(img);
       _ovZoomBadge();
@@ -382,6 +434,18 @@ function bootAiOverlay() {
     applyZoom();
   });
 
+  // ★ 旋转钮（图片专属；逆/顺 90° 四态循环；图标 = qqq-icons 手绘 rotate-ccw/cw；无键盘监听）
+  var rotLBtn = tbBtn('', window._i('shell.overlay.rotateLeft', '逆时针旋转 90°'), 'padding:8px 12px;');
+  rotLBtn.setAttribute('data-no-cd', '');
+  if (window.qqqIcons && window.qqqIcons.el) rotLBtn.appendChild(window.qqqIcons.el('rotate-ccw', 'font-size:18px;pointer-events:none'));
+  else rotLBtn.textContent = '\u21BA';
+  rotLBtn.addEventListener('click', function () { _ovRotate(-1); });
+  var rotRBtn = tbBtn('', window._i('shell.overlay.rotateRight', '顺时针旋转 90°'), 'padding:8px 12px;');
+  rotRBtn.setAttribute('data-no-cd', '');
+  if (window.qqqIcons && window.qqqIcons.el) rotRBtn.appendChild(window.qqqIcons.el('rotate-cw', 'font-size:18px;pointer-events:none'));
+  else rotRBtn.textContent = '\u21BB';
+  rotRBtn.addEventListener('click', function () { _ovRotate(1); });
+
   // Close (extra large) — custom tooltip: high-contrast instant cursor-following
   var closeBtnEl = tbBtn('\u2715', '', 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
     'background:rgba(220,50,47,0.5); border-color:rgba(220,50,47,0.7);');
@@ -422,6 +486,8 @@ function bootAiOverlay() {
   toolbar.appendChild(pathBtn);
   toolbar.appendChild(zoomOutBtn);
   toolbar.appendChild(zoomInBtn);
+  toolbar.appendChild(rotLBtn);
+  toolbar.appendChild(rotRBtn);
   toolbar.appendChild(closeBtnEl);
 
   overlay.appendChild(contentEl);
@@ -475,6 +541,7 @@ function bootAiOverlay() {
     _ovNav.index = idx;
     var it = _ovNav.list[idx] || {};
     _ovShowImage(String(it.src), it.localPath || null, false);
+    _ovRotDeg = it.rot || 0;   // ★ 恢复该图旋转（逐张独立记忆；onload 按当前状态显示）
   }
   function _ovNavStep(dir) {
     if (!_ovNav || !_ovNav.list || _ovNav.list.length < 2) return;
@@ -560,6 +627,7 @@ function bootAiOverlay() {
     contentEl.style.overflow = '';
     zoomScale = 1.0;
     _dragX = 0; _dragY = 0;
+    _ovRotDeg = 0;
     _ovZoomTouched = false;
     _ovNavSync();
   }
@@ -768,6 +836,7 @@ function bootAiOverlay() {
     contentEl.style.overflow = '';
     zoomScale = 1.0;
     _dragX = 0; _dragY = 0;
+    if (!isTx) _ovRotDeg = 0;     // 逐张旋转复位（转码产物回填 = 同图续显，旋转保持）
     _initZoom = 1.0;              // 图片模式重置基准 = 100%（D-pad 中键「重置位置」同步受益）
     _ovZoomTouched = false;       // 每张图从 100% 起（翻页=重新适配，不带上一张的缩放）
     _ovZoomBadge();
@@ -794,6 +863,8 @@ function bootAiOverlay() {
       pathBtn.style.display = '';
       zoomOutBtn.style.display = '';
       zoomInBtn.style.display = '';
+      rotLBtn.style.display = '';
+      rotRBtn.style.display = '';
       _ovNavSync();
       return;
     }
@@ -802,24 +873,18 @@ function bootAiOverlay() {
     img.onload = function () {
       if (_gen !== _ovShowGen) return;   // 旧图迟到：丢弃（快按翻页仅最后一张生效）
       var nw = img.naturalWidth, nh = img.naturalHeight;
-      // 内容区可用空间：overlay = 悬浮城（菜单+中区含中AI+状态栏，不含左右翼），扣除工具栏 64px + 内边距 32px×2
-      var availW = Math.max(200, (overlay.clientWidth || window.innerWidth) - 64);
-      var availH = Math.max(150, (overlay.clientHeight || window.innerHeight) - 64 - 64);
-      // 理想：2x 放大；上限：不超过可用空间
-      var targetW = Math.min(nw * 2, availW);
-      var targetH = Math.min(nh * 2, availH);
-      // 统一缩放比：取宽高两个方向中更紧的那个，且不超 2.0（2x 封顶）
-      var scale = Math.min(targetW / nw, targetH / nh, 2.0);
-      // 若原图已大于可用空间，scale < 1.0 → 缩小适配
-      var finalW = Math.round(nw * scale), finalH = Math.round(nh * scale);
+      // 适配盒（旋转感知：90/270 宽高互换；可用空间 = 悬浮城扣除工具栏 64px + 内边距 32px×2；2x 上采样封顶）
+      var _fit = _ovFitBox(nw, nh);
+      var finalW = _fit.w, finalH = _fit.h;
       img.style.cssText =
         'width:' + finalW + 'px; height:' + finalH + 'px; ' +
         'object-fit:contain; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
         'display:block; user-select:none; will-change:transform;';
-      img._ovBaseScale = nw > 0 ? finalW / nw : 1;   // 基础适配倍率（放大裁定基准 = 本值 × zoomScale）
+      img._ovBaseScale = _fit.base;                  // 基础适配倍率（放大裁定基准 = 本值 × zoomScale）
       _ovApplyImgFilter(img);                        // 小图初始上采样同为「原始像素」显示
       contentEl.appendChild(img);
       contentEl.style.overflow = 'visible';
+      if (_ovRotDeg) applyZoom();   // ★ 恢复旋转（同帧直设 → 首帧零动画；transition 由此武装）
       // ── 拖拽平移 ──
       var dragging = false, sx = 0, sy = 0, _raf = 0, _pending = false;
       function onMD(ev) {
@@ -837,7 +902,7 @@ function bootAiOverlay() {
           _pending = true;
           _raf = requestAnimationFrame(function () {
             _pending = false;
-            img.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
+            img.style.transform = _ovImgTransform();
           });
         }
       }
@@ -890,6 +955,8 @@ function bootAiOverlay() {
     pathBtn.style.display = '';
     zoomOutBtn.style.display = '';
     zoomInBtn.style.display = '';
+    rotLBtn.style.display = '';
+    rotRBtn.style.display = '';
     _ovNavSync();
   }
 
@@ -936,12 +1003,13 @@ function bootAiOverlay() {
             var _it = _nav.list[_ni];
             var _itOk = !!(_it && typeof _it.src === 'string' && _it.src);
             if (_ni === _nIdx) _nCur = _itOk ? _nList.length : -1;
-            if (_itOk) _nList.push({ src: _it.src, localPath: _it.localPath || null });
+            if (_itOk) _nList.push({ src: _it.src, localPath: _it.localPath || null, rot: _ovRotGet(_it.localPath) });
           }
           if (_nCur >= 0 && _nList.length > 1) _ovNav = { list: _nList, index: _nCur, dir: 1 };
         }
       }
       _ovShowImage(e.data.src, e.data.localPath || null, false);
+      _ovRotDeg = _ovNav ? (_ovNav.list[_ovNav.index].rot || 0) : _ovRotGet(e.data.localPath);
       _ovClaimFocus();   // 抢焦点 + 广播层状态（来源 iframe 快捷键让路）
     }
 
@@ -961,6 +1029,7 @@ function bootAiOverlay() {
         contentEl.style.overflow = 'hidden';
         zoomScale = 1.0;
         _dragX = 0; _dragY = 0;
+        _ovRotDeg = 0;
         _ovZoomTouched = false;
 
         // ★ 先让 overlay 布局生效再测可用空间：display:none 时 clientWidth=0，
@@ -1069,6 +1138,8 @@ function bootAiOverlay() {
         pathBtn.style.display = 'none';
         zoomOutBtn.style.display = '';
         zoomInBtn.style.display = '';
+        rotLBtn.style.display = 'none';   // 旋转仅属图片模式
+        rotRBtn.style.display = 'none';
         _ovClaimFocus();   // 抢焦点 + 广播层状态（来源 iframe 快捷键让路）
       } catch (_) {
         // 出错时强制复位，避免 overlay 残留 invisible 阻挡 UI

@@ -1524,11 +1524,12 @@
     },
     isLoggedIn: function () { return !!(_authData && _authData.token); },
     isPurchased: function () { return !!(_authData && _authData.purchased); },
-    // ★ 服务端同步购买状态（每次窗口生命周期最多查一次，点击菜单时触发）
+    // ★ 服务端同步购买状态（默认每次窗口生命周期最多查一次，点击菜单时触发；
+    //   force=true 强制现查——激活门闭环：用户在浏览器完成激活后回到 IDE，force 现查即解锁，免重启）
     _purchasedServerChecked: false,
-    checkPurchased: function () {
+    checkPurchased: function (force) {
       var self = this;
-      if (self._purchasedServerChecked) return Promise.resolve(self.isPurchased());
+      if (self._purchasedServerChecked && !force) return Promise.resolve(self.isPurchased());
       if (!self.isLoggedIn()) return Promise.resolve(false);
       return fetch('https://www.gh555.com/api/me/goods', {
         headers: { 'Authorization': 'Bearer ' + self.getAuthToken() }
@@ -1537,7 +1538,9 @@
         if (d.ok && Array.isArray(d.goods)) {
           for (var i = 0; i < d.goods.length; i++) {
             if (d.goods[i].Slg === 'qqqide' || d.goods[i].slg === 'qqqide') {
+              var _wasNew = !(_authData && _authData.purchased);
               if (_authData) _authData.purchased = true;
+              if (_wasNew) { try { _notifyStateChange(); } catch (e) { } }   // 新激活 → 广播（各门/锁 UI 即时解灰）
               return true;
             }
           }

@@ -404,6 +404,18 @@ async function _executeSend(intent) {
         _pressRejectRollback();
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
         return;
+    }
+    // ★ 激活门（2026-10-06）：自带 API Key = 激活用户专享（队列/恢复直通路径同规——拦住必归还不蒸发）
+    if (window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()) {
+        try {
+            var _entBk = (window.parent && window.parent.qqqEntitlement) || null;
+            if (_entBk && typeof _entBk.canUse === 'function' && !_entBk.canUse('byok')) {
+                if (intent.fromQueue) _requeueFromQueue();
+                _pressRejectRollback();
+                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.byok.actToast', '自带 API Key 为激活用户专享：请先激活，或关闭自带 Key 后改用平台通道'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
+                return;
+            }
+        } catch (_eBk) { }
     }
 
     // ★ 所有闸门已过 → 链执行器已置 _chainBusy（_enqueueSend），直接进入发送
