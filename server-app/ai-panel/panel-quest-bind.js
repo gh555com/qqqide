@@ -378,6 +378,8 @@ async function _initWorkspace(root) {
 var _bindLock = null;
 // ★ 锁硬拒绝标记（2026-08-10）：中面板被项目锁拒绝 → 侧面板中止绑定后不再每 3s 重试
 var _lockBlocked = false;
+// ★ 启动门标记（panel-fav.js 收藏跳转等待）：bindMainProject 全链完成（含 initQuests 启动恢复）才放行
+var _panelBootDone = false;
 
 // 入口：绑定主文件夹（仅首次，终身一次）
 async function bindMainProject() {
@@ -419,15 +421,16 @@ async function bindMainProject() {
             }
             if (_bpRetry < 15) await new Promise(function (r) { setTimeout(r, 500); });
         }
-        if (!root && _lastMain) root = _lastMain;  // 兜底：视口始终未稳定 → 用最后一次采样
-        if (!root) {
+        if (!root && _lastMain) root = _lastMain;  // 兜底：视口始终未稳定 → 用最后一次采样        if (!root) {
             // [silent] bindMainProject: no main project after retries, wait for viewport-changed message
             _bindLock = null;
+            _panelBootDone = true;   // ★ 启动门放行（无主项目：草稿态可用——收藏跳转照常裁决、如实回报）
             _signalUiReady();   // ★ 无主项目：草稿态界面已可用 → 发就绪信号（2026-09-24）
             return;
-        }
-
-        await _initWorkspace(root);
+        }
+
+        await _initWorkspace(root);
+        _panelBootDone = true;   // ★ 启动门放行（panel-fav.js 收藏跳转等待此信号——全量恢复完成前不抢跑）
         _bindLock = null;
     })();
 

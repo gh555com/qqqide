@@ -6,9 +6,9 @@
 //   · 数据落点 = 项目级 only.sq3 key `ai.floorFavs`（随项目迁移；条目自包含、带全局 id + updatedAt
 //     ——为将来云端上传下载预留，云同步只需按 id LWW 合并，不回读项目数据）
 //   · 星标按钮在 AI 面板 az 区（ai-panel/panel-fav.js 注入）——点星经 postMessage 请本机开命名框
-//   · 收藏夹 = 全窗居中悬浮（开则渲染、关则 DOM 即毁，零常驻）；行点击 = 三面板智能路由跳转
+//   · 收藏夹 = 全窗居中悬浮（开则渲染、关则 DOM 即毁，零常驻）；行点击 = 归宿面板裁决跳转
 //   · 跳转执行（孤儿楼层按需重建）在面板侧：ai-panel/panel-fav.js
-//   消息协议：qqq-fav-open / qqq-fav-query / qqq-fav-jump-miss（面板→主）
+//   消息协议：qqq-fav-open / qqq-fav-query / qqq-fav-jump-miss / qqq-fav-jump-ack（面板→主）
 //           qqq-fav-state / qqq-fav-jump（主→面板）
 
 (function () {
@@ -153,39 +153,116 @@
     }
   }
 
-  // ── 跳转路由（三面板智能：归宿面板面板；无归属 → 中面板；翼未开 → 先开翼）──
+  // ── 跳转路由 v2（归宿面板裁决 = 归属优先 → 金色子弹面板）──
+  //   ① quest 单实例（父注册表）恒优先：已被某面板持有 → 直达该面板（不复制第二实例；翼板关着先掀开）
+  //   ② 无人持有 → 召回进「金色子弹面板」（__qqq_aiTarget = 上一个拿到焦点的面板，即视口喂料目标）
+  //   ③ 金色面板是关闭的翼板 → 不自动掀翼（用户当下可见上下文 = 中间面板）→ 中面板兜底
+  //   ④ 投递带 jid 回执重试：冷开翼板 iframe 加载期 listener 未就绪也不丢跳（收到回执即停泵）
   function _frameFor(panelId) {
     var zoneId = panelId === 0 ? 'qqq-wing-left' : panelId === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
     var zone = document.getElementById(zoneId);
     var fr = zone ? zone.querySelector('iframe') : null;
     return (fr && fr.contentWindow) ? fr : null;
   }
+  function _wingOpen(panelId) {
+    var dot = document.getElementById(panelId === 0 ? 'qqq-bulb-1' : 'qqq-bulb-2');
+    return !!(dot && dot.classList.contains('on'));
+  }
+  function _goldenTarget() {
+    var t = (typeof window.__qqq_aiTarget === 'number') ? window.__qqq_aiTarget : 1;
+    if (t !== 0 && t !== 2) return 1;
+    return _wingOpen(t) ? t : 1;
+  }
   function _ensureWingOpen(panelId) {
     var dotId = panelId === 0 ? 'qqq-bulb-1' : 'qqq-bulb-2';
-    var dot = document.getElementById(dotId);
-    if (dot && !dot.classList.contains('on')) { try { dot.click(); } catch (_) { } }
+    var tries = 0;
+    (function _tryOpen() {
+      var dot = document.getElementById(dotId);
+      if (!dot || dot.classList.contains('on')) return;
+      try { dot.click(); } catch (_) { }
+      // 开翼不应期（_shellWingLocked）可能吞掉首击 → 复核补击（自终止）
+      if (++tries < 4) setTimeout(_tryOpen, 600);
+    })();
+  }
+  // 冷开翼预处理：翼板关着先掀开，并让投递晚一拍——宽度未展开时 iframe 内计算滚动位置会偏
+  function _prepTarget(panelId) {
+    if (panelId !== 0 && panelId !== 2) return 0;
+    if (_wingOpen(panelId)) return 0;
+    _ensureWingOpen(panelId);
+    return 450;
+  }
+  // 投递泵：postMessage + 回执（qqq-fav-jump-ack）重试，直至收到回执或超时
+  var _jumpSend = null;        // { jid, target, until, timer }
+  var _lastJumpTarget = -1;    // 最近一次已回执的投递目标（归属易主重回路由的防环去重）
+  var _bounceGuard = null;     // { questId, ts } 同任务 5s 内至多重回一次
+  function _jumpDeliver(questId, floorNum, target, delayMs) {
+    if (_jumpSend) { try { clearTimeout(_jumpSend.timer); } catch (_) { } }
+    var jid = 'fj' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    var _delay = parseInt(delayMs, 10) || 0;
+    _jumpSend = { jid: jid, target: target, until: Date.now() + _delay + 12000, timer: 0 };
+    var _pump = function () {
+      if (!_jumpSend || _jumpSend.jid !== jid) return;
+      var fr = _frameFor(target);
+      if (fr && fr.contentWindow) {
+        try { fr.contentWindow.postMessage({ type: 'qqq-fav-jump', questId: questId, floorNum: floorNum, jid: jid }, '*'); } catch (_) { }
+      }
+      if (Date.now() > _jumpSend.until) {
+        _jumpSend = null;
+        _qoast('★ ' + _i('fav.noPanel', 'AI 面板尚未就绪'), { type: 'info', duration: 4000 });
+        return;
+      }
+      _jumpSend.timer = setTimeout(_pump, 650);
+    };
+    // 首发（冷开翼 → 等宽度落定再投；否则立即）
+    _jumpSend.timer = setTimeout(_pump, _delay);
+  }
+  function _onJumpAck(e, d) {
+    var p = _jumpSend;
+    if (!p || p.jid !== String(d.jid || '')) return;
+    // 来源核对（同源可信域内的卫生检查）：回执必须来自目标面板
+    try {
+      var fr = _frameFor(p.target);
+      if (fr && e.source && e.source !== fr.contentWindow) return;
+    } catch (_) { }
+    try { clearTimeout(p.timer); } catch (_) { }
+    _lastJumpTarget = p.target;
+    _jumpSend = null;
   }
   function _jump(item) {
     _closePanel();
     var questId = item.questId, floorNum = item.floorNum;
     var owner = undefined;
     try { if (typeof window.__qqq_getQuestOwner === 'function') owner = window.__qqq_getQuestOwner(questId); } catch (_) { }
-    var target = 1;
+    var target = -1;
     if (owner === 0 || owner === 1 || owner === 2) target = owner;
-    var fr = _frameFor(target);
-    if (!fr && target !== 1) {
-      // 归属面板 iframe 不存在（陈旧归属）→ 释放后中面板兜底
+    if (target !== -1 && target !== 1 && !_frameFor(target)) {
+      // 归属面板 iframe 不存在（陈旧归属）→ 释放归属 → 走金色裁决
       try { if (typeof window.__qqq_releaseQuest === 'function') window.__qqq_releaseQuest(questId, target); } catch (_) { }
-      target = 1; fr = _frameFor(1);
+      target = -1;
     }
-    if (!fr) { _qoast('★ ' + _i('fav.noPanel', 'AI 面板尚未就绪'), { type: 'info', duration: 4000 }); return; }
-    if (target === 0 || target === 2) _ensureWingOpen(target);
-    try { fr.contentWindow.postMessage({ type: 'qqq-fav-jump', questId: questId, floorNum: floorNum }, '*'); } catch (_) { }
+    if (target === -1) target = _goldenTarget();
+    if (target !== 1 && !_frameFor(target)) target = 1;   // 金色翼板 iframe 异态 → 中面板兜底
+    if (!_frameFor(target)) { _qoast('★ ' + _i('fav.noPanel', 'AI 面板尚未就绪'), { type: 'info', duration: 4000 }); return; }
+    _jumpDeliver(questId, floorNum, target, _prepTarget(target));
   }
   function _onJumpMiss(d) {
+    // ★ 竞态兜底：执行面板侧发现归属已易主 → 重投到现任持有面板（同任务 5s 单次 + 目标去重，防环）
+    var from = parseInt(d.floorNum, 10) || 0;
+    if (d.reason === 'owner' && (d.owner === 0 || d.owner === 1 || d.owner === 2)
+      && from > 0 && d.owner !== _lastJumpTarget) {
+      var g = _bounceGuard;
+      if (!(g && g.questId === d.questId && (Date.now() - g.ts) < 5000)) {
+        _bounceGuard = { questId: d.questId, ts: Date.now() };
+        var t2 = d.owner;
+        if (t2 !== 1 && !_frameFor(t2)) t2 = 1;
+        _jumpDeliver(d.questId, from, t2, _prepTarget(t2));
+        return;
+      }
+    }
     var msg = d.reason === 'floor' ? _i('fav.floorGone', '该楼层数据不存在')
       : d.reason === 'card' ? _i('fav.cardGone', '任务数据未就绪或已被删除')
-        : _i('fav.questGone', '该任务已不存在（可在收藏夹中移除该条）');
+        : d.reason === 'busy' ? _i('fav.busy', '面板正忙，请稍后再试')
+          : _i('fav.questGone', '该任务已不存在（可在收藏夹中移除该条）');
     _qoast('★ ' + msg, { type: 'warning', duration: 5000 });
   }
 
@@ -661,6 +738,7 @@
       return;
     }
     if (d.type === 'qqq-fav-jump-miss') { _onJumpMiss(d); return; }
+    if (d.type === 'qqq-fav-jump-ack') { _onJumpAck(e, d); return; }
   });
 
   window.qqqFloorFavs = {

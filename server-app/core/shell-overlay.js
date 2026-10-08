@@ -283,7 +283,7 @@ function bootAiOverlay() {
       if (_rotHold !== h) return;
       if (_ovTablePanMode) { _ovRotHoldAbort(); return; }   // 层已切表格模式 = 放弃微调（收尾仍走抬起/中止路径）
       _dragX = 0; _dragY = 0;   // 进档先回中（同步进：轴 = 视口中心）
-      _ovRotResetHint();   // ★ 首次对该图进微调 → 提示「房子钮还原原始角度」+ 房子高亮一会儿
+      _ovRotResetHint();   // ★ 首次对该图进微调 → 文字提示 + 房子钮黄色同步闪烁
       _ovRotFine(dir);
       h.tick = setInterval(function () { if (_rotHold === h) _ovRotFine(dir); }, _ROT_FINE_MS);
     }, _ROT_HOLD_MS);
@@ -568,7 +568,8 @@ function bootAiOverlay() {
   overlay.appendChild(toolbar);
 
   // ═══ ★ 旋转还原提示（用户定案）：首次对一张图进入角度微调时——工具栏正上方现一行提示 +
-  //   十字键房子钮高亮一会儿；每张图仅一次（app 运行期去重，与旋转记忆同生命周期）；关层即收（详 close）。
+  //   十字键房子钮，两者同一动画节奏（_ROT_FLASH_MS/_N）黄色同步闪；每张图仅一次
+  //   （app 运行期去重，与旋转记忆同生命周期）；关层即收（详 close）。
   var _ovRotHintSeen = new Set();
   var _ovRotHintWrap = document.createElement('div');
   _ovRotHintWrap.style.cssText = 'display:none; position:absolute; left:0; right:0; bottom:76px; z-index:100001; text-align:center; pointer-events:none;';
@@ -579,11 +580,17 @@ function bootAiOverlay() {
   _ovRotHintPill.textContent = window._i('shell.overlay.rotResetHint', '点按右侧十字键中央的房子按钮，可还原到原始角度');
   _ovRotHintWrap.appendChild(_ovRotHintPill);
   overlay.appendChild(_ovRotHintWrap);
+  // ★ 黄色闪烁节奏唯一源：提示文字与房子钮同挂同摘、同参数动画（同一同步块起跳 = 永不失步）
+  var _ROT_FLASH_MS = 3600, _ROT_FLASH_N = 4;
+  var _rotFlashTiming = (_ROT_FLASH_MS / _ROT_FLASH_N / 1000) + 's ease-in-out ' + _ROT_FLASH_N;
   var _ovHintCss = document.createElement('style');
   _ovHintCss.textContent =
     '@keyframes ov-home-hl{0%,100%{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.25);box-shadow:none}' +
     '50%{background:rgba(255,211,1,0.45);border-color:#ffd301;box-shadow:0 0 10px rgba(255,211,1,0.7)}}' +
-    '#qqq-ai-overlay .ov-home-hl{animation:ov-home-hl 0.9s ease-in-out 4;background:rgba(255,211,1,0.2);border-color:rgba(255,211,1,0.85);}';
+    '@keyframes ov-rot-hint-flash{0%,100%{color:#fff;border-color:rgba(255,255,255,0.2);box-shadow:none}' +
+    '50%{color:#ffd301;border-color:#ffd301;box-shadow:0 0 10px rgba(255,211,1,0.7)}}' +
+    '#qqqide-overlay .ov-home-hl{animation:ov-home-hl ' + _rotFlashTiming + ';}' +
+    '#qqqide-overlay .ov-rot-hint-flash{animation:ov-rot-hint-flash ' + _rotFlashTiming + ';}';
   document.head.appendChild(_ovHintCss);
   var _ovHintT1 = 0, _ovHintT2 = 0, _ovHomeHlT = 0;
   function _ovRotHintHide() {
@@ -592,7 +599,7 @@ function bootAiOverlay() {
     if (_ovHomeHlT) { clearTimeout(_ovHomeHlT); _ovHomeHlT = 0; }
     _ovRotHintPill.style.opacity = '0';
     _ovRotHintWrap.style.display = 'none';
-    try { btnCenter.classList.remove('ov-home-hl'); } catch (_) { }
+    try { _ovRotHintPill.classList.remove('ov-rot-hint-flash'); btnCenter.classList.remove('ov-home-hl'); } catch (_) { }
   }
   function _ovRotResetHint() {
     var _k = _ovRotKeyOf(_ovLocalPath);
@@ -608,15 +615,17 @@ function bootAiOverlay() {
       _ovHintT1 = 0;
       _ovRotHintPill.style.opacity = '0';
       _ovHintT2 = setTimeout(function () { _ovHintT2 = 0; _ovRotHintWrap.style.display = 'none'; }, 300);
-    }, 3200);
-    // 房子钮高亮一会儿（4 循环 ≈3.6s；先摘类强制重排 = 同钮再触发动画可重放）
+    }, _ROT_FLASH_MS);
+    // 黄闪重放（摘类 → 强制重排 → 挂类）：文字与房子钮同拍挂类 = 同一帧起跳，节奏恒同步
     try {
+      _ovRotHintPill.classList.remove('ov-rot-hint-flash');
       btnCenter.classList.remove('ov-home-hl');
       void btnCenter.offsetWidth;
+      _ovRotHintPill.classList.add('ov-rot-hint-flash');
       btnCenter.classList.add('ov-home-hl');
     } catch (_) { }
     if (_ovHomeHlT) clearTimeout(_ovHomeHlT);
-    _ovHomeHlT = setTimeout(function () { _ovHomeHlT = 0; try { btnCenter.classList.remove('ov-home-hl'); } catch (_) { } }, 3600);
+    _ovHomeHlT = setTimeout(function () { _ovHomeHlT = 0; try { btnCenter.classList.remove('ov-home-hl'); } catch (_) { } }, _ROT_FLASH_MS);
   }
 
   // ═══ 左右贴边全高翻页钮（翻页唯一控件；nav 缺席/单张 → 隐藏，显隐判据归 _ovNavSync）═══

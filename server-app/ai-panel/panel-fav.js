@@ -3,16 +3,21 @@
 'use strict';
 // ═══ panel-fav.js ═══
 // 楼层收藏 · 面板侧（az 区星标 + 收藏跳转）
-//   主窗口 core/floor-favs.js = 数据唯一真理源（only.sq3 ai.floorFavs）+ 命名框 + 收藏夹面板；
-//   本文件只做两件事：
+//   主窗口 core/floor-favs.js = 数据唯一真理源（only.sq3 ai.floorFavs）+ 命名框 + 收藏夹面板 + 归宿面板裁决；
+//   本文件只做三件事：
 //   ① 星标按钮（_initClockBlock 注入，居中于饼图与 ge 之间）——点击 → 通知主窗口开命名框
 //   ② 收藏跳转执行——切 quest（复用 switchQuest 全链）→ 卡上限外的孤儿楼层按需重建
 //      （磁盘 all.json + _buildFloorDOM + 节点快照精准插回 + 免驱逐标记）→ 滚动居中 + 金色闪 3 下
+//   ③ 执行两关：面板启动门（冷开翼板全量恢复完成前不抢跑）+ 跳楼锁（切换收尾延迟滚底让路——
+//      否则召回后的楼层跳转与金色高光会被随后的强制滚底整个吞掉）
 //   协议（postMessage）：qqq-fav-state（主→面板，全量状态）/ qqq-fav-open（面板→主，点星）
-//                     qqq-fav-jump（主→面板）/ qqq-fav-jump-miss（面板→主，任务或楼层不存在）/ qqq-fav-query（面板→主，主动拉状态）
+//                     qqq-fav-jump（主→面板，带 jid 可重复投递）/ qqq-fav-jump-ack（面板→主，回执停重试）
+//                     qqq-fav-jump-miss（面板→主，任务/楼层不存在或归属易主）/ qqq-fav-query（面板→主，主动拉状态）
 
 var _favState = {};    // 'questId|floorNum' → { id, name }
 var _favJumpBusy = false;
+var _favPending = null;    // ★ 忙时最新一跳（最新覆盖：连点两个收藏，目光落在最后一跳）
+var _favLastJid = '', _favLastJidTs = 0;   // ★ 投递去重（主窗口重试的同一 jid 只执行一次）
 
 function _favFq(key, fb, params) {
     try { if (typeof window._qq === 'function') return window._qq(key, fb, params); } catch (_) { }
@@ -20,6 +25,32 @@ function _favFq(key, fb, params) {
 }
 function _favKey(questId, floorNum) { return String(questId) + '|' + String(floorNum); }
 function _favSleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+// ── 面板启动门（冷开翼板：initQuests 全量恢复完成前不抢跑，防与启动恢复互踩）──
+//   返回 true = 真实等待过（冷开）→ 调用方再等一拍布局落定（启动恢复的延迟滚位链收尾）
+function _favWaitBooted() {
+    return new Promise(function (resolve) {
+        var n = 0;
+        (function _poll() {
+            var ok = false;
+            try { ok = !!_panelBootDone; } catch (_) { }
+            if (ok) { resolve(n > 0); return; }
+            if (++n > 150) { resolve(false); return; }   // ≤30s 兜底（面板异常也不永久悬挂）
+            setTimeout(_poll, 200);
+        })();
+    });
+}
+// ── 跳楼锁置位（card-pool.scrollActiveToBottom 让路标记；panel-fav 唯一置位点）──
+function _favLockArm(questId) {
+    try {
+        var c = (typeof cardPool !== 'undefined' && cardPool && cardPool.getCard) ? cardPool.getCard(questId) : null;
+        if (c) c._favJumpLockUntil = Date.now() + 2500;
+    } catch (_) { }
+}
+function _favOwnerOf(questId) {
+    try { if (typeof _parentGetQuestOwner === 'function') return _parentGetQuestOwner(questId); } catch (_) { }
+    return undefined;
+}
 
 // ── 星标目标解析（★ 活的）──
 // 铁律级时序事实：_initClockBlock 恒在 aiEl 挂进 .card 之前执行
@@ -253,22 +284,43 @@ function _favScrollAndFlash(card, dom) {
 
 async function _favJump(questId, floorNum) {
     if (!questId || !floorNum || floorNum <= 0) return;
-    if (_favJumpBusy) return;
+    if (_favJumpBusy) { _favPending = { questId: questId, floorNum: floorNum }; return; }
     _favJumpBusy = true;
     try {
-        if (typeof questActiveId === 'undefined' || typeof cardPool === 'undefined' || !cardPool) return;
+        // ★ 面板启动门（冷开翼板：全量恢复完成前不抢跑；真等过 → 再让一拍给启动滚位链）
+        if (await _favWaitBooted()) await _favSleep(200);
+        if (typeof questActiveId === 'undefined' || typeof cardPool === 'undefined' || !cardPool) {
+            _postToHost({ type: 'qqq-fav-jump-miss', questId: questId, floorNum: floorNum, reason: 'card' });
+            return;
+        }
         // ① 任务存在性（磁盘索引为准；不存在 → 主窗口提示）
         var entry = null;
         try {
             var list = await questStore.list();
             for (var i = 0; i < list.length; i++) { if (list[i].id === questId) { entry = list[i]; break; } }
         } catch (_) { }
-        if (!entry) { _postToHost({ type: 'qqq-fav-jump-miss', questId: questId, reason: 'quest' }); return; }
+        if (!entry) { _postToHost({ type: 'qqq-fav-jump-miss', questId: questId, floorNum: floorNum, reason: 'quest' }); return; }
+        _favLockArm(questId);   // ★ 已在场的情形也上锁（新楼完结等挂起的延迟滚底同样必须让路）
         // ② 切 quest（复用全链：所有权/恢复/布局；建楼未出首 house 等情形由 switchQuest 自身拒绝并提示）
         if (questActiveId !== questId) {
             await switchQuest(questId);
+            _favLockArm(questId);   // ★ 第一时间上锁（微任务内，早于切换收尾的 setTimeout 滚底宏任务）
             if (questActiveId !== questId) { await _favSleep(600); await switchQuest(questId); }
-            if (questActiveId !== questId) return;
+            if (questActiveId !== questId) {
+                var _own = _favOwnerOf(questId);
+                var _ownedBy = (_own === 0 || _own === 1 || _own === 2) ? _own : undefined;
+                // 「未收到 house 1」拒绝：switchQuest 已自带提示 → 不重复报
+                var _ag = (parent && parent.__qqq_agentPool && parent.__qqq_agentPool[questActiveId]) || null;
+                var _explained = !!(_ag && _ag._stopState === 'sending'
+                    && (_ag._deferRenderUntilHouse1 || _ag._houseIndex == null || _ag._houseIndex <= 0));
+                if (!_explained) {
+                    _postToHost({
+                        type: 'qqq-fav-jump-miss', questId: questId, floorNum: floorNum,
+                        reason: _ownedBy === undefined ? 'busy' : 'owner', owner: _ownedBy
+                    });
+                }
+                return;
+            }
         }
         // ③ 卡就绪（首次进入为异步加载；轻轮询 ≤4s）
         var card = cardPool.getCard(questId);
@@ -276,21 +328,24 @@ async function _favJump(questId, floorNum) {
             await _favSleep(100);
             card = cardPool.getCard(questId);
         }
-        if (!card || card.totalFloors <= 0) { _postToHost({ type: 'qqq-fav-jump-miss', questId: questId, reason: 'card' }); return; }
+        if (!card || card.totalFloors <= 0) { _postToHost({ type: 'qqq-fav-jump-miss', questId: questId, floorNum: floorNum, reason: 'card' }); return; }
+        _favLockArm(questId);
         // ④ 楼层 DOM：在 → 直达；被卡上限裁掉（孤儿层）→ 磁盘按需重建
         var dom = card.floorDOM[floorNum];
         if (!dom || !dom.aiEl) {
             var ok = await _favRebuildFloor(card, questId, floorNum);
-            if (!ok) { _postToHost({ type: 'qqq-fav-jump-miss', questId: questId, reason: 'floor' }); return; }
+            if (!ok) { _postToHost({ type: 'qqq-fav-jump-miss', questId: questId, floorNum: floorNum, reason: 'floor' }); return; }
             dom = card.floorDOM[floorNum];
         }
         if (!dom || !dom.aiEl) return;
-        // ⑤ 滚动居中 + 金色闪 3 下
+        // ⑤ 滚动居中 + 金色闪 3 下（锁罩住落点：一切自动滚底不得翻盘）
+        _favLockArm(questId);
         _favScrollAndFlash(card, dom);
     } catch (_e) {
         // 静默：绝不打断面板
     } finally {
         _favJumpBusy = false;
+        if (_favPending) { var p = _favPending; _favPending = null; _favJump(p.questId, p.floorNum); }
     }
 }
 
@@ -298,7 +353,15 @@ window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || !d.type) return;
     if (d.type === 'qqq-fav-state') { _favOnState(d.items); return; }
-    if (d.type === 'qqq-fav-jump') { _favJump(String(d.questId || ''), parseInt(d.floorNum, 10) || 0); return; }
+    if (d.type === 'qqq-fav-jump') {
+        var jid = String(d.jid || '');
+        if (jid) _postToHost({ type: 'qqq-fav-jump-ack', jid: jid });   // ★ 回执：主窗口投递泵收到即停
+        var now = Date.now();
+        if (jid && jid === _favLastJid && (now - _favLastJidTs) < 20000) return;   // 重试重复投递：已执行/执行中
+        if (jid) { _favLastJid = jid; _favLastJidTs = now; }
+        _favJump(String(d.questId || ''), parseInt(d.floorNum, 10) || 0);
+        return;
+    }
     if (d.type === 'qqq-lang-change') { if (_favRefreshAll() > 0) _favScheduleRefresh(4); return; }
 });
 

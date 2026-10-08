@@ -1,18 +1,16 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// first-run.js — 首次启动弹窗链（唯一入口）
+// first-run.js — 首次启动专家确认弹窗（唯一入口；每份程序数据只弹一次）
 //
-// 链: 第一层专家声明 → 点「同意并继续」→ 第二层游戏宣言/社区引导（点「那很好」收工）
-//   第一层: 专家声明行（主题 = 指令危害认知）
-//   第二层: 原创游戏宣言 + 「利用 Roam 跳出项目文件夹滴限制」教学视频（新行；硬编码 B 站 URL → shell.js 全局链接兜底 = 外部浏览器）+ help 社区一对一引导
-//   退出（第一层） → bridge.app.quitAll()（不写标记，下次启动再弹）
-//   标记: 两层各自独立、各双通道（任一通道有 → 该层不弹）——2026-09-08 双修：真实机器实锤「同意已落盘、重启后标记消失」→ sq3 文件级回滚
-//     ① qgs.simple('qqq.settings').setNow 写 firstRun.expertAgreed / firstRun.gameIntro —— setNow 立即落盘（旧 fire-and-forget set：退出竞态/强杀即丢）
-//     ② localStorage qqq.firstRun.expertAgreed.v1 / qqq.firstRun.gameIntro.v1 —— sq3 的损坏恢复链（主→.prev→.bak）与整库回滚不碰它，双通道互相兜底
-//   判定: !expertAgreed → 第一层；已同意且 !gameIntro → 第二层（同意当场紧接弹 / 老用户与断链重入启动补弹一次）；两标记齐 → 静默
-//         库暂不可用 → 1s/3s/8s 退避重试，仍不可用放弃（弹了同意也存不进，纯噪音）
-// 持久化入口: qgs.simple('qqq.settings', {cloud:false}) = 程序级 global.sq3（§8.1 六入口之一）+ localStorage 兜底
+// 弹窗: 专家声明行（主题 = 指令危害认知）+ 「同意并继续」/「退出」两按钮
+//   同意 → 写标记后关闭（此后静默，永不再弹）
+//   退出 → bridge.app.quitAll()（不写标记，下次启动再弹）
+//   标记: 双通道（任一通道有 → 不弹）
+//     ① qgs.simple('qqq.settings').setNow 写 firstRun.expertAgreed —— setNow 立即落盘（禁 fire-and-forget：退出竞态/强杀即丢）
+//     ② localStorage qqq.firstRun.expertAgreed.v1 —— sq3 的损坏恢复链（主→.prev→.bak）与整库回滚不碰它，双通道互相兜底
+//   判定: 任一通道有 → 静默；两通道都无 → 弹；库暂不可用 → 1s/3s/8s 退避重试，仍不可用放弃（弹了同意也存不进，纯噪音）
+// 持久化入口: qgs.simple('qqq.settings', {cloud:false}) = 程序级 global.sq3 + localStorage 兜底
 // ============================================================================
 
 ; (function () {
@@ -22,9 +20,6 @@
 
     var KEY = 'firstRun.expertAgreed';
     var LS_KEY = 'qqq.firstRun.expertAgreed.v1';   // 兜底通道 ②（localStorage，独立于 sq3 恢复链）
-    var INTRO_KEY = 'firstRun.gameIntro';
-    var LS_INTRO_KEY = 'qqq.firstRun.gameIntro.v1';
-    var INTRO_VIDEO_URL = 'https://www.bilibili.com/video/BV1PD826SEMT';
     var _h = null;
     var _overlay = null;
 
@@ -129,7 +124,7 @@
         }
     }
 
-    // ── 弹窗外壳（两层共用；同 id 幂等） ──
+    // ── 弹窗外壳（同 id 幂等） ──
     function _makeOverlay() {
         if (_overlay || document.body.contains(document.getElementById('qqq-firstrun-overlay'))) return null;
 
@@ -173,7 +168,7 @@
         return row;
     }
 
-    // ── 第一层：专家声明 ──
+    // ── 专家声明 ──
     function _showExpert() {
         var panel = _makeOverlay();
         if (!panel) return;
@@ -199,11 +194,7 @@
             if (btnAgree.disabled) return;   // busy 防连点（保存失败重试期间）
             btnAgree.disabled = true;
             _writeMark(KEY, LS_KEY, function (ok) {
-                if (ok) {
-                    _dismiss();
-                    _showIntro();            // 2026-09-23 定案：同意并继续 → 紧接着弹第二层
-                    return;
-                }
+                if (ok) { _dismiss(); return; }
                 // 双通道全失败（sq3 与 LS 均不可写）→ 不关闭弹窗，提示重试
                 btnAgree.disabled = false;
                 _setTextI18n(btnAgree, 'firstRun.saveFailed', '保存失败，请重试');
@@ -218,67 +209,12 @@
         _afterShow();
     }
 
-    // ── 第二层：游戏宣言 / 社区引导（「那很好」收工；终身只弹一次） ──
-    function _showIntro() {
-        var panel = _makeOverlay();
-        if (!panel) return;
-
-        var p1 = document.createElement('p');
-        p1.setAttribute('data-i18n', 'firstRun.intro1');
-        p1.textContent = '你可以把 qd 当做一个游戏来慢慢地品味，注意，是一个原创游戏，而不是一个换皮游戏，如果你喜欢换皮游戏，现在就可以放心地离开。';
-        p1.style.cssText = 'margin:0 0 12px;';
-        panel.appendChild(p1);
-
-        // 教学视频（独立行；target=_blank → shell.js 全局链接兜底 = 外部浏览器打开）
-        var p2 = document.createElement('p');
-        p2.style.cssText = 'margin:0 0 12px;';
-        var a = document.createElement('a');
-        a.href = INTRO_VIDEO_URL;
-        a.target = '_blank';
-        a.setAttribute('data-i18n', 'firstRun.introLink');
-        a.textContent = '利用 Roam 跳出项目文件夹滴限制';
-        a.style.cssText = 'color:var(--blue);text-decoration:underline;';
-        p2.appendChild(a);
-        panel.appendChild(p2);
-
-        var p3 = document.createElement('p');
-        p3.setAttribute('data-i18n', 'firstRun.intro2');
-        p3.textContent = '另一方面，我希望你从上方滴 help 按钮中找到社区滴链接，我们能确保你滴任何一个微小滴问题，都能有专人为你一对一滴解答';
-        p3.style.cssText = 'margin:0;';
-        panel.appendChild(p3);
-
-        var row = _mkBtnRow();
-        var btnOk = _mkButton('firstRun.introOk', '那很好');
-        btnOk.addEventListener('click', function (e) {
-            e.preventDefault();
-            if (btnOk.disabled) return;
-            btnOk.disabled = true;
-            _writeMark(INTRO_KEY, LS_INTRO_KEY, function (ok) {
-                if (ok) { _dismiss(); return; }
-                btnOk.disabled = false;
-                _setTextI18n(btnOk, 'firstRun.saveFailed', '保存失败，请重试');
-                setTimeout(function () { _setTextI18n(btnOk, 'firstRun.introOk', '那很好'); }, 3000);
-            });
-        });
-        row.appendChild(btnOk);
-        panel.appendChild(row);
-        _afterShow();
-    }
-
     var _bootRetries = 0;
     var _bootBackoff = [1000, 3000, 8000];
 
     function _boot() {
         _readMark(KEY, LS_KEY, function (state) {
-            if (state === 'has') {
-                // 已同意过 → 第二层补弹判定（老用户 / 上次断链：恰好补一次；已看过 → 静默收工）
-                _readMark(INTRO_KEY, LS_INTRO_KEY, function (st2) {
-                    if (st2 === 'has') return;
-                    if (st2 === 'none') { _showIntro(); return; }
-                    _retryBoot();
-                });
-                return;
-            }
+            if (state === 'has') return;                   // 已同意 → 静默
             if (state === 'none') { _showExpert(); return; }
             _retryBoot();
         });

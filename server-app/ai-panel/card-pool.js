@@ -70,6 +70,7 @@ var CardPool = (function () {
     this.floorDOM = {};        // { floorNum: { userEl, aiEl, a1El, clockEl } }
     this._userScrolledUp = false;
     this._scrollTop = 0;
+    this._favJumpLockUntil = 0;   // ★ 收藏跳楼锁（panel-fav.js 唯一置位）：窗口期内一切自动滚底让路
     this._floorMetaMap = {};   // { floorNum: { allTxtPath, houses, costWge } }
   }
 
@@ -1395,6 +1396,9 @@ var CardPool = (function () {
   CardPool.prototype.scrollActiveToBottom = function (force) {
     var card = this.getActive();
     if (!card || !card.dom) return;
+    // ★ 收藏跳楼锁（panel-fav.js）：召回跳转窗口期内一切自动滚底让路——否则切换收尾的延迟滚底
+    //   （_scrollToBottomDeferred 的 +50/+200/+500ms 链）会把「刚跳到的楼层」冲回底部（跳转+高光被吞）
+    if (card._favJumpLockUntil && Date.now() < card._favJumpLockUntil) return;
     // ★ 滚动屏障：用户手动上滚后 200ms 内，即使 force=true 也拦截（防跨面板污染 + 渲染帧强制滚动）
     if (card._userScrollBarrier && (Date.now() - card._userScrollBarrier < 200)) return;
     if (force || !card._userScrolledUp) {
@@ -1428,6 +1432,7 @@ var CardPool = (function () {
       // 用户在底部 → 恢复自动滚动
       card._userScrolledUp = false;
       card._userScrollBarrier = 0;
+      card._favJumpLockUntil = 0;   // ★ 回到底部 = 恢复跟滚 → 收藏跳楼锁提前解除
     } else {
       // ★ 不在底部 → 立即停止自动跟滚（无 250ms 窗口：流式时 auto-scroll 每帧刷新 _lastAutoScroll，
       //   窗口永远不触发，导致键盘/拖滚条上滚无效。wheel 事件已由 onUserWheel 立即处理）
