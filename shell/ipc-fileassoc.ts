@@ -58,8 +58,9 @@ function _faEnv(mode: string): Record<string, string> {
 }
 
 // ★ 串行链（禁 busy 拒绝——页面自动角标刷新与用户点击可能并发；排队执行即可）
+//   跨域共用（fa-editor.ts 同引）：一切关联注册/夺默认操作全局串行，零并发撞链
 let _chain: Promise<any> = Promise.resolve();
-function _serial<T>(fn: () => Promise<T>): Promise<T> {
+export function faSerial<T>(fn: () => Promise<T>): Promise<T> {
     const p = _chain.then(fn, fn);
     _chain = p.then(() => undefined, () => undefined);
     return p;
@@ -70,7 +71,7 @@ export function registerFileAssocIpc(portableRoot: string): void {
     // ── macOS 实现（2026-10-03 补）：LaunchServices 机（fa-mac.ts——osascript JXA 直调框架）；
     //   语义与 Windows 版逐项对齐；双击链另一端 = main.ts 的 open-file 机器。──
     if (process.platform === 'darwin') {
-        ipcMain.handle('qqqide:fileassoc:apply', () => _serial(async () => {
+        ipcMain.handle('qqqide:fileassoc:apply', () => faSerial(async () => {
             const r = await faMacApply(MEDIA_ASSOC_EXTS);
             if (!r.ok) { console.warn('[fileassoc] mac apply fail:', r.code || '', r.err || '', (r.fails || []).slice(0, 6).join(' ')); }
             return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
@@ -84,7 +85,7 @@ export function registerFileAssocIpc(portableRoot: string): void {
     // ── Linux 实现（2026-10-05 补）：freedesktop 机（fa-linux.ts——桌面条目 + xdg-mime）；
     //   本平台无系统保护拦截 → 预期一次全量；设置页无统一入口（settings 保持 unsupported）。──
     if (process.platform === 'linux') {
-        ipcMain.handle('qqqide:fileassoc:apply', () => _serial(async () => {
+        ipcMain.handle('qqqide:fileassoc:apply', () => faSerial(async () => {
             const r = await faLinuxApply(MEDIA_ASSOC_EXTS);
             if (!r.ok) { console.warn('[fileassoc] linux apply fail:', r.code || '', r.err || '', (r.fails || []).slice(0, 6).join(' ')); }
             return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
@@ -99,7 +100,7 @@ export function registerFileAssocIpc(portableRoot: string): void {
         return;
     }
 
-    ipcMain.handle('qqqide:fileassoc:apply', () => _serial(async () => {
+    ipcMain.handle('qqqide:fileassoc:apply', () => faSerial(async () => {
         try {
             const r = await runPs(FA_PS, _faEnv('apply'), 240000, 'QQQIDE_FA_');
             const total = parseInt(r.fields.TOTAL || '0', 10) || 0;

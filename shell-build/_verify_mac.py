@@ -440,11 +440,14 @@ lsmin = plist_val('LSMinimumSystemVersion')
 check(lsmin == ('11.0' if ARCH == 'arm64' else '10.13'), 'plist LSMinimum=%s (expect %s)' % (lsmin, '11.0' if ARCH == 'arm64' else '10.13'))
 print('       CFBundleShortVersionString =', plist_val('CFBundleShortVersionString'))
 
-# ── default player claim (2026-10-03): CFBundleDocumentTypes = media handlers ──
+# ── file association claims: CFBundleDocumentTypes = media handlers (2026-10-03)
+#    + text/code handlers (2026-10-07, editor domain) ──
 check('<key>CFBundleDocumentTypes</key>' in plist, 'plist declares CFBundleDocumentTypes (default player claim)')
 check('public.movie' in plist and 'public.audio' in plist, 'plist claims public.movie/public.audio')
 check('<string>mkv</string>' in plist and '<string>mp3</string>' in plist, 'plist claims media extensions (mkv/mp3)')
 check('<string>Alternate</string>' in plist, 'plist LSHandlerRank=Alternate (no auto-steal)')
+check('public.source-code' in plist, 'plist claims editor LSItemContentTypes (public.source-code)')
+check('<string>md</string>' in plist and '<string>py</string>' in plist, 'plist claims editor extensions (md/py)')
 
 # ── verdict ──
 print('')

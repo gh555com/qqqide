@@ -95,16 +95,14 @@
             "nextImage": "Suivante",
             "skipMissing": "{0} image(s) impossible(s) à afficher ont été ignorées",
             "noMoreImages": "Aucune autre image à afficher",
-            "rotateLeft": "Rotation de 90° dans le sens antihoraire",
-            "rotateRight": "Rotation de 90° dans le sens horaire",
+            "rotateLeft": "Rotation de 90° dans le sens inverse des aiguilles d'une montre (maintenir pour un ajustement fin)",
+            "rotateRight": "Rotation de 90° dans le sens des aiguilles d'une montre (maintenir pour un ajustement fin)",
+            "rotResetHint": "Appuyez sur le bouton maison au centre de la croix directionnelle droite pour restaurer l'angle d'origine",
             "copyFailed": "Échec de la copie",
             "zoomIn": "Zoom avant",
             "zoomOut": "Zoom arrière",
             "zoomReset": "Cliquez pour revenir à 100 %",
-            "resetPosition": "Réinitialiser la position",
-            "mem": "Mémoire",
-            "file": "Fichier",
-            "path": "Chemin",
+            "resetPosition": "Réinitialiser la position et l'angle",
             "memTitle": "Image chargée en mémoire (presse-papiers), prête à être collée dans le chat ou le canevas",
             "fileTitle": "Copier le fichier image, pouvant être collé dans le chat/Roam/Explorateur de fichiers",
             "pathTitle": "Copier le chemin de l'image",
@@ -882,14 +880,18 @@
             "lockedDecrypt": "La clé ne peut pas être déchiffrée sur cet appareil (elle provient peut-être d'un autre appareil), veuillez la saisir à nouveau"
         },
         "gwWait": {
+            "title": "⏳ Aucune réponse amont {0}",
+            "rowLabel": "{0} Étage {1}",
+            "barMulti": "⏳ {0} étages en attente de réponse amont · Durée max. {1}",
+            "stop": "■ Arrêter",
+            "expand": "Afficher les détails",
             "collapse": "Réduire",
             "taskCapsule": "⏳ {0} tâche(s) en cours",
+            "muteTip": "Ne plus afficher cette notification (une nouvelle notification apparaîtra lors de l'attente d'un nouvel étage)",
+            "serverAck": "Serveur : attente confirmée",
+            "firstToken": "En attente du premier jeton",
             "hangCount": "({0}e tentative)",
             "hangBroken": "Le canal réseau semble endommagé{0}, toutes les lignes ont été automatiquement tentées. Le niveau a été sauvegardé, il est recommandé de rafraîchir la fenêtre avec Ctrl+R puis de cliquer sur « Continuer la tâche »"
-        },
-        "toolWait": {
-            "title": "⏳ Outil en cours d'exécution {0}",
-            "subtitle": "{0} Étage {1} · Tâche longue en cours d'exécution"
         },
         "gw": {
             "hangTimeout": "Délai de connexion dépassé (toutes les lignes ont été essayées automatiquement, la conversation est intacte, cliquez sur « Continuer la tâche » pour réessayer)",
@@ -926,7 +928,8 @@
         "bulletTrunc": "\n\n... [Partie centrale tronquée, original {0}KB] ...\n\n",
         "exhaustedMsg": "⚠ Nombre maximal d'appels d'outils atteint (200), mais l'IA n'a pas pu générer de réponse finale. Le contexte de la conversation est conservé, vous pouvez continuer à poser des questions.",
         "floorAbortedMsg": "⚠️ Interruption anormale de l'étage, la conversation a été sauvegardée.",
-        "sseSkipNote": "[Système : La dernière réponse semble avoir formaté l'appel d'outil en texte (format [A → …]) au lieu d'utiliser les tool_calls natifs. Les outils suivants n'ont pas été exécutés car leurs paramètres n'ont pas pu être reconstruits en toute sécurité : {0}. Veuillez réexécuter ces outils via les tool_calls natifs, ou fournir directement la réponse finale.]"
+        "sseSkipNote": "[Système : La dernière réponse semble avoir formaté l'appel d'outil en texte (format [A → …]) au lieu d'utiliser les tool_calls natifs. Les outils suivants n'ont pas été exécutés car leurs paramètres n'ont pas pu être reconstruits en toute sécurité : {0}. Veuillez réexécuter ces outils via les tool_calls natifs, ou fournir directement la réponse finale.]",
+        "toolWait": {}
     },
     "goods": {
         "conv": {
@@ -2032,6 +2035,20 @@
             "errBusy": "Traitement en cours, veuillez patienter",
             "errRemove": "Suppression incomplète",
             "errGeneric": "Erreur inconnue"
+        },
+        "faEditor": {
+            "label": "Associations de fichiers (texte/code)",
+            "desc": "Apparaît dans la liste « Ouvrir avec » du système : maintenance automatique",
+            "btn": "Définir par défaut",
+            "btnBusy": "Configuration en cours…",
+            "confirmTitle": "Vous avez choisi « Définir qd comme application par défaut pour les fichiers texte/code »",
+            "confirmBody": "Cela définira qd comme l'application par défaut pour l'ouverture par double-clic de ces formats (environ 74 types de texte/code). D'autres applications pourront reprendre cette association ultérieurement ; vous pourrez toujours revenir ici pour la rétablir.",
+            "okAll": "{n} types de formats texte/code pris en charge ✓",
+            "okPartial": "{n}/{m} types pris en charge ; les autres sont bloqués par la protection du système",
+            "openSettings": "Ouvrir les paramètres du système",
+            "unsupported": "Cette fonctionnalité n'est pas encore prise en charge par le système actuel",
+            "fail": "Échec de l'opération : {e}",
+            "needRestart": "Un redémarrage de cette fenêtre est nécessaire pour que les modifications prennent effet"
         },
         "tier": {
             "title": "Explication des niveaux IA",

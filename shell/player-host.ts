@@ -182,6 +182,30 @@ export function ensureIdeInstance(): void {
     } catch { /* ignore */ }
 }
 
+// ── mac 宿主收到「文本/代码」文档事件 → 拉 IDE（冷启携文件 / 热态 second-instance 转发） ──
+//   场景（2026-10-07 文件关联）：mac 双击文本 → LaunchServices 把 open-file 投给正在跑的实例
+//   （可能是宿主）→ 宿主把文本文件交给 IDE 域（argv 携 --qqqide-open；IDE 在跑 = 二实例转发，
+//   未跑 = 冷启后投编辑器窗；与 ensureIdeInstance 同一 spawn 语义）。非 mac/非宿主域 no-op。
+export function spawnIdeOpen(files: string[]): void {
+    if (!isPlayerHostMode() || process.platform !== 'darwin') { return; }
+    const list = (files || []).filter((f) => !!f && typeof f === 'string');
+    if (!list.length) { return; }
+    try {
+        const isDev = process.argv.includes('--dev') || process.env.QQQIDE_DEV === '1';
+        const args: string[] = app.isPackaged ? [] : [app.getAppPath()];
+        args.push('--qqqide-open');
+        for (const f of list) { args.push(f); }
+        const child = spawn(process.execPath, args, {
+            detached: true, stdio: 'ignore',
+            cwd: app.isPackaged ? path.dirname(process.execPath) : app.getAppPath(),
+        });
+        child.unref();
+        console.log('[player-host] text open -> IDE spawn (' + list.length + ' file(s))');
+    } catch (e: any) {
+        console.warn('[player-host] spawnIdeOpen failed: ' + ((e && e.message) || e));
+    }
+}
+
 // ── 路径 → 播放器条目（runQ 同口径：file:/// 正斜杠） ──
 export function filesToItems(files: string[]): any[] {
     const out: any[] = [];
@@ -196,21 +220,23 @@ export function filesToItems(files: string[]): any[] {
 /** 宿主心跳单写（启动早期先写——防 IDE 在恢复期误判失活重复拉启） */
 export function touchPlayerHostState(): void { _writeHostState(); }
 
-/** 从 argv 解析 --qqqide-play 之后的文件参数（空格式 + = 式；去重保序）。
+/** 从 argv 解析 <marker> 之后的文件参数（空格式 + = 式；去重保序）。
  *  ★ 解析铁律（2026-10-02 探针实锤）：禁「收集到下一个开关为止」——Chromium 的 second-instance
  *  转发会对命令行重序列化（程序化 appendSwitch 全部插入开关段，非开关参数漂到最后），
  *  文件与开关相隔十多个开关项（files=0 事故）。正确算法 = 标记后的非开关项：
  *  开关（'-' 开头）一律跳过；目录（dev 的 app path 等）剔除；其余视为文件（不存在也保留——
- *  如实开窗报错而非静默丢失）。 */
-export function parsePlayFiles(argv: string[]): string[] {
+ *  如实开窗报错而非静默丢失）。
+ *  ★ 通用化（2026-10-07 文件关联）：--qqqide-play（播放器域）与 --qqqide-open（编辑器域外部
+ *  打开）同一算法——新增标记一律经本函数（禁另写解析）。 */
+export function parseMarkerFiles(argv: string[], marker: string): string[] {
     const out: string[] = [];
     let seenMarker = false;
     for (let i = 1; i < argv.length; i++) {
         const a = String(argv[i] || '');
-        if (a === '--qqqide-play') { seenMarker = true; continue; }
-        if (a.indexOf('--qqqide-play=') === 0) {
+        if (a === marker) { seenMarker = true; continue; }
+        if (a.indexOf(marker + '=') === 0) {
             seenMarker = true;
-            const p = a.slice('--qqqide-play='.length);
+            const p = a.slice(marker.length + 1);
             if (p) { out.push(p); }
             continue;
         }
@@ -221,6 +247,11 @@ export function parsePlayFiles(argv: string[]): string[] {
     }
     const seen = new Set<string>();
     return out.filter((p) => { const k = p.toLowerCase(); if (seen.has(k)) { return false; } seen.add(k); return true; });
+}
+
+/** 播放器域入口专用（--qqqide-play）。 */
+export function parsePlayFiles(argv: string[]): string[] {
+    return parseMarkerFiles(argv, '--qqqide-play');
 }
 
 // ── 第二实例摄入（宿主域）：early-bird 先入内存，运行时就绪后直派 ──
@@ -343,6 +374,8 @@ function _waitRevealAck(id: string, waitMs: number): Promise<any | null> {
 let _ideRevealStarted = false;
 let _lastFocusedMainId: number | null = null;
 const _revealInflight = new Set<string>();
+// ★ 主窗集合/置前（fa-open.ts 外部打开投递同源复用——唯一实现，禁第二套选窗）
+export { _mainWindowsAlive as mainWindowsAlive, _focusMainWindow as focusMainWindow };
 // ★ 投递串行链（2026-10-03 q395）：按认领顺序（= 用户点击顺序，文件名按时间 id 单调）逐条投递——
 //   并发投递会让多条 reveal 竞跑同一主窗（乱序投递/互踩选中；配合主窗口命令序号裁决 = 最新命令胜）。
 let _revealChain: Promise<void> = Promise.resolve();

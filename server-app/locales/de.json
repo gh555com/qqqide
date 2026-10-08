@@ -95,16 +95,14 @@
             "nextImage": "Nächstes Bild",
             "skipMissing": "{0} nicht anzeigbare Bilder wurden übersprungen",
             "noMoreImages": "Keine weiteren Bilder zum Anzeigen vorhanden",
-            "rotateLeft": "90° gegen den Uhrzeigersinn drehen",
-            "rotateRight": "90° im Uhrzeigersinn drehen",
+            "rotateLeft": "90° gegen den Uhrzeigersinn drehen (gedrückt halten für Feinjustierung)",
+            "rotateRight": "90° im Uhrzeigersinn drehen (gedrückt halten für Feinjustierung)",
+            "rotResetHint": "Tippen Sie auf die Haus-Schaltfläche in der Mitte des rechten Kreuztastenbereichs, um den ursprünglichen Winkel wiederherzustellen",
             "copyFailed": "Kopieren fehlgeschlagen",
             "zoomIn": "Vergrößern",
             "zoomOut": "Verkleinern",
             "zoomReset": "Klicken, um auf 100 % zurückzusetzen",
-            "resetPosition": "Position zurücksetzen",
-            "mem": "Speicher",
-            "file": "Datei",
-            "path": "Pfad",
+            "resetPosition": "Position und Winkel zurücksetzen",
             "memTitle": "Bild im Speicher (Zwischenablage), kann direkt in Chat oder Canvas eingefügt werden",
             "fileTitle": "Bilddatei kopieren, kann in Chat/Roam/Explorer eingefügt werden",
             "pathTitle": "Bildpfad kopieren",
@@ -882,14 +880,18 @@
             "lockedDecrypt": "Schlüssel kann auf diesem Gerät nicht entschlüsselt werden (möglicherweise von einem anderen Gerät), bitte erneut eingeben"
         },
         "gwWait": {
+            "title": "⏳ Keine Antwort vom Upstream {0}",
+            "rowLabel": "{0} Ebene {1}",
+            "barMulti": "⏳ {0} Ebenen warten auf Antwort vom Upstream · Maximal {1}",
+            "stop": "■ Stoppen",
+            "expand": "Details anzeigen",
             "collapse": "Einklappen",
             "taskCapsule": "⏳ {0} Tasks werden ausgeführt",
+            "muteTip": "Diesmal keine weitere Benachrichtigung (neue wartende Ebenen werden erneut gemeldet)",
+            "serverAck": "Server bestätigt Wartestatus",
+            "firstToken": "Warten auf erste Ausgabe",
             "hangCount": "({0}. Versuch)",
             "hangBroken": "Netzwerkkanal möglicherweise beschädigt{0}. Alle Leitungen wurden automatisch getestet. Die Ebene wurde gespeichert. Wir empfehlen, das Fenster mit Strg+R zu aktualisieren und dann auf „Aufgabe fortsetzen“ zu klicken."
-        },
-        "toolWait": {
-            "title": "⏳ Tool wird ausgeführt {0}",
-            "subtitle": "{0} Ebene {1} · Langlaufende Aufgabe wird ausgeführt"
         },
         "gw": {
             "hangTimeout": "Verbindungszeitüberschreitung (alle Leitungen wurden automatisch versucht, der Dialog bleibt vollständig erhalten. Klicken Sie auf „Aufgabe fortsetzen“, um es erneut zu versuchen.)",
@@ -926,7 +928,8 @@
         "bulletTrunc": "\n\n... [Mitte abgeschnitten, ursprünglich {0}KB] ...\n\n",
         "exhaustedMsg": "⚠ Maximale Anzahl an Tool-Aufrufen (200) erreicht, aber die AI konnte keine endgültige Antwort generieren. Der Konversationskontext bleibt erhalten, Sie können weitere Fragen stellen.",
         "floorAbortedMsg": "⚠️ Verlaufseintrag abnormal unterbrochen, Konversation wurde gespeichert.",
-        "sseSkipNote": "[System: Die letzte Antwort enthielt Tool-Aufrufe als Text ([A → …] Format) statt als native tool_calls. Folgende Tools wurden aufgrund unsicherer Parameterrekonstruktion nicht ausgeführt: {0}. Bitte führen Sie diese Tools erneut mit nativen tool_calls aus oder geben Sie direkt die endgültige Antwort.]"
+        "sseSkipNote": "[System: Die letzte Antwort enthielt Tool-Aufrufe als Text ([A → …] Format) statt als native tool_calls. Folgende Tools wurden aufgrund unsicherer Parameterrekonstruktion nicht ausgeführt: {0}. Bitte führen Sie diese Tools erneut mit nativen tool_calls aus oder geben Sie direkt die endgültige Antwort.]",
+        "toolWait": {}
     },
     "goods": {
         "conv": {
@@ -2032,6 +2035,20 @@
             "errBusy": "Wird verarbeitet, bitte warten",
             "errRemove": "Entfernung nicht abgeschlossen",
             "errGeneric": "Unbekannter Fehler"
+        },
+        "faEditor": {
+            "label": "Dateizuordnungen (Text/Code)",
+            "desc": "In der Systemliste „Öffnen mit“ angezeigt: Automatische Pflege",
+            "btn": "Als Standard festlegen",
+            "btnBusy": "Wird eingerichtet…",
+            "confirmTitle": "Sie haben ausgewählt: „qd als Standardanwendung für Text-/Code-Dateien festlegen“",
+            "confirmBody": "Hiermit werden die Doppelklick-Aktionen für diese Dateitypen vollständig von qd übernommen (ca. 74 Text-/Code-Formate). Andere Anwendungen können diese Zuordnung später wieder ändern – Sie können jederzeit hierher zurückkehren und den Vorgang wiederholen, um die Kontrolle zurückzugewinnen.",
+            "okAll": "{n} Text-/Code-Formate wurden übernommen ✓",
+            "okPartial": "{n}/{m} Formate wurden übernommen; die restlichen wurden vom System blockiert",
+            "openSettings": "Systemeinstellungen öffnen",
+            "unsupported": "Diese Funktion wird vom aktuellen System noch nicht unterstützt",
+            "fail": "Vorgang fehlgeschlagen: {e}",
+            "needRestart": "Neustart dieses Fensters erforderlich, damit die Änderungen wirksam werden"
         },
         "tier": {
             "title": "Erklärung der AI-Level",

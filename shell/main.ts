@@ -27,6 +27,10 @@ import { applyPortablePaths, getAppRoot } from './portable-paths';
 const _playHostMode = process.argv.some((a: string) => a === '--qqqide-play' || a.indexOf('--qqqide-play=') === 0);
 const portable = applyPortablePaths(_playHostMode ? { sessionDir: 'player-host' } : undefined);
 
+// ★ 外部打开入口（--qqqide-open，2026-10-07 文件关联）：双击文本/代码文件 → 编辑器域。
+//   解析唯一实现 = player-host.parseMarkerFiles（禁用第二套 argv 解析）。
+const _openArgvFiles = parseMarkerFiles(process.argv as string[], '--qqqide-open');
+
 import { app, BrowserWindow, dialog, protocol, nativeTheme, safeStorage, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
@@ -47,8 +51,10 @@ import { registerEditIpc } from './ipc-edit';
 import { registerMiscIpc } from './ipc-misc';
 import { registerMediaIpc } from './ipc-media';
 import { registerPlayerIpc, kickPlayerHostForRestore, noteHostAllWindowsClosed } from './ipc-player';
-import { parsePlayFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc, startIdeKeepalive, filesToItems, queuePlayerRequest, ensureIdeInstance, startIdeRevealWatch } from './player-host';
+import { parsePlayFiles, parseMarkerFiles, ingestExternalFiles, injectHostRuntimePath, registerHostShellIpc, startIdeKeepalive, filesToItems, queuePlayerRequest, ensureIdeInstance, spawnIdeOpen, startIdeRevealWatch } from './player-host';
 import { registerFileAssocIpc } from './ipc-fileassoc';
+import { registerEditorFileAssocIpc, startEditorAssocHeal, classifyExternalFiles } from './fa-editor';
+import { routeExternalOpen } from './fa-open';
 import { registerExportIpc } from './ipc-export';
 import { registerPasteFetchIpc } from './paste-fetch';
 import { registerTimelineIpc } from './ipc-timeline';
@@ -220,6 +226,11 @@ app.on('second-instance', (_event, argv) => {
     const url = argv.find((a: string) => a.startsWith('qqqide://'));
     console.log('[protocol] second-instance url=' + (url || 'NONE'));
     if (url) handleLegacyAuthProtocolUrl(url);
+    // ★ 外部打开（--qqqide-open）：双击文本/代码文件（文件关联）→ 按扩展分流投递
+    const _openFiles = parseMarkerFiles((argv || []) as string[], '--qqqide-open');
+    if (_openFiles.length) {
+        try { routeExternalOpen(_openFiles); } catch (e: any) { console.warn('[fa-open] second-instance err: ' + ((e && e.message) || e)); }
+    }
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
@@ -267,22 +278,32 @@ function _macDocRoute(): void {
     const files = _macDocFiles;
     _macDocFiles = [];
     try {
-        if (_playHostMode) { _macDocLog('route host files=' + files.length); ingestExternalFiles(files); return; }   // ① 宿主域：直开
-        if (!_macBootDone && _macDocEarly && !_macDocHandoff) {      // ③ 冷启文档打开：交棒 + 退场
+        // ★ 编辑器域补全（2026-10-07 文件关联）：先按扩展分流——文本/代码 → 编辑器域
+        //   （IDE 窗投递 / 宿主域拉 IDE），媒体 → 播放器域（既有链）。
+        const split = classifyExternalFiles(files);
+        const text = split.text, media = split.media;
+        if (_playHostMode) {                                          // ① 宿主域
+            _macDocLog('route host files=' + files.length + ' media=' + media.length + ' text=' + text.length);
+            if (media.length) { ingestExternalFiles(media); }
+            if (text.length) { spawnIdeOpen(text); }
+            return;
+        }
+        if (!_macBootDone && _macDocEarly && !_macDocHandoff && media.length > 0 && text.length === 0) {   // ③ 冷启纯媒体文档打开：交棒 + 退场
             _macDocHandoff = true;
-            _macDocLog('route cold-handoff files=' + files.length + ' bootDone=' + _macBootDone + ' early=' + _macDocEarly);
-            queuePlayerRequest('open', { list: filesToItems(files), index: 0, play: true, external: true }, 8000).then((r: any) => {
+            _macDocLog('route cold-handoff files=' + media.length + ' bootDone=' + _macBootDone + ' early=' + _macDocEarly);
+            queuePlayerRequest('open', { list: filesToItems(media), index: 0, play: true, external: true }, 8000).then((r: any) => {
                 _macDocLog('handoff result ok=' + (r && r.ok));
                 if (r && r.ok) { app.exit(0); }
-                else { _macDocForward(files); }
+                else { _macDocForward(media); }
             }).catch((e: any) => {
                 _macDocLog('handoff err ' + ((e && e.message) || e));
-                _macDocForward(files);
+                _macDocForward(media);
             });
             return;
         }
-        _macDocLog('route forward files=' + files.length + ' bootDone=' + _macBootDone + ' early=' + _macDocEarly);
-        _macDocForward(files);                                        // ② 热态：常规转发
+        _macDocLog('route forward files=' + files.length + ' media=' + media.length + ' text=' + text.length + ' bootDone=' + _macBootDone + ' early=' + _macDocEarly);
+        if (media.length) { _macDocForward(media); }                  // ② 热态（或混批）：媒体 → 播放器域
+        if (text.length) { routeExternalOpen(text); }                 //    文本/代码 → 编辑器窗
     } catch (e: any) { console.warn('[open-file] route err: ' + ((e && e.message) || e)); }
 }
 if (process.platform === 'darwin') {
@@ -454,6 +475,8 @@ function registerAllIpc(): void {
     registerExportIpc(exportService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
+    registerFileAssocIpc(portable.root);   // 文件关联（播放器域 apply/settings——设置行 partial 兜底按钮复用同链）
+    registerEditorFileAssocIpc();          // 文件关联（编辑器域〔设为默认〕，2026-10-07）
     registerSysPyIpc(portable.root);
     registerSquadIpc();
     registerSecureIpc();
@@ -803,6 +826,8 @@ app.whenReady().then(async () => {
         scheduleOldSlotCleanup(portable.root);
         // ★ tmp 轮转机器（2026-10-05）：_qqq/tmp 唯一守夜人——就绪后 60s 首扫 + 每 6h（详 shell/tmp-machine.ts）
         try { startTmpMachine(stateStore); } catch { /* ignore */ }
+        // ★ 文本/代码文件关联启动自愈（2026-10-07）：后台静默重注册（状态键未变 → 纯读快路径）
+        try { startEditorAssocHeal(); } catch { /* ignore */ }
     });
 
     // ★ 时序修复（2026-09-16）：webapp 运行副本先就位，再 spawn 任何 stdio 组件与 process goods——
@@ -895,6 +920,11 @@ app.whenReady().then(async () => {
 
     // ★ 检查是否由 qqqide:// 协议启动（登录推送用）
     checkStartupAuthUrl();
+
+    // ★ 外部打开（--qqqide-open）：本进程由双击文本/代码文件触发 → 就绪后投编辑器窗
+    if (_openArgvFiles.length) {
+        try { routeExternalOpen(_openArgvFiles); } catch (e: any) { console.warn('[fa-open] startup err: ' + ((e && e.message) || e)); }
+    }
 
     // ★ 主窗口关闭：不再连带销毁其他项目窗口（多窗口相互独立，2026-08-08 修复全窗关闭事故）
     //   音频/gaea/ping 清理仅在最后一个窗口关闭时执行（window-all-closed → quit 同刻）

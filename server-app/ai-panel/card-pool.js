@@ -676,7 +676,7 @@ var CardPool = (function () {
         if (im.style.display === 'none') continue;
         if (!im.src) continue;
         if (im === imgEl) index = list.length;
-        list.push({ src: im.src, localPath: im.dataset.localPath || null });
+        list.push({ src: im.src, localPath: _imgActLocalPath(im) });   // ★ 路径解码兜底（.img-wrap 无 dataset.localPath 时由 file:/// 解析——旋转记忆/文件按钮依赖）
       }
       return (index >= 0 && list.length > 1) ? { list: list, index: index } : null;
     } catch (_) { return null; }
@@ -950,7 +950,7 @@ var CardPool = (function () {
           // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
           if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
             var _imgNav = _aiImgNav(img);
-            var _imgMsg = { type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null };
+            var _imgMsg = { type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: _imgActLocalPath(img) };   // ★ 解码兜底（同 _aiImgNav）
             if (_imgNav) _imgMsg.nav = _imgNav;
             _postToHost(_imgMsg);
           } else {
@@ -1235,7 +1235,7 @@ var CardPool = (function () {
       // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
       if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
         var _imgNav2 = _aiImgNav(img);
-        var _imgMsg2 = { type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: img.dataset.localPath || null };
+        var _imgMsg2 = { type: 'qqqide-overlay', action: 'open-image', src: img.src, localPath: _imgActLocalPath(img) };   // ★ 解码兜底（同 _aiImgNav）
         if (_imgNav2) _imgMsg2.nav = _imgNav2;
         _postToHost(_imgMsg2);
       } else {

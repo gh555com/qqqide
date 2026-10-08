@@ -1,9 +1,10 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// fa-linux.ts — 系统默认播放器机器（Linux 实现：freedesktop 桌面条目 + xdg-mime）
-//   语义与 Windows（fa-ps.ts）/ macOS（fa-mac.ts）逐项对齐：一次点击 = 全量接管
-//   「一切媒体」默认打开方式（范围 = MEDIA_ASSOC_EXTS 同源传入，不设白名单筛选）；
+// fa-linux.ts — 文件关联机器（Linux 实现：freedesktop 桌面条目 + xdg-mime）
+//   语义与 Windows（fa-ps.ts）/ macOS（fa-mac.ts）逐项对齐：setDefault=true（缺省）= 一次点击
+//   = 全量接管那一族格式的默认打开方式；setDefault=false = 仅候选注册（写桌面条目 + 刷新缓存，
+//   不碰 xdg-mime default —— 编辑器域 A+ 启动自愈路径）。两域各自独立桌面条目/名称/标记。
 //   本平台无系统保护拦截概念 → 预期一次全量通过；结果恒报 {total, taken}。
 //   机制：
 //     ① 写 ~/.local/share/applications/qqqide-player.desktop（Exec = <exe> --qqqide-play %F）
@@ -21,6 +22,17 @@ import { execFile } from 'child_process';
 const APP_NAME = 'qd (qqqide) 播放器';
 const APP_DESC = 'qd (qqqide) 内置媒体播放器 — 视频/音频全格式（转码兜底）';
 const DESKTOP_ID = 'qqqide-player.desktop';
+
+/** 参数化（缺省 = 播放器域旧值零回归）：候选注册/夺默认共用同一实现，编辑器域经 opts 换条目。 */
+export interface FaLinuxOpts {
+    setDefault?: boolean;        // false = 仅候选注册（桌面条目声明 MimeType + 刷缓存；不碰默认）
+    desktopId?: string;
+    name?: string;
+    desc?: string;
+    marker?: string;             // Exec 标记（缺省 --qqqide-play）
+    neverTake?: string[];        // 探针解析到这 MIME 一律跳过（护不劫持）
+    categories?: string;
+}
 
 // ★ glib 内容判定规则（2026-10-05 VM 实测）：探针内容必须是纯文本（→ 按扩展名解析）；
 //   空文件 → x-zerosize、二进制垃圾 → octet-stream（两者都会把 37 个扩展全吞成同一 MIME）。
@@ -54,7 +66,15 @@ function _run(bin: string, args: string[], timeoutMs: number): Promise<{ code: n
     });
 }
 
-export async function faLinuxApply(exts: string[]): Promise<{ ok: boolean; code?: string; total: number; taken: number; fails: string[]; err?: string }> {
+export async function faLinuxApply(exts: string[], opts?: FaLinuxOpts): Promise<{ ok: boolean; code?: string; total: number; taken: number; fails: string[]; err?: string }> {
+    const o = opts || {};
+    const setDefault = (o.setDefault === undefined) ? true : !!o.setDefault;
+    const desktopId = o.desktopId || DESKTOP_ID;
+    const appName = o.name || APP_NAME;
+    const appDesc = o.desc || APP_DESC;
+    const marker = o.marker || '--qqqide-play';
+    const neverTake = o.neverTake || NEVER_TAKE;
+    const categories = o.categories || 'AudioVideo;Player;Video;Audio;';
     const list = (exts || []).filter((e) => /^\.[a-z0-9]+$/i.test(e));
     if (list.length === 0) { return { ok: false, code: 'no-exts', total: 0, taken: 0, fails: [] }; }
     const home = os.homedir();
@@ -72,7 +92,7 @@ export async function faLinuxApply(exts: string[]): Promise<{ ok: boolean; code?
     const mimeOf: Record<string, string> = {};
     for (let i = 0; i < list.length; i++) {
         const mime = String(results[i].out || '').trim().split('\n')[0].trim();
-        if (results[i].code === 0 && mime.indexOf('/') > 0 && NEVER_TAKE.indexOf(mime) < 0) { mimeOf[list[i]] = mime; }
+        if (results[i].code === 0 && mime.indexOf('/') > 0 && neverTake.indexOf(mime) < 0) { mimeOf[list[i]] = mime; }
         else if (MIME_FALLBACK[list[i]]) { mimeOf[list[i]] = MIME_FALLBACK[list[i]]; }   // 探针弱解析 → 定点兜底
     }
     const mimes = Array.from(new Set(Object.keys(mimeOf).map((e) => mimeOf[e])));
@@ -82,35 +102,52 @@ export async function faLinuxApply(exts: string[]): Promise<{ ok: boolean; code?
     const c = _cmd();
     const execParts = [_q(c.exe)];
     if (c.appArg) { execParts.push(_q(c.appArg)); }
-    execParts.push('--qqqide-play', '%F');
+    execParts.push(marker, '%F');
     const desktop = [
         '[Desktop Entry]',
         'Type=Application',
         'Version=1.0',
-        'Name=' + APP_NAME,
-        'Comment=' + APP_DESC,
+        'Name=' + appName,
+        'Comment=' + appDesc,
         'Exec=' + execParts.join(' '),
         'Icon=qqqide',
         'Terminal=false',
-        'Categories=AudioVideo;Player;Video;Audio;',
+        'Categories=' + categories,
         'MimeType=' + mimes.join(';') + ';',
         '',
     ].join('\n');
-    const desktopPath = path.join(appsDir, DESKTOP_ID);
-    try { fs.writeFileSync(desktopPath, desktop, { encoding: 'utf8', mode: 0o644 }); }
-    catch (e: any) { return { ok: false, code: 'write-failed', total: list.length, taken: 0, fails: [], err: (e && e.message) || String(e) }; }
+    const desktopPath = path.join(appsDir, desktopId);
+    // ★ 内容比对（自愈快路径）：与磁盘一致 → 不重写（仅在 setDefault 时仍走默认设置/校验链）
+    let prevDesktop: string | null = null;
+    try { prevDesktop = fs.readFileSync(desktopPath, 'utf8'); } catch { prevDesktop = null; }
+    const changed = (prevDesktop !== desktop);
+    if (changed) {
+        try { fs.writeFileSync(desktopPath, desktop, { encoding: 'utf8', mode: 0o644 }); }
+        catch (e: any) { return { ok: false, code: 'write-failed', total: list.length, taken: 0, fails: [], err: (e && e.message) || String(e) }; }
+    }
+
+    // ③b 仅候选注册（setDefault=false）：不碰默认——写盘成功 + 刷缓存（变了才刷）即完成
+    if (!setDefault) {
+        if (changed) { await _run('update-desktop-database', [appsDir], 8000); }
+        let okFile = false;
+        try { okFile = fs.readFileSync(desktopPath, 'utf8') === desktop; } catch { okFile = false; }
+        try { fs.rmSync(probeDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        return { ok: okFile, code: okFile ? undefined : 'write-failed', total: list.length, taken: okFile ? list.length : 0, fails: okFile ? [] : list.slice() };
+    }
 
     // ④ 设默认（单次调用承载全部 MIME）+ 刷新桌面条目缓存
-    const setRes = await _run('xdg-mime', ['default', DESKTOP_ID].concat(mimes), 30000);
+    const setRes = await _run('xdg-mime', ['default', desktopId].concat(mimes), 30000);
     await _run('update-desktop-database', [appsDir], 8000);
 
-    // ④b 清理陈旧条目（换过扩展集/历史版本可能遗下非目标 MIME 的默认项——只动命中本播放器的行）
+    // ④b 清理陈旧条目（换过扩展集/历史版本可能遗下非目标 MIME 的默认项——只动命中本域条目的行）
     try {
         const mp = path.join(home, '.config', 'mimeapps.list');
         const raw = fs.readFileSync(mp, 'utf8');
         const keep = new Set(mimes);
+        const escId = desktopId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const reOwn = new RegExp('^([^[][^=]*)=' + escId + ';?\\s*$');
         const out = raw.split('\n').filter((line) => {
-            const m = /^([^[][^=]*)=qqqide-player\.desktop;?\s*$/.exec(line.trim());
+            const m = reOwn.exec(line.trim());
             if (!m) { return true; }
             return keep.has(m[1].trim());
         }).join('\n');
@@ -124,7 +161,7 @@ export async function faLinuxApply(exts: string[]): Promise<{ ok: boolean; code?
     const verify = await Promise.all(mimes.map((m) => _run('xdg-mime', ['query', 'default', m], 8000)));
     const takenMime: Record<string, boolean> = {};
     for (let i = 0; i < mimes.length; i++) {
-        takenMime[mimes[i]] = verify[i].code === 0 && String(verify[i].out || '').trim() === DESKTOP_ID;
+        takenMime[mimes[i]] = verify[i].code === 0 && String(verify[i].out || '').trim() === desktopId;
     }
     let taken = 0;
     const fails: string[] = [];

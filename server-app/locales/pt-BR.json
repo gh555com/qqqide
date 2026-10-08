@@ -95,16 +95,14 @@
             "nextImage": "Próxima",
             "skipMissing": "{0} imagem(ns) que não puderam ser exibidas foram ignoradas",
             "noMoreImages": "Não há mais imagens para exibir",
-            "rotateLeft": "Girar 90° no sentido anti-horário",
-            "rotateRight": "Girar 90° no sentido horário",
+            "rotateLeft": "Girar 90° no sentido anti-horário (mantenha pressionado para ajuste fino)",
+            "rotateRight": "Girar 90° no sentido horário (mantenha pressionado para ajuste fino)",
+            "rotResetHint": "Toque no botão da casa no centro do controle direcional à direita para restaurar o ângulo original",
             "copyFailed": "Falha ao copiar",
             "zoomIn": "Aumentar zoom",
             "zoomOut": "Diminuir zoom",
             "zoomReset": "Clique para voltar a 100%",
-            "resetPosition": "Redefinir posição",
-            "mem": "Memória",
-            "file": "Arquivo",
-            "path": "Caminho",
+            "resetPosition": "Redefinir posição e ângulo",
             "memTitle": "Imagem na memória (imagem da área de transferência), pronta para colar no chat ou na tela de desenho",
             "fileTitle": "Copiar arquivo de imagem, pode ser colado no chat/Roam/Explorador de Arquivos",
             "pathTitle": "Copiar caminho da imagem",
@@ -882,14 +880,18 @@
             "lockedDecrypt": "A chave não pôde ser descriptografada neste dispositivo (pode ter vindo de outro dispositivo). Por favor, insira-a novamente."
         },
         "gwWait": {
+            "title": "⏳ Sem resposta do upstream {0}",
+            "rowLabel": "{0} Camada {1}",
+            "barMulti": "⏳ {0} camadas aguardando resposta upstream · Máximo {1}",
+            "stop": "■ Parar",
+            "expand": "Expandir detalhes",
             "collapse": "Recolher",
             "taskCapsule": "⏳ {0} tarefas em andamento",
+            "muteTip": "Não notificar desta vez (novas camadas em espera serão notificadas)",
+            "serverAck": "Servidor confirmou que está aguardando",
+            "firstToken": "Aguardando o primeiro token",
             "hangCount": "(tentativa {0})",
             "hangBroken": "Canal de rede possivelmente danificado{0}, todas as rotas foram testadas automaticamente. O andar foi salvo; recomenda-se pressionar Ctrl+R para atualizar a janela e clicar em \"Continuar tarefa\""
-        },
-        "toolWait": {
-            "title": "⏳ Ferramenta em execução {0}",
-            "subtitle": "{0} Nível {1} · Tarefa longa em execução"
         },
         "gw": {
             "hangTimeout": "Tempo de conexão esgotado (todas as rotas foram testadas automaticamente, conversa totalmente preservada; clique em \"Continuar tarefa\" para tentar novamente)",
@@ -926,7 +928,8 @@
         "bulletTrunc": "\n\n... [Intermediário truncado, original {0}KB] ...\n\n",
         "exhaustedMsg": "⚠ Atingido o número máximo de chamadas de ferramenta (200), mas a IA não gerou uma resposta final. O contexto da conversa foi mantido. Você pode continuar fazendo perguntas.",
         "floorAbortedMsg": "⚠️ Interrupção anormal do bloco. A conversa foi salva.",
-        "sseSkipNote": "[Sistema: Detectado que a última resposta escreveu a chamada de ferramenta como texto (formato de exibição [A → …]) em vez de tool_calls nativo. As seguintes ferramentas não foram executadas porque os parâmetros não puderam ser reconstruídos com segurança: {0}. Por favor, execute essas ferramentas novamente usando tool_calls nativos ou forneça diretamente a resposta final.]"
+        "sseSkipNote": "[Sistema: Detectado que a última resposta escreveu a chamada de ferramenta como texto (formato de exibição [A → …]) em vez de tool_calls nativo. As seguintes ferramentas não foram executadas porque os parâmetros não puderam ser reconstruídos com segurança: {0}. Por favor, execute essas ferramentas novamente usando tool_calls nativos ou forneça diretamente a resposta final.]",
+        "toolWait": {}
     },
     "goods": {
         "conv": {
@@ -2032,6 +2035,20 @@
             "errBusy": "Processando, aguarde",
             "errRemove": "Remoção não concluída",
             "errGeneric": "Erro desconhecido"
+        },
+        "faEditor": {
+            "label": "Associação de arquivos (texto/código)",
+            "desc": "Exibido na lista \"Abrir com\" do sistema: manutenção automática",
+            "btn": "Definir como padrão",
+            "btnBusy": "Configurando…",
+            "confirmTitle": "Você selecionou \"Definir o qd como o aplicativo padrão para arquivos de texto e código\"",
+            "confirmBody": "Isso definirá o qd como o aplicativo padrão para abrir cerca de 74 tipos de arquivos de texto e código. Outros aplicativos podem reassumir essa associação no futuro; você pode repetir esta ação a qualquer momento para redefinir o qd como padrão.",
+            "okAll": "{n} formatos de texto/código agora associados ✓",
+            "okPartial": "{n}/{m} formatos associados; os demais foram bloqueados por proteção do sistema",
+            "openSettings": "Abrir configurações do sistema",
+            "unsupported": "Esta função não é suportada pelo sistema atual",
+            "fail": "Falha na operação: {e}",
+            "needRestart": "É necessário reiniciar esta janela para aplicar as alterações"
         },
         "tier": {
             "title": "Explicação dos Níveis de IA",

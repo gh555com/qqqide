@@ -151,4 +151,29 @@ export async function faMacApply(exts: string[]): Promise<FaMacResult> {
     }
 }
 
+/** A+ 候选注册（编辑器域）：仅把本 bundle 重新登记到 LaunchServices——「打开方式」候选面
+ *  来自打包期 Info.plist 的 CFBundleDocumentTypes 声明（LSHandlerRank=Alternate）；
+ *  运行期只需刷新注册（绿色包搬家/换目录后重新登记）。不碰系统默认。 */
+export async function faMacRegister(): Promise<FaMacResult> {
+    if (process.platform !== 'darwin') { return { ok: false, code: 'unsupported' }; }
+    const bundle = _bundlePath();
+    if (!bundle) { return { ok: false, code: 'no-bundle' }; }
+    const script = [
+        "'use strict';",
+        "ObjC.import('CoreServices');",
+        "ObjC.import('Foundation');",
+        'var APP = ' + JSON.stringify(bundle) + ';',
+        "try { $.LSRegisterURL($.NSURL.fileURLWithPath(APP), true); } catch(e){ }",
+        "var out = JSON.stringify({ ok: true, total: 0, taken: 0, fails: [] });",
+        "try { $.NSFileHandle.fileHandleWithStandardOutput.writeData($('QFA1' + out + '\\n').dataUsingEncoding($.NSUTF8StringEncoding)); } catch(e){ }",
+        'void 0;',
+    ].join('\n');
+    try {
+        await _runJxa(script);
+        return { ok: true, total: 0, taken: 0, fails: [] };
+    } catch (e: any) {
+        return { ok: false, code: 'apply-failed', err: String((e && e.message) || e).slice(0, 300) };
+    }
+}
+
 

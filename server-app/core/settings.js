@@ -78,6 +78,16 @@
       defaultValue: ''
     },
     {
+      key: 'sys.fileAssoc',
+      label: '文件关联（文本/代码）',
+      labelKey: 'settings.faEditor.label',
+      desc: '出现在系统「打开方式」列表：自动维护',
+      descKey: 'settings.faEditor.desc',
+      type: 'fileassoc',
+      tab: 'general',
+      defaultValue: ''
+    },
+    {
       key: 'ai.compressLevel',
       label: '自动压缩 上下文背包',
       labelKey: 'settings.compress.label',
@@ -841,6 +851,54 @@
   try { window.qqqSysPyConfirm = _interpConfirm; } catch (_) { /* ignore */ }
   try { window.qqqSysInterpAsk = _interpAsk; } catch (_) { /* ignore */ }
 
+  // ── ★ 文件关联（文本/代码 · 编辑器域，2026-10-07）──
+  //   语义与系统解释器行同哲学：单向可反复——不打勾/无状态角标/无解除；按钮恒 = 「设为默认」，
+  //   可一遍又一遍重夺。结果消息恒走 qoast（面板零行内文字）；partial 带〔打开系统设置〕兜底。
+  function _onFaClick() {
+    if (_faBusy) return;
+    var bridge = null;
+    try { bridge = window.qqqideBridge && window.qqqideBridge.fileAssoc; } catch (e) { /* ignore */ }
+    if (!bridge || !bridge.applyEditor) {
+      _pyQoast(_i('settings.faEditor.needRestart', '需重启本窗口后可用'), 'error');
+      return;
+    }
+    _interpConfirm(
+      _i('settings.faEditor.confirmTitle', '你选择了「把 qd 设为文本/代码的默认打开方式」'),
+      _i('settings.faEditor.confirmBody', '将把这些格式的双击打开方式整族接管为 qd（约 74 类文本/代码）。其他应用日后可再抢走——可随时回来重复点击重夺。')
+    ).then(function (go) {
+      if (!go) return;
+      _faBusy = true;
+      _renderPanel();
+      Promise.resolve(bridge.applyEditor()).then(function (r) {
+        _faBusy = false;
+        _renderPanel();
+        if (!r || !r.ok) {
+          if (r && r.code === 'unsupported') { _pyQoast(_i('settings.faEditor.unsupported', '当前系统暂不支持此功能'), 'error'); }
+          else { _pyQoast(_i('settings.faEditor.fail', '操作失败：{e}', { e: (r && (r.code || r.reason)) || '?' }), 'error'); }
+          return;
+        }
+        var taken = r.taken || 0, total = r.total || 0;
+        if (total > 0 && taken >= total) {
+          _pyQoast(_i('settings.faEditor.okAll', '已接管 {n} 类文本/代码格式 ✓', { n: total }), 'success');
+        } else {
+          try {
+            window.qqqideQoast.show(_i('settings.faEditor.okPartial', '已接管 {n}/{m} 类；其余被系统保护拦截', { n: taken, m: total }), {
+              type: 'warning', duration: 6000,
+              actions: [{
+                label: _i('settings.faEditor.openSettings', '打开系统设置'),
+                onClick: function () { try { bridge.settings(); } catch (e2) { /* ignore */ } }
+              }]
+            });
+          } catch (e2) { /* ignore */ }
+        }
+      }, function () {
+        _faBusy = false;
+        _renderPanel();
+        _pyQoast(_i('settings.faEditor.fail', '操作失败：{e}', { e: 'bridge' }), 'error');
+      });
+    });
+  }
+
   // ── 创建设置面板 DOM ──
   function _ensurePanel() {
     if (_$overlay) return;
@@ -867,6 +925,7 @@
   var _sfxOpen = false;       // ★ 音效开关子卡片展开态（音量卡片的 1 by 1）
   var _floorCapHintOn = false;    // ★ 显示楼层 32/64（激活功能）未激活红字提示态（2026-09-05；64 档 2026-09-06）
   var _floorCapHintTimer = null;
+  var _faBusy = false;        // ★ 文件关联〔设为默认〕进行中（编辑器域，2026-10-07）
   // ★ 系统解释器状态（python/node 双目标；跨重渲染保留，唯一后端 shell/ipc-syspy.ts）
   var _interpState = {
     python: { busy: false, phase: 'idle', mode: '' },
@@ -1072,6 +1131,14 @@
           html += '</div>';
         }
         html += '</div>';
+      } else if (def.type === 'fileassoc') {
+        // ★ 文件关联行（2026-10-07）：头行 = 标题 + 说明（自动维护），此处单按钮〔设为默认〕；
+        //   整族夺默认（约 74 类文本/代码；单向可反复——无解除/无状态角标，与播放器 ★ 同哲学）
+        html += '<div style="display:flex; align-items:center; gap:12px;">';
+        html += '<button id="qqq-fa-editor-btn" ' + (_faBusy ? 'disabled ' : '') + 'style="flex:1 1 0; box-sizing:border-box; min-height:38px; padding:8px 12px; display:flex; align-items:center; justify-content:center; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;">';
+        html += _faBusy ? _i('settings.faEditor.btnBusy', '正在设置…') : _i('settings.faEditor.btn', '设为默认');
+        html += '</button>';
+        html += '</div>';
       } else if (def.type === 'number') {
         // 数字键入（范围 100-1000，单位 k）
         var numId = 'qqq-setting-' + def.key.replace(/\./g, '-');
@@ -1187,6 +1254,10 @@
     if ($sysnodeBtn) $sysnodeBtn.addEventListener('click', function () { _onInterpClick('node'); });
     var $syspyBtn = document.getElementById('qqq-syspy-btn');
     if ($syspyBtn) $syspyBtn.addEventListener('click', function () { _onInterpClick('python'); });
+
+    // ★ 文件关联行〔设为默认〕（文本/代码整族；确认框 → apply-editor → qoast 结果）
+    var $faBtn = document.getElementById('qqq-fa-editor-btn');
+    if ($faBtn) $faBtn.addEventListener('click', function () { _onFaClick(); });
 
     // ★ 绑定 1 by 1 音效开关（按钮开合 + 勾选框即时生效，不整面板重渲染防拉杆跳动）
     var $sfx1x1 = document.getElementById('qqq-sfx-1x1');

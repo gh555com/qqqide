@@ -628,7 +628,7 @@ async function _openImagePreview(filePath, nav) {
         return false; // 文件不存在
     }
     var fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
-    var _m = { type: 'qqqide-overlay', action: 'open-image', src: fileUrl };
+    var _m = { type: 'qqqide-overlay', action: 'open-image', src: fileUrl, localPath: filePath };   // ★ 显式传路径（旋转记忆/文件按钮依赖；漏传=记忆断链）
     if (nav) _m.nav = nav;
     _postToHost(_m);
     return true;

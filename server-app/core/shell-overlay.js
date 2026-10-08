@@ -121,7 +121,7 @@ function bootAiOverlay() {
   var _ovNavSkips = 0;
   // ★ 旋转机器（图片专属）：当前图旋转角——连续累计（保旋转动画恒走短边）；归一值 0/90/180/270 仅用于适配/记忆
   var _ovRotDeg = 0;
-  // ★ 旋转视图记忆（path 键；app 运行期内存表——关层重开/跨来源保持，重启清零，绝不落盘；FIFO 上限 500）
+  // ★ 旋转视图记忆（path 键·反斜杠归一正斜杠；app 运行期内存表——关层重开/跨来源保持，重启清零，绝不落盘；FIFO 上限 500）
   var _ovRotMemo = new Map();
 
   function _ovApplyHighlights(text) {
@@ -181,7 +181,8 @@ function bootAiOverlay() {
   // 适配盒（旋转感知：90/270 视觉宽高互换 → 100% 视图恒整图可见；2x 上采样封顶与旧口径等价）
   function _ovFitBox(nw, nh) {
     var rn = ((_ovRotDeg % 360) + 360) % 360;
-    var swap = (rn === 90 || rn === 270);
+    var _rq = Math.round(rn / 90) % 4;   // 适配盒档位 = 就近 90°（微调角跨档即跟随；步进恒为精确档）
+    var swap = (_rq === 1 || _rq === 3);
     var availW = Math.max(200, (overlay.clientWidth || window.innerWidth) - 64);
     var availH = Math.max(150, (overlay.clientHeight || window.innerHeight) - 64 - 64);
     var rw = swap ? nh : nw, rh = swap ? nw : nh;
@@ -198,27 +199,100 @@ function bootAiOverlay() {
     img.style.height = f.h + 'px';
     img._ovBaseScale = f.base;
   }
-  // 视图记忆读取（path 键；无路径不记忆——剪贴板/内存图天然瞬态）
-  function _ovRotGet(lp) { try { return (lp && _ovRotMemo.get(lp)) || 0; } catch (_) { return 0; } }
-  // 旋转唯一入口（dir：-1 逆时针 / +1 顺时针；四态循环；无键盘监听——纯钮操作）
-  // 记忆两层：翻页序列项 rot（本序列往返保持）+ path 键运行期表（关层重开保持；重启清零、绝不落盘）
-  function _ovRotate(dir) {
-    if (_ovTablePanMode) return;
-    _ovRotDeg += (dir > 0 ? 90 : -90);
+  // 视图记忆读取（path 键·反斜杠归一正斜杠——同文件跨入口记忆相通；无路径不记忆——剪贴板/内存图天然瞬态）
+  function _ovRotKeyOf(lp) { return lp ? String(lp).replace(/\\/g, '/') : ''; }
+  function _ovRotGet(lp) { try { var _k = _ovRotKeyOf(lp); return (_k && _ovRotMemo.get(_k)) || 0; } catch (_) { return 0; } }
+  // 旋转记账（两层记忆：翻页序列项 rot + path 键运行期表；步进/微调共用唯一实现）
+  function _ovRotCommit() {
     var rn = ((_ovRotDeg % 360) + 360) % 360;
     if (_ovNav && _ovNav.list && _ovNav.list[_ovNav.index]) _ovNav.list[_ovNav.index].rot = rn;
-    var _rp = _ovLocalPath;
+    var _rp = _ovRotKeyOf(_ovLocalPath);
     if (_rp) {
       if (rn) {
         _ovRotMemo.set(_rp, rn);
         if (_ovRotMemo.size > 500) { var _fk = _ovRotMemo.keys().next(); if (!_fk.done) _ovRotMemo.delete(_fk.value); }
       } else { _ovRotMemo.delete(_rp); }
     }
+  }
+  // 旋转步进（dir：-1 逆时针 / +1 顺时针；90° 步进；执行时机 = 钮抬起——详按住机器；无键盘监听）
+  function _ovRotate(dir) {
+    if (_ovTablePanMode) return;
+    _ovRotDeg += (dir > 0 ? 90 : -90);
+    _ovRotCommit();
     var img = contentEl.querySelector('img');
     if (!img) return;   // 图未就绪（加载中）：状态先落，onload 按当前状态显示
     _ovRefitImg(img);
     _dragX = 0; _dragY = 0;   // 旋转即回中
     applyZoom();
+  }
+  // 角度微调（仅按住机器进档后调用；每次 ±1°）：纯旋转——不重算适配盒、不叠步进（微幅转动视线不跳）
+  function _ovRotFine(dir) {
+    if (_ovTablePanMode) return;
+    _ovRotDeg += (dir > 0 ? 1 : -1);
+    _ovRotCommit();
+    var img = contentEl.querySelector('img');
+    if (img) applyZoom();   // 图未就绪：状态先落，onload 按当前状态显示
+  }
+  // ★ 旋转钮按住机器（唯一交互）：单击 = 抬起时 90° 步进（<500ms 且落点回钮）；按住 ≥500ms = 角度微调
+  //   （进档即回中并 ±1°，此后每 50ms ±1°；微调后抬起不做任何事——绝不叠加步进）
+  //   松手丢事件防线（播放器按住连按同款）：窗口捕获相位 pointerup/pointercancel + pointermove 见 buttons==0 补收尾 + setPointerCapture 兜底；
+  //   取消 / 窗口失焦 / 换图 / 关层 = 中止（不出步进）
+  var _rotHold = null;
+  var _ROT_HOLD_MS = 500, _ROT_FINE_MS = 50;
+  function _ovRotHoldAbort() {
+    var h = _rotHold;
+    if (!h) return;
+    _rotHold = null;
+    if (h.t500) { clearTimeout(h.t500); h.t500 = 0; }
+    if (h.tick) { clearInterval(h.tick); h.tick = 0; }
+    if (h.btn) h.btn.style.background = 'rgba(255,255,255,0.1)';
+    try {
+      window.removeEventListener('pointerup', _rotHoldOnUp, true);
+      window.removeEventListener('pointercancel', _rotHoldOnCancel, true);
+      window.removeEventListener('pointermove', _rotHoldOnMove, true);
+      window.removeEventListener('blur', _rotHoldOnBlur, true);
+    } catch (_) { }
+  }
+  function _rotHoldSettle(ev, cancelled) {
+    var h = _rotHold;
+    if (!h) return;
+    var held = performance.now() - h.t0, inside = false;
+    if (ev && h.btn) {
+      var r = h.btn.getBoundingClientRect();
+      inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+    }
+    var dir = h.dir;
+    _ovRotHoldAbort();
+    if (!cancelled && held < _ROT_HOLD_MS && inside) _ovRotate(dir);   // 单击在抬起执行；微调情形抬起不做任何事
+  }
+  function _rotHoldOnUp(ev) { _rotHoldSettle(ev, false); }
+  function _rotHoldOnCancel(ev) { _rotHoldSettle(ev, true); }
+  function _rotHoldOnMove(ev) { if (typeof ev.buttons === 'number' && ev.buttons === 0) _rotHoldSettle(null, true); }
+  function _rotHoldOnBlur() { _ovRotHoldAbort(); }
+  function _ovRotHoldStart(btn, dir, e) {
+    if (_ovTablePanMode) return;
+    if (e && e.pointerType === 'mouse' && e.button !== 0) return;   // 仅左键
+    if (e) e.preventDefault();
+    _ovRotHoldAbort();
+    var h = { dir: dir, btn: btn, t0: performance.now(), t500: 0, tick: 0 };
+    _rotHold = h;
+    btn.style.background = 'rgba(255,255,255,0.3)';   // 按住反馈（<500ms 静默期唯一视觉应答）
+    try { if (e && btn.setPointerCapture) btn.setPointerCapture(e.pointerId); } catch (_) { }
+    h.t500 = setTimeout(function () {
+      h.t500 = 0;
+      if (_rotHold !== h) return;
+      if (_ovTablePanMode) { _ovRotHoldAbort(); return; }   // 层已切表格模式 = 放弃微调（收尾仍走抬起/中止路径）
+      _dragX = 0; _dragY = 0;   // 进档先回中（同步进：轴 = 视口中心）
+      _ovRotResetHint();   // ★ 首次对该图进微调 → 提示「房子钮还原原始角度」+ 房子高亮一会儿
+      _ovRotFine(dir);
+      h.tick = setInterval(function () { if (_rotHold === h) _ovRotFine(dir); }, _ROT_FINE_MS);
+    }, _ROT_HOLD_MS);
+    try {
+      window.addEventListener('pointerup', _rotHoldOnUp, true);
+      window.addEventListener('pointercancel', _rotHoldOnCancel, true);
+      window.addEventListener('pointermove', _rotHoldOnMove, true);
+      window.addEventListener('blur', _rotHoldOnBlur, true);
+    } catch (_) { }
   }
   function applyZoom() {
     var img = contentEl.querySelector('img');
@@ -306,10 +380,10 @@ function bootAiOverlay() {
     if (img) { doCopy(img.src); return; }
   });
 
-  // ★ 图片专用三按钮（内存/文件/路径）——仅图片预览显示；表格/代码块隐藏，保持原样
-  var memBtn = tbBtn(window._i('shell.overlay.mem', '内存'), window._i('shell.overlay.memTitle', '图片进入内存（剪贴板图像），可直接粘贴到聊天或画布'));
-  var fileBtn = tbBtn(window._i('shell.overlay.file', '文件'), window._i('shell.overlay.fileTitle', '复制图片文件，可粘贴到聊天/Roam/资源管理器'));
-  var pathBtn = tbBtn(window._i('shell.overlay.path', '路径'), window._i('shell.overlay.pathTitle', '复制图片路径'));
+  // ★ 图片专用三按钮——标签恒英文小写 mem/file/path（用户定案：全语言百分百统一、免 i18n）；仅图片预览显示，表格/代码块隐藏
+  var memBtn = tbBtn('mem', window._i('shell.overlay.memTitle', '图片进入内存（剪贴板图像），可直接粘贴到聊天或画布'));
+  var fileBtn = tbBtn('file', window._i('shell.overlay.fileTitle', '复制图片文件，可粘贴到聊天/Roam/资源管理器'));
+  var pathBtn = tbBtn('path', window._i('shell.overlay.pathTitle', '复制图片路径'));
 
   // ★ 缩放指示钮（内存钮左侧·恒占槽——显/隐零挪位）：用户改过缩放且非 100% 才现，点击回 100% 并复位视图
   var zoomPctBtn = tbBtn('', window._i('shell.overlay.zoomReset', '点击回到 100%'), 'width:66px; padding:8px 0; font-variant-numeric:tabular-nums;');
@@ -434,17 +508,17 @@ function bootAiOverlay() {
     applyZoom();
   });
 
-  // ★ 旋转钮（图片专属；逆/顺 90° 四态循环；图标 = qqq-icons 手绘 rotate-ccw/cw；无键盘监听）
-  var rotLBtn = tbBtn('', window._i('shell.overlay.rotateLeft', '逆时针旋转 90°'), 'padding:8px 12px;');
+  // ★ 旋转钮（图片专属；逆/顺 90° 四态循环；抬起执行 + 按住微调——详按住机器；图标 = qqq-icons 手绘 rotate-ccw/cw；无键盘监听）
+  var rotLBtn = tbBtn('', window._i('shell.overlay.rotateLeft', '逆时针旋转 90°（按住可微调）'), 'padding:8px 12px;');
   rotLBtn.setAttribute('data-no-cd', '');
   if (window.qqqIcons && window.qqqIcons.el) rotLBtn.appendChild(window.qqqIcons.el('rotate-ccw', 'font-size:18px;pointer-events:none'));
   else rotLBtn.textContent = '\u21BA';
-  rotLBtn.addEventListener('click', function () { _ovRotate(-1); });
-  var rotRBtn = tbBtn('', window._i('shell.overlay.rotateRight', '顺时针旋转 90°'), 'padding:8px 12px;');
+  rotLBtn.addEventListener('pointerdown', function (e) { _ovRotHoldStart(rotLBtn, -1, e); });
+  var rotRBtn = tbBtn('', window._i('shell.overlay.rotateRight', '顺时针旋转 90°（按住可微调）'), 'padding:8px 12px;');
   rotRBtn.setAttribute('data-no-cd', '');
   if (window.qqqIcons && window.qqqIcons.el) rotRBtn.appendChild(window.qqqIcons.el('rotate-cw', 'font-size:18px;pointer-events:none'));
   else rotRBtn.textContent = '\u21BB';
-  rotRBtn.addEventListener('click', function () { _ovRotate(1); });
+  rotRBtn.addEventListener('pointerdown', function (e) { _ovRotHoldStart(rotRBtn, 1, e); });
 
   // Close (extra large) — custom tooltip: high-contrast instant cursor-following
   var closeBtnEl = tbBtn('\u2715', '', 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
@@ -492,6 +566,58 @@ function bootAiOverlay() {
 
   overlay.appendChild(contentEl);
   overlay.appendChild(toolbar);
+
+  // ═══ ★ 旋转还原提示（用户定案）：首次对一张图进入角度微调时——工具栏正上方现一行提示 +
+  //   十字键房子钮高亮一会儿；每张图仅一次（app 运行期去重，与旋转记忆同生命周期）；关层即收（详 close）。
+  var _ovRotHintSeen = new Set();
+  var _ovRotHintWrap = document.createElement('div');
+  _ovRotHintWrap.style.cssText = 'display:none; position:absolute; left:0; right:0; bottom:76px; z-index:100001; text-align:center; pointer-events:none;';
+  var _ovRotHintPill = document.createElement('span');
+  _ovRotHintPill.style.cssText = 'display:inline-block; max-width:80%; background:rgba(0,0,0,0.75); color:#fff; ' +
+    'font-size:13px; line-height:1.5; padding:6px 14px; border-radius:14px; border:1px solid rgba(255,255,255,0.2); ' +
+    'opacity:0; transition:opacity 0.25s ease;';
+  _ovRotHintPill.textContent = window._i('shell.overlay.rotResetHint', '点按右侧十字键中央的房子按钮，可还原到原始角度');
+  _ovRotHintWrap.appendChild(_ovRotHintPill);
+  overlay.appendChild(_ovRotHintWrap);
+  var _ovHintCss = document.createElement('style');
+  _ovHintCss.textContent =
+    '@keyframes ov-home-hl{0%,100%{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.25);box-shadow:none}' +
+    '50%{background:rgba(255,211,1,0.45);border-color:#ffd301;box-shadow:0 0 10px rgba(255,211,1,0.7)}}' +
+    '#qqq-ai-overlay .ov-home-hl{animation:ov-home-hl 0.9s ease-in-out 4;background:rgba(255,211,1,0.2);border-color:rgba(255,211,1,0.85);}';
+  document.head.appendChild(_ovHintCss);
+  var _ovHintT1 = 0, _ovHintT2 = 0, _ovHomeHlT = 0;
+  function _ovRotHintHide() {
+    if (_ovHintT1) { clearTimeout(_ovHintT1); _ovHintT1 = 0; }
+    if (_ovHintT2) { clearTimeout(_ovHintT2); _ovHintT2 = 0; }
+    if (_ovHomeHlT) { clearTimeout(_ovHomeHlT); _ovHomeHlT = 0; }
+    _ovRotHintPill.style.opacity = '0';
+    _ovRotHintWrap.style.display = 'none';
+    try { btnCenter.classList.remove('ov-home-hl'); } catch (_) { }
+  }
+  function _ovRotResetHint() {
+    var _k = _ovRotKeyOf(_ovLocalPath);
+    if (!_k) { var _s = _currentOverlayImgSrc() || ''; _k = _s ? ('src:' + _s.length + '|' + _s.slice(0, 120)) : ''; }
+    if (!_k || _ovRotHintSeen.has(_k)) return;
+    _ovRotHintSeen.add(_k);
+    if (_ovRotHintSeen.size > 500) { var _fk = _ovRotHintSeen.values().next(); if (!_fk.done) _ovRotHintSeen.delete(_fk.value); }
+    _ovRotHintWrap.style.display = 'block';
+    _ovRotHintPill.style.opacity = '1';
+    if (_ovHintT1) clearTimeout(_ovHintT1);
+    if (_ovHintT2) { clearTimeout(_ovHintT2); _ovHintT2 = 0; }
+    _ovHintT1 = setTimeout(function () {
+      _ovHintT1 = 0;
+      _ovRotHintPill.style.opacity = '0';
+      _ovHintT2 = setTimeout(function () { _ovHintT2 = 0; _ovRotHintWrap.style.display = 'none'; }, 300);
+    }, 3200);
+    // 房子钮高亮一会儿（4 循环 ≈3.6s；先摘类强制重排 = 同钮再触发动画可重放）
+    try {
+      btnCenter.classList.remove('ov-home-hl');
+      void btnCenter.offsetWidth;
+      btnCenter.classList.add('ov-home-hl');
+    } catch (_) { }
+    if (_ovHomeHlT) clearTimeout(_ovHomeHlT);
+    _ovHomeHlT = setTimeout(function () { _ovHomeHlT = 0; try { btnCenter.classList.remove('ov-home-hl'); } catch (_) { } }, 3600);
+  }
 
   // ═══ 左右贴边全高翻页钮（翻页唯一控件；nav 缺席/单张 → 隐藏，显隐判据归 _ovNavSync）═══
   function _ovNavBtn(side) {
@@ -618,8 +744,10 @@ function bootAiOverlay() {
     _ovPanDrag = null;
     _ovPanSwallowClick = false;
     try { _stopRepeat(); } catch (_) { }
+    try { _ovRotHoldAbort(); } catch (_) { }
     try { _ovTxAbort(); } catch (_) { }
     try { _ovClearHighlights(); } catch (_) { }
+    try { _ovRotHintHide(); } catch (_) { }
     _closeTt.style.display = 'none';
     overlay.style.display = 'none';
     dpad.style.display = 'none';
@@ -724,7 +852,7 @@ function bootAiOverlay() {
   var btnCenter = _crossBtn('\u2302', BS, BS);
   var btnRight = _crossBtn('\u25B6', BS, BS * 2);
   var btnDown = _crossBtn('\u25BC', BS * 2, BS);
-  btnCenter.title = window._i('shell.overlay.resetPosition', '重置位置');
+  btnCenter.title = window._i('shell.overlay.resetPosition', '重置位置与角度');
   btnCenter.style.background = 'rgba(255,255,255,0.12)';
   btnCenter.style.borderColor = 'rgba(255,255,255,0.25)';
   var _initZoom = 1.0;
@@ -736,11 +864,18 @@ function bootAiOverlay() {
     _dragY -= dy * step / s;
     applyZoom();
   }
+  // ★ 房子中键 = 重置视图：位置归零 + 缩放归基准 + 旋转角还原原始（含记忆清零——重开/翻回不再带角度）
   function _resetView() {
     _dragX = 0; _dragY = 0;
     var w = contentEl.querySelector('.qqq-overlay-table-wrapper') || contentEl.querySelector('img');
     if (w) { zoomScale = _initZoom; }
     else { zoomScale = 1.0; }
+    if (_ovRotDeg && !_ovTablePanMode) {
+      _ovRotDeg = 0;
+      _ovRotCommit();
+      var _rimg = contentEl.querySelector('img');
+      if (_rimg) _ovRefitImg(_rimg);   // 适配盒回未旋转档（90/270 宽高互换还原）
+    }
     applyZoom();
   }
   // ── 按住连点：mousedown 启动定时器，mouseup/mouseleave 停止 ──
@@ -826,7 +961,8 @@ function bootAiOverlay() {
     var _gen = ++_ovShowGen;   // 代际令牌：本次调用之外的旧回调一律作废
     // 强制清理上一轮残留（含上一张图的拖拽监听）
     _ovImgDispose();
-    _ovLocalPath = localPath || null;
+    // ★ 路径缺省自解码（file:/// → 本地路径）：旋转记忆/文件按钮不依赖调用方传参（防漏传致记忆断链）
+    _ovLocalPath = localPath || _localPathFromSrc(src) || null;
     _ovTablePanMode = false;
     _ovPanDrag = null;
     _stopRepeat();
@@ -837,6 +973,7 @@ function bootAiOverlay() {
     zoomScale = 1.0;
     _dragX = 0; _dragY = 0;
     if (!isTx) _ovRotDeg = 0;     // 逐张旋转复位（转码产物回填 = 同图续显，旋转保持）
+    if (!isTx) _ovRotHoldAbort(); // 换图 = 终止进行中的按住会话（防微调落到下一张）
     _initZoom = 1.0;              // 图片模式重置基准 = 100%（D-pad 中键「重置位置」同步受益）
     _ovZoomTouched = false;       // 每张图从 100% 起（翻页=重新适配，不带上一张的缩放）
     _ovZoomBadge();
@@ -1003,13 +1140,13 @@ function bootAiOverlay() {
             var _it = _nav.list[_ni];
             var _itOk = !!(_it && typeof _it.src === 'string' && _it.src);
             if (_ni === _nIdx) _nCur = _itOk ? _nList.length : -1;
-            if (_itOk) _nList.push({ src: _it.src, localPath: _it.localPath || null, rot: _ovRotGet(_it.localPath) });
+            if (_itOk) { var _ilp = _it.localPath || _localPathFromSrc(_it.src) || null; _nList.push({ src: _it.src, localPath: _ilp, rot: _ovRotGet(_ilp) }); }
           }
           if (_nCur >= 0 && _nList.length > 1) _ovNav = { list: _nList, index: _nCur, dir: 1 };
         }
       }
       _ovShowImage(e.data.src, e.data.localPath || null, false);
-      _ovRotDeg = _ovNav ? (_ovNav.list[_ovNav.index].rot || 0) : _ovRotGet(e.data.localPath);
+      _ovRotDeg = _ovNav ? (_ovNav.list[_ovNav.index].rot || 0) : _ovRotGet(_ovLocalPath);
       _ovClaimFocus();   // 抢焦点 + 广播层状态（来源 iframe 快捷键让路）
     }
 

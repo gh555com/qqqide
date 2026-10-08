@@ -1,6 +1,0 @@
-
-> qqqide@0.4.10 check:syntax
-> node ci/check-syntax.js
-
-[syntax] 156 files checked (server-app, shell-build, ci), 0 failed, 11178ms
-[syntax] OK

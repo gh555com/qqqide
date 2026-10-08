@@ -1078,10 +1078,8 @@ async function _executeSend(intent) {
     //      任何进展信号清零重新累计；工具层两道看门狗 ghrun 15min 失速 / qz-spawn 2h 硬超时先行兜底）；
     //   R3 定时器升 agent 级租约（owner=本次发送令牌对象）——新发送开局清旧租约 + 触发时双重归属校验，
     //      陈旧闭包定时器/迟到回调结构性拒动（f32 事故：f31 卡死闭包定时器无人清除，20 分钟后拿旧账杀 f32）。
-    //   R4 工具执行中可视化：工具活跃超 10 分钟 → 任务坞亮卡「⏳ 工具执行中 mm:ss」（用户可见长任务存活）。
     var SEND_CAP_WINDOW_MS = 20 * 60 * 1000;             // 零进展窗口（每次进展信号重置）
     var SEND_CAP_RENEW_BUDGET_MS = 2 * 60 * 60 * 1000;   // ★ R2: 工具续命预算上限（静默段累计）
-    var SEND_TOOL_WAIT_SHOW_MS = 10 * 60 * 1000;         // ★ R4: 工具执行中卡片展示阈值
     var _capToken = {};                                   // ★ R3: 本次发送令牌（对象身份比较，防闭包串号）
     if (agent) {
         // ★ R3: 清上一发送遗留租约（卡死闭包永不返回 → 其定时器仍在飞，新发送开局必须清除）
@@ -1204,44 +1202,8 @@ async function _executeSend(intent) {
             agent._capLease = _lease;
         }
     };
-    _touchCap();
-    // ★ R4: 工具执行中可视化（2026-09-19）——工具活跃超 10 分钟 → 任务坞亮卡「⏳ 工具执行中 mm:ss」，
-    //   用户可见长任务存活（配合 R2 预算续命）；工具结束/楼层终结/陈旧闭包 → 自摘卡；归属校验复用 R3 令牌。
-    var _toolWaitTimer = null;
-    var _toolWaitShown = false;
-    var _toolWaitCardId = function () { return 'tool-wait-' + (qid || 'q') + '-' + (floorNum || 0); };
-    var _toolWaitRemove = function () {
-        if (!_toolWaitShown) return;
-        try { if (window.parent && window.parent.qqqideIoast) window.parent.qqqideIoast.remove(_toolWaitCardId()); } catch (_) { }
-        _toolWaitShown = false;
-    };
-    var _toolWaitTick = function () {
-        if (!agent) { if (_toolWaitTimer) { clearInterval(_toolWaitTimer); _toolWaitTimer = null; } return; }
-        if (agent._capSendToken !== _capToken) {
-            // 陈旧闭包（新发送已接管）→ 自摘自终，绝不干预新发送
-            _toolWaitRemove();
-            if (_toolWaitTimer) { clearInterval(_toolWaitTimer); _toolWaitTimer = null; }
-            return;
-        }
-        if (agent._stopState !== 'sending') { _toolWaitRemove(); return; }
-        if (!agent._toolExecActive || !agent._toolExecSince || (Date.now() - agent._toolExecSince) < SEND_TOOL_WAIT_SHOW_MS) {
-            _toolWaitRemove();
-            return;
-        }
-        try {
-            var _io = window.parent && window.parent.qqqideIoast;
-            if (!_io || !_io.task) return;
-            var _durS = Math.max(0, Math.floor((Date.now() - agent._toolExecSince) / 1000));
-            var _durTxt = Math.floor(_durS / 60) + 'm' + (_durS % 60 < 10 ? '0' : '') + (_durS % 60) + 's';
-            _io.task(_toolWaitCardId(), {
-                title: _qq('ai.toolWait.title', '⏳ 工具执行中 {0}', { 0: _durTxt }),
-                subtitle: _qq('ai.toolWait.subtitle', '{0} 第 {1} 层 · 长任务执行中', { 0: (qid || '?'), 1: floorNum })
-            });
-            _toolWaitShown = true;
-        } catch (_) { }
-    };
-    if (agent) _toolWaitTimer = setInterval(_toolWaitTick, 1000);
-    try {
+     _touchCap();
+    try {
         var token = getLoginToken();
         // ★ V15: compress 楼层强制 tier 4（facts 提取）
         var _actualTier = _isCompress ? TIER_LIST[4] : (selectedTier ? TIER_LIST[selectedTier] : null);
@@ -1649,9 +1611,6 @@ async function _executeSend(intent) {
             agent._capLease = null;
             agent._capSendToken = null;
         }
-        // ★ R4: 工具执行中卡片收尾（本发送闭包所有 → 只摘自己的卡）
-        if (_toolWaitTimer) { clearInterval(_toolWaitTimer); _toolWaitTimer = null; }
-        _toolWaitRemove();
         if (agent && qid && agent._floorCompletedCleanly) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }
             // ★ V12: 楼层完结 → 自动重组背包（原地追加饼干 + DE，零 splice，前缀缓存命中）

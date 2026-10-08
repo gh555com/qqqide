@@ -97,16 +97,14 @@
       "nextImage": "下一张",
       "skipMissing": "已跳过 {0} 张无法显示的图片",
       "noMoreImages": "没有更多可显示的图片了",
-      "rotateLeft": "逆时针旋转 90°",
-      "rotateRight": "顺时针旋转 90°",
+      "rotateLeft": "逆时针旋转 90°（按住可微调）",
+      "rotateRight": "顺时针旋转 90°（按住可微调）",
+      "rotResetHint": "点按右侧十字键中央的房子按钮，可还原到原始角度",
       "copyFailed": "复制失败",
       "zoomIn": "放大",
       "zoomOut": "缩小",
       "zoomReset": "点击回到 100%",
-      "resetPosition": "重置位置",
-      "mem": "内存",
-      "file": "文件",
-      "path": "路径",
+      "resetPosition": "重置位置与角度",
       "memTitle": "图片进入内存（剪贴板图像），可直接粘贴到聊天或画布",
       "fileTitle": "复制图片文件，可粘贴到聊天/Roam/资源管理器",
       "pathTitle": "复制图片路径",
@@ -893,14 +891,18 @@
       "lockedDecrypt": "密钥无法在本机解密（可能来自其他设备），请重新输入"
     },
     "gwWait": {
+      "title": "⏳ 上游无响应 {0}",
+      "rowLabel": "{0} 第 {1} 层",
+      "barMulti": "⏳ {0} 个楼层等待上游响应 · 最长 {1}",
+      "stop": "■ 停止",
+      "expand": "展开明细",
       "collapse": "收起",
       "taskCapsule": "⏳ {0} 个任务进行中",
+      "muteTip": "本次不再提示（出现新的等待楼层会再提示）",
+      "serverAck": "服务器确认等待中",
+      "firstToken": "等待首字输出",
       "hangCount": "（第 {0} 次）",
       "hangBroken": "网络通道疑似损坏{0}，已自动尝试全部线路。楼层已保存，建议 Ctrl+R 刷新窗口后点击「继续任务」"
-    },
-    "toolWait": {
-      "title": "⏳ 工具执行中 {0}",
-      "subtitle": "{0} 第 {1} 层 · 长任务执行中"
     },
     "gw": {
       "hangTimeout": "连接超时（已自动尝试全部线路，对话完整保留，可点击「继续任务」重试）",
@@ -2050,6 +2052,20 @@
       "errBusy": "正在处理中，请稍候",
       "errRemove": "解除未完成",
       "errGeneric": "未知错误"
+    },
+    "faEditor": {
+      "label": "文件关联（文本/代码）",
+      "desc": "出现在系统「打开方式」列表：自动维护",
+      "btn": "设为默认",
+      "btnBusy": "正在设置…",
+      "confirmTitle": "你选择了「把 qd 设为文本/代码的默认打开方式」",
+      "confirmBody": "将把这些格式的双击打开方式整族接管为 qd（约 74 类文本/代码）。其他应用日后可再抢走——可随时回来重复点击重夺。",
+      "okAll": "已接管 {n} 类文本/代码格式 ✓",
+      "okPartial": "已接管 {n}/{m} 类；其余被系统保护拦截",
+      "openSettings": "打开系统设置",
+      "unsupported": "当前系统暂不支持此功能",
+      "fail": "操作失败：{e}",
+      "needRestart": "需重启本窗口后可用"
     },
     "tier": {
       "title": "AI 等级说明",

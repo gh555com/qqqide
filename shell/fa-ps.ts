@@ -1,10 +1,14 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// fa-ps.ts — 系统默认播放器（文件关联）PowerShell 脚本（纯文本，零依赖）
-//   由 ipc-fileassoc.ts 经 stdin 执行（行协议 QQQIDE_FA_*；$mode=apply——check/remove 已废：
-//   无状态角标、无解除逻辑〔2026-10-03 定案〕）；探针可整体导入本文件、
-//   替换四个注册表根变量 + $verifyMode 后在沙箱命名空间做全链验证。
+// fa-ps.ts — 文件关联（打开方式）PowerShell 脚本（纯文本，零依赖）
+//   由 ipc-fileassoc.ts（播放器域）/ fa-editor.ts（编辑器域）经 stdin 执行（行协议 QQQIDE_FA_*）。
+//   $mode=apply|register（check/remove 已废：无状态角标、无解除逻辑〔2026-10-03 定案〕）：
+//     apply    = 注册面全量 + UserChoice hash 强写（夺默认；播放器 ★ 钮 / 设置行〔设为默认〕）
+//     register = 仅注册面（ProgID + OpenWithProgids + Capabilities/RegisteredApplications
+//                + Applications 块）——不碰系统默认（编辑器域 A+ 启动自愈静默路径）
+//   探针可整体导入本文件、替换四个注册表根变量 + $verifyMode 后在沙箱命名空间做全链验证。
+//   ProgID / 验证标记 / 应用级命令均经环境注入（缺省 = 播放器域旧值，行为零回归）。
 //
 //   UserChoice hash 算法与 Deny-ACL 突破 = ipc-syspy.ts 同源（Windows UserChoice 公开逆向格式
 //   1803+ 主版 v1）；PS 2.0 兼容（Win7 出厂）：零 3.0+ cmdlet，全程 ASCII 脚本体。
@@ -20,12 +24,20 @@
 export const FA_PS = String.raw`
 $ErrorActionPreference = 'Continue'
 $mode = $env:QQQIDE_FA_MODE
-$progId = 'qqqide.player'
+$progId = $env:QQQIDE_FA_PROGID
+if (-not $progId) { $progId = 'qqqide.player' }
+$mark = $env:QQQIDE_FA_MARK
+if (-not $mark) { $mark = '--qqqide-play' }
 $cmdLine = $env:QQQIDE_FA_CMD
 $icon = $env:QQQIDE_FA_ICON
 $appName = $env:QQQIDE_FA_NAME
 $desc = $env:QQQIDE_FA_DESC
 if (-not $appName) { $appName = 'qd (qqqide)' }
+$appFriend = $env:QQQIDE_FA_APPFRIEND
+if (-not $appFriend) { $appFriend = $appName }
+$appExe = $env:QQQIDE_FA_APPEXE
+$appCmd = $env:QQQIDE_FA_APPCMD
+$appTypes = $env:QQQIDE_FA_APPTYPES
 $exts = @()
 if ($env:QQQIDE_FA_EXTS) {
   foreach ($e in ($env:QQQIDE_FA_EXTS -split ';')) { $t = $e.Trim(); if ($t -ne '') { $exts += $t } }
@@ -124,6 +136,13 @@ function Read-Value([string]$p, [string]$name) {
   } catch { }
   return ''
 }
+function Has-Value([string]$p, [string]$name) {
+  try {
+    $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($p)
+    if ($k) { $names = $k.GetValueNames(); $k.Close(); foreach ($n in $names) { if ($n -eq $name) { return $true } } }
+  } catch { }
+  return $false
+}
 function Get-AssocCmd([string]$e) {
   $sb = New-Object System.Text.StringBuilder 4096
   $n = 4096
@@ -174,15 +193,18 @@ function Write-Uc([string]$e) {
   return $false
 }
 function Verify-Ext([string]$e) {
+  if ($mode -eq 'register') {
+    return (Has-Value ($clsRoot + '\' + $e + '\OpenWithProgids') $progId)
+  }
   if ($verifyMode -eq 'reg') {
     $uc = Read-Value (UcPathOf $e) 'ProgId'
     return ($uc -eq $progId)
   }
   $aq = Get-AssocCmd $e
-  return (($aq -ne '') -and ($aq.ToLower().Contains('--qqqide-play')))
+  return (($aq -ne '') -and ($aq.ToLower().Contains($mark)))
 }
 
-if ($mode -eq 'apply') {
+if ($mode -eq 'apply' -or $mode -eq 'register') {
   if (-not $cmdLine) { OutKV 'OK' '0'; OutKV 'CODE' 'no-cmd'; exit 0 }
   try {
     $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($clsRoot + '\' + $progId)
@@ -217,6 +239,30 @@ if ($mode -eq 'apply') {
     $k.SetValue($appName, $cap, 'String')
     $k.Close()
   } catch { }
+  if ($appExe -and $appCmd) {
+    # App-level candidate surface: Applications\<exe> (FriendlyAppName + SupportedTypes + command).
+    # Command = --qqqide-open (routes by extension: text -> editor, media -> player).
+    # SCRIPT BODY MUST STAY PURE ASCII (see note in the main apply block below).
+    try {
+      $appKey = $clsRoot + '\Applications\' + $appExe
+      $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($appKey)
+      $k.SetValue('FriendlyAppName', $appFriend, 'String')
+      $k.Close()
+      $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($appKey + '\shell\open\command')
+      $k.SetValue('', $appCmd, 'String')
+      $k.Close()
+      if ($icon) {
+        $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($appKey + '\DefaultIcon')
+        $k.SetValue('', $icon, 'String')
+        $k.Close()
+      }
+      if ($appTypes) {
+        $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($appKey + '\SupportedTypes')
+        foreach ($t in ($appTypes -split ';')) { $tv = $t.Trim(); if ($tv -ne '') { $k.SetValue($tv, '', 'String') } }
+        $k.Close()
+      }
+    } catch { }
+  }
   $total = 0
   $taken = 0
   $fails = ''
@@ -226,7 +272,7 @@ if ($mode -eq 'apply') {
       $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($clsRoot + '\' + $e + '\OpenWithProgids')
       if ($k) { $k.SetValue($progId, [byte[]]@(), 'Binary'); $k.Close() }
     } catch { }
-    Write-Uc $e | Out-Null
+    if ($mode -ne 'register') { Write-Uc $e | Out-Null }
     if (Verify-Ext $e) { $taken++ } else { $fails = $fails + $e + ';' }
   }
   [QS]::NotifyAssocChanged()

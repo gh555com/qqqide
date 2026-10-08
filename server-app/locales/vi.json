@@ -95,16 +95,14 @@
             "nextImage": "Ảnh sau",
             "skipMissing": "Đã bỏ qua {0} ảnh không thể hiển thị",
             "noMoreImages": "Không còn ảnh nào để hiển thị",
-            "rotateLeft": "Xoay 90° ngược chiều kim đồng hồ",
-            "rotateRight": "Xoay 90° theo chiều kim đồng hồ",
+            "rotateLeft": "Xoay ngược chiều kim đồng hồ 90° (giữ để điều chỉnh tinh)",
+            "rotateRight": "Xoay theo chiều kim đồng hồ 90° (giữ để điều chỉnh tinh)",
+            "rotResetHint": "Nhấn nút hình ngôi nhà ở trung tâm phím chữ thập bên phải để khôi phục về góc ban đầu",
             "copyFailed": "Sao chép thất bại",
             "zoomIn": "Phóng to",
             "zoomOut": "Thu nhỏ",
             "zoomReset": "Nhấp để quay về 100%",
-            "resetPosition": "Đặt lại vị trí",
-            "mem": "Bộ nhớ",
-            "file": "Tệp",
-            "path": "Đường dẫn",
+            "resetPosition": "Đặt lại vị trí và góc",
             "memTitle": "Hình ảnh đã được đưa vào bộ nhớ (ảnh clipboard), có thể dán trực tiếp vào khung chat hoặc canvas",
             "fileTitle": "Sao chép tệp hình ảnh, có thể dán vào khung chat/Roam/Trình quản lý tài nguyên",
             "pathTitle": "Sao chép đường dẫn hình ảnh",
@@ -882,14 +880,18 @@
             "lockedDecrypt": "Không thể giải mã khóa trên máy này (có thể đến từ thiết bị khác), vui lòng nhập lại"
         },
         "gwWait": {
+            "title": "⏳ Upstream không phản hồi {0}",
+            "rowLabel": "{0} Tầng {1}",
+            "barMulti": "⏳ {0} tầng đang chờ phản hồi từ upstream · Tối đa {1}",
+            "stop": "■ Dừng",
+            "expand": "Mở rộng chi tiết",
             "collapse": "Thu gọn",
             "taskCapsule": "⏳ {0} nhiệm vụ đang tiến hành",
+            "muteTip": "Không nhắc lại trong lần này (sẽ nhắc lại khi có tầng chờ mới)",
+            "serverAck": "Máy chủ xác nhận đang chờ",
+            "firstToken": "Đang chờ ký tự đầu tiên",
             "hangCount": "(Lần thứ {0})",
             "hangBroken": "Kênh mạng nghi ngờ bị hỏng{0}, đã tự động thử tất cả các tuyến. Tầng đã được lưu, khuyến nghị nhấn Ctrl+R để làm mới cửa sổ rồi nhấp vào \"Tiếp tục nhiệm vụ\""
-        },
-        "toolWait": {
-            "title": "⏳ Đang thực thi công cụ {0}",
-            "subtitle": "{0} Tầng {1} · Đang thực thi tác vụ dài"
         },
         "gw": {
             "hangTimeout": "Hết thời gian chờ kết nối (đã tự động thử tất cả các tuyến đường, cuộc hội thoại được giữ nguyên, có thể nhấp «Tiếp tục nhiệm vụ» để thử lại)",
@@ -926,7 +928,8 @@
         "bulletTrunc": "\n\n... [Phần giữa đã bị cắt bớt, bản gốc {0}KB] ...\n\n",
         "exhaustedMsg": "⚠ Đã đạt số lần gọi công cụ tối đa (200), nhưng AI không tạo được câu trả lời cuối cùng. Ngữ cảnh hội thoại vẫn được giữ lại, bạn có thể tiếp tục đặt câu hỏi.",
         "floorAbortedMsg": "⚠️ Tầng bị gián đoạn bất thường, cuộc trò chuyện đã được lưu.",
-        "sseSkipNote": "[Hệ thống: Phát hiện phản hồi trước đó viết lệnh gọi công cụ dưới dạng văn bản (định dạng hiển thị [A → …]) thay vì tool_calls gốc. Các công cụ sau không được thực thi vì không thể xây dựng lại tham số một cách an toàn: {0}. Vui lòng thực thi lại các công cụ này bằng tool_calls gốc, hoặc đưa ra câu trả lời cuối cùng trực tiếp.]"
+        "sseSkipNote": "[Hệ thống: Phát hiện phản hồi trước đó viết lệnh gọi công cụ dưới dạng văn bản (định dạng hiển thị [A → …]) thay vì tool_calls gốc. Các công cụ sau không được thực thi vì không thể xây dựng lại tham số một cách an toàn: {0}. Vui lòng thực thi lại các công cụ này bằng tool_calls gốc, hoặc đưa ra câu trả lời cuối cùng trực tiếp.]",
+        "toolWait": {}
     },
     "goods": {
         "conv": {
@@ -2032,6 +2035,20 @@
             "errBusy": "Đang xử lý, vui lòng đợi",
             "errRemove": "Hủy chưa hoàn tất",
             "errGeneric": "Lỗi không xác định"
+        },
+        "faEditor": {
+            "label": "Liên kết tệp (văn bản/mã nguồn)",
+            "desc": "Xuất hiện trong danh sách \"Mở bằng\" của hệ thống: tự động duy trì",
+            "btn": "Đặt làm mặc định",
+            "btnBusy": "Đang thiết lập…",
+            "confirmTitle": "Bạn đã chọn \"Đặt qd làm trình mở mặc định cho văn bản/mã nguồn\"",
+            "confirmBody": "Sẽ chuyển toàn bộ nhóm phương thức mở khi nhấp đúp cho các định dạng này sang qd (khoảng 74 loại văn bản/mã nguồn). Các ứng dụng khác có thể giành lại sau này — bạn có thể quay lại và nhấp lại bất cứ lúc nào để giành quyền kiểm soát.",
+            "okAll": "Đã tiếp quản {n} định dạng văn bản/mã nguồn ✓",
+            "okPartial": "Đã tiếp quản {n}/{m} loại; các loại còn lại bị hệ thống chặn do bảo vệ",
+            "openSettings": "Mở cài đặt hệ thống",
+            "unsupported": "Hệ thống hiện tại tạm thời không hỗ trợ tính năng này",
+            "fail": "Thao tác thất bại: {e}",
+            "needRestart": "Cần khởi động lại cửa sổ này để áp dụng"
         },
         "tier": {
             "title": "Giải thích cấp độ AI",

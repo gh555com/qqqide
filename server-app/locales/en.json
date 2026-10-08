@@ -95,16 +95,14 @@
             "nextImage": "Next",
             "skipMissing": "Skipped {0} image(s) that could not be displayed",
             "noMoreImages": "No more images to display",
-            "rotateLeft": "Rotate 90° Counter-Clockwise",
-            "rotateRight": "Rotate 90° Clockwise",
+            "rotateLeft": "Rotate 90° counterclockwise (hold for fine-tuning)",
+            "rotateRight": "Rotate 90° clockwise (hold for fine-tuning)",
+            "rotResetHint": "Tap the home button in the center of the cross keys on the right to restore the original angle",
             "copyFailed": "Copy Failed",
             "zoomIn": "Zoom In",
             "zoomOut": "Zoom Out",
             "zoomReset": "Click to reset to 100%",
-            "resetPosition": "Reset Position",
-            "mem": "Memory",
-            "file": "File",
-            "path": "Path",
+            "resetPosition": "Reset Position and Angle",
             "memTitle": "Image loaded into memory (clipboard image); can be pasted directly into chat or canvas",
             "fileTitle": "Copy image file; can be pasted into chat/Roam/File Explorer",
             "pathTitle": "Copy Image Path",
@@ -882,14 +880,18 @@
             "lockedDecrypt": "Key cannot be decrypted on this device (possibly from another device), please re-enter"
         },
         "gwWait": {
+            "title": "⏳ Upstream unresponsive {0}",
+            "rowLabel": "{0} Floor {1}",
+            "barMulti": "⏳ {0} floors awaiting upstream response · Max {1}",
+            "stop": "■ Stop",
+            "expand": "Expand details",
             "collapse": "Collapse",
             "taskCapsule": "⏳ {0} tasks in progress",
+            "muteTip": "Do not notify again this session (will notify when new waiting floors appear)",
+            "serverAck": "Server acknowledged, waiting",
+            "firstToken": "Waiting for first token",
             "hangCount": "(Attempt {0})",
             "hangBroken": "Network channel suspected damaged{0}; all routes have been automatically attempted. Layer saved. Recommended: Press Ctrl+R to refresh the window, then click \"Resume Task\"."
-        },
-        "toolWait": {
-            "title": "⏳ Tool executing {0}",
-            "subtitle": "{0} Layer {1} · Long-running task in progress"
         },
         "gw": {
             "hangTimeout": "Connection timed out (automatically tried all routes; conversation preserved. Click \"Resume Task\" to retry).",
@@ -926,7 +928,8 @@
         "bulletTrunc": "\n\n... [Middle content truncated, original {0}KB] ...\n\n",
         "exhaustedMsg": "⚠ Maximum tool call limit (200) reached, but AI failed to generate a final response. Context retained; you may continue asking questions.",
         "floorAbortedMsg": "⚠️ Floor abnormally interrupted. Conversation saved.",
-        "sseSkipNote": "[System: Detected that the previous response formatted tool calls as text ([A → …]) instead of native tool_calls. The following tools were not executed because their parameters could not be safely reconstructed: {0}. Please re-execute these tools using native tool_calls, or provide the final answer directly.]"
+        "sseSkipNote": "[System: Detected that the previous response formatted tool calls as text ([A → …]) instead of native tool_calls. The following tools were not executed because their parameters could not be safely reconstructed: {0}. Please re-execute these tools using native tool_calls, or provide the final answer directly.]",
+        "toolWait": {}
     },
     "goods": {
         "conv": {
@@ -2032,6 +2035,20 @@
             "errBusy": "Processing, please wait",
             "errRemove": "Removal incomplete",
             "errGeneric": "Unknown error"
+        },
+        "faEditor": {
+            "label": "File Associations (Text/Code)",
+            "desc": "Appears in the system \"Open with\" list: Automatically maintained",
+            "btn": "Set as Default",
+            "btnBusy": "Setting up…",
+            "confirmTitle": "You chose to \"Set qd as the default app for text/code files\"",
+            "confirmBody": "This will set qd as the default app for opening these file types by double-clicking (covering approximately 74 text/code formats). Other apps can reclaim them later—you can always return here to reassert default status.",
+            "okAll": "{n} text/code formats are now handled ✓",
+            "okPartial": "{n}/{m} formats handled; the rest were blocked by system protections",
+            "openSettings": "Open System Settings",
+            "unsupported": "This feature is not currently supported on your system",
+            "fail": "Operation failed: {e}",
+            "needRestart": "Restart this window to apply changes"
         },
         "tier": {
             "title": "AI Level Explanation",

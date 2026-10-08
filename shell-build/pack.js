@@ -199,30 +199,41 @@ function fixMacBundle(unpacked) {
     }
   } catch (e) { console.warn('[pack] mac: icon apply failed:', e.message); }
 
-  // ── 4) mac 默认播放器申报（2026-10-03）: CFBundleDocumentTypes = 媒体全谱 ──
-  //   双击媒体的「打开方式」资格声明（Finder 呈现 + LaunchServices 关联基础）；
-  //   实际默认切换 = 运行期 LaunchServices（shell/fa-mac.ts）。LSHandlerRank=Alternate:
-  //   仅进候选列表，绝不自动抢夺系统默认；双击链另一端 = main.ts 的 open-file 机器。
-  //   ★ 扩展名清单须与 shell/ipc-fileassoc.MEDIA_ASSOC_EXTS 同改。
+  // ── 4) mac 文件关联申报（2026-10-03 播放器 / 2026-10-07 编辑器域）:
+  //   CFBundleDocumentTypes = 媒体全谱 + 文本/代码族两档（双击文档的「打开方式」资格声明 = 
+  //   Finder 呈现 + LaunchServices 关联基础）；实际默认切换 = 运行期 LaunchServices（shell/fa-mac.ts）。
+  //   LSHandlerRank=Alternate: 仅进候选列表，绝不自动抢夺系统默认；双击链另一端 = main.ts 的
+  //   open-file 机器（按扩展分流：文本/代码 → 编辑器域 / 媒体 → 播放器域）。
+  //   ★ 扩展名清单须与 shell/ipc-fileassoc.MEDIA_ASSOC_EXTS + shell/fa-editor.EDITOR_ASSOC_EXTS 同改。
   try {
     let t = fs.readFileSync(mainPlist, 'utf8');
     if (t.indexOf('<key>CFBundleDocumentTypes</key>') >= 0) {
       console.log('[pack] mac: CFBundleDocumentTypes already present');
     } else {
-      const exts = ['mp4', 'm4v', 'webm', 'mkv', 'mov', 'ogv', 'avi', 'wmv', 'flv', 'rmvb', 'rm', 'mpg', 'mpeg', 'm2ts', 'mts', '3gp', 'vob', 'asf', 'f4v', 'ogm', 'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'weba', 'wma', 'aiff', 'aif', 'ape', 'ac3', 'mka', 'amr', 'au'];
-      const extXml = exts.map((e) => '<string>' + e + '</string>').join('');
+      const mediaExts = ['mp4', 'm4v', 'webm', 'mkv', 'mov', 'ogv', 'avi', 'wmv', 'flv', 'rmvb', 'rm', 'mpg', 'mpeg', 'm2ts', 'mts', '3gp', 'vob', 'asf', 'f4v', 'ogm', 'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'weba', 'wma', 'aiff', 'aif', 'ape', 'ac3', 'mka', 'amr', 'au'];
+      const textExts = ['md', 'markdown', 'mdx', 'txt', 'text', 'rst', 'org', 'tex', 'adoc', 'log', 'json', 'jsonc', 'json5', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'properties', 'csv', 'tsv', 'xml', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'vue', 'svelte', 'astro', 'php', 'py', 'pyw', 'go', 'rs', 'c', 'h', 'cpp', 'cc', 'cxx', 'hpp', 'hxx', 'cs', 'java', 'kt', 'kts', 'swift', 'm', 'dart', 'lua', 'rb', 'pl', 'r', 'jl', 'scala', 'sh', 'bash', 'zsh', 'ps1', 'psm1', 'sql', 'graphql', 'gql', 'proto', 'tf', 'svg'];
+      const extXml = (arr) => arr.map((e) => '<string>' + e + '</string>').join('');
       const docTypes =
-        '<key>CFBundleDocumentTypes</key><array><dict>' +
+        '<key>CFBundleDocumentTypes</key><array>' +
+        '<dict>' +
         '<key>CFBundleTypeName</key><string>Media</string>' +
         '<key>CFBundleTypeRole</key><string>Viewer</string>' +
         '<key>LSHandlerRank</key><string>Alternate</string>' +
         '<key>LSItemContentTypes</key><array><string>public.movie</string><string>public.audio</string><string>public.audiovisual-content</string></array>' +
-        '<key>CFBundleTypeExtensions</key><array>' + extXml + '</array>' +
-        '</dict></array>';
+        '<key>CFBundleTypeExtensions</key><array>' + extXml(mediaExts) + '</array>' +
+        '</dict>' +
+        '<dict>' +
+        '<key>CFBundleTypeName</key><string>Text</string>' +
+        '<key>CFBundleTypeRole</key><string>Editor</string>' +
+        '<key>LSHandlerRank</key><string>Alternate</string>' +
+        '<key>LSItemContentTypes</key><array><string>public.text</string><string>public.plain-text</string><string>public.source-code</string><string>public.json</string><string>public.xml</string></array>' +
+        '<key>CFBundleTypeExtensions</key><array>' + extXml(textExts) + '</array>' +
+        '</dict>' +
+        '</array>';
       if (/<\/dict>\s*<\/plist>/.test(t)) {
         t = t.replace(/<\/dict>\s*<\/plist>/, docTypes + '</dict></plist>');
         fs.writeFileSync(mainPlist, t, 'utf8');
-        console.log('[pack] mac: CFBundleDocumentTypes applied (' + exts.length + ' exts)');
+        console.log('[pack] mac: CFBundleDocumentTypes applied (' + mediaExts.length + ' media + ' + textExts.length + ' text exts)');
       } else {
         console.warn('[pack] mac: plist tail not found, skip CFBundleDocumentTypes');
       }
