@@ -421,7 +421,8 @@ async function bindMainProject() {
             }
             if (_bpRetry < 15) await new Promise(function (r) { setTimeout(r, 500); });
         }
-        if (!root && _lastMain) root = _lastMain;  // 兜底：视口始终未稳定 → 用最后一次采样        if (!root) {
+        if (!root && _lastMain) root = _lastMain;  // 兜底：视口始终未稳定 → 用最后一次采样
+        if (!root) {
             // [silent] bindMainProject: no main project after retries, wait for viewport-changed message
             _bindLock = null;
             _panelBootDone = true;   // ★ 启动门放行（无主项目：草稿态可用——收藏跳转照常裁决、如实回报）

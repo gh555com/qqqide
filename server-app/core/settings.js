@@ -23,9 +23,14 @@
 (function () {
   'use strict';
 
-  // ── i18n 助手（key 缺失回退中文；i18n 未就绪时直接用回退）──
-  function _i(k, fb) {
-    return (typeof window._i === 'function') ? window._i(k, fb) : (fb || k);
+  // ── i18n 助手（key 缺失回退中文；i18n 未就绪时直接用回退；{name} 插值双向透传）──
+  function _i(k, fb, params) {
+    if (typeof window._i === 'function') return window._i(k, fb, params);
+    var s = fb || k;
+    if (params && typeof s === 'string') {
+      Object.keys(params).forEach(function (x) { s = s.split('{' + x + '}').join(String(params[x])); });
+    }
+    return s;
   }
 
   // ── 状态 ──
@@ -84,7 +89,7 @@
       desc: '出现在系统「打开方式」列表：自动维护',
       descKey: 'settings.faEditor.desc',
       type: 'fileassoc',
-      tab: 'general',
+      tab: 'advanced',
       defaultValue: ''
     },
     {
@@ -557,7 +562,8 @@
 
   function _onInterpClick(t) {
     var st = _interpState[t];
-    if (!st || st.busy) return;
+    // ★ 跨域互斥（2026-10-10）：文件关联〔设为默认〕进行中禁点——防两域并发写同一默认槽位
+    if (!st || st.busy || _faBusy) return;
     var pfx = (t === 'node') ? 'settings.nodeInterp.' : 'settings.pyInterp.';
     var bridge = null;
     try { bridge = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { /* ignore */ }
@@ -792,7 +798,7 @@
       var h = document.createElement('div');
       h.style.cssText = 'font-size:15px;font-weight:600;margin:0;text-align:center;white-space:pre-line;';
       var b = document.createElement('div');
-      b.style.cssText = 'font-size:13px;margin:8px 0 0;text-align:center;white-space:pre-line;color:var(--text-secondary);';
+      b.style.cssText = 'font-size:13px;margin:8px 0 0;text-align:left;white-space:pre-line;color:var(--text-secondary);';
       var btnOk = document.createElement('button');
       btnOk.type = 'button';
       btnOk.style.cssText = 'padding:7px 20px;border:1px solid var(--border-strong);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:13px;';
@@ -835,7 +841,7 @@
 
   // ★ 确认框出口（按钮与 AI 工具链 sys_python / sys_node 共用同一弹框）：
   //   kind='override' → 标题「你选择了「做系统 xx 解释器」」+ 正文「将覆盖当前系统解释器」；
-  //   kind='remove'   → 标题「你选择了「取消作为系统 xx 解释器」」（2026-09-26 用户定案：标题行恒标清目标）
+  //   kind='remove'   → 标题「你选择了「取消作为系统 xx 解释器」」（标题行恒标清目标）
   function _interpAsk(t, kind) {
     var pfx = 'settings.' + (t === 'node' ? 'nodeInterp.' : 'pyInterp.');
     var isNode = (t === 'node');
@@ -854,47 +860,99 @@
   // ── ★ 文件关联（文本/代码 · 编辑器域，2026-10-07）──
   //   语义与系统解释器行同哲学：单向可反复——不打勾/无状态角标/无解除；按钮恒 = 「设为默认」，
   //   可一遍又一遍重夺。结果消息恒走 qoast（面板零行内文字）；partial 带〔打开系统设置〕兜底。
+  //   ★ 解释器族跳过（2026-10-10 用户定案）：点击时逐族实时查真值（sysPy.check，与解释器行同源）——
+  //   .py/.pyw 已由系统 Python 接管 / .js/.mjs/.cjs 已由系统 Node 接管 → 该整族剔除不夺
+  //   （确认框与结果如实报跳过数）；真值无法确认 → 如实取消（禁静默误夺）；反向点解释器恒可夺回。
+  var _FA_INTERP_FAMILIES = [
+    { target: 'python', exts: ['.py', '.pyw'] },
+    { target: 'node', exts: ['.js', '.mjs', '.cjs'] }
+  ];
+  var _FA_TOTAL = 74;
+
+  function _faTryCheck(sysB, target, tries) {
+    var p = null;
+    try { p = sysB.check(target); } catch (e) { return Promise.resolve(null); }
+    return Promise.resolve(p).then(function (res) {
+      if (res && res.ok !== true && res.code === 'busy' && tries > 0) {
+        return new Promise(function (r) { setTimeout(r, 700); }).then(function () { return _faTryCheck(sysB, target, tries - 1); });
+      }
+      return res;
+    }, function () { return null; });
+  }
+
   function _onFaClick() {
-    if (_faBusy) return;
+    // ★ 跨域互斥（2026-10-10）：任一解释器目标操作/引导中禁点——防并发写同槽位（含引导期中途完成）
+    if (_faBusy || _interpState.python.busy || _interpState.node.busy) return;
     var bridge = null;
     try { bridge = window.qqqideBridge && window.qqqideBridge.fileAssoc; } catch (e) { /* ignore */ }
     if (!bridge || !bridge.applyEditor) {
       _pyQoast(_i('settings.faEditor.needRestart', '需重启本窗口后可用'), 'error');
       return;
     }
-    _interpConfirm(
-      _i('settings.faEditor.confirmTitle', '你选择了「把 qd 设为文本/代码的默认打开方式」'),
-      _i('settings.faEditor.confirmBody', '将把这些格式的双击打开方式整族接管为 qd（约 74 类文本/代码）。其他应用日后可再抢走——可随时回来重复点击重夺。')
-    ).then(function (go) {
-      if (!go) return;
-      _faBusy = true;
-      _renderPanel();
-      Promise.resolve(bridge.applyEditor()).then(function (r) {
-        _faBusy = false;
-        _renderPanel();
-        if (!r || !r.ok) {
-          if (r && r.code === 'unsupported') { _pyQoast(_i('settings.faEditor.unsupported', '当前系统暂不支持此功能'), 'error'); }
-          else { _pyQoast(_i('settings.faEditor.fail', '操作失败：{e}', { e: (r && (r.code || r.reason)) || '?' }), 'error'); }
+    var sysB = null;
+    try { sysB = window.qqqideBridge && window.qqqideBridge.sysPy; } catch (e) { /* ignore */ }
+    var canCheck = !!(sysB && typeof sysB.check === 'function');
+    _faBusy = true;
+    _renderPanel();
+    var _probe = canCheck
+      ? _faTryCheck(sysB, 'python', 3).then(function (rp) {
+          return _faTryCheck(sysB, 'node', 3).then(function (rn) { return [rp, rn]; });
+        })
+      : Promise.resolve(null);
+    _probe.then(function (rs) {
+      var skip = [];
+      if (canCheck) {
+        var unknown = false;
+        for (var i = 0; i < rs.length; i++) { if (!rs[i] || rs[i].ok !== true) unknown = true; }
+        if (unknown) {
+          _faBusy = false;
+          _renderPanel();
+          _pyQoast(_i('settings.faEditor.checkFail', '无法确认系统解释器状态，请稍后重试'), 'error');
           return;
         }
-        var taken = r.taken || 0, total = r.total || 0;
-        if (total > 0 && taken >= total) {
-          _pyQoast(_i('settings.faEditor.okAll', '已接管 {n} 类文本/代码格式 ✓', { n: total }), 'success');
-        } else {
-          try {
-            window.qqqideQoast.show(_i('settings.faEditor.okPartial', '已接管 {n}/{m} 类；其余被系统保护拦截', { n: taken, m: total }), {
-              type: 'warning', duration: 6000,
-              actions: [{
-                label: _i('settings.faEditor.openSettings', '打开系统设置'),
-                onClick: function () { try { bridge.settings(); } catch (e2) { /* ignore */ } }
-              }]
-            });
-          } catch (e2) { /* ignore */ }
+        for (var j = 0; j < _FA_INTERP_FAMILIES.length; j++) {
+          if (rs[j].mode === 'ours') { skip = skip.concat(_FA_INTERP_FAMILIES[j].exts); }
         }
-      }, function () {
-        _faBusy = false;
-        _renderPanel();
-        _pyQoast(_i('settings.faEditor.fail', '操作失败：{e}', { e: 'bridge' }), 'error');
+      }
+      var take = _FA_TOTAL - skip.length;
+      var body = skip.length
+        ? _i('settings.faEditor.confirmBodySkip', '将接管约 {n} 类文本/代码的默认打开方式：双击直接用 qd 打开。（{k} 类已由系统解释器接管，保持双击运行）', { n: take, k: skip.length })
+        : _i('settings.faEditor.confirmBody', '将接管约 74 类文本/代码的默认打开方式：双击直接用 qd 打开。');
+      _interpConfirm(_i('settings.faEditor.confirmTitle', '你选择了「将 qd 设为默认打开方式」'), body).then(function (go) {
+        if (!go) { _faBusy = false; _renderPanel(); return; }
+        Promise.resolve(bridge.applyEditor(skip)).then(function (r) {
+          _faBusy = false;
+          _renderPanel();
+          if (!r || !r.ok) {
+            if (r && r.code === 'unsupported') { _pyQoast(_i('settings.faEditor.unsupported', '当前系统暂不支持此功能'), 'error'); }
+            else { _pyQoast(_i('settings.faEditor.fail', '操作失败：{e}', { e: (r && (r.code || r.reason)) || '?' }), 'error'); }
+            return;
+          }
+          var taken = r.taken || 0, total = r.total || 0;
+          var skippedN = (r.skipped && r.skipped.length) || 0;
+          if (total > 0 && taken >= total) {
+            _pyQoast(skippedN
+              ? _i('settings.faEditor.okAllSkip', '已接管 {n} 类文本/代码格式 ✓；{k} 类保持双击运行（系统解释器）', { n: total, k: skippedN })
+              : _i('settings.faEditor.okAll', '已接管 {n} 类文本/代码格式 ✓', { n: total }), 'success');
+          } else {
+            try {
+              window.qqqideQoast.show(skippedN
+                ? _i('settings.faEditor.okPartialSkip', '已接管 {n}/{m} 类；{k} 类保持双击运行（系统解释器）；其余被系统保护拦截', { n: taken, m: total, k: skippedN })
+                : _i('settings.faEditor.okPartial', '已接管 {n}/{m} 类；其余被系统保护拦截', { n: taken, m: total }), {
+                type: 'warning', duration: 6000,
+                actions: [{
+                  label: _i('settings.faEditor.openSettings', '打开系统设置'),
+                  onClick: function () { try { bridge.settings(); } catch (e2) { /* ignore */ } }
+                }]
+              });
+            } catch (e2) { /* ignore */ }
+          }
+          _interpSilentProbe();   // 真值复查（双保险：解释器行徽章随真值收敛）
+        }, function () {
+          _faBusy = false;
+          _renderPanel();
+          _pyQoast(_i('settings.faEditor.fail', '操作失败：{e}', { e: 'bridge' }), 'error');
+        });
       });
     });
   }
@@ -1120,7 +1178,8 @@
             ? _i(_pfx + _busyKey, _busyFb)
             : _i(_pfx + 'btn', _t === 'node' ? '做系统 Node 解释器' : '做系统 Python 解释器');
           html += '<div style="flex:1 1 0; min-width:0; display:flex; flex-direction:column; gap:6px;">';
-          html += '<button id="' + _interpCols[_ic][1] + '" ' + (_st.busy ? 'disabled ' : '') + 'style="width:100%; box-sizing:border-box; min-height:58px; padding:10px 12px; position:relative; display:flex; align-items:center; justify-content:center; border:1px solid ' + _skin.c + '; border-radius:3px; background:transparent; color:' + _skin.c + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;"' + (_st.busy ? '' : ' onmouseover="this.style.background=&quot;' + _skin.hov + '&quot;" onmouseout="this.style.background=&quot;transparent&quot;"') + '>';
+          var _interpOff = (_st.busy || _faBusy);   // ★ 跨域互斥（2026-10-10）：文件关联进行中禁点
+          html += '<button id="' + _interpCols[_ic][1] + '" ' + (_interpOff ? 'disabled ' : '') + 'style="width:100%; box-sizing:border-box; min-height:58px; padding:10px 12px; position:relative; display:flex; align-items:center; justify-content:center; border:1px solid ' + _skin.c + '; border-radius:3px; background:transparent; color:' + _skin.c + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;"' + (_interpOff ? '' : ' onmouseover="this.style.background=&quot;' + _skin.hov + '&quot;" onmouseout="this.style.background=&quot;transparent&quot;"') + '>';
           html += _btnText;
           // ★ 选中态徽章（用户定案）：内置解释器接管中 → 右下角圆+大勾
           if (_st.mode === 'ours') {
@@ -1133,9 +1192,11 @@
         html += '</div>';
       } else if (def.type === 'fileassoc') {
         // ★ 文件关联行（2026-10-07）：头行 = 标题 + 说明（自动维护），此处单按钮〔设为默认〕；
-        //   整族夺默认（约 74 类文本/代码；单向可反复——无解除/无状态角标，与播放器 ★ 同哲学）
+        //   整族夺默认（约 74 类文本/代码；单向可反复——无解除/无状态角标，与播放器 ★ 同哲学）；
+        //   解释器族跳过（2026-10-10）= _onFaClick 实时判定，已接管的 py/js 族整族不夺；
+        //   跨域互斥（2026-10-10）：任一解释器目标操作/引导中禁点（防并发写同槽位）
         html += '<div style="display:flex; align-items:center; gap:12px;">';
-        html += '<button id="qqq-fa-editor-btn" ' + (_faBusy ? 'disabled ' : '') + 'style="flex:1 1 0; box-sizing:border-box; min-height:38px; padding:8px 12px; display:flex; align-items:center; justify-content:center; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;">';
+        html += '<button id="qqq-fa-editor-btn" ' + ((_faBusy || _interpState.python.busy || _interpState.node.busy) ? 'disabled ' : '') + 'style="flex:1 1 0; box-sizing:border-box; min-height:38px; padding:8px 12px; display:flex; align-items:center; justify-content:center; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;">';
         html += _faBusy ? _i('settings.faEditor.btnBusy', '正在设置…') : _i('settings.faEditor.btn', '设为默认');
         html += '</button>';
         html += '</div>';

@@ -490,7 +490,8 @@
 					window.open(url, '_blank');
 				}
 			});
-		}		fetchOnline();
+		}
+		fetchOnline();
 		fetchMyTotal();
 		// ★ 2026-10-02 请求治理：两轮询合一（同 5 分钟节拍）+ 隐藏窗零请求 —— 回前台经 visibilitychange
 		//   立即补拉（两函数各自 4 分钟门防抖）；多窗口后台驻留不再把重量级在线接口放大成服务端洪峰
@@ -526,7 +527,8 @@
   // 从公共时间服务器获取 UTC 时间（不请求我们服务器）
   function calibrateFromPublicTime() {
     // 首先检查是否有新的 SSE 锚点（最高优先级）
-    pollSseAnchor();    // ★ 2026-10-02 请求治理：任何来源新鲜锚点（<10 分钟）→ 跳过公共校准
+    pollSseAnchor();
+    // ★ 2026-10-02 请求治理：任何来源新鲜锚点（<10 分钟）→ 跳过公共校准
     //   （旧实现只认 'sse' 源 → 无 SSE 时每分钟重拉一次 cloudflare trace；单调钟漂移可忽略）
     if (_timeAnchor && _timeAnchor.perfNow) {
       var age = performance.now() - _timeAnchor.perfNow;

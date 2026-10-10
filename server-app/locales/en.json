@@ -916,6 +916,7 @@
         "translateBtn": "Translate",
         "auditCopied": "Audit text copied to clipboard ({0} KB). You can paste it into any AI chat.",
         "waitSwitch": "AI has not yet replied to the current task. Please wait before switching.",
+        "sendTipStopping": "Stopping...",
         "questOpenLeft": "📌 This Quest is already open in the left panel; automatically switched",
         "questOpenRight": "📌 This Quest is already open in the right panel; automatically switched",
         "questOpenMid": "📌 This Quest is already open in the center panel; automatically switched",
@@ -1643,6 +1644,7 @@
         "floorGone": "Post data not found",
         "cardGone": "Task data is not ready or has been deleted",
         "noPanel": "AI panel is not ready",
+        "busy": "Panel is busy, please try again later",
         "saveFail": "Failed to save favorite",
         "deletedTag": "Task deleted"
     },
@@ -1650,11 +1652,7 @@
         "expert": "I am an expert. I understand the risks of every command. I do not use qqqide to delete files.",
         "agree": "Agree and Continue",
         "exit": "Exit",
-        "saveFailed": "Save failed, please try again",
-        "intro1": "You can treat qd as a game to savor slowly. Note that it is an original game, not a reskin. If you prefer reskins, feel free to leave now.",
-        "introLink": "Use Roam to break out of project folder restrictions",
-        "intro2": "On another note, we hope you find the community link via the Help button above. We ensure that any minor issue you encounter will be answered by a dedicated specialist.",
-        "introOk": "That's great"
+        "saveFailed": "Save failed, please try again"
     },
     "notice": {
         "title": "Notifications",
@@ -2041,13 +2039,17 @@
             "desc": "Appears in the system \"Open with\" list: Automatically maintained",
             "btn": "Set as Default",
             "btnBusy": "Setting up…",
-            "confirmTitle": "You chose to \"Set qd as the default app for text/code files\"",
-            "confirmBody": "This will set qd as the default app for opening these file types by double-clicking (covering approximately 74 text/code formats). Other apps can reclaim them later—you can always return here to reassert default status.",
+            "confirmTitle": "You have selected \"Set qd as the default opening method\"",
+            "confirmBody": "This will take over the default open action for about 74 types of text/code files: double-click to open directly with qd.",
+            "confirmBodySkip": "This will take over the default opening method for approximately {n} types of text/code: double-click to open directly with qd. ({k} types are already handled by the system interpreter and will continue to run on double-click.)",
             "okAll": "{n} text/code formats are now handled ✓",
+            "okAllSkip": "{n} types of text/code formats have been taken over ✓; {k} types remain set to run on double-click (system interpreter).",
             "okPartial": "{n}/{m} formats handled; the rest were blocked by system protections",
+            "okPartialSkip": "{n}/{m} types have been taken over; {k} types remain set to run on double-click (system interpreter); the rest were blocked by system protection.",
             "openSettings": "Open System Settings",
             "unsupported": "This feature is not currently supported on your system",
             "fail": "Operation failed: {e}",
+            "checkFail": "Unable to verify the system interpreter status. Please try again later.",
             "needRestart": "Restart this window to apply changes"
         },
         "tier": {

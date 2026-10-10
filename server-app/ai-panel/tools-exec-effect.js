@@ -268,13 +268,53 @@ function _cmdArrayEligible(cmd) {
     return { cmd: head, args: toks.slice(1).map(_unquoteCmdTok) };
 }
 
-async function executeRunCommand(args) {
+// ═══ 在飞工具进程登记（停止任务 = 树杀在飞命令，不等失速看门狗）═══
+//   标签随 spawn brief 过 IPC → 壳层 qz 注册表登记树杀句柄；用户停止/强杀时
+//   _killAgentLiveSpawns(agent) 经 qqqide:qz:kill 秒杀。正常返回自动摘除。
+var _spawnTagSeq = 0;
+function _newSpawnTag(agent) {
+    _spawnTagSeq++;
+    var _rnd = Math.random().toString(36).slice(2, 6);
+    return 'ai-' + ((agent && agent._questId) || 'x') + '-' + _spawnTagSeq + '-' + _rnd;
+}
+// 停止/强杀入口调用：把该 agent 全部在飞工具进程树杀（返回命中数）
+function _killAgentLiveSpawns(agent) {
+    try {
+        if (!agent || !agent._liveSpawnTags) return 0;
+        var _b = (typeof getBridge === 'function') ? getBridge() : null;
+        var _n = 0;
+        for (var _t in agent._liveSpawnTags) {
+            if (!Object.prototype.hasOwnProperty.call(agent._liveSpawnTags, _t)) continue;
+            try {
+                if (_b && _b.qz && _b.qz.kill) {
+                    var _p = _b.qz.kill(_t);
+                    if (_p && _p.catch) _p.catch(function () { });
+                    _n++;
+                }
+            } catch (_) { }
+        }
+        agent._liveSpawnTags = {};
+        return _n;
+    } catch (_) { return 0; }
+}
+
+async function executeRunCommand(args, ownerAgent) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
     // ★ 参数别名
     args.command = args.command || args.cmd || '';
     args.cwd = args.cwd || args.workdir || '';
+
+    // ★ 在飞登记：本次命令的标签挂到 agent（停止按钮/强杀可按标签树杀底层进程）
+    var _spawnTag = '';
+    if (ownerAgent) {
+        try {
+            _spawnTag = _newSpawnTag(ownerAgent);
+            ownerAgent._liveSpawnTags = ownerAgent._liveSpawnTags || {};
+            ownerAgent._liveSpawnTags[_spawnTag] = 1;
+        } catch (_) { _spawnTag = ''; }
+    }
 
     try {
         // ═══ SSH wrapping: base64-encode remote commands to eliminate quoting hell ═══
@@ -319,6 +359,7 @@ async function executeRunCommand(args) {
                 cwd: '',
                 timeout: 0,
                 stallMs: 900000,
+                tag: _spawnTag,
                 shell: false
             });
         } else {
@@ -358,6 +399,7 @@ async function executeRunCommand(args) {
                         cwd: args.cwd || '',
                         timeout: 0,
                         stallMs: 900000,
+                        tag: _spawnTag,
                         shell: false
                     });
                 } else {
@@ -367,6 +409,7 @@ async function executeRunCommand(args) {
                         cwd: args.cwd || '',
                         timeout: 0,
                         stallMs: 900000,
+                        tag: _spawnTag,
                         shell: true
                     });
                 }
@@ -389,6 +432,7 @@ async function executeRunCommand(args) {
                     cwd: args.cwd || '',
                     timeout: 0,
                     stallMs: 900000,
+                    tag: _spawnTag,
                     shell: false
                 });
             }
@@ -405,6 +449,11 @@ async function executeRunCommand(args) {
         }
     } catch (err) {
         return 'Error running command: ' + (err.message || err);
+    } finally {
+        // ★ 在飞摘除（正常返回/异常/中止三路统一）
+        if (_spawnTag && ownerAgent && ownerAgent._liveSpawnTags) {
+            try { delete ownerAgent._liveSpawnTags[_spawnTag]; } catch (_) { }
+        }
     }
 }
 

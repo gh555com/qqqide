@@ -22,8 +22,8 @@ import * as path from 'path';
 
 const BUNDLE_ID = 'com.gh555.qqqide';
 
-/** 当前进程所在 .app bundle（dev/非 bundle 布局 → ''：不做注册，设置将如实失败） */
-function _bundlePath(): string {
+/** 当前进程所在 .app bundle（dev/非 bundle 布局 → ''：不做注册，设置将如实失败）。 */
+export function macOwnBundlePath(): string {
     const p = String(process.execPath || '').replace(/\\/g, '/');
     const i = p.indexOf('.app/');
     if (i >= 0) { return p.slice(0, i + 4); }
@@ -138,7 +138,7 @@ export interface FaMacResult { ok: boolean; code?: string; total?: number; taken
 async function _run(exts: string[]): Promise<any> {
     const files = _ensureSamples(exts);
     const utis = await _resolveUtis(files);
-    return _runJxa(_jxa(_items(exts, files, utis), _bundlePath()));
+    return _runJxa(_jxa(_items(exts, files, utis), macOwnBundlePath()));
 }
 
 export async function faMacApply(exts: string[]): Promise<FaMacResult> {
@@ -156,7 +156,7 @@ export async function faMacApply(exts: string[]): Promise<FaMacResult> {
  *  运行期只需刷新注册（绿色包搬家/换目录后重新登记）。不碰系统默认。 */
 export async function faMacRegister(): Promise<FaMacResult> {
     if (process.platform !== 'darwin') { return { ok: false, code: 'unsupported' }; }
-    const bundle = _bundlePath();
+    const bundle = macOwnBundlePath();
     if (!bundle) { return { ok: false, code: 'no-bundle' }; }
     const script = [
         "'use strict';",

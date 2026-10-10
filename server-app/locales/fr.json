@@ -916,6 +916,7 @@
         "translateBtn": "Traduire",
         "auditCopied": "Texte d'audit copié dans le presse-papiers ({0} Ko), vous pouvez le coller dans n'importe quelle boîte de dialogue IA.",
         "waitSwitch": "L'IA n'a pas encore répondu à la tâche en cours, veuillez patienter avant de changer",
+        "sendTipStopping": "Arrêt en cours…",
         "questOpenLeft": "📌 Cette Quest est déjà ouverte dans le panneau gauche, redirection automatique effectuée",
         "questOpenRight": "📌 Cette Quest est déjà ouverte dans le panneau droit, redirection automatique effectuée",
         "questOpenMid": "📌 Cette Quest est déjà ouverte dans le panneau central, redirection automatique effectuée",
@@ -1643,6 +1644,7 @@
         "floorGone": "Les données de cet étage sont introuvables",
         "cardGone": "Les données de la tâche ne sont pas prêtes ou ont été supprimées",
         "noPanel": "Le panneau IA n'est pas encore prêt",
+        "busy": "Le panneau est occupé, veuillez réessayer plus tard",
         "saveFail": "Échec de l'enregistrement du favori",
         "deletedTag": "Tâche supprimée"
     },
@@ -1650,11 +1652,7 @@
         "expert": "Je suis un expert, je connais les risques de chaque commande, je n'utilise pas qqqide pour supprimer des fichiers",
         "agree": "Accepter et continuer",
         "exit": "Quitter",
-        "saveFailed": "Échec de l'enregistrement, veuillez réessayer",
-        "intro1": "Vous pouvez considérer qd comme un jeu à savourer lentement. Attention, il s'agit d'un jeu original, et non d'un jeu copié. Si vous aimez les jeux copiés, vous pouvez partir dès maintenant.",
-        "introLink": "Utiliser Roam pour sortir des limites du dossier de projet",
-        "intro2": "D'autre part, j'espère que vous trouverez le lien vers la communauté via le bouton d'aide ci-dessus. Nous garantissons qu'une personne dédiée répondra individuellement à chacune de vos questions, même les plus minimes.",
-        "introOk": "C'est très bien"
+        "saveFailed": "Échec de l'enregistrement, veuillez réessayer"
     },
     "notice": {
         "title": "Notifications",
@@ -2041,13 +2039,17 @@
             "desc": "Apparaît dans la liste « Ouvrir avec » du système : maintenance automatique",
             "btn": "Définir par défaut",
             "btnBusy": "Configuration en cours…",
-            "confirmTitle": "Vous avez choisi « Définir qd comme application par défaut pour les fichiers texte/code »",
-            "confirmBody": "Cela définira qd comme l'application par défaut pour l'ouverture par double-clic de ces formats (environ 74 types de texte/code). D'autres applications pourront reprendre cette association ultérieurement ; vous pourrez toujours revenir ici pour la rétablir.",
+            "confirmTitle": "Vous avez choisi « Définir qd comme méthode d'ouverture par défaut »",
+            "confirmBody": "Cela prendra en charge l'ouverture par défaut d'environ 74 types de fichiers texte/code : un double-clic les ouvrira directement avec qd.",
+            "confirmBodySkip": "Prendre en charge l'ouverture par défaut d'environ {n} types de texte/code : double-clic pour ouvrir directement avec qd. ({k} types sont déjà gérés par l'interpréteur système, conservant l'exécution au double-clic)",
             "okAll": "{n} types de formats texte/code pris en charge ✓",
+            "okAllSkip": "{n} types de formats texte/code pris en charge ✓ ; {k} types conservent l'exécution au double-clic (interpréteur système)",
             "okPartial": "{n}/{m} types pris en charge ; les autres sont bloqués par la protection du système",
+            "okPartialSkip": "{n}/{m} types pris en charge ; {k} types conservent l'exécution au double-clic (interpréteur système) ; les autres sont bloqués par la protection du système",
             "openSettings": "Ouvrir les paramètres du système",
             "unsupported": "Cette fonctionnalité n'est pas encore prise en charge par le système actuel",
             "fail": "Échec de l'opération : {e}",
+            "checkFail": "Impossible de vérifier l'état de l'interpréteur système, veuillez réessayer ultérieurement",
             "needRestart": "Un redémarrage de cette fenêtre est nécessaire pour que les modifications prennent effet"
         },
         "tier": {

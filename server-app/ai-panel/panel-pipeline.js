@@ -96,6 +96,51 @@ function _restorePanelAgentHome() {
         if (_homeAg && _activeAgent !== _homeAg) _activeAgent = _homeAg;
     } catch (_) { }
 }
+
+// ═══ Stop 收尾兜底（停止超时强杀）═══
+//   背景：用户点停止后，send() 可能卡在不可中断的等待（工具子进程未返回等）→ 自然收尾
+//   迟到数分钟，UI 停在 'Stop...'。兜底：10s 未收尾 → 强制结算（与 _capAbort 同款踹锁，
+//   但按"用户主动停"语义：无 fatal / 无红框 / 无 qoast）。自然收尾到达时计时解除。
+var STOP_HEAL_MS = 10000;
+function _armStopHeal(_ag) {
+    if (!_ag || _ag._stopHealTimer) return;
+    _ag._stopHealTimer = setTimeout(function () {
+        _ag._stopHealTimer = null;
+        _stopHealFire(_ag);
+    }, STOP_HEAL_MS);
+}
+function _stopHealFire(_ag) {
+    if (!_ag || _ag._stopState !== 'stopping') return;   // 自然收尾已完成 → 零动作
+    var _hqid = _ag._questId || '';
+    _ag._sendTerminated = true;                           // 迟到的 loop 无条件终止（while/守卫双查）
+    try { if (_ag._stopCtrl) _ag._stopCtrl.abort(); } catch (_) { }
+    // ★ 兜底树杀：停不下来恰因工具子进程未返回——按标签秒杀（正常路径 stopStream 已杀过）
+    try { if (typeof _killAgentLiveSpawns === 'function') _killAgentLiveSpawns(_ag); } catch (_) { }
+    try { _ag.setStopState('idle'); } catch (_) { }
+    _ag._stopCtrl = null;
+    try {                                                 // 踹锁（同 _capAbort）：send 永不返回 → 链 .then 永不触发
+        var _hPool = parent && parent.__qqq_agentPool;
+        if (_hPool) {
+            var _hKey = _sendLockKey(_hqid);
+            var _hAg = _hPool[_hKey];
+            if (_hAg) { _hAg._chainBusy = false; _hAg._sendChain = Promise.resolve(); }
+        }
+    } catch (_) { }
+    // 尘埃落定音效由 stopFloorTimer 内部单触发（_playFloorEndSfx + _floorEndSfxDone 单响守卫）
+    try { if (typeof stopFloorTimer === 'function') stopFloorTimer(_ag._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 }, _ag); } catch (_) { }
+    try { if (_hqid && typeof _unregisterBuilding === 'function') _unregisterBuilding(_hqid); } catch (_) { }
+    try { if (typeof _stopAllTxtStream === 'function') _stopAllTxtStream(_ag); } catch (_) { }
+    try { if (_hqid && typeof _saveAgentQuestData === 'function') _saveAgentQuestData(_hqid, _ag, _ag._currentFloorNum).catch(function () { }); } catch (_) { }
+    try { if (typeof setStreaming === 'function') setStreaming(false); } catch (_) { }
+    try { if (typeof _restorePanelAgentHome === 'function') _restorePanelAgentHome(); } catch (_) { }
+    try {                                                 // 队列 = 用户财产：排水接续（与 finally 同条件）
+        if (_queue && _queue.length > 0 && _activeAgent === _ag && !_queuePaused && _ag._stopState !== 'fatal') {
+            if (typeof _triggerQueueSend === 'function') _triggerQueueSend(_hqid, _ag);
+        }
+    } catch (_) { }
+    try { if (typeof _ag._writeFileLog === 'function') _ag._writeFileLog('⚑ STOP-HEAL fired floor=' + (_ag._currentFloorNum || '?') + ' — stop unwind exceeded ' + Math.round(STOP_HEAL_MS / 1000) + 's, forced settle'); } catch (_) { }
+}
+
 // ★ 串行执行器：意图追加到 quest 链尾。同 quest 排队执行（排队信封语义，永不丢消息），
 //   不同 quest 完全并行。链尾 .then 复位 _chainBusy（含异常路径，结构上无泄漏）。
 function _enqueueSend(questId, intent) {
@@ -1134,7 +1179,8 @@ async function _executeSend(intent) {
                     agent._writeFileLog(_capDiag);
                 }
             } catch (_) { }
-            try { if (agent._stopCtrl) agent._stopCtrl.abort(); } catch (_) { }
+            try { if (agent._stopCtrl) agent._stopCtrl.abort(); } catch (_) { }
+            try { if (typeof _killAgentLiveSpawns === 'function') _killAgentLiveSpawns(agent); } catch (_) { }
             try { agent.setStopState('fatal'); } catch (_) { }
             // ★ 踹锁：_stopCtrl.abort() 对 HTTP/2 死连接无效（Chromium 108），agent.send() 永不返回
             //   → 链 .then 永不触发 → _chainBusy 永久 true。此处直接复位，不依赖链闭环。
@@ -1285,10 +1331,10 @@ async function _executeSend(intent) {
                             if (_lastRow2) _lastRow2.style.borderBottom = 'none';
                         }
                     }
-                    // ★ Path B: 不在此封顶 — onToken 只揭示，_finishRecovery(true) 独家 cap
-                    if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
+                    // ★ Path B: 不在此封顶 — onToken 只揭示，_finishRecovery(true) 独家 cap
+                    //   ★ resume=true：恢复续建沿用原基准（时钟连续、不归零）；基准重置+旧桶残留会让分段和顶过 elapsed（饼图越界全红实锤载体）。
+                    if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent, true);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');
-                    if ($sendBtn) $sendBtn.disabled = false;
                     if (typeof updateGuideBtn === 'function') updateGuideBtn();
                     if (typeof updateQueueBtn === 'function') updateQueueBtn();
                     scrollToBottom(true);
@@ -1397,10 +1443,10 @@ async function _executeSend(intent) {
                     agent._questErrorState[floorNum].bubbleText = _recBubbleText;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
-                    // ★ Path B: 封顶由 _finishRecovery(true) 独家负责（onDone 提前 cap 会导致 double-cap → fallback 误伤 recovery 楼层 → 空红框刀疤）
-                    if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
+                    // ★ Path B: 封顶由 _finishRecovery(true) 独家负责（onDone 提前 cap 会导致 double-cap → fallback 误伤 recovery 楼层 → 空红框刀疤）
+                    //   ★ resume=true：恢复续建沿用原基准（时钟连续、不归零）；基准重置+旧桶残留会让分段和顶过 elapsed（饼图越界全红实锤载体）。
+                    if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent, true);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');
-                    if ($sendBtn) $sendBtn.disabled = false;
                     if (typeof updateGuideBtn === 'function') updateGuideBtn();
                     if (typeof updateQueueBtn === 'function') updateQueueBtn();
                     scrollToBottom(true);
@@ -1469,16 +1515,17 @@ async function _executeSend(intent) {
                 if (aiDiv && aiDiv._a1Block && typeof _updateA1Row2 === 'function') {
                     try { _updateA1Row2(aiDiv._a1Block, agent, true); } catch (_) { }
                 }
-                if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
+                if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
+                // ★ 先落状态再刷新（按钮从真理源推导）：若先刷新后置 done 会瞬现 Stop 残帧
+                agent._streaming = false;
+                agent.setStopState('done');
                 setStreaming(false);
-                agent.setStopState('done');
                 // ★ 每层完工后保存 quest 元数据（currentFloorNum / passbyBase 等），
                 //   防重启时元数据缺失导致 _restoreAgentFromStore 无法正确恢复基线
                 if (typeof saveQuestData === 'function') saveQuestData().catch(function () { });
                 if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
                 if (typeof updateQueueBtn === 'function') updateQueueBtn();
                 if (typeof updateGuideBtn === 'function') updateGuideBtn();
-                if ($sendBtn) $sendBtn.disabled = false;
                 if ($guideBtn) $guideBtn.disabled = false;
             },
             onError: function (msg) {
@@ -1494,8 +1541,8 @@ async function _executeSend(intent) {
                         if (aiDiv._lastParaEl) { aiDiv._lastParaEl.remove(); aiDiv._lastParaEl = null; }
                     }
                     if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-                    if (_activeAgent === agent) {
-                        if (aiDiv && aiDiv._floorCompleted) { setStreaming(false); return; }
+                    if (_activeAgent === agent) {
+                        if (aiDiv && aiDiv._floorCompleted) { agent._streaming = false; setStreaming(false); return; }
                         var _now = new Date();
                         var _ts = _now.getHours().toString().padStart(2, '0') + ':' + _now.getMinutes().toString().padStart(2, '0');
                         if (agent) {
@@ -1528,9 +1575,10 @@ async function _executeSend(intent) {
                         if (_errTxtPath && agent && agent._houses && agent._houses.length > 0) {
                             try { if (typeof _forceFlushAllTxt === 'function') _forceFlushAllTxt(agent, _errTxtPath); } catch (_) { }
                         }
-                        _stopAllTxtStream(agent);
-                        stopFloorTimer(null, agent);
-                        setStreaming(false);
+                        _stopAllTxtStream(agent);
+                        stopFloorTimer(null, agent);
+                        agent._streaming = false;
+                        setStreaming(false);
                         // ★ 永不锁按钮
                     } else {
                         if (agent && agent._floorTimerId) { clearInterval(agent._floorTimerId); agent._floorTimerId = null; }
@@ -1641,14 +1689,18 @@ async function _executeSend(intent) {
         if (agent && qid && !agent._floorCompletedCleanly && (agent._stopState === 'sending' || agent._floorFatal)) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }
         }
-        if (typeof _stopAllTxtStream === 'function') _stopAllTxtStream(agent);
-        if (agent && agent._floorTimerId) { clearInterval(agent._floorTimerId); agent._floorTimerId = null; }
-        if (agent && agent._stopState === 'stopping') {
-            if (typeof stopFloorTimer === 'function') stopFloorTimer(agent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 }, agent);
-            setStreaming(false);
-            if (qid) { try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { } }
-            agent.setStopState('idle');
-            agent._stopCtrl = null;
+        if (typeof _stopAllTxtStream === 'function') _stopAllTxtStream(agent);
+        if (agent && agent._floorTimerId) { clearInterval(agent._floorTimerId); agent._floorTimerId = null; }
+        // ★ Stop 兜底计时解除：send 自然收尾已到达 → 无需强杀（迟到 fire 自带 stopping 守卫，双保险）
+        if (agent && agent._stopHealTimer) { try { clearTimeout(agent._stopHealTimer); } catch (_) { } agent._stopHealTimer = null; }
+        if (agent && agent._stopState === 'stopping') {
+            if (typeof stopFloorTimer === 'function') stopFloorTimer(agent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 }, agent);
+            // ★ 先落状态再刷新（按钮从真理源推导）：顺序倒置会瞬现 'Stop...' 残帧
+            agent._streaming = false;
+            agent.setStopState('idle');
+            setStreaming(false);
+            if (qid) { try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { } }
+            agent._stopCtrl = null;
         }
         if (agent) {
             if (agent._activeAiDiv) {

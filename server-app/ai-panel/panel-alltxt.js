@@ -6,8 +6,20 @@
 
 function stopStream() {
     // ★ 终极 Stop 闭环：单一入口 agent.stop() → _stopCtrl 级联中断一切 async 操作
-    //   UX (按钮/A3时钟/队列/持久化) 由 panel-send.js finally 块统一处理
-    if (_activeAgent) _activeAgent.stop();
+    //   目标 agent 与按钮同源解析（旧实现只认 _activeAgent，指针失配时停止落空）
+    //   UX (按钮/A3时钟/队列/持久化) 由 send 收尾 finally 统一处理；卡死时由 10s 兜底强杀
+    var _ag = (typeof _resolveBtnAgent === 'function') ? _resolveBtnAgent() : _activeAgent;
+    if (!_ag) return;
+    try { if (typeof _ag._writeFileLog === 'function') _ag._writeFileLog('⚑ STOP requested floor=' + (_ag._currentFloorNum || '?') + ' state=' + _ag._stopState + ' streaming=' + !!_ag._streaming); } catch (_) { }
+    _ag.stop();
+    // ★ 停止 = 树杀在飞工具子进程（标签登记于 executeRunCommand；不再等 15min 失速看门狗）
+    var _killedN = (typeof _killAgentLiveSpawns === 'function') ? _killAgentLiveSpawns(_ag) : 0;
+    if (_killedN > 0) { try { if (typeof _ag._writeFileLog === 'function') _ag._writeFileLog('⚑ STOP: killed ' + _killedN + ' in-flight spawn(s)'); } catch (_) { } }
+    if (_ag._stopState === 'stopping') {
+        // ★ 立即反馈：按钮 → 'Stop...'（真理机渲染）；10s 收尾兜底（卡死等待时强制结算）
+        if (typeof _armStopHeal === 'function') _armStopHeal(_ag);
+        if (typeof setStreaming === 'function') setStreaming(false);
+    }
 }
 
 // ═══ All.txt streaming (per-floor) ═══

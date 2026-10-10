@@ -9,20 +9,24 @@
 
 var _floorIndicatorTimeout = null;
 
+// ★ 探针锚点容差（px）：抵消矩形换算的子像素取整（LayoutUnit 1/64px），边界处读数不抖动
+var _FI_TOL_PX = 2;
+
 function _updateFloorIndicator() {
   if (!cardPool) return null;
   var card = cardPool.getActive();
   if (!card || !card._contentWrap) return null;
   var userMsgs = card._contentWrap.querySelectorAll('.msg-user');
   if (userMsgs.length === 0) return null;
-  var container = $messages;
-  var viewCenter = container.scrollTop + container.clientHeight * 0.5;
+  // ★ 锚点 = 豆腐块探针视觉位（面板视口中线）——父窗把探针放在 iframe 中线（≠ #messages 中线，相差 (input-area−header)/2，
+  //   随布局变化）；取楼必按探针位，否则读数相对探针系统性偏移（偏高 → 读少一楼）。
+  // ★ 取楼一律矩形换算（面板视口系，子像素精确）：免 offsetParent 链整数取整 + scrollTop 量化双重失真
+  //   （offsetTop 取整上偏 + scrollTop 写入截断下偏叠加，q/w 落脚恰在边界时即翻出一楼）。
+  var centerY = window.innerHeight / 2;
   var bestFloor = null;
   for (var i = 0; i < userMsgs.length; i++) {
     var el = userMsgs[i];
-    var absTop = 0, cur = el;
-    while (cur && cur !== container) { absTop += cur.offsetTop || 0; cur = cur.offsetParent; }
-    if (absTop <= viewCenter) {
+    if (el.getBoundingClientRect().top <= centerY + _FI_TOL_PX) {
       bestFloor = el._floor;
     }
   }

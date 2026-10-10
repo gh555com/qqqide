@@ -147,7 +147,12 @@ function drawPie(canvas, timing) {
     var total = timing.totalMs;
     // ★ 防御（2026-09-06）：NaN/负/0 totalMs → 回落真实分段和（跨轴/损坏 record 曾致灰饼假象）
     if (!(total > 0)) total = (n + d + (timing.otherMs || 0));
-    var t = Math.max(0, total - n - d);
+    // ★ 越界归一（恒不骗人）：分段和 > 整圈（恢复/跨纪元残留数据）→ 几何按比分缩回整圈。
+    //   旧实现网络段起画位置在绿段之后、n/total 超 1 时绕整圈盖掉全部 = 恒定「百分百全红」假象（客户实锤）；
+    //   仅缩几何切片，_segments.ms 保留原值供悬停黑框显示真实秒数。
+    var _dn = d, _nn = n;
+    if (total > 0 && n + d > total) { var _gk = total / (n + d); _dn = d * _gk; _nn = n * _gk; }
+    var t = Math.max(0, total - _dn - _nn);
     // ★ 懒重绘（per-canvas，2026-10-05）：按「最终落屏值」四元组去重——余量段随 elapsed 每秒增长，
     //   活楼必每秒重绘（饼图 + 悬停第一行靠它实时跳动）；完结楼四值冻结 → 恒跳过，零无效重绘。
     //   旧实现：模块级单缓存 + 只比入参三元组（不含 total）→ 活楼每秒全等被 early-return（饼图与悬停数字冻结一整轮）。
@@ -159,9 +164,9 @@ function drawPie(canvas, timing) {
     ctx.clearRect(0, 0, w, h);
     if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 3, 0, Math.PI * 2); ctx.fill(); canvas._segments = null; return; }
     var parts = [
-        { val: d, color: '#859900', label: 'AI', key: 'ai' },
-        { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
-        { val: t, color: '#e6b800', label: 'Other', key: 'other' }
+        { val: _dn, raw: d, color: '#859900', label: 'AI', key: 'ai' },
+        { val: _nn, raw: n, color: '#cb4b16', label: 'Network', key: 'network' },
+        { val: t, raw: t, color: '#e6b800', label: 'Other', key: 'other' }
     ];
     var start = -Math.PI / 2;
     var segments = [];
@@ -173,7 +178,7 @@ function drawPie(canvas, timing) {
         ctx.arc(w / 2, h / 2, w / 2 - 3, start, start + slice);
         ctx.fillStyle = parts[i].color;
         ctx.fill();
-        segments.push({ startAngle: start, endAngle: start + slice, label: parts[i].label, key: parts[i].key, ms: parts[i].val, color: parts[i].color });
+        segments.push({ startAngle: start, endAngle: start + slice, label: parts[i].label, key: parts[i].key, ms: parts[i].raw, color: parts[i].color });
         start += slice;
     }
     canvas._segments = segments;
@@ -410,7 +415,8 @@ function _initClockBlock(aiDiv) {
 function startFloorTimer(aiDiv, ag, resume) {
     ag._activeAiDiv = aiDiv;
     ag._floorEndSfxDone = false;  // ★ 新楼层开始 → 复位尘埃落定音效标记（每层一响）
-    if (!resume || !ag._floorStartPerf) {
+    var _freshBase = (!resume || !ag._floorStartPerf);   // ★ 基准重置 = 记账新纪元（详下方旧桶归零）
+    if (_freshBase) {
         // ★ wall-clock 基准（2026-09-06 跨轴事故修复）：performance.now() 是 per-document 时间轴——
         //   Ctrl+R 热重载归零 / 跨面板 A2 tick 用各自轴相减 → elapsed 巨大负数（-480m 型）
         //   → 负号横杠 + 数字乱跳 + 48px 大字超宽 → 横向滚动条 + 整个 UI 左右横跳。
@@ -426,6 +432,9 @@ function startFloorTimer(aiDiv, ag, resume) {
     // ★ 实时分段阶段起点（详 _liveSegs / agent-gateway.js _livePhaseSet）：楼层起始 = 本地处理（other）
     //   请求发出 / 首字节到达 / 工具执行 三处由 AI 侧改写
     _livePhaseSet(ag, 'other');
+    // ★ 新纪元桶归零（恢复计时失配根治）：基准已重置而旧累计桶残留 → n+d 顶过 elapsed（饼图越界全红实锤载体）
+    //   → 基准重置时旧桶一并清零（resume 续建＝基准连续，不清桶）；置后于阶段结算 = 结算出的旧纪元时长一并作废。
+    if (_freshBase && ag._floorTiming) { ag._floorTiming.networkMs = 0; ag._floorTiming.aiMs = 0; }
     _initClockBlock(aiDiv);
     var clockMin = aiDiv._clockMin;
     var clockSec = aiDiv._clockSec;
@@ -660,13 +669,13 @@ function _q2ArmClose() {
     _questDropTimer = setTimeout(function tick() {
         if (!_questDrop) return;                        // 已关闭（点击/切换）→ 停止续期
         if (_questDropPinned) return;                   // ★ 钉住态兜底：ticking 中也不关
+        if (_questSearchFocused && (Date.now() - _q2SearchLastAct) < 6000) {
+            _questDropTimer = setTimeout(tick, 200);    // ★ 打字保护优先于指针位置：正往搜索框打字（6s 内聚焦/键入）→ 指针停在哪都不收——
+            return;                                     //   防「输入框中途被移除 → 焦点落回 body → 后续按键漏给面板快捷键」的整链事故
+        }
         if (_q2PtrOutDoc) { closeQuestDrop(); return; } // ★ 指针在面板外 → 立即收，不续期
         if (_q2PointerInsideZone()) {                   // 指针仍在区域/走廊（迁移 / 列表生长）→ 续期
             _questDropTimer = setTimeout(tick, 200);
-            return;
-        }
-        if (_questSearchFocused && (Date.now() - _q2SearchLastAct) < 6000) {
-            _questDropTimer = setTimeout(tick, 200);    // 打字保护：6s 内有过聚焦/键入才续期
             return;
         }
         if (_questDrop._pending && (Date.now() - (_questDrop._openTs || 0)) < 2500) {
@@ -822,6 +831,9 @@ async function openQuestDrop() {
     search.addEventListener('focus', function () {
         _questSearchFocused = true;
         _q2SearchLastAct = Date.now();   // ★ 打字保护起算
+    });
+    search.addEventListener('keydown', function () {
+        _q2SearchLastAct = Date.now();   // ★ 任何按键 = 打字活着（无输入变化的按键也计入，供关闭倒计时打字保护续期）
     });
     search.addEventListener('blur', function () {
         _questSearchFocused = false;

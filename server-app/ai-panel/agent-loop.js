@@ -1274,18 +1274,6 @@ var AgentLoop = (function () {
         }
     };
 
-    // ═══ 压缩期间锁定发送按钮 ═══
-    window._updateSendBtnForCompress = function (flag) {
-        try {
-            var _btn = document.getElementById('send-btn');
-            if (_btn) {
-                _btn.textContent = flag ? '⏳' : (typeof streaming !== 'undefined' && streaming ? 'Stop' : 'Send');
-                _btn.className = flag ? 'compressing' : (typeof streaming !== 'undefined' && streaming ? 'stop' : '');
-                _btn.disabled = !!flag;
-            }
-        } catch (_) { }
-    };
-
     // ---- 引导注入（新）：立即中断当前 house，让 AI 回复确认 ----
     // 如果 send() 正在执行 → abort 当前流 + 设置 _guidePending，确认回合在 while 循环中自动触发
     // 如果 send() 未执行 → 降级为普通 inject（等下次 Send）
@@ -1328,9 +1316,6 @@ var AgentLoop = (function () {
     }
     if (!AgentLoop.prototype._buildDynamicContext) {
         AgentLoop.prototype._buildDynamicContext = function () { return ''; };
-    }
-    if (!AgentLoop.prototype._updateSendBtnForCompress) {
-        AgentLoop.prototype._updateSendBtnForCompress = function () { };
     }
     if (!AgentLoop.prototype._rebuildBackpack) {
         AgentLoop.prototype._rebuildBackpack = async function () { };
@@ -1554,6 +1539,7 @@ function _snapshotMessages(messages, prevSnapshot) {
 }
 
 // ═══ 诊断日志：conversation 快照（toolpush 目录 4MB FIFO 轮转，超限删最旧） ═══
+var _dumpConvRotateScanAt = 0;   // FIFO 目录扫描节流时间戳（每 60s 至多一次）
 AgentLoop.prototype._dumpConversation = function (tag, extra) {
     if (typeof window !== "undefined" && window.__qqq_file_log === false) return;
     var self = this;
@@ -1591,6 +1577,9 @@ AgentLoop.prototype._dumpConversation = function (tag, extra) {
         if (!bridge || !bridge.fs || !bridge.fs.write) return;
         bridge.fs.write(logPath, JSON.stringify(payload, null, 2)).catch(function () { });
         // ★ 目录 FIFO 轮转：toolpush-* 总量 > 4MB → 删最旧至 ≤3MB
+        //   节流：目录全扫（readdir+stat ×N）每 60s 至多一次——此前每个 house 都扫一遍白耗 I/O
+        if (Date.now() - _dumpConvRotateScanAt < 60000) return;
+        _dumpConvRotateScanAt = Date.now();
         bridge.fs.list(logDir).then(function (entries) {
             var files = (entries || []).filter(function (e) { return !e.isDir && e.name.indexOf("toolpush-") === 0; });
             var total = 0;

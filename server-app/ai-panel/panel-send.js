@@ -632,6 +632,7 @@ function _capRedBoxAndSeal() {
     ag._floorFatal = false;
     ag._recoveryOriginFloor = 0;
     ag._recoveryInProgress = false;
+    ag._streaming = false;
     if (typeof setStreaming === 'function') setStreaming(false);
 }
 
@@ -722,9 +723,17 @@ document.addEventListener('qqq-ai-attach', function (e) {
 //      机器（VM/无 GPU 渲染）上爬行 = 视觉慢动作（实测仅 ~6% 速度）→ 改自驱积分：直接写 scrollTop，
 //      每秒位移只由墙上时钟决定（与机器快慢/合成器无关）；
 //   ③ 不依赖定时器精确度：驱动帧迟到按整段补足（含被系统隐藏节流到 1Hz 的机器），平均速度守恒。
-//   契约：keydown 首单位即刻成交（1/2 = 可视高 ×0.175 px；q/w = 上/下一层用户楼居中）→ 按住期间
-//   起手 250ms 后进入单位流（每 _HOLD_UNIT_MS 一单位）→ keyup 经松开等待窗确认（走完当前单位即停）。
+//   契约：keydown 首单位即刻成交（1/2 = 可视高 ×0.175 px 匀速滑行；q/w = 瞬时瞬移到上/下一层用户楼居中，零滑行）→
+//   按住期间起手 250ms 后进入单位流（1/2 每 _HOLD_UNIT_MS 一单位滑行；q/w 每 _HOLD_FLOOR_MS 一跳）→ keyup 经松开等待窗确认。
 //   平均速度 ≈1.84 屏高/秒（= 名义 66ms 步进在真实机器上的历史实测交付速度，用户定案手感）。
+// ★ v4 粘键四道防线（丢 keyup / 按键事件泄漏不再能造成永久连滚）：
+//   ① 接管守卫升级：输入环境判定改走事件路径（composedPath，覆盖 shadow DOM）+ activeElement 双查；
+//      IME 组词（isComposing / keyCode 229）一律让路；编辑控件键入后 800ms 余波窗内不接管
+//      （治「筛选框被收起/移除 → 焦点落回 body → 后续按键漏给面板」）；q2 下拉打字保护优先于指针位置（panel-clock.js）。
+//   ② 松开通道冗余：keyup 的 key 值被吞时按 keyCode 兜底识别（49/50/81/87）。
+//   ③ 活跃看门狗：只在「见过连发/补发继续事件」的机器上武装——继续事件断绝 >1.8s 即判定真松开
+//      （无连发机器永不武装，保住自驱节拍原样）。
+//   ④ 意图救援：焦点落入任何编辑控件 / 面板内任意按下 → 立即硬停。
 // ★ 悬浮预览层（主窗口）打开期间：面板快捷键整体让路——q/w 反向转发给预览层翻页，1/2 吞（2026-10-05 用户定案）；
 //   层状态由主窗口广播 qqqide-overlay-state（详 core/shell-overlay.js _ovClaimFocus/_ovBroadcastState）。
 var _ovShield = false;
@@ -740,10 +749,16 @@ var _holdLastT = 0;           // 上一驱动帧时间戳
 var _holdGoal = 0;            // 当前单位目标 scrollTop（px，允许小数）
 var _holdHasGoal = false;
 var _holdNextUnitAt = 0;      // 下一单位边界时刻（起手延迟 / 单位节拍）
+var _holdLiveAt = 0;          // 最近一次「键仍活着」证据（同键 keydown / 连发/补发）时刻
+var _holdLiveSrc = false;     // 本段按住是否见过继续事件——看门狗只在见过的机器上武装
+var _holdTypingUntil = 0;     // 打字余波窗截止（编辑控件键入后短暂不接管）
 var _HOLD_DELAY = 250;        // 起手延迟（延迟≠频率；手感锚点）
 var _HOLD_UNIT_PCT = 0.175;   // 单位位移 = 可视高 × 0.175
-var _HOLD_UNIT_MS = 95;       // 单位节拍：≈1.84 屏高/秒（= 名义 66ms 步进在真实机器上的历史实测交付速度，跨机器恒定）
+var _HOLD_UNIT_MS = 95;       // 1/2 单位节拍：≈1.84 屏高/秒（= 名义 66ms 步进在真实机器上的历史实测交付速度，跨机器恒定）
+var _HOLD_FLOOR_MS = 400;     // q/w 按住连跳节拍（瞬时跳无滑行预算，独立慢档——防 95ms 档在楼层间扫射）
 var _HOLD_TAIL_MS = 130;      // 松开等待窗（桥接成对往返式连发；超时=真松开）
+var _HOLD_STALE_MS = 1800;    // 活跃看门狗阈值：继续事件断绝超过此时长 → 判定已松开（丢 keyup 兜底）
+var _HOLD_TYPING_MS = 800;    // 打字余波窗长度（编辑控件键入后的保护时长）
 function _stopKeyHold() {
     if (_holdGraceTo) { clearTimeout(_holdGraceTo); _holdGraceTo = 0; }
     if (_holdDrv) { clearInterval(_holdDrv); _holdDrv = 0; }
@@ -751,6 +766,39 @@ function _stopKeyHold() {
     _holdHeld = false;
     _holdHasGoal = false;
     _holdNextUnitAt = 0;
+    _holdLiveSrc = false;
+    _holdLiveAt = 0;
+}
+// ★ 松开结算（keyup / 看门狗共用）：进「松开等待窗」，窗内回按（成对往返式连发）视为按住延续
+function _holdSettle() {
+    _holdHeld = false;
+    if (_holdGraceTo) clearTimeout(_holdGraceTo);
+    _holdGraceTo = setTimeout(function () { _holdGraceTo = 0; }, _HOLD_TAIL_MS);
+}
+// ★ 输入环境判定（唯一入口）：事件路径（composedPath，覆盖 shadow DOM 与「控件被移除后焦点落回 body」的余波）
+//   + activeElement 双查——任一命中即让路。语义与旧口径同集（$input / #input-area / INPUT / TEXTAREA / 可编辑体）
+function _holdKeyInEditable(e) {
+    var path = (e && typeof e.composedPath === 'function') ? e.composedPath() : null;
+    if (!path && e && e.target) path = [e.target];
+    if (path) {
+        for (var i = 0; i < path.length; i++) {
+            var el = path[i];
+            if (!el || el === document || el === window) break;
+            var tg = el.tagName ? String(el.tagName).toUpperCase() : '';
+            if (tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT') return true;
+            if (el.isContentEditable === true) return true;
+            if (el.id === 'input-area') return true;
+        }
+    }
+    var ae = document.activeElement;
+    if (ae) {
+        if (ae === $input) return true;
+        if (ae.closest && ae.closest('#input-area')) return true;
+        var at = ae.tagName ? String(ae.tagName).toUpperCase() : '';
+        if (at === 'INPUT' || at === 'TEXTAREA' || at === 'SELECT') return true;
+        if (ae.isContentEditable === true) return true;
+    }
+    return false;
 }
 // ★ 失焦 = 硬停（键态不可知 → 宁停勿粘）；隐藏不再单杀——系统遮挡误判/隐藏抖动不中断按住（真后台由 blur 兜底）
 function _clearKeyHold() {
@@ -781,7 +829,7 @@ function _holdFloorGoal(key) {
     if (tIdx > userMsgs.length - 1) tIdx = userMsgs.length - 1;
     return Math.max(0, Math.min(_holdMax(), tops[tIdx] - m.clientHeight / 2));
 }
-// ★ 开一个新单位：1/2 = 定量位移（对目标预算累加）；q/w = 重算上/下一楼目标（单目标未完成不排队）
+// ★ 开一个新单位：1/2 = 定量位移（对目标预算累加，驱动帧匀速滑行）；q/w = 瞬时瞬移到上/下一楼居中（不滑行、不排队）
 function _holdBeginUnit(key) {
     var m = $messages;
     if (key === '1' || key === '2') {
@@ -792,10 +840,11 @@ function _holdBeginUnit(key) {
         _holdGoal = Math.max(0, Math.min(_holdMax(), goal));
         _holdHasGoal = true;
     } else {
-        if (_holdHasGoal) return;   // q/w 单目标制：上一楼还没走到就不排下一楼
+        // ★ q/w = 瞬时瞬移（用户定案：即按即达不滑行）——直接写目标位；不设滑行目标（驱动帧零参与）
+        _holdHasGoal = false;
         if (key === 'q' && cardPool) { var _cq = cardPool.getActive(); if (_cq) _cq._userScrolledUp = true; }
         var g = _holdFloorGoal(key);
-        if (g !== null) { _holdGoal = g; _holdHasGoal = true; }
+        if (g !== null) m.scrollTop = g;
     }
     _showFloorIndicatorBriefly();
 }
@@ -803,6 +852,11 @@ function _holdBeginUnit(key) {
 function _holdTick() {
     if (!_holdKey) { _stopKeyHold(); return; }
     var now = Date.now();
+    // ★ 活跃看门狗（丢 keyup 兜底）：本机确实在送继续事件（连发/补发）却戛然而止 > 阈值 → 判定真松开
+    if (_holdHeld && _holdLiveSrc && _holdLiveAt && now - _holdLiveAt > _HOLD_STALE_MS) {
+        _stopKeyHold();
+        return;
+    }
     var dt = now - _holdLastT;
     _holdLastT = now;
     if (!(dt > 0)) dt = 0;
@@ -812,6 +866,11 @@ function _holdTick() {
         var guard = 0;
         while (_holdHeld && now >= _holdNextUnitAt && guard++ < 16) {
             _holdBeginUnit(_holdKey);
+            if (_holdKey === 'q' || _holdKey === 'w') {
+                // ★ q/w 瞬时瞬移：一 tick 至多一跳，节拍对「现在」重拍（节流积压不做多跳爆发）
+                _holdNextUnitAt = now + _HOLD_FLOOR_MS;
+                break;
+            }
             _holdNextUnitAt += _HOLD_UNIT_MS;
         }
     }
@@ -828,6 +887,12 @@ function _holdTick() {
     if (!_holdHeld && !_holdHasGoal && !_holdGraceTo) _stopKeyHold();
 }
 
+// ★ 打字余波窗武装（捕获相，先于主监听）：编辑控件内的键入 / 任何 input 事件 → 短窗内 1/2/q/w 不接管
+//   （治「筛选框被收起/移除，焦点落回 body，用户打字的后半截漏给面板快捷键」的整链事故）
+document.addEventListener('keydown', function (e) {
+    if (_holdKeyInEditable(e)) _holdTypingUntil = Date.now() + _HOLD_TYPING_MS;
+}, true);
+document.addEventListener('input', function () { _holdTypingUntil = Date.now() + _HOLD_TYPING_MS; }, true);
 document.addEventListener('keydown', function (e) {
     if (_ovShield) {
         var _sk = (e.key || '').toLowerCase();
@@ -837,15 +902,18 @@ document.addEventListener('keydown', function (e) {
         return;
     }
     if (!_panelFocused) return;
-    if (document.activeElement === $input || document.activeElement.closest('#input-area')) return;
-    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+    if (e.isComposing || e.keyCode === 229) return;   // IME 组词：一律让路（防吞组词键与丢键事件）
+    if (_holdKeyInEditable(e)) return;                // 输入环境一律让路（事件路径 + activeElement 双查）
     var key = e.key;
     if (!_HOLD_KEYS[key]) return;
+    if (Date.now() < _holdTypingUntil) return;        // ★ 打字余波窗：编辑控件刚被收起/移除，紧随的按下不接管
     e.preventDefault();
     // ★ 按住延续（连发中 / 松开等待窗内回按 / 结算期同键）——一律只续命：不动作、不重启、不叠加
     if (_holdKey === key) {
         if (_holdGraceTo) { clearTimeout(_holdGraceTo); _holdGraceTo = 0; }
         _holdHeld = true;
+        _holdLiveAt = Date.now();                     // 继续事件（连发/补发）→ 看门狗续命
+        _holdLiveSrc = true;
         return;
     }
     if (e.repeat) return;   // 无按住上下文的孤立 OS 连发 → 忽略
@@ -854,6 +922,7 @@ document.addEventListener('keydown', function (e) {
     _holdKey = key;
     _holdHeld = true;
     _holdLastT = Date.now();
+    _holdLiveAt = _holdLastT;                     // 起手不算继续事件（_holdLiveSrc 保持 false，看门狗不武装）
     _holdNextUnitAt = _holdLastT + _HOLD_DELAY;
     _holdBeginUnit(key);
     _holdDrv = setInterval(_holdTick, 16);
@@ -861,12 +930,22 @@ document.addEventListener('keydown', function (e) {
 // ★ 松开 = 进「松开等待窗」：窗内回按（成对往返式连发）视为按住延续；超时 = 真松开（走完当前单位即停）
 document.addEventListener('keyup', function (e) {
     var kk = typeof e.key === 'string' ? e.key.toLowerCase() : '';
-    if (!kk || !_HOLD_KEYS[kk]) return;
+    if (!_HOLD_KEYS[kk] && e.keyCode) {
+        kk = ({ 49: '1', 50: '2', 81: 'q', 87: 'w' })[e.keyCode] || kk;   // ★ key 值被吞（IME 等）→ keyCode 兜底识别
+    }
+    if (!_HOLD_KEYS[kk]) return;
     if (_holdKey !== kk) return;
-    _holdHeld = false;
-    if (_holdGraceTo) clearTimeout(_holdGraceTo);
-    _holdGraceTo = setTimeout(function () { _holdGraceTo = 0; }, _HOLD_TAIL_MS);
+    _holdSettle();
 });
+// ★ 意图救援（丢 keyup 兜底）：焦点落入任何编辑控件 → 立即硬停（用户已在别处编辑 = 本次按住必然已结束）
+document.addEventListener('focusin', function (e) {
+    var t = e.target;
+    if (!t) return;
+    var tg = t.tagName ? String(t.tagName).toUpperCase() : '';
+    if (tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT' || t.isContentEditable === true) _clearKeyHold();
+}, true);
+// ★ 意图救援：面板内任意按下（指针新意图）→ 立即硬停
+document.addEventListener('mousedown', function () { _clearKeyHold(); }, true);
 window.addEventListener('blur', _clearKeyHold);
 // ★ 隐藏不单杀：系统遮挡误判/隐藏抖动（部分 Win11/VM 环境）不再中断按住——真后台由 blur 兜底；
 //   若确被隐藏，驱动被系统节流时按整段补足，平均速度仍守恒（见引擎头注③）。

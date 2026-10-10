@@ -287,9 +287,10 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
     // ★ 优先用调用方显式传入的 agent（防 _activeAgent 全局指针漂移致跨 quest 污染）
     var _capturedAg = ownerAgent || ((typeof _activeAgent !== 'undefined') ? _activeAgent : null);
 
-    // Non-write tools: pass through directly
+    // Non-write tools: pass through directly——ownerAgent 必须原样转发
+    //（下游 web 落盘 / 图像楼层归属 / 计费归属依赖它；丢失 = 功能静默死亡）
     if (_WRITE_TOOLS.indexOf(name) === -1) {
-        return _a4OriginalExecuteTool(name, args);
+        return _a4OriginalExecuteTool(name, args, ownerAgent);
     }
 
     // ═══ run_command 特殊处理：执行 → 扫描变更 → 逐文件记录 ═══
@@ -297,13 +298,13 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
     if (name === 'run_command') {
         var _trackCmd = (typeof qqqSettings !== 'undefined' && qqqSettings.get) ? qqqSettings.get('timeline.trackRunCommand', false) : false;
         if (!_trackCmd) {
-            var _rc0 = await _a4OriginalExecuteTool(name, args);
+            var _rc0 = await _a4OriginalExecuteTool(name, args, ownerAgent);
             // ★ git badge 活动踢：命令可能落盘文件 → 通知主窗口刷新未提交数（内部 2.5s 防抖）
             try { window.parent.postMessage({ type: 'qqq-fs-activity' }, '*'); } catch (_) { }
             return _rc0;
         }
         var cmdStartTs = Date.now();
-        var cmdResult = await _a4OriginalExecuteTool(name, args);
+        var cmdResult = await _a4OriginalExecuteTool(name, args, ownerAgent);
         try { window.parent.postMessage({ type: 'qqq-fs-activity' }, '*'); } catch (_) { }
         if (cmdResult && typeof cmdResult === 'string' && cmdResult.indexOf('Error') !== 0) {
             var bridge3 = getBridge();
@@ -362,7 +363,7 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
     }
 
     // ---- 2. 执行原工具 ----
-    var result = await _a4OriginalExecuteTool(name, args);
+    var result = await _a4OriginalExecuteTool(name, args, ownerAgent);
 
     // 工具失败 → 不记录快照
     if (!result || (typeof result === 'string' && result.indexOf('Error') === 0)) {

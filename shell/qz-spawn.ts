@@ -32,6 +32,12 @@ function _capOutput(r: SpawnResult): SpawnResult {
     return r;
 }
 
+// ── 在飞调度注册表（tag → 树杀句柄）────────────────────────────────────────
+//   渲染层 AI 工具（run_command）在 brief.tag 登记 → 用户停止/强杀时经
+//   qqqide:qz:kill 按标签立即树杀在飞子进程（不等失速看门狗收尸）。
+//   正常收尾自动注销；标签由调用方生成、全局唯一。
+const _liveSpawnTags = new Map<string, () => void>();
+
 // ── System-level hard limits (defense-in-depth against runaway commands) ──
 const SYSTEM_MAX_TIMEOUT = 7_200_000;  // 2h — no command runs longer than this
 const MEM_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;  // 2GB — kill if child exceeds this
@@ -168,6 +174,8 @@ export interface SpawnBrief {
     killOnDisconnect?: boolean;// kill child when parent exits (default true)
     shell?: boolean;           // use shell=true (default false; only true when cmd contains spaces and args missing)
     inheritEnv?: boolean;      // merge process.env (default true)
+    /** ★ 在飞取消标签（渲染层 AI 工具）：登记树杀句柄 → 支持 qqqide:qz:kill 立即中止 */
+    tag?: string;
     /** ★ 外部取消钩子（2026-09-21）：spawn 成功即回调持有 {pid,kill}——长任务（ffmpeg 转码等）可中途树杀 */
     onProc?: (h: { pid?: number; kill: () => void }) => void;
     /** ★ 流式 stdout（2026-10-02）：逐块回传（不缓冲不截断）+ pause/resume 背压句柄；
@@ -304,6 +312,7 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         let stderr = '';
         let killed = false;
         let killReason: SpawnResult['killReason'] = '';
+        let cancelledByTag = false;
         let lastIOAt = Date.now();
 
         // ★ 2026-08-18: 输出改 Buffer 收集 + UTF-8→GBK 兜底解码。
@@ -334,6 +343,10 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         // ★ 外部取消钩子（2026-09-21）：调用方持有 kill 句柄（长任务中途取消 → 树杀）
         if (brief.onProc) {
             try { brief.onProc({ pid: proc.pid, kill: killTree }); } catch { /* ignore */ }
+        }
+        // ★ 在飞登记（tag）：停止任务时经 qqqide:qz:kill 树杀本进程（渲染层 AI 工具用）
+        if (brief.tag) {
+            _liveSpawnTags.set(brief.tag, () => { cancelledByTag = true; killTree(); });
         }
 
         if (proc.stdout) {
@@ -389,13 +402,14 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
             clearTimeout(deadlineTimer);
             if (stallTimer) { clearTimeout(stallTimer); }
             if (memGuardInterval) { memGuardInterval.stop(); }
+            if (brief.tag) { _liveSpawnTags.delete(brief.tag); }
         };
 
         proc.on('exit', (code) => {
             cleanup();
             stdout = _winDecode(stdoutBuf);
             stderr = _winDecode(stderrBuf);
-            const extra = killed ? `\n[killed: ${killReason} after ${Date.now() - start}ms]` : '';
+            const extra = killed ? `\n[killed: ${killReason} after ${Date.now() - start}ms]` : (cancelledByTag ? '\n[cancelled]' : '');
             resolve({
                 exitCode: killed ? -1 : (code ?? -1),
                 stdout,
@@ -469,11 +483,13 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
         let outBuf = '';
         let errBuf = '';
         let done = false;
+        let cancelledByTag = false;
         // ★ ghrun has native Job Object memory limit — skip JS mem guard (redundant)
         const finish = (r: SpawnResult) => {
             if (done) { return; }
             done = true;
             clearTimeout(guard);
+            if (brief.tag) { _liveSpawnTags.delete(brief.tag); }
             // Tree-kill ghrun + child on forced termination (mem-guard/deadline)
             if (r.killReason) {
                 try {
@@ -489,22 +505,31 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
             resolve(r);
         };
 
+        // ★ 树杀 ghrun + 子进程（onProc 与 tag 取消共用句柄）：Win taskkill /T 整树；
+        //   POSIX ghrun 子进程自领进程组（process_group(0)）→ 先 pgrep 定位子进程组杀之再收 ghrun（防孤儿）
+        const killGhrun = () => {
+            try {
+                if (process.platform === 'win32') {
+                    cpSpawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true });
+                } else {
+                    execFile('pgrep', ['-P', String(proc.pid)], { timeout: 3000 }, (_pe: any, _po: any) => {
+                        var _cpid = -1;
+                        try { _cpid = parseInt(String(_po || '').trim().split('\n')[0], 10); } catch { /* ignore */ }
+                        if (_cpid > 0) {
+                            try { process.kill(-_cpid, 'SIGKILL'); } catch { try { process.kill(_cpid, 'SIGKILL'); } catch { /* ignore */ } }
+                        }
+                        try { process.kill(-proc.pid!, 'SIGKILL'); } catch { proc.kill('SIGKILL'); }
+                    });
+                }
+            } catch { /* ignore */ }
+        };
         // ★ 外部取消钩子（2026-09-21）：调用方持有 kill 句柄（树杀 ghrun+子进程）
         if (brief.onProc) {
-            try {
-                brief.onProc({
-                    pid: proc.pid,
-                    kill: () => {
-                        try {
-                            if (process.platform === 'win32') {
-                                cpSpawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true });
-                            } else {
-                                try { process.kill(-proc.pid!, 'SIGKILL'); } catch { proc.kill('SIGKILL'); }
-                            }
-                        } catch { /* ignore */ }
-                    },
-                });
-            } catch { /* ignore */ }
+            try { brief.onProc({ pid: proc.pid, kill: killGhrun }); } catch { /* ignore */ }
+        }
+        // ★ 在飞登记（tag）：停止任务时经 qqqide:qz:kill 树杀全树（渲染层 AI 工具用）
+        if (brief.tag) {
+            _liveSpawnTags.set(brief.tag, () => { cancelledByTag = true; killGhrun(); });
         }
 
         proc.stdout!.setEncoding('utf8');
@@ -526,7 +551,7 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
                 });
             } catch {
                 finish({
-                    exitCode: code ?? -1, stdout: outBuf, stderr: errBuf || 'ghrun_bad_json',
+                    exitCode: code ?? -1, stdout: outBuf, stderr: errBuf || (cancelledByTag ? 'cancelled' : 'ghrun_bad_json'),
                     killReason: 'spawn-error', tier: 'ghrun',
                     pid: proc.pid, durationMs: Date.now() - start,
                 });
@@ -828,5 +853,14 @@ export function registerQzSpawnIpc(qzSpawn: QzSpawn): void {
     // ★ 2026-09-10: 全局命令屏障（_qgc/release）已拆——命令与写互不等待
     ipcMain.handle('qqqide:qz:spawn', async (_e, brief: any) => {
         return await qzSpawn.spawn(brief);
+    });
+    // ★ 在飞取消（渲染层 AI 工具停止/强杀）：按 tag 立即树杀对应在飞进程；命中返回 true
+    ipcMain.handle('qqqide:qz:kill', async (_e, tag: any) => {
+        if (typeof tag !== 'string' || !tag) { return false; }
+        const k = _liveSpawnTags.get(tag);
+        if (!k) { return false; }
+        try { console.warn('[qz] kill-by-tag:', tag); } catch { /* ignore */ }
+        try { k(); } catch { /* ignore */ }
+        return true;
     });
 }

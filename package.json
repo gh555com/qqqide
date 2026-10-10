@@ -1,6 +1,6 @@
 {
   "name": "qqqide",
-  "version": "0.4.23",
+  "version": "0.4.27",
   "description": "qqqide — portable AI-powered IDE. Win7+ compatible, zero C-drive write.",
   "private": true,
   "main": "shell-out/bootstrap.js",
@@ -31,6 +31,7 @@
     "pack:all": "npm run pack:win-x64 && npm run pack:win-arm64 && npm run pack:linux-x64 && npm run pack:linux-arm64 && npm run pack:mac-x64 && npm run pack:mac-arm64"
   },
   "dependencies": {
+    "jsdom": "^29.1.1",
     "monaco-editor": "0.34.1",
     "sql.js": "^1.11.0"
   },

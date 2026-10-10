@@ -260,44 +260,118 @@ function updateGuideBtn() {
 // ★ 立即初始化：闲置 = 禁用（HTML 已 disabled，再确保 JS 支配）
 updateGuideBtn();
 
-function setStreaming(val) {
-    streaming = val;
-    updateGuideBtn();
-    // ★ Stop 闭环：三态 UX（IDLE / SENDING / STOPPING）
-    //   val=true 表示流式输出中；_stopState 仅用于 STOPPING 覆盖
-    var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-    var _state = _ag ? _ag._stopState : 'idle';
-    if (_state === 'stopping') {
-        $sendBtn.textContent = '....';
-        $sendBtn.className = 'stop';
-        $sendBtn.disabled = true;
-    } else if (_ag && _ag._compressing) {
-        $sendBtn.textContent = '\u23f3';
-        $sendBtn.className = 'compressing';
-        $sendBtn.disabled = true;
-    } else {
-        $sendBtn.textContent = val ? 'Stop' : 'Send';
-        $sendBtn.className = val ? 'stop' : '';
-        // ★ 永不锁按钮
-        $sendBtn.disabled = false;
-    }
-    // ★ 红框 ACTIVE 态：按钮保持 Stop（红色可点），用户可选「继续任务」或 Stop
-    if (_ag && _ag._stopState === 'fatal') {
+// ═══ Send 按钮真理机（唯一渲染源）═══
+// 反模式（已废）：按钮字面由一次性打印决定（最后写入者赢、零对账）——任一假值打印一旦成为
+// "最后一次"就冻结到任务结束；点击判定却实时读 _stopState → 字面 Send + 点击 busy = 永停不了
+// （q13 事故）。现在：外观恒从真理源（_stopState / 红框）推导，点击与字面同源。
+// 三态字面：Send（闲置）/ Stop（建楼中可点）/ Stop...（stopping = inert 态：置灰外观 + 点击零动作 + 悬停即时提示）。
+// 字面恒此三态（无 '....' / ⏳）：⏳ 依赖的 _compressing 全库无写入者——欲启用压缩态须先补驱动器。
+function _resolveBtnAgent() {
+    // 按钮绑定"当前显示任务"的建楼 agent：优先取池内 questActiveId 的真身（后台建楼/指针
+    // 被劫持时仍命中），再回退 _activeAgent（草稿态等）。
+    try {
+        var _pool = (typeof parent !== 'undefined' && parent) ? parent.__qqq_agentPool : null;
+        var _want = (typeof questActiveId !== 'undefined' && questActiveId && !(typeof _isDraft === 'function' && _isDraft(questActiveId))) ? questActiveId : null;
+        if (_want && _pool && _pool[_want]) return _pool[_want];
+    } catch (_) { }
+    return (typeof _activeAgent !== 'undefined') ? (_activeAgent || null) : null;
+}
+
+function _sendBtnTruth() {
+    var _ag = _resolveBtnAgent();
+    var _st = _ag ? _ag._stopState : 'idle';
+    if (_st === 'stopping') return { label: 'Stop...', cls: 'stop', inert: true, st: _st, ag: _ag };
+    if (_st === 'sending') return { label: 'Stop', cls: 'stop', inert: false, st: _st, ag: _ag };
+    if (_st === 'fatal' && _ag) {
+        // ★ 红框 ACTIVE 态：按钮保持 Stop（红色可点）；无活跃红框（已封顶）→ Send
         var _hasActive = false;
-        // ★ V14: 从 _questErrorState 判断是否有未封顶红框
         if (_ag._questErrorState) {
             for (var _fn in _ag._questErrorState) {
                 if (!_ag._questErrorState[_fn].capped) { _hasActive = true; break; }
             }
         }
-        if (_hasActive) {
-            $sendBtn.textContent = 'Stop';
-            $sendBtn.className = 'stop';
-            $sendBtn.disabled = false;
-            return;
-        }
-        // 无活跃红框（已封顶）→ 按钮正常走 val-based 逻辑（Send）
+        if (_hasActive) return { label: 'Stop', cls: 'stop', inert: false, st: _st, ag: _ag };
     }
+    return { label: 'Send', cls: '', inert: false, st: _st, ag: _ag };
+}
+
+var _sendBtnLastKey = '';      // 已渲染快照（diff：仅在真变化时写 DOM）
+var _sendBtnDriftLogTs = 0;    // 漂移取证日志节流（≥5s）
+function _renderSendBtn(fromReconcile) {
+    if (!$sendBtn) return;
+    var _t = _sendBtnTruth();
+    var _key = _t.label + '|' + _t.cls + '|' + (_t.inert ? '1' : '0');
+    if (_key === _sendBtnLastKey) return;
+    // ★ 漂移取证：只有对账机才发现的变化 = 存在漏刷新（q13 类）→ agent-*.log 留一行，供事后秒定位
+    if (fromReconcile && _sendBtnLastKey) {
+        var _now = Date.now();
+        if (_now - _sendBtnDriftLogTs > 5000) {
+            _sendBtnDriftLogTs = _now;
+            try {
+                var _dAg = _t.ag;
+                if (_dAg && typeof _dAg._writeFileLog === 'function') {
+                    _dAg._writeFileLog('⚠ SEND-BTN reconcile: ' + _sendBtnLastKey.split('|')[0] + ' → ' + _t.label + ' state=' + _t.st + ' streaming=' + !!_dAg._streaming);
+                }
+            } catch (_) { }
+        }
+    }
+    _sendBtnLastKey = _key;
+    $sendBtn.textContent = _t.label;
+    // ★ inert 不复用 disabled 属性：disabled 元素吞指针事件 → 悬停即时提示失效；
+    //   改类名模拟置灰外观 + 点击守卫零动作（panel-input.js stopping 早退）
+    $sendBtn.className = (_t.cls + (_t.inert ? ' inert' : '')).trim();
+    // 悬停中状态迁移 → 提示即刷新/收起（防"正在停止…"定格在已归 Send 的按钮上）
+    _refreshSendTip();
+}
+
+// ★ 1s 对账机：任何来源的状态漂移最多存活 1s（自愈兜底；纯布尔读取 + diff 写入，零常态开销）
+setInterval(function () { try { if (!document.hidden) _renderSendBtn(true); } catch (_) { } }, 1000);
+
+// ═══ Send 按钮即时悬停提示（零延迟弹出，仅 Stop... 态展示）═══
+var _sendTipEl = null;
+function _sendTipText() {
+    var _l = _sendBtnTruth().label;
+    var _q = (typeof _qq === 'function') ? _qq : function (k, fb) { return fb; };
+    if (_l === 'Stop...') return _q('ai.sendTipStopping', '正在停止…');
+    return '';
+}
+function _showSendTip() {
+    if (!$sendBtn) return;
+    var _txt = _sendTipText();
+    if (!_txt) return;
+    if (!_sendTipEl) {
+        _sendTipEl = document.createElement('div');
+        _sendTipEl.id = 'send-tip';
+        document.body.appendChild(_sendTipEl);
+    }
+    if (_sendTipEl.textContent !== _txt) _sendTipEl.textContent = _txt;
+    _sendTipEl.style.display = 'block';
+    var _r = $sendBtn.getBoundingClientRect();
+    var _l2 = _r.left + _r.width / 2 - _sendTipEl.offsetWidth / 2;
+    var _tp = _r.top - _sendTipEl.offsetHeight - 6;
+    if (_l2 < 4) _l2 = 4;
+    if (_l2 + _sendTipEl.offsetWidth > window.innerWidth - 4) _l2 = window.innerWidth - _sendTipEl.offsetWidth - 4;
+    if (_tp < 4) _tp = _r.bottom + 6;
+    _sendTipEl.style.left = _l2 + 'px';
+    _sendTipEl.style.top = _tp + 'px';
+}
+function _hideSendTip() { if (_sendTipEl) _sendTipEl.style.display = 'none'; }
+// 悬停期间状态迁移：正在展示的提示即刷新；字面已无提示（如回 Send）则收起
+function _refreshSendTip() {
+    if (!_sendTipEl || _sendTipEl.style.display !== 'block') return;
+    if (!_sendTipText()) { _hideSendTip(); return; }
+    _showSendTip();
+}
+if ($sendBtn) {
+    $sendBtn.addEventListener('mouseenter', _showSendTip);
+    $sendBtn.addEventListener('mouseleave', _hideSendTip);
+}
+
+function setStreaming(val) {
+    // ★ 历史签名保留：val 不再决定按钮外观（旧"一次性打印"是死胡同根因），外观恒从真理源推导；
+    //   val 仅供 quest 电子钟起停等无关副作用使用。
+    updateGuideBtn();
+    _renderSendBtn(false);
     updateQueueBtn();
     // ★ 微型电子钟：开始建楼启动，建楼结束停止
     if (val) {

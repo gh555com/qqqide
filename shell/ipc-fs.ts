@@ -26,7 +26,8 @@ let _agentLogRotateDay = '';
 // ★ new_log JSONL 大小轮转：_qqq/new_log/*.jsonl 单文件 ≤2MB，超限滚为 .1（覆盖旧），总量 ≤4MB
 async function _rotateJsonlBySize(p: string): Promise<void> {
     const dir = path.dirname(p);
-    if (!p.endsWith('.jsonl') || !dir.endsWith(path.join('_qqq', 'new_log'))) return;
+    // ★ 路径判定必须双分隔符归一：渲染层传正斜杠路径（path.join 产出反斜杠）→ 旧 endsWith 恒 false（轮转静默死档数月）
+    if (!p.endsWith('.jsonl') || !dir.split(path.sep).join('/').endsWith('/_qqq/new_log')) return;
     try {
         const st = await fs.promises.stat(p);
         if (st.size < 2 * 1024 * 1024) return;
@@ -41,7 +42,7 @@ async function _rotateAgentLogs(p: string): Promise<void> {
     const today = new Date().toISOString().slice(0, 10);
     if (_agentLogRotateDay === today) return;
     const dir = path.dirname(p);
-    if (!path.basename(p).startsWith('agent-') || !dir.endsWith(path.join('_qqq', 'new_log'))) return;
+    if (!path.basename(p).startsWith('agent-') || !dir.split(path.sep).join('/').endsWith('/_qqq/new_log')) return;
     _agentLogRotateDay = today;
     try {
         const cutoff = Date.now() - 30 * 24 * 3600 * 1000;

@@ -916,6 +916,7 @@
         "translateBtn": "Dịch",
         "auditCopied": "Văn bản kiểm tra đã được sao chép vào clipboard ({0} KB), có thể dán vào bất kỳ hộp thoại AI nào.",
         "waitSwitch": "AI chưa phản hồi cho tác vụ hiện tại, vui lòng chờ trước khi chuyển đổi",
+        "sendTipStopping": "Đang dừng…",
         "questOpenLeft": "📌 Quest này đã được mở trong bảng trái, đã tự động chuyển hướng",
         "questOpenRight": "📌 Quest này đã được mở trong bảng phải, đã tự động chuyển hướng",
         "questOpenMid": "📌 Quest này đã được mở trong bảng giữa, đã tự động chuyển hướng",
@@ -1643,6 +1644,7 @@
         "floorGone": "Dữ liệu tầng này không tồn tại",
         "cardGone": "Dữ liệu nhiệm vụ chưa sẵn sàng hoặc đã bị xóa",
         "noPanel": "Bảng điều khiển AI chưa sẵn sàng",
+        "busy": "Bảng điều khiển đang bận, vui lòng thử lại sau",
         "saveFail": "Lưu mục yêu thích thất bại",
         "deletedTag": "Nhiệm vụ đã bị xóa"
     },
@@ -1650,11 +1652,7 @@
         "expert": "Tôi là chuyên gia, tôi hiểu rõ tác hại của mọi lệnh, tôi không dùng qqqide để xóa tệp",
         "agree": "Đồng ý và tiếp tục",
         "exit": "Thoát",
-        "saveFailed": "Lưu thất bại, vui lòng thử lại",
-        "intro1": "Bạn có thể coi qd như một trò chơi để thưởng thức từ từ, lưu ý rằng đây là một trò chơi nguyên bản, chứ không phải một trò chơi đổi vỏ. Nếu bạn thích trò chơi đổi vỏ, bây giờ bạn có thể yên tâm rời đi.",
-        "introLink": "Sử dụng Roam để vượt ra khỏi giới hạn của thư mục dự án",
-        "intro2": "Mặt khác, tôi hy vọng bạn tìm thấy liên kết cộng đồng từ nút help ở phía trên, chúng tôi đảm bảo rằng bất kỳ vấn đề nhỏ nào của bạn đều sẽ có người chuyên trách giải đáp từng câu hỏi một.",
-        "introOk": "Vậy thì tốt"
+        "saveFailed": "Lưu thất bại, vui lòng thử lại"
     },
     "notice": {
         "title": "Thông báo",
@@ -2041,13 +2039,17 @@
             "desc": "Xuất hiện trong danh sách \"Mở bằng\" của hệ thống: tự động duy trì",
             "btn": "Đặt làm mặc định",
             "btnBusy": "Đang thiết lập…",
-            "confirmTitle": "Bạn đã chọn \"Đặt qd làm trình mở mặc định cho văn bản/mã nguồn\"",
-            "confirmBody": "Sẽ chuyển toàn bộ nhóm phương thức mở khi nhấp đúp cho các định dạng này sang qd (khoảng 74 loại văn bản/mã nguồn). Các ứng dụng khác có thể giành lại sau này — bạn có thể quay lại và nhấp lại bất cứ lúc nào để giành quyền kiểm soát.",
+            "confirmTitle": "Bạn đã chọn \"Đặt qd làm cách mở mặc định\"",
+            "confirmBody": "Ứng dụng sẽ tiếp quản cách mở mặc định cho khoảng 74 loại tệp văn bản/mã: nhấp đúp để mở trực tiếp bằng qd.",
+            "confirmBodySkip": "Sẽ tiếp quản cách mở mặc định của khoảng {n} loại văn bản/mã: nhấp đúp để mở trực tiếp bằng qd. ({k} loại đã được trình thông dịch hệ thống tiếp quản, giữ nguyên hành động nhấp đúp để chạy)",
             "okAll": "Đã tiếp quản {n} định dạng văn bản/mã nguồn ✓",
+            "okAllSkip": "Đã tiếp quản {n} loại định dạng văn bản/mã ✓; {k} loại giữ nguyên hành động nhấp đúp để chạy (trình thông dịch hệ thống)",
             "okPartial": "Đã tiếp quản {n}/{m} loại; các loại còn lại bị hệ thống chặn do bảo vệ",
+            "okPartialSkip": "Đã tiếp quản {n}/{m} loại; {k} loại giữ nguyên hành động nhấp đúp để chạy (trình thông dịch hệ thống); các loại còn lại bị hệ thống chặn do bảo vệ",
             "openSettings": "Mở cài đặt hệ thống",
             "unsupported": "Hệ thống hiện tại tạm thời không hỗ trợ tính năng này",
             "fail": "Thao tác thất bại: {e}",
+            "checkFail": "Không thể xác nhận trạng thái trình thông dịch hệ thống, vui lòng thử lại sau",
             "needRestart": "Cần khởi động lại cửa sổ này để áp dụng"
         },
         "tier": {

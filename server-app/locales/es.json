@@ -916,6 +916,7 @@
         "translateBtn": "Traducir",
         "auditCopied": "Texto de auditoría copiado al portapapeles ({0} KB), puede pegarlo en cualquier cuadro de diálogo de IA.",
         "waitSwitch": "La IA aún no ha respondido a la tarea actual, por favor cambia más tarde",
+        "sendTipStopping": "Deteniendo…",
         "questOpenLeft": "📌 Esta Quest ya está abierta en el panel izquierdo, se ha navegado automáticamente",
         "questOpenRight": "📌 Esta Quest ya está abierta en el panel derecho, se ha navegado automáticamente",
         "questOpenMid": "📌 Esta Quest ya está abierta en el panel central, se ha navegado automáticamente",
@@ -1643,6 +1644,7 @@
         "floorGone": "Los datos de este piso no existen",
         "cardGone": "Los datos de la tarea no están listos o han sido eliminados",
         "noPanel": "El panel de IA aún no está listo",
+        "busy": "El panel está ocupado, inténtalo de nuevo más tarde",
         "saveFail": "Error al guardar el favorito",
         "deletedTag": "Tarea eliminada"
     },
@@ -1650,11 +1652,7 @@
         "expert": "Soy un experto, conozco los riesgos de cada comando, no uso qqqide para eliminar archivos",
         "agree": "Aceptar y continuar",
         "exit": "Salir",
-        "saveFailed": "Error al guardar, inténtalo de nuevo",
-        "intro1": "Puedes tratar qd como un juego para saborearlo poco a poco. Ten en cuenta que es un juego original, no una copia superficial. Si te gustan los juegos copiados, puedes irte ahora mismo.",
-        "introLink": "Usar Roam para salir de las limitaciones de la carpeta del proyecto",
-        "intro2": "Por otro lado, espero que encuentres el enlace a la comunidad desde el botón de ayuda superior. Podemos asegurarnos de que cualquier pequeña duda que tengas sea respondida personalmente por un especialista.",
-        "introOk": "Estupendo"
+        "saveFailed": "Error al guardar, inténtalo de nuevo"
     },
     "notice": {
         "title": "Notificaciones",
@@ -2041,13 +2039,17 @@
             "desc": "Aparece en la lista de «Abrir con» del sistema: mantenimiento automático",
             "btn": "Establecer como predeterminado",
             "btnBusy": "Configurando…",
-            "confirmTitle": "Has seleccionado «Establecer qd como la aplicación predeterminada para texto/código»",
-            "confirmBody": "Esto establecerá qd como la aplicación predeterminada para abrir estos formatos al hacer doble clic (aproximadamente 74 tipos de texto/código). Otras aplicaciones podrán reclamarlos más adelante; puedes volver a hacer clic en cualquier momento para recuperar el control.",
+            "confirmTitle": "Has seleccionado «Establecer qd como forma de apertura predeterminada»",
+            "confirmBody": "Esto tomará el control de la apertura predeterminada para aproximadamente 74 tipos de archivos de texto/código: al hacer doble clic, se abrirán directamente con qd.",
+            "confirmBodySkip": "Se tomará el control de la forma predeterminada de abrir aproximadamente {n} tipos de texto/código: haz doble clic para abrir directamente con qd. ({k} tipos ya están gestionados por el intérprete del sistema, mantén el doble clic para ejecutar)",
             "okAll": "Se han gestionado {n} tipos de formato de texto/código ✓",
+            "okAllSkip": "Se ha tomado el control de {n} formatos de texto/código ✓; {k} tipos mantienen el doble clic para ejecutar (intérprete del sistema)",
             "okPartial": "Se han gestionado {n}/{m} tipos; el resto están protegidos o bloqueados por el sistema",
+            "okPartialSkip": "Se ha tomado el control de {n}/{m} tipos; {k} tipos mantienen el doble clic para ejecutar (intérprete del sistema); el resto está bloqueado por la protección del sistema",
             "openSettings": "Abrir configuración del sistema",
             "unsupported": "El sistema actual no admite esta función temporalmente",
             "fail": "Error en la operación: {e}",
+            "checkFail": "No se puede confirmar el estado del intérprete del sistema, inténtalo de nuevo más tarde",
             "needRestart": "Es necesario reiniciar esta ventana para que surta efecto"
         },
         "tier": {

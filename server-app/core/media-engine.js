@@ -46,7 +46,8 @@
     '.ovmb-dock{flex:0 0 auto;align-self:stretch;width:clamp(190px,38%,300px);display:none;flex-direction:column;margin:0;box-sizing:border-box;position:relative;' +
     'background:rgba(16,16,16,0.86);border:1px solid rgba(255,255,255,0.14);border-radius:11px;padding:8px 4px;box-shadow:0 6px 24px rgba(0,0,0,0.35)}' +
     '.ovmb-dhead{display:flex;align-items:center;gap:6px;padding:1px 2px 7px;flex:0 0 auto}' +
-    '.ovmb-dcnt{font-size:11px;color:#a8a49b;flex:0 0 auto}' +
+    // ★ 计数位 = 当前/总数（2026-10-10 q319 用户定案）：底条 n/N 整体废除——唯一计数驻列表头；与随机开关间留 8px 空气墙（禁贴）
+    '.ovmb-dcnt{font-size:11px;color:#a8a49b;flex:0 0 auto;margin-left:8px;font-variant-numeric:tabular-nums}' +
     // ★ 列表头循环/随机双开关（2026-10-02 q319 用户定案）：位置 = 计数左侧（循环在随机左）；固定绘制（glyph 恒原样）
     //   + 右下角 ✓ 角标（pin 同款）+ 勾亮 = 本体外框同转金（2026-10-03 定案：外框色 100% = 勾色 #ffd301；未勾 = 暗淡外框）——循环/随机唯一 UI（模式弹层整体已删）。通用类 ovmb-dsw（两开关共用）
     //   ★ 可见边框 + 角标贴靠本体（2026-10-02 用户定案）：一切按钮恒绘 1px 淡边——可点范围一眼可见（禁回 border:none 透明钮）；
@@ -121,7 +122,6 @@
     '.ovmb-rootcol:fullscreen{width:100%;height:100%;max-width:none;max-height:none;background:#000}' +
     '.ovmb-rootcol:fullscreen video{max-width:100vw;max-height:100vh}' +
     '.ovmb-ratehost{position:relative;display:flex;flex:0 0 auto}' +
-    '.ovmb-pos{font-size:11px;color:#b9b5ac;flex:0 0 auto;font-variant-numeric:tabular-nums;padding:0 2px;white-space:nowrap}' +
     // ★ 播放列表 dock 列表容器（2026-09-26 v5）：弹性吃满 dock 高度 + 内部滚动；当前轨金色高亮
     // ★ 播放列表滚动块 = qh 滚动真理机器接入（2026-10-02 q319 定案）：隐形滑轨（零轨道绘制，仅 6px 透明命中区）+
     //   常态 2px 无圆角细条（右距 2px——贴内容缘）/ hover 变粗贴边（6px）/ 点击滑轨任意位置即跳 / 拖拽 / 滚轮转发；
@@ -197,9 +197,7 @@
     //   压紧档 uic 逐档收紧宽度（镜像左行缩法——把「窗口最小宽」地板压到最低）
     '.ovmb-uirow.ovmb-uic .ovmb .ovmb-tbtn{min-width:32px;padding:3px 5px}' +
     '.ovmb-uirow.ovmb-uic .ovmb .ovmb-kcap{padding:0 3px}' +
-    //   ★ 计数上限完（>500 条目的超长计数——恢复会话最大 2000）：窄窗内定格 52px（500/500 实测 ~47px 完整可读）——
-    //   超长截断而非拆行/裁按钮（单行保证的最后一道闲）
-    '.ovmb-uirow.ovmb-uic .ovmb-pos{max-width:52px;overflow:hidden;text-overflow:ellipsis}' +
+
     '.ovmb-trx{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:nowrap;width:100%;padding:4px 8px;border-radius:12px;' +
     'background:rgba(15,15,15,0.84);border:1px solid rgba(255,255,255,0.14);box-shadow:0 6px 24px rgba(0,0,0,0.45);user-select:none;max-width:100%;box-sizing:border-box}' +
     // ★ 两翼等基宽（flex:1 1 0）——基宽相等 → 拿到的自由空间相等 → 播放按钮恒居整行正中；行恒单行（nowrap）
@@ -714,14 +712,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     // ★ A-B 循环按钮（2026-09-26 q319）：三态循环——首点标 A → 次点标 B 起循（跳回 A）→ 再点清除；A/B 字各自金色指示状态
     //   v20（2026-10-03）：两段式增高 + 上格键帽 A（快捷键 A；工具提示由 _abRender 动态维护）
     var abB = _tBtn('<span class="ovmb-aba">A</span>-<span class="ovmb-abb">B</span>', '', 'A', 'ovmb-ab');
-    var pipB = null, fsB = null, shotB = null, posT = null;
-    // ★ 位置计数（n/N）——仅底条保留；上一首/下一首按钮已迁 dock 头部（2026-10-02 v14：文字 < P / N > + N/P 真快捷键）
-    {
-      posT = document.createElement('span');
-      posT.className = 'ovmb-pos';
-      posT.textContent = (api.idx + 1) + '/' + api.n;
-      if (!(api && api.n > 1)) { posT.style.display = 'none'; }
-    }
+    var pipB = null, fsB = null, shotB = null;
 
     // 粘性应用（会话内跨文件保持）
     // ★ defaultPlaybackRate 同步（2026-09-26 v4 修正）：媒体 load 算法（设 src/load()）会把 playbackRate 重置回 defaultPlaybackRate——
@@ -982,13 +973,19 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       b.addEventListener('click', function (e) { e.stopPropagation(); _plRowOp(op, idx); });
       return b;
     }
+    // ★ 计数位刷新（2026-10-10 q319 用户定案）：显示 = 当前/总数——底条 n/N 整体废除后的唯一计数位（未自动跟随时所播文件滚出可视区也一眼可见）
+    function _syncDockCnt() {
+      if (!_dockCntEl || !api) { return; }
+      var _cn = api.n || 0;
+      _dockCntEl.textContent = _cn > 0 ? (((api.idx || 0) + 1) + '/' + _cn) : '0';
+    }
     // 行重建（唯一渲染入口：建 dock/上移/下移/移除/拖动提交全走它）
     function _fillPlRows() {
       if (!_plListEl) { return; }
       var _L = (api && api.list) || [];
       var _st = _plListEl.scrollTop;
       _plListEl.innerHTML = '';
-      if (_dockCntEl) { _dockCntEl.textContent = String(_L.length); }
+      _syncDockCnt();
       for (var pi2 = 0; pi2 < _L.length; pi2++) {
         (function (idx, item) {
           var wrap = document.createElement('div');
@@ -1037,13 +1034,9 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       // ★ dock 头部 N/P（2026-10-02 v14）：单轨禁用（位移语义消失）——恒显不留布局跳变
       if (_dockPrevB) { _dockPrevB.disabled = !many; }
       if (_dockNextB) { _dockNextB.disabled = !many; }
-      if (posT) {
-        posT.style.display = many ? '' : 'none';
-        if (api) { posT.textContent = ((api.idx || 0) + 1) + '/' + api.n; }
-      }
       if (dockEl) {
         dockEl.style.display = 'flex';   // ★ 恒显（含单曲——播放列表一直带着；2026-10-02 用户定案）
-        if (_dockCntEl) { _dockCntEl.textContent = String((api && api.n) || 0); }
+        _syncDockCnt();
       }
       try { _plDragClear(); } catch (_) { }
       _fillPlRows();
@@ -1133,7 +1126,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       head.className = 'ovmb-dhead';
       _dockCntEl = document.createElement('span');
       _dockCntEl.className = 'ovmb-dcnt';
-      _dockCntEl.textContent = String(api ? api.n : 0);
+      _syncDockCnt();
       // ★ 2026-10-01 q319：列表头「⇄ 切边」按钮整体删除（用户判定无用）——停靠边随记忆保持，无手动入口
       // ★ 2026-10-02 q319：列表头循环/随机双开关（计数左侧：循环在随机左；固定绘制 + 右下角 ✓ 角标——pin 同款；勾亮 = 外框同转金）
       function _dockSwBtn(glyph, title, fn) {
@@ -1751,7 +1744,6 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     _progSlot.appendChild(curT);
     _progSlot.appendChild(seek);
     _progSlot.appendChild(durT);
-    if (posT) { bar.appendChild(posT); }
     bar.appendChild(volB);
     volBox.appendChild(volS); volBox.appendChild(volTip);
     bar.appendChild(volBox);
@@ -2119,7 +2111,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     // ★ 播放列表协作者接口（2026-09-26 q319）：外部切轨后刷新位置计数；A-B 状态切轨即清零（时间点无跨文件意义）
     function setTrack(n) {
       if (api) { api.idx = n; }
-      if (posT) { posT.textContent = (n + 1) + '/' + (api ? api.n : 1); }
+      _syncDockCnt();
       _syncPl();
       _persistTick();
     }

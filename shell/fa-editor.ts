@@ -9,6 +9,9 @@
 //      Linux：~/.local/share/applications/qqqide-editor.desktop（MimeType 全量声明）+ update-desktop-database。
 //   ② 设为默认（B 一键）：设置面板行〔设为默认〕→ 整族夺默认（Win UserChoice hash 强写 /
 //      mac LSSetDefaultRoleHandlerForContentType / Linux xdg-mime default）——单向可反复，无解除逻辑。
+//      ★ 解释器族跳过（2026-10-10 用户定案）：.py/.pyw（Python 族）与 .js/.mjs/.cjs（Node 族）已被
+//      系统解释器接管时整族跳过不夺——skip 由渲染层实时 sysPy.check 逐族判定后传入 apply；
+//      register（A+ 自愈）恒全量（只碰候选面不碰默认）。冲突槽位契约详 arch/编辑器与粘贴 §11。
 //   ③ 启动自愈：每次启动后台静默重注册（状态键内容未变 → 纯读快路径零写入）——
 //      绿色包搬家/换盘/换 exe 后路径失效自动修复。
 //   ★ 双击链另一端 = main.ts 的 --qqqide-open 入口：冷启 argv → 就绪后投编辑器窗；
@@ -24,6 +27,7 @@ import { faMacApply, faMacRegister } from './fa-mac';
 import { faLinuxApply } from './fa-linux';
 import { MEDIA_ASSOC_EXTS, faSerial } from './ipc-fileassoc';
 import { getDataDir } from './portable-paths';
+import { EDITOR_PROGID, EDITOR_DESKTOP_ID, EDITOR_OPEN_MARK } from './fa-ids';
 
 // 「文本/代码」族（74 类；五组）。排除：可执行（.exe/.bat/.cmd/.lnk）、二进制文档
 // （.docx/.pdf——打开=乱码）、媒体 37 类（归播放器域）。.ts 归此（TypeScript；播放器域已刻意排除）。
@@ -40,11 +44,9 @@ export const EDITOR_ASSOC_EXTS: string[] = [
     '.sql', '.graphql', '.gql', '.proto', '.tf', '.svg',
 ];
 
-const PROG_ID = 'qqqide.editor';
-const MARK = '--qqqide-open';
+// 域标识（ProgID / 桌面条目 ID / 打开标记）= shell/fa-ids.ts 唯一真理源
 const APP_NAME = 'qd (qqqide) 编辑器';
 const APP_DESC = 'qd (qqqide) 文本/代码编辑器 — 双击用 qd 打开文本与代码文件';
-const DESKTOP_ID = 'qqqide-editor.desktop';
 
 const _MEDIA_SET = new Set(MEDIA_ASSOC_EXTS.map((e) => e.toLowerCase()));
 const _EDITOR_SET = new Set(EDITOR_ASSOC_EXTS.map((e) => e.toLowerCase()));
@@ -69,50 +71,64 @@ export function classifyExternalFiles(files: string[]): { text: string[]; media:
 }
 
 /** 结果形状（win / mac / linux 同形——UI 零分叉） */
-export interface FaEditorResult { ok: boolean; code?: string; total: number; taken: number; fails: string[]; err?: string }
+export interface FaEditorResult { ok: boolean; code?: string; total: number; taken: number; fails: string[]; skipped?: string[]; err?: string }
 
 /** 打开命令 = 当前进程 exe（绿色包 = gh555.com\joker.exe；dev = electron.exe + 项目根）。 */
 function _exeInfo(): { cmd: string; icon: string; appExe: string } {
     const exe = process.execPath;
     const appArg = app.isPackaged ? '' : ('"' + app.getAppPath() + '" ');
     return {
-        cmd: '"' + exe + '" ' + appArg + MARK + ' "%1"',
+        cmd: '"' + exe + '" ' + appArg + EDITOR_OPEN_MARK + ' "%1"',
         icon: '"' + exe + '",0',
         appExe: path.basename(exe),
     };
 }
 
-/** A+ 注册 / B 夺默认 唯一入口（mode: register = 仅候选面；apply = 候选面 + 夺默认）。 */
-export async function faEditorApply(mode: 'register' | 'apply'): Promise<FaEditorResult> {
+/** A+ 注册 / B 夺默认 唯一入口（mode: register = 仅候选面；apply = 候选面 + 夺默认）。
+ *  opts.skip = 解释器族剔除清单（apply 专用；渲染层实时判定；仅收本族合法扩展——其余一律忽略）。 */
+export async function faEditorApply(mode: 'register' | 'apply', opts?: { skip?: string[] }): Promise<FaEditorResult> {
+    let exts = EDITOR_ASSOC_EXTS;
+    let skipped: string[] = [];
+    if (mode === 'apply' && opts && Array.isArray(opts.skip) && opts.skip.length > 0) {
+        const set = new Set<string>();
+        for (const s of opts.skip) {
+            const e = String(s || '').trim().toLowerCase();
+            if (_EDITOR_SET.has(e)) { set.add(e); }
+        }
+        if (set.size > 0) {
+            skipped = EDITOR_ASSOC_EXTS.filter((e) => set.has(e.toLowerCase()));
+            exts = EDITOR_ASSOC_EXTS.filter((e) => !set.has(e.toLowerCase()));
+        }
+    }
     if (process.platform === 'darwin') {
-        const r = (mode === 'apply') ? await faMacApply(EDITOR_ASSOC_EXTS) : await faMacRegister();
-        return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
+        const r = (mode === 'apply') ? await faMacApply(exts) : await faMacRegister();
+        return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], skipped, err: r.err };
     }
     if (process.platform === 'linux') {
-        const r = await faLinuxApply(EDITOR_ASSOC_EXTS, {
+        const r = await faLinuxApply(exts, {
             setDefault: mode === 'apply',
-            desktopId: DESKTOP_ID,
+            desktopId: EDITOR_DESKTOP_ID,
             name: APP_NAME,
             desc: APP_DESC,
-            marker: MARK,
+            marker: EDITOR_OPEN_MARK,
             // 编辑域白名单：text/plain 正是本族目标（播放器域才是灾难）；仅护二进制与空文件
             neverTake: ['application/octet-stream', 'application/x-zerosize'],
             categories: 'Utility;TextEditor;Development;',
         });
-        return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
+        return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], skipped, err: r.err };
     }
-    if (process.platform !== 'win32') { return { ok: false, code: 'unsupported', total: 0, taken: 0, fails: [] }; }
+    if (process.platform !== 'win32') { return { ok: false, code: 'unsupported', total: 0, taken: 0, fails: [], skipped }; }
     try {
         const x = _exeInfo();
         const r = await runPs(FA_PS, {
             QQQIDE_FA_MODE: mode,
-            QQQIDE_FA_PROGID: PROG_ID,
-            QQQIDE_FA_EXTS: EDITOR_ASSOC_EXTS.join(';'),
+            QQQIDE_FA_PROGID: EDITOR_PROGID,
+            QQQIDE_FA_EXTS: exts.join(';'),
             QQQIDE_FA_CMD: x.cmd,
             QQQIDE_FA_ICON: x.icon,
             QQQIDE_FA_NAME: APP_NAME,
             QQQIDE_FA_DESC: APP_DESC,
-            QQQIDE_FA_MARK: MARK,
+            QQQIDE_FA_MARK: EDITOR_OPEN_MARK,
             QQQIDE_FA_APPEXE: x.appExe,
             QQQIDE_FA_APPCMD: x.cmd,
             QQQIDE_FA_APPFRIEND: 'qd (qqqide)',
@@ -124,13 +140,14 @@ export async function faEditorApply(mode: 'register' | 'apply'): Promise<FaEdito
             total: parseInt(r.fields.TOTAL || '0', 10) || 0,
             taken: parseInt(r.fields.TAKEN || '0', 10) || 0,
             fails: b64d(r.fields.FAILS).split(';').filter((s) => s),
+            skipped,
             err: (b64d(r.fields.PSERR) || '').slice(0, 300),
         };
         if (!out.ok) { console.warn('[fa-editor] ' + mode + ' fail: ' + out.code + ' ' + (out.err || '')); }
         return out;
     } catch (e: any) {
         console.warn('[fa-editor] ' + mode + ' err: ' + ((e && e.message) || e));
-        return { ok: false, code: 'apply-failed', total: 0, taken: 0, fails: [] };
+        return { ok: false, code: 'apply-failed', total: 0, taken: 0, fails: [], skipped };
     }
 }
 
@@ -168,14 +185,15 @@ async function _heal(): Promise<void> {
 
 // ── IPC：设置面板行〔设为默认〕（B 一键；单向可反复——无 check/remove）──
 export function registerEditorFileAssocIpc(): void {
-    ipcMain.handle('qqqide:fileassoc:apply-editor', () => faSerial(async () => {
-        const r = await faEditorApply('apply');
+    ipcMain.handle('qqqide:fileassoc:apply-editor', (_e: any, skip?: string[]) => faSerial(async () => {
+        const r = await faEditorApply('apply', { skip });
         return {
             ok: !!r.ok,
             code: r.ok ? undefined : (r.code || 'apply-failed'),
             total: r.total,
             taken: r.taken,
             fails: (r.fails || []).slice(0, 20),
+            skipped: r.skipped || [],
             err: r.err,
         };
     }));

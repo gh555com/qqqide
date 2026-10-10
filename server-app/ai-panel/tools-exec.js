@@ -120,52 +120,68 @@ async function _landToFloorDir(content, prefix, ownerAgent) {
         fDir = root + '/_qqq/quests/' + qDir + '/' + fDirName + '/';
     }
 
-    // Counter: stored on agent per-floor
-    var ck = '_' + prefix + 'N_' + floorNum;
-    if (!ownerAgent[ck]) ownerAgent[ck] = 1;
-    var n = ownerAgent[ck]++;
-    var filePath = fDir + prefix + '_' + n + '.txt';
-
     var bridge = getBridge();
     if (!bridge) return '';
 
-    // Write to disk
-    try {
-        await bridge.fs.write(filePath, content);
-    } catch (_) {
-        return '';
-    }
+    // ★ 在 await 前捕获 trace（防并行工具竞态覆盖/清空）
+    var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
 
-    // Record to timeline (get blob_hash)
-    var blobHash = null;
-    try {
-        var root2 = await _resolveTimelineRoot(filePath);
-        if (root2 && bridge.timeline && bridge.timeline.record) {
-            var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
-            var floorId = null;
-            if (traceObj && traceObj.questId && traceObj.floorNum) {
-                floorId = 'q' + String(traceObj.questId).replace(/^q/i, '') + '/f' + traceObj.floorNum +
-                    '/h' + (traceObj.houseIdx || 0) + '/r' + (traceObj.roomIdx || 0);
+    // ★ 串行链：编号预留 + 防覆盖探测 + 写盘 按序执行（同 agent 免并行竞态；跨 agent 互不阻塞）
+    var _job = (ownerAgent._landChain || Promise.resolve()).then(async function () {
+        // Counter: stored on agent per-floor；★ 重名不覆盖：目标名已占（恢复/重试场景旧文件）→ 序号递进
+        var ck = '_' + prefix + 'N_' + floorNum;
+        var n = ownerAgent[ck] || 1;
+        try {
+            if (bridge.fs && bridge.fs.stat) {
+                for (var _g = 0; _g < 1000; _g++) {
+                    var _st = await bridge.fs.stat(fDir + prefix + '_' + n + '.txt');
+                    if (!_st) break;
+                    n++;
+                }
             }
-            var rec = await bridge.timeline.record({
-                projectRoot: root2, filePath: filePath, content: content,
-                source: 'q', floorId: floorId,
-                addedLines: content.split('\n').length, deletedLines: 0
-            });
-            if (rec && rec.ok && rec.blob_hash) blobHash = rec.blob_hash;
-        }
-    } catch (_) { }
+        } catch (_) { }
+        ownerAgent[ck] = n + 1;
+        var filePath = fDir + prefix + '_' + n + '.txt';
 
-    // Build stamp
-    var stamp = '';
-    if (blobHash) {
-        stamp += ' [sha256: ' + blobHash + ']';
-    }
-    var tr = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
-    if (tr && tr.questId && tr.floorNum) {
-        stamp += ' @q' + String(tr.questId).replace(/^q/i, '') + 'f' + tr.floorNum + 'h' + (tr.houseIdx || 0) + 'r' + (tr.roomIdx || 0);
-    }
-    return stamp;
+        // Write to disk
+        try {
+            await bridge.fs.write(filePath, content);
+        } catch (_) {
+            return '';
+        }
+
+        // Record to timeline (get blob_hash)
+        var blobHash = null;
+        try {
+            var root2 = await _resolveTimelineRoot(filePath);
+            if (root2 && bridge.timeline && bridge.timeline.record) {
+                var floorId = null;
+                if (traceObj && traceObj.questId && traceObj.floorNum) {
+                    floorId = 'q' + String(traceObj.questId).replace(/^q/i, '') + '/f' + traceObj.floorNum +
+                        '/h' + (traceObj.houseIdx || 0) + '/r' + (traceObj.roomIdx || 0);
+                }
+                var rec = await bridge.timeline.record({
+                    projectRoot: root2, filePath: filePath, content: content,
+                    source: 'q', floorId: floorId,
+                    addedLines: content.split('\n').length, deletedLines: 0
+                });
+                if (rec && rec.ok && rec.blob_hash) blobHash = rec.blob_hash;
+            }
+        } catch (_) { }
+
+        // Build stamp
+        var stamp = '';
+        if (blobHash) {
+            stamp += ' [sha256: ' + blobHash + ']';
+        }
+        if (traceObj && traceObj.questId && traceObj.floorNum) {
+            stamp += ' @q' + String(traceObj.questId).replace(/^q/i, '') + 'f' + traceObj.floorNum + 'h' + (traceObj.houseIdx || 0) + 'r' + (traceObj.roomIdx || 0);
+        }
+        return stamp;
+    });
+    // 链条自愈：单次失败不阻塞后续落盘；调用方恒拿永不 reject 的结果（失败=空戳）
+    ownerAgent._landChain = _job.catch(function () { });
+    return _job.catch(function () { return ''; });
 }
 
 // Layer 5: Find best clean version (last ✅ before any ⚠️)
@@ -234,7 +250,7 @@ async function executeTool(name, args, ownerAgent) {
         case 'list_files': _result = executeListFiles(args); break;
         case 'get_vision_context': _result = executeGetVisionContext(); break;
         case 'create_file': _result = executeCreateFile(args); break;
-        case 'run_command': _result = executeRunCommand(args); break;
+        case 'run_command': _result = executeRunCommand(args, ownerAgent); break;
         case 'delete_file': _result = executeDeleteFile(args); break;
         case 'find_files': _result = executeFindFiles(args); break;
         case 'fetch_webpage': _result = executeFetchWebpage(args, ownerAgent); break;

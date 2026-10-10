@@ -916,6 +916,7 @@
         "translateBtn": "Traduzir",
         "auditCopied": "Texto de auditoria copiado para a área de transferência ({0} KB), pode ser colado em qualquer caixa de diálogo de IA.",
         "waitSwitch": "A IA ainda não respondeu à tarefa atual. Aguarde antes de alternar.",
+        "sendTipStopping": "Parando…",
         "questOpenLeft": "📌 Esta Quest já está aberta no painel esquerdo, redirecionamento automático realizado",
         "questOpenRight": "📌 Esta Quest já está aberta no painel direito, redirecionamento automático realizado",
         "questOpenMid": "📌 Esta Quest já está aberta no painel central, redirecionamento automático realizado",
@@ -1643,6 +1644,7 @@
         "floorGone": "Os dados deste nível não existem",
         "cardGone": "Dados da tarefa não estão prontos ou foram excluídos",
         "noPanel": "O painel de IA ainda não está pronto",
+        "busy": "O painel está ocupado, tente novamente mais tarde",
         "saveFail": "Falha ao salvar o favorito",
         "deletedTag": "Tarefa excluída"
     },
@@ -1650,11 +1652,7 @@
         "expert": "Sou um especialista, conheço os riscos de cada comando e não uso o qqqide para excluir arquivos",
         "agree": "Concordar e continuar",
         "exit": "Sair",
-        "saveFailed": "Falha ao salvar, tente novamente",
-        "intro1": "Você pode tratar o qd como um jogo para apreciar aos poucos. Atenção: é um jogo original, não apenas uma cópia superficial. Se você gosta de jogos genéricos, pode sair agora com tranquilidade.",
-        "introLink": "Use o Roam para ultrapassar as limitações da pasta do projeto",
-        "intro2": "Por outro lado, espero que você encontre o link da comunidade através do botão de ajuda no topo. Garantimos que qualquer pequena dúvida sua será respondida pessoalmente por um especialista.",
-        "introOk": "Ótimo"
+        "saveFailed": "Falha ao salvar, tente novamente"
     },
     "notice": {
         "title": "Notificações",
@@ -2041,13 +2039,17 @@
             "desc": "Exibido na lista \"Abrir com\" do sistema: manutenção automática",
             "btn": "Definir como padrão",
             "btnBusy": "Configurando…",
-            "confirmTitle": "Você selecionou \"Definir o qd como o aplicativo padrão para arquivos de texto e código\"",
-            "confirmBody": "Isso definirá o qd como o aplicativo padrão para abrir cerca de 74 tipos de arquivos de texto e código. Outros aplicativos podem reassumir essa associação no futuro; você pode repetir esta ação a qualquer momento para redefinir o qd como padrão.",
+            "confirmTitle": "Você selecionou \"Definir qd como o método de abertura padrão\"",
+            "confirmBody": "Isso assumirá o controle do método de abertura padrão para cerca de 74 tipos de texto/código: clique duas vezes para abrir diretamente com o qd.",
+            "confirmBodySkip": "Assumirá o método de abertura padrão para cerca de {n} tipos de texto/código: clique duas vezes para abrir diretamente com qd. ({k} tipos já são gerenciados pelo interpretador do sistema, mantendo a execução com clique duplo)",
             "okAll": "{n} formatos de texto/código agora associados ✓",
+            "okAllSkip": "{n} tipos de formato de texto/código assumidos ✓; {k} tipos mantêm execução com clique duplo (interpretador do sistema)",
             "okPartial": "{n}/{m} formatos associados; os demais foram bloqueados por proteção do sistema",
+            "okPartialSkip": "{n}/{m} tipos assumidos; {k} tipos mantêm execução com clique duplo (interpretador do sistema); os demais foram bloqueados pela proteção do sistema",
             "openSettings": "Abrir configurações do sistema",
             "unsupported": "Esta função não é suportada pelo sistema atual",
             "fail": "Falha na operação: {e}",
+            "checkFail": "Não foi possível confirmar o status do interpretador do sistema. Tente novamente mais tarde",
             "needRestart": "É necessário reiniciar esta janela para aplicar as alterações"
         },
         "tier": {

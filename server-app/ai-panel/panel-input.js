@@ -767,7 +767,8 @@ function renderImageStrip() {
         wrap.className = 'img-thumb-wrap';
         var imgEl = document.createElement('img');
         imgEl.src = img.dataUrl;
-        wrap.appendChild(imgEl);        var num = document.createElement('span');
+        wrap.appendChild(imgEl);
+        var num = document.createElement('span');
         num.className = 'img-thumb-num';
         num.textContent = '#' + img.id;
         num.onclick = function (e) {
@@ -973,17 +974,22 @@ $input.addEventListener('keydown', function (e) {
 
 $sendBtn.onclick = function () {
     if (_switching) return;
+    // ★ 点击判定与按钮字面同源：恒解析"当前显示任务"的 agent（_resolveBtnAgent）
+    var _agBtn = (typeof _resolveBtnAgent === 'function') ? _resolveBtnAgent() : _activeAgent;
     // ★ 2026-10-03：静默档补可见反馈（与 Enter 同规）
-    if (_activeAgent && _activeAgent._compressing) { _limitQoast('send-busy'); return; }
+    if (_agBtn && _agBtn._compressing) { _limitQoast('send-busy'); return; }
+    // ★ 停止进行中（字面 Stop... + inert）：点击零动作（重复触发不再进链）
+    if (_agBtn && _agBtn._stopState === 'stopping') return;
 
-    if (_activeAgent && _activeAgent._stopState === 'fatal' && !streaming) {
+    if (_agBtn && _agBtn._stopState === 'fatal' && !streaming) {
         if (typeof _capRedBoxAndSeal === 'function') _capRedBoxAndSeal();
         return;
     }
 
+    // ★ 建楼中 → 停止（真值优先）：旧实现此分支为 busy 拒绝（q13 死胡同：字面 Send + 想停停不了）；
+    //   字面已恒为 Stop（真理机），点击必达停止，不再存在"建楼中却停不了"的组合。
+    if (_agBtn && _agBtn._stopState === 'sending') { stopStream(); return; }
     if (streaming) { stopStream(); }
-    // ★ 2026-10-03：静默档补可见反馈——旧实现直接 return，点发送零反应（q401 事故实锤）
-    else if (_activeAgent && _activeAgent._stopState === 'sending') { _limitQoast('send-busy'); return; }
     else {
         // ★ 发送活跃检查：同 quest 忙 → 拒（内容保留编辑框）；不同 quest 三翼并发不受阻
         if (typeof _sendActive === 'function' && _sendActive(questActiveId)) {

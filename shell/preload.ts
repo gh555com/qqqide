@@ -312,6 +312,7 @@ const QQQ = {    // ---- app info ----
                 });
             });
         },
+        kill: (tag: string) => ipcRenderer.invoke('qqqide:qz:kill', tag),
         which: (cmd: string) => ipcRenderer.invoke('qqqide:qz:which', cmd),
         ghrunAlive: () => ipcRenderer.invoke('qqqide:qz:ghrunAlive'),
         runnerAlive: () => ipcRenderer.invoke('qqqide:qz:runnerAlive'),
@@ -872,12 +873,13 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
 
     // ---- fileAssoc（文件关联；2026-10-03 播放器定案 + 2026-10-07 编辑器域）----
     //   apply       = 媒体全量夺默认（播放器窗头部 ★ 钮；win=HKCU 注册表机 / mac=LaunchServices / linux xdg-mime）
-    //   applyEditor = 文本/代码族整族夺默认（设置面板行〔设为默认〕；同一族 74 类）
+    //   applyEditor = 文本/代码族整族夺默认（设置面板行〔设为默认〕；同一族 74 类；
+    //                 skip = 已被系统解释器接管的扩展清单（渲染层实时判定后传入——整族剔除不夺））
     //   settings    = 系统「默认应用」设置页（被拦截场景的手动兜底通道）
     //   ★ 无 check/remove（其他应用可随时覆盖——状态角标/解除均无意义；按钮恒 = 「设为默认」）
     fileAssoc: {
         apply: () => ipcRenderer.invoke('qqqide:fileassoc:apply'),
-        applyEditor: () => ipcRenderer.invoke('qqqide:fileassoc:apply-editor'),
+        applyEditor: (skip?: string[]) => ipcRenderer.invoke('qqqide:fileassoc:apply-editor', skip),
         settings: () => ipcRenderer.invoke('qqqide:fileassoc:settings'),
     },
 
