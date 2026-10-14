@@ -576,8 +576,8 @@
 }
 .qqq-editor-float-ck {
   position: absolute;
-  right: -3px;   /* 外挂出角（不压地图图形——图形实心到角，贴内会遮挡）；恒留 5px 余量不越出悬浮行外 */
-  bottom: -3px;
+  right: -4px;   /* 外挂出角（地图图形实心到角——压内会遮挡）；4px 恒 ≤ 悬浮行外距 8px，不越出容器 */
+  bottom: -4px;
   font-size: 11px;
   font-weight: 400;
   line-height: 1;
