@@ -477,14 +477,26 @@
       }));
 
     // Minimap toggle
-    var mmOn = false;
-    try { mmOn = monacoEditor.getOption(monaco.editor.EditorOption.minimap).enabled; } catch (_) { }
+    // ★ 小地图开关：按钮形态恒 = 地图绘制（唯一形态——□ 代表小地图看不懂，禁回）；
+    //   选中态 = qd 播放器勾选配方（外框转金 + 右下角 ✔ 角标）——配方同源 core/media-engine.js .ovmb-dswck
     var mmBtn = document.createElement('button');
     mmBtn.className = 'qqq-editor-float-btn';
     mmBtn.setAttribute('data-no-cd', '');
     var mmIco = document.createElement('span');
     mmIco.className = 'qqi qqi-map';
-    if (mmOn) mmBtn.appendChild(mmIco); else mmBtn.textContent = '\u25A1';
+    mmBtn.appendChild(mmIco);
+    var mmCk = document.createElement('span');
+    mmCk.className = 'qqq-editor-float-ck';
+    mmCk.textContent = '\u2714';   // 加重勾（与播放器角标同字形）
+    mmBtn.appendChild(mmCk);
+    function _paintMm() {
+      var on = false;
+      try { on = monacoEditor.getOption(monaco.editor.EditorOption.minimap).enabled; } catch (_) { }
+      if (on) mmBtn.classList.add('qqq-editor-float-btn-on');
+      else mmBtn.classList.remove('qqq-editor-float-btn-on');
+    }
+    _paintMm();
+    try { _mmPainters.set(monacoEditor, _paintMm); } catch (_) { }
     mmBtn.title = _i('editor.minimap', '小地图');
     mmBtn.setAttribute('data-i18n-title', 'editor.minimap');   // ★ 语言切换自动保鲜
     mmBtn.addEventListener('click', function (e) {
@@ -493,8 +505,7 @@
         var cur = monacoEditor.getOption(monaco.editor.EditorOption.minimap).enabled;
         var next = !cur;
         monacoEditor.updateOptions({ minimap: { enabled: next } });
-        mmBtn.textContent = next ? '' : '\u25A1';
-        if (next) mmBtn.appendChild(mmIco);
+        _paintMm();
         if (window.qqqEditor && window.qqqEditor.saveMinimapPref && filePath) {
           window.qqqEditor.saveMinimapPref(filePath, next);
         }
@@ -505,11 +516,18 @@
     mc.appendChild(btns);
   }
 
+  // 小地图钮绘制器登记表（编辑器 → 重绘函数）：开关状态的一切变更出口在 editor.js（偏好恢复/右键菜单），
+  //   变更后经 paintMinimap(ed) 通知重绘——禁第二处状态判断、禁第二套按钮实现
+  var _mmPainters = typeof WeakMap !== 'undefined' ? new WeakMap() : new Map();
+  function paintMinimap(ed) {
+    try { var f = ed && _mmPainters.get(ed); if (f) f(); } catch (_) { }
+  }
+
   // 宿主销毁时收掉锚在其中的即时框（非编辑器宿主关闭路径调用——防悬停中销毁留下幽灵框）
   function hideTipWithin(el) {
     try { if (_bcTipAnchor && el && el.contains && el.contains(_bcTipAnchor)) _hideBcTip(); } catch (_) { }
   }
 
-  window.qqqEditorBreadcrumb = { create: create, createBar: createBar, hideTipWithin: hideTipWithin };
+  window.qqqEditorBreadcrumb = { create: create, createBar: createBar, hideTipWithin: hideTipWithin, paintMinimap: paintMinimap };
 
 })();

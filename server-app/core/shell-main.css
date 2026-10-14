@@ -544,6 +544,8 @@
 }
 
 .qqq-editor-float-btn {
+  position: relative;
+  box-sizing: border-box;
   width: 28px;
   height: 28px;
   border: none;
@@ -564,6 +566,28 @@
 
 .qqq-editor-float-btn:hover {
   opacity: 1;
+}
+
+/* ── 小地图开关选中态：qd 播放器勾选配方（外框转金 + 右下角 ✔ 角标）——
+      按钮形态恒地图绘制（禁 □ 代小地图）；配方同源 core/media-engine.js .ovmb-dsw/.ovmb-dswck ── */
+.qqq-editor-float-btn.qqq-editor-float-btn-on {
+  opacity: 1;
+  border: 1px solid var(--primary-color);
+}
+.qqq-editor-float-ck {
+  position: absolute;
+  right: -3px;   /* 外挂出角（不压地图图形——图形实心到角，贴内会遮挡）；恒留 5px 余量不越出悬浮行外 */
+  bottom: -3px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--primary-color);
+  display: none;
+  pointer-events: none;
+  text-shadow: 0 -1px 0 rgba(0,0,0,.95), 0 1px 0 rgba(0,0,0,.95), -1px 0 0 rgba(0,0,0,.95), 1px 0 0 rgba(0,0,0,.95), -1px -1px 0 rgba(0,0,0,.85), 1px -1px 0 rgba(0,0,0,.85), -1px 1px 0 rgba(0,0,0,.85), 1px 1px 0 rgba(0,0,0,.85), 0 0 3px rgba(0,0,0,.7);
+}
+.qqq-editor-float-btn.qqq-editor-float-btn-on .qqq-editor-float-ck {
+  display: block;
 }
 
 /* ============================================================================

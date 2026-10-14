@@ -519,6 +519,15 @@
     store.set(_minimapKey(filePath), enabled).catch(function () { });
   }
 
+  // 小地图开关状态变更 → 通知面包屑悬浮钮重绘勾选态（唯一通知口；绘制器登记在 editor-breadcrumb.paintMinimap）
+  function _syncMinimapBtn(ed) {
+    try {
+      if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.paintMinimap) {
+        window.qqqEditorBreadcrumb.paintMinimap(ed);
+      }
+    } catch (_) { }
+  }
+
   // WeakMap: editor → { disposable, filePath }
   var _minimapActions = typeof WeakMap !== 'undefined' ? new WeakMap() : new Map();
 
@@ -540,6 +549,7 @@
         var newState = false;
         try { newState = !ed.getOption(monaco.editor.EditorOption.minimap).enabled; } catch (_) { }
         ed.updateOptions({ minimap: { enabled: newState } });
+        _syncMinimapBtn(ed);
         var fp = filePath;
         if (fp) _saveMinimapPref(fp, newState);
         _addMinimapAction(ed, monaco, fp);
@@ -553,6 +563,7 @@
     var pref = await _loadMinimapPref(filePath);
     if (pref) {
       ed.updateOptions({ minimap: { enabled: true } });
+      _syncMinimapBtn(ed);
     }
     _addMinimapAction(ed, monaco, filePath);
   }
