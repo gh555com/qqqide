@@ -34,7 +34,9 @@
 //      启用复选框守卫（guard force 现查 → 拒绝红字 + 激活页；买完回来即解锁）、保存防旁路、
 //      intercept 纵深（enabled 残余态不静默回落平台计费通道）；平台代理另有服务端真裁决（403 BYOK_NEED_ACTIVATION）。
 //
-// 边界：本模块只管【对话】通道；贴图识别/生图/抠图/搜索等仍走平台内置通道。
+// 边界：本模块管【对话】通道 +（2026-10-14 起可选）【视觉识别】通道——用户在设置里勾选
+//       「视觉走你的模型」后，贴图预分析与 analyze_image 由其所配端点的多模态模型直接看，
+//       不再必经平台云端 /api/v3/ai/vision；生图/抠图/搜索仍走内置通道（那些不是「看」）。
 // ============================================================================
 
 ;(function () {
@@ -64,7 +66,7 @@
     var _chgSub = null;      // onChange 订阅
 
     function _emptyCfg() {
-        return { enabled: false, baseUrl: '', apiKey: '', apiKeyEnc: '', model: '', sendThinking: false, thinkLevel: 'high', thinkJson: '', maxTokens: 0, route: 'direct', testedAt: 0, _locked: '' };
+        return { enabled: false, baseUrl: '', apiKey: '', apiKeyEnc: '', model: '', sendThinking: false, thinkLevel: 'high', thinkJson: '', maxTokens: 0, route: 'direct', visionUse: false, visionModel: '', testedAt: 0, _locked: '' };
     }
 
     function _qgsSimple() {
@@ -106,6 +108,8 @@
             if (typeof raw.apiKey === 'string') c.apiKey = raw.apiKey.trim();
             if (typeof raw.apiKeyEnc === 'string') c.apiKeyEnc = raw.apiKeyEnc.trim();
             if (typeof raw.model === 'string') c.model = raw.model.trim();
+            if (typeof raw.visionUse === 'boolean') c.visionUse = raw.visionUse;
+            if (typeof raw.visionModel === 'string') c.visionModel = raw.visionModel.trim();
             if (typeof raw.sendThinking === 'boolean') c.sendThinking = raw.sendThinking;
             if (typeof raw.thinkLevel === 'string' && /^(low|medium|high|max)$/.test(raw.thinkLevel)) c.thinkLevel = raw.thinkLevel;
             if (typeof raw.thinkJson === 'string') c.thinkJson = raw.thinkJson.trim();
@@ -183,6 +187,8 @@
         return !!(c.model && c.baseUrl);
     }
     function isActive() { var c = get(); return !!(c.enabled && _isConfigured(c)); }
+    // 视觉通道是否以「你的模型」服务：启用 + 已配 + 用户勾选 + 激活门（与对话同一条门）
+    function _visionOn(c) { c = c || get(); return !!(c.enabled && _isConfigured(c) && c.visionUse && _actOk()); }
 
     // ════════════════════════════════════════════════════════════
     // 激活门（2026-10-06）：自带 API Key / 本地模型 = 激活用户专享
@@ -229,6 +235,8 @@
             apiKey: '',
             apiKeyEnc: '',
             model: String(next.model || '').trim(),
+            visionUse: !!next.visionUse,
+            visionModel: String(next.visionModel || '').trim(),
             sendThinking: !!next.sendThinking,
             thinkLevel: /^(low|medium|high|max)$/.test(String(next.thinkLevel || '')) ? next.thinkLevel : 'high',
             thinkJson: String(next.thinkJson || '').trim(),
@@ -712,6 +720,189 @@
     }
 
     // ════════════════════════════════════════════════════════════
+    // 视觉走「你的模型」通道（2026-10-14）
+    //   语义：贴图预分析 / analyze_image 改由用户所配端点里的多模态模型直接看图——
+    //         OpenAI 兼容 content 数组：[{type:'text'},{type:'image_url',data URI}]。
+    //         不经平台云端 /api/v3/ai/vision，不计 ge（费用走用户自己的 Key）。
+    //   请求最小化：不带 tools、不带思考参数（非流式 + 各家思考参数的组合兼容性最不可控）；
+    //               max_tokens 仅在用户显式配置时发送（与对话通道同一条铁律）。
+    //   失败口径：任何失败一律如实返回 {ok:false,error}，由调用方回落云端 —— 禁砖化。
+    // ════════════════════════════════════════════════════════════
+    // 64×64 纯红 PNG：「测试视觉」唯一素材——一次调用即可判定该模型到底能不能看图
+    var _VISION_PROBE_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAACLSURBVHhe7dAhAQBADIDAxVn/MF9n76kA4gySebtnNgw2DWCwaQCDTQMYbBrAYNMABpsGMNg0gMGmAQw2DWCwaQCDTQMYbBrAYNMABpsGMNg0gMGmAQw2DWCwaQCDTQMYbBrAYNMABpsGMNg0gMGmAQw2DWCwaQCDTQMYbBrAYNMABpsGMNg0gMHmAwIpUf++wtXRAAAAAElFTkSuQmCC';
+    var _VISION_DEFAULT_PROMPT = 'You are a vision analysis assistant. Describe this image factually.\n' +
+        'CRITICAL: Do NOT suggest tools, software, or procedures. Only describe what you see.\n' +
+        'Respond in this structured format (one field per line, "field: value"):\n' +
+        '  image_overview: <1-sentence summary>\n' +
+        '  visible_text: <text in the image, or "none">\n' +
+        '  objects_and_layout: <key objects and spatial arrangement>\n' +
+        '  colors_and_lighting: <dominant colors, lighting>\n' +
+        '  uncertainty: <any doubts, or "none">\n\nNow analyze:';
+
+    // 无 MIME 时按魔术字节嗅探（贴图常为 PNG，剪贴板/磁盘素材可能是 JPEG）
+    function _sniffMime(b64) {
+        try {
+            var head = atob(String(b64 || '').slice(0, 12));
+            var b0 = head.charCodeAt(0) & 0xFF, b1 = head.charCodeAt(1) & 0xFF, b2 = head.charCodeAt(2) & 0xFF, b3 = head.charCodeAt(3) & 0xFF;
+            if (b0 === 0x89 && b1 === 0x50) return 'image/png';
+            if (b0 === 0xFF && b1 === 0xD8 && b2 === 0xFF) return 'image/jpeg';
+            if (b0 === 0x47 && b1 === 0x49 && b2 === 0x46) return 'image/gif';
+            if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) return 'image/webp';
+        } catch (_) { }
+        return 'image/png';
+    }
+
+    // 各家返回形态归一：string / 部件数组 / （少数端点）choices[0].text
+    function _extractChatText(j) {
+        try {
+            var ch = j && j.choices && j.choices[0];
+            if (!ch) return '';
+            var m = ch.message || {};
+            var raw = (m.content !== undefined && m.content !== null) ? m.content : ch.text;
+            if (typeof raw === 'string') return raw;
+            if (Array.isArray(raw)) {
+                var out = [];
+                for (var i = 0; i < raw.length; i++) {
+                    var p = raw[i];
+                    if (typeof p === 'string') { out.push(p); continue; }
+                    if (p && typeof p.text === 'string') out.push(p.text);
+                    else if (p && typeof p.content === 'string') out.push(p.content);
+                }
+                return out.join('\n');
+            }
+            return '';
+        } catch (_) { return ''; }
+    }
+
+    // 上游/代理错误报文 → 一行可读原因（供「测试视觉」显示 + 回落日志）
+    async function _visionErrText(resp, isRelay) {
+        var txt = '';
+        try { txt = await resp.text(); } catch (_) { }
+        var msg = '';
+        try {
+            var j = JSON.parse(txt || '{}');
+            if (isRelay) msg = _relayMsgFromJson(j, resp.status);
+            if (!msg) {
+                var e = j && j.error;
+                msg = (typeof e === 'string') ? e : ((e && e.message) || (j && j.message) || '');
+            }
+        } catch (_) { msg = String(txt || '').slice(0, 240); }
+        if (!msg) msg = 'HTTP ' + resp.status;
+        return msg;
+    }
+
+    // 单次视觉问答（非流式）。opts: {base64, mime, prompt, floorId, signal, timeoutMs, probe}
+    // probe=true：允许在未勾选「视觉走你的模型」时试跑一次（设置弹窗的「测试视觉」按钮）
+    // VIG 口径（2026-10-14 修正）：v = 每一次进入 visionChat 的尝试（含前置校验拒绝），
+    // vok = 成功拿到文本，vf = 任何失败（未配置/未启用/无图/URL 非法/HTTP/超时均计入）。
+    // 恒等式 v == vok + vf。旧口径只在发出 fetch 前计数，前置拒绝静默消失，导致
+    // 「贴图预分析到底有没有走你的模型」无法区分——本修正就是为消除这个盲区。
+    function _vigTop(add) {
+        try {
+            var b = (parent && parent.qqqideBridge) || window.qqqideBridge;
+            if (b && b.vig && typeof b.vig.bump === 'function') b.vig.bump('byok', add);
+        } catch (_) { }
+    }
+    async function visionChat(opts) {
+        opts = opts || {};
+        var _vb = null;
+        try { _vb = (parent && parent.qqqideBridge) || window.qqqideBridge; } catch (_) { }
+        function _vig(add) { try { if (_vb && _vb.vig && typeof _vb.vig.bump === 'function') { _vb.vig.bump('byok', add); } } catch (_) { } }
+        function _fail(msg, extra) {
+            _vig({ vf: 1 });
+            var o = { ok: false, error: msg };
+            if (extra) { try { Object.keys(extra).forEach(function (k) { o[k] = extra[k]; }); } catch (_) { } }
+            return o;
+        }
+        _vig({ v: 1 });
+        await _load();
+        var cfg = get();
+        if (!_isConfigured(cfg)) return _fail('byok not configured');
+        if (!_actOk()) return _fail('byok needs activation');
+        if (!opts.probe && !cfg.enabled) return _fail('byok disabled');
+        if (!opts.probe && !cfg.visionUse) return _fail('vision channel off');
+        var b64 = String(opts.base64 || '');
+        if (!b64) return _fail('no image');
+        var url = _endpoint(cfg.baseUrl);
+        if (!url) return _fail('bad baseUrl');
+        var mime = String(opts.mime || _sniffMime(b64));
+        var body = {
+            model: String(cfg.visionModel || '').trim() || String(cfg.model || '').trim(),
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'text', text: String(opts.prompt || _VISION_DEFAULT_PROMPT) },
+                    { type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + b64 } }
+                ]
+            }],
+            stream: false
+        };
+        var mt = parseInt(cfg.maxTokens, 10) || 0;
+        if (mt > 0) body.max_tokens = mt;
+        var isRelay = (cfg.route === 'relay' && !_isLocalBase(cfg.baseUrl));
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { try { ctrl.abort(); } catch (_) { } }, opts.timeoutMs || 90000);
+        var onAbort = function () { try { ctrl.abort(); } catch (_) { } };
+        if (opts.signal) {
+            // 预终止（上一楼层刚被停掉、新轮控制器复用 abort 位）：也要计入 v/vf，
+            // 否则「贴图没被分析」又变成一个不数的静默分支（2026-10-14 口径修正配套）
+            if (opts.signal.aborted) { clearTimeout(timer); return _fail('aborted'); }
+            try { opts.signal.addEventListener('abort', onAbort); } catch (_) { }
+        }
+        try {
+            var resp;
+            if (isRelay) {
+                resp = await _relayPost(url, { authorization: 'Bearer ' + cfg.apiKey }, JSON.stringify(body), ctrl.signal, opts.floorId || '');
+            } else {
+                var hdr = { 'Content-Type': 'application/json' };
+                if (cfg.apiKey) hdr['Authorization'] = 'Bearer ' + cfg.apiKey;   // 本地模型可无 Key
+                resp = await fetch(url, { method: 'POST', headers: hdr, body: JSON.stringify(body), signal: ctrl.signal });
+            }
+            if (!resp.ok) return _fail(await _visionErrText(resp, isRelay), { status: resp.status });
+            var j = null;
+            try { j = await resp.json(); } catch (_) { return _fail('non-JSON response'); }
+            var text = _extractChatText(j);
+            if (!String(text || '').trim()) return _fail('empty vision text');
+            _vig({ vok: 1 });
+            return { ok: true, text: String(text), model: body.model, route: isRelay ? 'relay' : (_isLocalBase(cfg.baseUrl) ? 'local' : 'direct') };
+        } catch (err) {
+            _vig({ vf: 1 });
+            if (err && err.name === 'AbortError') return { ok: false, error: (opts.signal && opts.signal.aborted) ? 'aborted' : 'vision timeout' };
+            if (err && err._byok) return { ok: false, error: (err.message || String(err)) };
+            return { ok: false, error: _t('ai.byok.errReach', '无法连接你配置的 AI 端点') + ': ' + ((err && err.message) || String(err)) };
+        } finally {
+            clearTimeout(timer);
+            if (opts.signal) { try { opts.signal.removeEventListener('abort', onAbort); } catch (_) { } }
+        }
+    }
+
+    // 「测试视觉」按钮：纯红小图 → 模型说颜色；答对=真能看图，答不出/400=模型不支持 image_url
+    async function _testVision() {
+        var st = document.getElementById('byok-vtest-status');
+        var btn = document.getElementById('byok-vtest');
+        function _s(t, col) { if (st) { st.textContent = t; st.style.color = col || 'var(--base01)'; } }
+        await _saveForm();
+        var c = get();
+        if (!_isConfigured(c)) { _s(_t('ai.byok.testNeedFill', '请先填写地址与模型名（本地模型 Key 可留空）'), 'var(--red)'); return; }
+        if (c._locked) { _s('🔒 ' + _t('ai.byok.lockedDecrypt', '密钥无法在本机解密（可能来自其他设备），请重新输入'), 'var(--red)'); return; }
+        if (btn) btn.disabled = true;
+        _s('⏳ ' + _t('ai.byok.visionTesting', '视觉测试中…'));
+        var r = await visionChat({
+            probe: true, base64: _VISION_PROBE_B64, mime: 'image/png', timeoutMs: 30000,
+            prompt: 'What single color is this image? Answer with exactly one color word.'
+        });
+        if (btn) btn.disabled = false;
+        if (r && r.ok) {
+            var ans = String(r.text || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+            var good = /red|红/i.test(ans);
+            _s((good ? '✅ ' : '⚠ ') + _t('ai.byok.visionTestOk', '你的模型能看图') + ' · ' + r.model + ' · ' + ans,
+                good ? 'var(--green)' : 'var(--red)');
+        } else {
+            _s('❌ ' + _t('ai.byok.visionTestFail', '你的模型看不了图（视觉将留在云端通道）') + ': ' + ((r && r.error) || ''), 'var(--red)');
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════
     // 测试连接（弹窗按钮；使用表单当前值，不依赖已保存状态）
     // ════════════════════════════════════════════════════════════
     async function _testConnection(c, statusEl, btn) {
@@ -1078,6 +1269,15 @@
             '<button class="bk-btn bk-mini" id="byok-probe">' + _t('ai.byok.probeLocal', '检测本机模型') + '</button>' +
             '</div>' +
             '<div class="bk-model-note" id="byok-model-note"></div></div>' +
+            '<div class="bk-row"><label class="bk-chk"><input type="checkbox" id="byok-vision"><span>' +
+            _t('ai.byok.visionUse', '视觉走你的模型（贴图识别 / analyze_image 不再走云端通道，不计 ge）') + '</span></label>' +
+            '<div id="byok-vision-cfg" style="display:none">' +
+            '<label class="bk-label" style="margin-top:6px">' + _t('ai.byok.visionModel', '视觉模型名（留空 = 与对话模型同一个）') + '</label>' +
+            '<input type="text" id="byok-vision-model" placeholder="' + _t('ai.byok.visionModelPh', '需支持图片输入，如 qwen-vl-max / gpt-4o / gemini-2.5-flash') + '" spellcheck="false">' +
+            '<div class="bk-model-tools"><button class="bk-btn bk-mini" id="byok-vtest">' + _t('ai.byok.visionTest', '测试视觉') + '</button>' +
+            '<span class="bk-test-status" id="byok-vtest-status"></span></div>' +
+            '<div class="bk-hint" style="margin-top:6px">' + _t('ai.byok.visionNote', '「测试视觉」向你的端点发一64×64 纯红小图并让模型说出颜色——一次调用即可证实它真的能看图。失败不阻断：视觉自动回落云端通道。生图 / 抠图 / 搜索仍走内置通道。') + '</div>' +
+            '</div></div>' +
             '<div class="bk-row"><label class="bk-label">' + _t('ai.byok.maxTokens', '最大输出 tokens（可选）') + '</label>' +
             '<input type="text" id="byok-maxtokens" inputmode="numeric" placeholder="' + _t('ai.byok.maxTokensPh', '留空 = 使用服务商默认（推荐）') + '" spellcheck="false"></div>' +
             '<div class="bk-row"><label class="bk-label">' + _t('ai.byok.route', '网络通道') + '</label>' +
@@ -1100,7 +1300,7 @@
             '<span style="flex:1"></span>' +
             '<button class="bk-btn" id="byok-save">' + _t('ai.byok.save', '保存') + '</button>' +
             '</div>' +
-            '<div class="bk-hint">' + _t('ai.byok.hint', '启用后：对话请求按所选网络通道发送——直连不经平台服务器；平台代理经平台转发（推广期免费）。贴图识别 / 生图 / 抠图 / 搜索仍走内置通道。密钥仅加密保存在本机（系统凭据保护）。') + '</div>';
+            '<div class="bk-hint">' + _t('ai.byok.hint', '启用后：对话请求按所选网络通道发送——直连不经平台服务器；平台代理经平台转发（推广期免费）。勾选「视觉走你的模型」后贴图识别也由你的多模态模型完成；生图 / 抠图 / 搜索仍走内置通道。密钥仅加密保存在本机（系统凭据保护）。') + '</div>';
         _overlay.appendChild(p);
         document.body.appendChild(_overlay);
 
@@ -1164,6 +1364,28 @@
             if (v !== this.value) this.value = v;
         });
         $('byok-think').addEventListener('change', function () { _syncThinkVis(); _saveForm(); });
+        // 视觉通道：勾选需先过配置门（地址+模型名）；取消勾选 = 回云端（零风险默认）
+        $('byok-vision').onchange = async function () {
+            var on = $('byok-vision').checked;
+            var st = $('byok-vtest-status');
+            if (on && !(await _ensureActivation())) {
+                $('byok-vision').checked = false;
+                return;
+            }
+            if (on && !_formConfigured()) {
+                $('byok-vision').checked = false;
+                if (st) { st.textContent = _t('ai.byok.testNeedFill', '请先填写地址与模型名（本地模型 Key 可留空）'); st.style.color = 'var(--red)'; }
+                return;
+            }
+            _syncVisionVis();
+            await save({ visionUse: on });
+            if (on && st && !get().enabled) {
+                st.textContent = _t('ai.byok.visionNeedEnable', '视觉已设为走你的模型，但未启用自带 Key 时对话仍走平台通道（视觉会静默不生效）');
+                st.style.color = 'var(--gold,#b58900)';
+            }
+        };
+        $('byok-vision-model').addEventListener('change', function () { _saveForm(); });
+        $('byok-vtest').onclick = function () { _testVision(); };
         $('byok-think-json').addEventListener('change', function () { _saveForm(); });   // 思考档保存走自绘下拉 onPick
         Array.prototype.forEach.call(_overlay.querySelectorAll('input[name="byok-route"]'), function (r) {
             r.addEventListener('change', function () {
@@ -1179,6 +1401,14 @@
     function _syncThinkVis() {
         var on = document.getElementById('byok-think');
         var box = document.getElementById('byok-think-cfg');
+        if (!box) return;
+        box.style.display = (on && on.checked) ? 'block' : 'none';
+    }
+
+    // 视觉通道配置区显隐（勾选才显示视觉模型名/测试按钮）
+    function _syncVisionVis() {
+        var on = document.getElementById('byok-vision');
+        var box = document.getElementById('byok-vision-cfg');
         if (!box) return;
         box.style.display = (on && on.checked) ? 'block' : 'none';
     }
@@ -1227,6 +1457,8 @@
             thinkJson: ($('byok-think-json') ? $('byok-think-json').value : (c.thinkJson || '')).trim(),
             maxTokens: _readMaxTokensField(c),
             route: rEl ? rEl.value : (c.route || 'direct'),
+            visionUse: $('byok-vision') ? $('byok-vision').checked : !!c.visionUse,
+            visionModel: ($('byok-vision-model') ? $('byok-vision-model').value : (c.visionModel || '')).trim(),
             testedAt: c.testedAt
         };
     }
@@ -1238,7 +1470,8 @@
         var c = _readForm();
         await save({
             baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, sendThinking: c.sendThinking,
-            thinkLevel: c.thinkLevel, thinkJson: c.thinkJson, maxTokens: c.maxTokens, route: c.route
+            thinkLevel: c.thinkLevel, thinkJson: c.thinkJson, maxTokens: c.maxTokens, route: c.route,
+            visionUse: c.visionUse, visionModel: c.visionModel
         });
     }
 
@@ -1255,7 +1488,10 @@
         if (_thinkSel) _thinkSel.set($('byok-think-level').value);
         $('byok-think-json').value = c.thinkJson || '';
         $('byok-maxtokens').value = c.maxTokens > 0 ? String(c.maxTokens) : '';
+        $('byok-vision').checked = !!c.visionUse;
+        $('byok-vision-model').value = c.visionModel || '';
         _syncThinkVis();
+        _syncVisionVis();
         var rSel = document.querySelector('input[name="byok-route"][value="' + (c.route === 'relay' ? 'relay' : 'direct') + '"]');
         if (rSel) rSel.checked = true;
         _refreshRouteNote();
@@ -1304,7 +1540,10 @@
         if (_thinkSel) _thinkSel.set($('byok-think-level').value);
         $('byok-think-json').value = form.thinkJson || '';
         $('byok-maxtokens').value = form.maxTokens > 0 ? String(form.maxTokens) : '';
+        $('byok-vision').checked = !!form.visionUse;
+        $('byok-vision-model').value = form.visionModel || '';
         _syncThinkVis();
+        _syncVisionVis();
         var rr = document.querySelector('input[name="byok-route"][value="' + (form.route === 'relay' ? 'relay' : 'direct') + '"]');
         if (rr) rr.checked = true;
         _refreshRouteNote();
@@ -1359,7 +1598,10 @@
         parseModels: _parseModels,         // 供测试/审计
         fetchModels: _fetchModels,         // 供测试/审计
         isLocalBase: _isLocalBase,   // 供测试/审计
-        buildBody: _buildBody   // 供测试/审计
+        buildBody: _buildBody,  // 供测试/审计
+        visionActive: _visionOn,   // 视觉是否走「你的模型」（agent-vision.js / tools-exec-effect.js 消费）
+        vig: _vigTop,               // 供调用方计「BYOK 门未开」等分支（voff 桶），与 v/vok/vf 同 ns
+        visionChat: visionChat     // 单次多模态问答；失败 {ok:false,error} 由调用方回落云端
     };
 
 })();

@@ -843,35 +843,61 @@ async function executeAnalyzeImage(args, ownerAgent) {
             return 'Error: unknown action: ' + action;
         }
 
-        // 3. 经 AiGateway 提交视觉任务
-        if (typeof AiGateway === 'undefined' || !AiGateway.visionSubmit) {
-            return 'Error: AiGateway not available';
-        }
-        var submitResult = await AiGateway.visionSubmit(b64, token, {
-            prompt: question,
-            summary: (action === 'ask' ? question : question.slice(0, 60)),
-            floorId: _resolveFloorId(ownerAgent),
-        });
-        if (!submitResult) {
-            return 'Image analysis failed: could not create task';
-        }
-
-        // 缓存命中
-        var content = submitResult.description || '';
-        if (submitResult.description !== undefined && !submitResult.task_id) {
-            _addEffectCost('analyze_image', submitResult.ge_cost || 0, submitResult.billing_request_id || 0);
-            if (!content) return 'Image analysis returned empty result';
-        } else if (submitResult.task_id) {
-            // 4. 经 AiGateway 轮询 SSE 结果
-            var pollResult = await AiGateway.visionPoll(submitResult.task_id, token);
-            if (!pollResult || !pollResult.description) {
-                return 'Image analysis failed: ' + ((pollResult && pollResult.error) || 'no result from stream');
+        // 3. 取视觉结果：「你的模型」通道优先（BYOK 多模态，2026-10-14），失败如实回落云端
+        //    开启条件：自带密钥已启用 + 勾选「视觉走你的模型」（自带密钥面板 Z 按钮）
+        var content = '';
+        if (typeof qqqByok !== 'undefined' && qqqByok && qqqByok.visionActive && qqqByok.visionActive()) {
+            var _vr = await qqqByok.visionChat({
+                base64: b64,
+                mime: (mimeInfo && mimeInfo.mime) || undefined,
+                prompt: question,
+                floorId: _resolveFloorId(ownerAgent),
+                signal: (ownerAgent && ownerAgent.abortController) ? ownerAgent.abortController.signal : undefined
+            });
+            if (_vr && _vr.ok && _vr.text) {
+                content = _vr.text;
+                try {
+                    if (ownerAgent) { ownerAgent._floorByokUsed = true; ownerAgent._floorByokRoute = _vr.route || 'direct'; }
+                } catch (_) { }
+                if (typeof console !== 'undefined') console.log('[analyze_image] byok-vision ok: ' + _vr.model + ' (' + (_vr.route || 'direct') + ', 0 ge)');
+            } else if (_vr && _vr.error === 'aborted') {
+                return 'Image analysis aborted';
+            } else {
+                if (typeof console !== 'undefined') console.warn('[analyze_image] byok-vision failed, fallback to cloud: ' + ((_vr && _vr.error) || 'unknown'));
             }
-            content = pollResult.description;
+        }
 
-            _addEffectCost('analyze_image', pollResult.ge_cost || 0, pollResult.billing_request_id || 0);
-        } else {
-            return 'Image analysis failed: unexpected response';
+        // 4. 云端通道（未勾选视觉走你的模型 / 你的模型本次失败）
+        if (!content) {
+            if (typeof AiGateway === 'undefined' || !AiGateway.visionSubmit) {
+                return 'Error: AiGateway not available';
+            }
+            var submitResult = await AiGateway.visionSubmit(b64, token, {
+                prompt: question,
+                summary: (action === 'ask' ? question : question.slice(0, 60)),
+                floorId: _resolveFloorId(ownerAgent),
+            });
+            if (!submitResult) {
+                return 'Image analysis failed: could not create task';
+            }
+
+            // 缓存命中
+            content = submitResult.description || '';
+            if (submitResult.description !== undefined && !submitResult.task_id) {
+                _addEffectCost('analyze_image', submitResult.ge_cost || 0, submitResult.billing_request_id || 0);
+                if (!content) return 'Image analysis returned empty result';
+            } else if (submitResult.task_id) {
+                // 经 AiGateway 轮询 SSE 结果
+                var pollResult = await AiGateway.visionPoll(submitResult.task_id, token);
+                if (!pollResult || !pollResult.description) {
+                    return 'Image analysis failed: ' + ((pollResult && pollResult.error) || 'no result from stream');
+                }
+                content = pollResult.description;
+
+                _addEffectCost('analyze_image', pollResult.ge_cost || 0, pollResult.billing_request_id || 0);
+            } else {
+                return 'Image analysis failed: unexpected response';
+            }
         }
 
         // 5. 按 action 处理结果

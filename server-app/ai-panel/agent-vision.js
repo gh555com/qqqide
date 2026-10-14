@@ -66,7 +66,46 @@ AgentLoop.prototype._analyzeImages = async function (images, token, userContent)
 AgentLoop.prototype._callVision = async function (base64, token, prompt, userContent) {
     var self = this;
 
-    // ═══ Step 1: 提交任务（经 AiGateway） ═══
+    // signal 取「本楼层真理源」`_stopCtrl`（_executeSend 每层重建），不取 `abortController`
+    // （agent-gateway 逐请求重建）。2026-10-14 13:26 实测坑：上一楼层还在跑时用户直接发
+    // 下一句 → 面板掐掉在飞请求（boot.log 13:26:19.919 ERR 19073ms）→ `abortController`
+    // 还是上一个（已 aborted）的 → 预分析拿到 aborted 信号后静默返回 null → 该楼层贴图
+    // 没有预分析且零网络调用。_stopCtrl 仍会在用户真按 Stop 时被掐 → 语义不变。
+    var _floorSig = null;
+    try {
+        _floorSig = (self._stopCtrl && self._stopCtrl.signal)
+            || (self.abortController && self.abortController.signal) || null;
+    } catch (_) { }
+
+    // ═══ Step 0: 「你的模型」通道（BYOK 多模态，2026-10-14）═══
+    //   开启条件：自带密钥已启用 + 勾选「视觉走你的模型」（自带密钥面板 Z 按钮）
+    //   语义：图片直接交给用户所配端点的多模态模型看，不经平台云端 /api/v3/ai/vision，不计 ge
+    //   失败不阻断：如实记一行日志后回落云端（禁砖化）；用户 Stop 不回落
+    if (typeof qqqByok !== 'undefined' && qqqByok && qqqByok.visionActive && qqqByok.visionActive()) {
+        var _vprompt = (prompt && String(prompt).trim()) ? prompt : (
+            'Analyze this image factually.' +
+            (userContent && String(userContent).trim() ? '\nThe user asks: ' + String(userContent).trim().slice(0, 300) : ''));
+        var _vr = await qqqByok.visionChat({
+            base64: base64,
+            prompt: _vprompt,
+            floorId: self._floorId || '',
+            signal: _floorSig || undefined
+        });
+        if (_vr && _vr.ok && _vr.text) {
+            self._floorByokUsed = true;
+            self._floorByokRoute = _vr.route || 'direct';
+            self._log('  \u2713 vision \u8d70\u4f60\u7684\u6a21\u578b (' + _vr.model + ', ' + (_vr.route || 'direct') + ', 0 ge)');
+            return _vr.text;
+        }
+        if (_vr && _vr.error === 'aborted') { self._log('  \u26a0 vision \u5df2\u88ab\u505c\u6b62'); return null; }
+        self._log('  \u26a0 vision \u4f60\u7684\u6a21\u578b\u5931\u8d25 \u2192 \u56de\u843d\u4e91\u7aef: ' + ((_vr && _vr.error) || 'unknown'));
+    } else {
+        // voff：贴图预分析「根本没尝试」你的模型（未勾选 / 未启用 / cfg 尚未加载完）。
+        // 与 v/vok/vf 配合才能定性：v 不增而 voff 增 = 门未开；v 增 vok 不增 = 试了但被拒。
+        try { if (typeof qqqByok !== 'undefined' && qqqByok && qqqByok.vig) qqqByok.vig({ voff: 1 }); } catch (_) { }
+    }
+
+    // ═══ Step 1: 云端提交（未勾选 / 你的模型本次失败才到这里；经 AiGateway） ═══
     if (typeof AiGateway === 'undefined' || !AiGateway.visionSubmit) {
         self._log('  ✗ vision: AiGateway not available');
         return null;
@@ -82,7 +121,7 @@ AgentLoop.prototype._callVision = async function (base64, token, prompt, userCon
     if (self._floorId) {
         submitOpts.floorId = self._floorId;
     }
-    submitOpts.signal = self.abortController ? self.abortController.signal : undefined;
+    submitOpts.signal = _floorSig || undefined;   // 同上：用本楼层真理源，不用上一个请求残留的 abortController
 
     var result = await AiGateway.visionSubmit(base64, token, submitOpts);
     if (!result) {
