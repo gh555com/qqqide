@@ -342,6 +342,23 @@ var QuestStore = (function () {
                     // ★ 空 quest 壳自愈（2026-08-09）：有目录但零 f{n} 楼层目录且 mtime 超 30 分钟 → 归档 .trash
                     //   来源：草稿晋升 mkdir 后崩溃/强杀（楼层目录都未建成）/ 空壳楼层全部归档后的二次收敛
                     //   30 分钟阈值：建楼中楼层目录必已存在（mkdir 先于发送），零 f 目录 ≠ 活跃建楼
+                    // ★ 复核闸（2026-10-14）：单次列表禁作「空壳」唯一证据（扫盘瞬时坏结果会把真 quest 归档走）——
+                    //   复扫一次：复扫失败或见到 f{n} 目录 → 本轮跳过归档（下轮扫盘再收敛）
+                    var _recheck = null;
+                    try { _recheck = await _safeList(_rootDir + '/_qqq/quests/' + qDirName); } catch (_) { _recheck = null; }
+                    if (!_recheck) {
+                        console.warn('[quest-store] _healFloorCounters: recheck scan failed — empty-shell archive skipped for ' + e.id);
+                        continue;
+                    }
+                    var _sawF = false;
+                    for (var _rj = 0; _rj < _recheck.length; _rj++) {
+                        if (/^f\d+\./.test(_recheck[_rj].name)) { _sawF = true; break; }
+                    }
+                    if (_sawF) {
+                        console.warn('[quest-store] _healFloorCounters: empty-shell archive skipped for ' + e.id + ' (floor dirs seen on recheck)');
+                        try { if (window.__crashNet) window.__crashNet.throttled('qidx-archive-skip', 30000, { kind: 'qidx-anomaly', what: 'archive-skip:' + e.id }); } catch (_) { }
+                        continue;
+                    }
                     try {
                         var _stQz = await bf.stat(_rootDir + '/_qqq/quests/' + qDirName);
                         if (_stQz && _stQz.mtimeMs && (Date.now() - _stQz.mtimeMs) > 30 * 60 * 1000) {
@@ -490,14 +507,69 @@ var QuestStore = (function () {
                 // ① 减法：索引有、磁盘无 → 踢出
                 // ★ 30s 宽限期：questStore.create() 先写索引，_ensureQuestDir() 后建目录，
                 //   这中间若 _syncIndexFromFs 运行会误删刚创建但目录未建的 quest
+                // ★ 信任闸（2026-10-14）：单次磁盘列表禁作「判死」唯一证据——扫盘可能给瞬时坏结果
+                //   （壳层 fs.list 出错恒回空数组、无错误信号；空/缺项列表会把真 quest 误判已删，
+                //   索引里减掉它们 → 各面板豆腐块闪「新 quest」，下一轮扫盘才发现又加回）。
+                //   三重闸：空列表而索引有超龄条目 → 本轮不做减法；候选先 stat 复核目录名（在场=不踢）；
+                //   再对整目录二次复扫，两扫都缺才踢出（并照旧清理 sq3 数据）
                 var stale = [];
                 var _now = Date.now();
-                for (var k = idx.length - 1; k >= 0; k--) {
+                var _suspects = [];
+                for (var k = 0; k < idx.length; k++) {
                     if (!diskById[idx[k].id]) {
                         var _age = _now - (idx[k].createdAt || 0);
                         if (_age < 30000) continue;  // ★ 30s 内新建 → 暂不踢，等目录落地
-                        stale.push(idx[k].id);
-                        idx.splice(k, 1);
+                        _suspects.push(idx[k].id);
+                    }
+                }
+                if (_suspects.length) {
+                    if (!diskIds.length) {
+                        console.warn('[quest-store] _syncIndexFromFs: disk scan returned EMPTY while index holds ' + _suspects.length + ' aged entr(ies) — prune aborted (suspect transient scan result)');
+                        try { if (window.__crashNet) window.__crashNet.throttled('qidx-scan-empty', 30000, { kind: 'qidx-anomaly', what: 'empty-scan-prune-aborted', n: _suspects.length }); } catch (_) { }
+                    } else {
+                        // 复核一：stat 索引记录的目录名 —— 目录仍在 = 一次坏结果，绝不踢
+                        var _miss = [];
+                        for (var sx0 = 0; sx0 < _suspects.length; sx0++) {
+                            var _dn = (idxMap[_suspects[sx0]] && idxMap[_suspects[sx0]].dirName) || _questDirCache[_suspects[sx0]] || '';
+                            var _alive = false;
+                            if (_dn) {
+                                try { var _stx = await bf.stat(_rootDir + '/_qqq/quests/' + _dn); _alive = !!_stx; } catch (_) { }
+                            }
+                            if (!_alive) _miss.push(_suspects[sx0]);
+                        }
+                        // 复核二：整目录二次复扫（与首扫取交集 —— 两扫都缺才算真删）
+                        if (_miss.length) {
+                            await new Promise(function (r) { setTimeout(r, 120); });
+                            var _disk2 = null;
+                            try {
+                                var _list2 = await _safeList(_rootDir + '/_qqq/quests');
+                                _disk2 = {};
+                                for (var l2 = 0; l2 < _list2.length; l2++) {
+                                    if (!_list2[l2].isDir) continue;
+                                    var _m2 = _list2[l2].name.match(/^q(\d+)\.(.+)$/);
+                                    if (_m2) _disk2['q' + _m2[1]] = true;
+                                }
+                            } catch (_) { _disk2 = null; }
+                            if (!_disk2) {
+                                console.warn('[quest-store] _syncIndexFromFs: recheck scan failed — prune deferred for ' + _miss.length + ' entr(ies)');
+                            } else {
+                                var _kept = 0;
+                                for (var sx1 = 0; sx1 < _miss.length; sx1++) {
+                                    if (_disk2[_miss[sx1]]) _kept++; else stale.push(_miss[sx1]);
+                                }
+                                if (_kept) {
+                                    console.warn('[quest-store] _syncIndexFromFs: kept ' + _kept + ' entr(ies) missing from first scan (present on recheck)');
+                                    try { if (window.__crashNet) window.__crashNet.throttled('qidx-recheck-kept', 30000, { kind: 'qidx-anomaly', what: 'recheck-kept', kept: _kept }); } catch (_) { }
+                                }
+                                if (stale.length) {
+                                    var _staleSet = {};
+                                    for (var sx2 = 0; sx2 < stale.length; sx2++) _staleSet[stale[sx2]] = true;
+                                    for (var kx2 = idx.length - 1; kx2 >= 0; kx2--) {
+                                        if (_staleSet[idx[kx2].id]) idx.splice(kx2, 1);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -863,7 +935,11 @@ var QuestStore = (function () {
 
     async function _saveIndex() {
         var idx = _idx();
-        if (idx) await _setNow(INDEX_KEY, idx);
+        if (!idx) return;
+        // ★ 占位窗口防呆（2026-10-14）：跨面板重载期共享索引是空占位（__qqq_questIndexLoading=true）——
+        //   此刻写盘会把空数组覆盖进 sq3（后续扫盘虽能重建，但中途一切读者踏空）
+        if (idx.length === 0 && parent && parent.__qqq_questIndexLoading) return;
+        await _setNow(INDEX_KEY, idx);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -877,7 +953,8 @@ var QuestStore = (function () {
         var b = _bridge();
         if (!b) throw new Error('quest-store: no bridge');
         var bf = _bridgeFs();
-        var idx = _idx();
+        // ★ 共享索引引用禁早捕（2026-10-14）：跨面板重载会整体替换共享数组——
+        //   编号校验与 push 一律在使用前取最新引用（早捕引用可能已脱离共享 → 写入静默丢失）
 
         // ★ 磁盘去重守卫：atomicIncr 只保证 sq3 内原子，不保证与磁盘一致
         //   若 counter 偏低（sq3 损坏/手动操作），可能分配已存在的编号 → 必须先验
@@ -889,6 +966,7 @@ var QuestStore = (function () {
             id = 'q' + numericId;
             // 检查索引中是否已有此 ID
             var idxDup = false;
+            var idx = _idx();   // ★ 取最新共享引用（防早捕）
             if (idx) {
                 for (var di = 0; di < idx.length; di++) {
                     if (idx[di].id === id) { idxDup = true; break; }
@@ -926,7 +1004,8 @@ var QuestStore = (function () {
             createdAt: now,
             lastActiveAt: now
         };
-        if (idx) idx.push(entry);
+        var idxCur = _idx();   // ★ 写前取最新共享引用（防早捕引用已脱离共享）
+        if (idxCur) idxCur.push(entry);
         await _saveIndex();
 
         // 初始化 quest 元数据（含空的 floors 数组）

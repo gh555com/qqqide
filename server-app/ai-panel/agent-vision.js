@@ -66,11 +66,11 @@ AgentLoop.prototype._analyzeImages = async function (images, token, userContent)
 AgentLoop.prototype._callVision = async function (base64, token, prompt, userContent) {
     var self = this;
 
-    // signal 取「本楼层真理源」`_stopCtrl`（_executeSend 每层重建），不取 `abortController`
-    // （agent-gateway 逐请求重建）。2026-10-14 13:26 实测坑：上一楼层还在跑时用户直接发
-    // 下一句 → 面板掐掉在飞请求（boot.log 13:26:19.919 ERR 19073ms）→ `abortController`
-    // 还是上一个（已 aborted）的 → 预分析拿到 aborted 信号后静默返回 null → 该楼层贴图
-    // 没有预分析且零网络调用。_stopCtrl 仍会在用户真按 Stop 时被掐 → 语义不变。
+    // signal 取「本楼层真理源」`_stopCtrl`——agent-loop `send()` 每层楼创建、已前移至贴图
+    // 预分析之前（2026-10-14）：预分析取到的恒为本楼层干净信号，不再被上一楼层残留的
+    // controller 污染（旧位置在预分析之后——残留信号 aborted 时预分析静默返回 null、零网络
+    // 调用）。不取 `abortController`（agent-gateway 逐请求重建，可能带上一个请求的残留/已
+    // aborted 状态）。用户真按 Stop 时同一 controller 被掐 → 预分析在飞请求一并停止，语义不变。
     var _floorSig = null;
     try {
         _floorSig = (self._stopCtrl && self._stopCtrl.signal)

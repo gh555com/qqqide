@@ -146,7 +146,8 @@ window._injectRuleRefs = async function (rawText, bridge) {
     return '\n\n[PRE-LOADED FILES — The following files are referenced in rules and have been automatically loaded into context. Their content is already here — do NOT call read_file on them.]\n\n' + _injected.join('\n\n---\n\n');
 };
 
-// global.txt — 全局规则，所有 IDE 窗口共享（{appRoot}/Data/global.txt），与 project.txt 同权支持 rule"..."（2026-08-15）
+// global.txt — 全局规则，所有 IDE 窗口共享（Data 根 = bootinfo.userData；win/dev = {appRoot}/Data，
+//   mac = {宿主}/qqqide-data/Data——与 RULES 按钮写入端 login.js 同源同口径），与 project.txt 同权支持 rule"..."（2026-08-15）
 window.qqqideRulesContent = '';
 
 window.loadQqqideRules = async function () {
@@ -154,7 +155,16 @@ window.loadQqqideRules = async function () {
         var bridge = parent.qqqideBridge;
         if (bridge && bridge.app && bridge.app.root) {
             var root = await bridge.app.root();
-            var rulesPath = root.replace(/\\/g, '/').replace(/\/$/, '') + '/Data/global.txt';
+            // ★ Data 根解析（mac：app.root() = bundle 内 Contents/MacOS——真值走 bootinfo.userData）
+            var _dr = '';
+            try {
+                if (bridge.boot && bridge.boot.getInfo) {
+                    var _bi = await bridge.boot.getInfo();
+                    if (_bi && _bi.userData) _dr = String(_bi.userData).replace(/\\/g, '/').replace(/\/$/, '');
+                }
+            } catch (_) { }
+            if (!_dr) _dr = root.replace(/\\/g, '/').replace(/\/$/, '') + '/Data';
+            var rulesPath = _dr + '/global.txt';
             var text = await bridge.fs.read(rulesPath);
             if (text && text.trim()) {
                 window.qqqideRulesContent = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';

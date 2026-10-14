@@ -1273,10 +1273,10 @@
             _t('ai.byok.visionUse', '视觉走你的模型（贴图识别 / analyze_image 不再走云端通道，不计 ge）') + '</span></label>' +
             '<div id="byok-vision-cfg" style="display:none">' +
             '<label class="bk-label" style="margin-top:6px">' + _t('ai.byok.visionModel', '视觉模型名（留空 = 与对话模型同一个）') + '</label>' +
-            '<input type="text" id="byok-vision-model" placeholder="' + _t('ai.byok.visionModelPh', '需支持图片输入，如 qwen-vl-max / gpt-4o / gemini-2.5-flash') + '" spellcheck="false">' +
+            '<input type="text" id="byok-vision-model" placeholder="' + _t('ai.byok.visionModelPh', '需支持图片输入——填服务商文档中的视觉模型名') + '" spellcheck="false">' +
             '<div class="bk-model-tools"><button class="bk-btn bk-mini" id="byok-vtest">' + _t('ai.byok.visionTest', '测试视觉') + '</button>' +
             '<span class="bk-test-status" id="byok-vtest-status"></span></div>' +
-            '<div class="bk-hint" style="margin-top:6px">' + _t('ai.byok.visionNote', '「测试视觉」向你的端点发一64×64 纯红小图并让模型说出颜色——一次调用即可证实它真的能看图。失败不阻断：视觉自动回落云端通道。生图 / 抠图 / 搜索仍走内置通道。') + '</div>' +
+            '<div class="bk-hint" style="margin-top:6px">' + _t('ai.byok.visionNote', '「测试视觉」向你的端点发一张 64×64 纯红小图并让模型说出颜色——一次调用即可证实它真的能看图。失败不阻断：视觉自动回落云端通道。生图 / 抠图 / 搜索仍走内置通道。') + '</div>' +
             '</div></div>' +
             '<div class="bk-row"><label class="bk-label">' + _t('ai.byok.maxTokens', '最大输出 tokens（可选）') + '</label>' +
             '<input type="text" id="byok-maxtokens" inputmode="numeric" placeholder="' + _t('ai.byok.maxTokensPh', '留空 = 使用服务商默认（推荐）') + '" spellcheck="false"></div>' +

@@ -1041,6 +1041,10 @@ async function openQuestDrop() {
     _q2Shimmer = sOverlay;
 }
 var _tofuEntry = null;  // 当前活跃 quest 的 index 条目，供编辑用
+// ★ 索引瞬时缺项守卫（2026-10-14）：跨面板索引重建/扫盘窗口里，活跃 quest 可能短暂不在列表——
+//   那不是「本面板是草稿」，禁把真实 quest 闪成「~ New quest ~」：保持现状渲染 + 退避重试等索引自愈
+var _tofuMissRetry = 0;
+var _tofuMissTimer = null;
 
 // ═══ 彗星电子钟：唯一真理机器驱动 ═══
 // 中央真理：读 parent.__qqq_agentPool（所有面板读同一池），零脑分裂
@@ -1212,6 +1216,19 @@ async function updateQuestTofu() {
     var pen = document.getElementById('quest-tofu-pen');
     var quests = await questStore.list();
     var entry = quests.find(function (q) { return q.id === questActiveId; });
+    // ★ 守卫：真实 quest（非草稿/非空）条目暂缺 = 索引瞬时窗口 → 保持现状，不闪「~ New quest ~」
+    if (!entry && questActiveId && !(typeof _isDraft === 'function' ? _isDraft(questActiveId) : ('' + questActiveId).indexOf('_draft_') === 0)) {
+        if (!_tofuMissTimer && _tofuMissRetry < 3) {
+            _tofuMissTimer = setTimeout(function () {
+                _tofuMissTimer = null;
+                _tofuMissRetry++;
+                updateQuestTofu();
+            }, _tofuMissRetry === 0 ? 400 : 1500);
+        }
+        return;   // 不动 DOM：前缀/标题/时钟维持现状（重试或后续事件到达时自然修正）
+    }
+    if (_tofuMissTimer) { clearTimeout(_tofuMissTimer); _tofuMissTimer = null; }
+    _tofuMissRetry = 0;
     _tofuEntry = entry || null;
     if (entry) {
         var num = entry.numericId || '?';

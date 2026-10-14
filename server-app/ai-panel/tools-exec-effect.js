@@ -847,12 +847,20 @@ async function executeAnalyzeImage(args, ownerAgent) {
         //    开启条件：自带密钥已启用 + 勾选「视觉走你的模型」（自带密钥面板 Z 按钮）
         var content = '';
         if (typeof qqqByok !== 'undefined' && qqqByok && qqqByok.visionActive && qqqByok.visionActive()) {
+            // 信号唯一源：本楼层 _stopCtrl（agent-loop 每层楼在预分析前创建）——abortController 仅兜底
+            //   （agent-gateway 逐请求重建，可能带上一个请求的残留状态；2026-10-14 与贴图预分析同式）
+            var _floorSig = null;
+            try {
+                var _fAg = ownerAgent || ((typeof _activeAgent !== 'undefined') ? _activeAgent : null);
+                _floorSig = (_fAg && _fAg._stopCtrl && _fAg._stopCtrl.signal)
+                    || (_fAg && _fAg.abortController && _fAg.abortController.signal) || null;
+            } catch (_) { }
             var _vr = await qqqByok.visionChat({
                 base64: b64,
                 mime: (mimeInfo && mimeInfo.mime) || undefined,
                 prompt: question,
                 floorId: _resolveFloorId(ownerAgent),
-                signal: (ownerAgent && ownerAgent.abortController) ? ownerAgent.abortController.signal : undefined
+                signal: _floorSig || undefined
             });
             if (_vr && _vr.ok && _vr.text) {
                 content = _vr.text;
@@ -1074,11 +1082,19 @@ async function _localWebSearch(query, maxResults) {
     try { root = await bridge.app.root(); } catch (_) { return null; }
     if (!root) return null;
     root = String(root).replace(/\\/g, '/').replace(/\/+$/, '');
-    // 双候选：dev 项目根 / 绿色包 resources/app（audio-engine 同款解析）
-    var candidates = [
-        root + '/engines/websearch.py',
-        root + '/gh555.com/resources/app/engines/websearch.py'
-    ];
+    // ★ 候选序（mac 适配）：① 托管数据根同级 engines（win/mac/linux 全平台真值——mac 上 engines 实体在
+    //   {宿主}/qqqide-data/engines，经 bundle 内符号链接桥接）② dev 项目根 ③ 绿色包 resources/app（audio-engine 同款解析）
+    var _ud = '';
+    try {
+        if (bridge.boot && bridge.boot.getInfo) {
+            var _bi = await bridge.boot.getInfo();
+            if (_bi && _bi.userData) _ud = String(_bi.userData).replace(/\\/g, '/').replace(/\/+$/, '');
+        }
+    } catch (_) { }
+    var candidates = [];
+    if (_ud) candidates.push(_ud.replace(/\/Data$/, '') + '/engines/websearch.py');
+    candidates.push(root + '/engines/websearch.py');
+    candidates.push(root + '/gh555.com/resources/app/engines/websearch.py');
     var scriptPath = null;
     for (var i = 0; i < candidates.length; i++) {
         try {

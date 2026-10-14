@@ -566,10 +566,14 @@
 
   function _showImage(v) {
     _closeAll();
+    var val = String(v == null ? '' : v);
     var src = v, local = null;
-    if (/^[a-zA-Z]:[\\/]/.test(v) || /^\\\\/.test(v)) {          // 本机路径 → file:/// 直载
+    if (/^[a-zA-Z]:[\\/]/.test(val) || /^\\\\/.test(val)) {       // Windows 本机路径（盘符/UNC）→ file:/// 直载
       local = v;
-      src = 'file:///' + v.replace(/\\/g, '/');
+      src = 'file:///' + val.replace(/\\/g, '/');
+    } else if (val.charAt(0) === '/' && val.charAt(1) !== '/') {   // mac/linux POSIX 绝对路径 → file:// 直载（'//' 开头为协议相对 URL）
+      local = v;
+      src = 'file://' + val;
     }
     try { window.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: src, localPath: local }, '*'); } catch (e) { }
   }

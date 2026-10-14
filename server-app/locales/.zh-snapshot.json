@@ -172,7 +172,22 @@
             "mshotFail": "截图失败",
             "mplUp": "上移",
             "mplDown": "下移",
-            "mplDel": "从播放列表移除"
+            "mplDel": "从播放列表移除",
+            "mtTip": "定时关闭（到点自动暂停播放）",
+            "mtArmed": "定时关闭：{n} 分钟后暂停",
+            "mtFired": "定时关闭：已暂停",
+            "mtCanceled": "定时关闭：已取消",
+            "mtCancel": "取消定时",
+            "mtCustom": "自定义分钟",
+            "mtMinutes": "{n}分",
+            "mtSeconds": "{n}秒",
+            "mtShutdown": "定时关机",
+            "mtShutdownSub": "到点关闭计算机",
+            "mtShutdownArmed": "定时关闭：{n} 分钟后关机",
+            "mtShutting": "定时关闭：正在关闭计算机",
+            "mtShutdownFail": "定时关机失败",
+            "mtShutShort": "关机",
+            "mtTipShut": "定时关闭（到点自动关闭计算机）"
         },
         "player": {
             "title": "播放器",
@@ -880,7 +895,16 @@
             "test": "测试连接",
             "save": "保存",
             "saved": "已保存",
-            "hint": "启用后：对话请求按所选网络通道发送——直连不经平台服务器；平台代理经平台转发（推广期免费）。贴图识别 / 生图 / 抠图 / 搜索仍走内置通道。密钥仅加密保存在本机（系统凭据保护）。",
+            "hint": "启用后：对话请求按所选网络通道发送——直连不经平台服务器；平台代理经平台转发（推广期免费）。勾选「视觉走你的模型」后贴图识别也由你的多模态模型完成；生图 / 抠图 / 搜索仍走内置通道。密钥仅加密保存在本机（系统凭据保护）。",
+            "visionUse": "视觉走你的模型（贴图识别 / analyze_image 不再走云端通道，不计 ge）",
+            "visionModel": "视觉模型名（留空 = 与对话模型同一个）",
+            "visionModelPh": "需支持图片输入——填服务商文档中的视觉模型名",
+            "visionNote": "「测试视觉」向你的端点发一张 64×64 纯红小图并让模型说出颜色——一次调用即可证实它真的能看图。失败不阻断：视觉自动回落云端通道。生图 / 抠图 / 搜索仍走内置通道。",
+            "visionTest": "测试视觉",
+            "visionTesting": "视觉测试中…",
+            "visionTestOk": "你的模型能看图",
+            "visionTestFail": "你的模型看不了图（视觉将留在云端通道）",
+            "visionNeedEnable": "视觉已设为走你的模型，但未启用自带 Key 时对话仍走平台通道（视觉会静默不生效）",
             "lockedBridge": "密钥已加密存储（当前实例不支持解密，重启 IDE 后自动解锁）",
             "lockedDecrypt": "密钥无法在本机解密（可能来自其他设备），请重新输入"
         },
@@ -2234,6 +2258,12 @@
             "saveConsole": "保存控制台日志",
             "logFile": "日志文件",
             "saveFile": "保存文件"
+        },
+        "browserHost": {
+            "title": "qd (qqqide) 浏览器",
+            "startHosted": "此窗口由 qqqide 托管：AI 通过它执行网页操作。",
+            "startMonitor": "任务进行时可在本窗口查看实时进度；需要你时（如扫码登录），AI 会在此等待。",
+            "startHint": "关闭本窗口即退出；登录状态会保留到下次使用。"
         },
         "browser": {
             "openFailTitle": "无法自动打开浏览器 — qd (qqqide)",

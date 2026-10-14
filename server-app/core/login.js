@@ -1394,15 +1394,25 @@
         if (!bridge) return;
         var appRoot = await bridge.app.root();
         var appRootClean = appRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var globalPath = appRootClean + '/Data/global.txt';
+        // ★ Data 根解析（mac 适配）：mac 的 app.root() = bundle 内 Contents/MacOS——{appRoot}/Data 会写进
+        //   .app（破坏签名 + 升级即丢）；真值恒以 bootinfo.userData 为准（win/dev = {appRoot}/Data；
+        //   mac = {宿主}/qqqide-data/Data）——AI 读取端（system-prompt.js）同源同口径
+        var dataRoot = '';
+        try {
+          var _bi = await bridge.boot.getInfo();
+          if (_bi && _bi.userData) dataRoot = String(_bi.userData).replace(/\\/g, '/').replace(/\/$/, '');
+        } catch (_) { }
+        if (!dataRoot) dataRoot = appRootClean + '/Data';
+        var globalPath = dataRoot + '/global.txt';
         var globalExists = await bridge.fs.exists(globalPath);
         if (!globalExists) {
           // ★ 本机能力提示（活跃规则行 —— 每段新对话都会注入）：装包内置「受控浏览器工具链」
           var _wtLine = '';
           try {
             var _wtCands = [
-              appRootClean + '/resources/app/server-app/ai-panel/webtools/README.md',
-              appRootClean + '/server-app/ai-panel/webtools/README.md'
+              dataRoot + '/webapp/ai-panel/webtools/README.md',                        // 运行副本（win/mac/linux 全平台真值）
+              appRootClean + '/resources/app/server-app/ai-panel/webtools/README.md',  // win 绿包资源副本
+              appRootClean + '/server-app/ai-panel/webtools/README.md'                 // dev 项目树
             ];
             for (var _wi = 0; _wi < _wtCands.length; _wi++) {
               if (await bridge.fs.exists(_wtCands[_wi])) {

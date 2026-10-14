@@ -406,15 +406,19 @@ function bootAiOverlay() {
     var img = contentEl.querySelector('img');
     return img ? img.src : null;
   }
-  // src → 本地文件路径：file:/// URL 解码 / 裸盘符路径（A4/徽章/灯箱直传形态）直接收
+  // src → 本地文件路径：file:/// URL 解码 / 裸盘符路径（A4/徽章/灯箱直传形态）/ POSIX 绝对（mac/linux）直接收
+  // ★ POSIX 形态（2026-10-14）：file:///Users/x → /Users/x（补回前导斜杠）；裸 '/…' 非 Windows 平台直接收
   function _localPathFromSrc(src) {
     if (typeof src !== 'string') return null;
     if (/^file:\/\//i.test(src)) {
-      var p = src.replace(/^file:\/\/\//i, '');
+      if (!/^file:\/\/\//i.test(src)) return src;   // 非三斜杠 file URL（UNC 等）：原样退回（旧语义不变）
+      var rest = src.replace(/^file:\/\/\//i, '');
+      var p = /^[A-Za-z]:/.test(rest) ? rest : '/' + rest;   // win 盘符形态原样（E:/x）；POSIX 补前导斜杠
       try { p = decodeURIComponent(p); } catch (_) { }
       return p;
     }
     if (/^[A-Za-z]:[\\/]/.test(src)) return src;
+    if (/^\/(?!\/)/.test(src) && !_ROAM_WIN) return src;   // mac/linux POSIX 绝对（平台判定同 _roamPosixAbs）
     return null;
   }
   function _ovQoast(msg, type) {
@@ -1459,6 +1463,8 @@ function bootAiOverlay() {
     var wasFileUrl = /^file:\/\/\//i.test(t);
     if (wasFileUrl) {
       t = t.replace(/^file:\/\/\//i, '');
+      // ★ POSIX（mac/linux）：file:///Users/x → /Users/x（补回前导斜杠；Windows 盘符形态原样）
+      if (!_ROAM_WIN && !/^[A-Za-z]:/.test(t)) t = '/' + t;
       try { t = decodeURIComponent(t); } catch (_) { }
     }
     t = t.replace(/\\/g, '/').replace(/\/+$/, '');

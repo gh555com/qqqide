@@ -42,6 +42,8 @@ function _CFG() {
 // 三类候选：
 //   C1 盘符绝对路径  E:\a\b 或 E:/a/b      —— 任意位置（含代码块内，JSON 双反斜杠转义天然兼容）；
 //                                              file:///E:/a/b 前缀整体成链（探针端自带剥前缀+解码）
+//   C1b POSIX 绝对路径 /Users/a/b（mac/linux）—— 任意位置与行内代码；首 '//' 排除；≥/a/b 两段；Windows 不启用
+//                                              file:///Users/a/b 前缀只剥 file://（第三斜杠留给路径）
 //   C2 反斜杠路径    do\专利\xxx            —— 正文任意位置；行内代码(<code>非<pre>)整个内容算一个
 //                                              token（反引号包裹即作者意图，含空格路径也能整链）；
 //                                              多行代码块(<pre>)内仅限行首（防 \s\w 正则噪音）。
@@ -118,7 +120,21 @@ function _lplValidAbs(tok) {
   if (tok.length === 3) return true;                    // 盘根 E:\ / E:/
   return !_lplBad(tok);
 }
-function _lplValidAny(t) { return _lplValidAbs(t) || _lplValidRel(t); }
+// ★ POSIX 绝对路径（mac/linux 首字符 '/'）——2026-10-14：非 Windows 平台放行（Windows 首字符 '/'
+//   维持逐根相对解析，与 shell-overlay._roamPosixAbs / mdview resolve 同口径）。'//' 开头属协议相对
+//   URL 排除；至少 /a/b 两段（单段 /tmp 不猜，防代码噪音）；探针兜底零假链。
+var _LPL_WIN = /Win/i.test(String((typeof navigator !== 'undefined' && navigator.platform) || ''));
+function _lplValidPosixAbs(tok) {
+  if (!tok || tok.length < 4 || tok.length > 320) return false;
+  if (tok.charAt(0) !== '/' || tok.charAt(1) === '/') return false;
+  if (_lplBad(tok)) return false;
+  var core = tok.replace(/\/+$/, '');
+  var parts = core.split('/');
+  if (parts.length < 3) return false;                   // ['','seg','seg'] 起步
+  for (var i = 1; i < parts.length; i++) if (!parts[i]) return false;
+  return true;
+}
+function _lplValidAny(t) { return _lplValidAbs(t) || _lplValidPosixAbs(t) || _lplValidRel(t); }
 // 文本扫描：返回 [{start,end,raw}]（不含 C3，C3 由盒线行补扫处理）
 // mode: 0=正文任意位置  1=pre 仅行首
 function _lplScanText(s, mode) {
@@ -139,6 +155,18 @@ function _lplScanText(s, mode) {
       i = Math.max(j, i + 1);
       continue;
     }
+    // ── C1b POSIX 绝对路径（mac/linux 首字符 '/'；任何位置；Windows 不启用） ──
+    if (ch === '/' && !_LPL_WIN && s.charAt(i + 1) !== '/' &&
+        (i === 0 || _lplIsSpace(s.charAt(i - 1)) || _lplIsTerm(s.charAt(i - 1)))) {
+      var jb = i + 1;
+      while (jb < n && !_lplIsTerm(s.charAt(jb)) && !_lplIsSpace(s.charAt(jb))) jb++;
+      var rawB = _lplTrimTail(s.slice(i, jb));
+      var spB = _lplSplitLineSuffix(rawB);
+      if (spB && _lplValidPosixAbs(spB.path)) rawB = spB.path;
+      if (_lplValidPosixAbs(rawB)) { out.push({ start: i, end: i + rawB.length, raw: rawB }); i = Math.max(jb, i + 1); continue; }
+      i++;
+      continue;
+    }
     // ── C2 反斜杠/正斜杠相对路径（含 file:/// 前缀整体成链） ──
     if (_lplIsSpace(ch) || _lplIsTerm(ch) || ch === '\\' || ch === '/') { i++; continue; }
     if (mode === 1 && i > 0 && s.charAt(i - 1) !== '\n') {
@@ -151,7 +179,12 @@ function _lplScanText(s, mode) {
     while (k < n && !_lplIsTerm(s.charAt(k)) && !_lplIsSpace(s.charAt(k))) k++;
     var tok = _lplTrimTail(s.slice(i, k));
     var tpfx = '';
-    if (/^file:\/\/\//i.test(tok)) { tpfx = tok.slice(0, 8); tok = tok.slice(8); }   // file:/// 前缀整体成链
+    if (/^file:\/\/\//i.test(tok)) {   // file:/// 前缀整体成链
+      // ★ POSIX（mac/linux）：file:///Users/x 的本地路径 = /Users/x——只剥 file://（7 字符），第三斜杠留给路径；
+      //   Windows 盘符形态（file:///E:/x）照旧剥 8 字符（E:/x）
+      if (!_LPL_WIN && !/^[A-Za-z]:/.test(tok.slice(8))) { tpfx = tok.slice(0, 7); tok = tok.slice(7); }
+      else { tpfx = tok.slice(0, 8); tok = tok.slice(8); }
+    }
     var spT = _lplSplitLineSuffix(tok);
     if (spT && _lplValidAny(spT.path)) out.push({ start: i, end: i + tpfx.length + spT.path.length, raw: tpfx + spT.path });
     else if (_lplValidAny(tok)) out.push({ start: i, end: i + tpfx.length + tok.length, raw: tpfx + tok });
@@ -174,9 +207,11 @@ function _lplScanPreTreeLine(line) {
   if (_lplBad(w)) return null;
   return { raw: w, at: m.index + m[0].indexOf(w) };
 }
-// 行内代码路径合法性（绝对盘符 / 相对；正斜杠=文件形 或 allowPosix 全放行）
+// 行内代码路径合法性（绝对盘符 / POSIX 绝对（mac/linux） / 相对；正斜杠=文件形 或 allowPosix 全放行）
 function _lplCodePathOk(t) {
-  if (!t || t.charAt(0) === '\\' || t.charAt(0) === '/') return false;
+  if (!t) return false;
+  if (t.charAt(0) === '/') return !_LPL_WIN && _lplValidPosixAbs(t);   // ★ POSIX 绝对（/Users/…）
+  if (t.charAt(0) === '\\') return false;
   if (/^[A-Za-z]:[\\/]/.test(t)) return _lplValidAbs(t);
   if (t.indexOf(':') !== -1) return false;
   if (t.indexOf('\\') === -1) {
@@ -197,7 +232,10 @@ function _lplCodeToken(codeEl) {
   if (!t || t.length < 3 || t.length > 320) return null;
   if (/[\r\n\t]/.test(t)) return null;
   var pfx = '';
-  if (/^file:\/\/\//i.test(t)) { pfx = t.slice(0, 8); t = t.slice(8); }
+  if (/^file:\/\/\//i.test(t)) {   // 同正文 C2：POSIX 只剥 file://（第三斜杠留给路径）；Windows 盘符照旧剥 8
+    if (!_LPL_WIN && !/^[A-Za-z]:/.test(t.slice(8))) { pfx = t.slice(0, 7); t = t.slice(7); }
+    else { pfx = t.slice(0, 8); t = t.slice(8); }
+  }
   var sp = _lplSplitLineSuffix(t);
   if (sp && _lplCodePathOk(sp.path)) return { raw: pfx + sp.path, tail: sp.suffix };
   if (_lplCodePathOk(t)) return { raw: pfx + t, tail: '' };
@@ -550,6 +588,7 @@ if (typeof module !== 'undefined' && module.exports) {
         scanText: _lplScanText,
         validRel: _lplValidRel,
         validAbs: _lplValidAbs,
+        validPosixAbs: _lplValidPosixAbs,
         codeToken: _lplCodeToken,
         posixFileLike: _lplPosixFileLike,
         splitLineSuffix: _lplSplitLineSuffix

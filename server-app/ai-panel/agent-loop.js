@@ -411,6 +411,11 @@ var AgentLoop = (function () {
         self._floorTiming = { networkMs: 0, aiMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
         self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
 
+        // ★ 终极 Stop 闭环：本楼层真理源——预分析之前创建（2026-10-14 前移）
+        //   贴图预分析 / 全楼层一切请求共享同一 controller——① 防上一楼层残留信号污染预分析
+        //   ② 真按 Stop 时预分析在飞请求一并被掐；其后绝不二次重建。
+        self._stopCtrl = new AbortController();
+
         // ═══ 视觉预分析：图像 → 文本 → 推理 ═══
         // 将用户问题一并发送，让模型针对实际问题做定向识别
         var visionText = '';
@@ -582,8 +587,6 @@ var AgentLoop = (function () {
         self._noNlRepairDone = false;  // ★ 每层楼重置：NO-NL 自动重排屋（2026-09-08 q242 f158 根治）每层最多一次
         // ★ _inRecoverySend: 保留外部已设值（_attemptRecoverySend 预置），正常楼层为 false
         self._inRecoverySend = self._inRecoverySend || false;
-        // ★ 终极 Stop 闭环：每层楼创建真理源
-        self._stopCtrl = new AbortController();
         self.transition('sending');
         if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; window._qqqToolCacheThisFloor = {}; }  // ★ WRITE感知复位 + ENOENT + 路径纠错 + 泛化 READ 缓存：每层楼复位
 

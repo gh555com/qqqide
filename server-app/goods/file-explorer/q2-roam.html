@@ -90,15 +90,28 @@ html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-dra
 .delete-button:hover { opacity: 1; color: var(--red); }
 .recent-item > span:not(.delete-button):not(.pin-move-btn) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .address-bar { padding: 0; background-color: var(--bg-color); position: relative; z-index: 1; flex-shrink: 0; border: none; }
-.address-bar-wrapper { display: flex; align-items: stretch; gap: 0; padding: 0; background-color: var(--bg-color); }
+.address-bar-wrapper { display: flex; align-items: stretch; gap: 0; padding: 0; background-color: var(--bg-color); --rm-filter-w: 60.5px; }
 .address-bar-inner { flex: 1; position: relative; min-width: 68px; height: 22px; margin-left: -1px; }
 /* ★ 地址行双行退避（2026-10-14 用户定案）：单行全显 → 触「按钮将被裁剪」点拆双行——
-   第 1 行恒只地址框（独占整行）；第 2 行恒只按钮（原序）；行间 1px 缝（-1px 重叠消双线） */
+   第 1 行 = 地址框 + 筛选框（筛选框恒随地址框；装不下才隐藏，第 1 行只留地址框）；
+   第 2 行 = 纯按钮（原序）；行间 1px 缝（-1px 重叠消双线） */
 .address-bar-wrapper.rm-two-row { flex-wrap: wrap; }
-.address-bar-wrapper.rm-two-row .address-bar-inner { order: -1; flex: 1 0 100%; margin-left: 0; }
-.address-bar-wrapper.rm-two-row > *:not(.address-bar-inner) { height: 22px !important; margin-top: -1px !important; }
-/* 双行下 filter 左邻 = S 组（无右边框）→ 补左缝合线（单行下左邻=地址框自带右边框，故原式 border-left:none） */
-.address-bar-wrapper.rm-two-row .filter-input { border-left: 1px solid var(--border-strong); }
+/* 第 1 行：地址框 basis 预扣筛选框宽（grow 吸收筛选框隐藏后的空位）→ 两件合计 100% 逼出换行点 */
+.address-bar-wrapper.rm-two-row .address-bar-inner { order: -2; flex: 1 1 calc(100% - var(--rm-filter-w, 60.5px)); margin-left: 0; }
+.address-bar-wrapper.rm-two-row .filter-input-wrapper { order: -1; }
+/* 筛选框隐藏（rm-filter-off）→ 地址框 basis 收回 100%：否则 basis 里的「影子空位」会让第 2 行按钮误搭上第 1 行 */
+.address-bar-wrapper.rm-two-row.rm-filter-off .address-bar-inner { flex-basis: 100%; }
+/* 第 2 行（sz/open/sort/ft）：高度 22 + 上移 1px 与第 1 行重叠合缝 */
+.address-bar-wrapper.rm-two-row > #szModeGroup,
+.address-bar-wrapper.rm-two-row > #openFolderBtn,
+.address-bar-wrapper.rm-two-row > #sortByGroup,
+.address-bar-wrapper.rm-two-row > #filesOnTopBtn { height: 22px !important; margin-top: -1px !important; }
+/* 换行态行尾收口线（单行不给：条带行尾自然开口）：筛选框恒居第 1 行尾、ft 恒居第 2 行尾（静态）；
+   sortBy/open 动态挂 .rm-tail（待其右侧按钮隐藏后才落线——防与右邻左边框叠成双线） */
+.address-bar-wrapper.rm-two-row .filter-input,
+.address-bar-wrapper.rm-two-row #filesOnTopBtn { border-right: 1px solid var(--border-strong); }
+.address-bar-wrapper.rm-two-row #sortByGroup.rm-tail > .scm-btn:last-child,
+.address-bar-wrapper.rm-two-row #openFolderBtn.rm-tail { border-right: 1px solid var(--border-strong); }
 .address-display { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 4.5px 4.5px 4.5px 7px; background-color: var(--bg-color); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 2.5px; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; display: flex; align-items: center; z-index: 5; }
 .address-display.editing { font-style: italic; }
 .path-sep { font-weight: bold; padding: 0 0.5em; color: var(--orange); }
@@ -120,7 +133,7 @@ html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-dra
 .scm-btn.active .scm-check { display: block; }
 .open-btn { padding: 0 5px; height: 100%; min-height: 22px; border: 1px solid var(--border-strong); border-right: none; margin: 0 !important; background-color: var(--bg-color); color: var(--text-primary); font-size: 10px; cursor: pointer; transition: background-color 0.15s; }
 .open-btn:hover { background-color: var(--gold-accent-bg); }
-.filter-input-wrapper { position: relative; width: 60.5px; flex-shrink: 0; }
+.filter-input-wrapper { position: relative; width: var(--rm-filter-w, 60.5px); flex-shrink: 0; }
 .filter-input { width: 100%; height: 100%; min-height: 22px; padding: 3.5px 5px; border: 1px solid var(--border-strong); border-left: none; border-right: none; background-color: var(--bg-color); color: var(--text-primary); font-size: 10px; box-sizing: border-box; }
 .filter-input::placeholder { color: var(--text-dim); font-style: italic; }
 .file-list-wrapper { flex: 1; position: relative; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }

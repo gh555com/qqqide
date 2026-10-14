@@ -770,13 +770,16 @@ else console.error('[q2-roam] openFolderBtn missing — HTML 结构损坏');
 
 
 
-// ---- Responsive layout v2（2026-10-14 用户定案）：单行全显 → 双行退避 → 老退避序隐藏 ----
-// ① 单行（宽）：六件全显——地址框 flex 收缩（min 68px），不再提前隐藏任何按钮。
-// ② 收缩触「按钮将被裁剪」点（= 全件所需宽）→ 拆双行：第 1 行恒只地址框 / 第 2 行恒只按钮（原序）。
-// ③ 继续收缩：第 2 行按原退避序隐藏（filter → filesOnTop → sortBy → szMode → open），地址框永不隐藏。
+// ---- Responsive layout（2026-10-14 用户定案）：单行全显 → 双行退避（筛选框随地址框）→ 级联隐藏 ----
+// ① 单行（宽）：六件全显——地址框 flex 收缩（min 68px），不提前隐藏任何按钮。
+// ② 收缩触「按钮将被裁剪」点（= 全件所需宽）→ 拆双行：第 1 行 = 地址框 + 筛选框（筛选框恒随地址框）；
+//    第 2 行 = 纯按钮（原序）。
+// ③ 继续收缩：筛选框装不下（地址框将跌破 min）才隐藏——第 1 行只留地址框；
+//    第 2 行按退避序隐藏（filesOnTop → sortBy → szMode → open），地址框永不隐藏。
+// ④ 换行态行尾收口线：每行最右可见件补右边线（filter/ft 静态；sortBy/open 动态 .rm-tail）。
 // 阈值一律由实测元件宽推导（禁魔数）；BAR_SAFE 抵 offsetWidth 取整误差，保全宽段「绝不裁切」。
 var BAR_SAFE = 3;
-var _barNeed = null;   // {single,row2,filterW,filesOnTopW,sortW,szW} —— 全可见时采一次（元件宽静态，永不失效）
+var _barNeed = null;   // {single,row1,row2,filterW,filesOnTopW,sortW,szW} —— 全可见时采一次（元件宽静态，永不失效）
 function _measureBarNeed() {
 	if (_barNeed) return _barNeed;
 	var szEl = document.getElementById('szModeGroup');
@@ -786,14 +789,22 @@ function _measureBarNeed() {
 	var sortEl = document.getElementById('sortByGroup');
 	var ftEl = document.getElementById('filesOnTopBtn');
 	if (!szEl || !addrEl || !filterEl || !openEl || !sortEl || !ftEl) return null;
+	// ★ 抗挤压采集：测量瞬间临时关掉五件的 flex 收缩（同一任务内还原，无可见闪变）——
+	//   否则面板首帧偏窄（< 单行所需宽）时，flex 会把末件挤到 min-content（如文件在上钮 28→15.5），
+	//   一旦入缓存 → 换行点/退避阈值全链偏移（单行裁剪、按钮提前隐藏）。
+	var shrinkFive = [szEl, filterEl, openEl, sortEl, ftEl];
+	for (var i = 0; i < shrinkFive.length; i++) shrinkFive[i].style.flexShrink = '0';
+	void document.body.offsetWidth;   // 按「零收缩」重排后取样
 	var szW = szEl.offsetWidth, filterW = filterEl.offsetWidth, openW = openEl.offsetWidth,
 		sortW = sortEl.offsetWidth, ftW = ftEl.offsetWidth;
+	for (var j = 0; j < shrinkFive.length; j++) shrinkFive[j].style.flexShrink = '';
 	if (!szW || !filterW || !openW || !sortW || !ftW) return null;   // 未布局（懒建/隐藏页）→ 本轮放弃，下次再试
 	var addrMin = parseFloat(getComputedStyle(addrEl).minWidth) || 68;
 	var btnW = szW + filterW + openW + sortW + ftW;
 	_barNeed = {
 		single: btnW + addrMin - 1 + BAR_SAFE,   // -1 = 单行下地址框 margin-left:-1px 与 S 组重叠
-		row2: btnW + BAR_SAFE,
+		row1: addrMin + filterW + BAR_SAFE,      // 双行第 1 行：地址框 min + 筛选框
+		row2: (btnW - filterW) + BAR_SAFE,       // 双行第 2 行：纯按钮（筛选框已上移第 1 行）
 		filterW: filterW, filesOnTopW: ftW, sortW: sortW, szW: szW
 	};
 	return _barNeed;
@@ -831,20 +842,27 @@ function checkAndApplyResponsive() {
 		var need = _measureBarNeed();
 		if (need) {
 			// ① 双行触发：rw 跌破单行全件所需宽（再缩 1px 按钮就会被裁）→ 拆双行
-			var twoRow = rw < need.single;
-			// ② 双行段级联（老退避序）：第 2 行装不下才逐件隐藏——filter → filesOnTop → sortBy → szMode → open
-			var t = need.row2;
-			var hideFilter = rw < t;
-			t -= need.filterW;     var hideFilesOnTop = rw < t;
-			t -= need.filesOnTopW; var hideSort = rw < t;
-			t -= need.sortW;       var hideSz = rw < t;
-			t -= need.szW;         var hideOpen = rw < t;
-			if (wrapper) wrapper.classList.toggle('rm-two-row', twoRow);
-			if (filterWrapper) filterWrapper.style.display = hideFilter ? 'none' : '';
-			if (filesOnTopBtn) filesOnTopBtn.style.display = hideFilesOnTop ? 'none' : '';
-			if (sortByGroup) sortByGroup.style.display = hideSort ? 'none' : '';
-			if (szModeGroup) szModeGroup.style.display = hideSz ? 'none' : '';
-			if (openBtn) openBtn.style.display = hideOpen ? 'none' : '';
+		var twoRow = rw < need.single;
+		// ② 双行第 1 行 [地址框][筛选框]：筛选框恒随地址框——装不下（地址框将跌破 min）才隐藏
+		var hideFilter = twoRow && rw < need.row1;
+		// ③ 双行第 2 行退避序（原序去筛选框）：filesOnTop → sortBy → szMode → open
+		var t = need.row2;
+		var hideFilesOnTop = rw < t;
+		t -= need.filesOnTopW; var hideSort = rw < t;
+		t -= need.sortW;       var hideSz = rw < t;
+		t -= need.szW;         var hideOpen = rw < t;
+		if (wrapper) {
+			wrapper.classList.toggle('rm-two-row', twoRow);
+			wrapper.classList.toggle('rm-filter-off', twoRow && hideFilter);   // 筛选框隐藏 → 地址框 basis 收回 100%（防第 2 行按钮误搭第 1 行）
+		}
+		if (filterWrapper) filterWrapper.style.display = hideFilter ? 'none' : '';
+		if (filesOnTopBtn) filesOnTopBtn.style.display = hideFilesOnTop ? 'none' : '';
+		if (sortByGroup) sortByGroup.style.display = hideSort ? 'none' : '';
+		if (szModeGroup) szModeGroup.style.display = hideSz ? 'none' : '';
+		if (openBtn) openBtn.style.display = hideOpen ? 'none' : '';
+		// ④ 换行态行尾收口线：.rm-tail 挂第 2 行最右可见件（filter/ft 为静态样式，无需类）
+		if (sortByGroup) sortByGroup.classList.toggle('rm-tail', twoRow && hideFilesOnTop && !hideSort);
+		if (openBtn) openBtn.classList.toggle('rm-tail', twoRow && !hideOpen && hideSort);
 		}
 	}
 
