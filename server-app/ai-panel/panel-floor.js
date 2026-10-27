@@ -721,6 +721,10 @@ async function _restoreAgentFromStore(questId, ag) {
             if (_ctxData.narrative) ag._ctx.narrative = _ctxData.narrative;
             if (_ctxData.facts) ag._ctx.facts = _ctxData.facts;
             if (_ctxData.treasures) ag._ctx.treasures = _ctxData.treasures;
+            // ★ 自动压缩机器状态回填（写盘侧 panel-quest-persist._writeCtxJson）：冷却楼层 / 失败计数 / 待结算批次
+            if (_ctxData.lastAutoExtract) ag._ctx.lastAutoExtract = _ctxData.lastAutoExtract;
+            if (_ctxData.autoExtractFailures) ag._ctx.autoExtractFailures = _ctxData.autoExtractFailures;
+            if (_ctxData.autoExtractPending) ag._ctx.autoExtractPending = _ctxData.autoExtractPending;
             // ★ biscuitLines 已提前恢复（BugFix #1：必须在 V12 注入之前）
             ag._floorTimings = data.floorTimings || [];
             ag._serverDrift = data.serverDrift || 0;

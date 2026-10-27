@@ -64,6 +64,8 @@ body {
     flex: 1; font-size: 12px; color: var(--fg2); white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
+/* 格子标签（buildCells 产出，与角色徽标同排：角色=类型色标，标签=身份/序号/批次数） */
+.cell-preview .cell-label { font-weight: 700; color: var(--fg); }
 .cell-meta {
     font-size: 11px; color: var(--fg2); flex-shrink: 0; white-space: nowrap;
     display: flex; gap: 6px; align-items: center;
@@ -486,7 +488,7 @@ function render() {
         html += '<div class="cell' + (isOpen ? ' open' : '') + '" data-id="' + cell.id + '">';
         html += '<div class="cell-header" onclick="toggleCell(\'' + cell.id + '\')">';
         html += '<span class="cell-role ' + roleClass + '">' + esc(rc) + '</span>';
-        html += '<span class="cell-preview">' + esc(truncate(cell.content, 80)) + '</span>';
+        html += '<span class="cell-preview">' + (cell.label ? ('<b class="cell-label">' + esc(cell.label) + '</b> ') : '') + esc(truncate(cell.content, 80)) + '</span>';
         html += '<span class="cell-meta"><span>' + charsStr + '</span><span class="tok">~' + tokStr + '</span></span>';
         html += '<span class="cell-expand">▶</span>';
         html += '</div>';
@@ -741,7 +743,8 @@ function updateCompressBtns() {
         if (!el) continue;
         var ch = bf[k] || 0;
         el.textContent = ch > 0 ? ('-' + _fmtBenefit(ch)) : '';
-        el.className = 'cmp-benefit' + (ch < 300 ? ' zero' : (ch < 32000 && k === 'onlyfacts' ? ' low' : ''));
+        // ★ only facts 警示色阈值 = 准许压缩门槛（64K tokens，与执行守卫同口径）——低门槛的旧 32K 遗留已废
+        el.className = 'cmp-benefit' + (ch < 300 ? ' zero' : (ch < 64000 && k === 'onlyfacts' ? ' low' : ''));
     }
 }
 

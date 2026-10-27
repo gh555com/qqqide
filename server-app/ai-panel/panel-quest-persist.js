@@ -90,9 +90,13 @@ function _writeCtxJson(questId, ctx) {
                 compressLevel: ctx.compressLevel || '', // per-quest 独立压缩策略覆盖（2026-08-23）
                 floorArchives: ctx.floorArchives || [],
                 totalFloors: ctx.totalFloors || 0,
-                narrative: ctx.narrative || '',
-                facts: ctx.facts || [],
-                treasures: ctx.treasures || [],
+                narrative: ctx.narrative || '',                facts: ctx.facts || [],
+                treasures: ctx.treasures || [],
+                // ★ 自动压缩机器状态（冷却 / 失败计数 / 待结算批次）——缺了它们重启即从零冷却，
+                //   G1「距上次成功 ≥5 楼层」与 pending 结算全部失效（compress-machine 的落盘承诺在此兑现）
+                lastAutoExtract: ctx.lastAutoExtract || null,
+                autoExtractFailures: ctx.autoExtractFailures || null,
+                autoExtractPending: ctx.autoExtractPending || null,
                 biscuitLines: ctx.biscuitLines || []
             };
             var dest = qDir + 'ctx.json';

@@ -468,7 +468,7 @@ const QQQ = {    // ---- app info ----
 
     // ---- timeline (文件版本时间线，SHA256去重 + gzip + SQLite) ----
     timeline: {
-        record: (args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string }) => ipcRenderer.invoke('qqqide:timeline:record', args),
+        record: (args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string; addedLines?: number; deletedLines?: number }) => ipcRenderer.invoke('qqqide:timeline:record', args),
         versions: (args: { projectRoot: string; filePath: string }) => ipcRenderer.invoke('qqqide:timeline:versions', args),
         content: (args: { projectRoot: string; blobHash: string }) => ipcRenderer.invoke('qqqide:timeline:content', args),
         stat: (filePath: string) => ipcRenderer.invoke('qqqide:timeline:stat', filePath),

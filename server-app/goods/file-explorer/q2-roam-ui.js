@@ -23,6 +23,7 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 			case 'copyPath': performCopyPathAction(); break;
 			case 'queue': _playlistAddFromMenu(); break;
 			case 'search': _openSearchAt(ctxTarget); break;
+			case 'share': _shareFromMenu(); break;
 		}
 	});
 });

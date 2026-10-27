@@ -214,29 +214,6 @@ try {
   _ro.observe(document.documentElement);
 } catch (_) { }
 
-// ═══ 表格横滚手势（同源镜像 = AI 面板 panel-state.js「表格横滚」唯一源；改任一侧必须同改另一侧）═══
-//   光标停在表格上 → 上下滚轮直接左右滚表；滚到边缘自动交还文档纵向滚动（无缝接力）。
-//   依据：表格恒无纵向滚动条（无 max-height、内容自动撑高）→ 滚轮纵向意图恒为空，无损映射为横向；
-//   触控板横滑（deltaX 主导）/ Ctrl（缩放）一律放行原生；仅认表格容器，其余容器零介入。
-document.addEventListener('wheel', function (e) {
-  if (e.defaultPrevented || e.ctrlKey) return;
-  if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
-  var sc = null, n = e.target;
-  while (n && n !== document) {
-    if (n.classList && (n.classList.contains('table-inner') || n.classList.contains('table-wrap'))) {
-      if (n.scrollWidth - n.clientWidth > 0 && (n.classList.contains('table-inner') || n.querySelector('table'))) { sc = n; break; }
-    }
-    n = n.parentElement;
-  }
-  if (!sc) return;
-  var max = sc.scrollWidth - sc.clientWidth;
-  var cur = sc.scrollLeft;
-  var dy = e.deltaMode === 1 ? e.deltaY * 16 : (e.deltaMode === 2 ? e.deltaY * sc.clientWidth : e.deltaY);
-  if (!dy) return;
-  if ((dy > 0 && cur >= max - 0.5) || (dy < 0 && cur <= 0.5)) return;   // 已到边：交还文档纵向滚动
-  e.preventDefault();
-  sc.scrollLeft = Math.max(0, Math.min(max, cur + dy));
-}, { capture: true, passive: false });
 
 // ═══ 媒体路径解析（唯一入口；相对 → file:///；空格/#/非 ASCII 逐段编码）═══
 function _attr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
@@ -410,6 +387,7 @@ function render(msg) {
   html = _rewriteHtml(html);
   if (!content.trim()) html = '<div class="md-empty">' + _kk('mdview.empty', '（空文档）') + '</div>';
   $root.innerHTML = html;
+
   // 本地路径链接化 + 存在性探针（core/lpl.js 唯一入口；确认存在才显示为可点链接 → 点击 Roam 定位）
   try { if (window.linkifyLocalPaths) window.linkifyLocalPaths($root); } catch (_) { }
   try { if (window.probeLocalPathLinks) window.probeLocalPathLinks($root); } catch (_) { }

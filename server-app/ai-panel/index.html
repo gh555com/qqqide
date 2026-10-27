@@ -178,24 +178,108 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
 /* 用户消息气泡 */
 .msg-user{position:relative;background:#f8e0e0;border-radius:8px;padding:8px 12px;overflow-wrap:break-word;word-break:break-word}
 [data-theme="dark"] .msg-user{background:#4a2d30;color:#e8d0d0}
-.msg-user-copy{position:sticky;top:50%;transform:translateY(-50%);float:right;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;color:#a08080;z-index:2}
+.msg-user-copy{position:sticky;top:50%;transform:translateY(-50%);float:right;width:22px;height:22px;font-size:14px;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;color:#a08080;z-index:2}
 .msg-user:hover .msg-user-copy,.msg-user-copy.copied{opacity:1}
 .msg-user-copy:hover{background:rgba(0,0,0,0.06);color:#705050}
 .msg-user-copy.copied{color:#859900}
 [data-theme="dark"] .msg-user-copy{color:#b09090}
 [data-theme="dark"] .msg-user-copy:hover{background:rgba(255,255,255,0.08);color:#d0b0b0}
 [data-theme="dark"] .msg-user-copy.copied{color:#b8d68a}
+/* 用户气泡复制钮只有 14px：细笔触会虚掉 → 恒用加粗档（同一份 path，无第二套图标） */
+.msg-user-copy .qqi{-webkit-mask-image:var(--qqq-m-bold);mask-image:var(--qqq-m-bold)}
 /* 用户气泡内粘贴图片约束 */
 .msg-user img{max-width:100%;height:auto;display:block;border-radius:4px}
 .msg-img-wrap{display:inline-block;position:relative;max-width:100%}
-/* AI 消息复制按钮（左侧 sticky，跟随滚动） */
-.msg-ai-copy{position:sticky;top:50%;transform:translateY(-50%);left:2px;margin-right:6px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;color:#7090a0;z-index:2}
-.msg-ai:hover .msg-ai-copy,.msg-ai-copy.copied{opacity:1}
-.msg-ai-copy:hover{background:rgba(0,0,0,0.06);color:#406070}
-.msg-ai-copy.copied{color:#268bd2}
-[data-theme="dark"] .msg-ai-copy{color:#80a0b0}
-[data-theme="dark"] .msg-ai-copy:hover{background:rgba(255,255,255,0.08);color:#a0c0d0}
-[data-theme="dark"] .msg-ai-copy.copied{color:#58a6ff}
+/* ── 楼层动作组（复制 / 分享）：只活在 az 行（时钟行）内、紧贴收藏星标左侧；严禁 position:sticky（会在正文前造一条行盒 = 问与答之间的空隙） ──
+   ★ 三钮（复制·分享·☆收藏）恒显（非 hover 显隐）· 同网格同笔触同尺寸（图标唯一真源 qqq-icons 的 act-* 三件套）·
+   配色与星标同源（同一套灰阶，无第二套配色）。
+   ★ 位置契约：收藏钮的居中位由 .msg-ai-fav 的 auto 外边距维持（= 历史位置）；动作组绝对定位挂其左缘外侧——
+     零布局占位、不推动星标与 ge。禁把 auto 外边距挪回动作组（一挪星标就偏右，已返工一次）。 */
+.msg-ai-fav{position:relative;display:inline-flex;align-items:center;flex-shrink:0;margin:0 auto}
+.msg-ai-fav>.msg-ai-acts{position:absolute;right:100%;top:50%;transform:translateY(-50%);margin-right:2px}
+.msg-ai-acts{display:flex;align-items:center;gap:2px;flex-shrink:0}
+.msg-ai-copy,.msg-ai-share{width:26px;height:26px;font-size:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:0;cursor:pointer;color:rgba(0,0,0,0.16);flex-shrink:0;transition:color .15s}
+/* 悬停只变粗 + 变深，恒无底色块（hover 禁出现方形背景） */
+.msg-ai-copy:hover,.msg-ai-share:hover{color:rgba(0,0,0,0.65)}
+/* ★ 悬停加粗：细线（qqq-icons act-* stroke 0.9 · 16 网格等比放大）是常态，hover 切同一份 path 派生的加粗 mask（系数 1.8；禁 UI 侧重写 path） */
+.msg-ai-copy:hover .qqi,.msg-ai-share:hover .qqi,.msg-ai-clock .clock-fav:hover .qqi{-webkit-mask-image:var(--qqq-m-bold);mask-image:var(--qqq-m-bold)}
+.msg-ai-copy.copied{color:#859900}
+[data-theme="dark"] .msg-ai-copy,[data-theme="dark"] .msg-ai-share{color:rgba(255,255,255,0.18)}
+[data-theme="dark"] .msg-ai-copy:hover,[data-theme="dark"] .msg-ai-share:hover{color:rgba(255,255,255,0.75)}
+[data-theme="dark"] .msg-ai-copy.copied{color:#b8d68a}
+
+/* ═══ 分享面板（样式唯一真源；panel-share.js 只建 DOM，不注入样式）
+   ★ 圆角阶铁律（三档，禁自选）：弹框 6px（= 上下文背包卡片 .ctx-bd-wrap）· 预览卡/列表行 5px（= 背包条目 .bk-card）· 输入/按钮/标签/代码块/图 3px（= 背包控件）。
+     禁 ≥8px、禁胶囊；新增 .sh-* 元素必须落在这三档里（禁每个元素各写各的）。 ═══ */
+.sh-mask{position:fixed;inset:0;background:rgba(0,0,0,.44);display:none;align-items:center;justify-content:center;z-index:9000;padding:16px}
+.sh-dlg{width:min(1040px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;background:var(--background-color,#fdf6e3);color:var(--text-primary,#656360);border:1px solid var(--border-color,#d3c6aa);border-radius:6px;box-shadow:0 20px 64px rgba(0,0,0,.32);overflow:hidden}
+.sh-hd{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border-color,#d3c6aa);background:var(--card-bg,#eee8d5)}
+.sh-tabs{display:flex;gap:14px;flex:1}
+.sh-tabs b{font-size:13px;font-weight:600;opacity:.55;cursor:pointer;padding:2px 0;border-bottom:2px solid transparent}
+.sh-tabs b.on{opacity:1;border-bottom-color:var(--orange,#cb4b16)}
+.sh-x{cursor:pointer;opacity:.6;font-size:14px;line-height:1;padding:4px 6px;border-radius:3px}
+.sh-x:hover{opacity:1;background:rgba(0,0,0,.06)}
+[data-theme="dark"] .sh-x:hover{background:rgba(255,255,255,.1)}
+.sh-body{display:grid;grid-template-columns:1fr 316px;gap:0;flex:1;min-height:0}
+.sh-body.one{grid-template-columns:1fr}
+.sh-left{border-right:1px solid var(--border-color,#d3c6aa);min-height:0;overflow:auto;padding:12px}
+.sh-right{padding:12px 14px;overflow:auto;min-height:0}
+.sh-prev .sh-it{border:1px solid var(--border-color,#d3c6aa);border-radius:5px;margin-bottom:10px;overflow:hidden;background:var(--background-color,#fdf6e3)}
+.sh-prev .sh-it.q{background:rgba(203,75,22,.07)}
+.sh-it-hd{display:flex;gap:8px;align-items:center;font-size:11px;letter-spacing:.05em;text-transform:uppercase;opacity:.6;padding:6px 10px;border-bottom:1px solid var(--border-color,#d3c6aa)}
+.sh-it-hd b{color:var(--orange,#cb4b16)}
+.sh-it-bd{padding:10px 12px;font-size:13px;line-height:1.7;overflow-wrap:anywhere;max-height:420px;overflow:auto}
+.sh-it-bd pre{background:rgba(0,0,0,.05);border-radius:3px;padding:8px 10px;overflow:auto;font-size:12px}
+[data-theme="dark"] .sh-it-bd pre{background:rgba(255,255,255,.06)}
+.sh-it-bd code{font-family:ui-monospace,Consolas,monospace;font-size:.92em}
+.sh-it-bd table{border-collapse:collapse;font-size:12px}
+.sh-it-bd th,.sh-it-bd td{border:1px solid var(--border-color,#d3c6aa);padding:4px 7px}
+.sh-it-bd img{max-width:100%;border-radius:3px}
+.sh-imgph{display:inline-block;border:1px dashed var(--border-color,#d3c6aa);border-radius:3px;padding:8px 10px;font-size:12px;opacity:.7}
+.sh-lb{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;opacity:.55;margin:12px 0 5px}
+.sh-in{width:100%;padding:7px 9px;border:1px solid var(--border-color,#d3c6aa);border-radius:3px;background:var(--background-color,#fdf6e3);color:var(--text-primary,#656360);font:inherit;font-size:12.5px}
+.sh-in:focus{outline:none;border-color:var(--orange,#cb4b16)}
+.sh-seg{display:flex;gap:6px;flex-wrap:wrap}
+.sh-seg.col{flex-direction:column;gap:5px}
+.sh-seg b{flex:1 1 auto;min-width:72px;display:flex;flex-direction:column;gap:1px;align-items:center;justify-content:center;padding:7px 8px;border:1px solid var(--border-color,#d3c6aa);border-radius:3px;font-size:12px;font-weight:500;cursor:pointer;text-align:center}
+.sh-seg.col b{align-items:flex-start;text-align:left}
+.sh-seg b i{font-style:normal;font-size:10.5px;opacity:.55}
+.sh-seg b.on{border-color:var(--orange,#cb4b16);background:rgba(203,75,22,.09);color:var(--orange,#cb4b16)}
+.sh-chk{display:flex;gap:7px;align-items:flex-start;margin-top:10px;font-size:12px;cursor:pointer;line-height:1.5}
+.sh-chk input{margin-top:2px;accent-color:var(--orange,#cb4b16)}
+.sh-chk i{font-style:normal;opacity:.6;font-size:11px}
+.sh-report{margin-top:12px;font-size:12px}
+.sh-hd2{font-size:11px;letter-spacing:.04em;text-transform:uppercase;opacity:.55;margin-bottom:5px}
+.sh-tags{display:flex;flex-wrap:wrap;gap:5px}
+.sh-tags span{background:rgba(0,0,0,.05);border-radius:3px;padding:2px 7px;font-size:11px}
+[data-theme="dark"] .sh-tags span{background:rgba(255,255,255,.07)}
+.sh-ok{color:var(--green,#859900);font-size:12px}
+.sh-warn{color:var(--yellow,#b58900);font-size:12px;line-height:1.6;margin-top:8px}
+.sh-note{font-size:11px;line-height:1.5;opacity:.6;margin-top:6px}
+.sh-prev .sh-it.doc .sh-it-hd b{color:var(--orange,#cb4b16);text-transform:none;letter-spacing:0;font-size:12px}
+.sh-prev .sh-it.doc .sh-it-bd{max-height:520px}
+.sh-empty{opacity:.5;font-size:12.5px;padding:18px;text-align:center}
+.sh-ft{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border-color,#d3c6aa);background:var(--card-bg,#eee8d5)}
+.sh-cost{flex:1;font-size:12px;opacity:.72}
+.sh-btn{padding:7px 12px;border:1px solid var(--border-color,#d3c6aa);border-radius:3px;background:var(--background-color,#fdf6e3);color:inherit;font:inherit;font-size:12px;cursor:pointer}
+.sh-btn:hover{border-color:var(--orange,#cb4b16);color:var(--orange,#cb4b16)}
+.sh-btn.primary{background:var(--orange,#cb4b16);border-color:var(--orange,#cb4b16);color:#fff}
+.sh-btn.primary:hover{filter:brightness(1.06);color:#fff}
+.sh-btn:disabled{opacity:.55;cursor:default}
+.sh-done{padding:16px}
+.sh-url{font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all;padding:10px 12px;border:1px solid var(--border-color,#d3c6aa);border-radius:3px;background:rgba(203,75,22,.06)}
+.sh-meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11.5px;opacity:.65;margin-top:10px}
+.sh-sha{font-size:11px;opacity:.5;margin-top:10px}
+.sh-list{padding:4px}
+.sh-row{display:flex;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--border-color,#d3c6aa);border-radius:5px;margin-bottom:8px;background:var(--background-color,#fdf6e3)}
+.sh-row.dead{opacity:.55}
+.sh-row-main{flex:1;min-width:0}
+.sh-row-t{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-row-m{display:flex;gap:10px;font-size:11px;opacity:.6;margin-top:2px}
+.sh-row-act{display:flex;gap:8px;flex-wrap:wrap}
+.sh-row-act b{font-size:11.5px;font-weight:500;color:var(--orange,#cb4b16);cursor:pointer;white-space:nowrap}
+.sh-row-act b.danger{color:var(--red,#dc322f)}
+@media (max-width:760px){.sh-body{grid-template-columns:1fr}.sh-left{border-right:none;border-bottom:1px solid var(--border-color,#d3c6aa);max-height:38vh}}
 /* AI 等级+启动时间指示器（用户消息与 AI 回复之间） */
 .msg-tier-indicator{font-size:11px;color:var(--base01);padding:2px 0 4px 0;margin-bottom:4px;font-family:ui-monospace,Consolas,monospace;letter-spacing:.02em}
 [data-theme="dark"] .msg-tier-indicator{color:var(--base1)}
@@ -244,9 +328,9 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 .msg-ai-clock .clock-sec{font-size:24px}
 .msg-ai-clock canvas{width:42px;height:42px;border-radius:50%;flex-shrink:0}
 .msg-ai-clock .clock-cost{font-family:ui-monospace,monospace;font-weight:700;font-size:18px;flex-shrink:0}
-/* 楼层收藏星标：两侧 auto margin → 恒居中于饼图与 ge 之间（ge 恒贴右端）；未收藏低对比 / 已收藏金色 */
-.msg-ai-clock .clock-fav{border:none;background:none;padding:0 8px;font-size:26px;line-height:1;color:rgba(0,0,0,0.28);flex-shrink:0;margin-left:auto;margin-right:auto;transition:color 0.15s}
-[data-theme="dark"] .msg-ai-clock .clock-fav{color:rgba(255,255,255,0.30)}
+/* 楼层收藏星标：居中由外层 .msg-ai-fav 的 auto 外边距决定（本钮自身零外边距）；未收藏低对比 / 已收藏金色 */
+.msg-ai-clock .clock-fav{border:none;background:none;padding:0 4px;font-size:26px;line-height:1;display:inline-flex;align-items:center;color:rgba(0,0,0,0.16);flex-shrink:0;margin:0;transition:color 0.15s}
+[data-theme="dark"] .msg-ai-clock .clock-fav{color:rgba(255,255,255,0.18)}
 .msg-ai-clock .clock-fav:hover{color:rgba(0,0,0,0.65)}
 [data-theme="dark"] .msg-ai-clock .clock-fav:hover{color:rgba(255,255,255,0.75)}
 .msg-ai-clock .clock-fav.on{color:#b58900}
@@ -391,6 +475,7 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 .code-copy-btn{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:inline-flex;align-items:center;justify-content:center;height:22px;padding:0 10px;box-sizing:border-box;font-size:13px;line-height:1;color:#fff;background:rgba(0,0,0,0.7);border-radius:3px;opacity:0;pointer-events:none;user-select:none;z-index:5;transition:opacity 0.08s 0s}
 .table-wrap:hover .code-copy-btn{opacity:1;pointer-events:auto}
 .code-copy-btn:hover{background:var(--orange,#cb4b16)}.table-wrap.img-wrap{border:none;background:transparent;margin:8px 0}.table-inner{overflow-x:auto;padding:8px 10px}.table-inner table{width:auto;min-width:100%;font-size:13px}.table-inner th,.table-inner td{padding:4px 8px;text-align:left;white-space:nowrap}.table-wrap>pre{border:none;margin:0;border-radius:0;background:transparent}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
+
 .ctx-files span{background:var(--card-bg);padding:1px 6px;border-radius:3px;margin-right:4px}
 /* 排队信封 — 背包卡片 */
 #queue-strip{display:block;padding:0 0 4px;border-bottom:1px solid var(--border-color);margin-bottom:4px}
@@ -819,6 +904,9 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="panel-health.js"></script>
 <!-- ★ 楼层收藏：星标（az 区）+ 收藏跳转（孤层按需重建/滚动/高亮）；与主窗口 core/floor-favs.js 经 postMessage 协作 -->
 <script src="panel-fav.js"></script>
+<!-- ★ 分享（快照 + 租约 + 三投影）：唯一机器 + 唯一 UI；样式全部在 index.html -->
+<script src="share-machine.js"></script>
+<script src="panel-share.js"></script>
 <!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 roam（F75，F99 补：AI 面板是 iframe，父窗口收不到内部按键） -->
 <script>
 (function () {

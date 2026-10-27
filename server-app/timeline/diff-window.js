@@ -20,6 +20,7 @@
 
     var _versions = [];
     var _lastContent = null;
+    var _lastSha = null;      // 磁盘内容指纹（与主进程 _sha256 同口径）——版本下拉按它归并「磁盘现状」行
     var _lastMtimeMs = null;
     var _markedBefore = INIT_BEFORE;
     var _markedAfter = INIT_AFTER;

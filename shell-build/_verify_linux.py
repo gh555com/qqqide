@@ -248,6 +248,22 @@ try:
 except Exception as e:
     check(False, 'settings.js readable (%s)' % e)
 
+# ── 0.4.45 新增面：受控浏览器域 / webtools 套件 / 编辑器运行链 / 本地路径链接机 ──
+if _mj in nameset:
+    check('--qqqide-browser' in _mj_txt, 'shell: browser-host domain wired (--qqqide-browser)')
+    check('qqqide-browser-report' in _mj_txt, 'shell: browser-host report flag present')
+    check('browserHostSecondInstance' in _mj_txt, 'shell: browser-host second-instance routed')
+check((EP + 'webapp/ai-panel/webtools/kit/qdbrowser.py') in nameset, 'webapp: webtools kit qdbrowser.py present')
+check((EP + 'webapp/ai-panel/webtools/kit/cdp.py') in nameset, 'webapp: webtools kit cdp.py present')
+check((EP + 'webapp/core/run-machine.js') in nameset, 'webapp: run-machine present')
+check((EP + 'webapp/core/editor-breadcrumb.js') in nameset, 'webapp: editor-breadcrumb present')
+check((EP + 'webapp/core/lpl.js') in nameset, 'webapp: lpl present')
+try:
+    _rm = tf.extractfile(EP + 'webapp/core/run-machine.js').read().decode('utf-8', 'replace')
+    check('pickShellType' in _rm and "'bash'" in _rm, 'run-machine: linux bash shell wired')
+except Exception as e:
+    check(False, 'run-machine readable (%s)' % e)
+
 # ── factory_version（发布闸门会再比对源码版本）──
 fv = None
 try:

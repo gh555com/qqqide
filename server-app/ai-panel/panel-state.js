@@ -215,30 +215,6 @@ $messages.addEventListener('scroll', function () {
     if (cardPool) cardPool.onUserScroll();
 });
 
-// ═══ 表格横滚手势（用户定案）：光标停在表格上 → 上下滚轮直接左右滚表；滚到边缘自动交还楼层纵向滚动 ═══
-//   依据：表格恒无纵向滚动条（无 max-height、内容自动撑高）→ 滚轮纵向意图恒为空，无损映射为横向。
-//   触控板横滑（deltaX 主导）/ Ctrl（缩放）放行原生；仅认表格容器（.table-inner / 含 table 的 .table-wrap），其余容器零介入。
-$messages.addEventListener('wheel', function (e) {
-    if (e.defaultPrevented || e.ctrlKey) return;
-    if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
-    var sc = null, n = e.target;
-    while (n && n !== $messages) {
-        if (n.classList && (n.classList.contains('table-inner') || n.classList.contains('table-wrap'))) {
-            if (n.scrollWidth - n.clientWidth > 0 && (n.classList.contains('table-inner') || n.querySelector('table'))) { sc = n; break; }
-        }
-        n = n.parentElement;
-    }
-    if (!sc) return;
-    var max = sc.scrollWidth - sc.clientWidth;
-    var cur = sc.scrollLeft;
-    var dy = e.deltaMode === 1 ? e.deltaY * 16 : (e.deltaMode === 2 ? e.deltaY * sc.clientWidth : e.deltaY);
-    if (!dy) return;
-    if ((dy > 0 && cur >= max - 0.5) || (dy < 0 && cur <= 0.5)) return;   // 已到边：交还楼层纵向滚动
-    e.preventDefault();
-    e.stopPropagation();   // 屏蔽消息区 wheel 追踪（横向滚动不代表用户上滚楼层，禁误停自动跟滚）
-    sc.scrollLeft = Math.max(0, Math.min(max, cur + dy));
-}, { capture: true, passive: false });
-
 const $input = document.getElementById('input');
 const $sendBtn = document.getElementById('send-btn');
 const $guideBtn = document.getElementById('guide-btn');

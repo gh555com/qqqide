@@ -1406,22 +1406,8 @@
         var globalPath = dataRoot + '/global.txt';
         var globalExists = await bridge.fs.exists(globalPath);
         if (!globalExists) {
-          // ★ 本机能力提示（活跃规则行 —— 每段新对话都会注入）：装包内置「受控浏览器工具链」
-          var _wtLine = '';
-          try {
-            var _wtCands = [
-              dataRoot + '/webapp/ai-panel/webtools/README.md',                        // 运行副本（win/mac/linux 全平台真值）
-              appRootClean + '/resources/app/server-app/ai-panel/webtools/README.md',  // win 绿包资源副本
-              appRootClean + '/server-app/ai-panel/webtools/README.md'                 // dev 项目树
-            ];
-            for (var _wi = 0; _wi < _wtCands.length; _wi++) {
-              if (await bridge.fs.exists(_wtCands[_wi])) {
-                _wtLine = '网页自动化（操作网站 / 填表 / 批量任务 / 登记申请等）：先读 ' + _wtCands[_wi] + '，工具链在其同目录 kit/ 内。\n';
-                break;
-              }
-            }
-          } catch (_) { }
-          await bridge.fs.write(globalPath, _wtLine + '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n# rule"..." works here too \u2014 rule"D:\\path\\to\\doc.md" auto-loads that file (files only, no folders).\n# Want AI to know a folder? Just write its path in plain text \u2014 AI will explore it on demand.\n');
+          // ★ 产品能力提示不写进用户规则：内置能力由 capabilities/*.md 在注入时装配（用户删不掉、永不丢）
+          await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n# rule"..." works here too \u2014 rule"D:\\path\\to\\doc.md" auto-loads that file (files only, no folders).\n# Want AI to know a folder? Just write its path in plain text \u2014 AI will explore it on demand.\n');
         }
         document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: globalPath } }));
         var projRoot = window._workspaceRoot;

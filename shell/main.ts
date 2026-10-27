@@ -369,6 +369,23 @@ function handleLegacyAuthProtocolUrl(url: string): void {
                 notifyAuthReady();
                 console.log('[protocol] auth saved via legacy path, phone=' + phone.slice(-4));
             }
+        } else if (parsed.hostname === 'share') {
+            // 分享一键继问：qqqide://share/{id} → 所有窗口广播 share-open（AI 三面板各自认领，只一个落地）
+            const shareId = ((parsed.pathname || '').replace(/^\/+/, '') || parsed.searchParams.get('id') || '').toLowerCase();
+            console.log('[protocol] share deep link, id=' + (shareId || 'MISSING'));
+            if (/^[a-z0-9]{12}$/.test(shareId)) {
+                for (const w of BrowserWindow.getAllWindows()) {
+                    if (w.isDestroyed() || w.webContents.isDestroyed()) { continue; }
+                    try { w.webContents.send('qqqide:sync:message', 'share-open', { id: shareId }); } catch { /* ignore */ }
+                }
+                try {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        if (mainWindow.isMinimized()) { mainWindow.restore(); }
+                        mainWindow.show();
+                        mainWindow.focus();
+                    }
+                } catch { /* ignore */ }
+            }
         } else {
             console.log('[protocol] hostname is not "auth": ' + parsed.hostname);
         }

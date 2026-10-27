@@ -526,8 +526,9 @@
   //   ★ v6（2026-09-30 q319 定案；v16 2026-10-02 行迁 UI 行）：播放按钮从条内摘出 → 专属播放控制行（ovmb-trx：与底部条同挂 UI 行——左行右条；播放居中，
   //   两翼 逐帧 ◀|/|▶（无键）→ 4 秒 ◀◀/▶▶（键 Q/W）→ 速率 ±0.5×（键 Z/X）+ 停止；1/2/3/4 = 窗口拉伸 x1~x4（头部四钮同源）；键帽直显（无快捷键者不写）；禁回退。
   //   倍速 = 点击展开面板（0.5~4 预设单按钮网格 + 自定义倍速输入·确认/回车；非 1× 金色高亮）；
-  //   循环 + 随机 = 列表头双开关（固定绘制 + 右下角 ✓ 角标 = 唯一状态信号；L 键切循环 / R 键切随机——唯一 UI，2026-10-02）；
-  //   循环 = 二元（开 = 列表循环[单列表退化 = 重播] / 关 = 顺序播完停）——旧三态「关/列表循环/单曲循环」合并删除（列表恒显：单曲循环 ≡ 单列表循环）；倍速/循环/随机会话内粘性（重开下一个文件保持）；
+  //   单曲循环 + 循环 + 随机 = 列表头三开关（顺序自左而右；固定绘制 + 右下角 ✓ 角标 = 唯一状态信号；L 键切循环三态 / R 键切随机——唯一 UI）；
+  //   循环三态 = 关 / 列表循环（尾接首；单列表退化 = 重播）/ 单曲循环（恒重播当前轨，优先于随机与顺序）；两开关互斥（开一个即关另一个，再点自己 = 关）；
+  //   倍速/循环/随机会话内粘性（重开下一个文件保持）；
   //   按钮 data-no-cd 跳过全局冷却护盾（准许连点）；会话清理经 _stopMedia 统一执行（close/切换全覆盖）。
   //   ★ v9（2026-10-02 q319 用户定案）：八合一按钮按住连按（450ms 后连发）+ 动作浮读（跳秒/逐帧/倍速——连按实时刷新、恒显当前倍速）；面板用词「自定义倍速」。
   var _OV_MEDIA_RATE_PRESETS = [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4];   // 面板预设（每步一个按钮；2026-10-01 q319 用户定案：3.5× 移除、0.5~1 间增 0.75×）
@@ -535,14 +536,16 @@
   var _OV_MEDIA_TIMER_PRESETS = [10, 30, 60, 90];
   var _ovMediaRate = 1;         // 会话粘性（支持任意自定义值）
   // （逐帧帧率 _ovMediaFps / Esc 前置钩子 _engEscHook —— v5 下沉为控制条实例局部变量，同页多实例互不串号）
-  // ★ 播放模式 v3（2026-10-02 q319 用户定案）：循环 = 二元开关（开 = 列表循环[单列表退化 = 重播] / 关 = 顺序播完停）
-  //   —— 旧三态「关/列表循环/单曲循环」合并（列表恒显：单曲循环 ≡ 单列表循环，独立档位删除）；随机 = 并列独立维度（袋制）；
-  //   两维任意组合（顺序单次 / 顺序循环 / 随机单次 / 随机循环）；会话粘性（跨窗记忆 = 宿主偏好机器：新窗从 player-state.json prefs 初始化，无记录 → 出厂默认 多文件列表 循环开+随机关）；存量 'one' 归一 'all'
-  var _ovMediaLoop = 'off';       // 'off' | 'all'（二元；'one' 已废除）
+  // ★ 播放模式：循环三态（关 / 列表循环[单列表退化 = 重播] / 单曲循环[恒重播当前轨、优先于随机与顺序]）——2026-10-26 恢复单曲档：
+  //   两个独立开关（单曲循环在循环左）各自切换且互斥（开一即关另一、再点自己 = 关）；L 键三态轮转 / R 键随机；
+  //   两维任意组合（顺序单次 / 顺序循环 / 随机单次 / 随机循环）；会话粘性（跨窗记忆 = 宿主偏好机器：新窗从 player-state.json prefs 初始化，无记录 → 出厂默认 多文件列表 循环开+随机关）
+  var _ovMediaLoop = 'off';       // 'off' | 'all'（列表循环）| 'one'（单曲循环——2026-10-26 恢复为独立档，列表头左侧独立开关）
   var _ovMediaShuffle = false;    // 随机维度（与循环并列）
 var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨自动居中当前所播文件（含挂载即定位）；关（默认）= 列表永不自动滚（切轨/任何时候都不帮用户滚，列表恒停原位）
   function _ovLoopName(v) {
-    return v === 'all' ? _i('shell.overlay.mOn', '开') : _i('shell.overlay.mOff', '关');
+    if (v === 'all') { return _i('shell.overlay.mloopAll', '列表循环'); }
+    if (v === 'one') { return _i('shell.overlay.mloopOne', '单曲循环'); }
+    return _i('shell.overlay.mOff', '关');
   }
   function _ovShufName(v) { return v ? _i('shell.overlay.mOn', '开') : _i('shell.overlay.mOff', '关'); }
 
@@ -559,6 +562,9 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     vol: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',
     volMute: 'M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',
     repeat: 'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z',
+    // ★ 单曲循环（2026-10-26 q319 用户定案·v2）：圆角方环（左右两组半环 + 对向箭头）+ 正中高「1」
+    //   14×14 实栅格实测：环与 1 恒分离（连通域 3 块）、1 占 3×6 像素可辨为数字；旧「圆环 + 细 1」版两者糊成 1 块（与追踪 bullseye 汉明差仅 0.17 → 撞脸），本版 0.61
+    repeatOne: '<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4.4 11.4V7.9a3.5 3.5 0 0 1 3.5-3.5h7.4"/><path d="M19.6 12.6v3.5a3.5 3.5 0 0 1-3.5 3.5H8.7"/></g><path d="M15.3 1.9 20.7 4.4 15.3 6.9z"/><path d="M8.7 17.1 3.3 19.6 8.7 22.1z"/><rect x="10.85" y="7.5" width="2.3" height="9"/><path d="M10.85 7.5 8.75 9.05 8.75 10.6 10.85 9.8z"/>',
     prev: 'M6 6h2v12H6zM9.5 12l8.5 6V6z',
     next: 'M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z',
     // ★ 居中追踪按钮（2026-10-02 q319 v14 定案）：圆环 + 中心点（打靶感）——点击 = 当前所播文件跳转居中 + 追踪开关（右下角 ✓）
@@ -1123,11 +1129,12 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     }
     function syncMode() {
       _syncLoopBtn();
+      _syncOneBtn();
       _syncShufBtn();
     }
     // 维度写入唯一收敛点（开关点击 / L·R 键共走）：写状态 → 刷新外观 → 通知外部（随机开启时重建随机袋）
     function _applyLoop(v) {
-      _ovMediaLoop = (v === 'all') ? 'all' : 'off'; syncMode();
+      _ovMediaLoop = (v === 'all' || v === 'one') ? v : 'off'; syncMode();
       _persistTick();
       if (api && api.onModeChange) { try { api.onModeChange('loop'); } catch (_) { } }
     }
@@ -1137,8 +1144,18 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       if (api && api.onModeChange) { try { api.onModeChange('shuffle'); } catch (_) { } }
     }
     function _cycleLoop() {
-      _applyLoop(_ovMediaLoop === 'off' ? 'all' : 'off');
+      _applyLoop(_ovMediaLoop === 'off' ? 'all' : (_ovMediaLoop === 'all' ? 'one' : 'off'));
       _hintShow(_i('shell.overlay.mlooplab', '循环') + '：' + _ovLoopName(_ovMediaLoop));   // ★ v21：状态浮读入提示框（旧 qoast 废除）
+    }
+    // ★ 列表循环开关（2026-10-26）：与单曲循环互斥——开它即关单曲；再点自己 = 关
+    function _toggleListLoop() {
+      _applyLoop(_ovMediaLoop === 'all' ? 'off' : 'all');
+      _hintShow(_i('shell.overlay.mlooplab', '循环') + '：' + (_ovMediaLoop === 'all' ? _ovLoopName('all') : _i('shell.overlay.mOff', '关')));
+    }
+    // ★ 单曲循环（2026-10-26 q319 用户定案）：与循环互斥——开它即关循环；再点自己 = 关
+    function _toggleOneLoop() {
+      _applyLoop(_ovMediaLoop === 'one' ? 'off' : 'one');
+      _hintShow(_i('shell.overlay.mloopOne', '单曲循环') + '：' + (_ovMediaLoop === 'one' ? _i('shell.overlay.mOn', '开') : _i('shell.overlay.mOff', '关')));
     }
     function _toggleShuffle() {
       _applyShuffle(!_ovMediaShuffle);
@@ -1147,8 +1164,13 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     // ★ 列表头双开关同步（2026-10-02 q319）：状态信号 = 右下角 ✓ 角标 + 勾亮时外框同转金（固定绘制）
     function _syncLoopBtn() {
       if (!_dockLoopB) { return; }
-      _dockLoopB.classList.toggle('ovmb-dsw-on', _ovMediaLoop !== 'off');
-      _dockLoopB.title = _i('shell.overlay.mlooplab', '循环') + '：' + _ovLoopName(_ovMediaLoop) + ' (L)';
+      _dockLoopB.classList.toggle('ovmb-dsw-on', _ovMediaLoop === 'all');
+      _dockLoopB.title = _i('shell.overlay.mlooplab', '循环') + '：' + (_ovMediaLoop === 'all' ? _ovLoopName('all') : _i('shell.overlay.mOff', '关')) + ' (L)';
+    }
+    function _syncOneBtn() {
+      if (!_dockOneB) { return; }
+      _dockOneB.classList.toggle('ovmb-dsw-on', _ovMediaLoop === 'one');
+      _dockOneB.title = _i('shell.overlay.mloopOne', '单曲循环') + '：' + (_ovMediaLoop === 'one' ? _i('shell.overlay.mOn', '开') : _i('shell.overlay.mOff', '关'));
     }
     function _syncShufBtn() {
       if (!_dockShufB) { return; }
@@ -1172,7 +1194,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
     // ═══ ★ 播放列表 → 右侧常驻 dock（2026-10-02 q319 定案）：恒显（含单曲）、恒右、满高自顶排列（行从最上方打起）；═══
     //   序号 + 文件名 + 行尾三钮（上移/下移/移除）；拖动 = 指针拖拽重排（阈值 5px，未达阈值零干扰）；
     //   当前轨 ▶ 金色高亮；默认永不自动滚（列表恒停原位——2026-10-02 v14；仅追踪开启时居中跟随）；点击任意行切轨（拖动余波点击自动抑制）。
-    var dockEl = null, _plListEl = null, _dockCntEl = null, _dockLoopB = null, _dockShufB = null, _dockPrevB = null, _dockFollowB = null, _dockNextB = null;
+    var dockEl = null, _plListEl = null, _dockCntEl = null, _dockOneB = null, _dockLoopB = null, _dockShufB = null, _dockPrevB = null, _dockFollowB = null, _dockNextB = null;
     var _dockSide = 'right';   // 停靠边恒右（2026-10-02 定案）
     var _plDrag = { from: -1, on: false, y0: 0, j: -1, after: false, el: null };
     var _plDragEndAt = 0;   // 拖动收尾余波点击抑制（<400ms 内行点击忽略）
@@ -1387,7 +1409,8 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
         b.addEventListener('click', fn);
         return b;
       }
-      _dockLoopB = _dockSwBtn(_OV_MEDIA_ICONS.repeat, _i('shell.overlay.mlooplab', '循环'), function () { _cycleLoop(); });      // 与 L 键同源
+      _dockOneB = _dockSwBtn(_OV_MEDIA_ICONS.repeatOne, _i('shell.overlay.mloopOne', '单曲循环'), function () { _toggleOneLoop(); });   // ★ 单曲循环（列表循环左侧）
+      _dockLoopB = _dockSwBtn(_OV_MEDIA_ICONS.repeat, _i('shell.overlay.mlooplab', '循环'), function () { _toggleListLoop(); });   // 列表循环开关（与单曲循环互斥；L 键 = 三态轮转）
       _dockShufB = _dockSwBtn(_OV_MEDIA_ICONS.shuffle, _i('shell.overlay.mshuflab', '随机'), function () { _toggleShuffle(); });   // 与 R 键同源
       // ★ 2026-10-02 q319 v14：头部导航组（标题「播放列表」废除）——[< P] [◎追踪] [N >]
       //   N/P = 纯文字按钮（Tahoma 非加粗·大写·金色=快捷键标注——N/P 亦是真快捷键）；< > = 纯文字箭头恒中性色
@@ -1408,7 +1431,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       var _dnav = document.createElement('span');
       _dnav.className = 'ovmb-dnav';
       _dnav.appendChild(_dockPrevB); _dnav.appendChild(_dockFollowB); _dnav.appendChild(_dockNextB);
-      head.appendChild(_dnav); head.appendChild(_dockLoopB); head.appendChild(_dockShufB); head.appendChild(_dockCntEl);
+      head.appendChild(_dnav); head.appendChild(_dockOneB); head.appendChild(_dockLoopB); head.appendChild(_dockShufB); head.appendChild(_dockCntEl);
       dockEl.appendChild(head);
       _plListEl = document.createElement('div');
       _plListEl.className = 'ovmb-pllist';
@@ -1547,7 +1570,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       };
       H._ovTxSlot = _txSlotReg;
       _applyDockSide();
-      _syncLoopBtn(); _syncShufBtn(); _syncFollowBtn();   // 初始角标/标题对齐（syncMode 首调先于 dock 构建——此处补同步）
+      _syncLoopBtn(); _syncOneBtn(); _syncShufBtn(); _syncFollowBtn();   // 初始角标/标题对齐（syncMode 首调先于 dock 构建——此处补同步）
     }
 
     // ═══ ★ A-B 循环（2026-09-26 q319）：A/B 点均存在且在播 → currentTime ≥ B 跳回 A ═══
@@ -2399,6 +2422,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
       try { syncVol(); } catch (_) { }
       try { _abRender(); } catch (_) { }
       try { _syncLoopBtn(); } catch (_) { }
+      try { _syncOneBtn(); } catch (_) { }
       try { _syncShufBtn(); } catch (_) { }
       try { _syncFollowBtn(); } catch (_) { }
       try { _tmrPaint(); } catch (_) { }   // 定时关闭（倒计时/标题随语言现算）
@@ -2435,8 +2459,7 @@ function mount(opts) {
   // 初值覆盖（播放器窗持久化恢复；悬浮层默认不传 = 保持会话粘性）
   var _init = opts.initial || {};
   if (typeof _init.rate === 'number' && isFinite(_init.rate)) { _ovMediaRate = Math.round(Math.max(0.0625, Math.min(16, _init.rate)) * 100) / 100; }
-  if (_init.loop === 'all' || _init.loop === 'one') { _ovMediaLoop = 'all'; }   // 存量 'one' 归一 'all'（单曲循环档已合并——2026-10-02）
-  else if (_init.loop === 'off') { _ovMediaLoop = 'off'; }
+  if (_init.loop === 'all' || _init.loop === 'one' || _init.loop === 'off') { _ovMediaLoop = _init.loop; }   // ★ 单曲循环（'one'）恢复为独立档（2026-10-26）
   if (typeof _init.shuffle === 'boolean') { _ovMediaShuffle = _init.shuffle; }
   if (typeof _init.follow === 'boolean') { _ovMediaFollow = _init.follow; }   // ★ 追踪（v14）——会话恢复
   // ★ dock 停靠边恒右（2026-10-02 定案）：旧 init.dockSide 初值覆盖已删——存量会话残留 'left' 不再生效
@@ -2730,7 +2753,8 @@ function mount(opts) {
       }
       // 模式裁决（ended 后；A-B 已由控制条先行拦截）——循环 × 随机 两独立维度
       function _plOnEnded() {
-        if (!_plList || _plN < 2) {                                        // 单列表：循环关=播完停；循环开=重播（= 旧单曲循环等价物）
+        if (_ovMediaLoop === 'one') { _replayCur(); return; }              // ★ 单曲循环（2026-10-26）：恒重播当前轨——优先于随机与顺序进位
+        if (!_plList || _plN < 2) {                                        // 单列表：循环关=播完停；循环开=重播
           if (_ovMediaLoop !== 'off') { _replayCur(); }
           return;
         }

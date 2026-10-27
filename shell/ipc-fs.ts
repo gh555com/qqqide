@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { _sn } from './ipc-state';
-import { _tlBlobPath, _gunzipSync } from './timeline-store';
+import { _tlBlobPath, _gunzipSync, _tlScheduleCapture } from './timeline-store';
 import { decodeFile, encodeFile, registerFileEncodingIpc } from './file-encoding';
 import { CacheStore } from './cache-store';
 import { getOsBaseDir } from './portable-paths';
@@ -561,6 +561,9 @@ export function registerFsIpc(cacheStore?: CacheStore): void {
             // ★ 编码机器统一编码（原编码回写/另存转换，file-encoding.ts）
             //   第三参 enc：undefined=自动（固定优先/fresh 复用/外部已变重测）；字符串=另存为该编码（清固定）
             await encodeFile(p, String(content), (enc as any) || undefined);
+            // ★ 时间线兜底捕获：此写的调用方若随后显式 record（带溯源）→ 自动认领作废；
+            //   无人认领的写（配置/种子/脚本…）才入库——写入口是唯一必经之路，新写入路径天然覆盖
+            _tlScheduleCapture(p, content);
         }
         return true;
     });

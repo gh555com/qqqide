@@ -153,7 +153,7 @@ function _ensureStoreV2(): void {
     const prefs: any = {};
     if (raw) {
         if (typeof raw.rate === 'number' && isFinite(raw.rate)) { prefs.rate = raw.rate; }
-        if (raw.loop === 'one' || raw.loop === 'all' || raw.loop === 'off') { prefs.loop = (raw.loop === 'off') ? 'off' : 'all'; }
+        if (raw.loop === 'one' || raw.loop === 'all' || raw.loop === 'off') { prefs.loop = raw.loop; }
         if (typeof raw.shuffle === 'boolean') { prefs.shuffle = raw.shuffle; }
         if (typeof raw.volume === 'number' && isFinite(raw.volume)) { prefs.volume = raw.volume; }
         if (typeof raw.muted === 'boolean') { prefs.muted = raw.muted; }
@@ -193,8 +193,7 @@ function _normSession(src: any): PSession {
         s.index = s.list.length ? Math.max(0, Math.min(s.list.length - 1, src.index | 0)) : 0;
     }
     if (typeof src.rate === 'number' && isFinite(src.rate)) { s.rate = Math.max(0.0625, Math.min(16, src.rate)); }
-    if (src.loop === 'one') { s.loop = 'all'; }   // 存量 'one' 归一 'all'（单曲循环档已合并）
-    else if (src.loop === 'off' || src.loop === 'all') { s.loop = src.loop; }
+    if (src.loop === 'off' || src.loop === 'all' || src.loop === 'one') { s.loop = src.loop; }   // ★ 单曲循环（'one'）= 独立档（2026-10-26 恢复）
     if (typeof src.shuffle === 'boolean') { s.shuffle = src.shuffle; }
     if (typeof src.follow === 'boolean') { s.follow = src.follow; }
     if (typeof src.volume === 'number' && isFinite(src.volume)) { s.volume = Math.max(0, Math.min(1.5, src.volume)); }
@@ -778,8 +777,7 @@ export function registerPlayerIpc(root: string, bootUrl: string, appVersion: str
                 if (Array.isArray(patch.list)) { s.list = patch.list.filter((it: any) => it && typeof it.localPath === 'string' && it.localPath).slice(0, 2000); }
                 if (typeof patch.index === 'number') { s.index = s.list.length ? Math.max(0, Math.min(s.list.length - 1, patch.index | 0)) : 0; }
                 if (typeof patch.rate === 'number' && isFinite(patch.rate)) { s.rate = Math.max(0.0625, Math.min(16, patch.rate)); }
-                if (patch.loop === 'one') { s.loop = 'all'; }   // 存量 'one' 归一 'all'（单曲循环档已合并）
-                else if (patch.loop === 'off' || patch.loop === 'all') { s.loop = patch.loop; }
+                if (patch.loop === 'off' || patch.loop === 'all' || patch.loop === 'one') { s.loop = patch.loop; }   // ★ 单曲循环（'one'）= 独立档（2026-10-26 恢复）
                 if (typeof patch.shuffle === 'boolean') { s.shuffle = patch.shuffle; }
                 if (typeof patch.follow === 'boolean') { s.follow = patch.follow; }
                 if (typeof patch.volume === 'number' && isFinite(patch.volume)) { s.volume = Math.max(0, Math.min(1.5, patch.volume)); }

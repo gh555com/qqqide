@@ -78,7 +78,14 @@ function _favApplyStar(btn) {
     var t = _favResolve(btn);
     var on = !!(t.qid && t.fn && _favState[_favKey(t.qid, t.fn)]);
     if (on) btn.classList.add('on'); else btn.classList.remove('on');
-    btn.textContent = on ? '\u2605' : '\u2606';
+    // ★ 星标图标 = qqq-icons 手绘唯一真源（qqi-act-star / qqi-act-star-on）——空星/实星靠类切换；
+    //   禁再写 textContent（会抹掉图标 span）；三钮（复制/分享/收藏）同图格同笔触同尺寸。
+    var ic = btn.querySelector('.qqi');
+    if (!ic) {
+        btn.innerHTML = '<span class="qqi qqi-act-star"></span>';
+        ic = btn.querySelector('.qqi');
+    }
+    if (ic) ic.className = 'qqi ' + (on ? 'qqi-act-star-on' : 'qqi-act-star');
     btn.title = on ? _favFq('fav.starTipOn', '已收藏（点击编辑）') : _favFq('fav.starTip', '收藏此楼层');
     return !!(t.qid && t.fn);
 }

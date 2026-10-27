@@ -108,6 +108,21 @@
     //   ★ f53：上下收窄 1px（高 10→9——顶边不动、底边上提 1px；纵向上下各留 1px 恰居中）
     'copy': '<path fill-rule="evenodd" d="M3 3h6v7H3z M4 4h4v5H4z"/>' +
       '<path d="M1 1h6v1H2v5H1z"/>',
+    // ── 楼层动作组三件套（复制 / 分享 / ☆收藏）——同一画师同一种笔触：16 网格 · 同 stroke 0.9（细线常态）·
+    //   全 round 端点 · 墨迹同占 ~1.3~14.2（并列成组时观感严格同尺寸）；消费方 = ai-panel az 行（盒 26px = 16 网格等比放大）。
+    //   ★ 加粗档不另画：hover 时用 HOVER_BOLD(=1.8) 派生的第二张 mask（同一份 path，只乘 stroke 系数）——
+    //     消费方 CSS 以 var(--qqq-m-bold) 切换；禁在 UI 侧重写 path、禁第二套图标。
+    //   ★ 禁用像素硬边路线（26 网格 @1:1 + crispEdges + .5 对齐）：跨倍缩放必然还原成半透明灰边，
+    //     且曲线关抗锯齿只剩台阶渣——细线观感的唯一正解是本组的等比细线。
+    //   铁律：这三钮只准用本组形状（禁内联第二套 SVG、禁卡片自绘、禁换回 emoji/字符字形）。
+    'act-copy': '<rect x="5.6" y="5.6" width="7.9" height="7.9" rx="1.6" fill="none" stroke="#000" stroke-width="0.9"/>' +
+      '<path d="M10.4 5.6V3.5A1.5 1.5 0 0 0 8.9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5H5.6" fill="none" stroke="#000" stroke-width="0.9" stroke-linecap="round"/>',
+    'act-share': '<circle cx="12" cy="4" r="2.1" fill="none" stroke="#000" stroke-width="0.9"/>' +
+      '<circle cx="4" cy="8" r="2.1" fill="none" stroke="#000" stroke-width="0.9"/>' +
+      '<circle cx="12" cy="12" r="2.1" fill="none" stroke="#000" stroke-width="0.9"/>' +
+      '<path d="M5.88 7.06L10.12 4.94M5.88 8.94L10.12 11.06" fill="none" stroke="#000" stroke-width="0.9" stroke-linecap="round"/>',
+    'act-star': '<path d="M8 1.9l1.5 4.24 4.49.11-3.56 2.74 1.27 4.31L8 10.75l-3.7 2.55 1.27-4.31-3.56-2.74 4.49-.11z" fill="none" stroke="#000" stroke-width="0.9" stroke-linejoin="round"/>',
+    'act-star-on': '<path d="M8 1.9l1.5 4.24 4.49.11-3.56 2.74 1.27 4.31L8 10.75l-3.7 2.55 1.27-4.31-3.56-2.74 4.49-.11z" fill="#000" stroke="#000" stroke-width="0.9" stroke-linejoin="round"/>',
     // 邮件（细线加高版·直角：框 + 折信口——2026-10-03 再定案：上下加高、实心块改细线）
     'mail': '<rect x="2.2" y="2.9" width="11.6" height="10.3" fill="none" stroke="#000" stroke-width="1.2"/>' +
       '<path d="M2.7 3.4L8 8.2l5.3-4.8" fill="none" stroke="#000" stroke-width="1.2"/>',
@@ -168,15 +183,25 @@
 
   // crispEdges 白名单：纯直线/像素台阶图标才可关抗锯齿（真曲线禁入）；像素吸附让边缘完全实色
   //   folder-r / file-r（全直线；file-r 45° 对角切口 = 三阶直角阶梯，f49 定案）；clock / mail-r 像素台阶（f52/f51）
+  //   ★ 本白名单同时是「零抗锯齿」准入：纯直线/像素台阶/多边形才可入（真曲线禁入——关了抗锯齿就是台阶渣）
   var CRISP = { copy: 1, shield: 1, git: 1, 'folder-r': 1, 'file-r': 1, 'mail-r': 1, 'clock': 1 };
   // 非 16 网格形状的 viewBox 覆盖（Roam 13 网格 / mail-r 12 / copy·clock 11——详 SHAPES 头注）
   var VB = { 'folder-r': 13, 'file-r': 13, 'mail-r': 12, 'copy': 11, 'clock': 11 };
 
-  function _uri(name) {
+  // 悬停加粗档（同一份 path 只乘 stroke 系数 → 独立 mask）：消费方 CSS 用 var(--qqq-m-bold) 切换
+  var HOVER_BOLD = { 'act-copy': 1.8, 'act-share': 1.8, 'act-star': 1.8, 'act-star-on': 1.8 };
+
+  function _uri(name, k) {
     var vb = VB[name] || 16;
+    var body = SHAPES[name];
+    if (k && k !== 1) {
+      body = body.replace(/stroke-width="([\d.]+)"/g, function (_all, v) {
+        return 'stroke-width="' + (parseFloat(v) * k).toFixed(2) + '"';
+      });
+    }
     return 'data:image/svg+xml,' + encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + vb + ' ' + vb + '"' +
-      (CRISP[name] ? ' shape-rendering="crispEdges"' : '') + '>' + SHAPES[name] + '</svg>'
+      (CRISP[name] ? ' shape-rendering="crispEdges"' : '') + '>' + body + '</svg>'
     );
   }
 
@@ -187,7 +212,10 @@
     'mask-repeat:no-repeat;mask-position:center;mask-size:contain}';
   NAMES.forEach(function (n) {
     var u = _uri(n);
-    css += '.qqi-' + n + '{-webkit-mask-image:url("' + u + '");mask-image:url("' + u + '")}';
+    var decl = '-webkit-mask-image:url("' + u + '");mask-image:url("' + u + '")';
+    // ★ 加粗档只作为同元素上的自定义属性存在（不自动生效）：消费方 :hover 里写 mask-image:var(--qqq-m-bold)
+    if (HOVER_BOLD[n]) decl += ';--qqq-m-bold:url("' + _uri(n, HOVER_BOLD[n]) + '")';
+    css += '.qqi-' + n + '{' + decl + '}';
   });
   // Monaco codeLens 桥：'$(qqq-folder)' → <span class="codicon codicon-qqq-folder"> → 同款手绘 SVG
   css += '.codicon[class*="codicon-qqq-"]{-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;' +

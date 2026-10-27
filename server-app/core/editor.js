@@ -623,6 +623,37 @@
     _feedToAiActions.set(ed, { disposable: disposable, filePath: filePath, monaco: monaco });
   }
 
+  // ── 分享：编辑器右键 → 生成公网快照链接（唯一机器 = AI 面板 panel-share.js）──
+  //   本机绝对路径不进快照（share-machine 只取文件名）；选区非空时面板里多一项「仅选中内容」。
+  function _addShareAction(ed, monaco, filePath) {
+    if (!ed || !monaco || !filePath) return;
+    ed.addAction({
+      id: 'qqq-share-file',
+      label: window._i ? window._i('editor.shareFile', '分享到公网…') : '分享到公网…',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.7,
+      run: function () {
+        var sel = '';
+        try {
+          var s = ed.getSelection();
+          if (s && !s.isEmpty() && ed.getModel()) sel = ed.getModel().getValueInRange(s) || '';
+        } catch (_) { }
+        var ok = false;
+        try {
+          if (typeof window.qqqideShareOpen === 'function') {
+            ok = window.qqqideShareOpen({ paths: [filePath], selText: sel }) !== false;
+          }
+        } catch (_) { ok = false; }
+        if (!ok) {
+          try {
+            window.qqqideQoast && window.qqqideQoast.show('分享不可用：AI 面板未就绪，稍后重试',
+              { type: 'error', duration: 3200 });
+          } catch (_) { }
+        }
+      }
+    });
+  }
+
   // ── 运行：编辑器右键 → 用内置解释器运行（core/run-machine.js 唯一机；.py/.pyw→Python、.js/.mjs/.cjs→Node）──
   function _addRunAction(ed, monaco, filePath) {
     if (!ed || !monaco || !filePath) return;
@@ -1087,6 +1118,7 @@
       _applyMinimapPref(ed, monaco, filePath);
       _addFeedToAiAction(ed, monaco, filePath);
       _addRunAction(ed, monaco, filePath);
+      _addShareAction(ed, monaco, filePath);
       // ★ Markdown 预览 action（pane 编辑器；同 md-preview.js）
       try { window.__qqqMdAttachAction && window.__qqqMdAttachAction(ed, monaco, filePath); } catch (_) {}
       // 括号匹配（自实现）
@@ -1158,8 +1190,14 @@
         try {
             var versions = await bridge.timeline.versions({ projectRoot: root, filePath: fp });
             if (versions && versions.length > 0) {
-                var lastVer = versions[versions.length - 1];
-                var prevContent = await bridge.timeline.content({ projectRoot: root, blobHash: lastVer.blob_hash });
+                // ★ 基准 = 最近一条「内容与本次不同」的快照。写入口兜底捕获可能已把本次内容入库，
+                //   直接取末尾会拿自己跟自己比 → +N/-M 恒为 0（历史统计静默丢真）
+                var prevContent = null;
+                var _stop = Math.max(0, versions.length - 3);
+                for (var _vi = versions.length - 1; _vi >= _stop; _vi--) {
+                    var _pc = await bridge.timeline.content({ projectRoot: root, blobHash: versions[_vi].blob_hash });
+                    if (typeof _pc === 'string' && _pc !== content) { prevContent = _pc; break; }
+                }
                 if (typeof prevContent === 'string') {
                     var diffFn = (typeof window._a4DiffStats === 'function') ? window._a4DiffStats : null;
                     if (diffFn) {

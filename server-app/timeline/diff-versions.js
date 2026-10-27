@@ -5,6 +5,31 @@
 // ============================================================================
 'use strict';
 
+    // ═══ 磁盘现状真理机：内容 + 内容指纹（与主进程 _sha256 同口径：CRLF 归一后 SHA-256）═══
+    //   兜底捕获行的 ts 晚于文件 mtime（认领窗 1.5s）——时间戳近似归并会漏，内容指纹才是真相。
+    async function _diskShaOf(content) {
+        if (typeof content !== 'string' || !content) return null;
+        try {
+            if (!bridge || !bridge.hash || !bridge.hash.buffer) return null;
+            var norm = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            var bytes = new TextEncoder().encode(norm);
+            var bin = '';
+            for (var i = 0; i < bytes.length; i += 8192) {
+                bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+            }
+            var r = await bridge.hash.buffer(btoa(bin), 'strong');
+            return (r && r.sha256) ? r.sha256 : null;
+        } catch (_) { return null; }
+    }
+    async function _refreshDiskState(filePath) {
+        try {
+            _lastContent = await bridge.timeline.readCurrent(filePath);
+        } catch (_) {
+            _lastContent = null;
+        }
+        _lastSha = await _diskShaOf(_lastContent);
+    }
+
     // ═══ 加载版本列表 ═══
     var _loading = false;
     async function loadVersions(filePath) {
@@ -20,11 +45,7 @@
                 console.error('[diff] versions failed:', e);
                 _versions = [];
             }
-            try {
-                _lastContent = await bridge.timeline.readCurrent(filePath);
-            } catch (_) {
-                _lastContent = null;
-            }
+            await _refreshDiskState(filePath);
             await _refreshFileStat(filePath);
             if (_versions.length === 0 && !_lastContent) {
                 $emptyState.textContent = _i('timeline.noVersions', '该文件没有历史版本');
@@ -102,6 +123,7 @@
         if (source === 'run-command') return 'cmd';
         if (source === 'restore') return 'restore';
         if (source === 'restore-guard') return 'guard';
+        if (source === 'fs') return 'write';
         return 'other';
     }
 
@@ -127,32 +149,42 @@
             });
         }
         var isFirst = options.length === 0;
-        // ── 合并「当前文件」到已有版本（按秒级时间戳归并，避免重复行）──
+        // ── 合并「当前文件」到已有版本（内容指纹优先，秒级时间戳兜底）──
         var lastMerged = false;
         if (_lastContent !== null) {
             var lastTs = _lastMtimeMs;
             var lastLabel = formatTs(lastTs);
-            // ★ 必须从后往前遍历（最新版本优先），否则同秒内 before 版本会错误地吃掉 'last' 标记
-            for (var li = options.length - 1; li >= 0; li--) {
-                // 秒级比对（同秒视为同一时刻）
-                if (lastTs && Math.abs(options[li].ts - lastTs) < 1000) {
-                    // 把版本条目升级为 last 载体（value 改为 'last'，保留 blob_hash）
-                    options[li]._blobHash = options[li].value;
-                    options[li].value = 'last';
-                    options[li].isLast = true;
-                    options[li].label = lastLabel; // 统一显示标签
-                    lastMerged = true;
-                    break;
+            var _mergeAt = -1;
+            // ① 内容相等且就是最新版本 → 归并（写入口兜底捕获行的 ts 比 mtime 晚 1.5s，
+            //    时间戳近似归并不上 → 会多出一条“写入行 + disk 行”同内容重复）。
+            //    只看最新一条：磁盘内容若等于更早的版本（外部回滚但未记录），恰是应如实展示差异的情形。
+            if (_lastSha && options.length > 0 && options[options.length - 1].value === _lastSha) {
+                _mergeAt = options.length - 1;
+            }
+            // ② 无内容指纹（旧壳层/读盘失败）→ 退回秒级时间戳近似（从后往前，最新优先）
+            if (_mergeAt < 0 && lastTs) {
+                for (var li = options.length - 1; li >= 0; li--) {
+                    if (Math.abs(options[li].ts - lastTs) < 1000) { _mergeAt = li; break; }
                 }
             }
+            if (_mergeAt >= 0) {
+                // 把版本条目升级为 last 载体（value 改为 'last'，保留 blob_hash）
+                options[_mergeAt]._blobHash = options[_mergeAt].value;
+                options[_mergeAt].value = 'last';
+                options[_mergeAt].isLast = true;
+                options[_mergeAt].label = lastLabel; // 统一显示标签
+                lastMerged = true;
+            }
             if (!lastMerged) {
+                // ★ 合成行 = 磁盘现状（不是一条编辑记录）：必须带出自身标签，
+                //   否则看起来像“一条没有编辑者的历史版本”（误读为时间线丢作者）
                 options.push({
                     value: 'last',
                     label: lastLabel,
                     ts: lastTs || Date.now(),
                     source: 'current',
                     floorId: null,
-                    sourceLabel: '',
+                    sourceLabel: 'disk',
                     diffStr: '',
                     isFirst: isFirst,
                     isLast: true,

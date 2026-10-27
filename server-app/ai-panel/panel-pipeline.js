@@ -1463,9 +1463,16 @@ async function _executeSend(intent) {
                     // ★ C 重构：content = API 完整回复 = 唯一权威真理源
                     //   流式阶段（onToken→_doStreamRender）仅为实时预览。
                     //   _contentWrap 仅含 AI 段落，aq1/时钟/A1/A4 均在外部，零副作用。
-                    //   不再做 _buf/_paras flush、尾段补丁、textContent 对比——全删。
-                    if (_targetDiv2._lastParaEl) { _targetDiv2._lastParaEl.remove(); _targetDiv2._lastParaEl = null; }
-                    if (content && typeof content === 'string' && content.trim()) {
+                    //   不再做 _buf/_paras flush、尾段补丁、textContent 对比——全删。                    if (_targetDiv2._lastParaEl) { _targetDiv2._lastParaEl.remove(); _targetDiv2._lastParaEl = null; }
+                    // ★ 楼层动作（复制/分享）取的恒是真 Markdown：终稿 content = 唯一权威真理源
+                    //   （旧式：流式楼层从未持有 _rawMarkdown → 复制/分享只剩 textContent 兑底，丢格式）
+                    if (content && typeof content === 'string' && content.trim()) {
+                        _targetDiv2._rawMarkdown = (_targetDiv2._firstHouseDone && _targetDiv2._rawMarkdown)
+                            ? (_targetDiv2._rawMarkdown + '\n\n' + content)
+                            : content;
+                        _targetDiv2._fullText = _targetDiv2._rawMarkdown;
+                    }
+                    if (content && typeof content === 'string' && content.trim()) {
                         var _rendered = renderMarkdown(content);
                         if (_targetDiv2._firstHouseDone) {
                             // ★ V12：多 house 楼层 — 追加分隔条 + 新内容，不复写前面 house
@@ -1488,6 +1495,7 @@ async function _executeSend(intent) {
                     try { if (typeof window.linkifyLocalPaths === 'function') window.linkifyLocalPaths(_targetDiv2._contentWrap); } catch (_eLp2) { }
                     // ★ 存在性探针（AI 最终回复权威渲染点）：确认存在才显链，不存在立即还原纯文本
                     try { if (typeof window.probeLocalPathLinks === 'function') window.probeLocalPathLinks(_targetDiv2._contentWrap); } catch (_ePr2) { }
+
                     _targetDiv2._dirty = false;
                     _targetDiv2._renderScheduled = false;
                     // ★ C 重构：innerHTML 已覆盖，清 agent 流状态防 _a4BuildCompleteFloorPayload DOM flush 重复追加

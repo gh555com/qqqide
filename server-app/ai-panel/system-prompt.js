@@ -146,6 +146,94 @@ window._injectRuleRefs = async function (rawText, bridge) {
     return '\n\n[PRE-LOADED FILES — The following files are referenced in rules and have been automatically loaded into context. Their content is already here — do NOT call read_file on them.]\n\n' + _injected.join('\n\n---\n\n');
 };
 
+// ============================================================================
+// 内置能力清单（capability manifest）—— 唯一真理源：{载荷根}/capabilities/*.md
+//   能力与它的路由提示同包同住：装包时带什么能力，就注入什么提示。
+//   文件首部自述：<!--@cap  probe: <相对载荷根路径>  suppress: <用户规则里需屏蔽的旧文案行> -->
+//   · probe 在本机不存在 → 本能力不注入（工具链被裁剪/未装 = 提示自动消失，绝不指向空气）
+//   · 新增能力 = 丢一个 md 文件，代码零改动；用户数据（global.txt）里不写任何产品文案
+//   · suppress 是兼容存量用：旧版曾把提示写进用户的 global.txt，注入时按声明屏蔽该行（不改盘）
+// ============================================================================
+window._loadQqqideCapabilities = async function (bridge) {
+    var out = { text: '', suppress: [] };
+    try {
+        if (!bridge || !bridge.fs || !bridge.app || !bridge.app.root) return out;
+        var roots = [];
+        try {
+            if (bridge.boot && bridge.boot.getInfo) {
+                var _bi = await bridge.boot.getInfo();
+                if (_bi && _bi.userData) roots.push(String(_bi.userData).replace(/\\/g, '/').replace(/\/$/, '') + '/webapp');
+            }
+        } catch (_) { }
+        var _ar = String((await bridge.app.root()) || '').replace(/\\/g, '/').replace(/\/$/, '');
+        if (_ar) {
+            roots.push(_ar + '/resources/app/server-app');
+            roots.push(_ar + '/server-app');
+        }
+        var capDir = '', capRoot = '';
+        for (var i = 0; i < roots.length; i++) {
+            var st = await bridge.fs.stat(roots[i] + '/capabilities').catch(function () { return null; });
+            if (st && st.isDir) { capDir = roots[i] + '/capabilities'; capRoot = roots[i]; break; }
+        }
+        if (!capDir) return out;
+        var list = await bridge.fs.list(capDir).catch(function () { return null; });
+        if (!list || !list.length) return out;
+        var names = [];
+        for (var j = 0; j < list.length; j++) {
+            var nm = (list[j] && list[j].name) ? list[j].name : '';
+            if (nm && /\.md$/i.test(nm) && !list[j].isDir) names.push(nm);
+        }
+        names.sort();
+        var blocks = [];
+        for (var k = 0; k < names.length; k++) {
+            var raw = await bridge.fs.read(capDir + '/' + names[k]).catch(function () { return null; });
+            if (!raw) continue;
+            var probe = '', sup = [];
+            var body = raw;
+            var m = /^\s*<!--@cap([\s\S]*?)-->/.exec(raw);
+            if (m) {
+                body = raw.slice(m[0].length);
+                var head = m[1] || '';
+                var pm = /probe\s*:\s*(.+)/i.exec(head);
+                if (pm) probe = pm[1].trim();
+                var supRe = /suppress\s*:\s*(.+)/gi, sm;
+                while ((sm = supRe.exec(head)) !== null) { var _s = sm[1].trim(); if (_s) sup.push(_s); }
+            }
+            var resolved = '';
+            if (probe) {
+                var pc = capRoot + '/' + probe;
+                var ps = await bridge.fs.stat(pc).catch(function () { return null; });
+                if (!ps || ps.isDir) continue;   // 本机未装该能力 → 不注入
+                resolved = pc;
+            }
+            var txt = body.replace(/\{\{probe\}\}/g, resolved)
+                .replace(/\{\{dir\}\}/g, resolved ? resolved.replace(/\/[^\/]*$/, '') : capDir)
+                .replace(/^\s+|\s+$/g, '');
+            if (!txt) continue;
+            blocks.push(txt);
+            out.suppress = out.suppress.concat(sup);
+        }
+        if (blocks.length) out.text = blocks.join('\n\n');
+    } catch (_) { /* 清单缺失/损坏 → 静默不注入 */ }
+    return out;
+};
+
+// 存量兼容：用户规则里旧版种子写进去的能力提示行 → 注入时屏蔽（只去该行，不动用户其他规则，不改盘）
+function _qqqStripSuppressed(text, list) {
+    if (!text || !list || !list.length) return text;
+    var lines = String(text).split('\n');
+    var keep = [];
+    for (var i = 0; i < lines.length; i++) {
+        var hit = false;
+        for (var j = 0; j < list.length; j++) {
+            if (list[j] && lines[i].indexOf(list[j]) !== -1) { hit = true; break; }
+        }
+        if (!hit) keep.push(lines[i]);
+    }
+    return keep.join('\n');
+}
+window._qqqStripSuppressed = _qqqStripSuppressed;   // 同体出口：离线冒烟可验证（注入链仍只走内部调用）
+
 // global.txt — 全局规则，所有 IDE 窗口共享（Data 根 = bootinfo.userData；win/dev = {appRoot}/Data，
 //   mac = {宿主}/qqqide-data/Data——与 RULES 按钮写入端 login.js 同源同口径），与 project.txt 同权支持 rule"..."（2026-08-15）
 window.qqqideRulesContent = '';
@@ -164,13 +252,25 @@ window.loadQqqideRules = async function () {
                 }
             } catch (_) { }
             if (!_dr) _dr = root.replace(/\\/g, '/').replace(/\/$/, '') + '/Data';
+            // ★ 内置能力（产品自带、跟随载荷）：与用户规则彻底解耦——用户删/改 global.txt 不影响它
+            var _caps = await window._loadQqqideCapabilities(bridge);
+            var _capBlock = _caps.text
+                ? '[BUILT-IN CAPABILITIES — shipped with this installation, not user rules. Paths are resolved for this machine; ignore any capability you do not need.]\n\n' + _caps.text + '\n\n[END BUILT-IN CAPABILITIES]'
+                : '';
+
             var rulesPath = _dr + '/global.txt';
             var text = await bridge.fs.read(rulesPath);
+            if (text && _caps.suppress.length) text = _qqqStripSuppressed(text, _caps.suppress);
+            var _out = '';
             if (text && text.trim()) {
-                window.qqqideRulesContent = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';
-                var _pre = await window._injectRuleRefs(text, bridge);
-                if (_pre) window.qqqideRulesContent += _pre;
+                _out = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';
             }
+            if (_capBlock) _out = _out ? (_out + '\n\n' + _capBlock) : _capBlock;
+            if (text && text.trim()) {
+                var _pre = await window._injectRuleRefs(text, bridge);
+                if (_pre) _out += _pre;
+            }
+            window.qqqideRulesContent = _out;
         }
     } catch (e) { /* silent */ }
 };

@@ -59,9 +59,9 @@
   var DEFAULT_TREE = {
     v: 1,
     items: [
+      { label: 'live', action: 'url', value: LIVE_URL },
       {
         label: 'contact', children: [
-          { label: 'live', action: 'url', value: LIVE_URL },
           { label: 'QQ', action: 'copy', value: '524906522' },
           { label: '邮箱', i18n: 'help.email', action: 'copy', value: 'info@gh555.com' },
           { label: '电话号码', i18n: 'help.phone', action: 'copy', value: '+86 19232854249' }
@@ -98,10 +98,11 @@
   var _anchorEl = null;     // 动态锚点（openAt 用；缺省 = _btnEl）
   var _rootEl = null;       // 主菜单
   var _chain = [];          // 打开的逐级子菜单链：_chain[level] = {rowEl, subEl}（level 行的子菜单落于此）
-  var _tree = _normList(DEFAULT_TREE.items);
+  var _tree = { v: 1, items: _normList(DEFAULT_TREE.items) };   // ★ 恒为 {v,items} 形状（数组形状会让 _tree.items 为 undefined → 首开必炸）
   var _treeTs = 0;          // 上次读取数据文件的墙钟
   var _fetching = false;
   var _parseWarned = false; // 解析失败只提示一次（禁静默：失败必须可见）
+  var _renderWarned = false; // 渲染异常回退只提示一次
   var _bootPromise = null;  // boot:info 缓存（Data/Logs/安装目录）
   var _allTimer = null;     // 整体关闭计时器
   var _globalBound = false;
@@ -266,6 +267,10 @@
         }
         return;
       }
+      if (!t.items.length) {
+        try { console.warn('[qqqHelpMenu] ' + DATA_FILE + ' 为空（items: []），沿用内置默认'); } catch (e) { }
+        return;
+      }
       _tree = t;
       if (_rootEl && _rootEl.parentNode) _rebuildOpen();   // 开着菜单 → 当场换新（编辑器保存即可见）
     }).catch(function () { _fetching = false; });
@@ -313,15 +318,22 @@
     return row;
   }
 
+  // 当前生效条目：数据文件给了非空树就用它，否则恒回内置默认（空树/坏树绝不接管 → 防空白菜单）
+  function _items() {
+    if (_tree && Array.isArray(_tree.items) && _tree.items.length) return _tree.items;
+    return _normList(DEFAULT_TREE.items);
+  }
+
   function _buildMenu(items, cls, level) {
     var el = document.createElement('div');
     el.className = cls;
+    if (!Array.isArray(items)) items = _items();
     for (var i = 0; i < items.length; i++) el.appendChild(_buildRow(items[i], level));
     return el;
   }
 
   function _buildRoot() {
-    var root = _buildMenu(_tree.items, 'qqq-help-menu', 0);
+    var root = _buildMenu(_items(), 'qqq-help-menu', 0);
     root.addEventListener('mouseenter', _clearTimers);
     root.addEventListener('mouseleave', _scheduleAll);
     return root;
@@ -375,18 +387,43 @@
   function _showRoot() {
     var anchor = _anchorCur();
     if (!anchor) return;
-    _kickRefresh();
+    try { _kickRefresh(); } catch (e0) { }
     if (_rootEl && _rootEl.parentNode) { _positionRoot(); return; } // 已开：重定位（⋯ 行间切换复用）
-    _ensureStyle();
-    _truncateChain(0);
-    _removeRoot();
-    var root = _buildRoot();
-    document.body.appendChild(root);
-    _rootEl = root;
-    _positionRoot();
-    requestAnimationFrame(function () { if (_rootEl) _rootEl.classList.add('open'); });
-    try { anchor.classList.add('qqq-help-open'); } catch (e) { }
-    _bindGlobal();
+    try {
+      _ensureStyle();
+      _truncateChain(0);
+      _removeRoot();
+      var root = _buildRoot();
+      document.body.appendChild(root);
+      _rootEl = root;
+      _positionRoot();
+      requestAnimationFrame(function () { if (_rootEl) _rootEl.classList.add('open'); });
+      try { anchor.classList.add('qqq-help-open'); } catch (e) { }
+      _bindGlobal();
+    } catch (e) {
+      // ★ 渲染异常绝不静默成「啥也没有」：回内置默认树重试一次 + 一次性可见提示
+      try { console.error('[qqqHelpMenu] 渲染失败，已回退内置默认菜单：', e); } catch (er) { }
+      _tree = { v: 1, items: _normList(DEFAULT_TREE.items) };
+      try {
+        _truncateChain(0);
+        _removeRoot();
+        var root2 = _buildRoot();
+        document.body.appendChild(root2);
+        _rootEl = root2;
+        _positionRoot();
+        root2.classList.add('open');
+        anchor.classList.add('qqq-help-open');
+        _bindGlobal();
+      } catch (e2) { try { console.error('[qqqHelpMenu] 回退渲染仍失败：', e2); } catch (er2) { } }
+      if (!_renderWarned) {
+        _renderWarned = true;
+        try {
+          if (window.qqqideQoast && window.qqqideQoast.show) {
+            window.qqqideQoast.show('[help] 菜单渲染异常，已回退内置默认', { type: 'error', duration: 12000 });
+          }
+        } catch (er3) { }
+      }
+    }
   }
 
   // ★ ⋯ 收纳机器唯一外接口: 重锚到任意元素打开（返回根元素；重复调用 = 重定位复用）
@@ -612,5 +649,10 @@
   // 手动刷新数据（调试/工具联动用；正常无需调用——打开菜单自动按 TTL 刷新）
   function reload() { _treeTs = 0; _fetchTree(); }
 
-  window.qqqHelpMenu = { mount: mount, close: _closeAll, openAt: openAt, reload: reload };
+  // 自检（调试/工具联动用）：当前生效条目数 + 是否已落数据文件 + 最近一次渲染错误
+  function diag() {
+    return { items: _items().length, treeItems: _tree.items.length, mounted: !!_btnEl, open: !!(_rootEl && _rootEl.parentNode) };
+  }
+
+  window.qqqHelpMenu = { mount: mount, close: _closeAll, openAt: openAt, reload: reload, diag: diag };
 })();

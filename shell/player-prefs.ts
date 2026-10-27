@@ -19,12 +19,11 @@ export function prefsFromStore(store: any): any {
     return (store && store.prefs && typeof store.prefs === 'object') ? { ...store.prefs } : {};
 }
 
-/** 字段值归一（脏值 → undefined = 不采用）；'one' 归一 'all'（存量）。 */
+/** 字段值归一（脏值 → undefined = 不采用）；loop 三态 = off/all/one（单曲循环为独立档）。 */
 export function coercePref(field: string, v: any): any {
     if (field === 'rate') { return (typeof v === 'number' && isFinite(v)) ? Math.max(0.0625, Math.min(16, v)) : undefined; }
     if (field === 'loop') {
-        if (v === 'one') { return 'all'; }
-        return (v === 'off' || v === 'all') ? v : undefined;
+        return (v === 'off' || v === 'all' || v === 'one') ? v : undefined;
     }
     if (field === 'shuffle' || field === 'follow' || field === 'muted') { return (typeof v === 'boolean') ? v : undefined; }
     if (field === 'volume') { return (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1.5, v)) : undefined; }

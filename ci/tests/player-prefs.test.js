@@ -8,14 +8,15 @@ const path = require('path');
 
 const pp = require(path.join(__dirname, '.build', 'player-prefs.cjs'));
 
-test('coercePref：rate/volume 钳制、loop one→all、脏值 → undefined', () => {
+test('coercePref：rate/volume 钳制、loop 三态（含 one 独立档）、脏值 → undefined', () => {
     assert.strictEqual(pp.coercePref('rate', 17), 16);
     assert.strictEqual(pp.coercePref('rate', 0.01), 0.0625);
     assert.strictEqual(pp.coercePref('rate', 'x'), undefined);
     assert.strictEqual(pp.coercePref('volume', 2), 1.5);
     assert.strictEqual(pp.coercePref('volume', -1), 0);
-    assert.strictEqual(pp.coercePref('loop', 'one'), 'all');
+    assert.strictEqual(pp.coercePref('loop', 'one'), 'one');   // ★ 单曲循环 = 独立档（2026-10-14 恢复）
     assert.strictEqual(pp.coercePref('loop', 'all'), 'all');
+    assert.strictEqual(pp.coercePref('loop', 'off'), 'off');
     assert.strictEqual(pp.coercePref('loop', 'weird'), undefined);
     assert.strictEqual(pp.coercePref('shuffle', 1), undefined);
     assert.strictEqual(pp.coercePref('muted', true), true);

@@ -161,7 +161,7 @@
         try {
             var newVer = await bridge.timeline.versions({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH });
             _versions = newVer || [];
-            _lastContent = await bridge.timeline.readCurrent(FILE_PATH);
+            await _refreshDiskState(FILE_PATH);
             await _refreshFileStat(FILE_PATH);
             // 只重建左侧下拉，保持右侧不变（编辑模式下右侧隐藏）
             var curLeft = $selLeft.value;
@@ -199,7 +199,7 @@
         try {
             var newVer = await bridge.timeline.versions({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH });
             _versions = newVer || [];
-            _lastContent = await bridge.timeline.readCurrent(FILE_PATH);
+            await _refreshDiskState(FILE_PATH);
             await _refreshFileStat(FILE_PATH);
             var curLeft = $selLeft.value; var curRight = $selRight.value; populateDropdowns();
             $selRight.value = curRight;

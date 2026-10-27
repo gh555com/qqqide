@@ -751,7 +751,17 @@ function buildUnits(unpacked, rFile) {
   const upRoot = path.join(distRoot, 'qqqide-up');
   const unitDir = path.join(upRoot, 'u', APP_VERSION);
   const stageRoot = path.join(upRoot, '_stage');
-  if (fs.existsSync(upRoot)) fs.rmSync(upRoot, { recursive: true, force: true });
+  // ★ 2026-10-14 双平台发布互不侵犯: 整树清 upRoot 会连 mac 发布在途产物一起删——
+  //   mac 发布（q.py --cli-mac）在 tarball 上传窗口（~30 分钟）之后才读 mac-units 上传，
+  //   期间一次 Windows pack 即致 mac 发布 WinError 3 半程 FATAL（实锤：mac-units 被清）。
+  //   Windows pack 只清 Windows 自产条目（u/_stage/units.*），保留 mac-units/mac.json*。
+  const KEEP_ON_WIN_PACK = new Set(['mac-units', 'mac.json', 'mac.json.sig']);
+  if (fs.existsSync(upRoot)) {
+    for (const ent of fs.readdirSync(upRoot)) {
+      if (KEEP_ON_WIN_PACK.has(ent)) continue;
+      fs.rmSync(path.join(upRoot, ent), { recursive: true, force: true });
+    }
+  }
   fs.mkdirSync(unitDir, { recursive: true });
 
   const coreDir = path.join(unpacked, 'gh555.com');

@@ -7,7 +7,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlRecord, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob } from './timeline-store';
+import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlCommit, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob, _tlNormDisplayPath, _tlPathKey, _tlClaimPath, _tlEnqueue } from './timeline-store';
 import { BootConfig } from './boot';
 import { APP_VERSION } from './version';
 import { getDataDir } from './portable-paths';
@@ -21,41 +21,45 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
     const COOLING_MS = 100000;       // 同文件两次快照最小间隔
     const COOLING_SOURCES = new Set(['editx']);
     const _lastRecordTs: Map<string, number> = new Map();
-    const _lastRecordHash: Map<string, string> = new Map();
 
     // ═══ Timeline: record version ═══
     ipcMain.handle('qqqide:timeline:record', async (_e, args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string; addedLines?: number; deletedLines?: number }) => {
         try {
-            const { projectRoot, filePath, content, source, floorId, addedLines, deletedLines } = args;
+            const { projectRoot, filePath, content, source, floorId, addedLines, deletedLines } = args || ({} as any);
             if (!projectRoot || !filePath || content === undefined || content === null) return { ok: false, error: 'missing args' };
-            const normalizedPath = filePath.replace(/\\/g, '/');
-            const sha = _sha256(content);
-
-            // ★ 编辑类快照：100s 冷却 + SHA256 内容去重（真理机，仅此一处）
-            if (COOLING_SOURCES.has(source)) {
-                const coolKey = normalizedPath + '|' + source;
-                const prevHash = _lastRecordHash.get(coolKey);
-                if (prevHash === sha) return { ok: true, blob_hash: sha, recorded: false, reason: 'same-content' };
-                const prevTs = _lastRecordTs.get(coolKey) || 0;
-                const now = Date.now();
-                if (now - prevTs < COOLING_MS) return { ok: true, blob_hash: sha, recorded: false, reason: 'cooling' };
-                _lastRecordTs.set(coolKey, now);
-                _lastRecordHash.set(coolKey, sha);
-            }
-
-            const db = await _tlOpenDb(projectRoot);
+            const displayPath = _tlNormDisplayPath(filePath);
+            const pathKey = _tlPathKey(filePath);
+            const sha = _sha256(String(content));
+            // ★ 认领：写入口兜底捕获作废（显式记录带溯源，才是真相）——按内容认领，内容不同不误杀
+            try { _tlClaimPath(filePath, sha); } catch (_) { }
             const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-            const blobPath = _tlBlobPath(projectRoot, sha);
-            if (!fs.existsSync(blobPath)) {
-                const gzBuf = _gzipSync(content);
-                _tlWriteBlob(projectRoot, sha, gzBuf);
-            }
-            const ts = Date.now();
-            _tlRecord(db, dbPath, projectRoot, {
-                file_path: normalizedPath, ts, blob_hash: sha, source,
-                floor_id: floorId || null, added_lines: addedLines || null, deleted_lines: deletedLines || null
+
+            // ★ 同文件串行（兜底捕获与显式记录同队，绝不双写）
+            const out = await _tlEnqueue(dbPath + '|' + pathKey, async () => {
+                const db = await _tlOpenDb(projectRoot);
+
+                // ★ 编辑类快照：100s 冷却（内容去重由 _tlCommit 全局负责）
+                if (COOLING_SOURCES.has(source)) {
+                    const coolKey = pathKey + '|' + source;
+                    const prevTs = _lastRecordTs.get(coolKey) || 0;
+                    const now = Date.now();
+                    if (prevTs && now - prevTs < COOLING_MS) return { ok: true, blob_hash: sha, recorded: false, reason: 'cooling' };
+                }
+
+                const blobPath = _tlBlobPath(projectRoot, sha);
+                if (!fs.existsSync(blobPath)) {
+                    if (typeof content !== 'string') return { ok: false, error: 'content must be string' };
+                    _tlWriteBlob(projectRoot, sha, _gzipSync(content));
+                }
+                const ts = Date.now();
+                const r = _tlCommit(db, dbPath, projectRoot, {
+                    file_path: displayPath, ts, blob_hash: sha, source,
+                    floor_id: floorId || null, added_lines: addedLines ?? null, deleted_lines: deletedLines ?? null
+                });
+                if (COOLING_SOURCES.has(source)) _lastRecordTs.set(pathKey + '|' + source, ts);
+                return { ok: true, blob_hash: sha, ts, file_seq: r.file_seq, recorded: r.recorded, upgraded: !!r.upgraded, reason: r.reason };
             });
-            return { ok: true, blob_hash: sha, ts, recorded: true };
+            return out || { ok: false, error: 'queue-failed' };
         } catch (err: any) {
             console.error('[timeline:record]', err);
             return { ok: false, error: err.message };
@@ -67,10 +71,10 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         try {
             const { projectRoot, filePath } = args;
             if (!projectRoot || !filePath) return [];
-            const normalizedPath = filePath.replace(/\\/g, '/');
+            // ★ 按 path_key 查（调用方大小写无关——同一文件的历史绝不被拆成两段）
             const db = await _tlOpenDb(projectRoot);
-            const stmt = db.prepare('SELECT id, ts, blob_hash, source, floor_id, added_lines, deleted_lines, file_seq FROM versions WHERE file_path = ? ORDER BY id ASC');
-            stmt.bind([normalizedPath]);
+            const stmt = db.prepare('SELECT id, ts, blob_hash, source, floor_id, added_lines, deleted_lines, file_seq FROM versions WHERE path_key = ? ORDER BY ts ASC, id ASC');
+            stmt.bind([_tlPathKey(filePath)]);
             const versionRows: any[] = [];
             while (stmt.step()) {
                 const row = stmt.getAsObject();
@@ -129,7 +133,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             if (!projectRoot) return [];
             const db = await _tlOpenDb(projectRoot);
             // ★ 记忆库根系数据源（diff 窗口 ▼ 全库列表，2026-09-11）：文件 + 快照数 + 最近活动 + 磁盘存在性
-            const stmt = db.prepare('SELECT file_path, COUNT(*) as version_count, MAX(ts) as latest_ts FROM versions GROUP BY file_path');
+            // ★ 按 path_key 分组（大小写变体合为一档；显示路径取字典序最大者——盘符大写更耐看）
+            const stmt = db.prepare('SELECT MAX(file_path) as file_path, COUNT(*) as version_count, MAX(ts) as latest_ts FROM versions GROUP BY path_key');
             const files: any[] = [];
             while (stmt.step()) {
                 const row = stmt.getAsObject();
@@ -229,8 +234,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 const db = await _tlOpenDb(projectRoot);
                 const dbPath2 = path.join(_tlDir(projectRoot), 'timeline.db');
                 const ts = Date.now();
-                _tlRecord(db, dbPath2, projectRoot, {
-                    file_path: f.filePath, ts, blob_hash: sha, source: 'run-command'
+                _tlCommit(db, dbPath2, projectRoot, {
+                    file_path: _tlNormDisplayPath(f.filePath), ts, blob_hash: sha, source: 'run-command'
                 });
                 results.push({ filePath: f.filePath, blob_hash: sha });
             } catch (_) { }

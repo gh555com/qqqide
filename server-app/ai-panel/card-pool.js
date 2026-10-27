@@ -881,6 +881,8 @@ var CardPool = (function () {
       _twrap.appendChild(_bImg);
     }
     aiEl.appendChild(aiEl._contentWrap);
+
+
     // ★ AI 复制按钮（左侧，复制原始 Markdown）
     if (typeof _addCopyBtnToAiMsg === 'function') {
       // ★ 只取当前楼层（fNum）的 assistant content，不串全量对话

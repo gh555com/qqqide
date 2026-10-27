@@ -94,19 +94,17 @@ function _markLongMsg(el, role, rawText) {
 function _addCopyBtnToUserMsg(el) {
     var btn = document.createElement('span');
     btn.className = 'msg-user-copy';
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    // ★ 图标 = qqq-icons 手绘唯一真源（qqi-act-copy；与分享/收藏同网格同笔触同尺寸，禁内联第二套 SVG）
+    btn.innerHTML = '<span class="qqi qqi-act-copy"></span>';
     btn.title = typeof _i === 'function' ? _i('qqq.user.copy', '复制') : '复制';
     btn.setAttribute('data-i18n-title', 'qqq.user.copy');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
     btn.onclick = function (e) {
         e.stopPropagation();
         var text = el.textContent || '';
         navigator.clipboard.writeText(text).then(function () {
+            // 已复制 = 同一枚图标转绿 1.5s（不换第四枚图标：三钮恒为同一套笔触）
             btn.classList.add('copied');
-            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-            setTimeout(function () {
-                btn.classList.remove('copied');
-                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-            }, 1500);
+            setTimeout(function () { btn.classList.remove('copied'); }, 1500);
         }).catch(function () {
             // fallback: select and execCommand
             var range = document.createRange();
@@ -126,13 +124,15 @@ function _addCopyBtnToUserMsg(el) {
     }
 }
 
-// ═══ AI 消息复制按钮（左侧，复制原始 Markdown + az 区统计） ═══
-function _addCopyBtnToAiMsg(el, rawMarkdown) {
-    // ★ 把原始 Markdown 存到元素上（不为空时覆盖，为空时不擦已有数据）
-    if (rawMarkdown) el._rawMarkdown = rawMarkdown;
+// ═══ 楼层动作（复制 / 分享）——唯一真理机：只活在 az 行内、收藏星标左侧 ═══
+// 反模式（已废，禁回潮）：① sticky 悬浮 + 插为 el 首子节点 → 正文前多出一条 22px 行盒
+//   （就是「问与答之间那条空隙」的根因）；② 追加为 el 末子节点 → 尾巴再多一条行盒。
+// 结论：按钮不属于正文流，只属于 az 行（时钟行）；一切插入点收敛到 _ensureAiActs。
+function _mkAiCopyBtn(el) {
     var btn = document.createElement('span');
     btn.className = 'msg-ai-copy';
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    // ★ 图标 = qqq-icons 手绘唯一真源（qqi-act-copy；与分享/收藏同网格同笔触同尺寸，禁内联第二套 SVG）
+    btn.innerHTML = '<span class="qqi qqi-act-copy"></span>';
     btn.title = typeof _i === 'function' ? _i('qqq.ai.copy', '复制 Markdown') : '复制 Markdown';
     btn.setAttribute('data-i18n-title', 'qqq.ai.copy');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
     btn.onclick = function (e) {
@@ -147,7 +147,7 @@ function _addCopyBtnToAiMsg(el, rawMarkdown) {
                 var child = el.children[ci];
                 if (child === el._contentWrap) { pastCw = true; continue; }
                 if (!pastCw) continue;
-                if (child.classList.contains('msg-ai-copy')) continue;
+                if (child.classList && child.classList.contains('msg-ai-acts')) continue;
                 var t = child.textContent.trim();
                 if (t) azLines.push(t);
             }
@@ -156,12 +156,9 @@ function _addCopyBtnToAiMsg(el, rawMarkdown) {
         if (azLines.length > 0) text += '\n\n' + azLines.join('\n');
         if (!text.trim()) text = el.textContent || '';
         navigator.clipboard.writeText(text).then(function () {
+            // 已复制 = 同一枚图标转绿 1.5s（不换图标：三钮恒为同一套笔触）
             btn.classList.add('copied');
-            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-            setTimeout(function () {
-                btn.classList.remove('copied');
-                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-            }, 1500);
+            setTimeout(function () { btn.classList.remove('copied'); }, 1500);
         }).catch(function () {
             var range = document.createRange();
             range.selectNodeContents(el);
@@ -172,11 +169,65 @@ function _addCopyBtnToAiMsg(el, rawMarkdown) {
             sel.removeAllRanges();
         });
     };
-    if (el.firstChild) {
-        el.insertBefore(btn, el.firstChild);
-    } else {
-        el.appendChild(btn);
+    return btn;
+}
+
+function _mkAiShareBtn(el) {
+    var shBtn = document.createElement('span');
+    shBtn.className = 'msg-ai-share';
+    // ★ 图标 = qqq-icons 手绘唯一真源（qqi-act-share，与复制/收藏同笔触）
+    shBtn.innerHTML = '<span class="qqi qqi-act-share"></span>';
+    shBtn.title = typeof _i === 'function' ? _i('qqq.ai.share', '分享此回答') : '分享此回答';
+    shBtn.setAttribute('data-i18n-title', 'qqq.ai.share');
+    shBtn.onclick = function (e) {
+        e.stopPropagation();
+        if (typeof window.shareOpen !== 'function') return;
+        // 选区即精确截取：只认落在本回答内部的选区（跨块选择不算——避免把隔壁楼层误带出去）
+        var sel = '';
+        try {
+            var s = window.getSelection();
+            if (s && s.rangeCount && !s.isCollapsed) {
+                var t = String(s.toString() || '');
+                var a = s.anchorNode, f = s.focusNode;
+                if (t.trim() && a && f && el.contains(a) && el.contains(f)) sel = t;
+            }
+        } catch (_) { }
+        window.shareOpen(el, sel);
+    };
+    return shBtn;
+}
+
+// ★ 动作组归位（幂等）：有时钟行 → 恒在时钟行内、星标左侧；无时钟行（致命楼/遗留注记）→ 自挂一行
+function _ensureAiActs(el) {
+    var host = el._clockBlock || null;
+    var orphan = el.querySelector(':scope > .msg-ai-acts');
+    var grp = host ? host.querySelector('.msg-ai-acts') : orphan;
+    if (host && orphan && orphan !== grp && orphan.parentNode) orphan.parentNode.removeChild(orphan);
+    if (!grp) {
+        grp = document.createElement('span');
+        grp.className = 'msg-ai-acts';
+        if (host) {
+            // ★ 星标外层的 .msg-ai-fav 是位置保险（auto 外边距在它身上）——动作组挂它内部、星标左侧
+            var favWrap = host.querySelector(':scope > .msg-ai-fav');
+            if (favWrap) {
+                favWrap.insertBefore(grp, favWrap.firstChild);
+            } else {
+                var star = host.querySelector(':scope > .clock-fav');
+                host.insertBefore(grp, star || null);
+            }
+        } else {
+            el.appendChild(grp);
+        }
     }
+    if (!grp.querySelector('.msg-ai-copy')) grp.appendChild(_mkAiCopyBtn(el));
+    if (!grp.querySelector('.msg-ai-share')) grp.appendChild(_mkAiShareBtn(el));
+    return grp;
+}
+
+function _addCopyBtnToAiMsg(el, rawMarkdown) {
+    // ★ 把原始 Markdown 存到元素上（不为空时覆盖，为空时不擦已有数据）
+    if (rawMarkdown) el._rawMarkdown = rawMarkdown;
+    _ensureAiActs(el);
 }
 
 // ═══ 唯一真理机：用户消息 DOM 元素（只有这一处创建用户豆腐块） ═══
@@ -240,6 +291,7 @@ function addMessageEl(role, content, optQuestId) {
         return addUserMessageEl(content);
     }
     _appendToCard(div, optQuestId);  // ★ P10：支持指定 quest，无则走当前 questActiveId
+
     if (role === 'ai') _markLongMsg(div, 'ai', content);
     scrollToBottom(role === 'user');
     return div;

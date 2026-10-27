@@ -1912,6 +1912,14 @@ function showContextMenu(x, y, path, entry) {
 	//   文件侧仅目标集含媒体时显（扩展名判断零成本）；同样在定位前定妥
 	var _mplRow = ctxMenu.querySelector('[data-action="queue"]');
 	if (_mplRow) _mplRow.style.display = _mplShowable() ? '' : 'none';
+	// ★ 分享行：目标集含至少一个文件才显（文件夹不参与分享——先打包）
+	var _shareRow = ctxMenu.querySelector('[data-action="share"]');
+	if (_shareRow) {
+		var _hasFile = false;
+		var _st = _mplTargets();
+		for (var _si = 0; _si < _st.length; _si++) { if (!_st[_si].isDir) { _hasFile = true; break; } }
+		_shareRow.style.display = _hasFile ? '' : 'none';
+	}
 	// ★ 菜单定位唯一入口（先量后位 + 视口钳制/上翻 + 贴边）——详 _placeFixedMenu
 	_placeFixedMenu(ctxMenu, x, y);
 }
@@ -2049,6 +2057,29 @@ function _playlistAddFromMenu() {
 	}).catch(function() {
 		_roamQoast(_kk('goods.roam.mplFail', '加入播放列表失败'), 'error');
 	});
+}
+
+// ★ 右键「share」（2026-10-26）：把选中文件生成公网快照链接——唯一机器 = AI 面板 panel-share.js
+//   目标集 = 多选感知（与「加入播放列表」同款裁决）；文件夹不参与（请先打包）
+//   本机绝对路径不进快照：share-machine 只取文件名。
+function _shareFromMenu() {
+	var ts = _mplTargets();
+	var files = [];
+	for (var i = 0; i < ts.length; i++) {
+		if (!ts[i].isDir) files.push(ts[i].path);
+	}
+	if (!files.length) {
+		_roamQoast(_kk('goods.roam.shareNeedFile', '只能分享文件（文件夹请先打包）'), 'error');
+		return;
+	}
+	var w = null;
+	try { w = (window.parent && typeof window.parent.qqqideShareOpen === 'function') ? window.parent : null; } catch (_) { }
+	if (!w) { _roamQoast(_kk('goods.roam.shareFail', '分享不可用'), 'error'); return; }
+	try { w.qqqideShareOpen({ paths: files }); } catch (_) {
+		_roamQoast(_kk('goods.roam.shareFail', '分享不可用'), 'error');
+		return;
+	}
+	_playSfx('enter');
 }
 
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; var e = document.getElementById('emptyContextMenu'); if (e) e.style.display = 'none'; });
