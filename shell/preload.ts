@@ -871,17 +871,24 @@ interrupt: (id: string) => ipcRenderer.invoke('qqqide:qmd:interrupt', id),
         close: () => ipcRenderer.invoke('qqqide:player:close'),
         // ★ 定时关机（v25）：定时面板勾选「定时关机」→ 到点暂停一切播放后执行系统关机（三平台；壳层裁决命令映射）
         scheduledShutdown: () => ipcRenderer.invoke('qqqide:player:scheduled-shutdown'),
+        // ★ 播放器履历埋点（2026-10-29）：媒体引擎 mount 内唯一调用点（n/sec/a/v/nat/tx/tw）——
+        //   壳层按域分派（宿主域 → player-vig.host.json / IDE 域 → vig.json 'player' 模块），wq-ping 合并上报
+        vig: (add: Record<string, number>) => ipcRenderer.invoke('qqqide:player:vig', add).catch(() => { }),
     },
 
     // ---- fileAssoc（文件关联；2026-10-03 播放器定案 + 2026-10-07 编辑器域）----
-    //   apply       = 媒体全量夺默认（播放器窗头部 ★ 钮；win=HKCU 注册表机 / mac=LaunchServices / linux xdg-mime）
-    //   applyEditor = 文本/代码族整族夺默认（设置面板行〔设为默认〕；同一族 74 类；
-    //                 skip = 已被系统解释器接管的扩展清单（渲染层实时判定后传入——整族剔除不夺））
-    //   settings    = 系统「默认应用」设置页（被拦截场景的手动兜底通道）
-    //   ★ 无 check/remove（其他应用可随时覆盖——状态角标/解除均无意义；按钮恒 = 「设为默认」）
+    //   apply         = 媒体全量夺默认（播放器窗头部 ★ 钮；win=HKCU 注册表机 / mac=LaunchServices / linux xdg-mime）
+    //   applyEditor   = 参与族夺默认（设置行〔设为默认〕；skip = 已被系统解释器接管的扩展清单）
+    //   editorCatalog = 五组明细 + 参与清单（`1 by 1` 子卡片渲染源；壳层唯一真理源）
+    //   editorState   = 逐扩展真实归属 { ext: 'taken'|'cand'|'free' }（Windows 只读快照；其余平台 unsupported）
+    //   setEditorOff  = `1 by 1` 勾选变更唯一写入口（落盘 + 立即归还 + 重注册，返回 released 清单）
+    //   settings      = 系统「默认应用」设置页（被拦截场景的手动兜底通道）
     fileAssoc: {
         apply: () => ipcRenderer.invoke('qqqide:fileassoc:apply'),
         applyEditor: (skip?: string[]) => ipcRenderer.invoke('qqqide:fileassoc:apply-editor', skip),
+        editorCatalog: () => ipcRenderer.invoke('qqqide:fileassoc:editor-catalog'),
+        editorState: () => ipcRenderer.invoke('qqqide:fileassoc:editor-state'),
+        setEditorOff: (off?: string[]) => ipcRenderer.invoke('qqqide:fileassoc:set-editor-off', off),
         settings: () => ipcRenderer.invoke('qqqide:fileassoc:settings'),
     },
 

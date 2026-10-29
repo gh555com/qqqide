@@ -20,6 +20,7 @@ import { runPs, b64d } from './ipc-syspy';
 import { FA_PS } from './fa-ps';
 import { faMacApply } from './fa-mac';
 import { faLinuxApply } from './fa-linux';
+import { playerVigBump, playerVigGauge } from './player-vig';
 
 // 「一切媒体」= 播放器全谱扩展名（与 ipc-player._VIDEO_EXTS / _AUDIO_EXTS 同口径，
 //   media-engine / roam 白名单三方一致；新增可播格式必须四处同改）
@@ -57,6 +58,20 @@ function _faEnv(mode: string): Record<string, string> {
     };
 }
 
+// ── 播放器履历埋点（2026-10-29 q319 定案）──
+//   接管成功 = 一次「用户意愿设我们为系统默认播放器」信号：def 累加 +1，defn = 本次接管到的类数（gauge）
+//   域分派交 player-vig（宿主域 → player-vig.host.json / IDE 域 → vig.json 'player'），失败不影响 main 流程
+function _takenOf(r: any): number {
+    const n = Number(r && r.taken);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+function _vigDefault(taken: number): void {
+    try {
+        playerVigBump({ def: 1 });
+        if (taken > 0) { playerVigGauge({ defn: taken }); }
+    } catch { /* ignore */ }
+}
+
 // ★ 串行链（禁 busy 拒绝——页面自动角标刷新与用户点击可能并发；排队执行即可）
 //   跨域共用（fa-editor.ts 同引）：一切关联注册/夺默认操作全局串行，零并发撞链
 let _chain: Promise<any> = Promise.resolve();
@@ -74,6 +89,7 @@ export function registerFileAssocIpc(portableRoot: string): void {
         ipcMain.handle('qqqide:fileassoc:apply', () => faSerial(async () => {
             const r = await faMacApply(MEDIA_ASSOC_EXTS);
             if (!r.ok) { console.warn('[fileassoc] mac apply fail:', r.code || '', r.err || '', (r.fails || []).slice(0, 6).join(' ')); }
+            if (r.ok) { _vigDefault(_takenOf(r)); }
             return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
         }));
         ipcMain.handle('qqqide:fileassoc:settings', async () => {
@@ -88,6 +104,7 @@ export function registerFileAssocIpc(portableRoot: string): void {
         ipcMain.handle('qqqide:fileassoc:apply', () => faSerial(async () => {
             const r = await faLinuxApply(MEDIA_ASSOC_EXTS);
             if (!r.ok) { console.warn('[fileassoc] linux apply fail:', r.code || '', r.err || '', (r.fails || []).slice(0, 6).join(' ')); }
+            if (r.ok) { _vigDefault(_takenOf(r)); }
             return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'apply-failed'), total: r.total || 0, taken: r.taken || 0, fails: r.fails || [], err: r.err };
         }));
         ipcMain.handle('qqqide:fileassoc:settings', () => ({ ok: false, code: 'unsupported' }));
@@ -113,6 +130,7 @@ export function registerFileAssocIpc(portableRoot: string): void {
                 err: (b64d(r.fields.PSERR) || '').slice(0, 300),
             };
             if (!out.ok) { console.warn('[fileassoc] apply fail:', out.code, out.err); }
+            if (out.ok) { _vigDefault(taken); }
             return out;
         } catch (e: any) {
             console.warn('[fileassoc] apply err:', (e && e.message) || e);

@@ -2027,6 +2027,16 @@
     },
     // ★ 搜索跳转高亮唯一入口：跳行 + 行闪 + 查找控件预填（词级高亮=控件失败兜底）
     applySearchJump: _applySearchJump,
+    // ★ 路径级只读开关（dsecret 只读预览用）：一键切换该路径全部存活编辑器——
+    //   只读不是死状态：下一次普通打开（_applyPaneOpts）会重置为可编辑。
+    setPathReadOnly: function (filePath, on) {
+      filePath = _normFP(filePath);
+      if (!filePath) return;
+      var apply = function (ed) { try { ed.updateOptions({ readOnly: !!on }); } catch (_) { } };
+      var set = _paneEdSets[filePath];
+      if (set) { try { set.forEach(apply); } catch (_) { } }
+      if (_paneEditors[filePath]) apply(_paneEditors[filePath]);
+    },
     // ★ 查找控件唯一入口：打开 + 预填（搜索结果跳转 / AI 面板 a1 / 外部 goods _nextSearch 共享）
     openFindWidget: _openFindWidget,
     // ★ 外部修改机器 v2 出口（AI 写推送即时校验 / tab 关闭守卫 / 诊断）

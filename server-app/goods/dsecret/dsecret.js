@@ -22,10 +22,12 @@
 //                     {type:'dsecret:scan', mode} / {type:'dsecret:act', action, item}
 //                     {type:'dsecret:data'} / {type:'dsecret:wl-remove', kind, key}
 //                     {type:'dsecret:git-log', value} / {type:'dsecret:gitignore', relPath, rmCached}
-//                     {type:'dsecret:toggle', on} / {type:'dsecret:title', title}
+//                     {type:'dsecret:toggle', on} / {type:'dsecret:open-file', relPath, line, path}
 //   parent → iframe: {type:'dsecret:init', enabled, projects, current}
+//                     {type:'dsecret:enabled', on}（设置面板侧改开关 → 本页实时同步）
 //                     {type:'dsecret:scan-result', result} / {type:'dsecret:act-result', pending}
 //                     {type:'dsecret:data', data} / {type:'dsecret:git-dirty', path, count}
+//                     {type:'dsecret:git-log-result', result} / {type:'dsecret:gitignore-result', relPath, result}
 // ============================================================================
 (function () {
   'use strict';
@@ -43,6 +45,30 @@
     var bridge = window.qqqideBridge;
     var _iframe = null;     // 当前 dsecret tab 的 contentWindow（单例）
     var _offDirty = null;   // git-dirty 事件桥退订函数
+    var _offSetting = null; // secret.maskHelp 设置变更退订函数
+
+    var _previewPath = null;   // 本控制台开出的只读预览路径（重复点同一文件保持只读）
+
+    // ── 第二行点击 → 右侧 editor 只读预览 + 跳行（纯查看：不写盘、不改文件）──
+    //   ① 文件已在编辑器里开着（用户自己的 tab）→ 只跳行、不动它的可编辑性；
+    //   ② 需要新开 → readOnly；且只读不是死状态：下次普通打开会自动恢复可编辑（tab-manager._applyPaneOpts）。
+    function openPreview(projPath, relPath, line) {
+      try {
+        if (!projPath || !relPath) return false;
+        var abs = String(projPath).replace(/\\/g, '/').replace(/\/$/, '') + '/' + String(relPath).replace(/\\/g, '/');
+        var live = null;
+        try { if (window.qqqEditor && window.qqqEditor.getEditorForFile) live = window.qqqEditor.getEditorForFile(abs); } catch (_) {}
+        var keepRO = (!live) || (_previewPath === abs);
+        window._nextPaneOpts = { line: parseInt(line, 10) || 1, col: 1, readOnly: keepRO };
+        if (window.qqqTabs && window.qqqTabs.openFileInRightGroup) window.qqqTabs.openFileInRightGroup(abs);
+        else document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: abs } }));
+        _previewPath = keepRO ? abs : null;
+        if (keepRO && window.qqqideQoast) {
+          window.qqqideQoast.show(window._i ? window._i('goods.dsecret.previewTip', '只读预览（不可编辑）— 要改这个文件请从文件树打开') : '只读预览（不可编辑）', { duration: 4000 });
+        }
+        return true;
+      } catch (_) { return false; }
+    }
 
     // ── 打开 dsecret：X 区 file 分组 custom tab（单例，同 kmd 模式） ──
     function openDsecretTab(side) {
@@ -106,11 +132,7 @@
             return;
           }
           if (d.type === 'dsecret:toggle') { sg.setEnabled(d.on); return; }
-          if (d.type === 'dsecret:title') {
-            var tb = tab;
-            if (tb && window.qqqTabs.setCustomTabTitle) window.qqqTabs.setCustomTabTitle(tb.id, String(d.title || ''));
-            return;
-          }
+          if (d.type === 'dsecret:open-file') { openPreview(d.path, d.relPath, d.line); return; }
         });
 
         // tab 关闭（pane 从 DOM 移除）→ 退订事件桥
@@ -146,6 +168,7 @@
           if (m) current = m.path;
         }
       } catch (_) {}
+      ensureSettingBridge();
       post(win, 'dsecret:init', { enabled: enabled, projects: projects, current: current });
     }
 
@@ -154,6 +177,16 @@
       _offDirty = window.__qqqSecretGuard.onDirty(function (ev) {
         if (!_iframe) return;
         post(_iframe, 'dsecret:git-dirty', { path: ev.path, count: ev.count });
+      });
+    }
+
+    // ── 开关双向同步：设置面板侧改「协助密钥脱敏」→ 本页勾选框实时跟随 ──
+    //   懒绑定（首次 init 时才订）：保证 qqqSettings 已就位，且不会在模块先于它加载时静默漏订。
+    function ensureSettingBridge() {
+      if (_offSetting || !window.qqqSettings || !window.qqqSettings.onChange) return;
+      _offSetting = window.qqqSettings.onChange('secret.maskHelp', function (v) {
+        if (!_iframe) return;
+        post(_iframe, 'dsecret:enabled', { on: (v !== false && v !== 'false') });
       });
     }
 

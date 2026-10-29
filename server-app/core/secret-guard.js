@@ -10,7 +10,8 @@
 //              T2 强标签+高熵      → 自动抹除
 //              T3 弱标签/边界熵    → 常驻 qoast + 用户协同面板
 //   · 只确保用户最终提交(git)的内容干净；不确定的一律交人工判断
-//   · 编辑器正在打开的文件一律跳过（防覆盖用户未保存的编辑）
+//   · 编辑器闸门唯一口径 = 「有未保存修改才跳过」（干净打开照常抹除 + 写后净刷新；
+//     跳过项进协同队列并标记原因，绝不静默从队列消失）
 //
 // 数据落盘（项目级）:
 //   {项目}/_qqq/secret-guard/state.json      值级去重（hash(值) → ts，30 天）
@@ -44,7 +45,6 @@
   var _wlLoaded = {};
   var _pendingT3 = {};       // path → [ {file,line,value,label,context,start,end,quote,staged,_vKey} ]
   var _qoast = null;         // 常驻 qoast 句柄
-  var _panelEl = null, _panelOv = null, _panelProj = null;
   var _gitBinCache = null;
 
   // ═══════════ 工具 ═══════════
@@ -294,14 +294,30 @@
     return { content: out, applied: applied };
   }
 
-  // 上下文片段：值打码只留前后 4 字符（防面板自身泄露）
-  function _maskedContext(content, s, e) {
+  // 上下文片段 = 整行原文（不打码：用户必须看到原样代码，才判断得出该抹除还是该保留）
+  function _lineContext(content, s, e) {
     var lineStart = content.lastIndexOf('\n', s - 1) + 1;
     var lineEnd = content.indexOf('\n', e);
     if (lineEnd === -1) lineEnd = content.length;
-    var val = content.slice(s, e);
-    var maskedVal = val.length <= 8 ? '****' : val.slice(0, 4) + '****' + val.slice(-4);
-    return content.slice(lineStart, s) + maskedVal + content.slice(e, lineEnd);
+    return content.slice(lineStart, lineEnd);
+  }
+
+  // 定位待抹除的值：优先按报告行（同值多处出现时绝不抹错行），行内找不到才全文件首个命中
+  function _locateValue(raw, item) {
+    var v = item.value;
+    if (!v) return -1;
+    var ln = parseInt(item.line, 10);
+    if (ln > 0) {
+      var lines = raw.split('\n');
+      var li = ln - 1;
+      if (li < lines.length) {
+        var off = 0;
+        for (var i = 0; i < li; i++) off += lines[i].length + 1;
+        var at = lines[li].indexOf(v);
+        if (at !== -1) return off + at;
+      }
+    }
+    return raw.indexOf(v);
   }
 
   // ═══════════ 持久化 ═══════════
@@ -472,15 +488,18 @@
       }
       if (!todo.length && !t3.length) return null;
 
-      // 编辑器正在打开 → 跳过（防覆盖用户未保存编辑 / 保存时回写旧内容）
-      var openInEditor = false;
+      // ★ 编辑器闸门（唯一口径 = 有未保存修改才跳过）:
+      //   干净打开 → 照常抹除（写盘后 notifyExternalWrite 让编辑器净刷新，不会丢用户任何东西）；
+      //   脏 → 不写盘（否则用户一保存就把含明文的旧内容盖回来），但绝不静默消失：
+      //   降级进协同队列 + 标记原因（blocked），用户看得见、可保留/忽略，保存后重扫即自动抹除。
+      var editorDirty = false;
       try {
-        if (window.qqqEditor && typeof window.qqqEditor.getEditorForFile === 'function' &&
-            window.qqqEditor.getEditorForFile(fullPath)) openInEditor = true;
+        if (window.qqqEditor && typeof window.qqqEditor.isPathDirty === 'function') editorDirty = !!window.qqqEditor.isPathDirty(fullPath);
       } catch (_) {}
-      if (openInEditor) {
-        if (todo.length) _appendLog(projPath, 'SKIP(editor-open) ' + relPath + ' (' + todo.length + ' auto)');
-        return null;
+      if (editorDirty && todo.length) {
+        _appendLog(projPath, 'SKIP(editor-dirty) ' + relPath + ' (' + todo.length + ' auto)');
+        for (var di = 0; di < todo.length; di++) { todo[di].blocked = 'editor-dirty'; t3.push(todo[di]); }
+        todo = [];
       }
 
       var auto = [];
@@ -494,6 +513,8 @@
             for (var gi = 0; gi < todo.length; gi++) t3.push(todo[gi]);
           } else {
             await b.fs.write(fullPath, red.content);
+            // ★ 写后通知已打开（且必为干净）的编辑器净刷新——保滚动/光标 + 变更行高亮
+            try { if (window.qqqEditor && window.qqqEditor.notifyExternalWrite) window.qqqEditor.notifyExternalWrite(fullPath); } catch (_) {}
             if (staged) {
               try {
                 await b.qz.spawn({ cmd: await _gitBin(), args: ['-C', projPath, 'add', '--', relPath], timeout: 8000 });
@@ -503,7 +524,7 @@
             for (var ai = 0; ai < red.applied.length; ai++) {
               var af = red.applied[ai];
               state[af._vKey] = now;
-              auto.push({ tier: af.tier, name: af.name, file: relPath, line: af.line, value: af.value.slice(0, 16) + '...', context: _maskedContext(raw, af.start, af.end) });
+              auto.push({ tier: af.tier, name: af.name, file: relPath, line: af.line, value: af.value, context: _lineContext(raw, af.start, af.end) });
               _appendLog(projPath, 'REDACT[T1:' + af.name + '] ' + relPath + ':' + af.line + ' ' + af.value.slice(0, 16) + '...');
             }
             _saveJson(_stateFile(projPath), state);
@@ -513,7 +534,7 @@
 
       if (t3.length) {
         for (var tj = 0; tj < t3.length; tj++) {
-          t3[tj].context = _maskedContext(raw, t3[tj].start, t3[tj].end);
+          t3[tj].context = _lineContext(raw, t3[tj].start, t3[tj].end);
           t3[tj].file = relPath;
           t3[tj].staged = staged;
         }
@@ -526,7 +547,7 @@
     }
   }
 
-  // ═══════════ 协同 qoast + 面板 ═══════════
+  // ═══════════ 协同 qoast（唯一处置界面 = dsecret 控制台） ═══════════
   function _showCoopQoast(projPath) {
     if (!_enabled()) return;
     var list = _pendingT3[projPath] || [];
@@ -541,7 +562,7 @@
       type: 'warning',
       action: {
         label: _t('secretGuard.btnGo', '去处理'),
-        onClick: function () { _openPanel(projPath); }
+        onClick: function () { _openDsecret(); }
       }
     });
     _qoast._proj = projPath;
@@ -553,113 +574,14 @@
       try { _qoast.dismiss(); } catch (_) {}
       _qoast = null;
     }
-    if (_panelProj === projPath) _closePanel();
   }
 
-  // ── 面板 ──
-  function _openPanel(projPath) {
-    _panelProj = projPath;
-    _renderPanel(projPath);
-    if (_panelEl) _panelEl.style.display = '';
-    if (_panelOv) _panelOv.style.display = '';
-    document.addEventListener('keydown', _panelEsc);
-  }
-
-  function _closePanel() {
-    if (_panelEl) _panelEl.style.display = 'none';
-    if (_panelOv) _panelOv.style.display = 'none';
-    _panelProj = null;
-    document.removeEventListener('keydown', _panelEsc);
-  }
-
-  function _panelEsc(e) {
-    if (e.key === 'Escape') _closePanel();
-  }
-
-  function _ensurePanelDom() {
-    if (_panelEl) return;
-    _panelOv = document.createElement('div');
-    _panelOv.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9998;';
-    _panelOv.addEventListener('click', function (e) { if (e.target === _panelOv) _closePanel(); });
-    _panelEl = document.createElement('div');
-    _panelEl.className = 'qqq-sg-panel';   // ★ 统一块钩子（滚动条/可选中/拖选色——shell-base.css，铁律 §4.1）
-    _panelEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;max-width:92vw;max-height:82vh;overflow-y:auto;z-index:9999;padding:0;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:var(--card-bg);color:var(--text-primary);';
-    _panelOv.appendChild(_panelEl);
-    document.body.appendChild(_panelOv);
-  }
-
-  function _mkBtn(label, fn, danger) {
-    var b = document.createElement('button');
-    b.textContent = label;
-    b.style.cssText = 'padding:3px 12px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);color:' + (danger ? 'var(--red)' : 'var(--text-primary)') + ';font-size:12px;';
-    b.onclick = function (ev) { ev.stopPropagation(); fn(); };
-    return b;
-  }
-
-  function _renderPanel(projPath) {
-    var list = _pendingT3[projPath] || [];
-    if (!list.length) {
-      if (_qoast && _qoast._proj === projPath) { try { _qoast.dismiss(); } catch (_) {} _qoast = null; }
-      _closePanel();
-      return;
-    }
-    _ensurePanelDom();
-    _panelEl.innerHTML = '';
-
-    var hd = document.createElement('div');
-    hd.style.cssText = 'padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;';
-    var title = document.createElement('span');
-    title.style.cssText = 'font-size:15px;font-weight:bold;color:var(--text-primary);';
-    title.textContent = _t('secretGuard.panelTitle', '密钥脱敏 · 协同处理');
-    hd.appendChild(title);
-    // 关闭仅：点面板外阴影 / Esc（铁律 §4.1——内置面板不设 ✕）
-    _panelEl.appendChild(hd);
-
-    var desc = document.createElement('div');
-    desc.style.cssText = 'padding:10px 20px;font-size:12px;color:var(--text-secondary);line-height:1.6;border-bottom:1px solid var(--border-color);';
-    desc.textContent = _t('secretGuard.panelDesc', '以下内容疑似包含密钥，无法自动确认。已打码展示，请人工判断后处理。');
-    _panelEl.appendChild(desc);
-
-    var body = document.createElement('div');
-    body.className = 'qqq-sg-body';   // ★ 统一块钩子（shell-base.css 内嵌弹窗统一块）
-    body.style.cssText = 'padding:12px 20px;max-height:46vh;overflow-y:auto;';
-    for (var i = 0; i < list.length; i++) {
-      var item = list[i];
-      var row = document.createElement('div');
-      row.style.cssText = 'margin-bottom:10px;padding:10px 12px;border:1px solid var(--border-color);border-radius:4px;';
-      var head = document.createElement('div');
-      head.style.cssText = 'font-size:12px;color:var(--text-primary);margin-bottom:6px;word-break:break-all;';
-      var loc = document.createElement('span');
-      loc.style.cssText = 'font-weight:bold;';
-      loc.textContent = item.file + ':' + item.line;
-      var tag = document.createElement('span');
-      tag.style.cssText = 'margin-left:8px;font-size:11px;color:var(--orange);';
-      tag.textContent = item.label || '';
-      head.appendChild(loc); head.appendChild(tag);
-      row.appendChild(head);
-      var ctx = document.createElement('div');
-      ctx.style.cssText = 'font-family:Consolas,monospace;font-size:12px;color:var(--text-secondary);background:var(--border-color);padding:6px 8px;border-radius:3px;white-space:pre-wrap;word-break:break-all;margin-bottom:8px;';
-      ctx.textContent = item.context;
-      row.appendChild(ctx);
-      var btns = document.createElement('div');
-      btns.style.cssText = 'display:flex;gap:6px;';
-      btns.appendChild(_mkBtn(_t('secretGuard.btnErase', '抹除'), function () { _eraseOne(projPath, item).then(function () { _renderPanel(projPath); }); }, true));
-      btns.appendChild(_mkBtn(_t('secretGuard.btnKeep', '保留'), function () { _keepOne(projPath, item).then(function () { _renderPanel(projPath); }); }));
-      btns.appendChild(_mkBtn(_t('secretGuard.btnIgnoreFile', '忽略此文件'), function () { _ignoreFile(projPath, item).then(function () { _renderPanel(projPath); }); }));
-      row.appendChild(btns);
-      body.appendChild(row);
-    }
-    _panelEl.appendChild(body);
-
-    var foot = document.createElement('div');
-    foot.style.cssText = 'padding:12px 20px;border-top:1px solid var(--border-color);display:flex;gap:8px;align-items:center;';
-    foot.appendChild(_mkBtn(_t('secretGuard.btnEraseAll', '全部抹除'), function () { _eraseAll(projPath); }, true));
-    foot.appendChild(_mkBtn(_t('secretGuard.btnKeepAll', '全部保留'), function () { _keepAll(projPath); }));
-    var hint = document.createElement('span');
-    hint.style.cssText = 'margin-left:auto;font-size:11px;color:var(--text-secondary);';
-    hint.textContent = _t('secretGuard.editorOpenHint', '提示：已在编辑器中打开的文件会被跳过，避免覆盖未保存的编辑');
-    foot.appendChild(hint);
-    _panelEl.appendChild(foot);
+  // ── 协同处理控制台 = dsecret（唯一处置界面；本文件不再自带面板）──
+  function _openDsecret() {
+    try {
+      if (window.qqqGaea && window.qqqGaea.open) return window.qqqGaea.open('dsecret');
+    } catch (_) {}
+    return false;
   }
 
   // ── 协同动作 ──
@@ -673,9 +595,17 @@
       var b = _b();
       if (!b || !b.fs) return;
       var full = _fullPath(projPath, item.file);
+      // ★ 与自动路径同一闸门：编辑器里有未保存修改 → 拒绝写盘（否则保存时含明文的旧内容整份盖回）
+      var dirty = false;
+      try { if (window.qqqEditor && window.qqqEditor.isPathDirty) dirty = !!window.qqqEditor.isPathDirty(full); } catch (_) {}
+      if (dirty) {
+        _appendLog(projPath, 'SKIP(editor-dirty) ' + item.file + ':' + item.line + ' (user-confirmed)');
+        if (window.qqqideQoast) window.qqqideQoast.show(_t('secretGuard.dirtySkip', '该文件在编辑器里有未保存修改 — 先保存，再抹除'), { duration: 5000, type: 'warning' });
+        return;
+      }
       var raw = await b.fs.read(full);
       if (typeof raw !== 'string') return;
-      var idx = raw.indexOf(item.value);
+      var idx = _locateValue(raw, item);
       if (idx === -1) { _appendLog(projPath, 'SKIP(t3-value-missing) ' + item.file); return; }
       var rep = (item.quote || '') + REDACTED + (item.quote || '');
       var out = raw.slice(0, idx) + rep + raw.slice(idx + item.value.length);
@@ -686,6 +616,7 @@
         return;
       }
       await b.fs.write(full, out);
+      try { if (window.qqqEditor && window.qqqEditor.notifyExternalWrite) window.qqqEditor.notifyExternalWrite(full); } catch (_) {}
       if (item.staged) {
         try {
           await b.qz.spawn({ cmd: await _gitBin(), args: ['-C', projPath, 'add', '--', item.file], timeout: 8000 });
@@ -720,13 +651,11 @@
   async function _eraseAll(projPath) {
     var list = (_pendingT3[projPath] || []).slice();
     for (var i = 0; i < list.length; i++) await _eraseOne(projPath, list[i]);
-    _renderPanel(projPath);
   }
 
   async function _keepAll(projPath) {
     var list = (_pendingT3[projPath] || []).slice();
     for (var i = 0; i < list.length; i++) await _keepOne(projPath, list[i]);
-    _renderPanel(projPath);
   }
 
   // ═══════════ 开关联动 ═══════════
@@ -778,10 +707,13 @@
   }
 
   // 未提交扫描（dirty）：同后台事件路径，自动抹除 T1/T2 + 收集 T3
+  // ★ 开关语义（唯一口径）：开关只管「要不要自动抹除」，不管「能不能扫」——
+  //   关闭 → 与全量体检完全对称，零写盘、全部命中进协同队列（旧实现直接返回 disabled，
+  //   两个模式行为不一致、且用户勾上开关后还得自己再点一次扫描）。
   async function _sgScanDirty(projPath) {
-    if (!_enabled()) return { disabled: true };
-    _engineReadOnly = await _selfCheck();
-    if (_engineReadOnly) _appendLog(projPath, window._i('secretGuard.staleEngine', 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）'));
+    var off = !_enabled();
+    _engineReadOnly = off || await _selfCheck();
+    if (!off && _engineReadOnly) _appendLog(projPath, window._i('secretGuard.staleEngine', 'STALE-ENGINE 规则已更新，本实例降级只读协同（刷新页面生效）'));
     var porcelain = await _gitPorcelain(projPath);
     var files = _parsePorcelain(porcelain);
     var auto = [], t3 = [], skip = [];
@@ -802,7 +734,7 @@
     if (t3.length) { _pendingT3[projPath] = t3; _showCoopQoast(projPath); }
     else { _clearPending(projPath); }
     _engineReadOnly = false;
-    return { mode: 'dirty', porcelain: porcelain, fileCount: files.length, auto: auto, t3: t3, skip: skip };
+    return { mode: 'dirty', porcelain: porcelain, fileCount: files.length, auto: auto, t3: t3, skip: skip, disabled: off };
   }
 
   // 全量体检扫描（full）：只读不写盘，展示全部命中
@@ -833,7 +765,7 @@
         if (state[vKey] && Date.now() - state[vKey] < STATE_TTL) continue;
         f._vKey = vKey;
         f.file = fp;
-        f.context = _maskedContext(raw, f.start, f.end);
+        f.context = _lineContext(raw, f.start, f.end);
         if (f.tier === 1) t1.push(f);
         else if (f.tier === 2) t2.push(f);
         else t3.push(f);

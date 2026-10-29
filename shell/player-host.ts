@@ -26,7 +26,7 @@ import { spawn, execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDataDir } from './portable-paths';
-import { pickRevealWindowId, revealReqStale } from './player-reveal';
+import { pickRevealWindowId, pickOpenTargetId, revealReqStale } from './player-reveal';
 
 let _mode: boolean | null = null;
 /** 本进程是否为播放器宿主域（--qqqide-play；含 --qqqide-play= 前缀式）。 */
@@ -373,6 +373,44 @@ function _waitRevealAck(id: string, waitMs: number): Promise<any | null> {
 // ── IDE 侧：reveals 队列监听（选窗/置前/投递/ack） ──
 let _ideRevealStarted = false;
 let _lastFocusedMainId: number | null = null;
+// ★ 主窗焦点历史（选窗序②「最后聚焦」唯一来源；幂等）——Roam 定位与外部打开投递共用。
+let _focusTracked = false;
+export function startMainFocusTrack(): void {
+    if (_focusTracked || isPlayerHostMode()) { return; }
+    _focusTracked = true;
+    try {
+        app.on('browser-window-focus', (_e: any, w: any) => {
+            try { if (w && !w.isDestroyed() && (w as any).__qqqMainWindow) { _lastFocusedMainId = w.id; } } catch { /* ignore */ }
+        });
+    } catch { /* ignore */ }
+}
+/** 当场聚焦的主窗 id（无主窗聚焦 = null）。 */
+export function focusedMainWindowId(): number | null {
+    try {
+        const f = BrowserWindow.getFocusedWindow();
+        if (!f || f.isDestroyed()) { return null; }
+        return f.id;
+    } catch { return null; }
+}
+/** 最后聚焦过的主窗 id（焦点历史；从未聚焦 = null）。 */
+export function lastFocusedMainWindowId(): number | null { return _lastFocusedMainId; }
+/** 外部打开投递选窗（唯一入口——选窗序权威 = player-reveal.pickOpenTargetId）。
+ *  preferId = 发起时刻捕获的目标窗（无 = 交给聚焦/历史/存活三道兜底）。 */
+export function pickMainWindow(preferId?: number | null): BrowserWindow | null {
+    const wins = _mainWindowsAlive();
+    if (!wins.length) { return null; }
+    const byId = new Map<number, BrowserWindow>();
+    for (const w of wins) { byId.set(w.id, w); }
+    const fid = focusedMainWindowId();
+    const pickId = pickOpenTargetId((typeof preferId === 'number' ? preferId : null), {
+        selfPid: process.pid,
+        focusedId: (fid != null && byId.has(fid)) ? fid : null,
+        lastFocusedId: (_lastFocusedMainId != null && byId.has(_lastFocusedMainId)) ? _lastFocusedMainId : null,
+        aliveIds: wins.map((w) => w.id),
+    });
+    if (pickId != null) { const w = byId.get(pickId); if (w) { return w; } }
+    return wins[0];
+}
 const _revealInflight = new Set<string>();
 // ★ 主窗集合/置前（fa-open.ts 外部打开投递同源复用——唯一实现，禁第二套选窗）
 export { _mainWindowsAlive as mainWindowsAlive, _focusMainWindow as focusMainWindow };
@@ -484,12 +522,7 @@ export function startIdeRevealWatch(): void {
     _ideRevealStarted = true;
     const dir = playerHostRevealDir();
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
-    // 焦点历史（选窗序③）：仅本进程主窗入史
-    try {
-        app.on('browser-window-focus', (_e: any, w: any) => {
-            try { if (w && !w.isDestroyed() && (w as any).__qqqMainWindow) { _lastFocusedMainId = w.id; } } catch { /* ignore */ }
-        });
-    } catch { /* ignore */ }
+    startMainFocusTrack();   // 焦点历史（选窗序②，与外部打开投递同源）
     let watcher: fs.FSWatcher | null = null;
     let trail: any = null;
     const startWatch = (): void => {

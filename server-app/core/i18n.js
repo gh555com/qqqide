@@ -321,7 +321,7 @@ const i18n = (function () {
         for (var k = 0; k < tEls.length; k++) {
             var tEl = tEls[k];
             var tKey = tEl.getAttribute('data-i18n-title');
-            if (tKey) tEl.title = t(tKey);
+            if (tKey) tEl.title = t(tKey, parseParams(tEl.getAttribute('data-i18n-params')));
         }
     }
 

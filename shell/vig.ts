@@ -17,6 +17,7 @@
 //   card              { times, count }   ← count 由 wq-ping 动态从 kope 读取回写
 //   cache             { hit, miss }
 //   squad             { '1'..'x': n }     ← 键 = 编队槽位字符；上报为 c 数组（8 槽位固定顺序）
+//   player            { n, sec, a, v, nat, tx, tw, def, defn, t0 }  ← 播放器履历（sec/tw=秒；defn=接管默认类数 gauge）
 //   byok              { n, ok, f, fa, fn, fh, ft, d, r, l, cfg, t0 }
 //                       ← 请求数 n（尝试即计）；成败 ok/f + 失败桶 fa·fn·fh·ft（认证·网络·HTTP·超时中止）；
 //                         通道 d·r·l（直连·平台代理·本地模型）；cfg = 配置启用事件（关→开 +1）
@@ -147,7 +148,7 @@ function _saveSoon(): void {
 
 function _clampKey(k: string, v: number): number {
   if (!Number.isFinite(v) || v < 0) return 0;
-  if (k === 'ms' || k === 'b') return Math.min(Math.floor(v), MAX_BIG);
+  if (k === 'ms' || k === 'b' || k === 'sec' || k === 'tw') return Math.min(Math.floor(v), MAX_BIG);
   if (k === 'hit' || k === 'miss') return Math.min(Math.floor(v), 10_000_000);
   return Math.min(Math.floor(v), MAX_N);
 }
@@ -229,6 +230,25 @@ export function vigSnapshot(): Record<string, any> | null {
       }
       if (bag.t0 > 0) item.t0 = bag.t0;
       out.roam = item;
+    }
+  }
+
+  // player（播放器履历，2026-10-29）: n=起播次数 / sec=实播秒 / a·v=音视频次数（核心）
+  //   nat=原生直放 / tx=进转码兜底 / tw=转码累计等待秒（链路） / def·defn=接管系统默认（系统身份）
+  //   ★ 出现条件 = n>0 或任一可选字段>0（只设默认没播放也要记）——单列处理，不走 MODS_SIMPLE_N 的 n>0 门
+  {
+    const bag = v.player || {};
+    const n = Number(bag.n) || 0;
+    const keys = ['sec', 'a', 'v', 'nat', 'tx', 'tw', 'def', 'defn'];
+    const touch = n > 0 || keys.some((k) => (Number(bag[k]) || 0) > 0);
+    if (touch) {
+      const item: Record<string, number> = { n: _clampKey('n', n) };
+      for (const k of keys) {
+        const val = Number(bag[k]) || 0;
+        if (val > 0) item[k] = _clampKey(k, val);
+      }
+      if (bag.t0 > 0) item.t0 = bag.t0;
+      out.player = item;
     }
   }
 

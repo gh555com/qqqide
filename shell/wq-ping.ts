@@ -7,8 +7,8 @@
 //   1. 生成/持久化 device_id (UUID v4) + factory_version 到 Data/alphal/
 //   2. 累计使用时长：跨重启持久化到 Data/alphal/cumulative_seconds
 //      → 每次 ping 上报绝对值 → 服务端 max(old, new) 接受
-//   3. 定期 POST /api/wq/ping（首次 30~120s 随机抖动，后续按服务端建议）
-//   4. 失败指数退避重试
+//   3. 定期 POST /api/wq/ping（首次 5~15s 随机抖动，后续按服务端建议）
+//   4. 失败退避阶梯（60 → 130 → 300 → 600s，向上抖动，封顶随在线窗口自适应）
 //
 // 铁律：
 //   - 不阻塞启动，不阻塞渲染进程
@@ -21,13 +21,14 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import * as https from 'https';
-import { safeStorage } from 'electron';
+import { app, powerMonitor, safeStorage } from 'electron';
 import { APP_VERSION } from './version';
 import { getDataDir, getAppRoot } from './portable-paths';
 import { getAuthPhone } from './auth-state';
 import { mainWindowShownResolved } from './ipc-secure';   // ★ 钥匙串调用窗口门（linux/mac）
 import { getComponentBin } from './component-checker';
 import { vigSnapshot, vigSet, winthereExternal } from './vig';
+import { playerHostVigExternal, mergePlayerVig } from './player-vig';
 import { crashNetSummary } from './crash-net';
 import * as remoteCmd from './remote-cmd'; // ★ 2026-09-28 设备级指令通道（执行/回执/诊断）
 import * as syspyReport from './syspy-report'; // ★ 2026-10-02 系统解释器失败遥测（pending 搭车 upd_diag）
@@ -36,15 +37,32 @@ import { getMainLang } from './main-i18n';
 import type { StateStore } from './state-sqlite';
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
-const PING_API_HOST = 'direct-cn.gh555.com';
+// ★ 上报节奏三铁律（往这里加东西前先读）：
+//   ① 失败退避上限必须远小于服务端在线窗口（窗口 = 4×上报间隔 = 60min）——
+//      旧值 1h 恰等于窗口，一次断网被放大成「离线两小时」；
+//   ② 响应缺字段的兜底必须是「再报一次」量级，不许 12h（= 12 倍窗口的静默黑洞）；
+//   ③ 服务端建议延迟必须有硬上限，且永不越过在线窗口的一半（防时钟/配置漂移自杀）。
+const PING_API_HOSTS = ['direct-cn.gh555.com', 'gh555.com']; // 首选 + 备用（同路由；单线路 DNS/网络故障自动切换）
 const PING_API_PATH = '/api/wq/ping';
 const GOOD_SLG = 'qqqide';
 const DISTRIBUTION = 'gh555.com';    // 发行渠道（当前唯一，将来可扩展）
 const PING_JITTER_MIN_MS = 5_000;    // 首次 ping 最小延迟
 const PING_JITTER_MAX_MS = 15_000;   // 首次 ping 最大延迟
-const PING_FALLBACK_SEC = 43_200;    // 兜底间隔 12 小时
-const RETRY_MIN_MS = 60_000;
-const RETRY_MAX_MS = 3_600_000;      // 最大 1 小时
+const PING_FALLBACK_SEC = 600;       // 响应缺 min_next_ping_at → 10 分钟后重报（旧 12h）
+const PING_DELAY_MIN_SEC = 60;       // 服务端建议延迟下限
+const PING_DELAY_MAX_SEC = 1_800;    // 服务端建议延迟硬上限（时钟漂移防线；窗口已知时按 max(本值, 窗口/2) 放行大间隔配置）
+const RETRY_MIN_MS = 60_000;         // 首档退避（也是「节奏健康」的复位值）
+// ★ 失败退避阶梯（末档 = 封顶）：短抖动快速归位，长断网低噪音。
+//   前两档管「Wi-Fi 漫游/换网/VPN 抖动」这类秒级~分钟级断线（≤3.5min 内的行为与旧版逐秒一致）；
+//   后两档管「断电/断网数小时」这类长故障——同样 24h 断网从 ~590 次重试降到 ~130 次。
+const RETRY_LADDER_MS = [RETRY_MIN_MS, 130_000, 300_000, 600_000];
+const RETRY_JITTER_RATIO = 0.25;     // ★ 退避只向上抖动 0~25%：防同一时刻掉线的客户端锁步成惊群
+                                     //   （服务端 5xx/半死时，无抖动的重试会整点齐射；只加不减）
+const PRESENCE_WINDOW_FALLBACK_S = 3_600; // 服务端未下发 online_window_s 前假设的在线窗口
+const SUCCESS_JITTER_RATIO = 0.04;   // 成功路径正抖动 0~4%（900s 档 ≈ ≤36s）：批次同期启动的客户端永久错开
+const STALE_KICK_MS = 5 * 60_000;    // 唤醒/聚焦补报的最小间隔（防抖动刷屏）
+const WATCHDOG_MS = 60_000;          // 定时器自愈巡检周期
+const WATCHDOG_SLACK_MS = 120_000;   // 计划点超期容忍（GC/休眠/事件循环卡顿）
 
 // ── 状态 ────────────────────────────────────────────────────────────────────
 let _deviceId = '';
@@ -52,7 +70,8 @@ let _factoryVersion = '';
 let _cumulativeSeconds = 0;          // 上次持久化的累计秒数
 let _sessionStartedAt = Date.now();  // 本次进程启动时间
 let _stopped = false;
-let _retryDelayMs = RETRY_MIN_MS;
+let _retryStep = 0;                   // 0 = 健康节奏；n = 连续失败 n 次（决定退避阶梯档位）
+let _onlineWindowS = 0;               // 服务端下发在线窗口（0 = 未知；退避封顶据此自适应）
 let _lastFailNotifyAt = 0;      // ★ 升级失败即时补发节流（30min）
 let _lastSyspyNotifyAt = 0;     // ★ 系统解释器失败即时补发节流（10min）
 let _updHealthCache: Record<string, unknown> | null | undefined; // undefined=未探测
@@ -64,6 +83,10 @@ let _diagIncluded = false;           // ★ 本次 ping 是否携带扩展诊断
 let _diagBase = '';                  // ★ 本次携带诊断的 Data 根（syspy pending 清理用）
 let _diagSpy = false;                // ★ 本次诊断由系统解释器失败触发（服务端确认后清 pending）
 let _timer: ReturnType<typeof setTimeout> | null = null;
+let _watchdog: ReturnType<typeof setInterval> | null = null;
+let _inFlight = false;               // 单飞：任一路径在飞时不重复发
+let _nextDueAt = 0;                  // 下一次计划上报时刻（0 = 无计划）
+let _lastOkAt = 0;                   // 上次成功上报时刻（唤醒/聚焦补报判据）
 let _userDataPath = '';              // ★ portable.userData，启动时注入
 let _stateStore: StateStore | null = null; // ★ 全局状态库（main.ts 注入；读 UI 主题镜像）
 
@@ -329,10 +352,32 @@ async function readUiTheme(): Promise<string> {
     return '';
 }
 
+// ── 机型静态环境（进程内恒定，只取一次）─────────────────────────────────────
+//   ★ os.cpus() 在 64 核机上实测 0.95ms/次、Intl 时区 0.17ms/次——都是每轮都算的死重，
+//     缓存后单轮 body 构建便宜 ~1.1ms（掉线重试频繁时也不会累积成主线程抖动）。
+let _staticEnv: { platform: string; arch: string; osVer: string; cores: number; memMB: number; tzName: string } | null = null;
+function staticEnv() {
+    if (_staticEnv) return _staticEnv;
+    const cores = os.cpus().length;
+    const memMB = Math.round(os.totalmem() / (1024 * 1024));
+    let tzName = '';
+    try { tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* ignore */ }
+    _staticEnv = {
+        platform: os.platform(),
+        arch: os.arch(),
+        osVer: os.release().slice(0, 30),
+        cores: cores,
+        memMB: memMB,
+        tzName: tzName.slice(0, 50),
+    };
+    return _staticEnv;
+}
+
 // ── 收集设备信息 ────────────────────────────────────────────────────────────
 async function collectPingBody(): Promise<string> {
     const nowSec = Math.floor(Date.now() / 1000);
     const totalSec = currentTotalSeconds();
+    const _env = staticEnv();
 
     const body: Record<string, unknown> = {
         good_slg:         GOOD_SLG,
@@ -346,11 +391,11 @@ async function collectPingBody(): Promise<string> {
         pkg_name:          'qqqide',
         pkg_display_name:  'qqqide',
         pkg_publisher:     'gh555.com',
-        os_platform:       os.platform(),
-        os_arch:           os.arch(),
-        os_ver:            os.release().slice(0, 30),
-        cpu_cores:         os.cpus().length,
-        mem_mb:            Math.round(os.totalmem() / (1024 * 1024)),
+        os_platform:       _env.platform,
+        os_arch:           _env.arch,
+        os_ver:            _env.osVer,
+        cpu_cores:         _env.cores,
+        mem_mb:            _env.memMB,
     };
 
     // ★ 设备环境上报（2026-09-22 补报）：界面语言 / 时区 / 主题
@@ -358,8 +403,7 @@ async function collectPingBody(): Promise<string> {
     try { body.locale = getMainLang(); } catch { /* ignore */ }
     try {
         body.tz_offset = -new Date().getTimezoneOffset();   // 分钟、东八区=480（JS 符号相反取负）
-        const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-        if (tzName) body.tz_name = tzName.slice(0, 50);     // IANA 名（服务端上限 50）
+        if (_env.tzName) body.tz_name = _env.tzName;        // IANA 名（服务端上限 50；静态缓存）
     } catch { /* ignore */ }
     const uiTheme = await readUiTheme();
     if (uiTheme) body.ui_theme = uiTheme;
@@ -378,10 +422,15 @@ async function collectPingBody(): Promise<string> {
         const vig: Record<string, any> = vigSnapshot() || {};
         const wt = winthereExternal();   // window-there 外部计数（3W 保存 / 3X 还原 / 布局数）
         if (wt) { vig.winthere = wt; }
+        // ★ 播放器履历（2026-10-29）：IDE 侧（vig.json player）+ 宿主侧（player-vig.host.json）求和合并
+        //   两域分文件存（唯一写者），此处才是唯一汇合点 → body.vig.player → device_vig.player_*
+        const pvHost = playerHostVigExternal();
+        const pvMerged = mergePlayerVig(vig.player, pvHost);
+        if (pvMerged) { vig.player = pvMerged; }
         const cs = crashNetSummary();    // 稳定性遥测（崩溃摘要：只传计数，永不传内容/堆栈）
         if (cs) { vig.crash = cs; }
         if (Object.keys(vig).length > 0) { body.vig = vig; }
-        pingLog('ping vig=' + (Object.keys(vig).join('+') || 'none') + ' cardN=' + (ks ? ks.total : 'na') + (wt ? ' wt=' + wt.save + '/' + wt.restore : ''));
+        pingLog('ping vig=' + (Object.keys(vig).join('+') || 'none') + ' cardN=' + (ks ? ks.total : 'na') + (wt ? ' wt=' + wt.save + '/' + wt.restore : '') + (pvMerged ? ' pv=' + (pvMerged.n || 0) + '/' + (pvMerged.sec || 0) + 's' : ''));
     } catch { /* ignore */ }
 
     const uh = collectUpdHealth();
@@ -454,13 +503,24 @@ function buildDiag(): string {
 }
 
 // ── 发送 ping ───────────────────────────────────────────────────────────────
-async function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
-    const bodyStr = await collectPingBody();
-    return new Promise((resolve) => {
-        pingLog('sendPing START host=' + PING_API_HOST);
+type PingResult = {
+    ok: boolean;
+    minNextPingAt?: number;
+    onlineWindowS?: number;
+    serverTotalSeconds?: number;
+    forceReset?: boolean;
+    tagged?: string;          // 服务端策略标签（low_spec = 在线照常计，累计/陪伴冻结）
+    skipped?: string;
+    commands?: unknown;
+    cmdsOk?: boolean;
+    error?: string;
+    retryable?: boolean;   // 网络层失败（可换线路再试）
+};
 
+function sendPingTo(host: string, bodyStr: string): Promise<PingResult> {
+    return new Promise((resolve) => {
         const req = https.request({
-            hostname: PING_API_HOST,
+            hostname: host,
             port: 443,
             path: PING_API_PATH,
             method: 'POST',
@@ -473,27 +533,35 @@ async function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
             let data = '';
             res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
             res.on('end', () => {
+                const code = res.statusCode || 0;
                 try {
                     const json = JSON.parse(data);
                     resolve({
                         ok: json.ok === true,
                         minNextPingAt: json.min_next_ping_at,
+                        onlineWindowS: json.online_window_s,
+                        serverTotalSeconds: json.server_total_seconds,
+                        forceReset: json.force_reset === true,
+                        tagged: typeof json.tagged === 'string' ? json.tagged : '',
+                        skipped: typeof json.skipped === 'string' ? json.skipped : '',
                         commands: Array.isArray(json.commands) ? json.commands : undefined,
                         cmdsOk: json.cmd_acks_ok === true,
-                    } as any);
+                        retryable: code >= 500,
+                    });
                 } catch {
-                    resolve({ ok: false });
+                    // 非 JSON（网关错误页/代理拦截）：5xx 或空体 → 允许换线路
+                    resolve({ ok: false, retryable: code === 0 || code >= 500, error: 'bad_json(' + code + ')' });
                 }
             });
         });
 
         req.on('error', (e: Error) => {
-            pingLog('sendPing ERROR: ' + e.message);
-            resolve({ ok: false, error: e.message } as any);
+            pingLog('sendPing ERROR host=' + host + ': ' + e.message);
+            resolve({ ok: false, error: e.message, retryable: true }); // DNS/连接/超时 = 网络层失败
         });
         req.on('timeout', () => {
-            pingLog('sendPing TIMEOUT');
-            req.destroy(); resolve({ ok: false, error: 'timeout' } as any);
+            pingLog('sendPing TIMEOUT host=' + host);
+            req.destroy(); resolve({ ok: false, error: 'timeout', retryable: true } as any);
         });
 
         req.write(bodyStr);
@@ -501,19 +569,114 @@ async function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
     });
 }
 
+async function sendPing(): Promise<PingResult> {
+    const bodyStr = await collectPingBody();
+    let last: PingResult = { ok: false, error: 'no_host' };
+    for (let i = 0; i < PING_API_HOSTS.length; i++) {
+        const host = PING_API_HOSTS[i];
+        pingLog('sendPing START host=' + host);
+        const r = await sendPingTo(host, bodyStr);
+        if (r.ok || !r.retryable) return r;      // 成功 / 业务性失败（4xx）= 不换线路
+        last = r;
+        if (i + 1 < PING_API_HOSTS.length) pingLog('sendPing switch → ' + PING_API_HOSTS[i + 1]);
+    }
+    return last;
+}
+
 // ── 调度 ────────────────────────────────────────────────────────────────────
-function scheduleNext(delaySec: number) {
+/**
+ * 当前档退避基准（未抖动）。
+ * ★ 双重闸门：① 阶梯末档 600s 为绝对封顶；② 绝不越过「在线窗口 / 4」——窗口是服务端唯一
+ *   真理（4×上报间隔），这里只做除法消费。窗口配置一改，退避自动跟随，两端永不分叉，
+ *   也永不会出现「退避比窗口还长 = 自己把在线等成离线」的自伤。
+ */
+function _retryBaseMs(): number {
+    const top = RETRY_LADDER_MS[RETRY_LADDER_MS.length - 1];
+    let base = RETRY_LADDER_MS[Math.min(_retryStep, RETRY_LADDER_MS.length - 1)];
+    const win = _onlineWindowS >= 600 ? _onlineWindowS : PRESENCE_WINDOW_FALLBACK_S;
+    const ceil = Math.floor((win * 1000) / 4 / (1 + RETRY_JITTER_RATIO));  // 留出抖动余量，抖动后仍 ≤ 窗口/4
+    if (base > ceil) base = ceil;
+    if (base < RETRY_MIN_MS) base = RETRY_MIN_MS;
+    return Math.min(base, top);
+}
+
+/** 失败退避间隔（带向上抖动）：同一时刻掉线的客户端不锁步，服务端压力被摊平。 */
+function _retryInterval(): number {
+    return Math.round(_retryBaseMs() * (1 + Math.random() * RETRY_JITTER_RATIO));
+}
+
+/** 连续失败记账：下一轮进下一档（到顶后钉在末档）。 */
+function _advanceRetry(): void {
+    if (_retryStep < RETRY_LADDER_MS.length) _retryStep++;
+}
+
+/** 唯一排程入口：一切路径（常规/快速/补报/重试）都从这里落定时器 + 记账。 */
+function _arm(delayMs: number): void {
     if (_stopped) return;
     if (_timer) clearTimeout(_timer);
-    _timer = setTimeout(pingCycle, delaySec * 1000);
+    const ms = Math.max(1_000, Math.round(delayMs));
+    _nextDueAt = Date.now() + ms;
+    _timer = setTimeout(pingCycle, ms);
+}
+
+function scheduleNext(delaySec: number) {
+    _arm(Math.max(PING_DELAY_MIN_SEC, delaySec) * 1000);
 }
 
 // ★ 指令执行后加速回执（90s 后补一次 ping；与常规调度共用定时器）
 function scheduleQuickPing(delaySec: number): void {
     if (_stopped) return;
-    _retryDelayMs = RETRY_MIN_MS;
-    if (_timer) clearTimeout(_timer);
-    _timer = setTimeout(pingCycle, Math.max(30, delaySec) * 1000);
+    _retryStep = 0;
+    _arm(Math.max(30, delaySec) * 1000);
+}
+
+/**
+ * 补报（系统唤醒/解锁/窗口聚焦/巡检）：只在「确实欠报」时补，且不打断临近的计划点。
+ * ★ 旧实现零恢复通道——断网 85 分钟后网络早恢复了，退避却仍睡到第 64 分钟才醒。
+ * ★ 健康节奏下零额外请求：非强制补报只用于「退避中」的恢复（聚焦/唤醒不打乱 15min 节拍）；
+ *   定时器丢失等异常由巡检强制补报（force）。
+ */
+function kickStale(reason: string, minGapMs: number, force: boolean = false): void {
+    if (_stopped || !_deviceId || _inFlight) return;
+    const now = Date.now();
+    const sinceOk = _lastOkAt > 0 ? now - _lastOkAt : Number.MAX_SAFE_INTEGER;
+    if (sinceOk < minGapMs) return;
+    // 已有一个更早的计划点（≤30s 后）→ 让原计划走，不重复上报
+    if (_nextDueAt > now && _nextDueAt - now < 30_000) return;
+    if (!force && _retryStep === 0) return;   // 节奏健康 → 不补报
+    pingLog('kick(' + reason + (force ? '/force' : '') + ') sinceOk=' + (sinceOk === Number.MAX_SAFE_INTEGER ? 'never' : Math.round(sinceOk / 1000) + 's')
+        + ' retry=' + Math.round(_retryBaseMs() / 1000) + 's#' + _retryStep);
+    _retryStep = 0;
+    _arm(1_500);
+}
+
+/** 定时器自愈巡检：定时器丢了（休眠/系统改时钟/事件循环卡死）也能把上报接回来。 */
+function _startWatchdog(): void {
+    if (_watchdog) return;
+    _watchdog = setInterval(function () {
+        if (_stopped || _inFlight) return;
+        if (!_nextDueAt) {
+            // 无计划点 = 定时器丢了（只在曾成功过之后才判异常，避开启动前 15s 抖动窗）
+            if (_lastOkAt > 0 && Date.now() - _lastOkAt > STALE_KICK_MS) kickStale('watchdog-idle', 0, true);
+            return;
+        }
+        if (Date.now() > _nextDueAt + WATCHDOG_SLACK_MS) kickStale('watchdog-overdue', 0, true);
+    }, WATCHDOG_MS);
+    try { (_watchdog as any).unref && (_watchdog as any).unref(); } catch (_) { }
+}
+
+/**
+ * 服务端裁决对齐：force_reset = 我们报的累计比服务端记的少（多设备/重装/换目录）
+ * → 采纳服务端总额。多设备从此收敛到同一把尺，不再「低值设备永远零增量」。
+ */
+function applyServerTotal(res: PingResult): void {
+    const st = Number(res.serverTotalSeconds);
+    if (!res.forceReset || !isFinite(st) || st <= 0 || st > 315_360_000) return; // 0~10 年，越界不信
+    if (st <= currentTotalSeconds()) return;
+    _cumulativeSeconds = st;
+    _sessionStartedAt = Date.now();
+    persistCumulativeSeconds(st);
+    pingLog('forceReset adopt server total=' + st);
 }
 
 // ★ ping 结果处理（设备级指令通道）: 回执清理 + 指令执行 + 加速回执
@@ -541,39 +704,63 @@ function afterPingResult(res: { ok: boolean; commands?: unknown; cmdsOk?: boolea
 }
 
 async function pingCycle() {
-    if (_stopped) return;
-
+    if (_stopped || _inFlight) return;
+    _inFlight = true;
+    _nextDueAt = 0;
     try {
         pingLog('sending doer=' + (readDoerID() || 'none') + ' dev=' + _deviceId.slice(0,8));
         const res = await sendPing();
-        pingLog('result ok=' + res.ok + ' err=' + ((res as any).error || ''));
+        pingLog('result ok=' + res.ok + ' err=' + (res.error || '')
+            + (res.tagged ? ' tagged=' + res.tagged : '')
+            + (res.skipped ? ' skipped=' + res.skipped : ''));
         if (res.ok) {
-            _retryDelayMs = RETRY_MIN_MS;
+            _retryStep = 0;
+            _lastOkAt = Date.now();
+
+            // ★ 在线窗口 = 服务端权益（退避封顶据此自适应；旧实现硬编码在 6 处，配置一改就分叉）
+            const winS = Number(res.onlineWindowS);
+            if (isFinite(winS) && winS >= 600 && winS <= 86_400) _onlineWindowS = winS;
+
+            // ★ 服务端裁决 = 唯一真理（force_reset 时把本地累计对齐服务端）
+            applyServerTotal(res);
 
             // ★ 成功后立即持久化当前累计值（原子推进）
             persistCumulativeSeconds(currentTotalSeconds());
 
             if (res.minNextPingAt && res.minNextPingAt > 0) {
                 const nowSec = Math.floor(Date.now() / 1000);
-                const delaySec = Math.max(60, res.minNextPingAt - nowSec);
-                scheduleNext(delaySec);
+                let delaySec = res.minNextPingAt - nowSec;
+                // ★ 上报节奏永不越过在线窗口的一半（窗口由服务端下发，两端永不分叉）：
+                //   上限 = max(硬上限, 窗口/2)——正常配置（900s）零改动，服务端故意配大间隔也放行，
+                 //   但时钟漂移/异常建议最多只能把我们推到窗口边缘之前。
+                const win = Number(res.onlineWindowS);
+                const cap = (isFinite(win) && win >= PING_DELAY_MIN_SEC * 2)
+                    ? Math.max(PING_DELAY_MAX_SEC, Math.floor(win / 2))
+                    : PING_DELAY_MAX_SEC;
+                if (delaySec < PING_DELAY_MIN_SEC) delaySec = PING_DELAY_MIN_SEC;
+                if (delaySec > cap) delaySec = cap;
+                // ★ 成功路径正抖动（0~4%）：只加不减——绝不早于服务端 min_next_ping_at，也绝不吃掉窗口余量。
+                //   旧实现零抖动，同期部署的一批客户端会永远整点齐射（窗口内 4 次全撞在同一秒）。
+                _arm(Math.min(Math.round(delaySec * 1000 * (1 + Math.random() * SUCCESS_JITTER_RATIO)), cap * 1000));
             } else {
                 scheduleNext(PING_FALLBACK_SEC);
             }
 
             // ★ 设备级指令通道: 回执清理 + 指令执行（执行完自动加速回执）
-            afterPingResult(res as any);
+            afterPingResult(res);
         } else {
-            // ★ 网络错误/超时/JSON解析失败 → 指数退避重试，不用 12h 兜底
-            _timer = setTimeout(pingCycle, _retryDelayMs);
-            _retryDelayMs = Math.min(_retryDelayMs * 2, RETRY_MAX_MS);
+            // ★ 网络错误/超时/JSON解析失败 → 阶梯退避（+0~25% 抖动，封顶受在线窗口 /4 约束）
+            _arm(_retryInterval());
+            _advanceRetry();
         }
     } catch (_) {
         // 理论上 sendPing 不抛异常（全部 resolve），保留此路径以防未来变更
         if (!_stopped) {
-            _timer = setTimeout(pingCycle, _retryDelayMs);
-            _retryDelayMs = Math.min(_retryDelayMs * 2, RETRY_MAX_MS);
+            _arm(_retryInterval());
+            _advanceRetry();
         }
+    } finally {
+        _inFlight = false;
     }
 }
 
@@ -599,8 +786,15 @@ export function startWqPing(userDataPath?: string): void {
     try { remoteCmd.remoteCmdConfigure(_userDataPath || getDataDir()); } catch { /* ignore */ }
 
     pingLog('STARTED dev=' + _deviceId.slice(0,8) + ' ph=' + (readDoerID() || 'none'));
+
+    // ★ 恢复通道（旧实现零恢复：系统唤醒/网络回来/窗口回前台都不会把退避清零）
+    try { powerMonitor.on('resume', function () { kickStale('power-resume', STALE_KICK_MS); }); } catch (_) { }
+    try { powerMonitor.on('unlock-screen', function () { kickStale('unlock-screen', STALE_KICK_MS); }); } catch (_) { }
+    try { app.on('browser-window-focus', function () { kickStale('window-focus', STALE_KICK_MS); }); } catch (_) { }
+    _startWatchdog();
+
     const jitter = PING_JITTER_MIN_MS + Math.random() * (PING_JITTER_MAX_MS - PING_JITTER_MIN_MS);
-    _timer = setTimeout(pingCycle, jitter);
+    _arm(jitter);
 
     // ★ VIG 预热：立即初始化 kope 库（card.count 首 ping 即可带上——曾延迟 3s 致首 ping 抢跑）
     try { kopeWarmup(); } catch { /* ignore */ }
@@ -613,9 +807,8 @@ export function notifyUpdateFailed(): void {
   const nowMs = Date.now();
   if (nowMs - _lastFailNotifyAt < 30 * 60 * 1000) return; // 节流: 30min 一次
   _lastFailNotifyAt = nowMs;
-  _retryDelayMs = RETRY_MIN_MS;
-  if (_timer) clearTimeout(_timer);
-  _timer = setTimeout(pingCycle, 2_000); // 2s 后发，等状态文件落盘
+  _retryStep = 0;
+  _arm(2_000); // 2s 后发，等状态文件落盘
 }
 
 /** 系统解释器失败即时补发（ipc-syspy 失败时调用）: 10min 节流后立即 ping 一次（诊断搭车上报）。 */
@@ -625,9 +818,8 @@ export function notifySyspyFailed(): void {
     if (nowMs - _lastSyspyNotifyAt < 10 * 60 * 1000) return;
     _lastSyspyNotifyAt = nowMs;
     pingLog('notifySyspyFailed -> quick ping');
-    _retryDelayMs = RETRY_MIN_MS;
-    if (_timer) clearTimeout(_timer);
-    _timer = setTimeout(pingCycle, 3_000);
+    _retryStep = 0;
+    _arm(3_000);
 }
 
 /** ★ 设置当前是否在播放（Savor）：使后续常规 ping 携带 playing=true。 */
@@ -638,7 +830,7 @@ export function setCurrentlyPlaying(on: boolean): void {
 
 /** ★ 偿还 ping：播放/循环触发时立即补发一次（带 playing=true），5min 防抖。 */
 export function triggerPlayingPing(): void {
-    if (_stopped || !_deviceId) { return; }
+    if (_stopped || !_deviceId || _inFlight) { return; }
     const nowSec = Math.floor(Date.now() / 1000);
     if (nowSec - _lastPlayingPingTime < 300) {
         pingLog('playing ping debounced (5min)');
@@ -647,8 +839,9 @@ export function triggerPlayingPing(): void {
     _lastPlayingPingTime = nowSec;
     pingLog('playing ping triggered');
     sendPing().then(res => {
-        pingLog('playing ping result ok=' + res.ok + ' err=' + ((res as any).error || ''));
-        afterPingResult(res as any);
+        pingLog('playing ping result ok=' + res.ok + ' err=' + (res.error || ''));
+        if (res.ok) _lastOkAt = Date.now();   // 这次也算成功——巡检不重复补报
+        afterPingResult(res);
     }).catch(() => { /* ignore */ });
 }
 
@@ -656,9 +849,8 @@ export function triggerPlayingPing(): void {
 export function notifyAuthReady(): void {
     pingLog('notifyAuth dev=' + (_deviceId ? _deviceId.slice(0,8) : 'none') + ' stop=' + _stopped);
     if (_stopped || !_deviceId) return;
-    _retryDelayMs = RETRY_MIN_MS;
-    if (_timer) clearTimeout(_timer);
-    _timer = setTimeout(pingCycle, 2_000); // 2s 后发，给 setAuthPhone 留时间
+    _retryStep = 0;
+    _arm(2_000); // 2s 后发，给 setAuthPhone 留时间
 }
 
 /** 停止统计上报机。退出前持久化累计秒数。 */
@@ -667,6 +859,12 @@ export function stopWqPing(): void {
     if (_timer) {
         clearTimeout(_timer);
         _timer = null;
+    }
+    _nextDueAt = 0;
+    _inFlight = false;
+    if (_watchdog) {
+        clearInterval(_watchdog);
+        _watchdog = null;
     }
     // ★ 退出前写入当前累计（防 crash 丢时间）
     if (_deviceId) {

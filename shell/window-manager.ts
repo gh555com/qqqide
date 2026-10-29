@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
-import { renameDevToolsViaBroker } from './py-broker';
+import { prepareDevToolsOpen, titleDevToolsForWindow, forgetDevToolsWindow, setDevToolsProjectNameResolver } from './devtools-title';
 import { claimSquad, releaseSquad, broadcastSquadState } from './squad-manager';
 import { releaseProject } from './project-lock';
 import { getDataDir } from './portable-paths';
@@ -175,6 +175,12 @@ export function registerGlobalKey(accel: string, id: string, mainWindow: Browser
 // ---- Window↔Project maps (for project lock) ----
 export const _windowProjectMap = new Map<number, string>();
 export const _projectWindowMap = new Map<string, number>();
+
+// ★ DevTools 窗体标题的项目名解析器（devtools-title 唯一入口按 winId 取项目名）
+setDevToolsProjectNameResolver((winId) => {
+    const p = _windowProjectMap.get(winId);
+    return p ? path.basename(p) : 'qqqide';
+});
 
 // ============================================================================
 // ★ 窗口打开/关闭顺序记录 (2026-08-16 客户 bug 根治: 无法识别窗口关闭顺序)
@@ -423,6 +429,20 @@ app.on('browser-window-created', (_e, w) => {
     });
 });
 
+/** ★ DevTools 唯一打开通道（detached）：先落归属配对基准 → 再开 → devtools-opened 认领改名。
+ *  基准快照有硬超时（1.5s）——绝不让桥通信拖慢按齿轮的响应。 */
+export function openDevToolsTracked(win: BrowserWindow): void {
+    if (!win || win.isDestroyed()) { return; }
+    const snap = prepareDevToolsOpen(win).catch(() => { /* ignore */ });
+    const budget = new Promise<void>((r) => setTimeout(r, 1500));
+    void Promise.race([snap, budget]).then(() => {
+        try {
+            if (win.isDestroyed() || win.webContents.isDestroyed()) { return; }
+            if (!win.webContents.isDevToolsOpened()) { win.webContents.openDevTools({ mode: 'detach' }); }
+        } catch { /* ignore */ }
+    });
+}
+
 // ---- createWindow ----export function createWindow(
     portableRoot: string,
     portableCache: string,    appVersion: string,
@@ -591,6 +611,7 @@ app.on('browser-window-created', (_e, w) => {
     const winId = win.id;
     win.on('closed', () => {
         (win as any).__qqqConfirmArmed = false;
+        forgetDevToolsWindow(winId);
         // ★ 半销毁标记清除 (2026-08-16): 窗口彻底销毁, 不再污染存活快照
         _closingWinIds.delete(winId);
         if (_quitAllBatch) {
@@ -704,32 +725,20 @@ app.on('browser-window-created', (_e, w) => {
         }
     });
 
-    // ★ 控制台按钮注入 — 无论 dev/prod，DevTools 打开就注入
+    // ★ DevTools 打开 → 控制台按钮注入 + 窗体标题（「🔧」+ 项目名）—— 生产/开发同一条路径
+    //   （旧实现把改名锁在 isDev 里 → 生产态 DevTools 永远裸标题；且靠全局枚举改名 → 跨窗误改）
+    const _dtWinId = win.id;
     win.webContents.on('devtools-opened', () => {
         const dwc = (win.webContents as any).devToolsWebContents as WebContents;
         if (dwc && !dwc.isDestroyed()) {
             injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win);
         }
+        titleDevToolsForWindow(win);
     });
+    win.webContents.on('devtools-closed', () => { forgetDevToolsWindow(_dtWinId); });
 
-    // Dev mode extras
-    if (extractFlags().isDev) {        win.webContents.on('devtools-opened', () => {
-            // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
-            // ★ 2026-08-23: 成功后即停 — 旧实现 renamed 成功仍打满 8 次重试（devtools 窗口已存在时
-            //   EnumWindows 扫不到 → 8 条 FAILED 日志噪音）；devtools 重开触发新闭包重新循环，覆盖不丢。
-            let _renameDone = false;
-            const _doRename = async (attempt: number) => {
-                const p = _windowProjectMap.get(win.id);
-                const n = p ? path.basename(p) : 'qqqide';
-                console.log('[devtools] rename attempt=' + attempt + ' winId=' + win.id + ' projPath=' + (p || '(none)') + ' name=' + n);
-                const ok = await renameDevToolsViaBroker(win, n);
-                if (ok) _renameDone = true;
-            };
-            for (let _ri = 1; _ri <= 8; _ri++) {
-                setTimeout(() => { if (!_renameDone) _doRename(_ri); }, 1500 * _ri);
-            }
-        });
-        win.webContents.openDevTools({ mode: 'detach' });
+    // Dev mode extras    if (extractFlags().isDev) {
+        openDevToolsTracked(win);
         win.webContents.on('before-input-event', (ev, input) => {
             if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
 
@@ -742,7 +751,7 @@ app.on('browser-window-created', (_e, w) => {
                 if (win.webContents.isDevToolsOpened()) {
                     win.webContents.closeDevTools();
                 } else {
-                    win.webContents.openDevTools({ mode: 'detach' });
+                    openDevToolsTracked(win);
                 }
             }
             // ★ 吃 F12：Chromium 默认 F12=DevTools，IDE 自己不用 F12，阻止窗口被劫持

@@ -13,11 +13,12 @@ import { URL } from 'url';
 import { BootConfig, getWebappBaseUrl } from './boot';
 import { mi } from './main-i18n';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
-import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState, beginQuitAllBatch, recordWindowOpen } from './window-manager';
+import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState, beginQuitAllBatch, recordWindowOpen, openDevToolsTracked } from './window-manager';
 import { StateStore } from './state-sqlite';
 import { DownloadService } from './download-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
-import { renameDevToolsViaBroker, isPyBrokerReady, resolvePythonPath } from './py-broker';
+import { isPyBrokerReady, resolvePythonPath } from './py-broker';
+import { titleDevToolsForWindow } from './devtools-title';
 import { _consoleBuffer } from './window-manager';
 import { refreshWindowEntry } from './squad-manager';
 import { claimProject } from './project-lock';
@@ -621,8 +622,8 @@ if (-not $ok) { throw 'SetFileDropList failed' }
         if (wc.isDevToolsOpened()) {
             wc.closeDevTools();
         } else {
-            wc.openDevTools({ mode: 'detach' });
-            // 按钮注入由 window-manager.ts devtools-opened 事件统一处理
+            // 唯一打开通道：先落归属配对基准 → 开 → devtools-opened 认领改名
+            openDevToolsTracked(win);
         }
     });
 
@@ -720,7 +721,8 @@ if (-not $ok) { throw 'SetFileDropList failed' }
         // ★ DevTools 可能已用 fallback "qqqide" 改名，项目确认后重新改名
         const projName = path.basename(normalized);
         console.log('[devtools] claimProject: winId=' + win.id + ' normalized=' + normalized + ' projName=' + projName);
-        setTimeout(() => renameDevToolsViaBroker(win, projName), 1500);
+        // DevTools 已开且已登记 → 按新项目名改名；未开 = 零开销返回
+        setTimeout(() => titleDevToolsForWindow(win), 1500);
         return true;
     });
 
@@ -743,8 +745,8 @@ if (-not $ok) { throw 'SetFileDropList failed' }
         const normalized = projectRoot.replace(/\\/g, '/').replace(/\/$/, '');
         const projName = path.basename(normalized);
         console.log('[devtools] direct-rename: winId=' + win.id + ' projName=' + projName + ' brokerReady=' + isPyBrokerReady());
-        // 不延迟 — renderer 调用时项目已绑定，broker 已就绪
-        renameDevToolsViaBroker(win, projName);
+        // 不延迟 — renderer 调用时项目已绑定；只认本窗已登记句柄，未登记则差集认领
+        titleDevToolsForWindow(win);
         return true;
     });
 

@@ -867,7 +867,243 @@
     { target: 'python', exts: ['.py', '.pyw'] },
     { target: 'node', exts: ['.js', '.mjs', '.cjs'] }
   ];
-  var _FA_TOTAL = 74;
+  var _FA_TOTAL = 72;   // 目录未就绪时的回退基数（真值恒以壳层目录为准）
+  // 组名中文回退（短标签；真值仍以 zh.json 为准，其余语言部署链自动翻译）
+  var _FA_GROUP_LABEL = { text: '文本 / 标记', config: '配置 / 数据', web: 'Web', lang: '编程语言', misc: '查询 / 构建 / 其他' };
+
+  // ── ★ 文件关联明细（`1 by 1`，同音量卡片）──
+  //   一勾选 = 是否参与本族（不参与 = 不注册候选面、不夺默认、已是 qd 默认的立即归还给系统）。
+  //   目录/偏好唯一持有者 = 壳层（bridge.editorCatalog / setEditorOff）；本模块只做展示与提交。
+  //   点击只改本地 + 防抖提交（壳层落盘后归还掉队者并重注册），完成后再回读真值角标——
+  //   禁每点一次跑一次全链（72 项逐个点 = 72 次注册风暴），也禁把偏好存在渲染层（会被启动自愈覆盖）。
+  function _faBridge() {
+    try { return (window.qqqideBridge && window.qqqideBridge.fileAssoc) || null; } catch (e) { return null; }
+  }
+  function _faOffSet() {
+    var m = {};
+    var off = (_faCatalog && _faCatalog.off) || [];
+    for (var i = 0; i < off.length; i++) { m[String(off[i]).toLowerCase()] = true; }
+    return m;
+  }
+  function _faActiveCount() {
+    if (!_faCatalog || !_faCatalog.exts || !_faCatalog.exts.length) return _FA_TOTAL;
+    var off = _faOffSet();
+    var n = 0;
+    for (var i = 0; i < _faCatalog.exts.length; i++) { if (!off[_faCatalog.exts[i].toLowerCase()]) n++; }
+    return n;
+  }
+  function _faGroupOf(id) {
+    var gs = (_faCatalog && _faCatalog.groups) || [];
+    for (var i = 0; i < gs.length; i++) { if (gs[i].id === id) return gs[i]; }
+    return null;
+  }
+  function _faLoadCatalog(cb) {
+    var b = _faBridge();
+    if (!b || !b.editorCatalog) { if (cb) cb(); return; }
+    Promise.resolve(b.editorCatalog()).then(function (c) {
+      if (c && c.exts && c.exts.length) { _faCatalog = c; }
+      if (cb) cb();
+    }, function () { if (cb) cb(); });
+  }
+  function _faRefreshStates() {
+    if (!_fa1x1Open || _faStateBusy) return;
+    var b = _faBridge();
+    if (!b || !b.editorState) return;
+    _faStateBusy = true;
+    Promise.resolve(b.editorState()).then(function (r) {
+      _faStateBusy = false;
+      _faStates = (r && r.ok && r.states) ? r.states : null;
+      _faRenderCard();
+    }, function () { _faStateBusy = false; });
+  }
+  function _faCommitOff(map) {
+    if (!_faCatalog || _faBusy) return;   // 夺默认进行中：写同一批槽位 → 禁并发
+    var all = _faCatalog.exts || [];
+    var off = [];
+    for (var i = 0; i < all.length; i++) { var l = all[i].toLowerCase(); if (map[l]) off.push(l); }
+    _faCatalog.off = off;
+    _faSeq++;             // 新一批：在飞那批回来时看到序号变了就不会写本地真相
+    _faSyncing = true;
+    _faRenderCard();
+    clearTimeout(_faSyncTimer);
+    _faSyncTimer = setTimeout(function () { _faSyncFlush(); }, 700);
+  }
+  function _faSyncFlush() {
+    _faSyncTimer = null;
+    var b = _faBridge();
+    if (!b || !b.setEditorOff) { _faSyncing = false; _faRenderCard(); return; }
+    var off = (_faCatalog && _faCatalog.off) ? _faCatalog.off.slice() : [];
+    var seq = _faSeq;     // 本批序号（见下：回来时变了就不写本地真相）
+    Promise.resolve(b.setEditorOff(off)).then(function (r) {
+      if (seq !== _faSeq) { return; }   // 用户在等在期间又改了勾选 → 交给后一批落定（禁旧值覆盖新勾选）
+      _faSyncing = false;
+      if (!r || !r.ok) {
+        // r.off 存在 = 壳层偏好已落盘，只是系统侧写入未完成（下次启动自愈重试）—— 报「已保存」才诚实
+        if (r && r.off) {
+          if (_faCatalog) _faCatalog.off = r.off;
+          _pyQoast(_i('settings.faEditor.syncPartial', '偏好已保存；系统写入未完成（{e}），下次启动会自动重试', { e: (r.code || '?') }), 'warning');
+          _faRenderCard();
+          return;
+        }
+        _pyQoast(_i('settings.faEditor.syncFail', '保存失败：{e}', { e: (r && (r.code || r.reason)) || '?' }), 'error');
+        _faLoadCatalog(function () { _faRenderCard(); _faRefreshStates(); });   // 回读壳层真值（禁本地假态残存）
+        return;
+      }
+      if (r.off && _faCatalog) _faCatalog.off = r.off;
+      var n = (r.released && r.released.length) || 0;
+      if (n > 0) _pyQoast(_i('settings.faEditor.released', '已归还 {n} 类给系统', { n: n }), 'success');
+      _faRenderCard();
+      _faRefreshStates();
+    }, function () {
+      if (seq !== _faSeq) { return; }
+      _faSyncing = false;
+      _pyQoast(_i('settings.faEditor.syncFail', '保存失败：{e}', { e: 'bridge' }), 'error');
+      _faRenderCard();
+    });
+  }
+  function _faToggleExt(ext) {
+    if (!_faCatalog) return;
+    var l = String(ext).toLowerCase();
+    var off = _faOffSet();
+    if (off[l]) { delete off[l]; } else { off[l] = true; }
+    _faCommitOff(off);
+  }
+  function _faToggleGroup(gid, on) {
+    var g = _faGroupOf(gid);
+    if (!g) return;
+    var off = _faOffSet();
+    for (var i = 0; i < g.exts.length; i++) {
+      var l = g.exts[i].toLowerCase();
+      if (on) { delete off[l]; } else { off[l] = true; }
+    }
+    _faCommitOff(off);
+  }
+  function _faSetAll(on) {
+    if (!_faCatalog) return;
+    // 全不选 = 整族归还（可见的系统级变动）→ 内置弹框二次确认；全选零风险直做
+    if (on) { _faCommitOff({}); return; }
+    var n = _faCatalog.exts.length;
+    _interpConfirm(
+      _i('settings.faEditor.confirmNoneTitle', '你选择了「全部不参与」'),
+      _i('settings.faEditor.confirmNoneBody', '这 {n} 类会从「打开方式」列表里移除；当前由 qd 打开的类型会立即归还给系统（双击回到系统默认程序）。随时可在 1 by 1 里勾回来，再点〔设为默认〕夺回。', { n: n })
+    ).then(function (go) {
+      if (!go) return;
+      var off = {};
+      for (var i = 0; i < _faCatalog.exts.length; i++) { off[_faCatalog.exts[i].toLowerCase()] = true; }
+      _faCommitOff(off);
+    });
+  }
+  // 勾标记（图标唯一真源 qqq-icons；缺图时留等宽空格——不抢对齐）
+  function _faTick(color) {
+    var ic = window.qqqIcons;
+    if (ic && ic.has && ic.has('check')) {
+      return '<span class="' + ic.cls('check') + '" style="width:13px; height:13px; color:' + color + '; flex-shrink:0;"></span>';
+    }
+    return '<span style="width:13px; height:13px; flex-shrink:0;"></span>';
+  }
+  // 卡片内容（原地重绘单元：只换 #qqq-fa-card 的 innerHTML，不整面板重渲染——防拉杆/滚动跳）
+  function _faCardInner() {
+    var t = _faTheme || { isDark: false, bg: '#fdf6e3', text: '#656360', textDim: '#a8a6a2', textOff: '#8c8578', border: '#d3c6aa', accent: '#d99325', tint: 'rgba(217,147,37,0.14)', green: '#859900' };
+    var text = t.text, textDim = t.textDim, border = t.border, accent = t.accent, green = t.green;
+    var isDark = !!t.isDark, textOff = t.textOff || textDim, tint = t.tint || 'rgba(217,147,37,0.14)';
+    var OFF_LINE = isDark ? '#767068' : '#b3aca0';   // 未选中描边（灰虚）
+    var off = _faOffSet();
+    var all = (_faCatalog && _faCatalog.exts) || [];
+    var groups = (_faCatalog && _faCatalog.groups) || [];
+    var on = 0;
+    for (var i = 0; i < all.length; i++) { if (!off[all[i].toLowerCase()]) on++; }
+    var taken = 0;
+    if (_faStates) { for (var tk in _faStates) { if (_faStates[tk] === 'taken') taken++; } }
+    var h = '';
+    h += '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:3px;">';
+    h += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + _i('settings.faEditor.cardTitle', '文件关联明细') + '</span>';
+    h += '<span style="display:flex; align-items:center; gap:10px; min-width:0;">';
+    h += '<span style="font-size:11px; color:' + textDim + '; white-space:nowrap;">' + _i('settings.faEditor.count', '已选 {n}/{m}', { n: on, m: all.length })
+      + (taken ? _i('settings.faEditor.countTaken', ' · 已接管 {k}', { k: taken }) : '') + '</span>';
+    if (_faSyncing) h += '<span style="font-size:11px; color:' + accent + '; white-space:nowrap;">' + _i('settings.faEditor.syncing', '同步中…') + '</span>';
+    h += '<a href="javascript:void(0)" class="qqq-fa-all" style="font-size:12px; color:' + accent + '; text-decoration:underline;">' + _i('settings.faEditor.all', '全选') + '</a>';
+    h += '<a href="javascript:void(0)" class="qqq-fa-none" style="font-size:12px; color:' + accent + '; text-decoration:underline;">' + _i('settings.faEditor.none', '全不选') + '</a>';
+    h += '</span></div>';
+    h += '<div style="font-size:11px; color:' + textDim + '; line-height:1.45; margin-bottom:8px; white-space:normal;">' + _i('settings.faEditor.cardHint', '勾选 = 参与〔设为默认〕；取消勾选 = 不参与（已是 qd 默认的立即归还给系统）') + '</div>';
+    if (!_faCatalog) {
+      var _nb = _faBridge();
+      h += '<div style="font-size:11px; color:' + textDim + ';">'
+        + ((_nb && _nb.editorCatalog) ? _i('settings.faEditor.loading', '加载中…') : _i('settings.faEditor.needRestart', '需重启本窗口后可用'))
+        + '</div>';
+      return h;
+    }
+    for (var gi = 0; gi < groups.length; gi++) {
+      var g = groups[gi];
+      var gOn = 0;
+      for (var j = 0; j < g.exts.length; j++) { if (!off[g.exts[j].toLowerCase()]) gOn++; }
+      h += '<div style="margin-bottom:7px;">';
+      h += '<label style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; margin-bottom:4px;">';
+      h += '<input type="checkbox" class="qqq-fa-grp" data-fa-grp="' + g.id + '"' + (gOn === g.exts.length ? ' checked' : '') + ' style="margin:0; width:15px; height:15px; accent-color:' + accent + '; flex-shrink:0;">';
+      h += '<span style="font-size:13px; font-weight:bold; color:' + text + ';">' + _i('settings.faEditor.group.' + g.id, _FA_GROUP_LABEL[g.id] || g.id) + '</span>';
+      h += '<span style="font-size:11px; color:' + textDim + ';">' + gOn + '/' + g.exts.length + '</span>';
+      h += '</label>';
+      h += '<div style="display:flex; flex-wrap:wrap; gap:5px;">';
+      for (var ci = 0; ci < g.exts.length; ci++) {
+        var e = g.exts[ci], el = e.toLowerCase();
+        var isOn = !off[el];
+        var st = _faStates ? _faStates[el] : '';
+        var tip = e + ' · ' + (isOn ? _i('settings.faEditor.legendOn', '参与') : _i('settings.faEditor.legendOff', '不参与'))
+          + (st === 'taken' ? (' · ' + _i('settings.faEditor.stateTaken', '当前是 qd 打开'))
+            : (st === 'cand' ? (' · ' + _i('settings.faEditor.stateCand', '在「打开方式」列表')) : ''));
+        // ★ 选择态四通道（一眼可辨）：勾标记 + 橙实描边 + 橙底 + 深色粗体字；未选中 = 灰虚线 + 无底 + 灰字（勾位留空对齐）
+        //   系统真值 = 末端小方块（实心绿 = 当前真是 qd 打开 / 空心绿 = 仅在候选面）——方块与勾不同形，禁混读
+        var tick = isOn ? _faTick(accent) : '<span style="width:13px; height:13px; flex-shrink:0;"></span>';
+        var mark = st === 'taken'
+          ? '<span style="width:8px; height:8px; background:' + green + '; flex-shrink:0;"></span>'
+          : (st === 'cand' ? '<span style="width:8px; height:8px; border:2px solid ' + green + '; box-sizing:border-box; flex-shrink:0;"></span>' : '');
+        h += '<a href="javascript:void(0)" class="qqq-fa-chip" data-fa-ext="' + e + '" title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; font-family:Consolas,monospace; line-height:1.7; padding:2px 8px 2px 6px; border-radius:4px; text-decoration:none; white-space:nowrap; cursor:pointer; border:1px '
+          + (isOn ? 'solid ' + accent : 'dashed ' + OFF_LINE) + '; background:' + (isOn ? tint : 'transparent') + '; color:' + (isOn ? text : textOff) + '; font-weight:' + (isOn ? '600' : '400') + ';">'
+          + tick + e + mark
+          + '</a>';
+      }
+      h += '</div></div>';
+    }
+    // ★ 图例（灯泡 = 选择态；方块 = 系统真值）——防止把真值方块读成开关
+    h += '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; font-size:11px; color:' + textDim + '; line-height:1.6; margin-top:8px; padding-top:7px; border-top:1px dashed ' + border + ';">';
+    h += '<span style="display:inline-flex; align-items:center; gap:4px;">' + _faTick(accent) + _i('settings.faEditor.legendOn', '参与') + '</span>';
+    h += '<span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:11px; height:11px; border:1px dashed ' + OFF_LINE + '; box-sizing:border-box;"></span>' + _i('settings.faEditor.legendOff', '不参与') + '</span>';
+    h += '<span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; background:' + green + ';"></span>' + _i('settings.faEditor.legendTaken', '当前真的是 qd 打开') + '</span>';
+    h += '<span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; border:2px solid ' + green + '; box-sizing:border-box;"></span>' + _i('settings.faEditor.legendCand', '仅在「打开方式」列表') + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:10px; color:' + textDim + '; line-height:1.45; margin-top:4px; white-space:normal;">' + _i('settings.faEditor.interpNote', '.py/.pyw 与 .js/.mjs/.cjs 若已由系统解释器接管，点〔设为默认〕时自动跳过（不夺）') + '</div>';
+    return h;
+  }
+  function _faRenderCard() {
+    var card = document.getElementById('qqq-fa-card');
+    if (!card) return;
+    card.innerHTML = _faCardInner();
+    _faBindCard(card);
+  }
+  function _faBindCard(card) {
+    if (!card) return;
+    var grps = card.querySelectorAll('.qqq-fa-grp');
+    for (var i = 0; i < grps.length; i++) {
+      (function (box) {
+        var g = _faGroupOf(box.getAttribute('data-fa-grp'));
+        if (g) {
+          var off = _faOffSet(), n = 0;
+          for (var j = 0; j < g.exts.length; j++) { if (!off[g.exts[j].toLowerCase()]) n++; }
+          box.indeterminate = (n > 0 && n < g.exts.length);   // 部分勾选 = 半选态
+        }
+        box.addEventListener('change', function () { _faToggleGroup(box.getAttribute('data-fa-grp'), box.checked); });
+      })(grps[i]);
+    }
+    var chips = card.querySelectorAll('.qqq-fa-chip');
+    for (var k = 0; k < chips.length; k++) {
+      (function (el) {
+        el.addEventListener('click', function (e) { if (e) e.preventDefault(); _faToggleExt(el.getAttribute('data-fa-ext')); });
+      })(chips[k]);
+    }
+    var a = card.querySelector('.qqq-fa-all');
+    if (a) a.addEventListener('click', function (e) { if (e) e.preventDefault(); _faSetAll(true); });
+    var n2 = card.querySelector('.qqq-fa-none');
+    if (n2) n2.addEventListener('click', function (e) { if (e) e.preventDefault(); _faSetAll(false); });
+  }
 
   function _faTryCheck(sysB, target, tries) {
     var p = null;
@@ -914,10 +1150,24 @@
           if (rs[j].mode === 'ours') { skip = skip.concat(_FA_INTERP_FAMILIES[j].exts); }
         }
       }
-      var take = _FA_TOTAL - skip.length;
+      // ★ 参与族计数以壳层目录为准（1 by 1 不参与的已在壳层剔除；此处只管解释器跳过数）
+      var activeN = _faActiveCount();
+      if (activeN <= 0) {
+        _faBusy = false;
+        _renderPanel();
+        _pyQoast(_i('settings.faEditor.noneSelected', '没有勾选任何类型——可在 1 by 1 里勾回来'), 'error');
+        return;
+      }
+      var take = Math.max(0, activeN - skip.length);
+      if (take <= 0) {
+        _faBusy = false;
+        _renderPanel();
+        _pyQoast(_i('settings.faEditor.allSkipped', '勾选的类型都已由系统解释器接管，无需设置'), 'info');
+        return;
+      }
       var body = skip.length
-        ? _i('settings.faEditor.confirmBodySkip', '将接管约 {n} 类文本/代码的默认打开方式：双击直接用 qd 打开。（{k} 类已由系统解释器接管，保持双击运行）', { n: take, k: skip.length })
-        : _i('settings.faEditor.confirmBody', '将接管约 74 类文本/代码的默认打开方式：双击直接用 qd 打开。');
+        ? _i('settings.faEditor.confirmBodySkip', '将接管 {n} 类文本/代码的默认打开方式：双击直接用 qd 打开。（{k} 类已由系统解释器接管，保持双击运行）', { n: take, k: skip.length })
+        : _i('settings.faEditor.confirmBody', '将接管 {n} 类文本/代码的默认打开方式：双击直接用 qd 打开。', { n: take });
       _interpConfirm(_i('settings.faEditor.confirmTitle', '你选择了「将 qd 设为默认打开方式」'), body).then(function (go) {
         if (!go) { _faBusy = false; _renderPanel(); return; }
         Promise.resolve(bridge.applyEditor(skip)).then(function (r) {
@@ -948,6 +1198,7 @@
             } catch (e2) { /* ignore */ }
           }
           _interpSilentProbe();   // 真值复查（双保险：解释器行徽章随真值收敛）
+          _faRefreshStates();   // 明细角标随真值刷新（谁刚被接管一目了然）
         }, function () {
           _faBusy = false;
           _renderPanel();
@@ -983,7 +1234,16 @@
   var _sfxOpen = false;       // ★ 音效开关子卡片展开态（音量卡片的 1 by 1）
   var _floorCapHintOn = false;    // ★ 显示楼层 32/64（激活功能）未激活红字提示态（2026-09-05；64 档 2026-09-06）
   var _floorCapHintTimer = null;
-  var _faBusy = false;        // ★ 文件关联〔设为默认〕进行中（编辑器域，2026-10-07）
+  var _faBusy = false;        // ★ 文件关联〔设为默认〕进行中（编辑器域）
+  // ★ 文件关联 `1 by 1` 明细（〔设为默认〕的展开体）：目录唯一真理源 = 壳层；角标真相 = 壳层真值快照
+  var _fa1x1Open = false;
+  var _faCatalog = null;      // { groups:[{id,exts}], exts:[], off:[], platform:'' }
+  var _faStates = null;       // { ext: 'taken'|'cand'|'free' }（null = 未取/平台不支持）
+  var _faStateBusy = false;
+  var _faSyncTimer = null;
+  var _faSyncing = false;
+  var _faSeq = 0;             // ★ 提交序号：在飞 flush 回来时比对——旧结果禁覆盖更新的勾选
+  var _faTheme = null;        // 卡片原地重绘用的面板配色（_renderPanel 每轮写入）
   // ★ 系统解释器状态（python/node 双目标；跨重渲染保留，唯一后端 shell/ipc-syspy.ts）
   var _interpState = {
     python: { busy: false, phase: 'idle', mode: '' },
@@ -1004,6 +1264,11 @@
     var accent = isDark ? '#c7940e' : '#d99325';
     var green = isDark ? '#8fbc5a' : '#859900';
     var red = isDark ? '#ff4444' : '#dc322f';
+    _faTheme = {
+      isDark: isDark, bg: bg, bg2: bg2, text: text, textDim: textDim, border: border, accent: accent, green: green,
+      textOff: isDark ? '#9a958d' : '#8c8578',
+      tint: isDark ? 'rgba(199,148,14,0.26)' : 'rgba(217,147,37,0.22)'
+    };
 
     var html = '';
     // 标题行
@@ -1055,6 +1320,10 @@
         if (def.key === 'audio.volume') {
           // 「1 by 1」按钮（音效开关子卡片开合）
           _headRight += '<button id="qqq-sfx-1x1" style="padding:2px 10px; border:1px solid ' + (_sfxOpen ? accent : border) + '; border-radius:3px; background:' + (_sfxOpen ? accent + '22' : 'transparent') + '; color:' + (_sfxOpen ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap; flex-shrink:0;" title="' + _i('settings.sfxTooltip', '逐个音效开关') + '">1 by 1</button>';
+        }
+        if (def.key === 'sys.fileAssoc') {
+          // 「1 by 1」按钮（文件关联明细子卡片开合）——与音量卡片同一枚按钮语言
+          _headRight += '<button id="qqq-fa-1x1" style="padding:2px 10px; border:1px solid ' + (_fa1x1Open ? accent : border) + '; border-radius:3px; background:' + (_fa1x1Open ? accent + '22' : 'transparent') + '; color:' + (_fa1x1Open ? accent : textDim) + '; font-size:11px; cursor:default; white-space:nowrap; flex-shrink:0;" title="' + _i('settings.faEditor.tooltip1x1', '逐个扩展名开关') + '">1 by 1</button>';
         }
         html += '<div style="display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden; margin-bottom:' + (_descVal ? '10px' : '4px') + ';">';
         html += '<span style="font-size:13px; font-weight:bold; color:' + text + '; white-space:nowrap; flex-shrink:0;">' + _i(def.labelKey, def.label) + '</span>';
@@ -1191,15 +1460,19 @@
         }
         html += '</div>';
       } else if (def.type === 'fileassoc') {
-        // ★ 文件关联行（2026-10-07）：头行 = 标题 + 说明（自动维护），此处单按钮〔设为默认〕；
-        //   整族夺默认（约 74 类文本/代码；单向可反复——无解除/无状态角标，与播放器 ★ 同哲学）；
-        //   解释器族跳过（2026-10-10）= _onFaClick 实时判定，已接管的 py/js 族整族不夺；
-        //   跨域互斥（2026-10-10）：任一解释器目标操作/引导中禁点（防并发写同槽位）
+        // ★ 文件关联行：头行 = 标题 + 说明（自动维护）+ 右侧 1 by 1；此处按钮区 = 〔设为默认〕；
+        //   参与族夺默认（72 类文本/代码 − 1 by 1 不参与 − 系统解释器族）；
+        //   1 by 1 明细（同音量卡片）= 逐扩展勾选 / 组半选态 / 真值角标（绿点 = 当前真是 qd 打开）
+        //   ★ 跨域互斥：任一解释器目标操作/引导中禁点（防并发写同槽位）
         html += '<div style="display:flex; align-items:center; gap:12px;">';
         html += '<button id="qqq-fa-editor-btn" ' + ((_faBusy || _interpState.python.busy || _interpState.node.busy) ? 'disabled ' : '') + 'style="flex:1 1 0; box-sizing:border-box; min-height:38px; padding:8px 12px; display:flex; align-items:center; justify-content:center; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:13px; font-weight:bold; line-height:1.35; white-space:normal; word-break:break-word; text-align:center;">';
         html += _faBusy ? _i('settings.faEditor.btnBusy', '正在设置…') : _i('settings.faEditor.btn', '设为默认');
         html += '</button>';
         html += '</div>';
+        // ★ 明细子卡片（`1 by 1` 展开态，紧随按钮下方；与音量音效卡片同一容器语言）
+        if (_fa1x1Open) {
+          html += '<div id="qqq-fa-card" style="margin-top:10px; padding:10px 12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg + ';">' + _faCardInner() + '</div>';
+        }
       } else if (def.type === 'number') {
         // 数字键入（范围 100-1000，单位 k）
         var numId = 'qqq-setting-' + def.key.replace(/\./g, '-');
@@ -1320,6 +1593,20 @@
     var $faBtn = document.getElementById('qqq-fa-editor-btn');
     if ($faBtn) $faBtn.addEventListener('click', function () { _onFaClick(); });
 
+    // ★ 文件关联 1 by 1（按钮开合；目录首次展开时拉取壳层清单 → 再拉真值角标）
+    var $fa1x1 = document.getElementById('qqq-fa-1x1');
+    if ($fa1x1) {
+      $fa1x1.addEventListener('click', function () {
+        _fa1x1Open = !_fa1x1Open;
+        _renderPanel();
+        if (!_fa1x1Open) return;
+        if (!_faCatalog) _faLoadCatalog(function () { _renderPanel(); _faRefreshStates(); });
+        else _faRefreshStates();
+      });
+    }
+    var _faCardEl = document.getElementById('qqq-fa-card');
+    if (_faCardEl) _faBindCard(_faCardEl);
+
     // ★ 绑定 1 by 1 音效开关（按钮开合 + 勾选框即时生效，不整面板重渲染防拉杆跳动）
     var $sfx1x1 = document.getElementById('qqq-sfx-1x1');
     if ($sfx1x1) {
@@ -1381,7 +1668,8 @@
     if (_$overlay) _$overlay.style.display = '';
     // Esc 关闭
     document.addEventListener('keydown', _onEsc);
-    _interpSilentProbe();   // ★ 打开即静默复查（纯读）——「已接管」徽章与真值对齐
+    _interpSilentProbe();   // ★ 打开即静默复查（纯读）
+    _faLoadCatalog(function () { _faRenderCard(); });   // ★ 明细目录每次打开都重取（纯读零进程——其他窗口改过的勾选在这里收敛）
   }
 
   function close() {

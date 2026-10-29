@@ -39,6 +39,21 @@ export function pickRevealWindowId(src: RevealSrc | null | undefined, ctx: Revea
     return ids[0];                                                       // ④ 任一存活
 }
 
+/** 外部打开（--qqqide-open 投递）选窗序（与 pickRevealWindowId 同址不同序）：
+ *  ① 发起时刻捕获的目标窗（「你点开文件那一刻正在操作滴窗」——最强且不被后续抢焦点污染）
+ *  ② 投递时刻聚焦窗  ③ 最后聚焦主窗  ④ 任一存活（数组序第一个）
+ *  为何捕获值排在最前：second-instance 到场后会有人抢焦点（旧行为直指主窗），
+ *  投递是异步的——等到真正投递时聚焦信号已失真，只有捕获值能还原用户当时的窗。 */
+export function pickOpenTargetId(preferId: number | null | undefined, ctx: RevealPickCtx): number | null {
+    const ids = (ctx && Array.isArray(ctx.aliveIds)) ? ctx.aliveIds.filter((n) => typeof n === 'number') : [];
+    if (!ids.length) { return null; }
+    const has = (n: any): boolean => typeof n === 'number' && ids.indexOf(n) >= 0;
+    if (has(preferId)) { return preferId as number; }
+    if (has(ctx.focusedId)) { return ctx.focusedId as number; }
+    if (has(ctx.lastFocusedId)) { return ctx.lastFocusedId as number; }
+    return ids[0];
+}
+
 /** 请求陈腐上限：宿主超时已兜底系统定位——IDE 迟到读到陈腐请求必须拒执（防「惊喜定位」）。 */
 export const REVEAL_REQ_MAX_AGE_MS = 60000;
 

@@ -21,6 +21,7 @@ const ENTRIES = [
   { name: 'player-reveal', src: path.join(ROOT, 'shell', 'player-reveal.ts') },
   { name: 'paste-fetch', src: path.join(ROOT, 'shell', 'paste-fetch.ts') },
   { name: 'tmp-machine', src: path.join(ROOT, 'shell', 'tmp-machine.ts') },
+  { name: 'timeline-store', src: path.join(ROOT, 'shell', 'timeline-store.ts') },
 ];
 
 async function buildAll() {
@@ -35,6 +36,7 @@ async function buildAll() {
       format: 'cjs',
       target: 'node16',
       logLevel: 'warning',
+      external: ['sql.js'],      // wasm 入口不可打包——运行时从 node_modules 解析
       plugins: [{
         name: 'stub-electron',
         setup(build) {

@@ -313,7 +313,8 @@
         isTx: !!p.isTx, play: p.paused !== true,
         time: (typeof p.time === 'number') ? p.time : 0,
         rate: p.rate, loop: p.loop, shuffle: p.shuffle, follow: p.follow,
-        volume: p.volume, muted: p.muted, timerEndAt: p.timerEndAt, timerMode: p.timerMode
+        volume: p.volume, muted: p.muted, timerEndAt: p.timerEndAt, timerMode: p.timerMode,
+        txT0: p.txT0   // ★ 履历：转码起点（跨重建计算等待秒）
       });
     },
     // 返回值透传（宿主跨进程裁决 {ok, via}——'roam' 已由 IDE 承接；失败如实浮读，2026-10-03）
@@ -387,6 +388,7 @@
       list: list,
       index: idx,
       isTx: !!o.isTx,
+      txT0: (typeof o.txT0 === 'number' ? o.txT0 : 0),   // ★ 履历：转码起点（同上）
       autoplay: o.play !== false,
       startTime: o.time || 0,
       initial: {

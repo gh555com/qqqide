@@ -802,7 +802,7 @@ body {
 
 /* ── 内嵌弹窗统一滚动条 — qd 现代无轨样式（5px、轨道透明、thumb rgba(128,128,128,.35) 圆角；基准 .tier-popup-panel/本块）──
    ★ 铁律 §4.1：一切内置面板必须挂入本块——漏挂 = 原生滚动条（违反即返工）；含 descendant 式（覆盖面板内嵌滚动区）。
-   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/密钥脱敏面板/内嵌播放器卡（窗内播放器，2026-09-28 挂入）/qqq 设置中心（.qqq-center-panel，2026-09-28 挂入）/设置中心自绘下拉浮层（.qc-pop，2026-09-28 挂入）/界面缩放弹层（.qqq-zoom-pop，2026-09-29 挂入）/菜单行2 收纳下拉（.qqq-mf-menu，2026-10-02 挂入）（语言下拉不滚动，不列）
+   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI 等级弹窗/开新窗口下拉/AI悬浮预览/升级诊断查看器/通知中心/工作台/帮助菜单/内嵌播放器卡（窗内播放器，2026-09-28 挂入）/qqq 设置中心（.qqq-center-panel，2026-09-28 挂入）/设置中心自绘下拉浮层（.qc-pop，2026-09-28 挂入）/界面缩放弹层（.qqq-zoom-pop，2026-09-29 挂入）/菜单行2 收纳下拉（.qqq-mf-menu，2026-10-02 挂入）（语言下拉不滚动，不列）
    ★ 单源：面板滚动条/拖选样式只认本块——组件内自注入迁入并删源（shell-overlay / tier-popup 已迁） */
 .qqq-zoom-pop::-webkit-scrollbar,
 .qqq-settings-panel::-webkit-scrollbar,
@@ -824,8 +824,7 @@ body {
 .qqq-tools-vurl-drop::-webkit-scrollbar,
 .qqq-help-menu::-webkit-scrollbar,
 .qqq-help-sub::-webkit-scrollbar,
-.qqq-sg-panel::-webkit-scrollbar,
-.qqq-sg-body::-webkit-scrollbar,
+
 .qqq-fav-panel::-webkit-scrollbar,
 .qqq-fav-panel ::-webkit-scrollbar,
 .qqq-mf-menu::-webkit-scrollbar {
@@ -852,8 +851,7 @@ body {
 .qqq-tools-vurl-drop::-webkit-scrollbar-track,
 .qqq-help-menu::-webkit-scrollbar-track,
 .qqq-help-sub::-webkit-scrollbar-track,
-.qqq-sg-panel::-webkit-scrollbar-track,
-.qqq-sg-body::-webkit-scrollbar-track,
+
 .qqq-fav-panel::-webkit-scrollbar-track,
 .qqq-fav-panel ::-webkit-scrollbar-track,
 .qqq-mf-menu::-webkit-scrollbar-track {
@@ -879,8 +877,7 @@ body {
 .qqq-tools-vurl-drop::-webkit-scrollbar-thumb,
 .qqq-help-menu::-webkit-scrollbar-thumb,
 .qqq-help-sub::-webkit-scrollbar-thumb,
-.qqq-sg-panel::-webkit-scrollbar-thumb,
-.qqq-sg-body::-webkit-scrollbar-thumb,
+
 .qqq-fav-panel::-webkit-scrollbar-thumb,
 .qqq-fav-panel ::-webkit-scrollbar-thumb,
 .qqq-mf-menu::-webkit-scrollbar-thumb {
@@ -907,8 +904,7 @@ body {
 .qqq-tools-vurl-drop::-webkit-scrollbar-thumb:hover,
 .qqq-help-menu::-webkit-scrollbar-thumb:hover,
 .qqq-help-sub::-webkit-scrollbar-thumb:hover,
-.qqq-sg-panel::-webkit-scrollbar-thumb:hover,
-.qqq-sg-body::-webkit-scrollbar-thumb:hover,
+
 .qqq-fav-panel::-webkit-scrollbar-thumb:hover,
 .qqq-fav-panel ::-webkit-scrollbar-thumb:hover,
 .qqq-mf-menu::-webkit-scrollbar-thumb:hover {
@@ -934,8 +930,7 @@ body {
 .qqq-tools-vurl-drop::-webkit-scrollbar-corner,
 .qqq-help-menu::-webkit-scrollbar-corner,
 .qqq-help-sub::-webkit-scrollbar-corner,
-.qqq-sg-panel::-webkit-scrollbar-corner,
-.qqq-sg-body::-webkit-scrollbar-corner,
+
 .qqq-fav-panel::-webkit-scrollbar-corner,
 .qqq-fav-panel ::-webkit-scrollbar-corner,
 .qqq-mf-menu::-webkit-scrollbar-corner {
@@ -964,7 +959,6 @@ body {
 .qqq-notice-modal,
 .qqq-fav-panel,
 .qqq-fav-modal,
-.qqq-sg-panel,
 .qqq-mf-menu,
 .qqq-tools-menu,
 .qqq-tools-vurl-drop {
@@ -984,7 +978,7 @@ body {
 .qqq-diag-panel::selection, .qqq-diag-panel ::selection,
 .qqq-notice-panel::selection, .qqq-notice-panel ::selection,
 .qqq-notice-modal::selection, .qqq-notice-modal ::selection,
-.qqq-sg-panel::selection, .qqq-sg-panel ::selection,
+
 .qqq-fav-panel::selection, .qqq-fav-panel ::selection,
 .qqq-fav-modal::selection, .qqq-fav-modal ::selection,
 .qqq-mf-menu::selection, .qqq-mf-menu ::selection,
@@ -1000,7 +994,7 @@ body {
    同一原语同一渐变：linear-gradient(135deg, var(--cyan), transparent 38%, var(--green))。
    技法 = 双背景层：内层 padding-box 铺面板本色（border 区除外），外层 border-box 铺渐变，
    1px 透明边框让渐变只在环上露头。★ 为什么不用内存卡的 ::before 覆盖层：面板根多为
-   overflow 滚动容器（center/tier/diag/sg/onl/qc-pop 等），覆盖层会随内容滚动被顶飞；
+   overflow 滚动容器（center/tier/diag/onl/qc-pop 等），覆盖层会随内容滚动被顶飞；
    背景随元素绘制永不失位，且不占伪元素（零冲突面）。★ 为什么必须 !important：center/ldr/tier/
    sg 等底色与边框为内联 cssText，样式表非 important 覆盖不到。边界语言恒 = 本块鎏金渐变环
    （禁回填白泛光/虚线金边）；AI 视口「集合描边」金虚线不受本块管辖（保持不变）。浅主题不生效（暗色专属）。
@@ -1025,13 +1019,11 @@ html[data-theme="dark"] .qqq-zoom-pop {
               linear-gradient(135deg, var(--cyan), transparent 38%, var(--green)) border-box !important;
 }
 /* 基准边框（原内联迁入——浅主题观感不变；暗主题由上方「鎏金渐变环」块覆盖） */
-.qqq-sg-panel,
 .qqq-diag-panel {
   border: 1px solid var(--border-color);
 }
 
-/* B 组：面板本色 = var(--card-bg)（sg 面板 + 全部悬浮弹层） */
-html[data-theme="dark"] .qqq-sg-panel,
+/* B 组：面板本色 = var(--card-bg)（全部悬浮弹层） */
 html[data-theme="dark"] .qqq-tools-menu,
 html[data-theme="dark"] .qqq-menubar-popup,
 html[data-theme="dark"] .qqq-menubar-recent-dropdown,
@@ -1102,13 +1094,54 @@ html[data-theme="dark"] .qc-pop {
   width: 100%;
   height: 100%;
 }
-/* 峰/谷刻度列（2026-09-07：图表右侧竖排两数字 = 曲线数据极大/极小值，一位小数，与 30px 曲线等高） */
+/* ★ 曲线悬停刻印（2026-10-29 用户定案）：1px 全图表高竖线，上下顶到图表边界（= 播放器进度条悬停游标同款）；
+   高度 = top:0/bottom:0 吃满 30px 图高；水平位置由 JS 整数像素吸附定位（半像素会被抗锯齿摊成两条半强度） */
+.qqq-onl-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--orange);
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+  z-index: 3;
+}
+/* 垂足浮读框（挂垂足正下方，不遮挡图表）：三行左对齐 —— 日期 / 在线 N.Np / 消费 Nge（ge 恒整数）；
+   全主题语义变量（随 [data-theme] 即时切换零残留）；宽度自适应内容，越界由 JS 钳回面板内 */
+.qqq-onl-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  transform: translateX(-50%);
+  display: none;
+  z-index: 4;
+  padding: 3px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  background: var(--background-color);
+  color: var(--text-primary);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: left;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.qqq-onl-tip .r1 { color: var(--text-dim); }
+.qqq-onl-tip .r2 { color: var(--text-primary); font-weight: bold; }
+.qqq-onl-tip .r3 { color: var(--orange); }
+/* 双轴刻度列（左列 = 在线峰/谷〔主色〕，右列 = 消费峰/0〔橙，0 基线〕）——
+   颜色即归属，无需图例零占位；与 30px 曲线等高，两行一位小数/紧凑 ge */
 .qqq-onl-scale {
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 6px;
   height: 30px;
   padding: 2px 0;
   margin-right: 12px; /* 刻度列右缘距弹窗右边界 28px；曲线右缘 ≈ 60px 由列宽+间隙合计 */
@@ -1118,12 +1151,23 @@ html[data-theme="dark"] .qc-pop {
   white-space: nowrap;
   user-select: none;
 }
+.qqq-onl-scale .col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+}
 .qqq-onl-scale i {
   font-style: normal;
 }
 .qqq-onl-scale i.pk {
   color: var(--text-primary);
   font-weight: bold;
+}
+/* 消费轴（第二根曲线 = 橙虚线）：刻度同橙 → 双轴归属一眼可辨 */
+.qqq-onl-scale .col.cost i,
+.qqq-onl-scale .col.cost i.pk {
+  color: var(--orange);
 }
 /* 30d/180d 档位微型按钮（2026-09-08：图表左上角，切换曲线回看窗口，全主题语义变量） */
 .qqq-onl-zoom {
@@ -1212,6 +1256,11 @@ html[data-theme="dark"] .qc-pop {
 /* 行 hover 高亮——配色同内存卡进程区（.qqq-mem-hover-prow:hover 同款 --hover-bg 语义变量，2026-09-03） */
 .qqq-onl-table tbody tr:hover {
   background: var(--hover-bg);
+}
+/* 已下线行恒暗显（u.online === false）：弹窗明细含最近 100 行历史轨迹，
+   不是纯在线表——暗显 = 首行「在线人数」与列表亮行数同口径，零额外提示文案 */
+.qqq-onl-table tbody tr.off td {
+  color: var(--text-dim);
 }
 .qqq-onl-table td {
   padding: 4px 6px;

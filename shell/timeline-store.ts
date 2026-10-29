@@ -74,20 +74,78 @@ function _tlTmpDir(projectRoot: string): string {
     return path.join(_tlDir(projectRoot), '.tmp');
 }
 
-// ═══ 路径归一（唯一真理源）：file_path = 显示路径，path_key = 查找键 ═══
-//   非 linux（大小写不敏感文件系统）查找键整体折叠大小写——同一文件绝不被拆成两段历史；
-//   linux 保留原样（大小写敏感，折叠会把两个不同文件并成一个）。
-const _TL_CASE_FOLD = process.platform !== 'linux';
+// ═══ 路径键（唯一真理源，2026-10-29 定案：无损写入 + 撞名对账）═══
+//   path_raw  = 调用方/磁盘给的原始路径，永不改写（stat 对账用的是它——POSIX 上反斜杠是合法文件名字符）
+//   file_path = 显示路径（win32 才把 \ 转 / 并大写盘符；POSIX 原样）
+//   path_key  = 无损规范键（显示路径 + 折叠 . / .. / 重复斜杠；绝不折叠大小写、绝不做 Unicode 归一）
+//   fold_key  = 提示键（path_key 的 NFC + 全 Unicode 小写；只用来「发现可能的同一文件」，永不直接裁决）
+//   norm_ver  = 规范版本戳（规则变更即 +1 → 开库时按纯函数重算；派生列永远可重算）
+//
+//   ★ 裁决铁律：path_key 查不到 ≠ 新文件，只是「可能的新文件」。只有撞 fold_key 且 stat 证明
+//     同一 (dev,ino) 才归并；无证据一律分裂。方向恒为「裂而不并」——裂可自愈（下次写入撞上即归并），
+//     并不可逆。
+//   ★ 为什么不按平台猜大小写敏感：平台是卷的代理，卷是目录的代理，代理错了数据就错。
+//     这里只问文件系统本身，且只在撞名那一刻问一次——规则再怎么改，代价都只是一次 stat。
+export const TL_NORM_VER = 2;
+const _TL_WIN = process.platform === 'win32';
+
+export function _tlPathRaw(p: string): string {
+    return String(p == null ? '' : p);
+}
+
+// 折叠 . / .. / 重复斜杠（纯函数；只消除信息量为零的差异）
+//   ★ UNC 前缀 `//server/share` 必须原样保住两个斜杠——它是有义前缀，塌成一个就与同名 POSIX 绝对路径撞键
+function _tlCollapseDots(s: string): string {
+    if (!s) return s;
+    const drive = /^([A-Za-z]):/.exec(s);
+    const unc = !drive && s.slice(0, 2) === '//';
+    const abs = !drive && !unc && s.charAt(0) === '/';
+    const out: string[] = [];
+    for (const seg of (drive ? s.slice(2) : s).split('/')) {
+        if (seg === '' || seg === '.') continue;
+        if (seg === '..') {
+            if (out.length && out[out.length - 1] !== '..') out.pop();
+            else if (!drive && !abs) out.push('..');
+            continue;
+        }
+        out.push(seg);
+    }
+    const tail = out.join('/');
+    if (drive) return drive[1].toUpperCase() + ':/' + tail;
+    if (unc) return '//' + tail;
+    if (abs) return '/' + tail;
+    return tail;
+}
 
 export function _tlNormDisplayPath(p: string): string {
-    let s = String(p || '').replace(/\\/g, '/');
-    if (/^[a-z]:\//.test(s)) s = s[0].toUpperCase() + s.slice(1);
-    return s;
+    const s = _tlPathRaw(p);
+    if (!_TL_WIN) return s;                       // POSIX：反斜杠是合法文件名字符，改了就是毁数据
+    let d = s.replace(/\\/g, '/');
+    if (/^[a-z]:\//.test(d)) d = d.charAt(0).toUpperCase() + d.slice(1);
+    return d;
 }
 
 export function _tlPathKey(p: string): string {
-    const s = _tlNormDisplayPath(p);
-    return _TL_CASE_FOLD ? s.toLowerCase() : s;
+    return _tlCollapseDots(_tlNormDisplayPath(p));
+}
+
+// 提示键：NFC + 全 Unicode 小写。NFC 只在这里做——NTFS 不做 Unicode 归一，
+//   NFC/NFD 在磁盘上可能是两个真文件，把归一写进 path_key 就是不可逆的误合并；
+//   放这里则最坏多一次 stat 对账，APFS 上却能正确合并同一文件的两种组合式。
+export function _tlFoldKey(p: string): string {
+    let k = _tlPathKey(p);
+    try { k = k.normalize('NFC'); } catch (_) { }
+    try { return k.toLowerCase(); } catch (_) { return k; }
+}
+
+// ═══ 文件身份（只在撞名那一刻问文件系统；ino=0 → 无身份 → 不合并）═══
+function _tlStatIdentity(rawPath: string): string | null {
+    if (!rawPath) return null;
+    try {
+        const st: any = fs.statSync(rawPath, { bigint: true });
+        if (!st || !st.ino || st.ino === BigInt(0)) return null;
+        return String(st.dev) + ':' + String(st.ino);
+    } catch (_) { return null; }
 }
 
 // ═══ per-file 串行队列：写入口兜底捕获与显式 record 同键排队（顺序确定，绝不双写）═══
@@ -181,7 +239,7 @@ function _tlDropPending(ck: string): void {
 // ★ 按内容认领：待捕获内容与本次显式记录一致才作废（sha 省略 = 按路径认领，旧行为）
 //   只比路径会把「1.5s 内两次不同内容的写」里的前一版一起吞掉——中间版本凭空消失。
 export function _tlClaimPath(filePath: string, sha?: string): void {
-    const ck = _tlPathKey(filePath);
+    const ck = _tlFoldKey(filePath);
     const pend = _tlPending.get(ck);
     if (!pend) return;
     if (sha) {
@@ -194,7 +252,7 @@ export function _tlClaimPath(filePath: string, sha?: string): void {
 
 export function _tlScheduleCapture(filePath: string, text: any): void {
     if (!_tlShouldCapture(filePath, text)) return;
-    const ck = _tlPathKey(filePath);
+    const ck = _tlFoldKey(filePath);
     _tlDropPending(ck);
     const timer = setTimeout(() => {
         const pend = _tlPending.get(ck);
@@ -210,108 +268,244 @@ async function _tlCaptureNow(filePath: string, text: string): Promise<void> {
     const root = _tlResolveProjectRoot(filePath);
     if (!root) return;   // 不在任何项目根内 → 无时间线可归属（如绿色包自带的 Data）
     const dbPath = _tlDbPath(root);
-    const key = _tlPathKey(filePath);
-    await _tlEnqueue(dbPath + '|' + key, async () => {
+    await _tlEnqueue(dbPath + '|' + _tlFoldKey(filePath), async () => {
         const db = await _tlOpenDb(root);
         const sha = _sha256(text);
         if (!fs.existsSync(_tlBlobPath(root, sha))) _tlWriteBlob(root, sha, _gzipSync(text));
-        _tlCommit(db, dbPath, root, { file_path: _tlNormDisplayPath(filePath), ts: Date.now(), blob_hash: sha, source: 'fs' });
+        _tlCommit(db, dbPath, root, { file_path: filePath, ts: Date.now(), blob_hash: sha, source: 'fs' });
     });
 }
 
-// ═══ 存量迁移（幂等，一次即净）：① 迁移前留底 ② path_key 回填 + Unicode 折叠纠偏 ③ 重号重排 ═══
+// ═══ 存量迁移（幂等，一次即净）：① 留底 ② 派生列按纯函数重算 ③ 旧组合并成果继承 ④ 重号重排 ═══
 function _tlPreMigratePath(projectRoot: string): string {
     return path.join(_tlDir(projectRoot), 'timeline.db.pre-migrate');
 }
 
-function _tlNeedsMigration(db: any): boolean {
+function _tlNeedsNormUpgrade(db: any): boolean {
     try {
-        const c = db.exec("SELECT COUNT(*) FROM versions WHERE path_key IS NULL OR path_key = ''");
+        const c = db.exec('SELECT COUNT(*) FROM versions WHERE norm_ver IS NULL OR norm_ver <> ' + TL_NORM_VER + " OR path_key IS NULL OR path_key = ''");
         if (c && c[0] && c[0].values && c[0].values[0] && (c[0].values[0][0] as number) > 0) return true;
-    } catch (_) { }
-    try {
-        const g = db.prepare('SELECT path_key FROM versions GROUP BY path_key HAVING COUNT(file_seq) > COUNT(DISTINCT file_seq) LIMIT 1');
-        const hit = g.step();
-        g.free();
-        if (hit) return true;
     } catch (_) { }
     return false;
 }
 
-function _tlMigratePathKey(db: any): boolean {
-    let changed = false;
-
-    // 回填用单条 SQL（不逐行 update——sql.js 下逐行会拖慢首次启动）：char(92)='\'
-    //   注意：SQL 的 lower() 只折叠 ASCII（CJK 无大小写，实际差异只剩非 ASCII 大写）——紧随其后按 JS 口径纠偏
-    let pendCount = 0;
+// 组内 file_seq 重排为 1..N（唯一入口；撞名归并与存量迁移共用）
+export function _tlRenumberGroup(db: any, key: string): boolean {
+    const ids: number[] = [];
     try {
-        const c = db.exec("SELECT COUNT(*) FROM versions WHERE path_key IS NULL OR path_key = ''");
-        if (c && c[0] && c[0].values && c[0].values[0]) pendCount = c[0].values[0][0] as number;
+        const q = db.prepare('SELECT id FROM versions WHERE path_key = ? ORDER BY ts ASC, id ASC');
+        q.bind([key]);
+        while (q.step()) ids.push(q.getAsObject().id as number);
+        q.free();
+    } catch (_) { return false; }
+    if (ids.length === 0) return false;
+    let up: any = null;
+    try { up = db.prepare('UPDATE versions SET file_seq = ? WHERE id = ?'); } catch (_) { return false; }
+    let ok = false;
+    try {
+        db.run('BEGIN');
+        for (let i = 0; i < ids.length; i++) up.run([i + 1, ids[i]]);
+        db.run('COMMIT');
+        ok = true;
+    } catch (e: any) {
+        try { db.run('ROLLBACK'); } catch (_) { }
+        console.warn('[timeline] seq renumber failed:', e && e.message);
+    } finally { try { up.free(); } catch (_) { } }
+    return ok;
+}
+
+// ═══ 组查询 / 归并（撞名对账的唯一实现）═══
+function _tlGroupExists(db: any, key: string): boolean {
+    try {
+        const st = db.prepare('SELECT 1 AS x FROM versions WHERE path_key = ? LIMIT 1');
+        st.bind([key]);
+        const hit = st.step();
+        st.free();
+        return !!hit;
+    } catch (_) { return false; }
+}
+
+function _tlGroupKeysByFold(db: any, fold: string, exclude: string): string[] {
+    const out: string[] = [];
+    try {
+        const st = db.prepare('SELECT DISTINCT path_key FROM versions WHERE fold_key = ?');
+        st.bind([fold]);
+        while (st.step()) { const k = String(st.getAsObject().path_key || ''); if (k && k !== exclude) out.push(k); }
+        st.free();
     } catch (_) { }
-    if (pendCount > 0) {
-        const expr = _TL_CASE_FOLD
-            ? "lower(replace(file_path, char(92), '/'))"
-            : "replace(file_path, char(92), '/')";
-        try {
-            db.run('UPDATE versions SET path_key = ' + expr + " WHERE path_key IS NULL OR path_key = ''");
-            changed = true;
-            console.log('[timeline] path_key backfilled: ' + pendCount);
-        } catch (e: any) {
-            console.warn('[timeline] path_key backfill failed:', e && e.message);
-        }
-    }
+    return out;
+}
 
-    // ★ SQL 的 lower() 只折叠 ASCII，运行时 _tlPathKey 用 JS toLowerCase（全 Unicode）——
-    //   非 ASCII 大写的路径会被回填成与查找键不同的值（同一文件再裂一次）。回填发生的这次启动里按 JS 口径纠偏。
-    if (pendCount > 0) {
-        try {
-            const pairs: string[][] = [];
-            const d = db.prepare('SELECT file_path, path_key FROM versions GROUP BY file_path, path_key');
-            while (d.step()) { const r = d.getAsObject(); pairs.push([String(r.file_path || ''), String(r.path_key || '')]); }
-            d.free();
-            const fixes: string[][] = [];
-            for (const pr of pairs) { const want = _tlPathKey(pr[0]); if (want !== pr[1]) fixes.push([want, pr[0]]); }
-            if (fixes.length > 0) {
-                db.run('BEGIN');
-                const up = db.prepare('UPDATE versions SET path_key = ? WHERE file_path = ?');
-                for (const f of fixes) up.run(f);
-                up.free();
-                db.run('COMMIT');
-                changed = true;
-                console.log('[timeline] path_key unicode-fold fixed: ' + fixes.length);
-            }
-        } catch (e: any) {
-            try { db.run('ROLLBACK'); } catch (_) { }
-            console.warn('[timeline] path_key unicode fold failed:', e && e.message);
-        }
-    }
+// 组内最新一行的原始路径（stat 对账以它为真）
+function _tlGroupRawPath(db: any, key: string): string | null {
+    try {
+        const st = db.prepare("SELECT COALESCE(NULLIF(path_raw, ''), file_path) AS r FROM versions WHERE path_key = ? ORDER BY ts DESC, id DESC LIMIT 1");
+        st.bind([key]);
+        let out: string | null = null;
+        if (st.step()) out = String(st.getAsObject().r || '');
+        st.free();
+        return out || null;
+    } catch (_) { return null; }
+}
 
-    // 同一 path_key 出现重号（历史上被大小写拆成两段）→ 按时间重排为 1..N
+// 把 fromKeys 的全部历史归并到 toKey（显示路径/原始路径统一为本次的），并重排序号
+function _tlMergeGroups(db: any, dbPath: string, fromKeys: string[], toKey: string, display: string, raw: string): boolean {
+    if (!fromKeys.length) return false;
+    let ok = false;
+    let up: any = null;
+    try {
+        db.run('BEGIN');
+        up = db.prepare('UPDATE versions SET path_key = ?, file_path = ?, path_raw = ? WHERE path_key = ?');
+        for (const fk of fromKeys) up.run([toKey, display, raw, fk]);
+        up.run([toKey, display, raw, toKey]);
+        db.run('COMMIT');
+        ok = true;
+    } catch (e: any) {
+        try { db.run('ROLLBACK'); } catch (_) { }
+        console.warn('[timeline] merge groups failed:', e && e.message);
+    } finally { try { if (up) up.free(); } catch (_) { } }
+    if (ok) {
+        _tlRenumberGroup(db, toKey);
+        for (const fk of fromKeys) _tlLastByKey.delete(dbPath + '|' + fk);
+        _tlLastByKey.delete(dbPath + '|' + toKey);
+    }
+    return ok;
+}
+
+// ═══ 写入侧键裁决（唯一会问文件系统的地方，且只在撞名那一刻）═══
+export function _tlResolveWriteKey(db: any, dbPath: string, filePath: string): { key: string; display: string; raw: string; merged: boolean } {
+    const raw = _tlPathRaw(filePath);
+    const display = _tlNormDisplayPath(filePath);
+    const key = _tlPathKey(filePath);
+    if (_tlGroupExists(db, key)) return { key, display, raw, merged: false };   // 快路径：同键已有历史，零 IO
+    const sibs = _tlGroupKeysByFold(db, _tlFoldKey(filePath), key);
+    if (sibs.length === 0) return { key, display, raw, merged: false };         // 真新文件
+    const mine = _tlStatIdentity(raw);
+    if (!mine) return { key, display, raw, merged: false };                     // 无证据 → 分裂（下次写入可自愈）
+    const same: string[] = [];
+    for (const s of sibs) {
+        const sraw = _tlGroupRawPath(db, s);
+        if (sraw && _tlStatIdentity(sraw) === mine) same.push(s);
+    }
+    if (same.length === 0) return { key, display, raw, merged: false };         // 折叠撞名但 inode 不同 = 两个真文件
+    const ok = _tlMergeGroups(db, dbPath, same, key, display, raw);
+    if (ok) console.log('[timeline] merged sibling groups → ' + key);
+    return { key, display, raw, merged: ok };
+}
+
+// ═══ 查询侧键裁决（可返回多个键；无证据只认本键，绝不自作主张外扩）═══
+export function _tlReadKeys(db: any, filePath: string): string[] {
+    const key = _tlPathKey(filePath);
+    if (_tlGroupExists(db, key)) return [key];                          // 快路径：零 IO
+    const cands = _tlGroupKeysByFold(db, _tlFoldKey(filePath), '');
+    if (cands.length === 0) return [key];
+    const mine = _tlStatIdentity(_tlPathRaw(filePath));
+    if (!mine) return [key];
+    const keep: string[] = [];
+    for (const c of cands) {
+        const cw = _tlGroupRawPath(db, c);
+        if (cw && _tlStatIdentity(cw) === mine) keep.push(c);
+    }
+    return keep.length ? keep : [key];
+}
+
+// ═══ 廉价序号修复（每次开库都跑，与全量迁移无关）═══
+//   重号重排（历史被拆成两段后归并的结果）+ 空序号补齐。只看序号、不重算路径、不 stat 任何文件。
+export function _tlRepairSeqs(db: any): boolean {
+    let changed = false;
     try {
         const groups: string[] = [];
         const g = db.prepare('SELECT path_key FROM versions GROUP BY path_key HAVING COUNT(file_seq) > COUNT(DISTINCT file_seq)');
         while (g.step()) groups.push(String(g.getAsObject().path_key || ''));
         g.free();
-        for (const k of groups) {
-            const ids: number[] = [];
-            const q = db.prepare('SELECT id FROM versions WHERE path_key = ? ORDER BY ts ASC, id ASC');
-            q.bind([k]);
-            while (q.step()) ids.push(q.getAsObject().id as number);
-            q.free();
-            try {
-                db.run('BEGIN');
-                const up = db.prepare('UPDATE versions SET file_seq = ? WHERE id = ?');
-                for (let i = 0; i < ids.length; i++) up.run([i + 1, ids[i]]);
-                up.free();
-                db.run('COMMIT');
-                changed = true;
-            } catch (e: any) {
-                try { db.run('ROLLBACK'); } catch (_) { }
-                console.warn('[timeline] seq renumber failed:', e && e.message);
-            }
-        }
+        for (const k of groups) { if (_tlRenumberGroup(db, k)) changed = true; }
         if (groups.length > 0) console.log('[timeline] seq renumbered groups: ' + groups.length);
     } catch (_) { }
+    try {
+        const groups: string[] = [];
+        const g = db.prepare('SELECT DISTINCT path_key FROM versions WHERE file_seq IS NULL');
+        while (g.step()) groups.push(String(g.getAsObject().path_key || ''));
+        g.free();
+        for (const k of groups) { if (_tlRenumberGroup(db, k)) changed = true; }
+    } catch (_) { }
+    return changed;
+}
+
+function _tlMigratePaths(db: any, projectRoot: string): boolean {
+    const dbPath = _tlDbPath(projectRoot);
+
+    // ── 旧分组快照（old path_key → file_path → 最近 ts）：无 stat 证据时继承旧合并结论，不回归 ──
+    const oldGroups = new Map<string, Map<string, number>>();
+    try {
+        const d = db.prepare('SELECT path_key, file_path, MAX(ts) AS mts FROM versions GROUP BY path_key, file_path');
+        while (d.step()) {
+            const r = d.getAsObject();
+            const ok = String(r.path_key || '');
+            const fp = String(r.file_path || '');
+            if (!ok || !fp) continue;
+            let m = oldGroups.get(ok);
+            if (!m) { m = new Map(); oldGroups.set(ok, m); }
+            m.set(fp, Number(r.mts) || 0);
+        }
+        d.free();
+    } catch (e: any) {
+        console.warn('[timeline] migrate: snapshot old groups failed:', e && e.message);
+    }
+
+    // ── 派生列按纯函数重算（按 file_path 逐条：distinct path 比行数少 3~4 倍）──
+    let changed = false;
+    try {
+        const paths: string[] = [];
+        const d = db.prepare('SELECT DISTINCT file_path FROM versions');
+        while (d.step()) paths.push(String(d.getAsObject().file_path || ''));
+        d.free();
+        let up: any = null;
+        try {
+            db.run('BEGIN');
+            up = db.prepare('UPDATE versions SET file_path = ?, path_raw = ?, path_key = ?, fold_key = ?, norm_ver = ? WHERE file_path = ?');
+            for (const fp of paths) {
+                if (!fp) continue;
+                up.run([_tlNormDisplayPath(fp), fp, _tlPathKey(fp), _tlFoldKey(fp), TL_NORM_VER, fp]);
+            }
+            db.run('COMMIT');
+            changed = true;
+            console.log('[timeline] path keys recomputed (norm v' + TL_NORM_VER + '): ' + paths.length + ' distinct paths');
+        } catch (e: any) {
+            try { db.run('ROLLBACK'); } catch (_) { }
+            console.warn('[timeline] migrate: recompute failed:', e && e.message);
+            return false;
+        } finally { try { if (up) up.free(); } catch (_) { } }
+    } catch (e: any) {
+        console.warn('[timeline] migrate: list paths failed:', e && e.message);
+        return false;
+    }
+
+    // ── 旧组合并成果：重算后裂开的组——有证据证明同一文件则归并，证明不同则保持裂（纠正旧误合并）──
+    let mergedGroups = 0;
+    for (const [, paths] of oldGroups) {
+        const newKeys = new Set<string>();
+        for (const fp of paths.keys()) newKeys.add(_tlPathKey(fp));
+        if (newKeys.size <= 1) continue;
+        const ids = new Map<string, string>();        // newKey → 文件身份
+        for (const fp of paths.keys()) {
+            const id = _tlStatIdentity(fp);
+            if (id) ids.set(_tlPathKey(fp), id);
+        }
+        let toKey: string | null = null;
+        if (ids.size === 0 || new Set(ids.values()).size === 1) {
+            // 全部能证明是同一文件，或完全无证据 → 沿用旧合并结论；统一到组内最新写法
+            let best = ''; let bestTs = -1;
+            for (const [fp, ts] of paths) { if (ts > bestTs) { bestTs = ts; best = fp; } }
+            if (best) toKey = _tlPathKey(best);
+        }
+        if (!toKey) continue;                          // 两个以上不同身份 = 真的是不同文件 → 保持分裂
+        const from = Array.from(newKeys).filter((k) => k !== toKey);
+        if (from.length === 0) continue;
+        if (_tlMergeGroups(db, dbPath, from, toKey, _tlNormDisplayPath(toKey), toKey)) mergedGroups++;
+    }
+    if (mergedGroups > 0) console.log('[timeline] old groups re-merged: ' + mergedGroups);
+
+    if (_tlRepairSeqs(db)) changed = true;
 
     return changed;
 }
@@ -352,16 +546,18 @@ function _tlReplayWal(db: any, projectRoot: string): number {
         }
         seqInitStmt.free();
         const stmt = db.prepare(
-            'INSERT INTO versions (file_path, path_key, file_seq, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO versions (file_path, path_key, path_raw, fold_key, norm_ver, file_seq, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
         );
         for (const line of lines) {
             try {
                 const row = JSON.parse(line);
-                var fp = _tlNormDisplayPath(row.p || '');
-                var pk = _tlPathKey(fp);
+                var raw = String(row.r || row.p || '');
+                var fp = _tlNormDisplayPath(raw);
+                // 归并后的键必须从 WAL 带回来（不能拿 p 重算——重算会把已归并的组又撕开）
+                var pk = String(row.k || _tlPathKey(raw));
                 var seq = (seqMap.get(pk) || 0) + 1;
                 seqMap.set(pk, seq);
-                stmt.run([fp, pk, seq, row.t || 0, row.h || '', row.s || 'q', row.f || null, row.a || null, row.d || null]);
+                stmt.run([fp, pk, raw, _tlFoldKey(pk), TL_NORM_VER, seq, row.t || 0, row.h || '', row.s || 'q', row.f || null, row.a || null, row.d || null]);
                 count++;
             } catch (_) { /* 跳过损坏行 */ }
         }
@@ -413,23 +609,27 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_path TEXT NOT NULL, ts INTEGER NOT NULL, blob_hash TEXT NOT NULL,
             source TEXT NOT NULL, floor_id TEXT, added_lines INTEGER, deleted_lines INTEGER,
-            file_seq INTEGER
+            file_seq INTEGER, path_key TEXT, path_raw TEXT, fold_key TEXT, norm_ver INTEGER
         )`);
         try { db.run('ALTER TABLE versions ADD COLUMN file_seq INTEGER'); } catch (_) { }
         try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { }
         try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { }
         try { db.run('ALTER TABLE versions ADD COLUMN path_key TEXT'); } catch (_) { }
+        try { db.run('ALTER TABLE versions ADD COLUMN path_raw TEXT'); } catch (_) { }
+        try { db.run('ALTER TABLE versions ADD COLUMN fold_key TEXT'); } catch (_) { }
+        try { db.run('ALTER TABLE versions ADD COLUMN norm_ver INTEGER'); } catch (_) { }
         db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
         db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_seq ON versions(file_path, file_seq)');
         db.run('CREATE INDEX IF NOT EXISTS idx_versions_key_ts ON versions(path_key, ts)');
         db.run('CREATE INDEX IF NOT EXISTS idx_versions_key_seq ON versions(path_key, file_seq)');
+        db.run('CREATE INDEX IF NOT EXISTS idx_versions_fold ON versions(fold_key)');
         db.run('PRAGMA journal_mode=DELETE');
         db.run('PRAGMA synchronous=FULL');
         db.run('PRAGMA busy_timeout=30000');
 
-        // 3. 存量迁移：path_key 回填（历史上被大小写拆开的两段合并）+ 重号重排（幂等）
-        //    迁移前一次性留底 timeline.db.pre-migrate（迁移写坏时唯一的回滚通道；只在需要迁移时拷）
-        if (_tlNeedsMigration(db)) {
+        // 3. 迁移前一次性留底 timeline.db.pre-migrate（迁移写坏时唯一的回滚通道；只在需要迁移时拷）
+        const needNorm = _tlNeedsNormUpgrade(db);
+        if (needNorm) {
             try {
                 const pm = _tlPreMigratePath(projectRoot);
                 if (!fs.existsSync(pm) && fs.existsSync(dbPath)) {
@@ -440,13 +640,18 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
                 console.warn('[timeline] pre-migrate backup failed:', e && e.message);
             }
         }
-        const migrated = _tlMigratePathKey(db);
 
-        // 4. 回放 .wal（最多 99 行，上次压缩后未压缩的）
+        // 4. 回放 .wal（最多 99 行，上次压缩后未压缩的）——必须先于迁移：
+        //    WAL 里的 path_key 是上次写入时的裁决结果，没回到库里时迁移看不到这些行；
+        //    反过来（先迁移后回放）迁移刚归并的组会被回放按旧键重新撞开，且此后快路径永不再自愈。
         const replayed = _tlReplayWal(db, projectRoot);
         if (replayed > 0) {
             console.log('[timeline] replayed ' + replayed + ' wal entries');
         }
+
+        // 5. 派生列：norm_ver 驱动的一次性全量重算（33k 行 ≈ 2s）；已迁移的库只做廉价序号修复——
+        //    写入口兜底捕获一碰就会开库，每次开库都跑全量重算 = 首次保存卡两秒。
+        const migrated = needNorm ? _tlMigratePaths(db, projectRoot) : _tlRepairSeqs(db);
 
         _timelineDbs.set(dbPath, db);
         _tlWalCounts.set(dbPath, replayed);
@@ -471,17 +676,22 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
 export interface TlRowIn {
     file_path: string; ts: number; blob_hash: string; source: string;
     floor_id?: string | null; added_lines?: number | null; deleted_lines?: number | null;
+    path_raw?: string | null;
 }
 
-export function _tlRecord(db: any, dbPath: string, projectRoot: string, row: TlRowIn): void {
-    const pathKey = _tlPathKey(row.file_path);
+export function _tlRecord(db: any, dbPath: string, projectRoot: string, row: TlRowIn, resolvedKey?: string): void {
+    // ★ 显示路径在写入口就地归一（不变式：file_path 恒为显示形态）——否则快路径落库的是调用方原样
+    //   （win32 上 `\\` 形态），同一文件在库里长出两种显示写法，界面/记忆库看到的是随机一种
+    const display = _tlNormDisplayPath(row.file_path);
+    const pathKey = resolvedKey || _tlPathKey(display);
+    const rawPath = _tlPathRaw(row.path_raw || row.file_path);
     // ★ 计算 per-file 自增序号（AI 和人类用序号指代快照，如 #23）
     const fileSeq = _tlNextSeq(db, pathKey);
 
     // 内存 INSERT
     db.run(
-        'INSERT INTO versions (file_path, path_key, file_seq, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?,?,?)',
-        [row.file_path, pathKey, fileSeq, row.ts, row.blob_hash, row.source, row.floor_id || null, row.added_lines ?? null, row.deleted_lines ?? null]
+        'INSERT INTO versions (file_path, path_key, path_raw, fold_key, norm_ver, file_seq, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        [display, pathKey, rawPath, _tlFoldKey(pathKey), TL_NORM_VER, fileSeq, row.ts, row.blob_hash, row.source, row.floor_id || null, row.added_lines ?? null, row.deleted_lines ?? null]
     );
 
     let newId: number | null = null;
@@ -495,8 +705,9 @@ export function _tlRecord(db: any, dbPath: string, projectRoot: string, row: TlR
     });
 
     // 追加 .wal（字段缩写，每行 ~100 字节）
+    //   k = 裁决后的 path_key（归并过的组回放时必须原样恢复，不能拿 p 重算）· r = 原始路径
     const walLine = JSON.stringify({
-        p: row.file_path, q: fileSeq, t: row.ts, h: row.blob_hash, s: row.source,
+        p: display, k: pathKey, r: rawPath, q: fileSeq, t: row.ts, h: row.blob_hash, s: row.source,
         f: row.floor_id || undefined,
         a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,
     }) + '\n';
@@ -516,9 +727,20 @@ export function _tlRecord(db: any, dbPath: string, projectRoot: string, row: TlR
 
 // ═══ 统一提交（唯一真理机）：内容未变 → 不新建版本，只补溯源；内容已变 → 新建 ═══
 export function _tlCommit(db: any, dbPath: string, projectRoot: string, row: TlRowIn): { recorded: boolean; upgraded?: boolean; reason?: string; file_seq?: number } {
-    const key = _tlPathKey(row.file_path);
+    let key = _tlPathKey(row.file_path);
+    let last = _tlLastRow(db, dbPath, key);
+    // 本键无历史 → 撞名对账（唯一会问文件系统的地方；同键有历史时零 IO）
+    if (!last) {
+        const res = _tlResolveWriteKey(db, dbPath, row.file_path);
+        key = res.key;
+        row = { ...row, file_path: res.display, path_raw: res.raw };
+        // ★ 归并是「库里 UPDATE」而不是「追加一行」——WAL 记不到它。不立即落盘就会出现：
+        //   刚归并的历史在下次启动被旧 WAL 行按旧键重新撞开（且此后快路径永不再自愈）。
+        //   归并极罕见（只有历史真裂过才发生），所以这一次全量落盘代价可忽。
+        if (res.merged) { try { _tlCompactSync(db, dbPath, projectRoot, true); } catch (_) { } }
+        last = _tlLastRow(db, dbPath, key);
+    }
     const ck = dbPath + '|' + key;
-    const last = _tlLastRow(db, dbPath, key);
 
     if (last && last.blob_hash === row.blob_hash) {
         // 同一内容再报到：兜底行（fs）让位给更权威的来源；缺溯源/行数就地补全
@@ -544,7 +766,7 @@ export function _tlCommit(db: any, dbPath: string, projectRoot: string, row: TlR
         return { recorded: false, reason: 'same-content', file_seq: last.file_seq };
     }
 
-    _tlRecord(db, dbPath, projectRoot, row);
+    _tlRecord(db, dbPath, projectRoot, row, key);
     const after = _tlLastRow(db, dbPath, key);
     return { recorded: true, file_seq: after ? after.file_seq : undefined };
 }
@@ -557,15 +779,15 @@ export function _tlFlushNow(db: any, dbPath: string, projectRoot: string): void 
 }
 
 // ═══ 压缩：全量快照 → .db + .bak → 清空 .wal ═══
-function _tlCompactSync(db: any, dbPath: string, projectRoot: string): void {
+function _tlCompactSync(db: any, dbPath: string, projectRoot: string, force?: boolean): void {
     const walPath = _tlWalPath(projectRoot);
     const tmpDir = _tlTmpDir(projectRoot);
     try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
 
-    // 空 .wal 无需压缩
+    // 空 .wal 无需压缩（force = 库内做过不产生 WAL 的变更，如撞名归并，必须无条件落盘）
     let walSize = 0;
     try { walSize = fs.statSync(walPath).size; } catch (_) { }
-    if (walSize === 0) return;
+    if (walSize === 0 && !force) return;
 
     // 1+2. 全量快照 → .db + .bak
     _tlFlushDb(db, dbPath, projectRoot);

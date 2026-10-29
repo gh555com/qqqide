@@ -4,7 +4,7 @@
 // panel-share.js —— 分享面板（唯一 UI 入口）
 // ----------------------------------------------------------------------------
 // 左 = 公网预览（所见即读者所见，复用面板渲染机 renderMarkdown）
-// 右 = 标题 / 范围 / 可见性 / 期限 / 口令 / 脱敏 / 附图
+// 右 = 标题 / 范围 / 可见性 / 期限 / 口令 / 脱敏 / 图片（缩略图 · 逐张可取消）
 // 底 = 脱敏报告 + 费用 + 生成
 // 第二页 = 我的分享（延长 / 撤销 / 删除）
 // 样式全部在 index.html（禁自注入样式）；颜色只用主题变量
@@ -97,14 +97,16 @@
         tier: 'trial',
         vis: 'unlisted',
         redact: true,
-        images: true,
+ 
+
         title: '',
         password: '',
-        items: [],
-        localImgs: [],
-        docMeta: null,
-        fileItems: [],    // 文件源的整份条目（scope 切回 0 时复原）
-        extraFee: 0,      // 图片走图床的存储费（不属租约）
+ 		items: [],
+		imgList: [],     // 当前可分享图片（S.listImages 唯一清单；缩略图与上传共用）
+		drop: {},        // 逐图排除（key → 1）；默认空 = 全含
+		docMeta: null,
+		fileItems: [],    // 文件源的整份条目（scope 切回 0 时复原）
+
         loading: false,
         loadErr: '',
         busy: false
@@ -138,12 +140,13 @@
         st.tier = 'trial';
         st.vis = 'unlisted';
         st.redact = true;
-        st.images = true;
-        st.password = '';
-        st.busy = false;
-        st.localImgs = [];
-        st.docMeta = (src && src.doc) || null;
-        st.extraFee = (src && src.feeGe) || 0;
+
+ 		st.password = '';
+		st.busy = false;
+		st.imgList = [];
+		st.drop = {};
+		st.docMeta = (src && src.doc) || null;
+
         st.items = (src && src.items && src.items.length) ? src.items : [];
         st.fileItems = st.items.slice();   // 文件源的整份内容（切回「整份」时复原）
         st.loading = !!(src && src.type === 'file' && !st.items.length);
@@ -176,7 +179,7 @@
             st.items = r.items;
             st.fileItems = r.items.slice();
             st.docMeta = r.doc;
-            st.extraFee = r.feeGe || 0;
+
             if (r.failed && r.failed.length) {
                 qoast(T('ai.share.fileSkipped', '{0} 个文件读取失败，已略过', { 0: r.failed.length }), 'error');
             }
@@ -231,22 +234,40 @@
     function refreshItems() {
         var isFile = !!(st.src && st.src.type === 'file');
         if (st.scope === -1) {
-            // 精确截取：只带选中文本（图片已在文件加载期进图床，不重复上传）
+            // 精确截取：只带选中文本
             st.items = [{ role: 'sel', n: 1, md: st.selText }];
-            st.localImgs = isFile ? [] : S.collectLocalImages(st.items);
-            st.images = st.localImgs.length > 0;
-            return;
-        }
-        if (isFile) {
+        } else if (isFile) {
             st.items = st.fileItems.slice();
-            st.localImgs = [];
-            st.images = false;
-            return;
+        } else {
+            st.items = S.collect(st.aiEl, st.scope);
         }
-        st.items = S.collect(st.aiEl, st.scope);
-        st.localImgs = S.collectLocalImages(st.items);
-        st.images = st.localImgs.length > 0;
+        // 图片清单只有一只真相源（提问气泡图 + md 内的本机图片 + 文件源图片）
+        st.imgList = S.listImages(st.items);
+        Object.keys(st.drop).forEach(function (k) {
+            var still = st.imgList.some(function (x) { return x.key === k; });
+            if (!still) delete st.drop[k];
+        });
     }
+
+    // 实际要上传的图片（排除用户逐张取消的）
+    function pickedImages() {
+        return st.imgList.filter(function (x) { return !st.drop[x.key]; });
+    }
+
+    function pickedBytes() {
+        var n = 0;
+        pickedImages().forEach(function (x) { n += (x.bytes || 0); });
+        return n;
+    }
+
+    function previewSrcOf(ref) {
+        if (!ref) return '';
+        if (ref.kind === 'b64') return 'data:' + (ref.mime || 'image/png') + ';base64,' + ref.v;
+        if (ref.kind === 'path') return ref.v;
+        return '';   // floor（需异步解析楼层目录）→ 用占位块
+    }
+
+    function mb(n) { return (Math.round((n || 0) / 104857.6) / 10).toFixed(1); }
 
     // 可选范围：AI = 本轮/近三轮/整段（有选区时多一项）；文件 = 整份/仅选中（有选区时）
     function scopesFor() {
@@ -264,8 +285,9 @@
         return TIERS.filter(function (t) { return t.key === key; })[0] || TIERS[0];
     }
 
+    // 计费维度恒为「分享条数」：一次生成 = 一条快照 = 一个租约；图片随租约，不单独收存储费
     function totalFee() {
-        return (tierOf(st.tier).fee || 0) + (st.extraFee || 0);
+        return (tierOf(st.tier).fee || 0);
     }
 
     // 估算快照原始字节（永久档 512 KB 闸门的前置提示；真实裁决在服务端）——按 UTF-8 字节，不按字符
@@ -280,11 +302,6 @@
         if (!scopes.length) st.scope = 0;
         else if (!scopes.some(function (s) { return s.key === st.scope; })) st.scope = scopes[0].key;
 
-        var imgHint = '';
-        if (st.localImgs.length) {
-            imgHint = T('ai.share.imgHint', '{0} 张本地图片 · 约 {1} ge（存储费按 10MB/ge）',
-                { 0: st.localImgs.length, 1: '≳0.1' });
-        }
         // 永久档的体积闸：客户端先亮红灯（真裁决在服务端，不靠前端把关）
         var tooBigForForever = st.tier === 'forever' && roughBytes() > 512 * 1024;
 
@@ -329,10 +346,7 @@
             '<label class="sh-chk"><input type="checkbox" id="sh-redact"' + (st.redact ? ' checked' : '') + '/>' +
             '<span>' + esc(T('ai.share.redact', '自动脱敏（本机路径 / IP / 密钥 / 令牌）')) + '</span></label>' +
 
-            (st.localImgs.length
-                ? '<label class="sh-chk"><input type="checkbox" id="sh-imgs"' + (st.images ? ' checked' : '') + '/>' +
-                '<span>' + esc(T('ai.share.imgs', '上传本地图片')) + ' <i>' + esc(imgHint) + '</i></span></label>'
-                : '') +
+            imgsBlock() +
 
             '<div class="sh-report" id="sh-report"></div>' +
             '</div></div>' +
@@ -352,6 +366,31 @@
     function costLabel(fee) {
         if (fee <= 0) return T('ai.share.costFree', '免费 · 30 天后自动清理');
         return T('ai.share.costFee', '本次 {0} ge · 一次性，不退', { 0: money(fee) });
+    }
+
+    // 图片区（唯一形态：缩略图 + 逐张取消 + 总量闸 + 隐私常显小字）
+    // 图片进「分享自有资产域」：随租约生灭（到期/撤销 = 字节真删），永不进 bed 永久存储。
+    function imgsBlock() {
+        if (!st.imgList.length) return '';
+        var picked = pickedImages();
+        var cap = (st.tier === 'trial') ? 16 : 48;
+        var over = pickedBytes() > cap * 1048576;
+        var h = '<label class="sh-lb">' + esc(T('ai.share.images', '图片')) + '</label>';
+        h += '<div class="sh-imgs">' + st.imgList.map(function (x) {
+            var off = !!st.drop[x.key];
+            var src = previewSrcOf(x.ref);
+            return '<div class="sh-img' + (off ? ' off' : '') + '" data-key="' + esc(x.key) + '" title="' + esc(x.name) + '">' +
+                (src ? '<img src="' + esc(src) + '" alt=""/>' : '<span class="sh-img-ph">' + esc(x.name) + '</span>') +
+                '<b class="sh-img-x" data-imact="drop" data-key="' + esc(x.key) + '" title="' + esc(T('ai.share.imgOff', '不分享这张')) + '">✕</b>' +
+                (x.bytes ? '<i class="sh-img-sz">' + esc(mb(x.bytes) + ' MB') + '</i>' : '') +
+                '</div>';
+        }).join('') + '</div>';
+        h += '<div class="sh-note">' + esc(T('ai.share.imgCount', '{0} 张 · {1} MB / 上限 {2} MB',
+            { 0: picked.length, 1: mb(pickedBytes()), 2: cap })) + '</div>';
+        if (over) h += '<div class="sh-warn">' + esc(T('ai.share.imgCap', '图片总量超过上限（{0} MB）——请减少图片，或选更长档位', { 0: cap })) + '</div>';
+        // 常显、不做弹窗：粘贴的图常含个人信息，而公开链接一旦发出去就收不回
+        h += '<div class="sh-note sh-priv">' + esc(T('ai.share.imgPrivacy', '图片一旦公开，即使撤销分享，也可能已被他人保存 / 缓存')) + '</div>';
+        return h;
     }
 
     function renderPreview() {
@@ -380,20 +419,29 @@
             } catch (_) {
                 body = '<pre>' + esc(it.md) + '</pre>';
             }
+            // 图片文件源：正文尚未生成（asset:N 在上传后写入）→ 预览直接给缩略图
+            if ((!it.md || !String(it.md).trim()) && it.imgs && it.imgs.length) {
+                body = it.imgs.map(function (im) {
+                    var s2 = previewSrcOf(im.ref);
+                    return s2
+                        ? '<img src="' + esc(s2) + '" alt=""/>'
+                        : '<span class="sh-imgph">' + esc(im.name || 'image') + '</span>';
+                }).join('');
+            }
             html += '<div class="sh-it ' + (isQ ? 'q' : 'a') + (isDoc ? ' doc' : '') + '">' +
                 '<div class="sh-it-hd"><b>' + esc(label) + '</b>' +
                 '<span>' + esc(meta) + '</span></div>' +
                 '<div class="sh-it-bd">' + body + '</div></div>';
         }
         box.innerHTML = html || '<div class="sh-empty">' + esc(T('ai.share.empty', '没有可分享的内容')) + '</div>';
-        // 预览内图片只读、不加载本机路径（公网上本机路径不可用）
+        // 预览内的本机 md 图片位（![](file:///…)）先显示占位：它们会在生成时换成 asset:N
         var imgs = box.querySelectorAll('img');
         for (var k = 0; k < imgs.length; k++) {
             var src = imgs[k].getAttribute('src') || '';
             if (!/^https:/i.test(src) && !/^data:image\//i.test(src)) {
                 var ph = document.createElement('span');
                 ph.className = 'sh-imgph';
-                ph.textContent = '（本地图片' + (st.images ? '将随分享上传' : '不会公开') + '）';
+                ph.textContent = '（本地图片：生成时上传，预览不读本机路径）';
                 imgs[k].parentNode.replaceChild(ph, imgs[k]);
             }
         }
@@ -453,10 +501,15 @@
             st.redact = !!e.target.checked;
             renderReport();
         });
-        var im = $dlg.querySelector('#sh-imgs');
-        if (im) im.addEventListener('change', function (e) {
-            st.images = !!e.target.checked;
-            renderPreview();
+        // 图片逐张取消/恢复（唯一手势：缩略图右上 ✕）
+        var imBox = $dlg.querySelector('.sh-imgs');
+        if (imBox) imBox.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-imact="drop"]');
+            if (!b) return;
+            var key = b.getAttribute('data-key') || '';
+            if (!key) return;
+            if (st.drop[key]) delete st.drop[key]; else st.drop[key] = 1;
+            renderNew();
         });
         var segs = $dlg.querySelectorAll('.sh-seg');
         for (var s = 0; s < segs.length; s++) {
@@ -508,26 +561,34 @@
         var cost = $dlg.querySelector('#sh-cost');
         if (go) { go.disabled = true; go.textContent = T('ai.share.working', '正在生成…'); }
 
-        var items = JSON.parse(JSON.stringify(st.items));
-        var seq = Promise.resolve();
-        if (st.images && st.localImgs.length) {
-            seq = S.uploadImages(items, function (pct) {
-                if (cost) cost.textContent = T('ai.share.uploadingImg', '图片上传 {0}%', { 0: Math.round(pct * 100) });
-            }).then(function (r) {
-                if (r.failed.length) {
-                    qoast(T('ai.share.imgPartial', '{0} 张图片上传失败，已省略', { 0: r.failed.length }), 'error');
-                }
-            });
-        }
+        // 浅拷贝（图片引用是只读的；深拷贝会把 base64 整份复制一遍）
+        var items = st.items.map(function (it) {
+            var o = { role: it.role, n: it.n, md: it.md };
+            if (it.name) o.name = it.name;
+            if (it.tools) o.tools = it.tools;
+            if (it.imgs) o.imgs = it.imgs;
+            return o;
+        });
 
         var quest = questTitle();
         var floors = [];
         st.items.forEach(function (it) { if (it.role === 'a' && typeof it.n === 'number') floors.push(it.n); });
 
-        seq.then(function () {
+        // 图片先走资产域（预占 → 直传 R2 → create 时绑定）；失败/取消的图从快照里整行剔除
+        S.prepareAssets(items, {
+            tier: st.tier,
+            drop: st.drop,
+            onProgress: function (pct) {
+                if (cost) cost.textContent = T('ai.share.uploadingImg', '图片上传 {0}%', { 0: Math.round(pct * 100) });
+            }
+        }).then(function (prep) {
+            if (prep.failed && prep.failed.length) {
+                qoast(T('ai.share.imgPartial', '{0} 张图片未能随快照上传，已略过', { 0: prep.failed.length }), 'error');
+            }
+            if (!prep.items.length) throw new Error(T('ai.share.empty', '没有可分享的内容'));
             if (go) go.textContent = T('ai.share.working2', '正在签名…');
             var bundle = S.buildBundle({
-                items: items,
+                items: prep.items,
                 title: st.title,
                 quest: quest,
                 redact: st.redact,
@@ -536,6 +597,7 @@
             });
             return S.create({
                 bundle: bundle,
+                assets: prep.assets,
                 cid: cid,
                 title: st.title,
                 kind: kind,
@@ -544,6 +606,9 @@
                 password: st.password,
                 quest: quest,
                 floors: floors
+            }).then(function (res) {
+                try { res._images = prep.count || 0; } catch (_) { }
+                return res;
             });
         }).then(function (res) {
             st.busy = false;
@@ -583,6 +648,14 @@
         else if (err && err.status === 429) msg = T('ai.share.quota', '名额已满或今日新建过多，请稍后再试或延长已有分享');
         else if (err && err.payload && err.payload.code === 'FOREVER_TOO_LARGE') {
             msg = T('ai.share.foreverTooBig', '内容超过 512 KB，永久档不可用：请选 1 年档，或缩小范围');
+        } else if (err && err.payload && err.payload.code === 'BYTES_QUOTA') {
+            msg = T('ai.share.bytesQuota', '在架体积已满（上限 {0} MB）：请撤销旧分享，或选更长档位',
+                { 0: Math.round(((err.payload.max_bytes || 0) / 1048576)) });
+        } else if (err && err.payload && err.payload.code === 'ASSET_QUOTA') {
+            msg = T('ai.share.imgCap', '图片总量超过上限（{0} MB）——请减少图片，或选更长档位',
+                { 0: Math.round(((err.payload.max_bytes || 0) / 1048576)) });
+        } else if (err && err.payload && /^ASSET_/.test(String(err.payload.code || ''))) {
+            msg = T('ai.share.imgFail', '图片上传未完成，请重试');
         }
         qoast(T('ai.share.fail', '分享失败：{0}', { 0: msg }), 'error');
     }
@@ -620,6 +693,7 @@
             '<span>' + esc(res.tier === 'forever' ? T('ai.share.forever', '永久有效') : T('ai.share.expires', '到期 {0}', { 0: (res.expires_at || '').slice(0, 10) })) + '</span>' +
             '<span>' + esc(T('ai.share.visLabel', '可见性')) + '：' + esc(st.vis) + '</span>' +
             '<span>' + esc(T('ai.share.sizeLabel', '快照')) + '：' + esc(Math.max(1, Math.round((res.bytes || 0) / 1024)) + ' KB') + '</span>' +
+            (res._images ? '<span>' + esc(T('ai.share.imgN', '含图片 {0} 张', { 0: res._images })) + '</span>' : '') +
             '</div>' +
             (note ? '<div class="sh-ok">' + esc(note) + '</div>' : '') +
             (reds.length ? '<div class="sh-report"><div class="sh-hd2">' + esc(T('ai.share.redacted', '已脱敏（客户端 + 服务端）')) + '</div><div class="sh-tags">' +
@@ -723,14 +797,17 @@
 			if (r.status === 410) throw new Error(T('ai.share.importGone', '该分享已到期或被撤销'));
 			if (!r.ok) throw new Error('HTTP ' + r.status);
 			return r.json();
-		}).then(function (b) {
+	        }).then(function (b) {
 			var items = (b && b.items) || [];
+            var assetBase = SHARE_WEB + encodeURIComponent(mid) + '/a/';
             var parts = [];
             var used = 0;
             for (var i = 0; i < items.length; i++) {
                 var it = items[i] || {};
                 var md = String(it.md || '').trim();
                 if (!md) continue;
+                // 快照里图片是 asset:N（与 id 解耦）→ 导入时按本条分享的 id 展开为公网地址
+                md = md.replace(/\]\(\s*asset:(\d{1,3})\s*\)/g, '](' + assetBase + '$1)');
                 var seg = (String(it.role).toLowerCase() === 'q' ? '问：' : '答：') + md;
                 if (used + seg.length > IMPORT_CAP) {
                     parts.push('（后续内容因长度限制已省略——原始快照：' + SHARE_WEB + mid + '）');

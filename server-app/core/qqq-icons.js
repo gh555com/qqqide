@@ -173,6 +173,8 @@
     'rotate-cw': '<path d="M4.6 13.4L4.6 8M4.6 8A2.8 2.8 0 0 1 7.4 5.2M7.4 5.2L9.6 5.2M10.8 5.2L8.52 6.92M10.8 5.2L8.52 3.48" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
     // 对话气泡（inbox 空态）
     'chat': '<path d="M2 4.3a1.4 1.4 0 0 1 1.4-1.4h9.2A1.4 1.4 0 0 1 14 4.3v5.3a1.4 1.4 0 0 1-1.4 1.4H7.5l-3.3 2.7v-2.7H3.4A1.4 1.4 0 0 1 2 9.6z" fill="none" stroke="#000" stroke-width="1.25" stroke-linejoin="round"/>',
+    // 勾选标记——文件关联 1 by 1 选择态专用（斜线族禁 crispEdges：抗锯齿才是解）
+    'check': '<path d="M2.8 8.4l3.2 3.2L13.2 4.6" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
     // 多人（群聊）
     'users': '<circle cx="5.7" cy="5.6" r="2.1" fill="none" stroke="#000" stroke-width="1.2"/>' +
       '<path d="M2 13.2c0-2.2 1.6-3.7 3.7-3.7s3.7 1.5 3.7 3.7" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round"/>' +

@@ -70,8 +70,10 @@ function bootAiOverlay() {
     e.stopPropagation();
     var _p = _pl.getAttribute('data-p') || _pl.textContent || '';
     var _c = _pl.getAttribute('data-c') || '';
-    if (_pl.classList.contains('qqq-path-ok')) { _roamRevealText(_p, _c); return; }
-    _ovProbeThen(_p, _c, _pl, function () { _roamRevealText(_p, _c); });
+    var _ln = parseInt(_pl.getAttribute('data-l'), 10) || 0;   // 行号直达（同面板口径）
+    var _go = function () { if (_ln > 0) _openPathAtLine(_p, _c, _ln); else _roamRevealText(_p, _c); };
+    if (_pl.classList.contains('qqq-path-ok')) { _go(); return; }
+    _ovProbeThen(_p, _c, _pl, _go);
   });
 
   // Bottom toolbar
@@ -1313,8 +1315,10 @@ function bootAiOverlay() {
       _lplHandleProbe(e);
       return;
     }
-    // ★ AI 回复本地路径链接：Roam 定位目录/文件（2026-09-06）
+    // ★ AI 回复本地路径链接：带行号 → 编辑器直达该行；无行号 → Roam 定位目录/文件（2026-09-06）
     if (e.data.action === 'roam-reveal-path') {
+      var _lplLine = parseInt(e.data.line, 10) || 0;
+      if (_lplLine > 0) { _openPathAtLine(e.data.text || '', e.data.ctx || '', _lplLine); return; }
       _roamRevealText(e.data.text || '', e.data.ctx || '');
       return;
     }
@@ -1519,6 +1523,26 @@ function bootAiOverlay() {
       _roamQoast(window._i('shell.overlay.roamNotFound', '未在磁盘上找到：') + _roamShort(orig));
     }
   }
+  // 行号直达：path:120 → 在编辑器打开并跳到该行（跳行机器唯一入口 = qqqEditor.applySearchJump）
+  // 命中裁决与 Roam 定位同源（_roamResolveHits）；未命中 / 目录 / 编辑器不可用 → 交回 _roamRevealText
+  // （爬升最近祖先 + qoast，绝不静默死链）。跳行经 _nextPaneOpts 契约消费：新 tab 走 shell-rpc
+  // 的 qqq-file-open-in-pane 读取，已开 tab 走 tab-manager._applyPaneOpts——两路同一入口零第二套。
+  async function _openPathAtLine(text, ctx, line) {
+    var r = null;
+    try { r = await _roamResolveHits(text, ctx); } catch (_) { r = null; }
+    if (!r || !r.hit || r.hit.isDir || !(window.qqqTabs && window.qqqTabs.openFile)) {
+      _roamRevealText(text, ctx);
+      return;
+    }
+    try {
+      window._nextPaneOpts = { line: line, col: 1 };
+      window.qqqTabs.openFile(r.hit.path);
+    } catch (_) {
+      window._nextPaneOpts = null;
+      _roamRevealText(text, ctx);
+    }
+  }
+
   // ★ 全局入口（2026-09-11）：timeline diff 窗口 op 菜单「Roam」→ 主进程 executeJavaScript 调用。
   //   与 AI 面板本地链接点击共用同一台机器（_roamRevealText），差异仅在消息入口：
   //   面板走 postMessage(roam-reveal-path)，diff 窗口走 IPC → 此函数。

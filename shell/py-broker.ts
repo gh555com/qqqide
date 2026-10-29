@@ -3,13 +3,13 @@
 // ============================================================================
 // py-broker.ts — Python broker 生命周期管理
 // 启动时 spawn py-broker.py 作为常驻子进程，stdin/stdout JSON 行协议通信。
-// 用途：跨平台窗口标题改名（Win: ctypes / Mac: osascript / Linux: wmctrl）
+// 用途：DevTools 窗体列表/改名（Win: ctypes / Mac: osascript / Linux: Xlib）、内存快照、编队热键
 // ★ 监督者模式（2026-08-10）: 常驻监听服务（pynput 全局热键）零触发入口，
 //   必须主动监督 — exit/error/ready 超时 自动拉起，指数退避 2s→30s，成功就绪即归零。
 // Python 路径唯一真理源: engines/manifest.json → getComponentBin('python')
 //
-// ★ node-broker 优先：如果 koffi 可用（Windows），先走 node-broker 零子进程路径。
-//   失败回退 Python broker。
+// ★ DevTools 改名只走本 broker（唯一实现）：归属配对逻辑在 shell/devtools-title.ts，
+//   本文件只提供「列表 / 按句柄改名 / 保守兜底」三个原子能力。
 // ============================================================================
 
 import { ChildProcess, spawn } from 'child_process';
@@ -17,7 +17,7 @@ import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getComponentBin, getComponentDir } from './component-checker';
-import { isNodeBrokerAvailable, renameDevToolsViaNodeBroker } from './node-broker';
+
 import { getDataDir } from './portable-paths';
 
 let _proc: ChildProcess | null = null;
@@ -201,37 +201,59 @@ export async function requestMemSnapshot(rootPid: number): Promise<any> {
     return _sendCommand('mem-snapshot', { rootPid });
 }
 
-/** 改名 DevTools 窗口 — node-broker 优先（koffi），失败回退 Python broker。返回是否成功（供调用方停止重试） */
-export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: string): Promise<boolean> {
-    // ── 路径 A: node-broker（koffi → Win32 API，零子进程）──
-    if (isNodeBrokerAvailable()) {
-        const ok = renameDevToolsViaNodeBroker(mainWin, projName);
-        if (ok) return true;
-        console.log('[py-broker] node-broker failed, falling back to Python broker');
-    }
+/** DevTools 窗体（原生句柄）— 归属配对的唯一依据 */
+export interface DevToolsWin { hwnd: number; title: string; owner: number }
 
-    // ── 路径 B: Python broker（跨平台）──
+/** 枚举桌面上一切 DevTools 窗体（配对用：打开前快照 → 打开后差集）。broker 未就绪 → [] */
+export async function listDevToolsWindows(): Promise<DevToolsWin[]> {
+    if (!_ready) return [];
     try {
-        let mainHwnd = '0';
-        try {
-            const hbuf = mainWin.getNativeWindowHandle();
-            if (hbuf && hbuf.length >= 4) {
-                mainHwnd = hbuf.length === 8
-                    ? hbuf.readBigUInt64LE(0).toString()
-                    : hbuf.readUInt32LE(0).toString();
-            }
-        } catch { /* ignore */ }
-
-        const title = `「🔧」${projName}`;
-        const result = await _sendCommand('rename-devtools', { mainHwnd, title });
-        if (result.ok) {
-            console.log('[py-broker] renameDevTools (py) OK: renamed=' + (result.renamed || 1) + ' title=' + title);
-            return true;
-        } else {
-            console.log('[py-broker] renameDevTools (py) FAILED:', result.error);
-        }
+        const r = await _sendCommand('list-devtools', {});
+        if (!r || !r.ok || !Array.isArray(r.windows)) return [];
+        return r.windows as DevToolsWin[];
     } catch (e: any) {
-        console.log('[py-broker] renameDevTools (py) ERROR:', e.message || e);
+        console.log('[py-broker] listDevTools FAILED:', e.message || e);
+        return [];
+    }
+}
+
+/** 按句柄改名（唯一可信路径：调用方已完成配对） */
+export async function renameDevToolsHwnd(hwnd: number, title: string): Promise<boolean> {
+    if (!_ready || !hwnd) return false;
+    try {
+        const r = await _sendCommand('rename-devtools', { hwnd, title });
+        if (r && r.ok) {
+            console.log('[py-broker] renameDevTools hwnd=' + hwnd + ' OK title=' + title);
+            return true;
+        }
+        console.log('[py-broker] renameDevTools hwnd=' + hwnd + ' FAILED:', (r && r.error) || 'unknown');
+    } catch (e: any) {
+        console.log('[py-broker] renameDevTools hwnd=' + hwnd + ' ERROR:', e.message || e);
+    }
+    return false;
+}
+
+/** 保守兜底改名（无配对信息时）— broker 侧只改「owner 证明属于本窗」或「全桌面唯一未改名」的窗体 */
+export async function renameDevToolsLoose(mainWin: BrowserWindow, title: string): Promise<boolean> {
+    if (!_ready) return false;
+    let mainHwnd = '0';
+    try {
+        const hbuf = mainWin.getNativeWindowHandle();
+        if (hbuf && hbuf.length >= 4) {
+            mainHwnd = hbuf.length === 8
+                ? hbuf.readBigUInt64LE(0).toString()
+                : hbuf.readUInt32LE(0).toString();
+        }
+    } catch { /* ignore */ }
+    try {
+        const r = await _sendCommand('rename-devtools', { mainHwnd, title });
+        if (r && r.ok) {
+            console.log('[py-broker] renameDevTools (loose) OK: title=' + title);
+            return true;
+        }
+        console.log('[py-broker] renameDevTools (loose) FAILED:', (r && r.error) || 'unknown');
+    } catch (e: any) {
+        console.log('[py-broker] renameDevTools (loose) ERROR:', e.message || e);
     }
     return false;
 }
@@ -314,7 +336,5 @@ export function getPythonDir(portableRoot: string): string | null {
 }
 
 export function isPyBrokerReady(): boolean {
-    // node-broker 可用 → 总是就绪（不依赖 Python broker 启动）
-    if (isNodeBrokerAvailable()) return true;
     return _ready;
 }

@@ -1335,6 +1335,10 @@
   function _applyPaneOpts(filePath) {
     var _paneOpts = window._nextPaneOpts || {};
     window._nextPaneOpts = null;
+    // ★ 只读自愈：命中已开 tab 时按本次意图重置只读（dsecret 只读预览 → 普通打开即恢复可编辑）
+    if (window.qqqEditor && window.qqqEditor.setPathReadOnly) {
+      try { window.qqqEditor.setPathReadOnly(filePath, !!_paneOpts.readOnly); } catch (_) { }
+    }
     if (!_paneOpts.line) return;
     setTimeout(function () {
       // ★ 取目标文件对应的编辑器（pane 编辑器优先——split view 每格独立实例）

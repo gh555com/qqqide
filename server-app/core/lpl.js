@@ -19,7 +19,7 @@
 // 点击/回执协议（与主窗口 core/shell-overlay.js 既有机器共用，零新协议）：
 //   postMessage {type:'qqqide-overlay', action:'lpl-probe', items:[{p,c}]} → 主窗口批量裁决
 //   ← {type:'qqq-lpl-probe-result', results:[{p,c,ok}]}
-//   postMessage {type:'qqqide-overlay', action:'roam-reveal-path', text, ctx} → Roam 定位
+//   postMessage {type:'qqqide-overlay', action:'roam-reveal-path', text, ctx, line} → line>0 直达编辑器该行；=0 Roam 定位
 // ============================================================================
 
 (function () {
@@ -33,6 +33,12 @@ function _post(msg) {
 function _t(key, fb) {
     try { if (typeof window._qq === 'function') return window._qq(key, fb); } catch (_) { }
     return fb;
+}
+// 链接标题：无行号 = Roam 定位；带行号 = 直达编辑器第 N 行（i18n 模板含 {0}，就地替换）
+function _lplTitle(line) {
+    if (!line) return _t('ai.roamOpen', '在 Roam 中打开');
+    var s = _t('ai.jumpToLine', '跳到第 {0} 行');
+    return String(s).split('{0}').join(String(line));
 }
 function _CFG() {
     try { return (window.qqqLpl && window.qqqLpl.config) || {}; } catch (_) { return {}; }
@@ -51,7 +57,8 @@ function _CFG() {
 //     短语致实锤误链）。现行细化：纯正斜杠「文件形」（末段含扩展名、扩展名含字母）放行——探针
 //     兜底零假链；CJK 短语与无扩展名目录形态仍不收（同批误链不回潮）；唯一入口扩展
 //     config.allowPosix=true（md 预览、文档语境）全放行正斜杠相对路径。
-//   ★ 行号后缀（x.js:120 / x.js:120-140）：只链路径主体，后缀留纯文本（C1/C2/行内代码同规）
+//   ★ 行号后缀（x.js:120 / x.js:120-140）：只链路径主体，后缀留纯文本（C1/C2/行内代码同规）；
+//     行号入 data-l——点击 = 直接在编辑器打开并跳到该行（无行号才回落到 Roam 定位）
 //   C3 树图叶子名    ├── xxx.zip            —— 仅代码块内盒线行：行首盒线后首个含 . 的词；
 //                                              点击时由主窗口按「上文最近锚点目录」拼接解析
 // 幂等：已有 <a>（含 markdown 链接/历史 ai_html）内部文本跳过，重复执行零影响。
@@ -70,11 +77,12 @@ function _lplTrimTail(p) {
   else if (s.length > 1 && s.charAt(s.length - 1) === '.' && !s.endsWith('..')) s = s.slice(0, -1); // 句号
   return s;
 }
-// 行号后缀拆分（file.js:120 / file.js:120-140）：返回 {path, suffix} | null —— 只链路径主体，后缀留纯文本
+// 行号后缀拆分（file.js:120 / file.js:120-140）：返回 {path, suffix, line} | null
+// —— 只链路径主体，后缀留纯文本（line 进 data-l：点击时直达编辑器该行）
 function _lplSplitLineSuffix(tok) {
   var m = /^(.*?):(\d{1,6})(?:-(\d{1,6}))?$/.exec(tok);
   if (!m || !m[1]) return null;
-  return { path: m[1], suffix: tok.slice(m[1].length) };
+  return { path: m[1], suffix: tok.slice(m[1].length), line: parseInt(m[2], 10) || 0 };
 }
 // 正斜杠「文件形」判定：末段含扩展名且扩展名含字母（挡 1/10、v2/1.4 与 CJK 短语——皆无合法扩展名）
 function _lplPosixFileLike(tok) {
@@ -149,9 +157,10 @@ function _lplScanText(s, mode) {
       var j = i + 3;
       while (j < n && !_lplIsTerm(s.charAt(j)) && !_lplIsSpace(s.charAt(j))) j++;
       var raw = _lplTrimTail(s.slice(i, j));
-      var spA = _lplSplitLineSuffix(raw);                 // 行号后缀：只链路径主体（后缀留纯文本）
-      if (spA && _lplValidAbs(spA.path)) raw = spA.path;
-      if (_lplValidAbs(raw)) out.push({ start: i, end: i + raw.length, raw: raw });
+      var spA = _lplSplitLineSuffix(raw);                 // 行号后缀：只链路径主体（后缀留纯文本，行号入 data-l）
+      var lineA = 0;
+      if (spA && _lplValidAbs(spA.path)) { raw = spA.path; lineA = spA.line; }
+      if (_lplValidAbs(raw)) out.push({ start: i, end: i + raw.length, raw: raw, line: lineA });
       i = Math.max(j, i + 1);
       continue;
     }
@@ -162,8 +171,9 @@ function _lplScanText(s, mode) {
       while (jb < n && !_lplIsTerm(s.charAt(jb)) && !_lplIsSpace(s.charAt(jb))) jb++;
       var rawB = _lplTrimTail(s.slice(i, jb));
       var spB = _lplSplitLineSuffix(rawB);
-      if (spB && _lplValidPosixAbs(spB.path)) rawB = spB.path;
-      if (_lplValidPosixAbs(rawB)) { out.push({ start: i, end: i + rawB.length, raw: rawB }); i = Math.max(jb, i + 1); continue; }
+      var lineB = 0;
+      if (spB && _lplValidPosixAbs(spB.path)) { rawB = spB.path; lineB = spB.line; }
+      if (_lplValidPosixAbs(rawB)) { out.push({ start: i, end: i + rawB.length, raw: rawB, line: lineB }); i = Math.max(jb, i + 1); continue; }
       i++;
       continue;
     }
@@ -186,8 +196,8 @@ function _lplScanText(s, mode) {
       else { tpfx = tok.slice(0, 8); tok = tok.slice(8); }
     }
     var spT = _lplSplitLineSuffix(tok);
-    if (spT && _lplValidAny(spT.path)) out.push({ start: i, end: i + tpfx.length + spT.path.length, raw: tpfx + spT.path });
-    else if (_lplValidAny(tok)) out.push({ start: i, end: i + tpfx.length + tok.length, raw: tpfx + tok });
+    if (spT && _lplValidAny(spT.path)) out.push({ start: i, end: i + tpfx.length + spT.path.length, raw: tpfx + spT.path, line: spT.line });
+    else if (_lplValidAny(tok)) out.push({ start: i, end: i + tpfx.length + tok.length, raw: tpfx + tok, line: 0 });
     i = Math.max(k, i + 1);
   }
   return out;
@@ -225,7 +235,7 @@ function _lplCodePathOk(t) {
   return true;
 }
 // 行内代码（非 pre）：整个内容即一个候选 token（反引号包裹=作者意图，允许内部空格）；
-// 返回 {raw, tail} | null —— raw=链接主体（含 file:/// 前缀）；tail=行号后缀（留在代码内显纯文本）
+// 返回 {raw, tail, line} | null —— raw=链接主体（含 file:/// 前缀）；tail=行号后缀（留在代码内显纯文本）；line=data-l
 function _lplCodeToken(codeEl) {
   if (!codeEl || codeEl.closest('pre')) return null;
   var t = (codeEl.textContent || '').trim();
@@ -237,8 +247,8 @@ function _lplCodeToken(codeEl) {
     else { pfx = t.slice(0, 8); t = t.slice(8); }
   }
   var sp = _lplSplitLineSuffix(t);
-  if (sp && _lplCodePathOk(sp.path)) return { raw: pfx + sp.path, tail: sp.suffix };
-  if (_lplCodePathOk(t)) return { raw: pfx + t, tail: '' };
+  if (sp && _lplCodePathOk(sp.path)) return { raw: pfx + sp.path, tail: sp.suffix, line: sp.line };
+  if (_lplCodePathOk(t)) return { raw: pfx + t, tail: '', line: 0 };
   return null;
 }
 // data-p 写入统一入口：config.resolve 改写（string 或 [主候选, 备候选]）
@@ -277,8 +287,9 @@ function _lplWrapTextNode(node, lastByBlock, block) {
     var pv = _lplSetP(a, m.raw);
     var ctxRaw = lastByBlock.get(block) || '';
     if (ctxRaw) a.setAttribute('data-c', ctxRaw);
-    a.title = _t('ai.roamOpen', '在 Roam 中打开');
-    a.setAttribute('data-i18n-title', 'ai.roamOpen');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
+    if (m.line) { a.setAttribute('data-l', String(m.line)); a.setAttribute('data-i18n-params', '0=' + m.line); }
+    a.title = _lplTitle(m.line);
+    a.setAttribute('data-i18n-title', m.line ? 'ai.jumpToLine' : 'ai.roamOpen');   // ★ 语言切换自动保鲜（父窗 updateDom 直刷）
     a.appendChild(node.ownerDocument.createTextNode(m.raw));
     frag.appendChild(a);
     lastByBlock.set(block, pv);
@@ -351,8 +362,9 @@ function linkifyLocalPaths(root) {
           ca.className = 'qqq-path-link';
           var pvc = _lplSetP(ca, whole.raw);
           if (ctxCode) ca.setAttribute('data-c', ctxCode);
-          ca.title = _t('ai.roamOpen', '在 Roam 中打开');
-          ca.setAttribute('data-i18n-title', 'ai.roamOpen');   // ★ 语言切换自动保鲜
+          if (whole.line) { ca.setAttribute('data-l', String(whole.line)); ca.setAttribute('data-i18n-params', '0=' + whole.line); }
+          ca.title = _lplTitle(whole.line);
+          ca.setAttribute('data-i18n-title', whole.line ? 'ai.jumpToLine' : 'ai.roamOpen');   // ★ 语言切换自动保鲜
           ca.textContent = whole.raw;
           pe.appendChild(ca);
           if (whole.tail) pe.appendChild(root.ownerDocument.createTextNode(whole.tail));   // 行号后缀留纯文本
@@ -550,7 +562,8 @@ if (typeof document !== 'undefined') document.addEventListener('click', function
         type: 'qqqide-overlay',
         action: 'roam-reveal-path',
         text: _pl.getAttribute('data-p') || _pl.textContent || '',
-        ctx: _pl.getAttribute('data-c') || ''
+        ctx: _pl.getAttribute('data-c') || '',
+        line: parseInt(_pl.getAttribute('data-l'), 10) || 0
       });
     } catch (_) { }
   }

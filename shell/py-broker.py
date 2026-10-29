@@ -479,21 +479,36 @@ def _linux_mem_snapshot(root_pid: int):
             'rows': rows, 'nwin': nwin}
 
 
-def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:
-    """
-    Windows: EnumWindows 枚举所有顶层窗口 →
-    标题以 "Developer Tools" 开头 → SetWindowTextW 改名。
-    改名后的窗口不再匹配 "Developer Tools" 前缀，天然多窗口安全。
-    额外尝试 GetWindow(GW_OWNER) 精确匹配作为可选过滤（不阻塞）。
-    """
+# ── DevTools 窗体标题（唯一入口 shell/devtools-title.ts）──────────────────────
+# 铁律：detached DevTools 原生 owner 恒为 0 → 归属只能靠调用方「打开前快照→打开后差集」；本进程只认显式句柄，扫荡仅作保守兜底。
+_DT_PREFIX = "Developer Tools"
+_DT_WRENCH = "\u300c\U0001f527\u300d"   # 「🔧」改名后的前缀
+
+
+def _is_devtools_title(t: str) -> bool:
+    return bool(t) and (t.startswith(_DT_PREFIX) or t.startswith(_DT_WRENCH))
+
+
+def _win_user32():
+    """user32 + 显式原型（默认 restype=c_int 会把 HWND 截成 32 位）"""
     import ctypes
     from ctypes import wintypes
 
-    user32 = ctypes.windll.user32
+    u = ctypes.windll.user32
+    u.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u.GetWindowTextW.restype = ctypes.c_int
+    u.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+    u.GetWindow.restype = wintypes.HWND
+    u.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
+    u.SetWindowTextW.restype = wintypes.BOOL
+    return ctypes, wintypes, u
+
+
+def _win_list_devtools() -> dict:
+    """枚举桌面上一切 DevTools 顶层窗体 → {ok, windows:[{hwnd,title,owner}]}（配对基准）"""
+    ctypes, wintypes, user32 = _win_user32()
     GW_OWNER = 4
-    found = []
-    renamed = []
-    all_dev = []
+    out = []
 
     WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
@@ -502,43 +517,52 @@ def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:
         buf = ctypes.create_unicode_buffer(512)
         user32.GetWindowTextW(hwnd, buf, 512)
         title = buf.value
-        if not title:
+        if not _is_devtools_title(title):
             return True
-        if title.startswith("Developer Tools") or title.startswith("\u300c\ud83d\udd27\u300d"):
-            all_dev.append((hwnd, title))
-            # 尝试 GW_OWNER 匹配（可能返回 0 for detached DevTools）
-            try:
-                owner = user32.GetWindow(hwnd, GW_OWNER)
-            except Exception:
-                owner = 0
-            if owner and owner != 0 and main_hwnd != 0 and owner == main_hwnd:
-                found.append((hwnd, owner))
-                return True
-            # 如果没找到 owner 或 owner 为 0，仍然收集（fallback）
-            if not owner or owner == 0:
-                found.append((hwnd, 0))
+        try:
+            owner = int(user32.GetWindow(hwnd, GW_OWNER) or 0)
+        except Exception:
+            owner = 0
+        out.append({"hwnd": int(hwnd), "title": title, "owner": owner})
         return True
 
     user32.EnumWindows(_cb, 0)
+    return {"ok": True, "windows": out}
 
-    _log(f"EnumWindows: all_dev={len(all_dev)} found={len(found)} mainHwnd={main_hwnd}")
-    for hwnd, t in all_dev:
-        _log(f"  DT: hwnd={hwnd} title=[{t}]")
 
-    if not found:
-        return {"ok": False, "error": f"No matching DevTools window (scanned {len(all_dev)} candidates)"}
+def _win_rename_devtools(main_hwnd: int, new_title: str, hwnd: int = 0) -> dict:
+    """Windows 改名 DevTools 窗体。
+    ① hwnd > 0 —— 调用方已配对（唯一可信路径）：只改这一个句柄。
+    ② hwnd == 0 —— 只认「owner 证明属于本窗」或「全桌面唯一一个未改名候选」；
+       已改名却无 owner 证明的窗体可能属于另一个 IDE 窗口 → 绝不动手。"""
+    ctypes, wintypes, user32 = _win_user32()
 
-    for hwnd, owner in found:
+    if hwnd > 0:
         ok = user32.SetWindowTextW(hwnd, new_title)
-        _log(f"  SetWindowTextW hwnd={hwnd} owner={owner} result={ok}")
-        if ok:
-            renamed.append(hwnd)
-        else:
-            _log(f"  SetWindowTextW FAILED hwnd={hwnd} — possible permission issue")
+        _log(f"set-title(hwnd) hwnd={hwnd} result={ok} title=[{new_title}]")
+        return {"ok": bool(ok), "renamed": 1 if ok else 0, "hwnd": hwnd}
 
-    if renamed:
-        return {"ok": True, "renamed": len(renamed)}
-    return {"ok": False, "error": f"Found {len(found)} windows but SetWindowTextW failed for all"}
+    wins = _win_list_devtools().get("windows", [])
+    _log(f"set-title(fallback): candidates={len(wins)} mainHwnd={main_hwnd}")
+    for w in wins: _log(f"  DT: hwnd={w['hwnd']} owner={w['owner']} title=[{w['title']}]")
+
+    owner_hits = [w for w in wins if main_hwnd and w["owner"] == main_hwnd]
+    unrenamed = [w for w in wins if w["title"].startswith(_DT_PREFIX)]
+    target = None
+    if len(owner_hits) == 1:
+        target = owner_hits[0]
+    elif len(unrenamed) == 1:
+        target = unrenamed[0]
+    if target is None:
+        return {"ok": False,
+                "error": (f"no certain target: candidates={len(wins)} "
+                          f"ownerHits={len(owner_hits)} unrenamed={len(unrenamed)}")}
+
+    ok = user32.SetWindowTextW(target["hwnd"], new_title)
+    _log(f"set-title(fallback) hwnd={target['hwnd']} result={ok}")
+    if ok:
+        return {"ok": True, "renamed": 1, "hwnd": target["hwnd"]}
+    return {"ok": False, "error": f"SetWindowTextW failed hwnd={target['hwnd']}"}
 
 
 def _mac_rename_devtools(new_title: str) -> dict:
@@ -553,7 +577,7 @@ tell application "System Events"
     repeat with appName in appList
         tell process appName
             repeat with w in windows
-                if name of w starts with "Developer Tools" or name of w starts with "「🔧」" then
+                if name of w starts with "Developer Tools" then
                     set name of w to (do shell script "echo $(base64 -d <<< '{encoded}')")
                     return "ok"
                 end if
@@ -575,18 +599,18 @@ return "not found"
         return {"ok": False, "error": str(e)}
 
 
-def _linux_rename_devtools(new_title: str) -> dict:
-    """Linux: Xlib 枚举 toplevel 改名（零外部依赖——wmctrl 并非各发行版预装，2026-10-05 实测修复）"""
+def _linux_toplevels():
+    # Xlib 遍历 toplevel → (display, [(window, title)]) ；python-xlib 缺失 → None
     try:
         import Xlib.display
         from Xlib import X
-    except Exception as e:
-        return {"ok": False, "error": f"python-xlib missing: {e}"}
+    except Exception:
+        return None
     try:
         d = Xlib.display.Display()
         root = d.screen().root
         name_atom = d.intern_atom('_NET_WM_NAME')
-        utf8_atom = d.intern_atom('UTF8_STRING')
+        out = []
         for w in root.query_tree().children:
             try:
                 t = ''
@@ -598,19 +622,51 @@ def _linux_rename_devtools(new_title: str) -> dict:
                     t = w.get_wm_name() or ''
             except Exception:
                 continue
-            if 'Developer Tools' not in t and not t.startswith('「🔧」'):
-                continue
-            try:
-                w.change_property(name_atom, utf8_atom, 8, new_title.encode('utf-8'))
-            except Exception:
-                pass
-            try:
-                w.set_wm_name(new_title)
-            except Exception:
-                pass
-            d.sync()
-            return {"ok": True, "renamed": 1}
-        return {"ok": False, "error": "No DevTools window"}
+            out.append((w, t))
+        return (d, out)
+    except Exception:
+        return None
+
+
+def _linux_list_devtools() -> dict:
+    # X11 顶层 DevTools 窗体（window id 即句柄）
+    r = _linux_toplevels()
+    if r is None:
+        return {"ok": False, "error": "python-xlib missing", "windows": []}
+    _d, items = r
+    return {"ok": True,
+            "windows": [{"hwnd": int(w.id), "title": t, "owner": 0}
+                        for (w, t) in items if _is_devtools_title(t)]}
+
+
+def _linux_rename_devtools(new_title: str, hwnd: int = 0) -> dict:
+    """Linux: Xlib 改写 _NET_WM_NAME。hwnd>0 = 调用方已配对只改该窗体；hwnd=0 = 只认全桌面唯一未改名候选。"""
+    r = _linux_toplevels()
+    if r is None:
+        return {"ok": False, "error": "python-xlib missing"}
+    d, items = r
+    try:
+        utf8_atom = d.intern_atom('UTF8_STRING')
+        name_atom = d.intern_atom('_NET_WM_NAME')
+        dev = [(w, t) for (w, t) in items if _is_devtools_title(t)]
+        if hwnd > 0:
+            target = [(w, t) for (w, t) in dev if int(w.id) == hwnd]
+        else:
+            unrenamed = [(w, t) for (w, t) in dev if t.startswith(_DT_PREFIX)]
+            target = unrenamed if len(unrenamed) == 1 else []
+        if not target:
+            return {"ok": False, "error": f"no certain target (candidates={len(dev)})"}
+        w, _t = target[0]
+        try:
+            w.change_property(name_atom, utf8_atom, 8, new_title.encode('utf-8'))
+        except Exception:
+            pass
+        try:
+            w.set_wm_name(new_title)
+        except Exception:
+            pass
+        d.sync()
+        return {"ok": True, "renamed": 1}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -1400,17 +1456,27 @@ def main():
                 else:
                     result["ok"] = True
                     result.update(r)
+            elif action == "list-devtools":
+                if OS == "Windows":
+                    r = _win_list_devtools()
+                elif OS == "Linux":
+                    r = _linux_list_devtools()
+                else:
+                    r = {"ok": True, "windows": []}   # mac: System Events 无稳定句柄 → 走保守兜底
+                result.update(r)
             elif action == "rename-devtools":
-                _log(f"rename-devtools: mainHwnd={cmd.get('mainHwnd')} title={cmd.get('title')}")
+                _log(f"rename-devtools: hwnd={cmd.get('hwnd')} mainHwnd={cmd.get('mainHwnd')} title={cmd.get('title')}")
+                _hwnd = int(cmd.get("hwnd") or 0)
                 if OS == "Windows":
                     r = _win_rename_devtools(
                         int(cmd.get("mainHwnd", "0")),
                         str(cmd.get("title", "")),
+                        _hwnd,
                     )
                 elif OS == "Darwin":
                     r = _mac_rename_devtools(str(cmd.get("title", "")))
                 else:
-                    r = _linux_rename_devtools(str(cmd.get("title", "")))
+                    r = _linux_rename_devtools(str(cmd.get("title", "")), _hwnd)
                 result.update(r)
                 _log(f"rename-devtools result: {json.dumps(r, ensure_ascii=False)}")
             else:

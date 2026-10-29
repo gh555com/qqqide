@@ -11,7 +11,7 @@
 // ============================================================================
 import { BrowserWindow } from 'electron';
 import { classifyExternalFiles } from './fa-editor';
-import { queuePlayerRequest, filesToItems, mainWindowsAlive, focusMainWindow } from './player-host';
+import { queuePlayerRequest, filesToItems, focusMainWindow, pickMainWindow, focusedMainWindowId, lastFocusedMainWindowId } from './player-host';
 
 const RETRY_MS = 1200;
 const BUDGET_MS = 60000;
@@ -21,6 +21,10 @@ let _pending: string[] = [];
 let _timer: any = null;
 let _deadline = 0;
 let _delivering = false;
+// ★ 投递目标（发起时刻捕获）：多窗场景下「投到哪个窗」不能等到真正投递再算——
+//   second-instance 到场后焦点会被抢（旧行为直指第一个窗），异步投递时聚焦信号已失真。
+//   捕获序 = 当场聚焦主窗 → 最后聚焦主窗（无主窗聚焦时，用户刚离开的就是它）。
+let _targetId: number | null = null;
 
 /** 入口：把一批「外部打开」文件按域路由（媒体→播放器宿主队列；文本→编辑器窗投递）。 */
 export function routeExternalOpen(files: string[]): void {
@@ -35,6 +39,10 @@ export function routeExternalOpen(files: string[]): void {
 }
 
 function _enqueueEditor(files: string[]): void {
+    if (_targetId == null) {
+        const fid = focusedMainWindowId();
+        _targetId = (fid != null) ? fid : lastFocusedMainWindowId();
+    }
     for (const f of files) { if (_pending.indexOf(f) < 0) { _pending.push(f); } }
     if (!_deadline) { _deadline = Date.now() + BUDGET_MS; }
     if (!_timer && !_delivering) {
@@ -44,7 +52,7 @@ function _enqueueEditor(files: string[]): void {
 
 async function _tryDeliver(): Promise<void> {
     if (_delivering) { return; }
-    if (!_pending.length) { _deadline = 0; return; }
+    if (!_pending.length) { _deadline = 0; _targetId = null; return; }
     _delivering = true;
     let progressed = false;
     try {
@@ -58,11 +66,12 @@ async function _tryDeliver(): Promise<void> {
         console.warn('[fa-open] deliver err: ' + ((e && e.message) || e));
     }
     _delivering = false;
-    if (!_pending.length) { _deadline = 0; return; }
+    if (!_pending.length) { _deadline = 0; _targetId = null; return; }
     if (Date.now() > _deadline) {
         console.warn('[fa-open] editor open timeout, dropped=' + _pending.length + ' :: ' + _pending.slice(0, 4).join(' | '));
         _pending = [];
         _deadline = 0;
+        _targetId = null;
         return;
     }
     if (_timer) { clearTimeout(_timer); }
@@ -70,13 +79,8 @@ async function _tryDeliver(): Promise<void> {
 }
 
 async function _deliverBatch(files: string[]): Promise<boolean> {
-    const wins = mainWindowsAlive();
-    if (!wins.length) { return false; }
-    const focused = BrowserWindow.getFocusedWindow();
-    let win = wins[0];
-    if (focused && !focused.isDestroyed()) {
-        for (const w of wins) { if (w.id === focused.id) { win = w; break; } }
-    }
+    const win = pickMainWindow(_targetId);   // 选窗权威 = player-reveal.pickOpenTargetId（唯一实现）
+    if (!win) { return false; }
     focusMainWindow(win);
     for (const f of files) {
         const ok = await _deliverOne(win, f);

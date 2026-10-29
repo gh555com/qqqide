@@ -327,6 +327,19 @@
   }
   // ★ 媒体类型判定唯一入口（2026-10-02）：扩展名 → 'audio'|'video'——跨类型切轨/转码 kind/宿主 mode 三处共用
   function _ovKindOf(p) { var e = _ovTxExt(p); return _AUDIO_EXTS[e] ? 'audio' : 'video'; }
+  // ★ 播放器履历埋点唯一入口（2026-10-29 q319 定案）：一切计数只走 bridge.player.vig（禁旁路）
+  //   壳层按域分派：宿主域 → Data/alphal/player-vig.host.json｜IDE 域 → vig.json 'player' 模块；
+  //   wq-ping 每 ping 合并两域求和 → body.vig.player → 服务端 device_vig.player_*（行为追踪「播放」四列）
+  //   字段：n 起播次数 / sec 实播秒 / a 音频 / v 视频 · nat 原生直放 / tx 进转码 / tw 转码等待秒
+  //   ★ 只传计数（无路径/无文件名/无内容）——严禁写入任何用户媒体信息
+  function _pvigFor(H, add) {
+    try {
+      var hb = H || HOST || {};
+      var b = hb.bridge || (typeof window !== 'undefined' ? window.qqqideBridge : null);
+      if (b && b.player && typeof b.player.vig === 'function') { b.player.vig(add); return; }
+      if (b && b.vig && typeof b.vig.bump === 'function') { b.vig.bump('player', add); }
+    } catch (_) { }
+  }
   var _ovTxReqId = null;
   var _ovTxUnsub = null;
   var _ovTxLastHost = null;   // 在飞转码的宿主（进度条落点/取消桥引用——同页多宿主时归发起方）
@@ -2539,6 +2552,33 @@ function mount(opts) {
 
       var _txKind = _isVid ? 'video' : 'audio';
       var _txTried = !!opts.isTx;
+      // ★ 播放器履历实例状态（2026-10-29）：一条轨一份——_loadNative 重置起播/时长基线（txMark/twDone 随轨保留）
+      //   txT0 由转码产物重开回灌（跨页面重建不丢转码等待）
+      var _pv = { counted: false, natDone: false, txMark: (typeof opts.txT0 === 'number' && opts.txT0 > 0) ? opts.txT0 : 0, twDone: false, secAcc: 0, lastT: 0, lastWall: 0 };
+      function _pvBump(add) { _pvigFor(H, add); }
+      function _pvTxStart() {
+        if (_pv.counted || _pv.txMark) { return; }   // 已起播的轨/已在转码链中 → 不重复计链路
+        _pv.txMark = Date.now();
+        _pvBump({ tx: 1 });
+      }
+      function _pvOnPlay() {
+        if (!_pv.counted) {
+          _pv.counted = true;
+          var _add = { n: 1 };
+          _add[_instKind === 'audio' ? 'a' : 'v'] = 1;
+          _pvBump(_add);
+        }
+        if (_pv.txMark && !_pv.twDone) {
+          _pv.twDone = true;
+          var _w = Math.round((Date.now() - _pv.txMark) / 1000);
+          _pv.txMark = 0;
+          if (_w >= 0 && _w <= 900) { _pvBump({ tw: _w }); }
+        }
+      }
+      function _pvFlushSec() {
+        var _s = Math.floor(_pv.secAcc);
+        if (_s > 0) { _pv.secAcc -= _s; _pvBump({ sec: _s }); }
+      }
       var _metaOk = false;
       var _fallTimer = 0;
       var _plSkipLeft = _plN;   // 列表：单轨彻底失败 → 跳下一轨（全轮试完才关播放器）
@@ -2562,7 +2602,8 @@ function mount(opts) {
           rate: _ovMediaRate, loop: _ovMediaLoop, shuffle: _ovMediaShuffle, follow: _ovMediaFollow,
           volume: (_barApi && _barApi.getVol) ? _barApi.getVol() : 1, muted: !!_mEl.muted, dockSide: _ovDockSide || 'right',
           timerEndAt: (_barApi && _barApi.timerEnd) ? _barApi.timerEnd() : 0,   // ★ v24：定时关闭随重建存活
-          timerMode: (_barApi && _barApi.timerMode) ? _barApi.timerMode() : 'pause'   // ★ v25：关机/暂停模式随重建存活
+          timerMode: (_barApi && _barApi.timerMode) ? _barApi.timerMode() : 'pause',   // ★ v25：关机/暂停模式随重建存活
+          txT0: _pv.txMark || 0   // ★ 履历：转码起点随重建携带（跨页面计算等待秒）
         });
       }
       // ★ 渐进转码（MSE 边转边播；2026-10-02）：桥有 playableStream → 分片喂 MediaSource，首帧秒出；
@@ -2658,6 +2699,7 @@ function mount(opts) {
         //   旧实现此处直接骤判失败（_ovMediaFail）——转码 >8s 的慢文件必被后续 error/定时器误伤。
         if (_txTried) { return; }
         _txTried = true;
+        _pvTxStart();   // 履历：进转码兜底计一次（classic / MSE 渐进同点）
         // ★ 8s 静默卡死兑底定时器必须熄火（2026-10-02）：旧实现遗留——若不熄，它到点会 removeAttribute('src')
         //   把在飞的 MSE 流源拆掉（经典路径同隐患，纯收益修复）。
         if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; }
@@ -2677,6 +2719,7 @@ function mount(opts) {
       function _loadNative(src, isTx, wantPlay) {
         _playIntent = !!wantPlay;
         _metaOk = false;
+        _pv.counted = false; _pv.natDone = false; _pv.lastT = 0; _pv.lastWall = 0;   // 履历：新装载重置起播/时长基线
         if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; }
         _mEl.src = src;
         if (wantPlay) {
@@ -2820,13 +2863,35 @@ function mount(opts) {
       _mEl.addEventListener('loadedmetadata', function () {
         _metaOk = true;
         _plSkipLeft = _plN;   // 成功轨 → 重置跳过预算
+        // 履历：原生直放成功（非转码产物）→ nat+1；转码产物重开（isTx）不计 nat
+        if (!opts.isTx && !_pv.natDone) { _pv.natDone = true; _pvBump({ nat: 1 }); }
         if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; }
         if (_startTime > 0) { try { _mEl.currentTime = _startTime; } catch (_) { } _startTime = 0; }
       });
 
    // 播放状态上报（出声独占 claim 的触发源）+ 音量变更持久化
-  _mEl.addEventListener('play', function () { try { if (H.onPlayState) { H.onPlayState(true); } } catch (_) { } });
-  _mEl.addEventListener('pause', function () { try { if (H.onPlayState) { H.onPlayState(false); } } catch (_) { } });
+  _mEl.addEventListener('play', function () { try { if (H.onPlayState) { H.onPlayState(true); } } catch (_) { } _pvOnPlay(); });
+  _mEl.addEventListener('pause', function () { try { if (H.onPlayState) { H.onPlayState(false); } } catch (_) { } _pv.lastT = 0; _pv.lastWall = 0; _pvFlushSec(); });
+  // 履历：实播秒累计——跳转/拖拽不计（判据 = 媒体增量 vs 墙钟增量×倍速；
+  //   后台/最小化 timeupdate 变稀（可达秒级）仍能计，拖动/seek 的媒体大跳则被剔）
+  _mEl.addEventListener('timeupdate', function () {
+    try {
+      if (_mEl.paused || _mEl.ended) { _pv.lastT = 0; _pv.lastWall = 0; return; }
+      var _t = _mEl.currentTime || 0;
+      var _now = Date.now();
+      if (_pv.lastT > 0 && _pv.lastWall > 0) {
+        var _wall = (_now - _pv.lastWall) / 1000;
+        var _rate = _mEl.playbackRate > 0 ? _mEl.playbackRate : 1;
+        var _d = _t - _pv.lastT;
+        if (_d > 0 && _d <= (_wall * _rate) * 2 + 1.0) {   // 真实播放（含低刷新 tick / 倍速）
+          _pv.secAcc += _d;
+          if (_pv.secAcc >= 10) { _pvFlushSec(); }
+        }
+      }
+      _pv.lastT = _t;
+      _pv.lastWall = _now;
+    } catch (_) { }
+  });
   _mEl.addEventListener('volumechange', function () { _persistTick(); });
 
   // 初始加载（wantPlay 恒 = _autoPlay：恢复场景安静启动；此后切轨由动作语义驱动）：
@@ -2847,6 +2912,7 @@ function mount(opts) {
     // ★ 2026-10-03 q319：当前轨「原文件」基准（播放器 [!] 钮 —— 媒体信息源 + 「Roam 定位原文件」目标）
     getBase: function () { return _curShotBase || _curLocalPath || ''; },
     destroy: function () {
+      try { _pvFlushSec(); } catch (_) { }   // 履历：未满 10s 的零头随销毁落账
       try { _ovTxAbort(); } catch (_) { }   // ★ 在飞转码（经典/渐进流）随挂载销毁同链收尾
       try { if (_fallTimer) { clearTimeout(_fallTimer); _fallTimer = 0; } } catch (_) { }
       try { _barApi.cleanup(); } catch (_) { }

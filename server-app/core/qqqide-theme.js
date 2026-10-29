@@ -406,8 +406,15 @@
           'inputOption.activeBorder': '#b58900',
           'inputOption.activeBackground': '#eee8d5',
           'editor.findMatchBackground': '#e0a010cc',
+          'editor.findMatchBorder': '#8a6a00dd',
           'editor.findMatchHighlightBackground': '#e0a01066',
+          'editor.findMatchHighlightBorder': '#b08300aa',
           'editor.findRangeHighlightBackground': '#e0a01025',
+          // ═══ 选词全文匹配高亮（双击选词 → 全文同词）═══
+          // 橙黄实底 + 深金描边：与「选中色 = 泥土红」及 Ctrl+F 同族但形状明确；
+          // 默认值（近不可见的淡蓝）禁用，禁回潮。
+          'editor.selectionHighlightBackground': '#f5b81a73',
+          'editor.selectionHighlightBorder': '#b8860bdd',
           // ═══ 右键菜单配色 — Solarized Light（Monaco inline style 唯一来源，CSS 覆盖不了）═══
           // hover 底色与 AI 面板大中小搜索右键菜单对调（2026-08-23）：白主题统一用 AI 面板 hover 色 #fdf6e3
           'menu.background': '#eee8d5',
@@ -443,8 +450,14 @@
           'inputOption.activeBorder': '#d4a017',
           'inputOption.activeBackground': '#3a3520',
           'editor.findMatchBackground': '#d4a017cc',
+          'editor.findMatchBorder': '#f0c860dd',
           'editor.findMatchHighlightBackground': '#d4a01766',
+          'editor.findMatchHighlightBorder': '#e0b040aa',
           'editor.findRangeHighlightBackground': '#d4a01725',
+          // ═══ 选词全文匹配高亮（双击选词 → 全文同词）═══
+          // 暗底上橙黄实底 + 亮金描边（暗主题全息淡蓝默认值禁用，禁回潮）。
+          'editor.selectionHighlightBackground': '#e0a82080',
+          'editor.selectionHighlightBorder': '#f0c050cc',
           // ═══ 右键菜单配色 — Solarized Dark ═══
           'menu.background': '#2a2a2a',
           'menu.foreground': '#dcd8d0',

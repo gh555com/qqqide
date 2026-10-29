@@ -76,6 +76,7 @@ import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcess
 import { registerKopeIpc, kopeWarmup } from './ipc-kope';
 import { registerVigIpc } from './ipc-vig';
 import { vigFlush, vigSquadSummon, vigStartFloorsSeed } from './vig';
+import { registerPlayerVigIpc, playerVigFlush } from './player-vig';
 import { registerTmpMachineIpc, startTmpMachine } from './tmp-machine';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
@@ -259,11 +260,12 @@ app.on('second-instance', (_event, argv) => {
     console.log('[protocol] second-instance url=' + (url || 'NONE'));
     if (url) handleLegacyAuthProtocolUrl(url);
     // ★ 外部打开（--qqqide-open）：双击文本/代码文件（文件关联）→ 按扩展分流投递
+    //   投递目标在现场捕获（用户当时正在操作滴主窗）——此处禁再抢焦点到 mainWindow：
+    //   抢了就等于把「开后门回第一个窗」写进时序（多窗下投错窗的根因）。
     const _openFiles = parseMarkerFiles((argv || []) as string[], '--qqqide-open');
     if (_openFiles.length) {
         try { routeExternalOpen(_openFiles); } catch (e: any) { console.warn('[fa-open] second-instance err: ' + ((e && e.message) || e)); }
-    }
-    if (mainWindow) {
+    } else if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
     }
@@ -412,7 +414,7 @@ const audioEngine = new AudioEngine(portable.root);
 // ★ 退出兜底: 最后一个窗口不一定是第一个窗口(mainWindow closed 路径可能永不触发)
 //   before-quit 统一兜底停音频引擎 — 幂等(已停则 no-op), 覆盖全部退出路径
 //   + mac 更新「退出即换」(v1): 就绪暂存存在时静默换装（助手等本进程退出后作业）
-app.on('before-quit', () => { try { audioEngine.stop(); } catch { /* ignore */ } if (!_browserHostMode) { try { maybeAutoApplyOnQuit(); } catch { /* ignore */ } } });
+app.on('before-quit', () => { try { audioEngine.stop(); } catch { /* ignore */ } if (!_browserHostMode) { try { maybeAutoApplyOnQuit(); } catch { /* ignore */ } } try { playerVigFlush(); } catch { /* ignore */ } });
 const monacoHost = new MonacoHost();
 const qzSpawn = new QzSpawn(portable.root);
 const cacheStore = new CacheStore(portable.cache);
@@ -509,6 +511,7 @@ function registerAllIpc(): void {
     registerAudioIpc(audioEngine, portable.root);
     registerWqPlayingIpc();
     registerVigIpc();
+    registerPlayerVigIpc(false);   // 播放器履历埋点（IDE 域 → vig.json 'player'；宿主域在启动分支注册）
     registerQzSpawnIpc(qzSpawn);
     registerRoamIpc();
     registerAiStateIpc();
@@ -750,6 +753,7 @@ app.whenReady().then(async () => {
             registerHostShellIpc();
             registerFileAssocIpc(portable.root);
             registerSquadIpc();
+            registerPlayerVigIpc(true);   // 播放器履历埋点（宿主域 → Data/alphal/player-vig.host.json，唯一写者）
             _phMark('ipc ready');
             registerPlayerIpc(portable.root, bootConfig.url, APP_VERSION);   // 宿主域内部启动运行时（窗口先行）
             _phMark('runtime started');

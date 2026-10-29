@@ -33,8 +33,9 @@ body {
   font-size:14px; line-height:1.65;
   overflow-x:hidden;
 }
-::selection { background:#ffd301; color:#000; }
-[data-theme="dark"] ::selection { background:#6a5a10; color:#f0e8d8; }
+/* 选中色 = 编辑器同源（泥土红）；全文匹配高亮用橙黄——两者严格区分（禁回潮成黄色/淡蓝） */
+::selection { background:#E8A090; }
+[data-theme="dark"] ::selection { background:#5a3a2a; }
 /* ═══ 滚动条统一块（同源镜像 = AI 面板 ai-panel/index.html 头部同块——改任一侧必须同改另一侧）═══
    纵向：5px 双向同粗 · 透明轨道 · 中性灰滑块 rgba(128,128,128,.35)（hover .55）· 3px 圆角 · 无箭头 · 透明拐角。
    ★ 横向例外（用户定案：左右交互必须能点箭头/滑轨）：12px 高 · 双端箭头（每端恒一枚，左端◀ 右端▶）
@@ -125,6 +126,21 @@ a.qqq-path-link.qqq-path-ok:hover { text-decoration:underline; background:rgba(1
 #md-refresh-fab { position:fixed; right:12px; top:12px; z-index:60; width:26px; height:26px; border-radius:4px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-primary); font-size:14px; line-height:1; opacity:0; transition:opacity .15s; }
 body:hover #md-refresh-fab { opacity:.45; }
 #md-refresh-fab:hover { opacity:1; }
+/* ═══ 查找条（Ctrl+F）+ 命中高亮（配色同源编辑器查找：橙黄系，禁蓝/禁淡到看不见）═══ */
+#md-find { position:fixed; z-index:70; top:12px; right:46px; display:none; align-items:center; gap:4px; padding:4px 6px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.18); }
+#md-find.open { display:flex; max-width:calc(100% - 56px); }
+#md-find input { width:180px; min-width:72px; flex:0 1 180px; height:22px; padding:0 6px; font:inherit; font-size:12px; color:var(--text-primary); background:var(--background-color); border:1px solid var(--border-color); border-radius:3px; outline:none; }
+#md-find input:focus { border-color:var(--yellow); }
+#md-find .md-find-count { min-width:42px; text-align:center; font-size:12px; color:var(--base01); font-variant-numeric:tabular-nums; }
+#md-find button { width:22px; height:22px; padding:0; font:inherit; font-size:12px; line-height:1; color:var(--text-primary); background:transparent; border:1px solid transparent; border-radius:3px; }
+#md-find button:hover { background:var(--background-color); border-color:var(--border-color); }
+mark.md-hit, mark.md-hit-w { background:rgba(224,160,16,.46); color:inherit; padding:0; border-radius:2px; }
+mark.md-hit-cur { background:#e0a010; color:#2b2418; box-shadow:0 0 0 1px #8a6a00 inset; }
+/* 选词当前那处 = 泥土红（与编辑器 editor.selectionBackground 同源；自绘，不依赖原生选区存活） */
+mark.md-hit-w-cur { background:#E8A090; color:#3a1c14; box-shadow:0 0 0 1px rgba(160,60,30,.55) inset; }
+[data-theme="dark"] mark.md-hit, [data-theme="dark"] mark.md-hit-w { background:rgba(224,168,32,.42); }
+[data-theme="dark"] mark.md-hit-cur { background:#d4a017; color:#1b1b18; box-shadow:0 0 0 1px #6b5200 inset; }
+[data-theme="dark"] mark.md-hit-w-cur { background:#5a3a2a; color:#f6e9dd; box-shadow:0 0 0 1px rgba(232,160,144,.45) inset; }
 </style>
 </head>
 <body>
@@ -135,6 +151,13 @@ body:hover #md-refresh-fab { opacity:.45; }
 </div>
 
 <button id="md-refresh-fab" type="button" title="刷新" data-i18n-title="mdview.refresh">&#x21BB;</button>
+<div id="md-find" role="search">
+  <input id="md-find-input" type="text" autocomplete="off" spellcheck="false" placeholder="查找" data-i18n-placeholder="mdview.findPlaceholder">
+  <span id="md-find-count" class="md-find-count">0/0</span>
+  <button id="md-find-prev" type="button" title="上一个（Shift+Enter）" data-i18n-title="mdview.findPrev">&#x2191;</button>
+  <button id="md-find-next" type="button" title="下一个（Enter）" data-i18n-title="mdview.findNext">&#x2193;</button>
+  <button id="md-find-close" type="button" title="关闭（Esc）" data-i18n-title="mdview.findClose">&#x2715;</button>
+</div>
 <div id="md-root" class="msg-ai"></div>
 
 <script src="../../vendor/katex/katex.min.js"></script>
@@ -391,6 +414,9 @@ function render(msg) {
   // 本地路径链接化 + 存在性探针（core/lpl.js 唯一入口；确认存在才显示为可点链接 → 点击 Roam 定位）
   try { if (window.linkifyLocalPaths) window.linkifyLocalPaths($root); } catch (_) { }
   try { if (window.probeLocalPathLinks) window.probeLocalPathLinks($root); } catch (_) { }
+  // 重渲染 → mark 随 innerHTML 清空，查找/选词高亮就地重建（不抢滚动位）
+  _fHits = []; _wHits = []; _wText = ''; _fIdx = -1;
+  if (_fq) _findRun(_fq, true);
   var y = _savedScroll;
   requestAnimationFrame(function () { try { window.scrollTo(0, y); } catch (_) { } });
 }
@@ -430,6 +456,298 @@ window.qqqLpl.config = {
     return [absMain, u];
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 查找（Ctrl+F）+ 选词全文匹配高亮 —— 2026-10-27
+//   ① Ctrl+F = 顶部查找条：全部命中 = 橙黄半透底；当前命中 = 实橙底（与编辑器查找同族配色）
+//   ② 双击/选词 = 全文同词高亮（编辑器同语义），与原生选中色（泥土红）严格区分
+//   实现：文本索引（块级边界哨兵防跨块假命中）→ 命中区间 → 逐文本节点「从右往左」切分包 <mark>
+//   禁 innerHTML 重建（会毁事件委托 / 图片 / 链接状态）
+// ═══════════════════════════════════════════════════════════════════════════
+var FIND_MAX = 2000;                 // 单次高亮上限（超大文档防拖死）
+var $find = document.getElementById('md-find');
+var $findIn = document.getElementById('md-find-input');
+var $findCnt = document.getElementById('md-find-count');
+var $findPrev = document.getElementById('md-find-prev');
+var $findNext = document.getElementById('md-find-next');
+var $findClose = document.getElementById('md-find-close');
+var _fq = '', _fHits = [], _fIdx = -1, _wHits = [], _wText = '', _fTimer = null;
+
+// 块级元素 = 文本天然断点（插 \n 哨兵 → 跨块不会退化成假命中）
+var _BLOCK = { ADDRESS:1, ARTICLE:1, ASIDE:1, BLOCKQUOTE:1, DD:1, DETAILS:1, DL:1, DT:1, FIGCAPTION:1, FIGURE:1, FOOTER:1, FORM:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, HEADER:1, HR:1, LI:1, MAIN:1, NAV:1, OL:1, P:1, PRE:1, SECTION:1, SUMMARY:1, TABLE:1, TBODY:1, TD:1, TFOOT:1, TH:1, THEAD:1, TR:1, UL:1 };
+var _SKIP = { SCRIPT:1, STYLE:1, NOSCRIPT:1, TEXTAREA:1 };
+
+// 全文文本索引：segs = [{node,start,len}]（start 为拼接文本中的绝对偏移）
+function _txtIndex() {
+  var segs = [], text = '', n;
+  var walker = document.createTreeWalker($root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, null, false);
+  while ((n = walker.nextNode())) {
+    if (n.nodeType === 1) { if (_BLOCK[n.nodeName]) text += '\n'; continue; }
+    var pn = n.parentNode ? n.parentNode.nodeName : '';
+    if (_SKIP[pn]) continue;
+    var v = n.nodeValue;
+    if (!v) continue;
+    segs.push({ node: n, start: text.length, len: v.length });
+    text += v;
+  }
+  return { segs: segs, text: text };
+}
+
+// 绝对偏移 → 文本节点 + 局部偏移
+function _segAt(segs, off) {
+  if (!segs.length) return null;
+  var lo = 0, hi = segs.length - 1, i = 0;
+  while (lo <= hi) { var mid = (lo + hi) >> 1; if (segs[mid].start <= off) { i = mid; lo = mid + 1; } else hi = mid - 1; }
+  var sg = segs[i], o = off - sg.start;
+  if (o >= sg.len && i + 1 < segs.length && segs[i + 1].start === off) { i++; sg = segs[i]; o = 0; }
+  if (o > sg.len) o = sg.len;
+  if (o < 0) o = 0;
+  var len = sg.node.nodeValue ? sg.node.nodeValue.length : 0;
+  return { node: sg.node, off: Math.min(o, len) };
+}
+
+// 命中区间（不分大小写；非重叠推进）
+//   wordOnly = 选词高亮专用：ASCII 词首/词尾不得被字母数字包住（防 "the" 命中 "Then"；中文不适用）
+var _AW = /[A-Za-z0-9_]/;
+function _hitRanges(map, q, wordOnly) {
+  var out = [];
+  var needle = String(q || '').toLowerCase();
+  if (!needle) return out;
+  var hay = map.text.toLowerCase(), from = 0, i, wl = needle.length;
+  var headAw = wordOnly && _AW.test(needle.charAt(0));
+  var tailAw = wordOnly && _AW.test(needle.charAt(wl - 1));
+  while (out.length < FIND_MAX) {
+    i = hay.indexOf(needle, from);
+    if (i < 0) break;
+    if ((headAw && i > 0 && _AW.test(hay.charAt(i - 1))) || (tailAw && _AW.test(hay.charAt(i + wl)))) { from = i + 1; continue; }
+    out.push({ s: i, e: i + wl });
+    from = i + wl;
+  }
+  return out;
+}
+
+// 着色：返回 range 下标的 mark 数组（skip=与当前选区重叠的命中不包，保留原生选中色）
+function _paint(map, ranges, cls, clsCur, curIdx, skip) {
+  var segs = map.segs, buckets = [], i;
+  for (i = 0; i < segs.length; i++) buckets.push(null);
+  var cur = 0, out = new Array(ranges.length);
+  for (var k = 0; k < ranges.length; k++) {
+    var r = ranges[k];
+    if (skip && r.s < skip.e && r.e > skip.s) { out[k] = null; continue; }
+    out[k] = [];
+    while (cur < segs.length && segs[cur].start + segs[cur].len <= r.s) cur++;
+    for (var j = cur; j < segs.length && segs[j].start < r.e; j++) {
+      var sg = segs[j];
+      var ls = Math.max(r.s, sg.start) - sg.start;
+      var le = Math.min(r.e, sg.start + sg.len) - sg.start;
+      if (le > ls) { if (!buckets[j]) buckets[j] = []; buckets[j].push({ s: ls, e: le, k: k }); }
+    }
+  }
+  for (i = 0; i < segs.length; i++) {
+    var list = buckets[i];
+    if (!list || !list.length) continue;
+    var node = segs[i].node;
+    if (!node.parentNode) continue;
+    list.sort(function (a, b) { return b.s - a.s; });   // 从右往左切，左侧偏移恒有效
+    for (var t = 0; t < list.length; t++) {
+      var it = list[t];
+      var len = node.nodeValue ? node.nodeValue.length : 0;
+      var e = Math.min(it.e, len), s = Math.min(it.s, e);
+      if (e <= s) continue;
+      if (e < len) node.splitText(e);
+      var mid = (s > 0) ? node.splitText(s) : node;
+      var par = mid.parentNode;
+      if (!par) continue;
+      var mk = document.createElement('mark');
+      mk.className = cls + ((clsCur && it.k === curIdx) ? ' ' + clsCur : '');
+      par.insertBefore(mk, mid);
+      mk.appendChild(mid);
+      if (out[it.k]) out[it.k].push(mk);
+    }
+  }
+  return out;
+}
+
+// 拆标记（保留文字）
+function _dropMarks(list) {
+  for (var i = list.length - 1; i >= 0; i--) {
+    var arr = list[i];
+    if (!arr) continue;
+    for (var j = 0; j < arr.length; j++) {
+      var m = arr[j], p = m.parentNode;
+      if (!p) continue;
+      while (m.firstChild) p.insertBefore(m.firstChild, m);
+      p.removeChild(m);
+    }
+  }
+  try { $root.normalize(); } catch (_) { }
+}
+
+function _findCount() {
+  var n = _fHits.length;
+  $findCnt.textContent = n ? ((_fIdx + 1) + '/' + n) : '0/0';
+}
+
+function _findGo(dir, noScroll) {
+  var n = _fHits.length;
+  if (!n) { _findCount(); return; }
+  var idx = (_fIdx < 0) ? (dir < 0 ? n - 1 : 0) : ((_fIdx + (dir || 0)) % n + n) % n;
+  for (var i = 0; i < n; i++) {
+    var arr = _fHits[i];
+    if (!arr) continue;
+    for (var j = 0; j < arr.length; j++) arr[j].classList.remove('md-hit-cur');
+  }
+  _fIdx = idx;
+  var cur = _fHits[idx] || [];
+  for (var k = 0; k < cur.length; k++) cur[k].classList.add('md-hit-cur');
+  if (cur[0] && !noScroll) {
+    try { cur[0].scrollIntoView({ block: 'center', behavior: 'auto' }); } catch (_) { try { cur[0].scrollIntoView(); } catch (__) { } }
+  }
+  _findCount();
+}
+
+function _findRun(q, noScroll) {
+  _fq = String(q || '');
+  _dropMarks(_fHits); _fHits = []; _fIdx = -1;
+  if (_fq) {
+    var map = _txtIndex();
+    var ranges = _hitRanges(map, _fq);
+    if (ranges.length) {
+      _fHits = _paint(map, ranges, 'md-hit', '', -1, null);
+      _findGo(1, noScroll);
+    }
+  }
+  _findCount();
+}
+
+function _findOpen() {
+  var seed = '';
+  try {
+    var sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.anchorNode && $root.contains(sel.anchorNode)) {
+      seed = String(sel.toString()).replace(/\s+/g, ' ').trim().slice(0, 200);
+    }
+  } catch (_) { }
+  $find.classList.add('open');
+  if (seed) $findIn.value = seed;
+  try { $findIn.focus(); $findIn.select(); } catch (_) { }
+  if ($findIn.value !== _fq) _findRun($findIn.value);
+}
+
+function _findCloseBar() {
+  if (_fTimer) { clearTimeout(_fTimer); _fTimer = null; }
+  $find.classList.remove('open');
+  _dropMarks(_fHits); _fHits = []; _fIdx = -1; _fq = '';
+  $findIn.value = ''; $findCnt.textContent = '0/0';
+  try { $findIn.blur(); } catch (_) { }
+}
+
+// 命中区间（绝对偏移）→ DOM Range（用于裁决「哪条命中 = 当前选区」）
+function _hitRangeOf(map, rg) {
+  var a = _segAt(map.segs, rg.s), b = _segAt(map.segs, rg.e);
+  if (!a || !b) return null;
+  var rr = document.createRange();
+  try { rr.setStart(a.node, a.off); rr.setEnd(b.node, b.off); } catch (_) { return null; }
+  return rr;
+}
+function _overlaps(a, b) {
+  try { return a.compareBoundaryPoints(Range.END_TO_START, b) === -1 && b.compareBoundaryPoints(Range.END_TO_START, a) === -1; } catch (_) { return false; }
+}
+// 最近的块级祖先（跨块选中不算词）
+function _blkOf(n) {
+  while (n && n !== $root) { if (n.nodeType === 1 && _BLOCK[n.nodeName]) return n; n = n.parentNode; }
+  return $root;
+}
+
+function _clearWord() {
+  _wText = '';
+  if (!_wHits.length) return;
+  var hits = _wHits;
+  _wHits = [];
+  _dropMarks(hits);
+}
+
+// 双击/拖选 → 全文同词高亮：其余命中 = 橙黄半透；当前那处 = 泥土红实底（自绘，不依赖原生选区存活）
+function _wordHighlight() {
+  var sel = null;
+  try { sel = window.getSelection(); } catch (_) { return; }
+  if (!sel || !sel.rangeCount || sel.isCollapsed) return;
+  var rg = sel.getRangeAt(0);
+  if (!$root.contains(rg.commonAncestorContainer)) return;
+  // 原生双击恒带尾随空格、段尾还带块哨兵 \n → 一律归一成裸词再搜
+  var txt = String(sel.toString()).replace(/\s+/g, ' ').trim();
+  if (!txt || txt.length > 120) return;
+  if (_blkOf(rg.startContainer) !== _blkOf(rg.endContainer)) return;
+  if (txt === _wText && _wHits.length) return;
+  _clearWord();
+  var map = _txtIndex();
+  var ranges = _hitRanges(map, txt, true);
+  if (ranges.length < 2) return;                                     // 只此一处 = 无全文匹配可言
+  var curIdx = -1;
+  for (var k = 0; k < ranges.length; k++) {
+    var hr = _hitRangeOf(map, ranges[k]);
+    if (hr && _overlaps(rg, hr)) { curIdx = k; break; }
+  }
+  _wHits = _paint(map, ranges, 'md-hit-w', 'md-hit-w-cur', curIdx, null);
+  _wText = txt;
+  // paint 拆文本节点会带走原生选区 → 用当前命中的 mark 重设，选中态与自绘色落在同一处
+  try {
+    var cur = (curIdx >= 0) ? _wHits[curIdx] : null;
+    if (cur && cur.length) {
+      var nr = document.createRange();
+      nr.setStartBefore(cur[0]); nr.setEndAfter(cur[cur.length - 1]);
+      sel.removeAllRanges(); sel.addRange(nr);
+    }
+  } catch (_) { }
+}
+
+// ═══ 事件 ═══
+$findIn.addEventListener('input', function () {
+  if (_fTimer) clearTimeout(_fTimer);
+  var v = $findIn.value;
+  _fTimer = setTimeout(function () { _fTimer = null; _findRun(v); }, 90);
+});
+$findIn.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  if (_fTimer) { clearTimeout(_fTimer); _fTimer = null; }
+  if ($findIn.value !== _fq) _findRun($findIn.value);
+  else _findGo(e.shiftKey ? -1 : 1);
+});
+$findNext.addEventListener('click', function () { _findGo(1); });
+$findPrev.addEventListener('click', function () { _findGo(-1); });
+$findClose.addEventListener('click', function () { _findCloseBar(); });
+
+document.addEventListener('keydown', function (e) {
+  if (e.isComposing) return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'f' || e.key === 'F' || e.keyCode === 70)) {
+    e.preventDefault(); e.stopPropagation(); _findOpen(); return;
+  }
+  if (e.key === 'Escape') {
+    if ($find.classList.contains('open')) { e.preventDefault(); e.stopPropagation(); _findCloseBar(); }
+    _clearWord();
+  }
+}, true);
+
+// 双击选词 → 全文同词高亮（等原生选词落定）
+$root.addEventListener('dblclick', function (e) {
+  var t = e.target;
+  if (!t || !t.closest) return;
+  if (t.closest('img, .table-view-btn, .table-roam-btn')) return;
+  setTimeout(_wordHighlight, 0);
+});
+
+// 拖选落定（mouseup）同语义；点别处 / Esc 收回。
+// 不以 selectionchange 收口：paint 拆文本节点本身会改写选区，那是自伤循环（高亮画完即被清）
+document.addEventListener('mouseup', function (e) {
+  if (e.button !== 0 || !$root.contains(e.target)) return;
+  setTimeout(_wordHighlight, 0);
+});
+document.addEventListener('mousedown', function (e) {
+  if (!$root.contains(e.target)) { _clearWord(); return; }
+  if (e.target.closest && e.target.closest('mark.md-hit-w')) return;
+  _clearWord();
+}, true);
 
 // ═══ ready 握手（父窗口收到后发 init + flush 首帧内容）═══
 try { parent.postMessage({ type: 'mdview:ready' }, '*'); } catch (_) { }

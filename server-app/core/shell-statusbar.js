@@ -115,8 +115,8 @@
 		var _onlPanel = null;
 		var _onlFetching = false;
 		var _onlUsersCache = null; // 最近一次 users 快照（三连 q 切列重渲染用，零重复请求）
-		var _onlDailyHist = null;  // 最近一次每日均值快照（服务端 avg_daily ≤201 行；旧服务端回退 avg_daily_30；弹窗 30d/180d 曲线数据，零重复请求）
-		var _onlRange = '30';      // 曲线回看窗口档位：'30'=近30天(31点) / '180'=近180天(181点≈半年，2026-09-08 新增)
+		var _onlDailyHist = null;  // 最近一次每日快照（服务端 avg_daily ≤741 行 {d,t,v,c}；旧服务端回退 avg_daily_30；弹窗 30d/180d/720d 双曲线数据，零重复请求）
+		var _onlRange = '180';     // 曲线回看窗口档位：'30'=近30天(31点) / '180'=近180天(181点) / '720'=近720天(721点≈两年)；出厂默认 180
 		var _onlSparkSvg = null;   // 微型曲线 <svg>（懒创建一次复用，仅弹窗可见时渲染）
 		var _onlShowBal = false;   // ★ 隐藏功能：弹窗开启时连按 3 下 q → day 右侧显示「余额」列（服务端 balance_ge 四舍五入取整）
 		var _onlQCount = 0;        // 连按计数（超时/弹窗关闭清零）
@@ -136,10 +136,56 @@
 			try { if (window.qqqLogin && window.qqqLogin.login) window.qqqLogin.login(); } catch (e) { }
 		}
 		function _setOnl(txt) { if ($onl && $onl.textContent !== txt) $onl.textContent = txt; } // 值同零写
+		// ★ 人数唯一渲染机（2026-10-28）：左下角 + 弹窗首行 = 同一次写入，永不各自为政。
+		//   数据源 = 服务端 presence 实时 count（online-total / online-users 同一函数下发，同一把尺）。
+		//   单调裁决：响应带 total_at（服务端计算时刻）——旧值一律不覆盖新值。
+		//   必要性：明细接口有 60s 微缓存，陈旧响应体不得把刚刷新的数字打回旧值。
+		var _onlCountAt = 0;      // 已采纳值的服务端计算时刻（Unix 秒；0 = 尚未采纳过带戳的值）
+		var _onlCountVal = null;  // 已采纳值（原始数字，未格式化）
+		var _onlReqSeq = 0;       // 请求发出序号（单调递增）
+		var _onlAppliedSeq = 0;   // 已采纳值所属请求的序号 —— 先发后到的响应体恒丢弃
+		function _fmtCount(n) { return n > 0 ? n.toLocaleString() : '0'; }
+		function _paintOnlCount() {
+			if (_onlCountVal === null) return;
+			_setOnl(_fmtCount(_onlCountVal));
+			var $n = document.getElementById('qqq-onl-now');
+			if ($n) $n.textContent = _fmtCount(_onlCountVal);
+		}
+		function _onlSeq() { return ++_onlReqSeq; }
+		// ★ 启动竞态有界重试（实测：刷新后左下角恒 '--' 直到下一个 5min 节拍）——
+		//   状态库/登录态比状态栏晚就绪，首拉拿不到 token/手机号；旧实现只置 '--' 就返回。
+		//   首次成功前最多 8 次×1s（零网络：凭证缺失时压根不发请求），成功即停。
+		function _mkBootRetry() {
+			var tries = 0, done = false;
+			return {
+				retry: function (fn) { if (done || tries >= 8) return; tries++; setTimeout(fn, 1000); },
+				ok: function () { done = true; tries = 0; }
+			};
+		}
+		var _onlBoot = _mkBootRetry();   // 在线数
+		var _totBoot = _mkBootRetry();   // 陪伴时长
+		// 双重裁决（两条都过才采纳）：
+		//   ① 服务端时刻——响应带 total_at 时，旧体不得覆盖新值（明细接口有 60s 微缓存）；
+		//   ② 本地发出序——服务端不带 total_at 时（旧服务端）唯一防线：先发后到的响应体丢弃。
+		function _applyOnlCount(total, atUnix, seq) {
+			if (typeof total !== 'number' || !isFinite(total) || total < 0) return false;
+			var at = (typeof atUnix === 'number' && atUnix > 0) ? atUnix : 0;
+			var s = (typeof seq === 'number' && seq > 0) ? seq : _onlSeq();
+			if (at > 0 && _onlCountAt > 0 && at < _onlCountAt) return false; // 旧响应体 → 丢弃
+			if (s < _onlAppliedSeq) return false;                            // 先发的请求后到 → 丢弃
+			if (at > 0) _onlCountAt = at;
+			_onlAppliedSeq = s;
+			_onlCountVal = total;
+			_paintOnlCount();
+			return true;
+		}
 		function _onlAuthExpired() {
 			_onlAuthFail = true;
 			_setOnl('--');
 			_setTot('--');
+			_onlCountVal = null; _onlCountAt = 0; // 人数内存态同清（免陈旧值被下个登录态复活）
+			var $n0 = document.getElementById('qqq-onl-now');
+			if ($n0) $n0.textContent = '--';
 			_onlUsersCache = null;
 			closeOnlineUsers(); // 面板开着也一并收回（陈旧明细绝不留屏）
 		}
@@ -153,22 +199,25 @@
 			if (!force && document.hidden) return; // ★ 2026-10-02: 隐藏窗零请求（回前台 visibilitychange 补拉）
 			// ★ 登录门：未登录/授权失效 → 恒 '--' 零请求（先算门再过节流门——登录瞬间首拉不被吃）
 			var _tok = _onlAuthFail ? '' : _onlToken();
-			if (!_tok) { _setOnl('--'); return; }
+			if (!_tok) {
+				_setOnl('--');
+				if (!_onlAuthFail) _onlBoot.retry(function () { fetchOnline(); }); // 启动竞态：凭证晚就绪
+				return;
+			}
+			_onlBoot.ok();
 			var now = Date.now();
 			if (!force && now - _onlLastFetch < 240000) return;
 			_onlLastFetch = now;
+			var _seq = _onlSeq();
 			fetch('https://direct-cn.gh555.com/api/qqqide/online-total', { cache: 'no-cache', headers: { 'Authorization': 'Bearer ' + _tok } })
 				.then(function (r) { if (!r.ok) { if (r.status === 401) _onlAuthExpired(); return null; } return r.json(); })
 				.then(function (data) {
 					if (!data || !data.ok) return;
 					_onlAuthFail = false;
-					if (typeof data.total === 'number') {
-						var _ot = data.total > 0 ? data.total.toLocaleString() : '0';
-						_setOnl(_ot); // ★ 值同零写（2026-10-02 审计）
-					}
-					// ★ 弹窗首行：当前人数（与左下角同值）+ ※最近24小时平均
-					var $now = document.getElementById('qqq-onl-now');
-					if ($now && $onl) $now.textContent = $onl.textContent || '0';
+					// ★ 面板在场时此路不写人数：面板同时用明细接口刷新人数，两路各写就会重现
+					//   「数字已刷新 / 列表还旧」（用户实锤）。面板关闭时本路是唯一写者。
+					if (!_onlUsersOpen) _applyOnlCount(data.total, data.total_at, _seq);
+
 					var $avg = document.getElementById('qqq-onl-avg24');
 					if ($avg) {
 						var pts = data.sample_points || 0;
@@ -181,8 +230,8 @@
 							$avg.title = _T('shell.onl.samplingShort', '数据采集中');
 						}
 					}
-					// ★ 每日均值曲线数据（服务端 avg_daily 全量 ≤201 行；旧服务端回退 avg_daily_30。
-					//   尾点 == 当前24h平均同值；弹窗开着才绘制，30d/180d 档位切片在 _renderSpark 内）
+					// ★ 每日曲线数据（服务端 avg_daily 全量 ≤741 行 {d,t,v,c}；旧服务端回退 avg_daily_30 且无 c。
+					//   尾点 == 当前24h平均同值；弹窗开着才绘制，30d/180d/720d 档位切片在 _renderSpark 内）
 					var _daily = Array.isArray(data.avg_daily) ? data.avg_daily
 						: (Array.isArray(data.avg_daily_30) ? data.avg_daily_30 : null);
 					if (_daily && _daily.length) {
@@ -208,13 +257,14 @@
 			_onlPanel.innerHTML =
 				'<div class="qqq-onl-head">' +
 				'<div class="qqq-onl-lines">' +
-				'<span class="qqq-onl-title">' + _T('shell.onl.title', '在线人数') + ' <b id="qqq-onl-now">0</b></span>' +
+				'<span class="qqq-onl-title">' + _T('shell.onl.title', '在线人数') + ' <b id="qqq-onl-now">--</b></span>' +
 				'<span class="qqq-onl-avg" id="qqq-onl-avg24">' + _T('shell.onl.avg24', '※最近24小时平均：') + '--</span>' +
 				'</div>' +
 				'<span class="qqq-onl-spark" id="qqq-onl-spark">' +
 				'<span class="qqq-onl-zoom" id="qqq-onl-zoom">' +
 				'<button type="button" data-r="30">30d</button>' +
 				'<button type="button" data-r="180">180d</button>' +
+				'<button type="button" data-r="720">720d</button>' +
 				'</span>' +
 				'</span>' +
 				'<span class="qqq-onl-scale" id="qqq-onl-scale"></span>' +
@@ -223,7 +273,7 @@
 			_onlOverlay.appendChild(_onlPanel);
 			document.body.appendChild(_onlOverlay);
 
-			// ★ 30d/180d 档位（2026-09-08）：图表左上角微型按钮点按切换回看窗口（重渲染零请求；弹窗内点击不关闭；档位会话内保持）
+			// ★ 30d/180d/720d 档位：图表左上角微型按钮点按切换回看窗口（重渲染零请求；弹窗内点击不关闭；档位会话内保持）
 			var $zoom = document.getElementById('qqq-onl-zoom');
 			if ($zoom) {
 				$zoom.addEventListener('click', function (e) {
@@ -233,24 +283,42 @@
 					if (r && r !== _onlRange) {
 						_onlRange = r;
 						_syncZoomBtns();
+						_sparkHoverOff();   // 档位切换 = X 轴点位全换，旧悬停下标作废
 						_renderSpark();
 					}
 				});
 			}
-			_syncZoomBtns();
-		}
-
+				_syncZoomBtns();
+			_bindSparkHover();   // 曲线悬停层（刻印竖线 + 垂足浮读框）随面板就位
+		}
+
 		function closeOnlineUsers() {
 			_onlUsersOpen = false;
+			_onlTickStop();
+			_sparkHoverOff();
 			if (_onlOverlay) _onlOverlay.style.display = 'none';
 		}
 
-		// ★ 微型 30 天日均曲线（2026-09-06）——首行均值左移后，右侧细长区画近30天每日均值变迁；
-		//   尾点 = 今天行 = 当前 24h 滚动平均 → 与首行数字恒同值（服务端同一 refresh 周期写入同一值）。
+		// ★ 微型日均双曲线——首行均值左移后，右侧细长区画每日变迁：
+		//   实线 = 日均在线（尾点 = 今天行 = 当前 24h 滚动平均 → 与首行数字恒同值）；
+		//   橙虚线 = 当日 ge 消费（实扣 + 白嫖，0 基线；服务端 avg_daily 每点带 c/t）。
 		//   零定时器零动画：数据刷新（fetchOnline then）/ 弹窗打开 / 窗口缩放 三路重绘；SVG 懒创建复用。
 		// ★ 一位小数格式化（峰/谷刻度 + 24h 平均同口径；整数也显 .0，2026-09-07 一切数字一位小数定案）
 		function _fmt1(x) {
 			return (Math.round(x * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+		}
+		// ★ ge 数值格式（2026-10-29 用户定案）：任何位置一律四舍五入取整、禁小数
+		//   （含右侧刻度列的消费峰/0 + 悬停浮读框第三行 + 轴 tooltip）——旧「<1000 一位小数 / ≥1000 K·M 紧凑」已废
+		function _fmtGe(x) {
+			var v = Math.round(x);
+			if (!(v > 0)) return '0';
+			return String(v);
+		}
+		// ★ 档位名（tooltip 用；非中文语言缺键回退中文）
+		function _rangeLabel() {
+			if (_onlRange === '720') return _T('shell.onl.range720', '近720天');
+			if (_onlRange === '180') return _T('shell.onl.range180', '近180天');
+			return _T('shell.onl.range30', '近30天');
 		}
 
 		// ★ 档位按钮激活态同步（2026-09-08）：当前档位实心高亮，另一档描边暗显
@@ -263,28 +331,127 @@
 			}
 		}
 
+		// ═══ 曲线悬停层（2026-10-29 用户定案）═══
+		//   形态对齐播放器进度条游标：1px 全图表高竖线（上下顶到图表边界）+ 整数像素吸附
+		//   （半像素会被抗锯齿摊成两条半强度）；垂足正下方浮读框（不遮挡图表），三行左对齐：
+		//   ① 日期 YYYY-MM-DD  ② 在线 N.Np（一位小数）  ③ 消费 Nge（ge 恒四舍五入取整）。
+		//   吸附到最近数据点：线/框恒描述同一个真实点（禁打印插值出的假值）。
+		var _onlHoverIdx = -1;   // 当前悬停数据点下标（-1 = 无）
+		var _onlSparkGeo = null; // 当前曲线几何（悬停层唯一读源；_renderSpark 每次重绘就地更新）
+		var _onlCursorEl = null; // 刻印竖线
+		var _onlTipEl = null;    // 垂足浮读框
+		var _onlTipW = 0, _onlTipHtml = '';
+
+		function _ensureSparkOverlay() {
+			var $spark = document.getElementById('qqq-onl-spark');
+			if (!$spark) return null;
+			if (!_onlCursorEl || _onlCursorEl.parentNode !== $spark) {
+				_onlCursorEl = document.createElement('div');
+				_onlCursorEl.className = 'qqq-onl-cursor';
+				_onlCursorEl.style.opacity = '0';
+				$spark.appendChild(_onlCursorEl);
+			}
+			if (!_onlTipEl || _onlTipEl.parentNode !== $spark) {
+				_onlTipEl = document.createElement('div');
+				_onlTipEl.className = 'qqq-onl-tip';
+				$spark.appendChild(_onlTipEl);
+				_onlTipW = 0; _onlTipHtml = '';
+			}
+			return $spark;
+		}
+
+		function _sparkHoverOff() {
+			_onlHoverIdx = -1;
+			if (_onlCursorEl) _onlCursorEl.style.opacity = '0';
+			if (_onlTipEl) _onlTipEl.style.display = 'none';
+		}
+
+		function _sparkHoverPaint() {
+			var g = _onlSparkGeo;
+			var $spark = _ensureSparkOverlay();
+			if (!g || !$spark || _onlHoverIdx < 0) return;
+			var d = g.daily[_onlHoverIdx];
+			if (!d) { _sparkHoverOff(); return; }
+			var step = g.n > 1 ? g.iw / (g.n - 1) : 0;
+			// 与 SVG 默认 preserveAspectRatio（xMidYMid meet）同一缩放：viewBox 宽/高与实测宽/高有一丁点差时，
+			// 曲线会被等比缩放并居中——刻印线必须按同式换算，否则尾端会偏几像素
+			var cw = $spark.clientWidth || g.w, ch = $spark.clientHeight || g.h;
+			var k = Math.min(cw / g.w, ch / g.h) || 1;
+			var ox = (cw - g.w * k) / 2;
+			var px = Math.round(ox + (g.pad + _onlHoverIdx * step) * k);
+			if (px < 0) px = 0;
+			if (px > cw - 1) px = cw - 1;
+			_onlCursorEl.style.left = px + 'px';
+			_onlCursorEl.style.opacity = '1';
+			// 三行（左对齐）：日期 / 在线 N.Np / 消费 Nge
+			var html = '<div class="r1">' + (d.t || d.d || '') + '</div>' +
+				'<div class="r2">' + _fmt1(d.v) + 'p</div>' +
+				'<div class="r3">' + (typeof d.c === 'number' ? _fmtGe(d.c) + 'ge' : '--') + '</div>';
+			if (html !== _onlTipHtml) { _onlTipHtml = html; _onlTipEl.innerHTML = html; _onlTipW = 0; }
+			_onlTipEl.style.display = 'block';
+			if (!_onlTipW) { try { _onlTipW = _onlTipEl.offsetWidth | 0; } catch (_) { _onlTipW = 0; } }
+			// 钳制：框恒落在面板可视宽内（垂足居中 → 贴边即贴边，绝不被面板 overflow 裁掉）
+			var cx = px, tw = _onlTipW | 0;
+			if (tw > 0) {
+				var sr = $spark.getBoundingClientRect();
+				var pr = _onlPanel ? _onlPanel.getBoundingClientRect() : sr;
+				var mn = (pr.left + 4 - sr.left) + (tw >> 1);
+				var mx = (pr.right - 12 - sr.left) - (tw >> 1);
+				if (mx < mn) cx = cw >> 1;
+				else { if (cx < mn) cx = mn; if (cx > mx) cx = mx; }
+			}
+			_onlTipEl.style.left = cx + 'px';
+		}
+
+		function _sparkHoverMove(e) {
+			var g = _onlSparkGeo;
+			var $spark = _ensureSparkOverlay();
+			if (!g || !$spark) return;
+			// 档位按钮区让路（按钮自有点击语义，悬停刻印无意义）
+			if (e.target && e.target.closest && e.target.closest('.qqq-onl-zoom')) { _sparkHoverOff(); return; }
+			var r = $spark.getBoundingClientRect();
+			if (!r.width) return;
+			var step = g.n > 1 ? g.iw / (g.n - 1) : 0;
+			// 反算同式（先退去 SVG 等比缩放与居中偏移，再退去内边距）
+			var k = Math.min(r.width / g.w, r.height / g.h) || 1;
+			var ox = (r.width - g.w * k) / 2;
+			var j = step > 0 ? Math.round(((e.clientX - r.left - ox) / k - g.pad) / step) : 0;
+			if (j < 0) j = 0;
+			if (j > g.n - 1) j = g.n - 1;
+			_onlHoverIdx = j;
+			_sparkHoverPaint();
+		}
+
+		function _bindSparkHover() {
+			var $spark = document.getElementById('qqq-onl-spark');
+			if (!$spark || $spark._onlHoverBound) return;
+			$spark._onlHoverBound = true;
+			_ensureSparkOverlay();
+			$spark.addEventListener('pointermove', _sparkHoverMove);
+			$spark.addEventListener('pointerleave', _sparkHoverOff);
+		}
+
+
 		function _renderSpark() {
 			if (!_onlUsersOpen || !_onlOverlay || _onlOverlay.style.display === 'none') return;
 			var $spark = document.getElementById('qqq-onl-spark');
 			var $scale = document.getElementById('qqq-onl-scale');
 			if (!$spark || !_onlDailyHist || _onlDailyHist.length < 2) { // <2 点 = 数据积累中（首点 5min 内出现）
 				if ($scale) $scale.innerHTML = '';
+				_onlSparkGeo = null;
+				_sparkHoverOff();
 				return;
 			}
-			// ★ 档位回看窗口（2026-09-08）：30d=尾部31点（今天+30天）/ 180d=尾部181点（今天+180天 ≈ 半年）
-			var maxN = _onlRange === '180' ? 181 : 31;
+			// ★ 档位回看窗口：30d=尾部31点 / 180d=尾部181点 / 720d=尾部721点（≈两年）
+			var maxN = _onlRange === '720' ? 721 : (_onlRange === '180' ? 181 : 31);
 			var daily = _onlDailyHist.length > maxN ? _onlDailyHist.slice(_onlDailyHist.length - maxN) : _onlDailyHist;
-			var rangeName = _onlRange === '180' ? _T('shell.onl.range180', '近180天') : _T('shell.onl.range30', '近30天');
+			var rangeName = _rangeLabel();
 			var n = daily.length;
 			var ns = 'http://www.w3.org/2000/svg';
 			if (!_onlSparkSvg) {
 				_onlSparkSvg = document.createElementNS(ns, 'svg');
 				$spark.appendChild(_onlSparkSvg);
 			}
-			var w = $spark.clientWidth || 240;
-			var h = $spark.clientHeight || 30;
-			var pad = 2;
-			var iw = w - pad * 2, ih = h - pad * 2;
 			var min = daily[0].v, max = daily[0].v;
 			for (var i = 1; i < n; i++) {
 				var vi = daily[i].v;
@@ -294,27 +461,56 @@
 			var rawMax = max, rawMin = min; // 刻度显示真实极值（曲线满幅映射时极值恰好贴上下边）
 			if (max - min < 1e-6) { max += 0.5; min -= 0.5; } // 全平数据守卫（防除零）
 			var span = max - min;
-			var pts = [];
+			// 曲线二：当日 ge 消费（实扣 + 白嫖）——0 基线（绝对量，微波动不放大，低消费日如实贴底）
+			var costMax = 0, costSum = 0;
+			for (var ci = 0; ci < n; ci++) {
+				var cvi = typeof daily[ci].c === 'number' ? daily[ci].c : 0;
+				costSum += cvi;
+				if (cvi > costMax) costMax = cvi;
+			}
+			var hasCost = costMax > 0;
+			// ★ 刻度列必须先写（2026-10-29）：它的文本宽占曲线区宽（消费峰 443.3 → 443 就窄 4px）——
+			//   先落 DOM 再量曲线宽，否则 SVG viewBox 与实测宽永远差一档，尾端数据点与悬停刻印线错位。
+			// ★ 曲线元信息随刻度列挂 title（图表本体不再挂 title：原生 title 会与悬停浮读框同刻弹两条、互相打架）
+			if ($scale) {
+				$scale.innerHTML =
+					'<span class="col"><i class="pk">' + _fmt1(rawMax) + '</i><i>' + _fmt1(rawMin) + '</i></span>' +
+					(hasCost ? '<span class="col cost"><i class="pk">' + _fmtGe(costMax) + '</i><i>0</i></span>' : '');
+				$scale.title = _T('shell.onl.scaleTip', '在线 {max} / {min}（{r}日均）· 消费峰 {cmax} ge（0 基线）', { max: _fmt1(rawMax), min: _fmt1(rawMin), r: rangeName, cmax: _fmtGe(costMax) }) +
+					'\n' + _T('shell.onl.sparkTip', '{r}曲线（{a} → {b}）：实线 = 日均在线（尾点 = 当前24h平均）· 橙虚线 = 当日 ge 消费（实扣+白嫖、日均 {cavg} / 峰 {cmax}）；点 30d/180d/720d 切换回看窗口', { r: rangeName, a: daily[0].t || daily[0].d, b: daily[n - 1].t || daily[n - 1].d, cavg: _fmtGe(costSum / n), cmax: _fmtGe(costMax) });
+			}
+			var w = $spark.clientWidth || 240;
+			var h = $spark.clientHeight || 30;
+			var pad = 2;
+			var iw = w - pad * 2, ih = h - pad * 2;
+			// ★ 悬停层几何唯一读源（20s 自刷新 / 档位切换 / 窗口缩放都会重绘 → 悬停线与框就地重投射，不失联）
+			_onlSparkGeo = { daily: daily, n: n, pad: pad, iw: iw, w: w, h: h };
+			var pts = [], cpts = [];
 			for (var j = 0; j < n; j++) {
 				var x = Math.round((pad + j * iw / (n - 1)) * 10) / 10;
 				var y = Math.round((pad + ih - ((daily[j].v - min) / span) * ih) * 10) / 10;
 				pts.push(x + ',' + y);
+				if (hasCost) {
+					var cv = typeof daily[j].c === 'number' ? daily[j].c : 0;
+					cpts.push(x + ',' + (Math.round((pad + ih - (cv / costMax) * ih) * 10) / 10));
+				}
 			}
 			var lastY = Math.round((pad + ih - ((daily[n - 1].v - min) / span) * ih) * 10) / 10;
 			_onlSparkSvg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
-			// 面积底 + 折线 + 尾点（全主题语义变量 → 随 [data-theme] 即时切换零残留）
+			// 在线：面积底 + 实线 + 尾点；消费：橙色虚线 + 尾点（全主题语义变量 → 随 [data-theme] 即时切换零残留）
+			var costLastY = hasCost ? (Math.round((pad + ih - ((typeof daily[n - 1].c === 'number' ? daily[n - 1].c : 0) / costMax) * ih) * 10) / 10) : 0;
 			_onlSparkSvg.innerHTML =
 				'<polygon points="' + pad + ',' + (pad + ih) + ' ' + pts.join(' ') + ' ' + (pad + iw) + ',' + (pad + ih) + '" fill="var(--text-dim)" fill-opacity="0.12"/>' +
+				(hasCost ? '<polyline points="' + cpts.join(' ') + '" fill="none" stroke="var(--orange)" stroke-width="1.1" stroke-dasharray="3 2" stroke-linejoin="round" stroke-linecap="round"/>' : '') +
 				'<polyline points="' + pts.join(' ') + '" fill="none" stroke="var(--text-primary)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>' +
+				(hasCost ? '<circle cx="' + (pad + iw) + '" cy="' + costLastY + '" r="1.6" fill="var(--orange)"/>' : '') +
 				'<circle cx="' + (pad + iw) + '" cy="' + lastY + '" r="1.8" fill="var(--text-primary)"/>';
-			// ★ 峰/谷刻度（2026-09-07）：图表右侧竖排两数字 = 数据极大/极小值，一位小数
-			if ($scale) {
-				$scale.innerHTML =
-					'<i class="pk">' + _fmt1(rawMax) + '</i>' +
-					'<i>' + _fmt1(rawMin) + '</i>';
-				$scale.title = _T('shell.onl.scaleTip', '顶峰 {max} · 谷底 {min}（{r}日均在线）', { max: _fmt1(rawMax), min: _fmt1(rawMin), r: rangeName });
+
+			// ★ 悬停层重投射：重绘后悬停中线/框立刻跟上新几何（越往下标重绘会变溢出 → 钳到末点）
+			if (_onlHoverIdx >= 0) {
+				if (_onlHoverIdx > n - 1) _onlHoverIdx = n - 1;
+				_sparkHoverPaint();
 			}
-			$spark.title = _T('shell.onl.sparkTip', '{r}日均在线曲线（{a} → {b}，尾点 = 当前24h平均；点 30d/180d 切换回看窗口）', { r: rangeName, a: daily[0].d, b: daily[n - 1].d });
 		}
 
 		function openOnlineUsers() {
@@ -325,6 +521,8 @@
 			if (_onlUsersOpen) { closeOnlineUsers(); return; }
 			_onlUsersOpen = true;
 			_onlOverlay.style.display = '';
+			_onlTickStart(); // 面板在场期间的自刷新：人数与亮行永远同一响应体
+			_paintOnlCount(); // 先用已知最新值上屏（零 '0' 闪烁）；随后两个请求到货再纠偏
 			_renderSpark(); // 先画缓存曲线（开箱即见），随后 fetchOnline 刷新重绘
 			fetchOnline(true); // 弹窗打开即拉最新（绕过 240s 轮询限频，面板首行人数+24h平均立即刷新）
 			fetchOnlineUsers();
@@ -337,10 +535,12 @@
 				var _wasOpen = !!_onlUsersOpen;
 				try { if (_onlOverlay.parentNode) { _onlOverlay.parentNode.removeChild(_onlOverlay); } } catch (_) { }
 				_onlOverlay = null; _onlPanel = null; _onlSparkSvg = null; _onlUsersOpen = false;
+				_onlCursorEl = null; _onlTipEl = null; _onlHoverIdx = -1; _onlSparkGeo = null;   // 悬停层随旧 DOM 作废（新面板重建时再懒创建）
 				if (!_wasOpen) { return; }
 				buildOnlineUsersPanel();
 				_onlUsersOpen = true;
 				_onlOverlay.style.display = '';
+				_paintOnlCount(); // 新面板首行立即回填已知最新值（不等网络）
 				if (_onlUsersCache && _onlUsersCache.length) { renderOnlineUsers(_onlUsersCache); }   // 缓存数据重放（零额外请求）
 				_renderSpark();
 				fetchOnline(true);   // 首行人数/24h平均按新语言回填
@@ -351,16 +551,10 @@
 			_onlUsersCache = users;
 			var $body = document.getElementById('qqq-onl-body');
 			if (!$body) return;
-			// ★ 统计在线人数，同步更新左下角（比 online-total 缓存更实时）
-			var onlineCount = 0;
-			for (var j = 0; j < users.length; j++) { if (users[j].online) onlineCount++; }
-			if ($onl) {
-				var _oc = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
-				if ($onl.textContent !== _oc) $onl.textContent = _oc; // ★ 值同零写（2026-10-02 审计）
-			}
-			// 弹窗首行当前人数与左下角恒同值（同源更新，防两数字打架）
-			var $now = document.getElementById('qqq-onl-now');
-			if ($now && $onl) $now.textContent = $onl.textContent || '0';
+			// ★ 单一真理铁律：人数（左下角 + 弹窗首行）只认服务端 presence 实时 count，
+			//   写入唯一入口 = _applyOnlCount（online-total 与 online-users 同一函数下发，值恒同源）。
+			//   本函数只渲染明细表——旧实现曾在这里按本页 users 重数 online 并覆盖人数：
+			//   ① 明细只回最近 100 行，>100 人时把正确总数改小；② 与另一口径抢写 → 两数字随机打架。
 			var balTh = _onlShowBal ? '<th class="r">' + _T('shell.onl.thBalance', '余额') + '</th>' : '';
 			// ★ 定宽列（禁改）：colgroup 百分比 → 列宽与语言/内容无关（配比唯一源 = _ONL_COLS*，样式契约在 shell-base.css）
 			var _cw = _onlShowBal ? _ONL_COLS10 : _ONL_COLS9;
@@ -393,7 +587,9 @@
 				// 独立列括号 = 本次独立距上次最后在线的小时数（服务端 independent_gap_h 四舍五入取整；0/缺省不显示括号）
 				var indGapTxt = (typeof u.independent_gap_h === 'number' && u.independent_gap_h > 0) ? '(' + u.independent_gap_h + ')' : '';
 				var balCell = _onlShowBal ? '<td class="r mono">' + (typeof u.balance_ge === 'number' ? u.balance_ge : '-') + '</td>' : '';
-				html += '<tr>' +
+				// ★ 已下线的历史行恒暗显（u.online === false）：首行「在线人数」与列表亮行数同口径，
+				//   消除「数字说 4、列表看着像 5」这种错觉（明细含最近 100 行历史轨迹，本就不是纯在线表）。
+				html += '<tr' + (u.online === false ? ' class="off"' : '') + '>' +
 					'<td class="mono">' + u.phone + '</td>' +
 					'<td class="r mono">' + daysReg + '</td>' +
 					balCell +
@@ -434,31 +630,67 @@
 				if (_onlUsersCache && _onlUsersCache.length) renderOnlineUsers(_onlUsersCache);
 			}
 		});
-		function fetchOnlineUsers() {
+		// ★ 面板自刷新（2026-10-29）：面板在场时，人数与亮行必须来自同一个响应体——
+		//   旧实现：面板只在打开时拉一次明细，而人数按 240s 独立刷新 → 面板停留几分钟就出现
+		//   「数字已刷新 / 列表还在旧时刻」（用户实锤）。现在面板在场即每 20s 用明细接口整体刷新，
+		//   人数也只由该响应体写入（fetchOnline 在面板打开时不写人数）。服务端该接口的在线判定
+		//   与人数出自同一快照（5s 新鲜期），一次刷新 ≈ 一次索引查询，零负担。
+		var _ONL_TICK_MS = 20000;
+		var _onlTick = 0;
+		var _onlSilentFails = 0;
+		function _onlTickStart() {
+			_onlTickStop();
+			_onlTick = setInterval(function () {
+				if (!_onlUsersOpen || document.hidden) return;
+				fetchOnlineUsers(true); // 静默刷新：不闪「加载中」
+			}, _ONL_TICK_MS);
+		}
+		function _onlTickStop() {
+			if (_onlTick) { clearInterval(_onlTick); _onlTick = 0; }
+		}
+
+		function fetchOnlineUsers(silent) {
 			if (_onlFetching) return;
 			// ★ 登录门：未授权零请求（点击入口已先导流登录；此处为纵深兜底）
 			var _tok = _onlAuthFail ? '' : _onlToken();
 			if (!_tok) { _setOnl('--'); return; }
 			_onlFetching = true;
+			var _seq = _onlSeq();
 			var $body = document.getElementById('qqq-onl-body');
-			if ($body) $body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.loading', '加载中...') + '</div>';
+			if ($body && !silent) $body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.loading', '加载中...') + '</div>';
 
 			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache', headers: { 'Authorization': 'Bearer ' + _tok } })
 				.then(function (r) { if (!r.ok) { if (r.status === 401) _onlAuthExpired(); return null; } return r.json(); })
 				.then(function (data) {
-					_onlFetching = false;
-					if (!data || !data.ok || !$body) return;
+					_onlFetching = false;					if (!data || !data.ok || !$body) return;
+					_onlSilentFails = 0;
 					var users = data.users || [];
+					// ★ 人数与本表同一响应 → 首行与列表永不打架（双裁决：旧缓存体/先发后到的响应体恒丢弃）
+					if (typeof data.total === 'number') {
+						_applyOnlCount(data.total, data.total_at, _seq);
+					} else if (users.length > 0 && users.length < 100) {
+						// 响应不带 total（旧服务端：人数取自 5 分钟聚合快照，与本表实时亮行数会短暂打架）
+						// → 用同一响应的亮行数兜底，保证「数字 == 你看到的亮行数」。
+						// 明细 100 行封顶 = 可能被截断 → 不兜底（宁用服务端数字，绝不少报）。
+						var _n = 0, _pure = true;
+						for (var _i = 0; _i < users.length; _i++) {
+							if (users[_i].online === true) _n++;
+							else if (users[_i].online !== false) { _pure = false; break; }
+						}
+						if (_pure) _applyOnlCount(_n, 0, _seq);
+					}
 					if (users.length === 0) {
 						$body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.empty', '暂无用户') + '</div>';
 						return;
 					}
 					renderOnlineUsers(users);
-				})
-				.catch(function () {
-					_onlFetching = false;
-					var $body = document.getElementById('qqq-onl-body');
-					if ($body) $body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.loadFail', '加载失败，请重试') + '</div>';
+				})				.catch(function () {
+					_onlFetching = false;
+					// 静默刷新失败：不把已有数据打掉（屏上那份仍是最后一次成功的真相），
+					// 但连续 3 次失败（≈1 分钟）必须如实报错——禁旧数据长时间无声挂屏。
+					if (silent && ++_onlSilentFails < 3) return;
+					var $body = document.getElementById('qqq-onl-body');
+					if ($body) $body.innerHTML = '<div class="qqq-onl-msg">' + _T('shell.onl.loadFail', '加载失败，请重试') + '</div>';
 				});
 		}
 
@@ -497,10 +729,15 @@
 			var target = '';
 			try { if (window.qqqLogin) target = window.qqqLogin.getPhone() || ''; } catch (e) { }
 			target = maskPhoneLikeServer(target);
-			if (!target) { _setTot('--'); return; }
+			if (!target) { _setTot('--'); _totBoot.retry(function () { fetchMyTotal(); }); return; }
 			// ★ 登录门：未登录/授权失效 → 恒 '--' 零请求（与在线数同门）
 			var _tok = _onlAuthFail ? '' : _onlToken();
-			if (!_tok) { _setTot('--'); return; }
+			if (!_tok) {
+				_setTot('--');
+				if (!_onlAuthFail) _totBoot.retry(function () { fetchMyTotal(); });
+				return;
+			}
+			_totBoot.ok();
 			if (!force && document.hidden) return; // ★ 2026-10-02: 隐藏窗零请求（回前台 visibilitychange 补拉）
 			var _mtNow = Date.now();
 			if (!force && _mtNow - _myTotalLastFetch < 240000) return;
@@ -522,7 +759,7 @@
 		}
 		// 登录状态变化 → 刷新（登录/登出都走这里）；★ 包装吞掉回调参数（onStateChange 会传 loggedIn/phoneTail 等实参——
 		// 直接挂 fetchMyTotal 会把 loggedIn 当作 force=true 绕过节流门，2026-10-01 自审修复）
-		// ★ 登录门：登录 → 补拉在线数；登出/失效 → 恒 '--' + 收回面板；点击导流的待开面板在登录成功后自动开
+				// ★ 登录门：登录 → 补拉在线数；登出/失效 → 恒 '--' + 收回面板；点击导流的待开面板在登录成功后自动开
 		try {
 			if (window.qqqLogin && window.qqqLogin.onStateChange) window.qqqLogin.onStateChange(function () {
 				_onlAuthFail = false; // 新登录态 = 新 token：授权失效标记复位（先复位，下方补拉即刻可用新 token）
@@ -565,6 +802,8 @@
 			if (document.hidden) return;
 			fetchOnline();
 			fetchMyTotal();
+			// 面板在场：隐藏期间节拍不走（零后台请求）→ 回前台立即补一次明细（人数与亮行同体）
+			if (_onlUsersOpen) fetchOnlineUsers(true);
 		});
 	})();
 

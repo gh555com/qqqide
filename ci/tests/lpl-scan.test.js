@@ -30,7 +30,7 @@ test('C2 正斜杠「文件形」放行（项目内文件正斜杠相对路径�
   assert.deepStrictEqual(raws('详见 do/拓扑/arch/更新与打包.txt'), ['do/拓扑/arch/更新与打包.txt']);
   assert.deepStrictEqual(
     codeTok('_qqq/genera/poster_qd_bullet_full_20261013_v2.txt'),
-    { raw: '_qqq/genera/poster_qd_bullet_full_20261013_v2.txt', tail: '' });
+    { raw: '_qqq/genera/poster_qd_bullet_full_20261013_v2.txt', tail: '', line: 0 });
 });
 
 test('噪音闸：CJK 斜杠短语 / 比例 / 日期 / 无扩展名形态 一律不链', () => {
@@ -50,20 +50,23 @@ test('回归：反斜杠与盘符绝对原样可链', () => {
   assert.deepStrictEqual(
     raws('见 E:\\s\\wol\\py\\qqq-shell-v2\\do\\拓扑\\总纲.txt 全文'),
     ['E:\\s\\wol\\py\\qqq-shell-v2\\do\\拓扑\\总纲.txt']);
-  assert.deepStrictEqual(codeTok('do\\拓扑\\总纲.txt'), { raw: 'do\\拓扑\\总纲.txt', tail: '' });
+  assert.deepStrictEqual(codeTok('do\\拓扑\\总纲.txt'), { raw: 'do\\拓扑\\总纲.txt', tail: '', line: 0 });
 });
 
 test('行号后缀：只链路径主体，后缀留纯文本', () => {
   assert.deepStrictEqual(spans('见 E:\\s\\wol\\py\\x.ts:120 处'), ['E:\\s\\wol\\py\\x.ts']);
   assert.deepStrictEqual(spans('见 server-app/core/lpl.js:120-140 处'), ['server-app/core/lpl.js']);
   assert.deepStrictEqual(raws('到 E:\\2026 里找'), ['E:\\2026']);   // 盘根目录名含数字：不误拆
-  assert.deepStrictEqual(codeTok('_qqq/genera/x.txt:15'), { raw: '_qqq/genera/x.txt', tail: ':15' });
-  assert.deepStrictEqual(codeTok('E:\\x\\y.ts:120-140'), { raw: 'E:\\x\\y.ts', tail: ':120-140' });
+  assert.deepStrictEqual(codeTok('_qqq/genera/x.txt:15'), { raw: '_qqq/genera/x.txt', tail: ':15', line: 15 });
+  assert.deepStrictEqual(codeTok('E:\\x\\y.ts:120-140'), { raw: 'E:\\x\\y.ts', tail: ':120-140', line: 120 });
+  // 正文候选同样携行号（data-l 来源）：点击直达编辑器该行
+  assert.strictEqual(lpl.scanText('见 server-app/core/lpl.js:120-140 处', 0)[0].line, 120);
+  assert.strictEqual(lpl.scanText('见 server-app/core/lpl.js 处', 0)[0].line, 0);
 });
 
 test('file:/// 前缀整体成链（正文与行内代码同规）', () => {
   assert.deepStrictEqual(raws('图在 file:///E:/s/wol/py/x.txt 这里'), ['file:///E:/s/wol/py/x.txt']);
-  assert.deepStrictEqual(codeTok('file:///E:/s/wol/py/x.txt'), { raw: 'file:///E:/s/wol/py/x.txt', tail: '' });
+  assert.deepStrictEqual(codeTok('file:///E:/s/wol/py/x.txt'), { raw: 'file:///E:/s/wol/py/x.txt', tail: '', line: 0 });
 });
 
 test('URL 不误伤；网址形整串按候选交探针裁决', () => {
@@ -82,7 +85,7 @@ test('md 预览语境（allowPosix=true）：正斜杠相对路径全放行', ()
   CFG.allowPosix = true;
   try {
     assert.deepStrictEqual(raws('去 do/拓扑 里找'), ['do/拓扑']);
-    assert.deepStrictEqual(codeTok('a/b'), { raw: 'a/b', tail: '' });
+    assert.deepStrictEqual(codeTok('a/b'), { raw: 'a/b', tail: '', line: 0 });
   } finally { CFG.allowPosix = false; }
 });
 
@@ -90,7 +93,7 @@ test('C1b POSIX 绝对路径（mac/linux；测试环境非 Win 即启用）：�
   assert.deepStrictEqual(raws('图在 /Users/q/Desktop/shot.png 处'), ['/Users/q/Desktop/shot.png']);
   assert.deepStrictEqual(raws('日志 /var/log/system.log 看看'), ['/var/log/system.log']);
   assert.deepStrictEqual(spans('见 /Users/q/x.ts:120 处'), ['/Users/q/x.ts']);
-  assert.deepStrictEqual(codeTok('/Users/q/x.png'), { raw: '/Users/q/x.png', tail: '' });
+  assert.deepStrictEqual(codeTok('/Users/q/x.png'), { raw: '/Users/q/x.png', tail: '', line: 0 });
   // 单段（/tmp）/ 协议相对（//）/ 坏字符 → 不链
   assert.deepStrictEqual(raws('挂载点 /tmp 说明'), []);
   assert.deepStrictEqual(raws('开头双斜杠 //Users/q/x 测试'), []);
@@ -101,9 +104,9 @@ test('C1b POSIX 绝对路径（mac/linux；测试环境非 Win 即启用）：�
 
 test('file:/// POSIX 形态：只剥 file://（第三斜杠留给路径）——正文与行内代码', () => {
   assert.deepStrictEqual(raws('图在 file:///Users/q/x.png 这里'), ['file:///Users/q/x.png']);
-  assert.deepStrictEqual(codeTok('file:///Users/q/x.txt'), { raw: 'file:///Users/q/x.txt', tail: '' });
-  assert.deepStrictEqual(codeTok('file:///Users/q/x.txt:15'), { raw: 'file:///Users/q/x.txt', tail: ':15' });
+  assert.deepStrictEqual(codeTok('file:///Users/q/x.txt'), { raw: 'file:///Users/q/x.txt', tail: '', line: 0 });
+  assert.deepStrictEqual(codeTok('file:///Users/q/x.txt:15'), { raw: 'file:///Users/q/x.txt', tail: ':15', line: 15 });
   // Windows 盘符形态照旧剥 8 字符（回归）——测试环境非 Win 也走盘符分支
   assert.deepStrictEqual(raws('图在 file:///E:/s/wol/py/x.txt 这里'), ['file:///E:/s/wol/py/x.txt']);
-  assert.deepStrictEqual(codeTok('file:///E:/s/wol/py/x.txt'), { raw: 'file:///E:/s/wol/py/x.txt', tail: '' });
+  assert.deepStrictEqual(codeTok('file:///E:/s/wol/py/x.txt'), { raw: 'file:///E:/s/wol/py/x.txt', tail: '', line: 0 });
 });
