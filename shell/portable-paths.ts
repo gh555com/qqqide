@@ -160,16 +160,23 @@ function getSwapSafeTempDir(baseData: string): string {
 /** Apply portable redirects. Call this BEFORE app.whenReady().
  *  ★ 播放器宿主域（2026-10-02）：opts.sessionDir = 'player-host' → userData 独立子目录
  *  （独立 SingletonLock → 与 IDE 域互不夺锁；Cache/Temp/Logs 仍共享 Data 根）。
- *  ★ 受控浏览器域：opts.extraDisableFeatures 并入下方 disable-features 唯一清单
+ *  ★ 受控浏览器域：opts.sessionDir 可带档案槽（browser-host / browser-profiles/<槽>/builtin）——
+ *    每槽一套独立 userData（独立 SingletonLock + 独立 CDP 口 + 独立档案），多身份并行互不夺锁。
+ *    该域恒 sessionScopedCache：CDP 多个内核实例并存时共享同一 disk-cache-dir 属未支持用法。
+ *  ★ opts.extraDisableFeatures 并入下方 disable-features 唯一清单
  *  （该 switch 重复 append 仅末值生效——扩展项必须并入此处，禁第二处 append）。 */
-export function applyPortablePaths(opts?: { sessionDir?: string; extraDisableFeatures?: string }): { root: string; userData: string; cache: string; logs: string } {
+export function applyPortablePaths(opts?: { sessionDir?: string; extraDisableFeatures?: string; sessionScopedCache?: boolean }): { root: string; userData: string; cache: string; logs: string } {
     const root = getAppRoot();
     migrateMacLegacyData();
     migrateLegacyOsDirs();
     const baseData = getDataDir();
     const userData = (opts && opts.sessionDir) ? path.join(baseData, opts.sessionDir) : baseData;
     // ★ 所有运行时目录收进 userData/，根目录保持干净（宿主域 Cache/Temp/Logs 仍挂共享 Data 根）
-    const cache = path.join(baseData, 'Cache');
+    // ★ 档案级缓存（受控浏览器域）：多槽/多实例并存时各自独占 disk cache——共享同一目录是
+    //   Chromium 未支持用法（索引文件争用）。IDE 域与播放器宿主域保持 Data/Cache 不变。
+    const cache = (opts && opts.sessionScopedCache && opts.sessionDir)
+        ? path.join(userData, 'Cache')
+        : path.join(baseData, 'Cache');
     const temp = getSwapSafeTempDir(baseData);           // ★ 交换域外（绿色包）/ 原样（其余）——见上
     const legacyTemp = path.join(baseData, 'Temp');      // 历史落点：仅作残留清理
     const logs = path.join(baseData, 'Logs');

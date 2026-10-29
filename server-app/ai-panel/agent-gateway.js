@@ -215,6 +215,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
     var self = this;
     self._lastGatewayError = 0;  // ★ 重置，防上一 floor 错误码污染 _exitReason
     self._lastGatewayMessage = '';  // ★ 重置延迟报错消息
+    self._lastUpstreamErrorText = '';  // ★ 重置：上游 400 原文（每次调用重新采集）
     var onToken = opts.onToken;
     var onReasoning = opts.onReasoning;
     var onError = opts.onError;
@@ -784,6 +785,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 self._log('  AI upstream ' + self._lastGatewayError + ' — unrecoverable, skipping retries');
                 clearTimeout(_fetchDeadline);
                 self._exitReason = 'http_' + self._lastGatewayError;
+                // ★ 上游原文留存：auto-repair 需按真因分流（上下文硬墙 / 推理回传 / 孤儿 tool 各不同修法）
+                self._lastUpstreamErrorText = String(msg || '').slice(0, 2000);
                 self._lastGatewayMessage = 'AI upstream returned ' + self._lastGatewayError + ' (bad request or context limit). Auto-repair attempted.';
                 return null;
             }

@@ -21,6 +21,10 @@ import time
 
 KIT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, KIT)
+# ★ 本自检只验收**内置内核域**（壳层 browser-host 的窗口/隐藏档/空闲自退/exit-with 语义——
+#   外部内核（Chrome/Edge）没有这些实例级能力）。钉住内置内核，不受 --engine auto 影响。
+os.environ["QQQIDE_BROWSER_ENGINE"] = "builtin"
+os.environ.pop("CDP_PROFILE", None)
 import qdbrowser  # noqa: E402
 import cdp  # noqa: E402
 

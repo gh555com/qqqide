@@ -21,7 +21,7 @@ def main():
     # ① qd 受控浏览器（首选）：没有就起；起不来 → 回退已有调试浏览器
     try:
         import qdbrowser
-        ep = qdbrowser.ensure_started()
+        ep = qdbrowser.ensure_started(profile=cdp.PROFILE)   # 恒跟当前身份槽（CDP_PROFILE）
         print("[0] 受控浏览器: pid=%s cdpPort=%s %s" %
               (ep.get("pid"), ep.get("cdpPort"), "（复用）" if ep.get("reused") else "（新起）"))
     except Exception as e:

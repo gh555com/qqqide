@@ -28,8 +28,22 @@ const _playHostMode = process.argv.some((a: string) => a === '--qqqide-play' || 
 // ★ 受控浏览器域（--qqqide-browser）：独立 userData（Data/browser-host）→ 独立 SingletonLock——
 //   单例受控浏览器（CDP 调试口 + 登录态持久；详 shell/browser-host.ts）。三域同一二进制、互不夺锁。
 const _browserHostMode = process.argv.some((a: string) => a === '--qqqide-browser' || a.indexOf('--qqqide-browser=') === 0);
+// ★ 档案槽（--qqqide-browser-profile=<Data 下相对路径>）：受控浏览器域的「身份」维度——
+//   每槽一套独立 userData（独立 SingletonLock + 独立 CDP 口 + 独立档案），多身份可并行在跑。
+//   路径由工具链（kit/qdbrowser.py）算好传入：browser-host（默认槽·历史路径）
+//   或 browser-profiles/<槽>/builtin。★ 只接受 Data 下相对路径——禁 .. / 盘符 / 绝对路径。
+const _browserProfile = ((): string | null => {
+    const pfx = '--qqqide-browser-profile=';
+    for (const a of (process.argv as string[])) {
+        if (a.indexOf(pfx) !== 0) { continue; }
+        const v = a.slice(pfx.length).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        if (!v || v.indexOf('..') !== -1 || /^[A-Za-z]:/.test(v) || !/^[A-Za-z0-9._\/-]+$/.test(v)) { return null; }
+        return v;
+    }
+    return null;
+})();
 //   受控浏览器域额外禁用 CalculateNativeWinOcclusion（遮挡判定误报会停渲染帧——截图依赖帧）
-const portable = applyPortablePaths(_playHostMode ? { sessionDir: 'player-host' } : (_browserHostMode ? { sessionDir: 'browser-host', extraDisableFeatures: 'CalculateNativeWinOcclusion' } : undefined));
+const portable = applyPortablePaths(_playHostMode ? { sessionDir: 'player-host' } : (_browserHostMode ? { sessionDir: _browserProfile || 'browser-host', sessionScopedCache: true, extraDisableFeatures: 'CalculateNativeWinOcclusion' } : undefined));
 
 // ★ 外部打开入口（--qqqide-open，2026-10-07 文件关联）：双击文本/代码文件 → 编辑器域。
 //   解析唯一实现 = player-host.parseMarkerFiles（禁用第二套 argv 解析）。
@@ -786,7 +800,7 @@ app.whenReady().then(async () => {
         if (!gotTheLock) { app.quit(); return; }       // 第二实例：argv 已归持锁实例处理 → 静默退
         app.on('window-all-closed', () => { try { app.quit(); } catch { /* ignore */ } });
         try {
-            browserHostRun({ root: portable.root, userData: portable.userData, cdpPort: _cdpPort });
+            browserHostRun({ root: portable.root, userData: portable.userData, cdpPort: _cdpPort, profile: _browserProfile || 'browser-host' });
         } catch (e: any) {
             try { console.warn('[browser-host] boot failed:', (e && e.message) || e); } catch { /* ignore */ }
             try { browserHostReportFailure(e); } catch { /* ignore */ }

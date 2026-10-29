@@ -45,7 +45,7 @@ def _open_page(url):
     """开一页：受控浏览器 = ensure(url) 开新窗；外部浏览器 = /json/new。"""
     try:
         import qdbrowser
-        qdbrowser.ensure_started(url=url)
+        qdbrowser.ensure_started(url=url, profile=cdp.PROFILE)   # 恒跟当前身份槽（CDP_PROFILE）
         time.sleep(3.5)
         host = url.split("//", 1)[-1].split("/")[0]
         t = cdp.tab_for_url(host)

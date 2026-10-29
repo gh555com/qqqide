@@ -179,6 +179,34 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
 //   "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
 // 语义：tool 消息必须跟随含其 tool_call_id 的 assistant(tool_calls)；无配对者直接删除
 //   （结果已无法被上游消费，保留必 400）。assistant(tool_calls) 无结果 = API 合法，不动。
+// ---- 推理回传修复：本轮在飞链上缺 reasoning_content 的 assistant 消息必须摘除 ----
+// 上游铁律：请求携带 tools 时，最后一条 user 之后的 assistant 消息必须原样带回
+//   reasoning_content，缺一条 → 400「reasoning_content must be passed back」。其之前的历史不校验。
+// 语义：只摘「无 tool_calls 且无 reasoning_content」的 assistant 消息（客户端合成的窄答/纪要）；
+//   带 tool_calls 的一律不动（摘了会让 tool 结果成孤儿 → 交 orphan 修复链处理）。
+AgentLoop.prototype._repairReasoninglessAssistants = function () {
+    var conv = this.conversation;
+    if (!conv || !conv.length) return 0;
+    var start = 0;
+    for (var i = conv.length - 1; i >= 0; i--) {
+        if (conv[i] && conv[i].role === 'user') { start = i + 1; break; }
+    }
+    var removed = 0;
+    for (var j = conv.length - 1; j >= start; j--) {
+        var m = conv[j];
+        if (!m || typeof m !== 'object') continue;
+        if (m.role === 'assistant' && !m.tool_calls && !m.reasoning_content) {
+            conv.splice(j, 1);
+            removed++;
+        }
+    }
+    if (removed > 0) {
+        this._log('🧹 reasoning-less repair: removed ' + removed + ' assistant message(s) without reasoning_content');
+        if (typeof this._writeFileLog === 'function') this._writeFileLog('🧹 reasoning-less repair: removed ' + removed + ' assistant msg(s) floor=' + (this._ctx ? this._ctx.totalFloors : '?'));
+    }
+    return removed;
+};
+
 AgentLoop.prototype._repairOrphanedToolCalls = function () {
     var conv = this.conversation;
     if (!conv || conv.length === 0) {

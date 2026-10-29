@@ -8,12 +8,21 @@
 // 原生 CDP 调试口（8335 段）对外提供标准端点：本机工具链（kit/qdbrowser.py 起）连接后
 // 即可导航 / 读结构 / 输入 / 截图——零外部浏览器依赖（新电脑、Win7、无 Chrome 全可用）。
 //
+// ★ 档案槽（多身份）：--qqqide-browser-profile=<Data 下相对路径> 换 userData 目录——
+//   默认槽 = browser-host（历史路径，登录态原地保留）；具名槽 = browser-profiles/<槽>/builtin。
+//   每槽一套独立 userData（独立 SingletonLock + 独立 CDP 口）→ 多个身份可并行在跑。
+//   模型：**内核是消耗品，档案是资产**——本域只提供内置内核；外部内核（用户机器已装的
+//   Chrome/Edge）由工具链 kit/browser_engine.py 拉起，档案槽目录同构（…/<槽>/external）。
+//   ★ 登录态不跳内核通用（cookie 存储布局不同）——槽位首次使用后即钉住内核。
+//
 // 契约文件：
-//   {Data}/browser-host/host.json                存活心跳 {v,pid,ts,cdpPort,startedAt,hidden}（4s 刷）。
+//   {档案目录}/host.json                        存活心跳 {v,engine,slot,profile,pid,ts,cdpPort,startedAt,hidden}（4s 刷）。
 //                                                兼作「权威端点」：工具链跨 TEMP 作用域发现同一实例
 //                                                （IDE 内跑的 kit 与终端 kit 互见——根治报告文件随 TEMP 分裂）。
-//   --qqqide-browser-report=<path>               就绪报告（原子写）{ok,pid,cdpPort,dataDir,hostJson,ts,reused,ver,hidden}
+//                                                ★ 外部内核同路径同字段（kit 启动时写；存活由 CDP 探测裁决）。
+//   --qqqide-browser-report=<path>               就绪报告（原子写）{ok,pid,cdpPort,dataDir,hostJson,ts,reused,ver,hidden,engine,slot}
 //                                                已运行实例被二次拉起时由持锁实例补写 reused:true。
+//   --qqqide-browser-slot=<slot>                 档案槽名（窗口标题与心跳标注；默认 default）
 //   --qqqide-browser-url=<url>                   首次启动直接加载；二次实例 = 导航主窗（不开新窗）
 //   --qqqide-browser-hidden                      静默档（无可见窗口；实例级属性，见下）
 //   --qqqide-browser-exit-with=<pid>             跟随监督进程（监督方退出 → 本域退出）
@@ -51,6 +60,7 @@ export function isBrowserHostMode(): boolean {
 }
 
 const FLAG_REPORT = 'qqqide-browser-report';
+const FLAG_SLOT = 'qqqide-browser-slot';
 const FLAG_URL = 'qqqide-browser-url';
 const FLAG_HIDDEN = 'qqqide-browser-hidden';
 const FLAG_EXIT_WITH = 'qqqide-browser-exit-with';
@@ -64,6 +74,8 @@ function _flag(name: string, argv?: string[]): string | null {
 
 // ── 状态 ──
 let _userData = '';
+let _profile = '';          // Data 下相对档案路径（browser-host / browser-profiles/<槽>/builtin）
+let _slot = 'default';      // 档案槽名（人类可读维度；窗口标题与心跳标注）
 let _cdpPort = '';
 let _startedAt = 0;
 let _ready = false;
@@ -94,12 +106,15 @@ export function browserHostPreReady(): void {
 }
 
 // ── 就绪启动（main.ts 的 whenReady 分支调用）──
-export function browserHostRun(opts: { root: string; userData: string; cdpPort: string }): void {
+export function browserHostRun(opts: { root: string; userData: string; cdpPort: string; profile?: string }): void {
     _userData = opts.userData;
+    _profile = opts.profile || 'browser-host';
+    _slot = (_flag(FLAG_SLOT) || 'default').trim() || 'default';
     _cdpPort = opts.cdpPort;
     _startedAt = Date.now();
     _lastActivityAt = _startedAt;
-    console.log('[browser-host] boot pid=' + process.pid + ' cdpPort=' + _cdpPort + ' userData=' + _userData);
+    console.log('[browser-host] boot pid=' + process.pid + ' cdpPort=' + _cdpPort +
+        ' slot=' + _slot + ' userData=' + _userData);
 
     // 文案 i18n（窗口标题/起始页；无 state 库 → 按 OS 语言决议。不带 persistedGetter 时同步完成）
     try { initMainI18n(opts.root).catch(() => { /* 缺失词条走内置英文兜底 */ }); } catch { /* ignore */ }
@@ -327,7 +342,7 @@ function _mainWindowCreate(o: { url: string | null; show: boolean }): BrowserWin
         width: 1280, height: 820, minWidth: 560, minHeight: 420,
         show: o.show, skipTaskbar: !o.show, autoHideMenuBar: true,
         minimizable: false,   // 最小化=帧停产（CDP 截图会挂起）——收起来请关闭窗口（下次任务自动重开）
-        title: mi('main.browserHost.title'), backgroundColor: '#161616',
+        title: _winTitle(), backgroundColor: '#161616',
         webPreferences: { ..._SAFE_PREFS } as any,
     });
     if (!_mainWindow) { _mainWindow = win; }
@@ -340,8 +355,15 @@ function _escHtml(s: string): string {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** 窗口标题：正式品牌位保持 i18n 词条原样；具名档案槽追加 「 · <槽>」——多身份并行时
+ *  人一眼能分出哪个窗是哪个身份（默认槽不追加，与历史一致）。 */
+function _winTitle(): string {
+    const base = mi('main.browserHost.title');
+    return (_slot && _slot !== 'default') ? (base + ' · ' + _slot) : base;
+}
+
 function _startPageUrl(): string {
-    const title = _escHtml(mi('main.browserHost.title'));
+    const title = _escHtml(_winTitle());
     const hosted = _escHtml(mi('main.browserHost.startHosted'));
     const monitor = _escHtml(mi('main.browserHost.startMonitor'));
     const hint = _escHtml(mi('main.browserHost.startHint'));
@@ -485,7 +507,8 @@ function _hostStateFile(): string { return path.join(_userData, 'host.json'); }
 function _writeHostState(): void {
     try {
         _atomicWriteJson(_hostStateFile(), {
-            v: 1, pid: process.pid, ts: Date.now(),
+            v: 1, engine: 'builtin', slot: _slot, profile: _profile,
+            pid: process.pid, ts: Date.now(),
             cdpPort: parseInt(_cdpPort, 10) || 0, startedAt: _startedAt, hidden: _hidden,
         });
     } catch { /* 下次再写 */ }
@@ -498,6 +521,7 @@ function _writeReportTo(reportPath: string | null, reused: boolean): void {
     try {
         _atomicWriteJson(reportPath, {
             ok: true, ver: 1, mode: 'browser-host', reused: !!reused,
+            engine: 'builtin', slot: _slot, profile: _profile,
             pid: process.pid, cdpPort: parseInt(_cdpPort, 10) || 0,
             dataDir: _userData, hostJson: _hostStateFile(), ts: Date.now(),
             hidden: _hidden,   // 隐藏档（无窗口）：kit 截图前据此决定是否 screencast 唤醒帧

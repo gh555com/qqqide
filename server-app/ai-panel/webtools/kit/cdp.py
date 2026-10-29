@@ -4,11 +4,17 @@
 依赖:  pip install requests websocket-client
 
 端口解析（自动）:
-    1. 环境变量 CDP_PORT（显式指定最优先 —— 外部调试浏览器用它）
+    1. 环境变量 CDP_PORT（显式指定最优先 —— 手工指定的端点用它）
     2. qd 受控浏览器（kit/qdbrowser.py 起）—— 首选默认
        发现顺序 = 报告文件 → 权威 host.json（跨 TEMP 作用域也能找到同一实例）
        （qd 自带内核，零外部依赖；起法见 qdbrowser.py）
     3. 传统默认口 63788（兜底）
+
+★ 身份（档案槽）：一切解析恒带槽位——默认槽 = 环境变量 CDP_PROFILE / 'default'。
+  多身份并行时必须在连接前指定槽（否则会连到默认槽的浏览器 = 身份串了，最坏的错法）：
+      cdp.use_profile("aliyun-a")     # 本进程后续一切调用恒走该槽
+      CDP_PROFILE=aliyun-a python xxx.py
+  ★ 槽位不会自动回退到别的槽（宁可直接报错，也不拿错身份操作）。
 
 用法:
     import cdp
@@ -18,7 +24,8 @@
     tab.shot("shot.png")
 
     # 起受控浏览器（若无）：
-    import qdbrowser; qdbrowser.ensure_started()
+    import qdbrowser; qdbrowser.ensure_started(profile="aliyun-a")
+    cdp.use_profile("aliyun-a")
 """
 import os, sys, json, time, base64
 import requests
@@ -27,10 +34,18 @@ import websocket
 _LEGACY_PORT = 63788
 PORT = _LEGACY_PORT          # 向后兼容常量（真实端口经 _resolve_port() 动态解析）
 WS_TIMEOUT = 60
+PROFILE = (os.environ.get("CDP_PROFILE") or "default").strip() or "default"   # 当前身份槽
+
+
+def use_profile(slot):
+    """切本进程的身份槽（后续一切解析恒走该槽）。返回槽名。"""
+    global PROFILE
+    PROFILE = (slot or "default").strip() or "default"
+    return PROFILE
 
 
 def _resolve_port():
-    """自动解析 CDP 端口：env > qd 受控浏览器报告 > 传统默认口。"""
+    """自动解析 CDP 端口：env > 本槽受控浏览器 > 传统默认口（★ 不回退到其他槽）。"""
     env = os.environ.get("CDP_PORT")
     if env:
         try:
@@ -39,7 +54,8 @@ def _resolve_port():
             pass
     try:
         import qdbrowser
-        ep = qdbrowser.read_live_endpoint() or qdbrowser.find_any_live_report()
+        ep = qdbrowser.read_live_endpoint(profile=PROFILE) or \
+            qdbrowser.find_any_live_report(profile=PROFILE)
         if ep and ep.get("cdpPort"):
             return int(ep["cdpPort"])
     except Exception:
@@ -52,7 +68,7 @@ def _base():
 
 
 def _host_endpoint():
-    """受控浏览器端点（报告文件；未运行 -> None）。"""
+    """本槽受控浏览器端点（host.json/报告文件；未运行 -> None）。"""
     try:
         try:
             import qdbrowser
@@ -61,9 +77,18 @@ def _host_endpoint():
             if _d not in sys.path:
                 sys.path.insert(0, _d)
             import qdbrowser
-        return qdbrowser.read_live_endpoint() or qdbrowser.find_any_live_report()
+        return qdbrowser.read_live_endpoint(profile=PROFILE) or \
+            qdbrowser.find_any_live_report(profile=PROFILE)
     except Exception:
         return None
+
+
+def version():
+    """端点内核标识（/json/version 的 Browser；未运行 -> ''）。"""
+    try:
+        return (requests.get(_base() + "/json/version", timeout=6).json() or {}).get("Browser") or ""
+    except Exception:
+        return ""
 
 
 def _endpoint_is_hidden():
@@ -200,8 +225,8 @@ def first_page():
 
 
 def new_tab(url="about:blank"):
-    """新开一页（外部调试浏览器专有；qd 受控浏览器不支持 /json/new——
-    开页用 qdbrowser.ensure_started(url=...)（新起=加载 / 复用=导航主窗）；已有页换址用 tab.goto）。"""
+    """新开一页。外部内核（Chrome/Edge）原生支持 /json/new；内置受控浏览器不支持——
+    内置开页用 qdbrowser.ensure_started(url=...)（新起=加载 / 复用=导航主窗）；已有页换址用 tab.goto。"""
     try:
         r = requests.put(_base() + "/json/new?" + url, timeout=15)
         return r.json()

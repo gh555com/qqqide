@@ -1,21 +1,35 @@
 # -*- coding: utf-8 -*-
-"""qdbrowser.py — qd 受控浏览器：确保就绪 / 查询 / 停止（核心，仅用标准库）
+"""qdbrowser.py — qd 受控浏览器：档案槽 × 内核（确保就绪 / 查询 / 停止 / 列举）
 
-qd 自带内核即浏览器：本工具把装包里的 joker（开发树里是 electron 内核）拉起为
-「受控浏览器域」—— 独立 profile（登录态持久）、标准 CDP 调试口（8335 段）、
-默认可见的浏览器窗口。就绪后端口写进报告文件 + 权威心跳 host.json，
-cdp.py / 场景脚本自动读取（跨 TEMP 作用域亦可发现同一实例）。
+★ 核心模型（一句话）：**内核是消耗品，档案是资产。**
+    档案槽（slot）= 身份 —— 登录态、cookie、storage 全在这里；落在 {Data} 下，
+                   可备份、可迁移、可离线、不上云。
+    内核（engine）= 跑这份档案的引擎 —— builtin（qd 自带 Electron 内核：零依赖兜底、
+                   Win7 可用、受控最严）或 external（用户机器已装的 Chrome/Edge/Brave/
+                   Chromium：内核够新，主流站点零兼容债）。
+    两者解耦：换内核不换槽、换槽不换内核。**但登录态不跨内核通用**（cookie 存储布局
+    不同）——所以槽位首次使用后即钉住内核，换内核须显式 --rebind（换内核＝换档案）。
 
-命令行:
-    python qdbrowser.py ensure            # 确保在跑（就绪即复用）→ 打印端点 JSON
-    python qdbrowser.py ensure --hidden   # 静默档（无可见窗口；默认 30 分钟空闲自退）
-    python qdbrowser.py ensure --url https://example.com   # 首次启动直接加载；复用则导航
-    python qdbrowser.py ensure --exit-with <pid>           # 跟随监督进程（监督方退出→浏览器退出）
-    python qdbrowser.py ensure --idle-exit 0               # 覆盖空闲自退分钟数（0=关；仅新建时生效）
-    python qdbrowser.py status            # 当前端点；未运行 → 退出码 1
-    python qdbrowser.py stop              # 停止（关闭浏览器；登录态保留）
+命令:
+    python qdbrowser.py ensure [--profile <槽>] [--engine auto|builtin|external] [--url <url>]
+    python qdbrowser.py ensure --hidden            # 静默档（仅内置内核；外部内核=headless）
+    python qdbrowser.py status   [--profile <槽>]  # 当前端点；未运行 → 退出码 1
+    python qdbrowser.py stop     [--profile <槽>]  # 停止（登录态保留在档案里）
+    python qdbrowser.py list                        # 所有槽位（内核 / 端点 / 是否在跑）
+    python qdbrowser.py label <槽> "<备注>"          # 给槽位起个人类可读标签
 
-找内核（默认自动）:
+档案布局（{Data} = 装包数据根；默认槽的内置档案保留历史路径）:
+    {Data}/browser-host/                        ← 槽 default + 引擎 builtin（历史路径，永不搬）
+    {Data}/browser-profiles/<槽>/slot.json      ← 槽元数据 {v,slot,label,active,engines}
+    {Data}/browser-profiles/<槽>/builtin/       ← 内置内核档案（Electron userData）
+    {Data}/browser-profiles/<槽>/external/      ← 外部内核档案（Chrome --user-data-dir）
+    {Data}/browser-profiles/default/external/   ← 默认槽 + 外部内核
+
+端点发现（唯一契约）：{档案目录}/host.json
+    内置 → 壳层每 4s 心跳写；外部 → kit 启动时写（存活由 CDP 探测裁决）。
+    cdp.py / 场景脚本据此自动找到实例——跨 TEMP 作用域、多槽多实例并存。
+
+找内核（内置，默认自动）:
     QQQIDE_PYTHON_DIR（环境变量，回退注册表）→ 推导
       Windows 打包  <pack>/gh555.com/resources/app/engines/python → <pack>/gh555.com/joker.exe
       macOS   打包  qqqide.app/Contents/**/engines/python 或 qqqide-data/engines/python
@@ -26,9 +40,10 @@ cdp.py / 场景脚本自动读取（跨 TEMP 作用域亦可发现同一实例�
 
 作为库:
     import qdbrowser
-    ep = qdbrowser.ensure_started()      # -> {"pid":..., "cdpPort":..., ...}
-    ep = qdbrowser.read_live_endpoint()  # 只读现状（未运行 -> None）
-    qdbrowser.stop()
+    ep = qdbrowser.ensure_started()                        # 默认槽 → {"pid","cdpPort","engine",...}
+    ep = qdbrowser.ensure_started(profile="aliyun-a")      # 身份槽（两账号并行）
+    ep = qdbrowser.read_live_endpoint(profile="aliyun-a")  # 只读现状（未运行 -> None）
+    qdbrowser.stop(profile="aliyun-a")
 """
 import argparse
 import glob as _glob
@@ -47,6 +62,12 @@ try:
 except Exception:
     pass
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+import browser_engine  # noqa: E402  （外部内核发现/启动；同目录）
+
 IS_WIN = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
 _NO_WINDOW = 0x08000000                     # CREATE_NO_WINDOW（taskkill 用）
@@ -56,10 +77,24 @@ _DETACHED = 0x00000008 | 0x00000200         # DETACHED_PROCESS | CREATE_NEW_PROC
 # ★ 不可用 'qqqide-browser'——旧包日志文件名（qqqide-browser-launch.log）会撞出假阳性，
 #   导致老版本 qd 被误启动成 IDE（实测实锤）。
 _PROBE_WORD = b"qqqide-browser-report"
+# 档案槽能力词：老壳层没有 --qqqide-browser-profile 开关——具名槽必须在它上面明确报错，
+# 否则会静默落回默认档案（= 两个身份共用一个 cookie 罐，最坏的错法）。
+_PROBE_PROFILE = b"qqqide-browser-profile"
+
+ENGINES = ("builtin", "external")
+_SLOT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
 
 
 def _norm(p):
     return os.path.normpath(p) if p else p
+
+
+def _slot_of(profile=None):
+    """槽名（None/空 -> 环境变量 CDP_PROFILE -> 'default'）。非法 -> RuntimeError。"""
+    s = (profile or os.environ.get("CDP_PROFILE") or "default").strip()
+    if not _SLOT_RE.match(s):
+        raise RuntimeError("档案槽名非法: %r（只允许字母数字开头 + [A-Za-z0-9._-]，≤32 字符）" % s)
+    return s
 
 
 def _read_win_registry_pydir():
@@ -74,7 +109,7 @@ def _read_win_registry_pydir():
         return None
 
 
-# ── 内核解析（跨平台） ──
+# ── 内置内核解析（跨平台） ──
 
 def _mac_app_exe(bundle):
     """mac .app → Contents/MacOS 可执行体（优先 qqqide，另外 glob 兜底）。"""
@@ -268,21 +303,44 @@ def _bundle_main_js(bin_path, extra):
     return _norm(p) if os.path.exists(p) else None
 
 
-def _supports_browser_host(bin_path, extra):
-    """能力探测：包内壳层 bundle 是否含受控浏览器能力——旧包明确报错，而不是拉起旧内核傻等超时。
-    布局未知（bundle 不存在）→ 放行尝试（超时提示兜底）。"""
+def _supports_browser_host(bin_path, extra, need_profile=False):
+    """能力探测：包内壳层 bundle 是否含受控浏览器能力（need_profile=还要档案槽能力）。
+    旧包明确报错，而不是拉起旧内核傻等超时。布局未知（bundle 不存在）→ 放行尝试（超时提示兜底）。"""
     try:
         bundle = _bundle_main_js(bin_path, extra)
         if not bundle:
             return True
         with open(bundle, "rb") as f:
-            return _PROBE_WORD in f.read()
+            blob = f.read()
+        if _PROBE_WORD not in blob:
+            return False
+        return (not need_profile) or (_PROBE_PROFILE in blob)
     except Exception:
         return True
 
 
+def shell_data_root(shell_bin, extra=None):
+    """壳层所属安装的 {Data} 目录（同装判定用）——与 kit 侧 resolve_data_root() 同口径。"""
+    nb = os.path.abspath(shell_bin).replace("\\", "/")
+    low = nb.lower()
+    if "/node_modules/electron/" in low or "/electron/dist/" in low:
+        root = _norm(extra[0]) if extra else _norm(nb.split("/node_modules/", 1)[0])
+        return _norm(os.path.join(root, "Data"))
+    m = re.match(r"^(.*\.app)/Contents/MacOS/[^/]+$", nb, re.I)
+    if m:
+        container = _norm(os.path.dirname(_norm(m.group(1))))
+        return _norm(os.path.join(container, "qqqide-data", "Data"))
+    d = os.path.dirname(os.path.abspath(shell_bin))
+    if os.path.isdir(os.path.join(d, "qqqide-data")):
+        return _norm(os.path.join(d, "qqqide-data", "Data"))
+    return _norm(os.path.join(d, "Data"))
+
+
 def resolve_shell(shell=None, app=None):
-    """-> (内核路径, 附加参数[])。找不到抛 RuntimeError（含指引）。"""
+    """-> (内核路径, 附加参数[])。找不到抛 RuntimeError（含指引）。
+    ★ 同装优先：本工具链只驱动【与自己同一个安装】的壳层——启动器广播的 QQQIDE_PYTHON_DIR
+      与 kit 自身位置推导出的壳层可能属于不同安装（开发树 + 已装绿色包共存时的常见情形），
+      此时以「{Data} 与本 kit 一致」的那个候选为准，否则会出现「开发树的数据 + 绿色包的壳层」。"""
     if shell:
         exe = _norm(shell)
         if not os.path.exists(exe):
@@ -303,56 +361,181 @@ def resolve_shell(shell=None, app=None):
             auto = _autodetect_dev_app(exe)
             return exe, ([auto] if auto else [])
         tried.append("QQQIDE_SHELL=" + env_shell + "（路径不存在）")
-    # ② QQQIDE_PYTHON_DIR（Windows 启动器广播 / 环境预置）→ 推导
+    # 候选集：② 启动器广播推导（QQQIDE_PYTHON_DIR） ③ 自身位置推导（装包运行/资源副本、开发树）
+    cands = []
     pydir = os.environ.get("QQQIDE_PYTHON_DIR") or _read_win_registry_pydir()
     if pydir:
         py = _norm(pydir)
         tried.append(py)
-        for cand, extra in _kernel_candidates(py):
-            if os.path.exists(cand):
-                return cand, extra
-    # ③ 自身位置推导（装包运行副本/资源副本、开发树）——mac/linux 主路径
-    for cand, extra in _self_candidates():
-        if os.path.exists(cand):
+        cands.extend(_kernel_candidates(py))
+    cands.extend(_self_candidates())
+
+    try:
+        mine = os.path.normcase(resolve_data_root())
+    except Exception:
+        mine = None
+    others = []
+    for cand, extra in cands:
+        if not os.path.exists(cand):
+            continue
+        if mine is None:
             return cand, extra
+        try:
+            same = os.path.normcase(shell_data_root(cand, extra)) == mine
+        except Exception:
+            same = False
+        if same:
+            return cand, extra                      # 同装命中（优先）
+        others.append((cand, extra))
+    if others:
+        return others[0]                            # 跨装兜底（总比找不到强）
     raise RuntimeError(
         "未找到 qd 内核（joker/qqqide）。已尝试: " + ("; ".join(tried) if tried else "无环境线索") +
         "\n请用 --shell 指定，或设置环境变量 QQQIDE_SHELL；例: --shell \"<装包>\\gh555.com\\joker.exe\"")
 
 
+# ── 数据根 / 档案槽 ──
+
+def data_root_candidates():
+    """{Data} 目录的候选（按优先级，纯位置推导；四布局：开发树 / 运行副本 / 资源副本 / mac·linux 托管）。
+    ★ 不依赖内核路径——外部内核场景下根本没有 qd 壳层。"""
+    out = []
+    try:
+        chain = []
+        d = os.path.dirname(os.path.abspath(__file__))
+        for _ in range(16):
+            chain.append(d)
+            nd = os.path.dirname(d)
+            if nd == d:
+                break
+            d = nd
+        for d in chain:
+            base = os.path.basename(d)
+            # ① 运行副本：…/Data/webapp/ai-panel/webtools/kit
+            if base == "webapp" and os.path.basename(os.path.dirname(d)) == "Data":
+                out.append(_norm(os.path.dirname(d)))
+                break
+            # ② server-app（开发树 <root>/server-app；资源副本 <容器>/resources/app/server-app）
+            if base == "server-app":
+                app_dir = os.path.dirname(d)                       # <root> | <容器>/resources/app
+                parent = os.path.dirname(app_dir)
+                if os.path.basename(app_dir).lower() == "app" and os.path.basename(parent).lower() == "resources":
+                    cont = os.path.dirname(parent)                 # <容器> | <X.app>/Contents
+                    if os.path.basename(cont) == "Contents":       # mac bundle
+                        cont = os.path.dirname(os.path.dirname(cont))
+                        out.append(_norm(os.path.join(cont, "qqqide-data", "Data")))
+                    else:
+                        alt = os.path.join(cont, "qqqide-data", "Data")
+                        out.append(_norm(alt if os.path.isdir(os.path.join(cont, "qqqide-data")) else os.path.join(cont, "Data")))
+                else:
+                    out.append(_norm(os.path.join(app_dir, "Data")))
+                break
+    except Exception:
+        pass
+    return out
+
+
+def resolve_data_root(data_root=None):
+    """{Data} 绝对路径。显式 --data-root > QQQIDE_DATA_DIR > 位置推导 > 报错。"""
+    for cand in (data_root, os.environ.get("QQQIDE_DATA_DIR")):
+        if cand:
+            return _norm(os.path.abspath(os.path.expandvars(cand)))
+    cands = data_root_candidates()
+    for c in cands:
+        if os.path.isdir(c):
+            return c
+    if cands:
+        return cands[0]
+    raise RuntimeError("未能推导 qd 数据根（Data 目录）——请用 --data-root 显式指定")
+
+
+def profile_dir(slot="default", engine="builtin", data_root=None):
+    """档案目录（绝对路径）。默认槽 + 内置内核 → 历史路径 {Data}/browser-host（登录态原地保留）。"""
+    dr = resolve_data_root(data_root)
+    slot = _slot_of(slot)
+    if engine not in ENGINES:
+        raise RuntimeError("未知内核: %r（可选 %s）" % (engine, "/".join(ENGINES)))
+    if slot == "default" and engine == "builtin":
+        return os.path.join(dr, "browser-host")
+    return os.path.join(dr, "browser-profiles", slot, engine)
+
+
+def _slot_meta_path(slot, data_root=None):
+    return os.path.join(resolve_data_root(data_root), "browser-profiles", _slot_of(slot), "slot.json")
+
+
+def _read_slot_meta(slot, data_root=None):
+    try:
+        with open(_slot_meta_path(slot, data_root), "r", encoding="utf-8") as f:
+            m = json.load(f)
+        return m if isinstance(m, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_slot_meta(slot, data_root=None, **patch):
+    p = _slot_meta_path(slot, data_root)
+    m = _read_slot_meta(slot, data_root)
+    m.setdefault("v", 1)
+    m["slot"] = _slot_of(slot)
+    m.setdefault("createdAt", int(time.time() * 1000))
+    m.update({k: v for k, v in patch.items() if v is not None})
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        tmp = p + ".%d.tmp" % os.getpid()
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(m, f, ensure_ascii=False)
+        os.replace(tmp, p)
+    except Exception:
+        pass
+    return m
+
+
+def _used_engines(slot, data_root=None):
+    return [e for e in ENGINES if os.path.isdir(profile_dir(slot, e, data_root))]
+
+
+def _candidate_engines(slot, data_root=None):
+    """发现/停止时的引擎优先级：槽记录的活动内核 > 有档案的内核 > builtin 兜底。"""
+    used = _used_engines(slot, data_root)
+    meta = _read_slot_meta(slot, data_root)
+    order = []
+    for e in ([meta.get("active")] + used + ["builtin"]):
+        if e in ENGINES and e not in order:
+            order.append(e)
+    return order
+
+
+def resolve_slot_engine(slot, engine=None, data_root=None, rebind=False):
+    """裁决本次用哪颗内核。auto = 槽有档案按档案；新槽 → 有外部内核用外部（内核新鲜度优先），
+    否则内置（零依赖兜底）。槽已钉住另一颗内核时，显式换内核必须 rebind（换内核＝换档案）。"""
+    req = (engine or os.environ.get("QQQIDE_BROWSER_ENGINE") or "auto").strip().lower()
+    if req not in ("auto",) + ENGINES:
+        raise RuntimeError("未知 --engine: %r（可选 auto/builtin/external）" % req)
+    used = _used_engines(slot, data_root)
+    meta = _read_slot_meta(slot, data_root)
+    if req == "auto":
+        act = meta.get("active")
+        if act in used:
+            return act
+        if used:
+            return used[-1]
+        return "external" if browser_engine.find() else "builtin"
+    if used and req not in used and not rebind:
+        raise RuntimeError(
+            "档案槽 %r 已在 %s 内核下建档；换内核＝换档案（登录态不跨内核通用）。\n"
+            "确需换：加 --rebind（旧档案原样保留，可随时换回），或换一个槽名（--profile <新槽>）。"
+            % (slot, "/".join(used)))
+    return req
+
 
 # ── 端点发现 ──
 
-def default_report_path(shell_bin=None):
-    """报告文件路径（按内核路径定名 → 同机多装包互不串）。"""
-    try:
-        shell_bin = shell_bin or resolve_shell()[0]
-    except Exception:
-        shell_bin = "qd"
-    h = hashlib.sha1(os.path.abspath(shell_bin).lower().encode("utf-8", "replace")).hexdigest()[:8]
+def default_report_path(shell_bin=None, profile=None, engine="builtin", data_root=None):
+    """报告文件路径（按 [内核+槽+引擎] 定名 → 同机多装包/多槽互不串）。"""
+    h = hashlib.sha1(("%s|%s|%s" % (os.path.abspath(shell_bin or "qd").lower(),
+                                    _slot_of(profile), engine)).encode("utf-8", "replace")).hexdigest()[:8]
     return os.path.join(tempfile.gettempdir(), "qqq-browser-report-%s.json" % h)
-
-
-def _expected_data_dir(shell_bin, app=None):
-    """受控浏览器 userData 目录推导（{hostDir}/Data/browser-host）——同包判定 + 跨 TEMP 发现用。"""
-    b = os.path.abspath(shell_bin)
-    nb = b.replace("\\", "/")
-    low = nb.lower()
-    # 开发树：<root>/node_modules/electron/dist/...
-    if "/node_modules/electron/" in low or "/electron/dist/" in low:
-        root = _norm(app) if app else _norm(nb.split("/node_modules/", 1)[0])
-        return os.path.join(root, "Data", "browser-host")
-    # macOS bundle：<container>/qqqide.app/Contents/MacOS/<exe>
-    m = re.match(r"^(.*\.app)/Contents/MacOS/[^/]+$", nb, re.I)
-    if m:
-        container = os.path.dirname(_norm(m.group(1)))
-        return os.path.join(container, "qqqide-data", "Data", "browser-host")
-    d = os.path.dirname(b)
-    # Linux 容器（qqqide + qqqide-data 同层）
-    if os.path.isdir(os.path.join(d, "qqqide-data")):
-        return os.path.join(d, "qqqide-data", "Data", "browser-host")
-    # Windows 打包（gh555.com 内）
-    return os.path.join(d, "Data", "browser-host")
 
 
 def _probe(port, timeout=2.5):
@@ -363,6 +546,25 @@ def _probe(port, timeout=2.5):
             return data if isinstance(data, dict) else None
     except Exception:
         return None
+
+
+def _pid_alive(pid):
+    try:
+        pid = int(pid)
+    except Exception:
+        return True
+    if pid <= 0:
+        return True
+    try:
+        if IS_WIN:
+            out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"],
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=6,
+                                 creationflags=_NO_WINDOW).stdout
+            return str(pid) in (out or b"").decode("utf-8", "replace")
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
 
 
 def _read_report_file(p):
@@ -378,44 +580,96 @@ def _read_report_file(p):
     return ep
 
 
-def read_canonical_endpoint(shell_bin=None, app=None):
-    """权威端点（TEMP 无关）：{expectedDataDir}/host.json 心跳文件（4s 刷、原子写）。
-    IDE 内跑的 kit 与终端跑的 kit 互见同一实例（报告文件随 TEMP 分裂的根治）；同包判定亦用它。"""
+def _ws_id(ver):
+    """内核实例身份（/json/version 里 webSocketDebuggerUrl 末尾的 UUID）——每次启动都不同，
+    是「这个端口是不是我那个内核」零成本强验证（端口被别的进程/别的槽重新占上时必失配）。"""
     try:
-        sb = shell_bin or resolve_shell(None, app)[0]
-        dd = _expected_data_dir(sb, app)
+        return ((ver or {}).get("webSocketDebuggerUrl") or "").rsplit("/", 1)[-1]
+    except Exception:
+        return ""
+
+
+def _endpoint_for(slot, engine, data_root=None):
+    """某槽某引擎的活端点（真相 = host.json 心跳 + CDP 探测应答 + 实例身份）。未运行 -> None。
+    ★ 身份不得串：端口可能被别的进程/别的槽重新占上——
+       内置按 pid 验（Electron 的 process.pid 就是内核进程）；
+       外部按 wsId 验（Chrome 的启动器进程与实际浏览器进程常不同 pid，不可靠）。"""
+    try:
+        pd = profile_dir(slot, engine, data_root)
     except Exception:
         return None
-    hj = os.path.join(dd, "host.json")
+    hj = os.path.join(pd, "host.json")
     try:
         with open(hj, "r", encoding="utf-8") as f:
             h = json.load(f)
     except Exception:
         return None
-    if not isinstance(h, dict) or not h.get("pid") or not h.get("cdpPort"):
+    if not isinstance(h, dict) or not h.get("cdpPort"):
         return None
-    if not _probe(h.get("cdpPort"), 1.2):
+    if engine == "builtin" and h.get("pid") and not _pid_alive(h.get("pid")):
+        return None
+    ver = _probe(h.get("cdpPort"), 1.2)
+    if not ver:
+        return None
+    if h.get("wsId") and _ws_id(ver) != h.get("wsId"):
         return None
     ep = dict(h)
-    ep.update({"ok": True, "mode": "browser-host", "reused": True,
-               "dataDir": dd, "hostJson": hj})
+    ep.update({
+        "ok": True, "mode": "browser-host",
+        "engine": engine, "slot": _slot_of(slot),
+        "dataDir": pd, "hostJson": hj,
+        "kernel": ver.get("Browser") or "",
+    })
     return ep
 
 
-def read_live_endpoint(report=None, shell_bin=None, app=None):
+def read_canonical_endpoint(slot="default", engine="builtin", data_root=None):
+    """权威端点（TEMP 无关）：{档案目录}/host.json。IDE 内跑的 kit 与终端跑的 kit 互见同一实例。"""
+    return _endpoint_for(slot, engine, data_root)
+
+
+def read_live_endpoint(report=None, shell_bin=None, app=None, profile=None, engine=None, data_root=None):
     """读端点（真相 = CDP 探测应答）。未运行 -> None。
-    顺序：① 报告文件（显式 / 按内核定名）② 权威 host.json（跨 TEMP 发现）。"""
-    rep = report
-    if rep is None:
-        try:
-            shell_bin = shell_bin or resolve_shell(None, app)[0]
-            rep = default_report_path(shell_bin)
-        except Exception:
-            rep = None
-    ep = _read_report_file(rep) if rep else None
-    if ep:
+    engine=auto（默认）→ 按槽的引擎优先级逐个查（活动内核优先），返回第一个活的。
+    显式 report 时以报告文件为准。"""
+    slot = _slot_of(profile)
+    if report:
+        ep = _read_report_file(report)
+        if ep:
+            ep.setdefault("slot", slot)
+            return ep
+    req = (engine or os.environ.get("QQQIDE_BROWSER_ENGINE") or "auto").strip().lower()
+    engines = _candidate_engines(slot, data_root) if req == "auto" else [req]
+    for e in engines:
+        if e not in ENGINES:
+            continue
+        ep = _endpoint_for(slot, e, data_root)
+        if ep:
+            return ep
+    return None
+
+
+def find_any_live_report(shell_bin=None, app=None, profile=None, engine=None, data_root=None):
+    """扫描临时目录全部报告，返回仍在本槽运行的端点（★ 恒按槽过滤——身份绝不串）。
+    同包优先：能判定本包预期档案目录时只接受同一档案目录的实例。"""
+    slot = _slot_of(profile)
+    expected = None
+    try:
+        req = (engine or os.environ.get("QQQIDE_BROWSER_ENGINE") or "auto").strip().lower()
+        want = [profile_dir(slot, req, data_root)] if req != "auto" else \
+            [profile_dir(slot, e, data_root) for e in ENGINES]
+    except Exception:
+        return None                      # 算不出本槽档案目录 → 宁可不猜（禁跨槽误认）
+    for p in sorted(_glob.glob(os.path.join(tempfile.gettempdir(), "qqq-browser-report-*.json"))):
+        ep = _read_report_file(p)
+        if not ep:
+            continue
+        dd = ep.get("dataDir")
+        if not dd or not any(_same_dir(dd, w) for w in want):
+            continue                     # ★ 只接受本槽档案目录的实例（身份绝不串）
+        ep["reportPath"] = p
         return ep
-    return read_canonical_endpoint(shell_bin, app)
+    return None
 
 
 def _same_dir(a, b):
@@ -425,29 +679,38 @@ def _same_dir(a, b):
         return False
 
 
-def find_any_live_report(shell_bin=None, app=None):
-    """扫描临时目录全部报告，返回仍在运行的端点。
-    同包优先：能判定本包预期数据目录时只接受同包实例（防多装包互串）；
-    推不出预期时才退回「首个在跑的」。"""
-    expected = None
+def list_slots(data_root=None):
+    """所有档案槽（含默认槽）+ 每个引擎档案的存活状态。"""
+    dr = resolve_data_root(data_root)
+    names = set()
+    base = os.path.join(dr, "browser-profiles")
     try:
-        expected = _expected_data_dir(shell_bin or resolve_shell(None, app)[0], app)
-    except Exception:
-        expected = None
-    fallback = None
-    try:
-        for p in sorted(_glob.glob(os.path.join(tempfile.gettempdir(), "qqq-browser-report-*.json"))):
-            ep = _read_report_file(p)
-            if not ep:
-                continue
-            ep["reportPath"] = p
-            if expected and _same_dir(ep.get("dataDir"), expected):
-                return ep
-            if fallback is None:
-                fallback = ep
+        for n in os.listdir(base):
+            if os.path.isdir(os.path.join(base, n)) and _SLOT_RE.match(n):
+                names.add(n)
     except Exception:
         pass
-    return fallback if expected is None else None
+    if os.path.isdir(os.path.join(dr, "browser-host")):
+        names.add("default")
+    out = []
+    for slot in sorted(names):
+        meta = _read_slot_meta(slot, dr)
+        engines = []
+        for e in ENGINES:
+            pd = profile_dir(slot, e, dr)
+            if not os.path.isdir(pd):
+                continue
+            ep = _endpoint_for(slot, e, dr)
+            engines.append({
+                "engine": e, "dataDir": pd, "running": bool(ep),
+                "cdpPort": (ep or {}).get("cdpPort"), "pid": (ep or {}).get("pid"),
+                "kernel": (ep or {}).get("kernel") or "",
+            })
+        if not engines:
+            continue
+        out.append({"slot": slot, "label": meta.get("label") or "",
+                    "active": meta.get("active") or "", "engines": engines})
+    return out
 
 
 # ── 启动 ──
@@ -462,10 +725,61 @@ def _spawn_detached(cmd, log_path):
         return subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, **kwargs)
 
 
-def _dispatch_navigate(shell_bin, extra, rep, url, hidden=False, wait_sec=8.0):
-    """复用路径的 --url：派发一次二次实例导航（fire-and-forget + 轻等待目标页出现）。
+class _LaunchLock(object):
+    """跨槽启动串行（防并发 ensure 抢同一批 CDP 端口 / 抢同一份档案锁）。
+    原子建文件 + 陈旧接管（90s）；拿不到 → RuntimeError（绝不无限等待）。"""
+
+    def __init__(self, data_root, wait=120.0, stale=90.0):
+        self.path = os.path.join(resolve_data_root(data_root), "browser-profiles", ".ensure.lock")
+        self.wait = wait
+        self.stale = stale
+        self.fd = None
+
+    def __enter__(self):
+        try:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        except Exception:
+            return self
+        end = time.time() + self.wait
+        while time.time() < end:
+            try:
+                self.fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                try:
+                    os.write(self.fd, str(os.getpid()).encode())
+                except Exception:
+                    pass
+                return self
+            except FileExistsError:
+                try:
+                    if time.time() - os.path.getmtime(self.path) > self.stale:
+                        os.remove(self.path)
+                        continue
+                except Exception:
+                    pass
+                time.sleep(0.25)
+            except Exception:
+                return self          # 无写权限等 → 退化为不加锁（不阻塞主流程）
+        raise RuntimeError("启动锁等待超时（%s）——另一个 ensure 长时间未完成？" % self.path)
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            try:
+                os.close(self.fd)
+            except Exception:
+                pass
+            try:
+                os.remove(self.path)
+            except Exception:
+                pass
+        return False
+
+
+def _dispatch_navigate(shell_bin, extra, rep, slot, rel, url, hidden=False, wait_sec=8.0):
+    """内置内核复用路径的 --url：派发一次二次实例导航（fire-and-forget + 轻等待目标页出现）。
     隐藏档实例不会被弹窗（壳层保证）；可见实例会被带到前台。"""
-    cmd = [shell_bin] + list(extra) + ["--qqqide-browser", "--qqqide-browser-report=" + rep,
+    cmd = [shell_bin] + list(extra) + ["--qqqide-browser", "--qqqide-browser-slot=" + slot,
+                                       "--qqqide-browser-profile=" + rel,
+                                       "--qqqide-browser-report=" + rep,
                                        "--qqqide-browser-url=" + url]
     if hidden:
         cmd.append("--qqqide-browser-hidden")
@@ -482,13 +796,13 @@ def _dispatch_navigate(shell_bin, extra, rep, url, hidden=False, wait_sec=8.0):
         host = ""
     if not host:
         return True
-    ep = read_live_endpoint(rep, shell_bin)
-    if not ep:
-        return True
     end = time.time() + wait_sec
     while time.time() < end:
         try:
             import urllib.request
+            ep = read_live_endpoint(profile=slot, engine="builtin")
+            if not ep:
+                return True
             with urllib.request.urlopen("http://127.0.0.1:%d/json/list" % int(ep["cdpPort"]), timeout=2.0) as r:
                 tabs = json.loads(r.read().decode("utf-8", "replace"))
             if any(isinstance(t, dict) and host in (t.get("url") or "") for t in tabs):
@@ -499,27 +813,25 @@ def _dispatch_navigate(shell_bin, extra, rep, url, hidden=False, wait_sec=8.0):
     return True
 
 
-def ensure_started(hidden=False, url=None, shell=None, app=None, report=None, wait=45.0,
-                   exit_with=None, idle_exit=None):
-    """确保受控浏览器就绪；返回端点 dict（含 pid/cdpPort）。已在跑 → 复用。
-    ★ 复用路径：给了 url 则派发一次导航（隐藏档不弹窗）。
-    exit_with / idle_exit 仅在使用新实例时生效（实例级属性）。"""
+def _ensure_builtin(slot, prof, data_root, hidden, url, shell, app, report, wait,
+                    exit_with, idle_exit):
     shell_bin, extra = resolve_shell(shell, app)
-    if not _supports_browser_host(shell_bin, extra):
+    rel = os.path.relpath(prof, resolve_data_root(data_root)).replace("\\", "/")
+    need_profile = (rel != "browser-host")
+    if not _supports_browser_host(shell_bin, extra, need_profile):
+        if need_profile:
+            raise RuntimeError("这个 qd 版本还不含「档案槽」能力（壳层未升级）——具名槽无法使用。\n"
+                               "请升级 qd 到最新版；或改用内置默认槽（--profile default）。")
         raise RuntimeError("这个 qd 版本还不含「受控浏览器」能力（壳层未升级）。\n"
-                           "请升级 qd 到最新版；或临时改用外部浏览器: kit/cdp_launch.py")
-    rep = report or default_report_path(shell_bin)
-    ep = read_live_endpoint(rep, shell_bin, app)
-    if ep:
-        ep["reused"] = True
-        if url and str(url).lower().startswith(("http:", "https:")):
-            _dispatch_navigate(shell_bin, extra, rep, url, hidden)
-        return ep
+                           "请升级 qd 到最新版；或临时指定外部内核: --engine external")
+    rep = report or default_report_path(shell_bin, slot, "builtin", data_root)
     try:
         os.remove(rep)
     except OSError:
         pass
-    cmd = [shell_bin] + list(extra) + ["--qqqide-browser", "--qqqide-browser-report=" + rep]
+    cmd = [shell_bin] + list(extra) + ["--qqqide-browser", "--qqqide-browser-slot=" + slot,
+                                       "--qqqide-browser-profile=" + rel,
+                                       "--qqqide-browser-report=" + rep]
     if hidden:
         cmd.append("--qqqide-browser-hidden")
     if url:
@@ -538,75 +850,213 @@ def ensure_started(hidden=False, url=None, shell=None, app=None, report=None, wa
             with open(rep, "r", encoding="utf-8") as f:
                 j = json.load(f)
         except Exception:
-            continue
+            j = None
         if isinstance(j, dict) and j.get("ok") is False:
             raise RuntimeError("受控浏览器启动失败: %s（日志: %s）" % (j.get("error"), log_path))
-        ep = read_live_endpoint(rep, shell_bin, app)
+        ep = _endpoint_for(slot, "builtin", data_root)
         if ep:
-            # 报告可能是「持锁实例被二次拉起后补写」的（自带 reused:true）——保留其标志
             ep.setdefault("reused", False)
             ep["logFile"] = log_path
+            ep["engine"] = "builtin"
             return ep
     raise RuntimeError("等待受控浏览器就绪超时。日志: %s" % log_path)
 
 
-def stop(report=None, shell=None, app=None):
-    """停止受控浏览器（关窗即退出；登录态保留在 profile）。返回是否真的停了。"""
-    shell_bin = None
+def _ensure_external(slot, prof, data_root, hidden, url, wait, browser=None):
+    info = browser_engine.find(browser)
+    if not info:
+        raise RuntimeError(
+            "未找到外部 Chromium 内核（Chrome/Edge/Brave/Chromium）。\n"
+            "请用 --browser <路径> 指定，或设环境变量 CDP_BROWSER；\n"
+            "或改用内置内核: --engine builtin（零依赖，任何机器可用）。")
+    os.makedirs(prof, exist_ok=True)
+    pid = browser_engine.launch(info["path"], prof, url=url, headless=bool(hidden))
+    port = browser_engine.read_active_port(prof, timeout=max(8.0, float(wait)))
+    if not port:
+        try:
+            if IS_WIN:
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=_NO_WINDOW)
+            else:
+                os.kill(pid, 15)
+        except Exception:
+            pass
+        raise RuntimeError(
+            "外部内核未就绪（%s）。常见原因：该档案槽已被另一个窗口占用（同一 user-data-dir 只能一个实例）。\n"
+            "槽目录: %s" % (info["path"], prof))
+    ver = _probe(port, 3.0) or {}
+    owner = browser_engine.pid_on_port(port) or pid     # 端口真实拥有者（启动器进程 ≠ 浏览器进程）
+    ep = {
+        "ok": True, "ver": 1, "mode": "browser-host", "reused": False,
+        "engine": "external", "slot": slot, "pid": owner,
+        "cdpPort": port, "dataDir": prof, "wsId": _ws_id(ver),
+        "hostJson": os.path.join(prof, "host.json"),
+        "hidden": bool(hidden), "ts": int(time.time() * 1000),
+        "kernel": ver.get("Browser") or "", "kernelPath": info["path"], "kernelSrc": info["source"],
+    }
+    beat = {"v": 1, "engine": "external", "slot": slot, "pid": owner,
+            "cdpPort": port, "hidden": bool(hidden), "ts": ep["ts"],
+            "wsId": ep["wsId"], "kernel": ep["kernel"],
+            "userData": prof, "startedAt": ep["ts"]}
     try:
-        shell_bin = resolve_shell(shell, app)[0]
-    except Exception:
-        shell_bin = None
-    rep = report
-    if rep is None and shell_bin:
-        rep = default_report_path(shell_bin)
-    ep = read_live_endpoint(rep, shell_bin, app)
-    if not ep:
-        return False
-    pid = int(ep.get("pid") or 0)
-    if pid > 0:
-        if IS_WIN:
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           creationflags=_NO_WINDOW)
-        else:
-            import signal as _s
-            try:
-                os.killpg(os.getpgid(pid), _s.SIGTERM)
-            except Exception:
+        tmp = ep["hostJson"] + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(beat, f, ensure_ascii=False)
+        os.replace(tmp, ep["hostJson"])
+    except Exception as e:
+        raise RuntimeError("外部内核已就绪但端点心跳写盘失败（%s）——该槽无法被发现: %s"
+                           % (ep["hostJson"], e))
+    return ep
+
+
+def ensure_started(hidden=False, url=None, shell=None, app=None, report=None, wait=45.0,
+                   exit_with=None, idle_exit=None, profile=None, engine=None,
+                   data_root=None, rebind=False, label=None, browser=None):
+    """确保受控浏览器就绪；返回端点 dict（含 pid/cdpPort/engine/slot）。已在跑 → 复用。
+    ★ 复用路径：给了 url 则派发一次导航（内置=导航主窗，外部=新开标签页）。
+    exit_with / idle_exit / hidden 的完整语义仅内置内核具备（外部=--headless=new 近似）。"""
+    dr = resolve_data_root(data_root)
+    slot = _slot_of(profile)
+    eng = resolve_slot_engine(slot, engine, dr, rebind=rebind)
+    prof = profile_dir(slot, eng, dr)
+
+    ep = _endpoint_for(slot, eng, dr)
+    if ep:
+        ep["reused"] = True
+        _write_slot_meta(slot, dr, active=eng, label=label)
+        if url and str(url).lower().startswith(("http:", "https:")):
+            if eng == "builtin":
+                rep = report or default_report_path(None, slot, "builtin", dr)
                 try:
-                    os.kill(pid, _s.SIGTERM)
+                    shell_bin, extra = resolve_shell(shell, app)
+                    rel = os.path.relpath(prof, dr).replace("\\", "/")
+                    _dispatch_navigate(shell_bin, extra, rep, slot, rel, url, hidden)
                 except Exception:
                     pass
-        end = time.time() + 8
-        while time.time() < end and _probe(ep.get("cdpPort"), 1.0):
-            time.sleep(0.4)
-    if rep:
+            else:
+                _external_open_tab(ep["cdpPort"], url)
+        return ep
+
+    with _LaunchLock(dr):
+        ep = _endpoint_for(slot, eng, dr)          # 双检（并发 ensure 的另一半已经起来了）
+        if ep:
+            ep["reused"] = True
+            _write_slot_meta(slot, dr, active=eng, label=label)
+            return ep
+        if eng == "builtin":
+            ep = _ensure_builtin(slot, prof, dr, hidden, url, shell, app, report, wait,
+                                 exit_with, idle_exit)
+        else:
+            ep = _ensure_external(slot, prof, dr, hidden, url, wait, browser)
+        _write_slot_meta(slot, dr, active=eng, label=label)
+        return ep
+
+
+def _external_open_tab(port, url):
+    """外部内核复用语义：新开一个标签页（Chrome 原生；不夺用户正看着的那一页）。"""
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://127.0.0.1:%d/json/new?%s" % (int(port), url), method="PUT")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except Exception:
+        return None
+
+
+def stop(report=None, shell=None, app=None, profile=None, data_root=None, engine=None):
+    """停止该槽的受控浏览器（关窗即退出；登录态保留在档案）。返回是否真的停了。"""
+    dr = resolve_data_root(data_root)
+    slot = _slot_of(profile)
+    req = (engine or os.environ.get("QQQIDE_BROWSER_ENGINE") or "auto").strip().lower()
+    targets = [req] if req in ENGINES else _candidate_engines(slot, dr)
+    stopped = False
+    for e in targets:
+        ep = _endpoint_for(slot, e, dr)
+        if not ep:
+            continue
+        pid = int(ep.get("pid") or 0)
+        if e == "external":
+            pid = browser_engine.pid_on_port(ep.get("cdpPort")) or pid
+        if pid > 0:
+            if IS_WIN:
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=_NO_WINDOW)
+            else:
+                import signal as _s
+                try:
+                    os.killpg(os.getpgid(pid), _s.SIGTERM)
+                except Exception:
+                    try:
+                        os.kill(pid, _s.SIGTERM)
+                    except Exception:
+                        pass
+            end = time.time() + 8
+            while time.time() < end and _probe(ep.get("cdpPort"), 1.0):
+                time.sleep(0.4)
         try:
-            os.remove(rep)
+            os.remove(ep.get("hostJson") or "")
         except OSError:
             pass
-    return True
+        stopped = True
+    if report:
+        try:
+            os.remove(report)
+        except OSError:
+            pass
+    else:
+        try:
+            shell_bin = resolve_shell(shell, app)[0]
+        except Exception:
+            shell_bin = None
+        if shell_bin:
+            try:
+                os.remove(default_report_path(shell_bin, slot, "builtin", dr))
+            except OSError:
+                pass
+    return stopped
 
 
 # ── CLI ──
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="qd 受控浏览器：确保/查询/停止")
+    ap = argparse.ArgumentParser(description="qd 受控浏览器：档案槽 × 内核（确保/查询/停止/列举）")
     sub = ap.add_subparsers(dest="cmd")
+    common = [
+        (["--profile"], dict(default=None, help="档案槽名（默认 default；别名 CDP_PROFILE）")),
+        (["--data-root"], dict(default=None, help="qd 数据根（默认位置推导；别名 QQQIDE_DATA_DIR）")),
+        (["--shell"], dict(default=None, help="内置内核路径（默认自动从装包推导）")),
+        (["--app"], dict(default=None, help="应用目录（开发树用）")),
+        (["--report"], dict(default=None, help="报告文件路径（默认按内核+槽定名）")),
+    ]
+
+    def _add(p, extra):
+        for a, kw in common + (extra or []):
+            p.add_argument(*a, **kw)
+
     pe = sub.add_parser("ensure", help="确保在跑（就绪即复用）")
-    pe.add_argument("--hidden", action="store_true", help="静默档（无可见窗口；默认 30 分钟空闲自退）")
-    pe.add_argument("--url", default=None, help="目标网址（新起=直接加载；复用=导航现有实例）")
-    pe.add_argument("--exit-with", type=int, default=None, help="跟随监督进程 PID（仅新起时生效）")
-    pe.add_argument("--idle-exit", type=float, default=None, help="空闲自退分钟数（0=关；仅新起时生效）")
+    _add(pe, [
+        (["--engine"], dict(default=None, choices=["auto", "builtin", "external"], help="内核（默认 auto）")),
+        (["--rebind"], dict(action="store_true", help="确认换内核（＝换档案；旧档案保留）")),
+        (["--browser"], dict(default=None, help="外部内核路径（默认自动发现；别名 CDP_BROWSER）")),
+        (["--hidden"], dict(action="store_true", help="静默档（内置=无可见窗；外部=headless）")),
+        (["--url"], dict(default=None, help="目标网址（新起=直接加载；复用=导航/新开标签页）")),
+        (["--exit-with"], dict(default=None, type=int, help="跟随监督进程 PID（仅内置、仅新起）")),
+        (["--idle-exit"], dict(default=None, type=float, help="空闲自退分钟数（仅内置、仅新起；0=关）")),
+        (["--label"], dict(default=None, help="槽位人类可读标签（如 \"阿里云 divaci\"）")),
+        (["--wait"], dict(default=45.0, type=float, help="就绪等待上限（秒）")),
+    ])
     pst = sub.add_parser("status", help="打印当前端点（未运行 = 退出码 1）")
+    _add(pst, [(["--engine"], dict(default=None, choices=["auto", "builtin", "external"]))])
     psp = sub.add_parser("stop", help="停止（关闭浏览器）")
-    for p in (pe, pst, psp):
-        p.add_argument("--shell", default=None, help="内核路径（默认自动从装包推导）")
-        p.add_argument("--app", default=None, help="应用目录（开发树用）")
-        p.add_argument("--report", default=None, help="报告文件路径（默认按内核定名）")
-        p.add_argument("--json", action="store_true", default=None, help="只输出 JSON（位置自由）")
-    pe.add_argument("--wait", type=float, default=45.0, help="就绪等待上限（秒）")
+    _add(psp, [(["--engine"], dict(default=None, choices=["auto", "builtin", "external"]))])
+    pl = sub.add_parser("list", help="列举所有档案槽")
+    _add(pl, [])
+    plb = sub.add_parser("label", help="给槽位起标签")
+    plb.add_argument("slot")
+    plb.add_argument("label")
+    plb.add_argument("--data-root", default=None)
     ap.add_argument("--json", action="store_true", default=None, help="只输出 JSON（位置自由）")
     args = ap.parse_args(argv)
 
@@ -616,34 +1066,56 @@ def main(argv=None):
 
     try:
         if args.cmd == "ensure":
-            ep = ensure_started(hidden=args.hidden, url=args.url,
-                                shell=args.shell, app=args.app, report=args.report, wait=args.wait,
-                                exit_with=args.exit_with, idle_exit=args.idle_exit)
+            ep = ensure_started(hidden=args.hidden, url=args.url, shell=args.shell, app=args.app,
+                                report=args.report, wait=args.wait, exit_with=args.exit_with,
+                                idle_exit=args.idle_exit, profile=args.profile, engine=args.engine,
+                                data_root=args.data_root, rebind=args.rebind, label=args.label,
+                                browser=args.browser)
             if not args.json:
-                print("[ok] 受控浏览器就绪  pid=%s  cdpPort=%s  %s" %
-                      (ep.get("pid"), ep.get("cdpPort"), "(复用现有实例)" if ep.get("reused") else ""))
+                print("[ok] 受控浏览器就绪  slot=%s  engine=%s  pid=%s  cdpPort=%s  %s" % (
+                    ep.get("slot"), ep.get("engine"), ep.get("pid"), ep.get("cdpPort"),
+                    "(复用现有实例)" if ep.get("reused") else ""))
+                if ep.get("kernel"):
+                    print("     内核 %s" % ep["kernel"])
             print(json.dumps(ep, ensure_ascii=False))
             return 0
         if args.cmd == "status":
-            sb = None
-            try:
-                sb = resolve_shell(args.shell, args.app)[0]
-            except Exception:
-                sb = None
-            rep = args.report
-            if rep is None and sb:
-                rep = default_report_path(sb)
-            ep = read_live_endpoint(rep, sb, args.app) or find_any_live_report(sb, args.app)
+            ep = read_live_endpoint(profile=args.profile, engine=args.engine, data_root=args.data_root) \
+                or find_any_live_report(profile=args.profile, engine=args.engine, data_root=args.data_root)
             if not ep:
                 print(json.dumps({"running": False}) if args.json else "[--] 受控浏览器未在运行")
                 return 1
             if not args.json:
-                print("[ok] 运行中  pid=%s  cdpPort=%s" % (ep.get("pid"), ep.get("cdpPort")))
+                print("[ok] 运行中  slot=%s  engine=%s  pid=%s  cdpPort=%s" % (
+                    ep.get("slot"), ep.get("engine"), ep.get("pid"), ep.get("cdpPort")))
             print(json.dumps(ep, ensure_ascii=False))
             return 0
         if args.cmd == "stop":
-            ok = stop(report=args.report, shell=args.shell, app=args.app)
+            ok = stop(report=args.report, shell=args.shell, app=args.app, profile=args.profile,
+                      data_root=args.data_root, engine=args.engine)
             print(json.dumps({"stopped": ok}) if args.json else ("[ok] 已停止" if ok else "[--] 本来就没在运行"))
+            return 0
+        if args.cmd == "list":
+            rows = list_slots(args.data_root)
+            if args.json:
+                print(json.dumps(rows, ensure_ascii=False))
+                return 0
+            if not rows:
+                print("[--] 没有任何档案槽")
+                return 0
+            for r in rows:
+                print("槽 %-14s %s" % (r["slot"], ("「%s」" % r["label"]) if r["label"] else ""))
+                for e in r["engines"]:
+                    print("   %-9s %-6s %s%s" % (
+                        e["engine"],
+                        ("运行中" if e["running"] else "未运行"),
+                        ("cdpPort=%s  " % e["cdpPort"]) if e["running"] else "",
+                        (e["kernel"] or "")))
+                print("   %s" % r["engines"][0]["dataDir"])
+            return 0
+        if args.cmd == "label":
+            _write_slot_meta(args.slot, args.data_root, label=args.label)
+            print("[ok] 槽 %s 标签 = %s" % (args.slot, args.label))
             return 0
     except Exception as e:
         print("[x] " + str(e), file=sys.stderr)

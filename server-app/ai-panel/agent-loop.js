@@ -155,6 +155,7 @@ var AgentLoop = (function () {
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
         this._lastGatewayMessage = '';   // ★ 延迟报错消息（_callGateway 设，agent loop 读）
+        this._lastUpstreamErrorText = ''; // ★ 上游 400/422 原文（auto-repair 按真因分流）
         this._abortSource = '';          // 'stream_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
         // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
         this._lastBilling = null;        // { wgeCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
@@ -579,6 +580,7 @@ var AgentLoop = (function () {
         self._sendTerminated = false;  // ★ 终止旗：onError 后强制退出 while
         self._lastGatewayError = 0;   // ★ 每层楼重置：防跨 floor 虚假 auto-repair
         self._lastGatewayMessage = '';  // ★ 每层楼重置：防错误信息跨 floor 污染
+        self._lastUpstreamErrorText = '';  // ★ 每层楼重置：上游 400 原文
         self._ctxMaxTokensOverride = 0;  // ★ 每层楼重置：上下文硬墙精确修正帽（agent-gateway 硬墙自愈）
         self._ctxOverflow = null;        // ★ 每层楼重置：上游 400 精确数字暂存（待精确重试）
         self._lastCtxOverflow = null;    // ★ 每层楼重置：诊断快照
@@ -605,15 +607,16 @@ var AgentLoop = (function () {
 
                     self._log('⚡ guide ack round: ' + _guideText.slice(0, 60));
 
-                    // 引导确认回合：注入 → AI 简短确认收到 → pop prompt
+                    // 引导确认回合：请求副本注入确认指令 → AI 简短确认 → 引导原文永久入会话
                     // The user sent a guide message — supplemental info or a direction change — without breaking the floor.
                     // Acknowledge NOW: (1) confirm received, (2) recap what the user asked for so they can verify.
                     // Brief, no tools, no XML tags.
                     var _ackPrompt = '[GUIDE] ' + _guideText + '\nThe above is a guide message from the user (supplemental info or direction change). Acknowledge immediately in one sentence: (1) confirm received, (2) briefly restate what the user wants so they know you understood correctly. No tools, no XML tags.';
 
-                    self.conversation.push({ role: 'user', content: _ackPrompt, _guideAck: true, _floor: self._ctx.totalFloors });
+                    // ★ 确认指令只活在请求副本里（不写入 conversation → 硬指令永不污染长期上下文）
+                    var _ackView = self.conversation.concat([{ role: 'user', content: _ackPrompt, _floor: self._ctx.totalFloors }]);
 
-                    var _ackResp = await self._callGateway(self.conversation, {
+                    var _ackResp = await self._callGateway(_ackView, {
                         token: token,
                         onToken: onToken,
                         onReasoning: onReasoning,
@@ -622,16 +625,20 @@ var AgentLoop = (function () {
                         noTools: true
                     });
 
-                    // 确认回合被再次引导中断 → pop ack prompt，让新引导接管
+                    // 确认回合被再次引导中断 → 本次副本直接丢弃（会话零改动），让新引导接管
                     if (_ackResp && _ackResp._abortedForGuide) {
-                        self.conversation.pop();
                         self._log('⚠ guide ack: aborted by newer guide');
                         continue;
                     }
 
+                    // ★ 引导原文永久入会话（user 消息）：
+                    //   ① 用户原话必须进上下文——旧实现把原文塞在确认 prompt 里随后 pop 掉，
+                    //      引导语义只剩 AI 的转述（用户说 A，模型记成 B 就永久跑偏）；
+                    //   ② 请求尾恒为 user 消息，绝不制造「assistant 尾」的畸形请求；
+                    //   ③ _injected → 恢复渲染为「引导信息」块（card-pool 白名单）。
+                    self.conversation.push({ role: 'user', content: '[GUIDE] ' + _guideText, _injected: true, _floor: self._ctx.totalFloors });
+
                     if (_ackResp && _ackResp.content) {
-                        // 移除引导 prompt，保留 AI 回复，避免硬指令污染后续对话
-                        self.conversation.pop(); // pop _ackPrompt
                         // ★ 防御：剥离 XML 标签（<thinking> <qqq_tool_call> 等）
                         var _ackRaw = _ackResp.content;
                         var _cleanAck = _ackRaw
@@ -642,7 +649,18 @@ var AgentLoop = (function () {
                             .replace(/\n{3,}/g, '\n\n')
                             .trim();
                         if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
-                        self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors, reasoning_content: _ackResp.reasoning_content || undefined });
+                        // ★ 回传铁律（引导双连必死的根因）：请求携带 tools 时，本轮在飞链上的 assistant 消息
+                        //   必须原样带回 reasoning_content —— 缺它上游必然 400「reasoning_content must be
+                        //   passed back」。确认回复没带推理 → 只做 UI 纪要 + houses 归档，绝不入会话
+                        //   （入 = 下一间 house 必挂；连发两次引导 = 第二次 400 直接被判死楼层）。
+                        //   thinking 关（快档）→ 上游不校推理，历史形状无约束 → 照旧入会话。
+                        var _thinkOn = !!(tier && tier.thinking && tier.thinking.type !== 'disabled');
+                        if (_ackResp.reasoning_content || !_thinkOn) {
+                            self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _floor: self._ctx.totalFloors, reasoning_content: _ackResp.reasoning_content || undefined });
+                        } else {
+                            self._log('⚠ guide ack: no reasoning_content — kept out of conversation (UI only)');
+                            if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ guide ack: no reasoning_content — kept out of conversation floor=' + self._ctx.totalFloors);
+                        }
                         // 归档
                         var _billG = self._lastBilling; self._lastBilling = null;
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString(), wgeCost: _billG ? _billG.wgeCost : 0, model: _billG ? _billG.model : '', cacheHitRate: _billG ? _billG.cacheHitRate : -1, usage: _billG ? _billG.usage : null, billingSeq: _billG ? _billG.seq : 0, billingRequestId: _billG ? _billG.requestId : '', byok: _billG && _billG.byokRoute ? _billG.byokRoute : '', tier: self._lastTier ? self._lastTier.label : '' });
@@ -665,8 +683,7 @@ var AgentLoop = (function () {
                         self._log('✅ guide ack: ' + _ackResp.content.slice(0, 120));
                     } else if (_ackResp && _ackResp.type === 'tool_calls') {
                         // 引导回合 AI 返回工具调用（noTools=true 下不应发生）
-                        self.conversation.pop();
-                        self._log('⚠ guide ack: AI returned tool_calls despite noTools, cleared');
+                        self._log('⚠ guide ack: AI returned tool_calls despite noTools, ignored');
                         // ★ 显示失败状态（替代空条）
                         var _aiDiv3 = self._activeAiDiv;
                         if (_aiDiv3 && _aiDiv3._guideMarker) {
@@ -676,8 +693,7 @@ var AgentLoop = (function () {
                             _aiDiv3._guideMarker = null;
                         }
                     } else {
-                        // 网络错误或其他异常 → 移除 prompt，标记失败，不阻塞
-                        self.conversation.pop();
+                        // 网络错误或其他异常 → 标记失败，不阻塞（引导原文已入会话，语义不丢）
                         self._log('⚠ guide ack: no valid response, skipped');
                         var _aiDiv4 = self._activeAiDiv;
                         if (_aiDiv4 && _aiDiv4._guideMarker) {
@@ -786,9 +802,26 @@ var AgentLoop = (function () {
                             continue;
                         }
                     }
-                    // 自动修复：弹掉最后一组 assistant+tool，重试（分类真理源：ContentGateway.HttpError.isAutoRepairable）
-                    if (ContentGateway.HttpError.isAutoRepairable(self._lastGatewayError) && !opts._repairAttempted) {
+                    // 自动修复（分类真理源：ContentGateway.HttpError.isAutoRepairable）
+                    // ★ 预算计数（非一击即死）：旧实现 `!opts._repairAttempted` 一楼层只允许修一次 →
+                    //   同因二次 400 直接判死楼层（引导双连必死的主因：第二发引导触发同型 400 时
+                    //   已无修复预算）。现按次数计，上限 3。
+                    if (ContentGateway.HttpError.isAutoRepairable(self._lastGatewayError) && (opts._repairCount || 0) < 3) {
+                        opts._repairCount = (opts._repairCount || 0) + 1;
                         self._lastGatewayError = 0;
+                        // ★ 推理回传真因（上游原文点名 reasoning_content）→ 精确修复：摘掉本轮
+                        //   缺 reasoning 的 assistant 消息（非破坏：不动历史、不动已完成 tool 往返）
+                        if (/reasoning/i.test(self._lastUpstreamErrorText || '') && typeof self._repairReasoninglessAssistants === 'function') {
+                            var _repairedRs = self._repairReasoninglessAssistants() || 0;
+                            if (_repairedRs > 0) {
+                                maxIterations++;
+                                self._floorOnErrorCalled = false;
+                                self._lastGatewayMessage = '';
+                                self._lastUpstreamErrorText = '';
+                                opts._netRetryCount = 0;
+                                continue;
+                            }
+                        }
                         // ★ 2026-08-11: 先全量净化孤儿 tool（400 "tool must be a response..." 根治）
                         //   旧逻辑只弹「最后 assistant(tool_calls) 及其后」——孤儿在开头/中间时
                         //   弹不掉 → house2 重试仍 400 → fatal（q1 f17 客户事故 + q181 f14 实锤）
@@ -797,7 +830,6 @@ var AgentLoop = (function () {
                             _repairedOrphans = self._repairOrphanedToolCalls() || 0;
                         }
                         if (_repairedOrphans > 0) {
-                            opts._repairAttempted = true;
                             maxIterations++;
                             self._floorOnErrorCalled = false;
                             self._lastGatewayMessage = '';
@@ -807,19 +839,24 @@ var AgentLoop = (function () {
                         // 兜底：无孤儿时弹最后一组（历史逻辑）
                         // ★ 找到最后一个 assistant(tool_calls)，截断其后所有消息
                         var conv2 = self.conversation;
+                        var _poppedGroup = false;
                         for (var _rr = conv2.length - 1; _rr >= 0; _rr--) {
                             if (conv2[_rr] && conv2[_rr].role === 'assistant' && conv2[_rr].tool_calls) {
                                 conv2.length = _rr;
+                                _poppedGroup = true;
                                 self._log('→ auto-repair: popped last assistant+tool group (idx=' + _rr + '), retrying...');
                                 break;
                             }
                         }
-                        opts._repairAttempted = true;
-                        maxIterations++;
-                        self._floorOnErrorCalled = false;
-                        self._lastGatewayMessage = '';
-                        opts._netRetryCount = 0;  // ★ reset after repair
-                        continue;
+                        if (_poppedGroup) {
+                            maxIterations++;
+                            self._floorOnErrorCalled = false;
+                            self._lastGatewayMessage = '';
+                            opts._netRetryCount = 0;  // ★ reset after repair
+                            continue;
+                        }
+                        // ★ 本轮无任何可用修复手段（无可弹组）→ 归还预算，直接落 Error（禁无意义重发四次）
+                        opts._repairCount = (opts._repairCount || 1) - 1;
                     }
                     // ★ auto-repair 不适用或已尝试 → 统一在此处报错（延迟报错，避免 UI 假死）
                     var _errMsg = self._lastGatewayMessage || '⚠️ Unexpected response. Conversation saved.';
