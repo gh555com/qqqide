@@ -651,12 +651,6 @@ if (window.qqqCharUndo && window.qqqCharUndo.attach) {
 	window.qqqCharUndo.attach(filenameInput);
 }
 
-// Helper: generate 222 empty lines for new file
-function _newFileTemplate() {
-	var lines = [];
-	for (var i = 0; i < 222; i++) lines.push('');
-	return lines.join('\n');
-}
 
 // Helper: check if name exists in current directory
 function _nameExists(name) {
@@ -713,7 +707,7 @@ async function doCreateFile() {
 		if (!ok) return;
 	}
 	var fullPath = pathJoin(currentPath, name);
-	var content = _newFileTemplate();
+	var content = '';   // 新文件 = 真空文件（禁预置充行：一行装一个相框，空行只会把相框推开）
 	bridge.fs.write(fullPath, content).then(function() {
 		_vigBump('roam', { n: 1, f: 1, fc: 1 });   // 老 recordRoamUsage({filesCreated:1})：漫游+新建+文件操作各+1
 		filenameInput.value = '';

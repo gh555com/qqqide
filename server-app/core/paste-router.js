@@ -414,17 +414,24 @@
       return anchor.model.getDecorationRange(anchor.id) || null;
     } catch (e) { return null; }
   }
-  function _anchorAdvance(anchor, len) {
-    if (!anchor || !anchor.ok || !(len > 0)) return;
+  // 锚点前推到「插入起点偏移 + 已插入长度」——幂等：标记已在目标偏移时零动作。
+  // ★ 禁按长度盲加（_anchorAdvance 已废）：executeEdits(forceMoveMarkers:true) 本身就把标记推到
+  //   插入内容末尾，再 += len 等于二次前进 len 个字符——空行成片的文档里 1 字符 = 1 行，
+  //   于是相邻锚点之间凭空多出 len 行空白（len ≈ 令牌长度 → 9/10 行）。
+  function _anchorSetTo(anchor, offset) {
+    if (!anchor || !anchor.ok || !(offset >= 0)) return;
     try {
-      var r = anchor.model.getDecorationRange(anchor.id);
+      var model = anchor.model;
+      if (!model || (typeof model.isDisposed === 'function' && model.isDisposed())) { anchor.ok = false; return; }
+      var r = model.getDecorationRange(anchor.id);
       if (!r) { anchor.ok = false; return; }
-      var np = anchor.model.getPositionAt(anchor.model.getOffsetAt(r.getStartPosition()) + len);
-      var rid = anchor.model.deltaDecorations([anchor.id], [{
+      if (model.getOffsetAt(r.getStartPosition()) === offset) return;   // 已在目标位
+      var np = model.getPositionAt(offset);
+      var rid = model.deltaDecorations([anchor.id], [{
         range: new _monaco.Range(np.lineNumber, np.column, np.lineNumber, np.column),
         options: { stickiness: _anchorStick(), description: 'qqq-paste-anchor' },
       }]);
-      if (rid && rid.length) anchor.id = rid[0];
+      if (rid && rid.length) anchor.id = rid[0]; else anchor.ok = false;
     } catch (e) { anchor.ok = false; }
   }
   function _anchorDrop(anchor) {
@@ -435,7 +442,10 @@
 
   // 统一应用插入：优先编辑器级 executeEdits（Monaco 光标/撤销整合）；
   // 编辑器已销毁但模型存活（split 另一格仍开）→ 模型级 applyEdits（内容不丢）。
+  // 返回插入起点偏移（-1 = 取不到）——调用方据此把冻结锚前推到「起点 + 文本长度」。
   function _applyInsert(targetEd, model, range, text) {
+    var base = -1;
+    try { base = model.getOffsetAt(range.getStartPosition()); } catch (_) { base = -1; }
     var viaEditor = false;
     try {
       if (targetEd && _modelOf(targetEd) === model) {
@@ -446,6 +456,7 @@
     if (!viaEditor) model.applyEdits([{ range: range, text: text }]);
     try { if (window.qqqCharUndo && window.qqqCharUndo.mark) window.qqqCharUndo.mark(targetEd); } catch (_) {}
     _tryFocus(targetEd);
+    return base;
   }
 
   // focus 卫生：仅在编辑器当前就持有文本焦点时 focus（no-op 续焦）；用户已去别处（切窗/点别格/
@@ -502,8 +513,8 @@
         }
       }
       var text = prefix + token + '\n';
-      _applyInsert(targetEd, b.model, b.range, text);
-      if (anchor) _anchorAdvance(anchor, text.length);
+      var baseOff = _applyInsert(targetEd, b.model, b.range, text);
+      if (anchor) _anchorSetTo(anchor, baseOff >= 0 ? baseOff + text.length : -1);
       // ★ 2026-09-14 根治：视口机器（viewport-machine，唯一渲染真相）持 per-editor 锚点表，
       //   粘贴必须把真实 path 显式注册进去——否则相框渲染时 path=null → 图无 src（破图），
       //   直到切标签/重开文件触发全量重扫才恢复。注册后相框立即拿到 file:// 源。
@@ -734,8 +745,8 @@
     var b = _resolveInsertBase(targetEd, anchor);
     if (!b.ok) return 'dead';
     try {
-      _applyInsert(targetEd, b.model, b.range, text);
-      if (anchor) _anchorAdvance(anchor, text.length);
+      var basePlain = _applyInsert(targetEd, b.model, b.range, text);
+      if (anchor) _anchorSetTo(anchor, basePlain >= 0 ? basePlain + text.length : -1);
       return 'ok';
     } catch (_) { return 'skip'; }
   }
@@ -964,8 +975,8 @@
       } catch (_) { /* */ }
     }
     var insertText = prefix + content;
-    _applyInsert(targetEd, b.model, b.range, insertText);
-    if (anchor) _anchorAdvance(anchor, insertText.length);
+    var baseOffRich = _applyInsert(targetEd, b.model, b.range, insertText);
+    if (anchor) _anchorSetTo(anchor, baseOffRich >= 0 ? baseOffRich + insertText.length : -1);
 
     // 令牌位置重算 + viewport 注册（单次插入需要逐令牌登记——缺它相框 path null 破图）
     var machine = window.qqqViewportMachine;
@@ -1342,7 +1353,8 @@
     if (pr.hasFile && pr.fileList.length > 0) {
       var fullPaths = [];
       if (bridge && bridge.clipboard && bridge.clipboard.readFiles) {
-        try { fullPaths = await bridge.clipboard.readFiles(); } catch (_) { fullPaths = []; }
+        // expected 仅用于壳侧「读少了」告警（DOM 看到的条目数）——不参与结果裁剪
+        try { fullPaths = await bridge.clipboard.readFiles(pr.fileList.length || 0); } catch (_) { fullPaths = []; }
       }
       if (fullPaths.length > 0) {
         var pdir = _getPasteDir(e);
@@ -1355,8 +1367,9 @@
           for (var n = 0; n < fullPaths.length; n++) {
             var fp = fullPaths[n];
             var fnP = fp.replace(/\\/g, '/').split('/').pop() || 'file';
-            if (seenP[fnP]) continue;
-            seenP[fnP] = true;
+            // 去重键 = 完整路径（同名不同目录的文件必须各粘一份；按文件名去重会静默丢文件）
+            if (seenP[fp]) continue;
+            seenP[fp] = true;
             var dstP = pdir + psep + fnP;
             try {
               if (!bridge || !bridge.fs || !bridge.fs.copyFile) throw new Error('fs.copyFile missing');

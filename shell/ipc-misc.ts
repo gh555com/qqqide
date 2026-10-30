@@ -140,10 +140,15 @@ export function registerMiscIpc(
         return [];
     }
 
-    // readFiles — CF_HDROP: 原生直读优先 (sub-ms, 零 spawn) + PowerShell 兜底
-    // ★ 2026-09-03: PS 冷启动 1.5~3s 曾致 roam 粘贴「等 3 秒才出 ioast」假死感（用户实测）。
-    //   FileNameW = Explorer 复制文件的标准 CF_HDROP 格式（UTF-16LE 双 NUL 路径列表）。
-    ipcMain.handle('qqqide:clipboard:readFiles', async () => {
+    // readFiles — 剪贴板文件列表（唯一真相 = CF_HDROP）
+    // ★ 读取主路必须走 CF_HDROP：FileNameW / FileName 是资源管理器遗留的「单条」格式——
+    //   多选复制时里面只有一条路径（实锤：45 个文件只粘上 1 个，且恰是资源管理器焦点那个）。
+    //   旧实现拿 FileNameW 当快路径 + `if (real.length > 0) return real` 早退 → 永远读不到全量；
+    //   qd 自己的 writeFiles 把全量写进 FileNameW，所以只有「Roam 复制」能多选粘贴，假象是
+    //   「资源管理器复制不行」。（PS 冷启动 1.5~3s 曾致粘贴假死感，故保留 python 百毫秒快路）
+    // 次序：① 内置 Python ctypes 直读 CF_HDROP（全量，~百毫秒）→ ② PS GetFileDropList → ③ FileNameW（legacy 单条，仅前两路全败时兜底）
+    // expected（可选）= 渲染层 DOM 侧看到的条目数；仅用于「读少了」告警，绝不截断结果。
+    ipcMain.handle('qqqide:clipboard:readFiles', async (_e, expected?: number) => {
         if (process.platform === 'darwin') return await _readFilesMac();
         // ★ Linux（2026-10-05）：freedesktop 文件剪贴板——GNOME/Nautilus/KDE 复制文件 = text/uri-list
         //   （GNOME 另置 x-special/gnome-copied-files）；两目标依次尝试，file:// URI → 本地路径
@@ -172,18 +177,37 @@ export function registerMiscIpc(
             } catch (e) { console.warn('[klipzap] readFiles(linux) failed:', e); return []; }
         }
         if (process.platform !== 'win32') return [];
-        try {
-            const rawBuf = clipboard.readBuffer('FileNameW');
-            if (rawBuf && rawBuf.length > 0) {
-                const parts = rawBuf.toString('utf16le').split('\0').map(s => s.trim()).filter(s => s.length > 0);
-                // 存在性过滤：防格式误读/异常格式返回垃圾路径
-                const real: string[] = [];
-                for (const p of parts) {
-                    try { if (fs.existsSync(p)) real.push(p); } catch { /* skip */ }
-                }
-                if (real.length > 0) return real;
+        const _expectWarn = (got: string[]) => {
+            const exp = Number(expected) || 0;
+            if (exp > 0 && got.length > 0 && got.length < exp) {
+                console.warn('[klipzap] readFiles: 只读到 ' + got.length + '/' + exp + ' 条（剪贴板格式不全）');
             }
-        } catch (e) { /* 原生不可用/无 CF_HDROP → PS 兜底 */ }
+            return got;
+        };
+        // ① 快路径（全量权威）：内置 Python ctypes 直读 CF_HDROP（与 writeFiles 同一件：win-pasteboard.py）
+        try {
+            const py = resolvePythonPath(portableRoot);
+            const pyScript = path.join(__dirname, 'win-pasteboard.py');
+            if (py && fs.existsSync(pyScript)) {
+                const out = await new Promise<string>((resolve, reject) => {
+                    cp.execFile(py, ['-u', pyScript, 'getfiles'], { timeout: 6000, windowsHide: true, encoding: 'utf8' }, (err, stdout) => {
+                        if (err) { reject(err); return; }
+                        resolve(stdout || '');
+                    });
+                });
+                const txt = String(out).trim();
+                if (txt) {
+                    let list: string[] = [];
+                    try { list = JSON.parse(Buffer.from(txt, 'base64').toString('utf8')) || []; } catch { list = []; }
+                    const real: string[] = [];
+                    for (const p of list) {
+                        if (typeof p !== 'string' || !p) continue;
+                        try { if (fs.existsSync(p)) real.push(p); } catch { /* skip */ }
+                    }
+                    if (real.length > 0) return _expectWarn(real);
+                }
+            }
+        } catch (e) { /* python 不可用/非文件剪贴板 → 下一路 */ }
         try {
             // ★ 2026-08-24: PowerShell 5.1 管道输出默认 ANSI(GBK)——中文路径经 execFile
             //   UTF-8 解码变乱码 → stat ENOENT → copyFile 静默 false → roam "1 copied 假成功"。
@@ -207,11 +231,23 @@ if ($list -and $list.Count -gt 0) {
                 });
             });
             const lines = result.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
-            return lines;
+            if (lines.length > 0) return _expectWarn(lines);
         } catch (e) {
-            console.warn('[klipzap] readFiles failed:', e);
-            return [];
+            console.warn('[klipzap] readFiles(PS) failed:', e);
         }
+        // ③ 最后兜底：Electron 原生 FileNameW（legacy 单条格式——多选复制只有一条，禁作主路）
+        try {
+            const rawBuf = clipboard.readBuffer('FileNameW');
+            if (rawBuf && rawBuf.length > 0) {
+                const parts = rawBuf.toString('utf16le').split('\0').map(s => s.trim()).filter(s => s.length > 0);
+                const real: string[] = [];
+                for (const p of parts) {
+                    try { if (fs.existsSync(p)) real.push(p); } catch { /* skip */ }
+                }
+                if (real.length > 0) return _expectWarn(real);
+            }
+        } catch (e) { /* ignore */ }
+        return [];
     });
 
     // writeFiles — 剪贴板「文件列表」写入（Win=CF_HDROP / mac=NSPasteboard）

@@ -121,6 +121,9 @@ function bootAiOverlay() {
   var _ovShowGen = 0;
   // ★ 本轮连续跳过计数（文件被外部删除/移动/损坏 → 标死续跳；落定到可显示图片后一次性如实提示）
   var _ovNavSkips = 0;
+  // ★ 解码失败 → 系统默认程序兜底（仅显式请求的入口开启：open-image 消息 sysFallback=true，当前 = codelens 文件信息行）；
+  //   翻页序列在场时恒不开（标死续跳语义优先——禁每张死图都弹系统程序）
+  var _ovSysFallback = false;
   // ★ 旋转机器（图片专属）：当前图旋转角——连续累计（保旋转动画恒走短边）；归一值 0/90/180/270 仅用于适配/记忆
   var _ovRotDeg = 0;
   // ★ 旋转视图记忆（path 键·反斜杠归一正斜杠；app 运行期内存表——关层重开/跨来源保持，重启清零，绝不落盘；FIFO 上限 500）
@@ -754,6 +757,7 @@ function bootAiOverlay() {
     _ovLocalPath = null;
     _ovNav = null;
     _ovNavSkips = 0;
+    _ovSysFallback = false;
     _ovImgDispose();
     _ovTablePanMode = false;
     _ovPanDrag = null;
@@ -972,6 +976,12 @@ function bootAiOverlay() {
   function _ovImgDispose() {
     if (_ovImgCleanup) { try { _ovImgCleanup(); } catch (_) { } _ovImgCleanup = null; }
   }
+  // ★ 解码失败 → 系统默认程序兜底（仅 open-image 消息 sysFallback=true 且无翻页序列时生效）
+  function _ovSysFallbackFire(p) {
+    if (!_ovSysFallback || _ovNav) return;
+    _ovSysFallback = false;
+    try { if (bridge && bridge.shell && bridge.shell.openPath && p) bridge.shell.openPath(p); } catch (_) { }
+  }
   function _ovShowImage(src, localPath, isTx) {
     var _gen = ++_ovShowGen;   // 代际令牌：本次调用之外的旧回调一律作废
     // 强制清理上一轮残留（含上一张图的拖拽监听）
@@ -1005,6 +1015,7 @@ function bootAiOverlay() {
       }, function () {
         if (_gen !== _ovShowGen) return;
         if (_ovNavFail()) return;                            // 翻页序列在场：标死续跳
+        _ovSysFallbackFire(_ovLocalPath);                    // 显式请求了兜底 → 交系统默认程序
         _ovQoast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
         try { close(); } catch (_) { }
       });
@@ -1089,12 +1100,14 @@ function bootAiOverlay() {
         }, function () {
           if (_gen !== _ovShowGen) return;
           if (_ovNavFail()) return;                            // 翻页序列在场：标死续跳
+          _ovSysFallbackFire(_ipath || _ovLocalPath);          // 显式请求了兜底 → 交系统默认程序
           _ovQoast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
           try { close(); } catch (_) { }
         });
         return;
       }
       if (_ovNavFail()) return;                                // 翻页序列在场：标死续跳
+      _ovSysFallbackFire(_ipath || _ovLocalPath);              // 显式请求了兜底 → 交系统默认程序
       _ovQoast(window._i('shell.overlay.loadFailed', '图片加载失败，无法预览'), 'error');
       try { close(); } catch (_) { }
     };
@@ -1146,6 +1159,7 @@ function bootAiOverlay() {
       //   不足两张 / 序号无效 → 无翻页钮（退化为普通单张预览）
       _ovNav = null;
       _ovNavSkips = 0;
+      _ovSysFallback = !!e.data.sysFallback;
       var _nav = e.data.nav;
       if (_nav && Array.isArray(_nav.list) && _nav.list.length > 1) {
         var _nIdx = (typeof _nav.index === 'number' && _nav.index >= 0 && _nav.index < _nav.list.length) ? _nav.index : -1;
@@ -1168,6 +1182,7 @@ function bootAiOverlay() {
     if (e.data.action === 'open-table') {
       _ovLocalPath = null;
       _ovNav = null;   // 表格/代码块无翻页序列
+      _ovSysFallback = false;
       // ★ 武装画布拖拽平移（渲染区外暗色区域按住拖拽 = 平移整个图层；D-pad 照常）
       _ovTablePanMode = true;
       _ovPanDrag = null;

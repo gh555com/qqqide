@@ -255,6 +255,8 @@ var _orig={};
 <script src="core/qqq-center.js"></script>
 <!-- ★ 应用级界面缩放消费机（2026-09-29）：qqq-prefs uiZoom → 壳层 zoom 热应用；须在 qqq-prefs.js 之后 -->
 <script src="core/ui-zoom.js"></script>
+<!-- 媒体分类唯一真理源（图片/视频/音频扩展名表；codelens 信息行 / Roam Q 键共消费） -->
+<script src="core/media-kinds.js"></script>
 <script src="core/frame-renderer.js"></script>
 <!-- 网页/富文本粘贴转换机（老 q3 SmartPaste 移植：HTML→结构化文本 + 媒体抽取；消费方 = paste-router 第 7 步） -->
 <script src="core/html-paste.js"></script>
@@ -317,7 +319,7 @@ var _orig={};
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=344')
+    navigator.serviceWorker.register('./service-worker.js?v=348')
       .then(function (reg) {
         // ★ 新 SW 已就绪（waiting）→ 立即激活（service-worker 收 skipWaiting 后 activate + claim）
     //   2026-08-23 删除 controllerchange 自动 reload：该事件在 SW 首次接管页面时同样触发

@@ -274,7 +274,7 @@ const QQQ = {    // ---- app info ----
         readImage: () => ipcRenderer.invoke('qqqide:clipboard:readImage'),
         hasImage: () => ipcRenderer.invoke('qqqide:clipboard:hasImage'),
         readHtml: () => ipcRenderer.invoke('qqqide:clipboard:readHtml'),
-        readFiles: () => ipcRenderer.invoke('qqqide:clipboard:readFiles'),
+        readFiles: (expected?: number) => ipcRenderer.invoke('qqqide:clipboard:readFiles', expected),
         writeFiles: (paths: string[]) => ipcRenderer.invoke('qqqide:clipboard:writeFiles', paths),
         writeImage: (payload: { path?: string; dataUrl?: string }) => ipcRenderer.invoke('qqqide:clipboard:writeImage', payload),
     },

@@ -549,7 +549,10 @@
       "copyFileSuccess": "已复制成功 — 文件",
       "copyFileFailed": "复制失败 — 文件: {0}",
       "copyImageSuccess": "已复制成功 — 位图二进制",
-      "copyImageFailed": "复制失败 — 位图二进制: {0}"
+      "copyImageFailed": "复制失败 — 位图二进制: {0}",
+
+      "sysFallback": "qd 打不开该文件，已用系统默认程序打开",
+      "openMissing": "文件不存在（可能已被删除或移动）: {0}"
     },
     "shareFile": "分享到公网…"
   },

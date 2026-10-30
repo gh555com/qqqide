@@ -425,10 +425,106 @@
     } catch (e) { /* */ }
   }
 
-  // 文件信息行 → 用系统默认程序打开（老 qqq.openFile 语义）
-  function _cmdOpen(path) {
-    try { if (bridge && bridge.shell && bridge.shell.openPath) bridge.shell.openPath(path); } catch (e) { /* */ }
+  // ════════════════════════════════════════════════════════════════════
+  // 文件信息行 → qd 优先（媒体）/ 系统默认（其余）——2026-10-29
+  //   裁决唯一来源 = core/media-kinds.js（IMAGE/VIDEO/AUDIO 三表）；表外格式（pdf/docx/zip/未知二进制/文本/目录）恒交系统默认（行为不变）。
+  //   媒体预判（ffprobe 探针，壳层按 stat 指纹缓存 30 天，命中 ~0ms）：探测失败 = 本机解不了这个文件
+  //   （缺 ffmpeg/坏文件/奇怪容器）→ 直接交系统默认并如实提示；HEVC 特判 = 转码方案是 -c copy，
+  //   Chromium 无系统 HEVC 解码器时该路径必失败 → 先问一次 MediaSource 能力再决定。
+  //   图片：原生直显组零延迟开悬浮层；psd/tif/tiff 先过探针；层内解码失败由 sysFallback 兜底系统默认。
+  // ════════════════════════════════════════════════════════════════════
+  function _sysOpen(path) {
+    try {
+      if (bridge && bridge.shell && bridge.shell.openPath) {
+        var pr = bridge.shell.openPath(path);
+        if (pr && typeof pr.catch === 'function') pr.catch(function () { });
+        return true;
+      }
+    } catch (e) { /* */ }
+    return false;
   }
+  function _sysFallbackOpen(path) {
+    if (_sysOpen(path)) _qoast(_t('editor.codelens.sysFallback', 'qd 打不开该文件，已用系统默认程序打开'), 'info');
+  }
+  // ffprobe 预判：onOk(info|null)——null = 壳层无探测能力（旧壳层）→ 静态表即裁决
+  function _probeGate(path, onOk) {
+    var m = bridge && bridge.media;
+    if (!m || typeof m.probe !== 'function') { onOk(null); return; }
+    var pr;
+    try { pr = m.probe(path); } catch (e) { onOk(null); return; }
+    Promise.resolve(pr).then(function (r) {
+      if (r && r.ok === true) { onOk(r); return; }
+      _sysFallbackOpen(path);
+    }).catch(function () { _sysFallbackOpen(path); });
+  }
+  function _isHevcCodec(codec) {
+    var c = String(codec || '').toLowerCase();
+    return c === 'hevc' || c === 'h265' || c === 'hev1' || c === 'hvc1';
+  }
+  // Chromium 自带 HEVC 解码器？（win 需系统 HEVC 扩展；无 → 重封装成 mp4 同样放不出）
+  function _chromiumDecodesHevc() {
+    try {
+      if (!window.MediaSource || typeof MediaSource.isTypeSupported !== 'function') return true;
+      return !!MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L93.B0"');
+    } catch (e) { return true; }
+  }
+  function _baseName(path) {
+    var s = String(path || '');
+    var i = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'));
+    return i >= 0 ? s.slice(i + 1) : s;
+  }
+  function _openInOverlay(slashPath) {
+    try {
+      window.postMessage({
+        type: 'qqqide-overlay', action: 'open-image',
+        src: 'file:///' + slashPath, localPath: slashPath, sysFallback: true,
+      }, '*');
+    } catch (e) { _sysOpen(slashPath); }
+  }
+  function _openInPlayer(slashPath, name) {
+    var pl = bridge && bridge.player;
+    if (!pl || typeof pl.open !== 'function') { _sysOpen(slashPath); return; }
+    var r;
+    try { r = pl.open({ list: [{ src: 'file:///' + slashPath, localPath: slashPath, name: name }], index: 0 }); }
+    catch (e) { _sysOpen(slashPath); return; }
+    Promise.resolve(r).then(function (res) {
+      if (res && res.ok === false) { _sysFallbackOpen(slashPath); }
+    }).catch(function () { _sysFallbackOpen(slashPath); });
+  }
+  // 分派：目录 / 表外格式（.lnk .bat .exe .cmd .url .msi .dwg 文本 未知二进制 无扩展名…）
+  // 恒系统默认 —— 与改动前逐字等价（同一次 bridge.shell.openPath），绝不进探针/悬浮层/播放器。
+  function _dispatchOpen(p, kind, MK, isDir) {
+    if (isDir || !kind) { _sysOpen(p); return; }
+    var slash = p.replace(/\\/g, '/');
+    if (kind === 'image') {
+      if (MK.isNativeImage(MK.extOf(p))) { _openInOverlay(slash); return; }   // Chromium 原生可解：零延迟直开
+      _probeGate(p, function () { _openInOverlay(slash); });                  // psd/tif/tiff：ffmpeg 未就绪 = 打不开
+      return;
+    }
+    var name = _baseName(p);
+    _probeGate(p, function (info) {
+      if (info && kind === 'video' && _isHevcCodec(info.codec) && !_chromiumDecodesHevc()) {
+        _sysFallbackOpen(p);
+        return;
+      }
+      _openInPlayer(slash, name);
+    });
+  }
+  function _cmdOpen(path) {
+    var p = String(path || '');
+    if (!p) return;
+    var MK = window.qqqMediaKinds;
+    var kind = MK ? MK.kindOf(p) : '';
+    // 存在性/目录裁决（壳层 stat，~1ms）：文件已删 → 如实提示（系统打开是 cmd start 发后不管，
+    // 目标没了只会静默什么都不发生）；目录即使带媒体后缀（xxx.mp4/）也走系统，绝不误当媒体。
+    var fsb = bridge && bridge.fs;
+    if (!fsb || typeof fsb.stat !== 'function') { _dispatchOpen(p, kind, MK, false); return; }
+    Promise.resolve(fsb.stat(p)).then(function (st) {
+      if (!st) { _qoast(_t('editor.codelens.openMissing', '文件不存在（可能已被删除或移动）: {0}', _baseName(p)), 'error'); return; }
+      _dispatchOpen(p, kind, MK, !!st.isDir);
+    }).catch(function () { _dispatchOpen(p, kind, MK, false); });
+  }
+
 
   // path → 复制纯文本路径（原 c1）
   function _cmdCopyPath(path) {
@@ -682,6 +778,7 @@
     };
     reg('qqqide.codelens.reveal', _cmdReveal);
     reg('qqqide.codelens.open', _cmdOpen);
+
     reg('qqqide.codelens.copyPath', _cmdCopyPath);
     reg('qqqide.codelens.copyFile', _cmdCopyFile);
     reg('qqqide.codelens.copyImage', _cmdCopyImage);

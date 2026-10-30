@@ -387,22 +387,16 @@ function isBinaryByName(name) {
 	if (_KNOWN_BINARY_EXTS[ext]) return true;
 	return null;
 }
-// ★ 悬浮预览层可直显图片格式（2026-09-21）——与主窗口 shell-overlay 同口径
-//   原生直显: png/jpg 全家/gif/bmp/webp/ico/svg/avif/apng；psd/tif/tiff = 壳层 ffmpeg 抽帧转码兜底（2026-09-21 增）
-//   含 svg（同时也在文本白名单——Q 键对图片优先走悬浮预览，不进编辑器）
-var _OVERLAY_IMG_EXTS = { '.png':1, '.jpg':1, '.jpeg':1, '.jpe':1, '.jfif':1, '.jif':1, '.gif':1, '.bmp':1, '.webp':1, '.ico':1, '.svg':1, '.avif':1, '.apng':1, '.psd':1, '.tif':1, '.tiff':1 };
-// ★ 悬浮层内置播放器格式（2026-09-21）——原生组已实测 Electron 22 全解码（h264/aac/hevc/vp9/opus/flac/wav + mkv/mov 容器可播）
-//   转码兜底组（avi/wmv/flv/rmvb/rm/mpg/m2ts/...）= 壳层 ffmpeg 转码后播放（同编码秒级重封装 / 否则重编码）
-//   ★ ts 排除: .ts = TypeScript 文本文件（绝不能被视频分支误吞）
-var _OVERLAY_VIDEO_EXTS = { '.mp4':1, '.m4v':1, '.webm':1, '.mkv':1, '.mov':1, '.ogv':1, '.avi':1, '.wmv':1, '.flv':1, '.rmvb':1, '.rm':1, '.mpg':1, '.mpeg':1, '.m2ts':1, '.mts':1, '.3gp':1, '.vob':1, '.asf':1, '.f4v':1, '.ogm':1 };
-var _OVERLAY_AUDIO_EXTS = { '.mp3':1, '.wav':1, '.flac':1, '.m4a':1, '.aac':1, '.ogg':1, '.oga':1, '.opus':1, '.weba':1, '.wma':1, '.aiff':1, '.aif':1, '.ape':1, '.ac3':1, '.mka':1, '.amr':1, '.au':1 };
-function _overlayExtOf(name) {
-	if (!name) return '';
-	var n = String(name).toLowerCase();
-	var dot = n.lastIndexOf('.');
-	return dot === -1 ? '' : n.substring(dot);
-}
-function isOverlayImageByName(name) { return !!_OVERLAY_IMG_EXTS[_overlayExtOf(name)]; }
+// ★ 媒体分类（图片/视频/音频）唯一真理源 = core/media-kinds.js——本文件零副本（禁再添本地扩展名表）
+//   IMAGE = 悬浮预览层可显示全集（原生组 + psd/tif/tiff 抽帧转码）· VIDEO/AUDIO = 独立播放器窗可播全集
+//   Q 键优先级不变：图片（含 svg）优先走悬浮预览、不进编辑器；表外格式恒非媒体（.ts 恒排除 = TypeScript）
+var _MK = window.qqqMediaKinds;
+if (!_MK) { try { console.error('[roam] core/media-kinds.js 未加载 —— 媒体分类不可用'); } catch (e0) { } }
+var _OVERLAY_IMG_EXTS = _MK ? _MK.IMAGE : {};
+var _OVERLAY_VIDEO_EXTS = _MK ? _MK.VIDEO : {};
+var _OVERLAY_AUDIO_EXTS = _MK ? _MK.AUDIO : {};
+function _overlayExtOf(name) { return _MK ? _MK.extOf(name) : ''; }
+function isOverlayImageByName(name) { return _MK ? (_MK.kindOf(name) === 'image') : false; }
 // Content-based check: read first 512 bytes, look for null bytes
 async function isBinaryByContent(filePath) {
 	try { var d = await bridge.fs.read(filePath); if (!d) return false;

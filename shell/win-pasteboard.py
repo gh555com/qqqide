@@ -3,11 +3,15 @@
 # Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 # ============================================================================
-# win-pasteboard.py — Windows 剪贴板“文件列表”写入器（klipzap writeFiles 快路径专属）
+# win-pasteboard.py — Windows 剪贴板“文件列表”读写器（klipzap 读写两侧快路径专属）
 #   调用: python win-pasteboard.py setfiles <base64(utf8-json-[paths])>
+#         python win-pasteboard.py getfiles
 #   写出: CF_HDROP + FileNameW + FileName —— 与资源管理器 Ctrl+C / PowerShell
-#         SetFileDropList 同构（Explorer 可粘贴、Chromium 粘贴事件暴露 Files、
-#         klipzap readFiles 的 FileNameW 直读快路径可命中）。
+#         SetFileDropList 同构（Explorer 可粘贴、Chromium 粘贴事件暴露 Files）。
+#   读回: getfiles = 读 CF_HDROP（文件列表的唯一权威格式，n 条全量）→ stdout 输出
+#         base64(utf8-json-[paths])。
+#         ★ FileNameW 是 Explorer 遗留的单条格式（多选复制时只有一条）——
+#           读取主路禁走它（会把 45 个文件读成 1 个，见 ipc-misc readFiles）。
 #   退出码: 0=成功；非 0=失败（调用方回落 PowerShell 慢路径）。
 #   存在理由: PS 冷启动 1.5~3s → Roam Ctrl+C 后秒粘贴拿到的还是“文本路径”，
 #            文件列表尚未落地 → 粘贴出纯文本（用户实测“一会儿好一会儿不行”）。
@@ -96,8 +100,61 @@ def _set_clipboard(paths):
         u32.CloseClipboard()
 
 
+def _get_clipboard_files():
+    """读 CF_HDROP → 完整路径列表（存在性过滤交调用方；这里只保证 n 条全量）。"""
+    import ctypes
+    from ctypes import wintypes as wt
+
+    u32 = ctypes.windll.user32
+    k32 = ctypes.windll.kernel32
+    shell32 = ctypes.windll.shell32
+
+    CF_HDROP = 15
+    u32.OpenClipboard.argtypes = [wt.HWND]
+    u32.OpenClipboard.restype = wt.BOOL
+    u32.GetClipboardData.argtypes = [wt.UINT]
+    u32.GetClipboardData.restype = wt.HANDLE
+    u32.CloseClipboard.restype = wt.BOOL
+    shell32.DragQueryFileW.argtypes = [wt.HANDLE, wt.UINT, wt.LPWSTR, wt.UINT]
+    shell32.DragQueryFileW.restype = wt.UINT
+
+    opened = False
+    for _ in range(20):
+        if u32.OpenClipboard(None):
+            opened = True
+            break
+        time.sleep(0.05)
+    if not opened:
+        return None, 'OpenClipboard failed (clipboard busy)'
+    try:
+        h = u32.GetClipboardData(CF_HDROP)
+        if not h:
+            return None, 'no CF_HDROP'
+        n = shell32.DragQueryFileW(h, 0xFFFFFFFF, None, 0)   # 0xFFFFFFFF = 取条目数
+        out = []
+        for i in range(n):
+            ln = shell32.DragQueryFileW(h, i, None, 0)
+            if ln <= 0:
+                continue
+            buf = ctypes.create_unicode_buffer(ln + 1)
+            if shell32.DragQueryFileW(h, i, buf, ln + 1) > 0:
+                p = buf.value
+                if p:
+                    out.append(p)
+        return out, ''
+    finally:
+        u32.CloseClipboard()
+
+
 def main():
     argv = sys.argv[1:]
+    if len(argv) >= 1 and argv[0] == 'getfiles':
+        files, err = _get_clipboard_files()
+        if files is None:
+            sys.stderr.write(err + '\n')
+            return 1
+        sys.stdout.write(base64.b64encode(json.dumps(files).encode('utf-8')).decode('ascii'))
+        return 0
     if len(argv) >= 2 and argv[0] == 'setfiles':
         try:
             paths = json.loads(base64.b64decode(argv[1]).decode('utf-8'))
@@ -112,7 +169,7 @@ def main():
             sys.stderr.write(err + '\n')
             return 1
         return 0
-    sys.stderr.write('usage: win-pasteboard.py setfiles <b64json>\n')
+    sys.stderr.write('usage: win-pasteboard.py setfiles <b64json> | getfiles\n')
     return 64
 
 

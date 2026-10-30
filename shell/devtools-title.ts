@@ -16,7 +16,8 @@ import { BrowserWindow } from 'electron';
 import { listDevToolsWindows, renameDevToolsHwnd, renameDevToolsLoose, isPyBrokerReady } from './py-broker';
 
 const DT_PREFIX = 'Developer Tools';
-const DT_WRENCH = '\u300c\U0001f527\u300d';
+// ★ 必须用 \u{...} 码点转义：JS 的 \U 不是合法转义（会退化成字面 "U0001f527"）
+const DT_WRENCH = '\u300c\u{1F527}\u300d';
 
 /** 认领重试阶梯（ms）——原生窗体在 devtools-opened 之后才出现，必须短等 */
 const CLAIM_LADDER = [0, 400, 1200, 2600, 5000];
