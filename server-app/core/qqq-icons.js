@@ -178,7 +178,58 @@
     // 多人（群聊）
     'users': '<circle cx="5.7" cy="5.6" r="2.1" fill="none" stroke="#000" stroke-width="1.2"/>' +
       '<path d="M2 13.2c0-2.2 1.6-3.7 3.7-3.7s3.7 1.5 3.7 3.7" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round"/>' +
-      '<path d="M10.3 4a2.1 2.1 0 0 1 0 4M11.2 9.9c1.6.4 2.6 1.7 2.6 3.3" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round"/>'
+      '<path d="M10.3 4a2.1 2.1 0 0 1 0 4M11.2 9.9c1.6.4 2.6 1.7 2.6 3.3" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round"/>',
+
+    // ── 排行 / 通用动作族（榜单列标题、面板分组标题、按钮标签的前置图标）──
+    // 奖杯（历史总排行）
+    'trophy': '<path d="M4.5 2.3h7v3.6a3.5 3.5 0 0 1-7 0z" fill="none" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<path d="M4.5 3.2H2.7v1.2a2.1 2.1 0 0 0 2.1 2.1M11.5 3.2h1.8v1.2a2.1 2.1 0 0 1-2.1 2.1" fill="none" stroke="#000" stroke-width="1.1"/>' +
+      '<path d="M8 9.4v2.1M6.6 11.5h2.8M6.2 13.7h3.6" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round"/>',
+    // 日历（上赛季排行）
+    'calendar': '<rect x="2.2" y="3.8" width="11.6" height="10" rx="1.4" fill="none" stroke="#000" stroke-width="1.2"/>' +
+      '<path d="M2.2 6.8h11.6" fill="none" stroke="#000" stroke-width="1.1"/>' +
+      '<path d="M5.4 2.2v3M10.6 2.2v3" fill="none" stroke="#000" stroke-width="1.3" stroke-linecap="round"/>' +
+      '<path d="M5.1 9.2h1.3M7.5 9.2h1.3M9.9 9.2h1.3M5.1 11.5h1.3M7.5 11.5h1.3" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round"/>',
+    // 层级堆叠（本周排行）——三级实心台阶：小尺寸下描边会糊成一片，故用实心块保证 12-13px 可辨
+    'tier': '<rect x="2.4" y="10.6" width="11.2" height="3.2" rx="0.9"/>' +
+      '<rect x="4.4" y="6.8" width="7.2" height="3.2" rx="0.9"/>' +
+      '<rect x="6.4" y="3" width="3.2" height="3.2" rx="0.9"/>',
+    // 锁（登录）
+    'lock': '<rect x="3.3" y="7.1" width="9.4" height="6.6" rx="1.3" fill="none" stroke="#000" stroke-width="1.25"/>' +
+      '<path d="M5.5 7.1V5.4a2.5 2.5 0 0 1 5 0v1.7" fill="none" stroke="#000" stroke-width="1.25"/>' +
+      '<circle cx="8" cy="10.4" r="0.95"/>',
+    // 地球（全局/大搜索）
+    'globe': '<circle cx="8" cy="8" r="6" fill="none" stroke="#000" stroke-width="1.2"/>' +
+      '<path d="M2 8h12" fill="none" stroke="#000" stroke-width="1"/>' +
+      '<path d="M8 2c1.7 1.6 2.7 3.7 2.7 6S9.7 12.4 8 14c-1.7-1.6-2.7-3.7-2.7-6S6.3 3.6 8 2z" fill="none" stroke="#000" stroke-width="1"/>',
+    // 下载（落盘）——收件盘 + 下行箭头（send 的镜像）
+    'download': '<path d="M8 2.6v7.2M4.9 6.7L8 9.8l3.1-3.1" fill="none" stroke="#000" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M2.6 10.4v1.7a1.4 1.4 0 0 0 1.4 1.4h8a1.4 1.4 0 0 0 1.4-1.4v-1.7" fill="none" stroke="#000" stroke-width="1.25" stroke-linecap="round"/>',
+    // 软盘（保存）
+    'save': '<path d="M2.6 3.9c0-.7.6-1.3 1.3-1.3h6.6l2.9 2.9v6.6c0 .7-.6 1.3-1.3 1.3H3.9c-.7 0-1.3-.6-1.3-1.3z" fill="none" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<path d="M5.3 2.6h4.4v3.1H5.3z" fill="none" stroke="#000" stroke-width="1.1"/>' +
+      '<path d="M5.1 13.4V9.6h5.8v3.8" fill="none" stroke="#000" stroke-width="1.1"/>',
+    // 定位针（差异视图）
+    'pin': '<path d="M8 14.2s4.4-4.5 4.4-7.4A4.4 4.4 0 0 0 3.6 6.8c0 2.9 4.4 7.4 4.4 7.4z" fill="none" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<circle cx="8" cy="6.6" r="1.6" fill="none" stroke="#000" stroke-width="1.2"/>',
+    // 多行文本（全文视图）
+    'lines': '<path d="M2.6 3.6h10.8M2.6 6.6h10.8M2.6 9.6h10.8M2.6 12.6h6.2" fill="none" stroke="#000" stroke-width="1.3" stroke-linecap="round"/>',
+    // 上下翻页箭头（同 chevron-left/right 笔触）
+    'chevron-up': '<path d="M4 10l4-4 4 4" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    'chevron-down': '<path d="M4 6l4 4 4-4" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    // 关闭/取消
+    'close': '<path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round"/>',
+    // 包裹（文档导出）
+    'package': '<path d="M8 2.1l5.6 2.8v6.2L8 13.9 2.4 11.1V4.9z" fill="none" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<path d="M2.6 5L8 7.8l5.4-2.8M8 7.8v6" fill="none" stroke="#000" stroke-width="1.1"/>',
+    // 太阳（核心设置组）
+    'sun': '<circle cx="8" cy="8" r="3.1" fill="none" stroke="#000" stroke-width="1.25"/>' +
+      '<path d="M8 1.5v1.7M8 12.8v1.7M1.5 8h1.7M12.8 8h1.7M3.4 3.4l1.2 1.2M11.4 11.4l1.2 1.2M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2" fill="none" stroke="#000" stroke-width="1.25" stroke-linecap="round"/>',
+    // 尖括号（HTML / 富文本设置组）
+    'code': '<path d="M5.6 5.1L2.7 8l2.9 2.9M10.4 5.1L13.3 8l-2.9 2.9" fill="none" stroke="#000" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>',
+    // 罗盘（漫游设置组）
+    'compass': '<circle cx="8" cy="8" r="6" fill="none" stroke="#000" stroke-width="1.2"/>' +
+      '<path d="M10.6 5.4L9.1 9.1 5.4 10.6 6.9 6.9z" fill="none" stroke="#000" stroke-width="1.1" stroke-linejoin="round"/>'
   };
 
   var NAMES = Object.keys(SHAPES);
@@ -211,7 +262,10 @@
   var css = '.qqi{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125em;' +
     'background-color:currentColor;background-repeat:no-repeat;background-position:center;background-size:contain;' +
     '-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;' +
-    'mask-repeat:no-repeat;mask-position:center;mask-size:contain}';
+    'mask-repeat:no-repeat;mask-position:center;mask-size:contain}' +
+    // 前置图标（标题/按钮/标签的行首图标位）：与后随文字留固定间距，禁各处自写 margin
+    '.qqi-lead{margin-right:.36em}';
+
   NAMES.forEach(function (n) {
     var u = _uri(n);
     var decl = '-webkit-mask-image:url("' + u + '");mask-image:url("' + u + '")';

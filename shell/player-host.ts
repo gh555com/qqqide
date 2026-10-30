@@ -25,6 +25,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { spawn, execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { getDataDir } from './portable-paths';
 import { pickRevealWindowId, pickOpenTargetId, revealReqStale } from './player-reveal';
 
@@ -206,13 +207,13 @@ export function spawnIdeOpen(files: string[]): void {
     }
 }
 
-// ── 路径 → 播放器条目（runQ 同口径：file:/// 正斜杠） ──
+// ── 路径 → 播放器条目（file URL 恒走 Node pathToFileURL：Windows 盘符 / POSIX / UNC 一个出口）──
 export function filesToItems(files: string[]): any[] {
     const out: any[] = [];
     for (const f of files) {
         if (!f || typeof f !== 'string') { continue; }
         const fp = f.replace(/\\/g, '/');
-        out.push({ src: 'file:///' + fp, localPath: fp, name: path.basename(f) });
+        out.push({ src: pathToFileURL(f).href, localPath: fp, name: path.basename(f) });
     }
     return out;
 }

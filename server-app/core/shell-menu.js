@@ -1281,7 +1281,7 @@ function _showEvangelistClaimPopup() {
   box.style.cssText = 'background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.25);padding:24px;min-width:360px;max-width:440px;';
 
   var title = document.createElement('h3');
-  title.textContent = window._i('shell.st.claimTitle', '➕ 认领学生');
+  title.innerHTML = '<span class="qqi qqi-lead qqi-users"></span>' + window._i('shell.st.claimTitle', '认领学生');
   title.style.cssText = 'margin:0 0 4px;font-size:16px;color:var(--text-primary);';
   box.appendChild(title);
 

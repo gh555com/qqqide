@@ -194,7 +194,7 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
     </div>
 
   </div>
-  <span id="file-gone-badge" data-i18n="timeline.deletedBadge" data-i18n-title="timeline.deletedBadgeTip" title="此文件在磁盘上已不存在——历史快照仍完整保存在记忆库" style="display:none;flex-shrink:0;font-size:11px;font-weight:700;color:var(--red);border:1px dashed var(--red);border-radius:3px;padding:1px 6px;-webkit-app-region:no-drag">🗑️ 已删除</span>
+  <span id="file-gone-badge" data-i18n-title="timeline.deletedBadgeTip" title="此文件在磁盘上已不存在——历史快照仍完整保存在记忆库" style="display:none;flex-shrink:0;font-size:11px;font-weight:700;color:var(--red);border:1px dashed var(--red);border-radius:3px;padding:1px 6px;-webkit-app-region:no-drag"><span class="qqi qqi-lead qqi-trash"></span><span data-i18n="timeline.deletedBadge">已删除</span></span>
   <div style="position:relative;flex-shrink:0;display:flex;align-items:center;-webkit-app-region:no-drag">
     <button class="win-btn op-btn" id="btn-op" data-i18n-title="timeline.opBtn" title="操作">op</button>
     <div class="op-dropdown" id="op-dropdown" style="display:none">
@@ -236,7 +236,7 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
     <div id="edit-status">
       <span class="es-label"><svg class="es-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span data-i18n="timeline.editing">编辑中</span></span>
       <span class="es-status" data-i18n="timeline.unsaved">未保存</span>
-      <button id="btn-snap" style="display:none" data-i18n="timeline.snapshot">📸 打快照</button>
+      <button id="btn-snap" style="display:none"><span class="qqi qqi-lead qqi-camera"></span><span data-i18n="timeline.snapshot">打快照</span></button>
       <span class="es-snap"></span>
     </div>
   </div>
@@ -252,10 +252,10 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
       <span class="vault-search-ico qqi qqi-search"></span>
       <input id="vault-search" class="vault-search" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="timeline.vaultSearchPh" placeholder="搜索记忆库：文件名或路径片段…">
       <label class="vault-chip" id="vault-gone-chip" data-i18n-title="timeline.vaultOnlyGoneTip" title="只显示磁盘上已删除的文件"><input type="checkbox" id="vault-only-gone"><span data-i18n="timeline.vaultOnlyGone">只看已删除</span></label>
-      <button id="vault-back" class="vault-back" data-i18n="timeline.vaultBack">✕ 返回对比</button>
+      <button id="vault-back" class="vault-back"><span class="qqi qqi-lead qqi-close"></span><span data-i18n="timeline.vaultBack">返回对比</span></button>
     </div>
     <div class="vault-crumb-row">
-      <button id="vault-up" class="vault-up" data-i18n="timeline.vaultUp">⬆ 上一级</button>
+      <button id="vault-up" class="vault-up"><span class="qqi qqi-lead qqi-chevron-up"></span><span data-i18n="timeline.vaultUp">上一级</span></button>
       <div id="vault-crumb" class="vault-crumb"></div>
       <span id="vault-count" class="vault-count"></span>
     </div>
@@ -265,7 +265,7 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
 </div>
 
 <button id="btn-diff-only" data-i18n="timeline.diffOnly">仅差异</button>
-<button id="big-close">✕</button>
+<button id="big-close"><span class="qqi qqi-close" style="width:13px;height:13px"></span></button>
 <button id="btn-edit" data-i18n="timeline.editBtn">编辑</button>
 <div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.editTooltip">编辑当前磁盘最新文件（而非任何一个历史快照）</span></div>
 <div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.closeHint">= Right Click</span></div>

@@ -676,7 +676,7 @@ async function executeGenerateImage(args, ownerAgent) {
             await bridge.fs.write(_indexPath, _newContent).catch(function () { });
         } catch (__) { /* 索引非致命 */ }
 
-        return paths.map(function (p) { return '![](file:///' + p.replace(/\\/g, '/') + ')'; }).join('\n');
+        return paths.map(function (p) { return '![](' + window.qqqFileUrl(p) + ')'; }).join('\n');
 
     } catch (err) {
         return 'Error running image generation: ' + (err.message || err);
@@ -1064,7 +1064,7 @@ async function executeRemoveBackground(args, ownerAgent) {
             return 'Error removing background: download failed (exit ' + ((dlResult && dlResult.exitCode) || '?') + ') ' + ((dlResult && (dlResult.stderr || dlResult.stdout)) || '').slice(0, 300);
         }
 
-        return 'Background removed successfully. Output: ![](file:///' + outPath.replace(/\\/g, '/') + ')';
+        return 'Background removed successfully. Output: ![](' + window.qqqFileUrl(outPath) + ')';
 
     } catch (err) {
         return 'Error removing background: ' + (err.message || err);

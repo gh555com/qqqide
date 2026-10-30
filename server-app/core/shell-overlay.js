@@ -415,13 +415,8 @@ function bootAiOverlay() {
   // ★ POSIX 形态（2026-10-14）：file:///Users/x → /Users/x（补回前导斜杠）；裸 '/…' 非 Windows 平台直接收
   function _localPathFromSrc(src) {
     if (typeof src !== 'string') return null;
-    if (/^file:\/\//i.test(src)) {
-      if (!/^file:\/\/\//i.test(src)) return src;   // 非三斜杠 file URL（UNC 等）：原样退回（旧语义不变）
-      var rest = src.replace(/^file:\/\/\//i, '');
-      var p = /^[A-Za-z]:/.test(rest) ? rest : '/' + rest;   // win 盘符形态原样（E:/x）；POSIX 补前导斜杠
-      try { p = decodeURIComponent(p); } catch (_) { }
-      return p;
-    }
+    var p = window.qqqFilePathFromUrl(src);          // file URL → 路径（唯一逆映射：盘符/POSIX/UNC 三形态）
+    if (p) return p;
     if (/^[A-Za-z]:[\\/]/.test(src)) return src;
     if (/^\/(?!\/)/.test(src) && !_ROAM_WIN) return src;   // mac/linux POSIX 绝对（平台判定同 _roamPosixAbs）
     return null;
@@ -1011,7 +1006,7 @@ function bootAiOverlay() {
     if (!isTx && _ovLocalPath && (_imgTxEarlyExt === '.psd' || _imgTxEarlyExt === '.tif' || _imgTxEarlyExt === '.tiff')) {
       _ovTxRun(_ovLocalPath, 'image', function (newPath) {
         if (_gen !== _ovShowGen) return;                     // 已翻页/已重开：旧转码产物不回抢
-        _ovShowImage('file:///' + newPath, newPath, true);   // 产物直载（isTx 防环）
+        _ovShowImage(window.qqqFileUrl(newPath), newPath, true);   // 产物直载（isTx 防环）
       }, function () {
         if (_gen !== _ovShowGen) return;
         if (_ovNavFail()) return;                            // 翻页序列在场：标死续跳
@@ -1096,7 +1091,7 @@ function bootAiOverlay() {
       if (!isTx && _ipath && (_iext === '.psd' || _iext === '.tif' || _iext === '.tiff')) {
         _ovTxRun(_ipath, 'image', function (newPath) {
           if (_gen !== _ovShowGen) return;
-          _ovShowImage('file:///' + newPath, newPath, true);   // 产物直载（isTx 防环）
+          _ovShowImage(window.qqqFileUrl(newPath), newPath, true);   // 产物直载（isTx 防环）
         }, function () {
           if (_gen !== _ovShowGen) return;
           if (_ovNavFail()) return;                            // 翻页序列在场：标死续跳

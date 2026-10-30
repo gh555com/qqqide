@@ -19,6 +19,11 @@
     return s;
   }
 
+  // 行首图标位（标题/按钮/标签）：图标走 qqq-icons 手绘 SVG（跨系统字形一致），文字仍由 i18n 提供
+  function _qIco(name) {
+    return '<span class="qqi qqi-lead qqi-' + name + '"></span>';
+  }
+
   var _authData = null;
   var _initDone = false;
   var _stateListeners = [];
@@ -1000,16 +1005,16 @@
       '</div>' +
       '<div style="display:flex;min-height:300px;">' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _i18('login.lbr.freebie', '🍀 白嫖榜') + '</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _qIco('gift') + _i18('login.lbr.freebie', '白嫖榜') + '</div>' +
       '<div id="qqq-ldr-freebie"></div></div>' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _i18('login.lbr.allTime', '🏆 历史总排行') + '</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _qIco('trophy') + _i18('login.lbr.allTime', '历史总排行') + '</div>' +
       '<div id="qqq-ldr-left"></div></div>' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _i18('login.lbr.lastSeason', '📅 上赛季排行') + '</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">' + _qIco('calendar') + _i18('login.lbr.lastSeason', '上赛季排行') + '</div>' +
       '<div id="qqq-ldr-right"></div></div>' +
       '<div style="flex:1.05;padding:10px 12px;">' +
-      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:2px;">' + _i18('login.lbr.current', '⚔️ 本周排行') + '</div>' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:2px;">' + _qIco('tier') + _i18('login.lbr.current', '本周排行') + '</div>' +
       '<div style="font-size:10.5px;color:' + titleClr + ';opacity:0.72;margin-bottom:8px;">' + _i18('login.lbr.currentSub', '未决算 · 前 10 名结算日返还消费（20%↓5%）') + '</div>' +
       '<div id="qqq-ldr-current"></div>' +
       '<div id="qqq-ldr-current-me" style="margin-top:6px;padding-top:6px;border-top:1px dashed ' + border + ';font-size:11.5px;color:' + titleClr + ';line-height:1.6;"></div>' +
@@ -1135,12 +1140,12 @@
   function _updateLoginButtonState(active) {
     if (!_$loginBtn) return;
     if (active) {
-      _$loginBtn.textContent = _i18('login.loggingIn', '\u23F3 \u767B\u5F55\u4E2D');
+      _$loginBtn.innerHTML = _qIco('clock') + _i18('login.loggingIn', '\u767B\u5F55\u4E2D');
       _$loginBtn.style.cursor = 'wait';
       _$loginBtn.style.opacity = '0.6';
       _$loginBtn.title = _i18('login.loggingInTip', '\u767B\u5F55\u4E2D\uFF0C\u70B9\u51FB\u91CD\u65B0\u6253\u5F00\u6D4F\u89C8\u5668');
     } else {
-      _$loginBtn.textContent = _i18('login.btn', '\uD83D\uDD12 \u767B\u5F55');
+      _$loginBtn.innerHTML = _qIco('lock') + _i18('login.btn', '\u767B\u5F55');
       _$loginBtn.style.cursor = '';
       _$loginBtn.style.opacity = '';
       _$loginBtn.title = '';
@@ -1302,7 +1307,7 @@
     // 登录按钮
     _$loginBtn = document.createElement('button');
     _$loginBtn.className = 'qqq-login-btn';
-    _$loginBtn.textContent = _i18('login.btn', '\uD83D\uDD12 \u767B\u5F55');
+    _$loginBtn.innerHTML = _qIco('lock') + _i18('login.btn', '\u767B\u5F55');
     _$loginBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 20px;font-size:13px;';
     _$loginBtn.addEventListener('click', function (e) {
       e.preventDefault();
@@ -1610,11 +1615,11 @@
     if (now - _saShownAt < 60000) return;
     _saShownAt = now;
     if (_saQoast) { try { _saQoast.dismiss(); } catch (_) {} _saQoast = null; }
-    _saQoast = window.qqqideQoast.show(_i18('login.secondAuthMsg', '\uD83D\uDD10 \u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\n\u70B9\u51FB\u6309\u94AE\u8D70\u6B63\u5E38\u767B\u5F55\u6D41\u7A0B\uFF08\u4E0E\u53F3\u4E0A\u89D2\u767B\u5F55\u4E00\u81F4\uFF09'), {
+    _saQoast = window.qqqideQoast.show(_i18('login.secondAuthMsg', '\u9700\u8FDB\u884C\u4E8C\u6B21\u8BA4\u8BC1\n\u70B9\u51FB\u6309\u94AE\u8D70\u6B63\u5E38\u767B\u5F55\u6D41\u7A0B\uFF08\u4E0E\u53F3\u4E0A\u89D2\u767B\u5F55\u4E00\u81F4\uFF09'), {
       duration: 0,
       type: 'warn',
       action: {
-        label: _i18('login.secondAuthBtn', '\uD83D\uDEE1\uFE0F \u4E8C\u6B21\u8BA4\u8BC1'),
+        label: _i18('login.secondAuthBtn', '\u4E8C\u6B21\u8BA4\u8BC1'),
         onClick: function () {
           _saQoast = null;
           _doLogin().catch(function (err) { console.error('[second-auth] login error:', err); });

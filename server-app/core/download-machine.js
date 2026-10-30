@@ -138,7 +138,7 @@
         _qoast(_T('shell.dl.saved', '已保存：') + finalName, {
           type: 'success', duration: 12000,
           action: {
-            label: _T('shell.dl.roamLocate', '📂 Roam 定位'),
+            label: _T('shell.dl.roamLocate', 'Roam 定位'),
             onClick: function () { _revealLocal(entry.filePath); },
           },
         });

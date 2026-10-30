@@ -605,12 +605,10 @@
     _closeAll();
     var val = String(v == null ? '' : v);
     var src = v, local = null;
-    if (/^[a-zA-Z]:[\\/]/.test(val) || /^\\\\/.test(val)) {       // Windows 本机路径（盘符/UNC）→ file:/// 直载
+    // 本机绝对路径（盘符 / UNC / POSIX）→ 唯一机器规范成 file URL；'//' 开头为协议相对 URL，不收
+    if (/^[a-zA-Z]:[\\/]/.test(val) || /^\\\\/.test(val) || (val.charAt(0) === '/' && val.charAt(1) !== '/')) {
       local = v;
-      src = 'file:///' + val.replace(/\\/g, '/');
-    } else if (val.charAt(0) === '/' && val.charAt(1) !== '/') {   // mac/linux POSIX 绝对路径 → file:// 直载（'//' 开头为协议相对 URL）
-      local = v;
-      src = 'file://' + val;
+      src = window.qqqFileUrl(val);
     }
     try { window.postMessage({ type: 'qqqide-overlay', action: 'open-image', src: src, localPath: local }, '*'); } catch (e) { }
   }

@@ -349,7 +349,7 @@
     // 闸门行（列表顶部，start>0 时存在；滚到顶自动加载 + 点击兜底）
     function _gateHtml(win) {
         if (win.start <= 0) return '';
-        return '<div class="v-gate-item" title="' + _escAttr(_i('timeline.loadEarlierTip', '点击加载更早的快照')) + '">' + _i('timeline.loadEarlierGate', '⬆ 加载更早的 {n} 条（还剩 {m} 条）').replace('{n}', Math.min(_LAZY_BATCH, win.start)).replace('{m}', win.start) + '</div>';
+        return '<div class="v-gate-item" title="' + _escAttr(_i('timeline.loadEarlierTip', '点击加载更早的快照')) + '"><span class="qqi qqi-lead qqi-chevron-up"></span>' + _i('timeline.loadEarlierGate', '加载更早的 {n} 条（还剩 {m} 条）').replace('{n}', Math.min(_LAZY_BATCH, win.start)).replace('{m}', win.start) + '</div>';
     }
     // 初始渲染 = 最近 _LAZY_BATCH 条（两个下拉共享同一份 HTML，构建一次共用——原实现同流水线白跑两遍）
     function _renderDropdownLists() {

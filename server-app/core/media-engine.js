@@ -285,14 +285,16 @@
   function _reopenHost(p) { _reopenHostFor(HOST, p); }
   function _txRoot() { return _txRootFor(HOST); }
   function _persistTick() { _persistTickFor(HOST); }
+  // src → 本地文件路径（唯一逆映射，与 core/file-url.js 正向一一对应）：
+  //   Windows  file:///E:/x/a.png     → E:/x/a.png
+  //   POSIX    file:///Users/q/a.png  → /Users/q/a.png（前导斜杠必须补回——旧写法丢斜杠 = 相对路径 = 读不到）
+  //   UNC      file://nas/share/a.png → //nas/share/a.png
   function _localPathFromSrc(src) {
     if (typeof src !== 'string') return null;
-    if (/^file:\/\//i.test(src)) {
-      var p = src.replace(/^file:\/\/\//i, '');
-      try { p = decodeURIComponent(p); } catch (_) { }
-      return p;
-    }
+    var p = window.qqqFilePathFromUrl(src);          // file URL → 路径（唯一逆映射，POSIX 前导斜杠已补回）
+    if (p) return p;
     if (/^[A-Za-z]:[\\/]/.test(src)) return src;
+    if (src.charAt(0) === '/' && src.charAt(1) !== '/') return src;   // mac/linux POSIX 绝对（裸路径形态）
     return null;
   }
 
@@ -1837,7 +1839,7 @@ var _ovMediaFollow = false;     // ★ 追踪（2026-10-02 v14）：开 = 切轨
             // ★ 定位按钮（2026-10-03 跨进程重设计）：文案随可达性——同安装 IDE 在 →「Roam 定位」；
             //   不在 →「在文件夹中显示」（宿主活裁决）。点击 = 同一裁决（无 IDE/无窗/投递失败/超时 → 系统兜底）；失败如实浮读。
             var _shotQoast = function (mode) {
-              var label = (mode === 'fs') ? _i('shell.dl.showInFolder', '📂 在文件夹中显示') : _i('shell.dl.roamLocate', '📂 Roam 定位');
+              var label = (mode === 'fs') ? _i('shell.dl.showInFolder', '在文件夹中显示') : _i('shell.dl.roamLocate', 'Roam 定位');
               try {
                 _qoast(msg, {
                   type: 'success', duration: 12000,
@@ -2597,7 +2599,7 @@ function mount(opts) {
       // ★ 转码产物重开（2026-10-02 抽共用）：经典路径 / 渐进 cache 快路径共用——isTx 显式 + 播放意图/倍速/模式/音量/dock 边全量回灌
       function _reopenTxResult(newPath) {
         _reopenHost({
-          mode: _txKind, src: 'file:///' + newPath, localPath: newPath, list: _plList, index: _plIdx, isTx: true,
+          mode: _txKind, src: window.qqqFileUrl(newPath), localPath: newPath, list: _plList, index: _plIdx, isTx: true,
           paused: !_playIntent,
           rate: _ovMediaRate, loop: _ovMediaLoop, shuffle: _ovMediaShuffle, follow: _ovMediaFollow,
           volume: (_barApi && _barApi.getVol) ? _barApi.getVol() : 1, muted: !!_mEl.muted, dockSide: _ovDockSide || 'right',

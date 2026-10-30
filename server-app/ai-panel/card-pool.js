@@ -553,16 +553,14 @@ var CardPool = (function () {
     done(ok);
   }
 
-  // img → 本地文件路径：dataset.localPath 优先（恢复渲染回填），file:/// URL 解码兜底
+  // img → 本地文件路径：dataset.localPath 优先（恢复渲染回填），file URL 解码兜底
+  //   ★ 逆映射唯一机器 = core/file-url.js 的 qqqFilePathFromUrl（POSIX 前导斜杠由它补回）
   function _imgActLocalPath(img) {
     if (!img) return null;
     if (img.dataset && img.dataset.localPath) return img.dataset.localPath;
-    var src = img.src || '';
-    if (/^file:\/\//i.test(src)) {
-      var p = src.replace(/^file:\/\/\//i, '');
-      try { p = decodeURIComponent(p); } catch (_) { }
-      return p;
-    }
+    var p = window.qqqFilePathFromUrl(img.src || '');
+    if (p) return p;
+    if (/^[A-Za-z]:[\\/]/.test(img.src || '')) return img.src;
     return null;
   }
 

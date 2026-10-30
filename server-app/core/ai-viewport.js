@@ -1997,7 +1997,7 @@
           if (bridge.shell.openPath) {
             bridge.shell.openPath(filePath);
           } else if (bridge.shell.openExternal) {
-            bridge.shell.openExternal('file:///' + filePath.replace(/\\/g, '/'));
+            bridge.shell.openExternal(window.qqqFileUrl(filePath));
           }
         }
       } catch (_) { }

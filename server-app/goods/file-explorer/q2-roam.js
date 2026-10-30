@@ -1646,7 +1646,7 @@ function _qBatchMediaPlaylist() {
 		if (!k) { ignored++; return; }
 		if (!kind) kind = k;
 		var p = String(s.path).replace(/\\/g, '/');
-		list.push({ src: 'file:///' + p, localPath: p, name: s.name, path: s.path });
+		list.push({ src: window.qqqFileUrl(p), localPath: p, name: s.name, path: s.path });
 	});
 	if (!kind || list.length < 2) return false;
 	// ★ 2026-10-02 单宿主大整改：恒开新播放器窗（从不复用；起播 = 列表序第一个）——shell-rpc 泛化转发 bridge.player.open
@@ -1677,7 +1677,7 @@ function _openOverlayImageWithNav(item) {
 		_dir = (_slash === 2 && /^[A-Za-z]:$/.test(_op.slice(0, 2))) ? _op.slice(0, 3) : _op.slice(0, _slash);
 	}
 	function _post(nav) {
-		var msg = { type: 'qqqide-overlay', action: 'open-image', src: 'file:///' + _op, localPath: _op };
+		var msg = { type: 'qqqide-overlay', action: 'open-image', src: window.qqqFileUrl(_op), localPath: _op };
 		if (nav) msg.nav = nav;
 		parent.postMessage(msg, '*');
 	}
@@ -1691,7 +1691,7 @@ function _openOverlayImageWithNav(item) {
 				if (!en || en.isDir || !isOverlayImageByName(en.name)) continue;
 				var p = pathJoin(_dir, en.name).replace(/\\/g, '/');
 				if (idx < 0 && _normPath(p) === key) idx = list.length;
-				list.push({ src: 'file:///' + p, localPath: p });
+				list.push({ src: window.qqqFileUrl(p), localPath: p });
 			}
 			_post((idx >= 0 && list.length > 1) ? { list: list, index: idx } : null);
 		}).catch(function() { _post(null); });
@@ -1724,7 +1724,7 @@ function performCodeAction(item, opts) {
 	var _oe = _overlayExtOf(item.name);
 	if (_OVERLAY_VIDEO_EXTS[_oe] || _OVERLAY_AUDIO_EXTS[_oe]) {
 		var _mp = String(item.path).replace(/\\/g, '/');
-		try { rpc('player.open', { list: [{ src: 'file:///' + _mp, localPath: _mp, name: item.name }], index: 0 }).catch(function(){ }); } catch (_) {}
+		try { rpc('player.open', { list: [{ src: window.qqqFileUrl(_mp), localPath: _mp, name: item.name }], index: 0 }).catch(function(){ }); } catch (_) {}
 		recordFileHistory(item.path);
 		_playSfx('enter');
 		return;
@@ -2111,7 +2111,9 @@ if (emptyCtxMenu) {
 		var aiItem = em.querySelector('[data-action="feedFolderToAi"] span');
 		if (aiItem) {
 			var tt = _getAiTargetPanel();
-			aiItem.textContent = tt === 0 ? _kk('goods.roam.feedAiL', '←喂给 AI') : tt === 2 ? _kk('goods.roam.feedAiR', '喂给 AI→') : _kk('goods.roam.feedAi', '喂给 AI');
+			var _fiLead = '<span class="qqi qqi-lead qqi-chevron-left"></span>';
+			var _fiTail = '<span class="qqi qqi-chevron-right" style="margin-left:.36em"></span>';
+			aiItem.innerHTML = tt === 0 ? _fiLead + _kk('goods.roam.feedAiL', '喂给 AI') : tt === 2 ? _kk('goods.roam.feedAiR', '喂给 AI') + _fiTail : _kk('goods.roam.feedAi', '喂给 AI');
 		}
 		_placeFixedMenu(em, e.clientX, e.clientY);
 	});

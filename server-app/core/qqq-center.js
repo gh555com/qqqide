@@ -274,13 +274,13 @@
   // ── 设置描述表（网站「设置」标签全量本地化；主题/语言由客户端既有机器管理不入卡片）──
   // 组内条目 = { k: 注册表键, lab/desc: 完整键字面量 }（★ 键恒静态字面量——审计 ⑦ 动态拼接必须为零）
   var GROUPS = [
-    { title: 'prefs.g.roam', fb: '🛸 Roam 漫游', items: [
+    { title: 'prefs.g.roam', fb: 'Roam 漫游', icon: 'compass', items: [
       { k: 'szDisplayMode', lab: 'prefs.lab.szDisplayMode', desc: 'prefs.desc.szDisplayMode' },
       { k: 'sortBy', lab: 'prefs.lab.sortBy', desc: 'prefs.desc.sortBy' },
       { k: 'autoWatchChanges', lab: 'prefs.lab.autoWatchChanges', desc: 'prefs.desc.autoWatchChanges' },
       { k: 'roamName', lab: 'prefs.lab.roamName', desc: 'prefs.desc.roamName' },
     ] },
-    { title: 'prefs.g.observe', fb: '👁️ Observer 观察者', items: [
+    { title: 'prefs.g.observe', fb: 'Observer 观察者', icon: 'eye', items: [
       { k: 'performanceMode', lab: 'prefs.lab.performanceMode', desc: 'prefs.desc.performanceMode' },
       { k: 'frameSizeMode', lab: 'prefs.lab.frameSizeMode', desc: 'prefs.desc.frameSizeMode' },
       { k: 'enlargeSmallImages', lab: 'prefs.lab.enlargeSmallImages', desc: 'prefs.desc.enlargeSmallImages' },
@@ -288,16 +288,16 @@
       { k: 'textSlideFontSize', lab: 'prefs.lab.textSlideFontSize', desc: 'prefs.desc.textSlideFontSize' },
       { k: 'codelensLevel', lab: 'prefs.lab.codelensLevel', desc: 'prefs.desc.codelensLevel' },
     ] },
-    { title: 'prefs.g.html', fb: '🍌 HTML & Rich Text', items: [
+    { title: 'prefs.g.html', fb: 'HTML & Rich Text', icon: 'code', items: [
       { k: 'downloadSecurityLevel', lab: 'prefs.lab.downloadSecurityLevel', desc: 'prefs.desc.downloadSecurityLevel' },
       { k: 'forceTextFlowScheme', lab: 'prefs.lab.forceTextFlowScheme', desc: 'prefs.desc.forceTextFlowScheme' },
       { k: 'autoDownload', lab: 'prefs.lab.autoDownload', desc: 'prefs.desc.autoDownload' },
     ] },
-    { title: 'prefs.g.doc', fb: '📦 Doc Export 文档导出', items: [
+    { title: 'prefs.g.doc', fb: 'Doc Export 文档导出', icon: 'package', items: [
       { k: 'docExportImageResolution', lab: 'prefs.lab.docExportImageResolution', desc: 'prefs.desc.docExportImageResolution' },
       { k: 'docExportIncludeCipher', lab: 'prefs.lab.docExportIncludeCipher', desc: 'prefs.desc.docExportIncludeCipher' },
     ] },
-    { title: 'prefs.g.premium', fb: '💎 Premium 正版专属', items: [
+    { title: 'prefs.g.premium', fb: 'Premium 正版专属', icon: 'gem', items: [
       { k: 'removeWatermark', lab: 'prefs.lab.removeWatermark', desc: 'prefs.desc.removeWatermark' },
     ] },
   ];
@@ -583,8 +583,14 @@
     document.body.appendChild(_overlay);
   }
 
-  function _secTitle(text) {
-    return _el('div', 'font-size:12px;font-weight:bold;color:var(--text-secondary);margin:16px 0 8px;', '', text);
+  function _secTitle(text, icon) {
+    var d = _el('div', 'font-size:12px;font-weight:bold;color:var(--text-secondary);margin:16px 0 8px;', '');
+    if (icon) {
+      var ic = _el('span', '', 'qqi qqi-lead qqi-' + icon);
+      d.appendChild(ic);
+    }
+    d.appendChild(document.createTextNode(text));
+    return d;
   }
 
 
@@ -662,7 +668,7 @@
 
   function _buildGroup(g) {
     var sec = _el('div', '');
-    sec.appendChild(_secTitle(_i(g.title, g.fb)));
+    sec.appendChild(_secTitle(_i(g.title, g.fb), g.icon));
     for (var i = 0; i < g.items.length; i++) {
       var el = _buildItem(g.items[i]);
       if (el) { sec.appendChild(el); }

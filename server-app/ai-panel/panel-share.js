@@ -788,6 +788,48 @@
         } catch (_) { return true; }
     }
 
+    // 快照 → 输入框（唯一写入点；文本已组好，幂等）
+    function _writeImport(text) {
+        try {
+            if (typeof $input !== 'undefined' && $input) {
+                var cur = $input.value || '';
+                $input.value = cur.trim() ? (cur.replace(/\s*$/, '') + '\n\n' + text) : text;
+                if (typeof autoResizeInput === 'function') autoResizeInput();
+                $input.focus();
+                try { $input.setSelectionRange($input.value.length, $input.value.length); } catch (_) { }
+                return true;
+            }
+        } catch (_) { }
+        return false;
+    }
+
+    // 落地语义 = 【新任务】。
+    //  ① 「找回原任务」在原理上就不存在：原任务在分享者自己机器上，快照里没有任何 quest 引用（自足、签章冻结）。
+    //  ② 也不准灌进读者当前正在写的任务（跨会话串内容）——那才是真污染。
+    //  ③ 新建被守卫拦下（旧任务还在回复 / 正在切换）才退回落当前输入框，并如实说明落点。
+    function _landAsNewQuest(text) {
+        var prev = '';
+        try { prev = questActiveId; } catch (_) { }
+        var land = function () {
+            if (!_writeImport(text)) qoast(T('ai.share.importFail', '导入失败：{0}', { 0: 'input' }), 'error');
+        };
+        try {
+            if (typeof createNewQuest !== 'function') { land(); return; }
+            Promise.resolve(createNewQuest()).then(function () {
+                // createNewQuest 内部 await restoreQuestUIState（草稿回填）——再等一拍，落点才是新任务
+                setTimeout(function () {
+                    var now = '';
+                    try { now = questActiveId; } catch (_) { }
+                    var fresh = (now !== prev) || (typeof _isDraft === 'function' && _isDraft(now));
+                    land();
+                    qoast(fresh
+                        ? T('ai.share.imported', '已在新任务里打开这份分享，可直接追问')
+                        : T('ai.share.importBusy', '当前任务正在回复，分享内容已放进当前输入框'), fresh ? 'success' : 'warning');
+                }, 180);
+            }).catch(land);
+        } catch (_) { land(); }
+    }
+
     function importShare(mid) {
         if (!mid) return;
  		fetch(SHARE_WEB + encodeURIComponent(mid) + '.json', {
@@ -816,18 +858,11 @@
                 parts.push(seg);
                 used += seg.length;
             }
-            var text = '以下是一份分享的对话快照（原始链接 ' + SHARE_WEB + mid +
+            var nAsset = (b && b.assets && b.assets.length) || 0;
+            var text = '以下是一份他人分享的对话快照（原始链接 ' + SHARE_WEB + mid +
+                (nAsset ? '，含 ' + nAsset + ' 张图' : '') +
                 '），请把它当作背景资料，继续我的提问：\n\n' + parts.join('\n\n') + '\n\n我的问题：';
-            try {
-                if (typeof $input !== 'undefined' && $input) {
-                    var cur = $input.value || '';
-                    $input.value = cur.trim() ? (cur.replace(/\s*$/, '') + '\n\n' + text) : text;
-                    if (typeof autoResizeInput === 'function') autoResizeInput();
-                    $input.focus();
-                    try { $input.setSelectionRange($input.value.length, $input.value.length); } catch (_) { }
-                }
-            } catch (_) { }
-            qoast(T('ai.share.imported', '已导入分享快照，可直接追问'), 'success');
+            _landAsNewQuest(text);
         }).catch(function (err) {
             qoast(T('ai.share.importFail', '导入失败：{0}', { 0: (err && err.message) || '' }), 'error');
         });

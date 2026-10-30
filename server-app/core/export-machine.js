@@ -28,7 +28,7 @@
   'use strict';
   if (window.qqqExport) { return; }
 
-  var FALLBACK_ROAM = '\uD83D\uDCC2 Roam \u5B9A\u4F4D';
+  var FALLBACK_ROAM = 'Roam \u5B9A\u4F4D';
 
   function _b() { try { return window.qqqideBridge || null; } catch (_) { return null; } }
   function _io() { try { return window.qqqideIoast || null; } catch (_) { return null; } }
@@ -251,7 +251,7 @@
   // ── 壳层文案包（zh.json 唯一真理源 → 传入壳层生成器）──
   function _textsWire() {
     return {
-      attachmentIndex: _T('export.attachmentIndex', '\uD83D\uDCC1 \u9644\u4EF6\u7D22\u5F15'),
+      attachmentIndex: _T('export.attachmentIndex', '\u9644\u4EF6\u7D22\u5F15'),
       colIndex: _T('export.colIndex', '\u5E8F\u53F7'),
       colFileName: _T('export.colFileName', '\u6587\u4EF6\u540D'),
       colType: _T('export.colType', '\u7C7B\u578B'),

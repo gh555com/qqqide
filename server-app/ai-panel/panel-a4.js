@@ -606,7 +606,7 @@ function _a4ImgNav(row) {
             if (!p || !_isImageFile(p)) continue;
             if (rows[i].dataset.op === 'delete_file') continue;
             if (rows[i] === row) index = list.length;
-            list.push({ src: 'file:///' + p.replace(/\\/g, '/'), localPath: p });
+            list.push({ src: window.qqqFileUrl(p), localPath: p });
         }
         return (index >= 0 && list.length > 1) ? { list: list, index: index } : null;
     } catch (_) { return null; }
@@ -628,7 +628,7 @@ async function _openImagePreview(filePath, nav) {
     } catch (_) {
         return false; // 文件不存在
     }
-    var fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
+    var fileUrl = window.qqqFileUrl(filePath);
     var _m = { type: 'qqqide-overlay', action: 'open-image', src: fileUrl, localPath: filePath };   // ★ 显式传路径（旋转记忆/文件按钮依赖；漏传=记忆断链）
     if (nav) _m.nav = nav;
     _postToHost(_m);

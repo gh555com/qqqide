@@ -106,10 +106,8 @@
     return d >= 0 ? name.slice(d).toLowerCase() : '';
   }
 
-  function _fileUrl(p) {
-    var s = String(p || '').replace(/\\/g, '/');
-    try { return 'file:///' + encodeURI(s); } catch (e) { return 'file:///' + s; }
-  }
+  // 本机路径 → file URL：唯一机器在 core/file-url.js（Windows 三斜杠 / POSIX 恒不得四斜杠 = 主机名误判 / UNC 走主机段）
+  function _fileUrl(p) { return window.qqqFileUrl(String(p || '')); }
 
   // ═══ fitIntoBox — 老 q1.js 逐字移植 ═══
   function fitIntoBox(srcW, srcH, boxW, boxH, enlarge) {
@@ -181,7 +179,7 @@
         var sh = bridge && bridge.shell;
         if (sh && sh.openPath) { sh.openPath(entry.path); return; }
         if (sh && sh.openExternal) {
-          sh.openExternal('file:///' + String(entry.path).replace(/\\/g, '/'));
+          sh.openExternal(_fileUrl(entry.path));
         }
       } catch (e) { /* */ }
     });

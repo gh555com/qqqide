@@ -164,6 +164,8 @@ mark.md-hit-w-cur { background:#E8A090; color:#3a1c14; box-shadow:0 0 0 1px rgba
 <script src="../../core/md-render.js"></script>
 <script src="../../core/lpl.js"></script>
 <script src="../../core/i18n.js"></script>
+<!-- ★ 本机路径 → file URL 唯一机器（文档内本地图片） -->
+<script src="../../core/file-url.js"></script>
 <script>
 (function () {
 'use strict';
@@ -240,13 +242,8 @@ try {
 
 // ═══ 媒体路径解析（唯一入口；相对 → file:///；空格/#/非 ASCII 逐段编码）═══
 function _attr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
-function _encSeg(s) { try { return encodeURIComponent(s).replace(/%3A/g, ':'); } catch (_) { return s; } }
-function _fileUrl(abs) {
-  var s = String(abs).replace(/\\/g, '/');
-  var parts = s.split('/');
-  for (var i = 0; i < parts.length; i++) parts[i] = _encSeg(parts[i]);
-  return 'file:///' + parts.join('/');
-}
+// 本机路径 → file URL：唯一机器在 core/file-url.js（POSIX 前导斜杠不得再叠一层 = 四斜杠被当主机名）
+function _fileUrl(abs) { return window.qqqFileUrl(abs); }
 function _joinPath(baseDir, rel) {
   var parts = (baseDir ? (baseDir + '/' + rel) : rel).split('/');
   var out = [];

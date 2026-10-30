@@ -337,14 +337,17 @@
         menu.style.top = Math.max(4, my) + 'px';
 
         var rows = [
-            { label: _qq('ai.search.small', '🔍 小搜索 — 面板内查找'), action: function () { _doSmallSearch(selText); } },
-            { label: _qq('ai.search.mid', '📄 中搜索 — 当前任务全文检索'), action: function () { _doMidSearch(selText); } },
-            { label: _qq('ai.search.big', '🌐 大搜索 — 跨任务全局检索'), action: function () { _doBigSearch(selText); } }
+            { icon: 'search', label: _qq('ai.search.small', '小搜索 — 面板内查找'), action: function () { _doSmallSearch(selText); } },
+            { icon: 'file', label: _qq('ai.search.mid', '中搜索 — 当前任务全文检索'), action: function () { _doMidSearch(selText); } },
+            { icon: 'globe', label: _qq('ai.search.big', '大搜索 — 跨任务全局检索'), action: function () { _doBigSearch(selText); } }
         ];
         for (var ri = 0; ri < rows.length; ri++) {
             var row = document.createElement('div');
             row.className = 'ctx-row';
-            row.textContent = rows[ri].label;
+            row.innerHTML = '<span class="qqi qqi-lead qqi-' + rows[ri].icon + '"></span>';
+            var _lbl = document.createElement('span');
+            _lbl.textContent = rows[ri].label;
+            row.appendChild(_lbl);
             row.onclick = function (actFn) { return function () { _closeCtxMenu(); actFn(); }; }(rows[ri].action);
             menu.appendChild(row);
         }

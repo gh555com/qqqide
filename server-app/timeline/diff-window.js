@@ -358,12 +358,13 @@
         var remaining = _vaultRows.length - _vaultRendered;
         var gate = $fuzzyList.querySelector('.fuzzy-gate');
         if (remaining > 0) {
-            var txt = _i('timeline.vaultMore', '⬇ 加载更多（还剩 {n} 条）').replace('{n}', remaining);
-            if (gate) { gate.textContent = txt; }
+            var txt = _i('timeline.vaultMore', '加载更多（还剩 {n} 条）').replace('{n}', remaining);
+            var _moreIco = '<span class="qqi qqi-lead qqi-chevron-down"></span>';
+            if (gate) { gate.innerHTML = _moreIco + txt; }
             else {
                 gate = document.createElement('div');
                 gate.className = 'fuzzy-gate';
-                gate.textContent = txt;
+                gate.innerHTML = _moreIco + txt;
                 var hint = $fuzzyList.querySelector('.fuzzy-hint');
                 if (hint && hint.parentNode) hint.parentNode.insertBefore(gate, hint);
                 else $fuzzyList.appendChild(gate);
@@ -601,7 +602,7 @@
     }
 
     function _vpGateHtml(remain) {
-        return '<div class="vault-gate">' + _i('timeline.vaultMore', '⬇ 加载更多（还剩 {n} 条）').replace('{n}', remain) + '</div>';
+        return '<div class="vault-gate"><span class="qqi qqi-lead qqi-chevron-down"></span>' + _i('timeline.vaultMore', '加载更多（还剩 {n} 条）').replace('{n}', remain) + '</div>';
     }
 
     // 补批（闸门点击 / 滚到底自动）
@@ -616,14 +617,14 @@
         else $vaultBody.insertAdjacentHTML('beforeend', html);
         _vpRendered = to;
         var remain = total - _vpRendered;
-        if (remain > 0) { if (gate) gate.textContent = _i('timeline.vaultMore', '⬇ 加载更多（还剩 {n} 条）').replace('{n}', remain); }
+        if (remain > 0) { if (gate) gate.innerHTML = '<span class="qqi qqi-lead qqi-chevron-down"></span>' + _i('timeline.vaultMore', '加载更多（还剩 {n} 条）').replace('{n}', remain); }
         else if (gate && gate.parentNode) gate.parentNode.removeChild(gate);
     }
 
     // 头部同步：面包屑 + 上一级可用态 + 计数 + 底部提示
     function _vpSyncHead() {
         var segs = _vpDir ? _vpDir.split('/') : [];
-        var html = '<span class="vault-seg' + (segs.length ? '' : ' cur') + '" data-jump="">' + _escHtml(_i('timeline.vaultRoot', '🏠 全部')) + '</span>';
+        var html = '<span class="vault-seg' + (segs.length ? '' : ' cur') + '" data-jump=""><span class="qqi qqi-lead qqi-home"></span>' + _escHtml(_i('timeline.vaultRoot', '全部')) + '</span>';
         var acc = '';
         for (var i = 0; i < segs.length; i++) {
             acc = acc ? acc + '/' + segs[i] : segs[i];

@@ -477,7 +477,7 @@
     try {
       window.postMessage({
         type: 'qqqide-overlay', action: 'open-image',
-        src: 'file:///' + slashPath, localPath: slashPath, sysFallback: true,
+        src: window.qqqFileUrl(slashPath), localPath: slashPath, sysFallback: true,
       }, '*');
     } catch (e) { _sysOpen(slashPath); }
   }
@@ -485,7 +485,7 @@
     var pl = bridge && bridge.player;
     if (!pl || typeof pl.open !== 'function') { _sysOpen(slashPath); return; }
     var r;
-    try { r = pl.open({ list: [{ src: 'file:///' + slashPath, localPath: slashPath, name: name }], index: 0 }); }
+    try { r = pl.open({ list: [{ src: window.qqqFileUrl(slashPath), localPath: slashPath, name: name }], index: 0 }); }
     catch (e) { _sysOpen(slashPath); return; }
     Promise.resolve(r).then(function (res) {
       if (res && res.ok === false) { _sysFallbackOpen(slashPath); }

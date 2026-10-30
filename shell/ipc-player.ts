@@ -32,6 +32,7 @@
 // ============================================================================
 import { app, BrowserWindow, ipcMain, screen, shell } from 'electron';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { getOsBaseDir } from './portable-paths';
@@ -632,7 +633,9 @@ async function _appendToPlayer(payload: any): Promise<any> {
             seen.add(k); uniq.push(p);
             if (uniq.length >= _MPL_MAX) { st.trunc = true; break; }
         }
-        const mkItem = (p: string) => { const fp = p.replace(/\\/g, '/'); return { src: 'file:///' + fp, localPath: fp, name: path.basename(p) }; };
+        // ★ 本机路径 → file URL 恒走 Node pathToFileURL（POSIX 绝对路径若手拼 'file:///'+path
+        //   会成 file:////Users/… = 四个斜杠 → 前段被解析成主机名 → mac/linux 一律拒载）
+        const mkItem = (p: string) => { const fp = p.replace(/\\/g, '/'); return { src: pathToFileURL(p).href, localPath: fp, name: path.basename(p) }; };
         const tgt = _pickActiveWin();
         if (tgt) {
             const exist = new Set<string>();

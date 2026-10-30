@@ -1267,7 +1267,7 @@
     var sub = (curName ? _kk('goods.dm.uploadingFile', '正在上传：{0}', curName) : (ctl.phase === 'send' ? _kk('goods.dm.sendingMsg', '正在发送消息…') : _kk('goods.dm.preparing', '准备中…')));
     if (speed > 0.01 && ctl.phase === 'upload') sub += ' · ' + speed.toFixed(1) + ' MB/s';
     ioastCall('task', ctl.taskId, {
-      title: _kk('goods.dm.sendToInbox', '📤 发送到 inbox'),
+      title: _kk('goods.dm.sendToInbox', '发送到 inbox'),
       subtitle: sub,
       progress: prog,
       count: { done: done, total: total },
@@ -1462,7 +1462,7 @@
     var ctl = { peer: peer, canceled: false, failed: false, active: true, xhrs: [], t0: Date.now(),
                 phase: list.length ? 'upload' : 'send', taskId: 'inbox-send-' + peer };
     _sendCtl = ctl;
-    if (list.length) { ioastCall('task', ctl.taskId, { title:_kk('goods.dm.sendToInbox', '📤 发送到 inbox'), subtitle:_kk('goods.dm.preparing', '准备中…'), cancelable:true, onCancel:function(){ cancelSend(ctl); } }); }
+    if (list.length) { ioastCall('task', ctl.taskId, { title:_kk('goods.dm.sendToInbox', '发送到 inbox'), subtitle:_kk('goods.dm.preparing', '准备中…'), cancelable:true, onCancel:function(){ cancelSend(ctl); } }); }
 
     var todo = list.filter(function(c){ return c.status !== 'done'; });
     uploadAll(todo, ctl).then(function(){
@@ -1836,7 +1836,7 @@
       // 记忆目录已有同名文件 → 不重复下载（防 name (1) 副本周），给 Roam 直达
       attStat(probe).then(function (st) {
         if (st && st.isFile) {
-          attQoast(_kk('goods.dm.alreadyAt', '已在：{0}', probe), { duration: 9000, action: { label: _kk('shell.dl.roamLocate', '📂 Roam 定位'), onClick: function () { attRevealRoam(probe); } } });
+          attQoast(_kk('goods.dm.alreadyAt', '已在：{0}', probe), { duration: 9000, action: { label: _kk('shell.dl.roamLocate', 'Roam 定位'), onClick: function () { attRevealRoam(probe); } } });
           return;
         }
         m.save(url, name, { size: size || 0 });
