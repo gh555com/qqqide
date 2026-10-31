@@ -906,7 +906,7 @@
   function _ldrHelpShow(e) {
     if (!_$ldrHelpTip) {
       _$ldrHelpTip = document.createElement('div');
-      _$ldrHelpTip.style.cssText = 'position:fixed;z-index:99999;padding:12px 16px;font-size:13px;line-height:1.7;color:#93a1a1;background:rgba(0,0,0,0.92);border:1px solid #444;border-radius:4px;pointer-events:none;white-space:pre-wrap;max-width:400px;display:none;font-family:sans-serif;';
+      _$ldrHelpTip.style.cssText = 'position:fixed;z-index:99999;padding:12px 16px;font-size:13px;line-height:1.7;color:#93a1a1;background:rgba(0,0,0,0.92);border:1px solid #444;border-radius:4px;pointer-events:none;white-space:pre-wrap;max-width:400px;display:none;font-family:sans-serif,qd-emoji;';
       document.body.appendChild(_$ldrHelpTip);
     }
     var rect = e && e.target ? e.target.getBoundingClientRect() : null;
@@ -1234,12 +1234,12 @@
     var m = sh.match(/^(\([^)]+\))\s+(.+)$/);
     var line1 = '';
     if (m) {
-      line1 = '<span style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[1] + '</span> <b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + paid + '</span>';
+      line1 = '<span style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[1] + '</span> <b style="color:rgba(251,233,188,0.80),qd-emoji;font-family:Consolas,monospace">' + m[2] + ':</b><span style="color:#b58900,qd-emoji;font-size:44px">' + paid + '</span>';
     } else {
-      line1 = '<b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + sh + ':</b><span style="color:#b58900;font-size:44px">' + paid + '</span>';
+      line1 = '<b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + sh + ':</b><span style="color:#b58900,qd-emoji;font-size:44px">' + paid + '</span>';
     }
     // ★ 第二行：历史总付费 + 历史白嫖（居中大号，白嫖绿色）
-    var line2 = '<div style="margin-top:4px;text-align:center;"><span style="color:#b58900;font-size:28px;font-family:Consolas,monospace">' + paidAll + '</span> <span style="color:rgba(251,233,188,0.50);font-size:22px;font-family:Consolas,monospace">+</span> <span style="color:#859900;font-size:28px;font-family:Consolas,monospace">' + free + '</span></div>';
+    var line2 = '<div style="margin-top:4px;text-align:center;"><span style="color:#b58900;font-size:28px;font-family:Consolas,monospace">' + paidAll + '</span> <span style="color:rgba(251,233,188,0.50),qd-emoji;font-size:22px;font-family:Consolas,monospace">+</span> <span style="color:#859900,qd-emoji;font-size:28px;font-family:Consolas,monospace,qd-emoji">' + free + '</span></div>';
 
     _$lvTip.innerHTML = line1 + line2;
     _$lvTip.style.left = (cx - _$lvTip.offsetWidth / 2) + 'px';

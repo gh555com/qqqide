@@ -97,7 +97,7 @@ New to the terminology (`floor`, `house`, `goods`, `qgs`, …)? See `docs/GLOSSA
 
 **Source Code Public & Auditable — not an open-source license.** You may view and clone the code for personal study, research, and security/audit review. Commercial use, redistribution, forks/mirrors, derivative works and imitating the product's UI/trade dress are not permitted. Full terms: [`LICENSE`](LICENSE).
 
-## Contact
+## Contact 
 
 - Official site: <https://www.gh555.com/qd> · Downloads: <https://gh555.com/dl/qqqide>
 - Discussions / roadmap: <https://github.com/gh555com/qqq/discussions>

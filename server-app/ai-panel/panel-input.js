@@ -305,6 +305,23 @@ $input.addEventListener('keydown', function (e) {
 // 核心语义：按下的那一瞬，编辑框全部内容（文字 + pendingImages 快照）就地冻结成消息，编辑条同步清空——
 // 此后窗口内的一切操作（删图/贴新图/打字/切 quest）都与本条消息无关：本条用快照，编辑条留给下一条。
 // 失败回滚（管线拒绝/楼层创建失败）由 panel-pipeline._restoreImagesToStrip 把图片放回编辑条。
+// ★ 发送目标 = 用户眼睛看到的那张卡（cardPool._activeId），无则回退面板当前 quest。
+//   正常路径两者恒相等（可见性只由 switchTo 改）；这里是串台的最后一道兜底——
+//   万一将来某条路径又把两者拉开，至少「按回车时看到谁就发给谁」，绝不发给看不见的任务。
+function _panelSendTarget() {
+    try {
+        // 草稿态（含 _unloadQuest 后的空白面板）：发送目标恒为草稿，绝不继承卡池里的旧卡
+        if (questActiveId && typeof _isDraft === 'function' && _isDraft(questActiveId)) return questActiveId;
+        var _v = (typeof cardPool !== 'undefined' && cardPool) ? cardPool._activeId : null;
+        if (_v && !(typeof _isDraft === 'function' && _isDraft(_v))) {
+            var _c = cardPool.getCard(_v);
+            // 只有真正显示在屏幕上的卡才算「眼睛看到的」——隐藏卡不得成为发送目标
+            if (_c && _c.dom && _c.dom.style.display !== 'none') return _v;
+        }
+    } catch (_) { }
+    return questActiveId;
+}
+
 function _freezeAndSendFromInput() {
     var _txtNow = $input.value;
     var _imgsNow = (typeof pendingImages !== 'undefined' && pendingImages.length > 0)
@@ -313,11 +330,12 @@ function _freezeAndSendFromInput() {
     var _hasText = !!(_txtNow && _txtNow.trim());
     // 空消息（无文字无图）→ 零副作用（不消费/不建楼；旧路径被管线空值校验静默丢弃）
     if (!_hasText && _imgsNow.length === 0) return;
+    var _sendQid = _panelSendTarget();
     // ① 气泡 + 图行即时回显（零 IPC；渲染异常整步回滚，编辑框/图片条零损失）
     var _bubble = null;
     var _rowEl = null;
     try {
-        _bubble = addMessageEl('user', _txtNow);
+        _bubble = addMessageEl('user', _txtNow, _sendQid);
         if (_bubble && _imgsNow.length > 0 && typeof _renderBubbleImgRow === 'function') {
             _rowEl = _renderBubbleImgRow(_bubble, _imgsNow);
         }
@@ -332,7 +350,7 @@ function _freezeAndSendFromInput() {
     //   本条预建气泡变孤儿 + 重复新建；随身引用天然归属本意图，零串号。
     // ② 同步清空编辑框 + 图片条（内容已移入消息；图片条清空 = 「✕ 删掉在飞图片」的竞态窗口结构性闭合）
     if (_txtNow !== '') $input.value = '';
-    _clearDraftTextNow(questActiveId);  // 发送即清高频草稿键（防断电窗口旧文本复活）
+    _clearDraftTextNow(_sendQid);  // 发送即清高频草稿键（防断电窗口旧文本复活）
     if ($input._resetUndo) $input._resetUndo();
     if (_imgsNow.length > 0) {
         pendingImages = [];
@@ -343,6 +361,7 @@ function _freezeAndSendFromInput() {
     if (typeof $input.focus === 'function') $input.focus();
     // ③ 入链（快照 + 气泡/图行引用随行——管线只管用快照，永不再读编辑条）
     sendMessage(_txtNow, {
+        questId: _sendQid,               // ★ 显式携带发送目标（与气泡同一归属）
         images: (_imgsNow.length > 0) ? _imgsNow : null,
         bubbleEl: _bubble || null,        // ★ 2026-10-01 随身引用：跨 quest 并行链零串号（替代旧全局槽）
         bubbleImgRow: _rowEl || null

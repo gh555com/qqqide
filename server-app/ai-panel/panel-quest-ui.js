@@ -135,7 +135,8 @@ async function switchQuest(id) {
             // ★ 仅在建楼中的 agent 才有未保存数据需刷盘；idle agent 的数据已在 onDone 时写入
             // ★ 治根：0 houses 时不落盘（无有效数据。agent 后台继续运行，完结后自然保存）
             if (_activeAgent && _activeAgent._stopState === 'sending' && _activeAgent._houses && _activeAgent._houses.length > 0) {
-                await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._currentFloorNum, { skipDomFlush: true });
+                // ★ 目标 quest 以 agent 自身为准（面板全局指针在后台任务并行时不可信）
+                await _saveAgentQuestData(_activeAgent._questId || questActiveId, _activeAgent, _activeAgent._currentFloorNum, { skipDomFlush: true });
             }
             // ★ 释放旧 quest 所有权（流式 buffer 状态已通过 _a4BuildCompleteFloorPayload 落盘，跨面板迁移安全）
             if (!_isDraft(questActiveId)) {

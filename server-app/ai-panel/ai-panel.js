@@ -119,7 +119,7 @@
     _pieTT.style.cssText =
       'display:none; position:fixed; z-index:999999; pointer-events:none; ' +
       'padding:8px 16px; background:rgba(0,0,0,0.85); color:#fff; font-size:22px; ' +
-      'font-family:ui-monospace,monospace; border-radius:8px; white-space:nowrap;';
+      'font-family:ui-monospace,monospace,qd-emoji; border-radius:8px; white-space:nowrap;';
     document.body.appendChild(_pieTT);
     return _pieTT;
   }

@@ -534,7 +534,7 @@ function bootAiOverlay() {
   _closeTt.textContent = '= Right Click';
   _closeTt.style.cssText = 'display:none;position:fixed;z-index:100001;pointer-events:none;' +
     'background:#000;color:#ffd301;padding:4px 10px;font-size:12px;font-weight:700;' +
-    'font-family:system-ui,-apple-system,sans-serif;border:2px solid #ffd301;border-radius:4px;white-space:nowrap;' +
+    'font-family:system-ui,-apple-system,sans-serif,qd-emoji;border:2px solid #ffd301;border-radius:4px;white-space:nowrap;' +
     'line-height:1.4;' +
     'box-shadow:0 2px 8px rgba(0,0,0,0.8);';
   document.body.appendChild(_closeTt);

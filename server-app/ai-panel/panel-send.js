@@ -15,8 +15,10 @@ async function sendMessage(content, opts) {
         opts = { type: 'normal', images: null, tierIndex: selectedTier };
     }
     opts = opts || {};
-    var intent = _buildSendIntent(questActiveId, content, opts);
-    return _enqueueSend(questActiveId, intent);
+    // ★ opts.questId 优先：发送目标由调用方（发送入口）显式携带，缺省才回退面板当前 quest
+    var _qid = opts.questId || questActiveId;
+    var intent = _buildSendIntent(_qid, content, opts);
+    return _enqueueSend(_qid, intent);
 }
 
 
@@ -28,7 +30,8 @@ async function sendMessage(content, opts) {
 // 返回 box DOM 元素，不处理内容填充。锚点严格用 card.floorDOM[floorNum].aiEl
 function _ensureErrorBoxDOM(agent, floorNum) {
     if (!agent || !cardPool) return null;
-    var _card = cardPool.getActive();
+    // ★ 红框恒画在 agent 自己的卡上（后台任务报错绝不能画到前台任务头上）
+    var _card = (agent._questId && cardPool.getCard(agent._questId)) || cardPool.getActive();
     if (!_card || !_card.floorDOM) return null;
     var _fDom = _card.floorDOM[floorNum];
     if (!_fDom || !_fDom.aiEl) return null;
@@ -93,7 +96,7 @@ function _renderAllErrorBoxes(agent) {
         }
 
         // ★ V14: 封顶检测：下一楼层 DOM 已存在且可见且非恢复中
-        var _card2 = cardPool && cardPool.getActive();
+        var _card2 = cardPool && ((agent._questId && cardPool.getCard(agent._questId)) || cardPool.getActive());
         var _hasNextFloor = false;
         if (_card2 && _card2.floorDOM && _card2.floorDOM[_fn + 1]) {
             var _nextAi = _card2.floorDOM[_fn + 1].aiEl;
@@ -156,7 +159,7 @@ function _renderAllErrorBoxes(agent) {
     }
 
     // ★ 清理 state 中已不存在 DOM 的楼层（card 被清后 floorDOM 无对应 aiEl）
-    var _card3 = cardPool && cardPool.getActive();
+    var _card3 = cardPool && ((agent._questId && cardPool.getCard(agent._questId)) || cardPool.getActive());
     if (_card3) {
         var _newState = {};
         for (var _fn2 in agent._questErrorState) {
@@ -214,7 +217,7 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
         return;
     }
 
-    var _card2 = cardPool && cardPool.getActive();
+    var _card2 = cardPool && ((agent._questId && cardPool.getCard(agent._questId)) || cardPool.getActive());
     var _hasNextFloor2 = false;
     if (_card2 && _card2.floorDOM && _card2.floorDOM[_floorNum + 1]) {
         var _nextAi2 = _card2.floorDOM[_floorNum + 1].aiEl;

@@ -247,10 +247,24 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
     await questStore.save(questId, metaPayload);
 
     // ★ passby 基线推进已移至 _executeSend / 手动压缩 的新楼层开始处（panel-pipeline.js / panel-quest-ui.js）
-}
-
-// ★ saveQuestData 不再接受 floorStartIdx 参数，改为从 _activeAgent 读取 _currentFloorNum
-async function saveQuestData() {
-    var fn = _activeAgent ? _activeAgent._currentFloorNum : null;
-    return _saveAgentQuestData(questActiveId, _activeAgent, fn);
+}// ★ saveQuestData 不再接受 floorStartIdx 参数，默认从 agent 读 _currentFloorNum
+// ★ 落盘归属铁律：必须用 agent 自己的 _questId，绝不用面板全局 questActiveId。
+//   旧实现 = questActiveId + _activeAgent 两个独立真相源——后台 quest 建楼期间
+//   _executeSend 会把 _activeAgent 解析成后台 agent，两者一旦分叉就是
+//   _saveAgentQuestData(前台questId, 后台agent, 后台楼层号)：楼层的对话/房屋/费用全部写进另一个任务，
+//   静默、无报错、重启后才发现（串台事故的写盘侧根因）。分叉本身仍会报一行日志。
+async function saveQuestData(agent, floorNum) {
+    var _ag = agent || _activeAgent;
+    if (!_ag) return;
+    var _qid = _ag._questId || questActiveId;
+    if (!_qid) return;
+    var fn = floorNum || _ag._currentFloorNum || null;
+    if (_qid !== questActiveId) {
+        try {
+            if (typeof _ag._writeFileLog === 'function') {
+                _ag._writeFileLog('⚠ SAVE-DESYNC q=' + _qid + ' panelActive=' + questActiveId + ' floor=' + (fn || 0));
+            }
+        } catch (_) { }
+    }
+    return _saveAgentQuestData(_qid, _ag, fn);
 }

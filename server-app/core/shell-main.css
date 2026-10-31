@@ -323,7 +323,7 @@
   padding: 2px 6px 2px 16px; /* 单列串行编队：路径文本 → 编码按钮 → 复制按钮（2026-09-27 编码按钮回中间位） */
   outline: none;
   font-size: 12px;
-  font-family: ui-monospace, Consolas, Menlo, monospace;
+  font-family: ui-monospace, Consolas, Menlo, monospace,qd-emoji;
   color: var(--text-primary);
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
@@ -631,7 +631,7 @@
   gap: 5px;
   width: 64px;
   flex: 0 0 auto;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   line-height: 1;
   color: var(--green);
@@ -664,7 +664,7 @@
   box-sizing: border-box;
   border: 1px solid var(--border-color);
   border-radius: 3px;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   line-height: 1;
   color: var(--text-dim);
@@ -701,7 +701,7 @@
   border-radius: 6px;
   background: var(--background-color);
   color: var(--text-secondary);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   line-height: 1.25;
   white-space: nowrap;
@@ -715,7 +715,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--text-secondary);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   line-height: 1.2;
 }
@@ -1002,7 +1002,7 @@
 
 .qqq-act-num {
   font-size: 11px;
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: ui-monospace, Consolas, monospace,qd-emoji;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
@@ -1389,7 +1389,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-secondary);
@@ -1410,7 +1410,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   50% { box-shadow: 0 0 6px 1px var(--green); opacity: 0.75; }
 }
 .qqq-wq-hover-reset {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 10px;
   color: var(--text-dim);
   background: transparent;
@@ -1439,7 +1439,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   gap: 4px;
 }
 .qqq-wq-hover-val {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 26px;
   font-weight: bold;
   color: var(--text-primary);
@@ -1447,7 +1447,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   letter-spacing: 0.5px;
 }
 .qqq-wq-hover-unit {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   font-style: normal;
   color: var(--text-secondary);
@@ -1458,7 +1458,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
 .qqq-wq-hover.qqq-wq-t-bad .qqq-wq-hover-spark { color: var(--red); }
 
 .qqq-wq-hover-meta {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -1466,7 +1466,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   text-overflow: ellipsis;
 }
 .qqq-wq-hover-sub {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 10px;
   color: var(--text-dim);
   margin-top: 2px;
@@ -1485,7 +1485,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -1517,7 +1517,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
 .qqq-wq-hover-cbar.qqq-wq-play-bar > i { background: var(--orange); }
 .qqq-wq-hover-cbar.qqq-wq-hot > i { background: var(--red); }
 .qqq-wq-hover-cmeta {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 10px;
   color: var(--text-dim);
   margin-top: 3px;
@@ -1612,7 +1612,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-secondary);
@@ -1637,7 +1637,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
 .qqq-mem-hover-ph-win,
 .qqq-mem-hover-ph-procs,
 .qqq-mem-hover-ph-up {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: normal;
@@ -1647,7 +1647,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
 
 /* v11: reset 按钮（右上角，固定 pin 后可点）——清除曲线脏历史从零重记 */
 .qqq-mem-hover-reset {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 10px;
   color: var(--text-dim);
   background: transparent;
@@ -1686,7 +1686,7 @@ html.aiv-contour-fail[data-theme="dark"] .aiv-block-active {
 
 /* 均值徽章（右上）：当前窗口均值，满 24h 即「24h 均值」；v8 字号 15px + 上移 8px + 压缩行高（放大不增占用） */
 .qqq-mem-hover-avg {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 15px;
   line-height: 1.3;
   color: var(--green);
@@ -1760,7 +1760,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 }
 .qqq-mem-hover-chart .qqq-xl-txt {
   fill: var(--green);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   font-weight: bold;
   paint-order: stroke;
@@ -1770,7 +1770,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 }
 .qqq-cpu-hover-chart .qqq-xl-txt {
   fill: var(--cpu);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   font-weight: bold;
   paint-order: stroke;
@@ -1780,7 +1780,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 }
 
 .qqq-mem-hover-val {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 28px;
   font-weight: bold;
   color: var(--text-primary);
@@ -1791,7 +1791,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 }
 
 .qqq-mem-hover-unit {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   color: var(--text-secondary);
   flex: 0 1 auto;
@@ -1813,21 +1813,21 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 
 .qqq-mem-hover-chart .qqq-mem-labels text {
   fill: var(--text-secondary);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
 }
 
 /* y 轴刻度（左缘刻度区，随数据 min/max 动态；v9: 去粗体，字号保持 12px） */
 .qqq-mem-hover-chart .qqq-mem-ylbl {
   fill: var(--text-secondary);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
 }
 
 /* 最新点值标签（halo 描边压线可读；等于左上角当前值） */
 .qqq-mem-hover-chart .qqq-mem-curval {
   fill: var(--green);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   font-weight: bold;
   paint-order: stroke;
@@ -1877,7 +1877,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   justify-content: center; /* v11: 峰值/谷值居中靠近（用户定案：放下方中央区域） */
   gap: 2px 26px; /* 折行后行距 2px（两枚仍各自完整） */
   margin-top: 4px;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -1941,7 +1941,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 .qqq-mem-hover-prow {
   display: flex;
   align-items: baseline;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11.5px;
   line-height: 20px;
   color: var(--text-primary);
@@ -2023,7 +2023,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 
 /* 均值徽章（右上）：窗口平均核数——橙色系 */
 .qqq-cpu-hover-avg {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 15px;
   line-height: 1.3;
   color: var(--cpu);
@@ -2044,7 +2044,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 }
 
 .qqq-cpu-hover-val {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 28px;
   font-weight: bold;
   color: var(--text-primary);
@@ -2055,7 +2055,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 }
 
 .qqq-cpu-hover-unit {
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   color: var(--text-secondary);
   flex: 0 1 auto;
@@ -2077,21 +2077,21 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
 
 .qqq-cpu-hover-chart .qqq-cpu-labels text {
   fill: var(--text-secondary);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
 }
 
 /* y 轴刻度（左缘刻度区；'12.5核' 5 字符，PAD_L=40 容纳） */
 .qqq-cpu-hover-chart .qqq-cpu-ylbl {
   fill: var(--text-secondary);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
 }
 
 /* 最新点值标签（halo 描边压线可读，橙色） */
 .qqq-cpu-hover-chart .qqq-cpu-curval {
   fill: var(--cpu);
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   font-weight: bold;
   paint-order: stroke;
@@ -2141,7 +2141,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   justify-content: center; /* v11: 峰值/谷值居中靠近（用户定案） */
   gap: 2px 26px;
   margin-top: 4px;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -2214,7 +2214,7 @@ html:not([data-theme="dark"]) .qqq-cpu-hover-chart .qqq-mem-bootline {
   border-radius: 6px;
   padding: 3px 8px;
   font-style: normal;
-  font-family: Consolas, monospace;
+  font-family: Consolas, monospace,qd-emoji;
   font-size: 11px;
   color: var(--text-primary);
   white-space: nowrap;

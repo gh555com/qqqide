@@ -271,7 +271,7 @@
       useShadowDOM: false,
       automaticLayout: true,
       fontSize: _editorFontSize,
-      fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
+      fontFamily: 'ui-monospace, Consolas, Menlo, monospace, qd-emoji',
       // ═══ LSP OFF: strip all smart features ═══
       minimap: { enabled: false },
       scrollBeyondLastLine: 20,
@@ -1323,7 +1323,7 @@
       console.warn('[editor] openInPane fallback:', e && e.message);
       host.innerHTML = '';
       const ta = document.createElement('textarea');
-      ta.style.cssText = 'width:100%; height:100%; box-sizing:border-box; border:0; outline:0; padding:12px; font-family:ui-monospace,Consolas,Menlo,monospace; font-size:13px; resize:none; background:var(--background-color); color:var(--text-primary);';
+      ta.style.cssText = 'width:100%; height:100%; box-sizing:border-box; border:0; outline:0; padding:12px; font-family:ui-monospace,Consolas,Menlo,monospace,qd-emoji; font-size:13px; resize:none; background:var(--background-color); color:var(--text-primary);';
       ta.value = content == null ? '' : String(content);
       host.appendChild(ta);
       // fallback: dirty tracking + blur auto-save

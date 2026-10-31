@@ -9,24 +9,24 @@
 :root{--bg:#fdf6e3;--card:#eee8d5;--text:#595754;--border:#d3c6aa;--green:#859900;--red:#dc322f;--yellow:#b58900;--blue:#4078a0;--cyan:#2a9a78;--orange:#cb4b16;--base01:#777;--base1:#a8a6a2;--base2:#eee8d2;--base3:#fdf6e3;--added:rgba(133,153,0,0.08);--deleted:rgba(220,50,47,0.08)}
 [data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--blue:#60a0d0;--cyan:#5ab890;--orange:#e07020;--base01:#97978a;--base1:#6a6660;--base2:#2a2a2a;--base3:#1e1e1e;--added:rgba(143,188,90,0.1);--deleted:rgba(255,68,68,0.1)}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+body{font-family:Tahoma,system-ui,sans-serif,qd-emoji;font-size:14px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::selection{background:#ffd301;color:#000}
 
 /* header = tofu bar */
 .header{display:flex;align-items:center;gap:3px;padding:4px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;min-height:28px;flex-wrap:nowrap}
 .tofu-bar{display:flex;gap:3px;flex:1;min-width:0;flex-wrap:wrap}
-.header .tofu{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:ui-monospace,monospace;font-size:11px;white-space:nowrap;border:1px solid transparent}
+.header .tofu{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:ui-monospace,monospace,qd-emoji;font-size:11px;white-space:nowrap;border:1px solid transparent}
 .header .tofu:hover{border-color:var(--border);background:var(--base2)}
 .header .tofu.active{border-color:var(--blue);background:var(--added)}
 .header .tofu .tf-name{max-width:120px;overflow:hidden;text-overflow:ellipsis}
 .header .tofu .tf-badge{font-size:9px;min-width:15px;height:14px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
 .header .tofu .tf-nogit{font-size:9px;color:var(--base01)}
-.header .branch{font-size:12px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace;flex-shrink:0}
-.header .pulls{font-size:11px;color:var(--blue);font-family:ui-monospace,monospace;margin-left:4px;flex-shrink:0}
+.header .branch{font-size:12px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace,qd-emoji;flex-shrink:0}
+.header .pulls{font-size:11px;color:var(--blue);font-family:ui-monospace,monospace,qd-emoji;margin-left:4px;flex-shrink:0}
 
 /* toolbar */
 .toolbar{display:flex;gap:4px;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;flex-wrap:wrap}
-.toolbar button{font-size:12px;padding:3px 10px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer;font-family:ui-monospace,monospace}
+.toolbar button{font-size:12px;padding:3px 10px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer;font-family:ui-monospace,monospace,qd-emoji}
 .toolbar button:hover{background:var(--base2)}
 .toolbar .sep{width:1px;background:var(--border);margin:0 4px}
 
@@ -40,7 +40,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 
 /* file list */
 .file-list{list-style:none}
-.file-list li{padding:2px 4px;font-family:Tahoma,ui-monospace,monospace;font-size:12px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:4px}
+.file-list li{padding:2px 4px;font-family:Tahoma,ui-monospace,monospace,qd-emoji;font-size:12px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:4px}
 .icon-btn{background:none;border:none;cursor:pointer;padding:2px 1px;display:inline-flex;align-items:center;justify-content:center;color:var(--text);opacity:.65;border-radius:3px;width:20px;height:20px}
 .icon-btn:hover{opacity:1;background:var(--base2)}
 .file-list li:hover{background:var(--base2)}
@@ -55,9 +55,9 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 
 /* inline diff */
 .inline-diff{margin:4px 0 8px 0;border:1px solid var(--border);border-radius:3px;overflow:hidden;display:none}
-.inline-diff .diff-header{padding:4px 8px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-family:ui-monospace,monospace;font-size:11px}
+.inline-diff .diff-header{padding:4px 8px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-family:ui-monospace,monospace,qd-emoji;font-size:11px}
 .inline-diff .diff-header .dpath{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
-.inline-diff .diff-body{max-height:360px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.4}
+.inline-diff .diff-body{max-height:360px;overflow:auto;font-family:ui-monospace,Consolas,monospace,qd-emoji;font-size:11px;line-height:1.4}
 .inline-diff .dline{display:flex;min-height:16px;white-space:pre}
 .inline-diff .dline .dl{color:var(--green)}
 .inline-diff .dline .dr{color:var(--red)}
@@ -67,7 +67,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 
 /* commit form */
 .commit-form{display:flex;gap:8px;margin-bottom:10px;align-items:stretch}
-.commit-form textarea{flex:1;min-width:0;height:52px;resize:none;font-family:ui-monospace,monospace;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)}
+.commit-form textarea{flex:1;min-width:0;height:52px;resize:none;font-family:ui-monospace,monospace,qd-emoji;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)}
 .commit-form .commit-right{display:flex;flex-direction:column;gap:4px;justify-content:space-between;flex-shrink:0;min-width:110px}
 .commit-form .commit-right button{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--green);color:#fff;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap}
 .commit-form .commit-right button:hover{opacity:.9}
@@ -81,18 +81,18 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 .branch-actions{display:flex;gap:3px;margin-left:auto}
 
 /* stash */
-.stash-item{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace;font-size:11px;padding:2px 6px}
+.stash-item{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace,qd-emoji;font-size:11px;padding:2px 6px}
 .stash-ref{color:var(--yellow);font-weight:700;flex-shrink:0}
 .stash-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* clone */
 .clone-dialog{display:none;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:4px;margin-bottom:8px}
-.clone-dialog input{width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);margin-bottom:6px;font-family:ui-monospace,monospace}
+.clone-dialog input{width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);margin-bottom:6px;font-family:ui-monospace,monospace,qd-emoji}
 .clone-dialog .clone-row{display:flex;gap:4px}
 .clone-dialog .clone-row button{flex:1;font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer}
 
 /* progress */
-.progress{display:none;padding:6px 10px;background:var(--card);border-bottom:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px;color:var(--blue);white-space:pre-wrap;max-height:200px;overflow-y:auto}
+.progress{display:none;padding:6px 10px;background:var(--card);border-bottom:1px solid var(--border);font-family:ui-monospace,monospace,qd-emoji;font-size:11px;color:var(--blue);white-space:pre-wrap;max-height:200px;overflow-y:auto}
 
 /* empty */
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:14px;flex-direction:column;gap:8px;padding:20px}
@@ -116,7 +116,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 .graph-wrap{position:relative;flex:1;overflow:auto;min-height:0}
 .graph-wrap canvas{position:absolute;top:0;left:0;z-index:1;pointer-events:none}
 .graph-rows{position:relative;z-index:2;min-height:100%}
-.graph-row{display:flex;align-items:center;height:28px;padding:0 8px;cursor:pointer;border-bottom:1px solid var(--border);font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:28px;white-space:nowrap}
+.graph-row{display:flex;align-items:center;height:28px;padding:0 8px;cursor:pointer;border-bottom:1px solid var(--border);font-family:ui-monospace,Consolas,monospace,qd-emoji;font-size:11px;line-height:28px;white-space:nowrap}
 .graph-row:hover{background:var(--base2)}
 .graph-row .g-hash{color:var(--yellow);font-weight:700;min-width:0;margin-right:4px;flex-shrink:0;font-size:10px}
 .graph-row .g-refs{display:flex;gap:2px;margin-right:5px;flex-shrink:0;align-items:center}
@@ -124,7 +124,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 .graph-row .g-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .graph-row .g-date{color:var(--base01);font-size:10px;margin-left:6px;flex-shrink:0;text-align:right;min-width:72px}
 .graph-row .g-author{color:var(--base01);font-size:10px;margin-left:4px;flex-shrink:0;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.commit-detail{padding:6px 12px;background:var(--card);border-bottom:1px solid var(--border);font-family:ui-monospace,Consolas,monospace}
+.commit-detail{padding:6px 12px;background:var(--card);border-bottom:1px solid var(--border);font-family:ui-monospace,Consolas,monospace,qd-emoji}
 .commit-detail .cd-header{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;color:var(--base01);flex-wrap:wrap}
 .commit-detail .cd-file{display:flex;align-items:center;padding:1px 0;gap:6px;font-size:11px}
 .commit-detail .cd-file .cd-stat{font-size:10px;min-width:36px;text-align:right}
@@ -140,6 +140,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 .branch-filter label.on{border-color:var(--green);background:var(--added)}
 .branch-filter label.on .bf-cb::after{content:'✓';position:absolute;top:-2px;left:1px;font-size:12px;font-weight:bold;color:var(--text)}
 </style>
+<link rel="stylesheet" href="../../core/emoji-font.css">
 </head>
 <body>
 <div class="header" id="header">

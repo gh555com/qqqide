@@ -1684,7 +1684,7 @@
     var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
     // 构建 CSS：左面板→靠左，中面板→居中，右面板→靠右
     var cssText = 'position:absolute; bottom:12px; ' +
-      'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif; ' +
+      'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif,qd-emoji; ' +
       'color:var(--text-primary); opacity:0.90; pointer-events:none; ' +
       'z-index:1; user-select:none; white-space:nowrap;';
     if (target === 0) {

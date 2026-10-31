@@ -276,7 +276,7 @@ function bootActivities(boot) {
       '.qqq-act-eye-link:hover{color:#ffd7e4;text-decoration:underline;}' +
       '.qqq-act-eye-list{margin:12px auto 2px;width:fit-content;min-width:230px;max-width:92%;text-align:left;forced-color-adjust:none;}' +
       '.qqq-act-eye-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:5px 12px;border-radius:6px;background:rgba(242,166,186,.08);margin-bottom:5px;font-size:13px;forced-color-adjust:none;}' +
-      '.qqq-act-eye-amt{font-weight:800;color:#f2a6ba;font-family:Consolas,monospace;white-space:nowrap;forced-color-adjust:none;}' +
+      '.qqq-act-eye-amt{font-weight:800;color:#f2a6ba;font-family:Consolas,monospace,qd-emoji;white-space:nowrap;forced-color-adjust:none;}' +
       '.qqq-act-eye-spark{display:inline-block;background:linear-gradient(135deg,#dcdcdc,#a9a9a9);color:#000;font-weight:700;font-size:11px;padding:1px 8px;border-radius:999px;margin-left:8px;vertical-align:1px;white-space:nowrap;forced-color-adjust:none;}' +
       '.qqq-act-eye-info{color:#c8c8d8;font-size:12px;line-height:1.6;word-break:break-all;forced-color-adjust:none;}' +
       '.qqq-act-eye-svg{display:block;margin:0 auto 4px;animation:qqqActFloat 2.4s ease-in-out infinite;forced-color-adjust:none;}' +
@@ -296,7 +296,7 @@ function bootActivities(boot) {
       '.qqq-act-bigfill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);background-size:200% 100%;animation:qqqActShimmer 1.2s linear infinite;}' +
       '.qqq-act-bigfill.qqq-act-cool-fill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);animation:qqqActShimmer 1.2s linear infinite;}' +
       '.qqq-act-bigfill.qqq-act-ge50-fill.qqq-act-full{background:#b58900;}' +
-      '.qqq-act-bignum{text-align:center;font-size:15px;font-weight:700;color:#34d399;font-family:Consolas,monospace;}' +
+      '.qqq-act-bignum{text-align:center;font-size:15px;font-weight:700;color:#34d399;font-family:Consolas,monospace,qd-emoji;}' +
       '.qqq-act-desc{margin:14px 0 18px;text-align:center;font-size:14px;line-height:1.9;color:#c8c8d8;}' +
       '.qqq-act-desc b{color:#34d399;}' +
       // 免费时段行：UTC 版 2 秒后渐隐 → 切换用户系统时区版渐显固定（2026-08-20）
@@ -316,7 +316,7 @@ function bootActivities(boot) {
       'border-radius:8px;border:1px solid rgba(63,150,216,.55);' +
       'background:linear-gradient(to right,transparent var(--pct,0%),rgba(10,12,20,.8) var(--pct,0%)),' +
       'linear-gradient(90deg,rgba(42,161,152,.85) 0%,rgba(133,153,0,.8) 100%);forced-color-adjust:none;}' +
-      '.qqq-vibe-hist-num{position:relative;font-size:15px;font-weight:800;color:#fff;font-family:Consolas,monospace;line-height:1;}' +
+      '.qqq-vibe-hist-num{position:relative;font-size:15px;font-weight:800;color:#fff;font-family:Consolas,monospace,qd-emoji;line-height:1;}' +
       '.qqq-act-cta{display:block;width:100%;padding:12px 0;border:none;border-radius:10px;font-size:16px;font-weight:800;' +
       'background:linear-gradient(90deg,#059669,#0d9488);color:#fff;box-shadow:0 4px 18px rgba(5,150,105,.4);forced-color-adjust:none;}' +
       '.qqq-act-cta:hover{filter:brightness(1.12);}' +
@@ -349,9 +349,9 @@ function bootActivities(boot) {
       '.qqq-act-bills{margin:10px 0 4px;max-height:220px;overflow-y:auto;}' +
       '.qqq-act-bill{display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;color:#d8d8e4;forced-color-adjust:none;}' +
       '.qqq-act-bill.qqq-act-bill-on{border-color:#ff9999;background:rgba(255,153,153,.14);}' +
-      '.qqq-act-bill .qqq-act-bill-amt{font-weight:800;color:#d79921;font-family:Consolas,monospace;}' +
+      '.qqq-act-bill .qqq-act-bill-amt{font-weight:800;color:#d79921;font-family:Consolas,monospace,qd-emoji;}' +
       '.qqq-act-bill .qqq-act-bill-dt{font-size:11.5px;color:#9aa0b5;}' +
-      '.qqq-act-bill .qqq-act-bill-get{margin-left:auto;font-weight:800;color:#b58900;font-family:Consolas,monospace;white-space:nowrap;}' +
+      '.qqq-act-bill .qqq-act-bill-get{margin-left:auto;font-weight:800;color:#b58900;font-family:Consolas,monospace,qd-emoji;white-space:nowrap;}' +
       '.qqq-act-bill .qqq-act-bill-go{flex:0 0 auto;padding:6px 14px;border:none;border-radius:8px;font-size:12.5px;font-weight:800;color:#fff;background:linear-gradient(90deg,#b58900,#a07400);forced-color-adjust:none;}' +
       '.qqq-act-bill .qqq-act-bill-go:hover{filter:brightness(1.1);}' +
       '.qqq-act-bill .qqq-act-bill-go:disabled{filter:grayscale(.6);opacity:.65;}' +

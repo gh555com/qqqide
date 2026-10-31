@@ -321,7 +321,7 @@ function _initClockBlock(aiDiv) {
     // ★ az 行布局：时间 · 饼图 ·〔复制 分享 ☆收藏〕· ge。
     //   位置契约：收藏钮的居中位 = .msg-ai-fav 的 auto 外边距（历史位，禁把 auto 挪回动作组——挪了星标就偏右）；
     //   动作组绝对定位挂星标左缘外侧（零布局占位，不推动星标与 ge）；ge 恒贴右端。
-    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="msg-ai-fav"><span class="msg-ai-acts"></span><button type="button" tabindex="-1" class="clock-fav"><span class="qqi qqi-act-star"></span></button></span><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary)">0.00 ge</span>';
+    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="msg-ai-fav"><span class="msg-ai-acts"></span><button type="button" tabindex="-1" class="clock-fav"><span class="qqi qqi-act-star"></span></button></span><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace,qd-emoji;font-weight:700;font-size:18px;color:var(--text-primary)">0.00 ge</span>';
     aiDiv.appendChild(block);
     aiDiv._clockBlock = block;
     aiDiv._clockMin = block.querySelector('.clock-min');

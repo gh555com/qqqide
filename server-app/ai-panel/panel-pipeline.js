@@ -671,7 +671,7 @@ async function _executeSend(intent) {
     var userMsgEl;
     if (_isCompress) {
         // ★ V15: compress 楼层显示「only facts」气泡
-        userMsgEl = addMessageEl('user', 'only facts');
+        userMsgEl = addMessageEl('user', 'only facts', qid);   // ★ 归属本意图的 quest（后台压缩楼绝不落进前台卡）
         if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
     } else if (_deferUserBubble) {
         userMsgEl = null;
@@ -686,7 +686,9 @@ async function _executeSend(intent) {
             userMsgEl = intent.bubbleEl;
             intent.bubbleEl = null;   // 消费指针（防悬挂复用）
         } else {
-            userMsgEl = addMessageEl('user', text);
+            // ★ 气泡必须归本意图的 quest（qid）——缺省走 questActiveId 会在后台 quest 建楼时
+            //   把用户气泡画进另一张卡（「上一个任务的提问消失」现象的全链路源头）。
+            userMsgEl = addMessageEl('user', text, qid);
         }
         if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
     }
@@ -1308,7 +1310,7 @@ async function _executeSend(intent) {
                     // ★ B2: 恢复成功，创建「继续」用户气泡
                     var _recBubbleText = agent._deferredUserText || _qq('ai.recovery.bubble', '继续');
                     agent._deferredUserText = null;
-                    var _recBubble = addMessageEl('user', _recBubbleText);
+                    var _recBubble = addMessageEl('user', _recBubbleText, qid);   // ★ 归属本意图的卡（否则先在后一个卡里留孤儿）
                     if (_recBubble) {
                         _recBubble._floor = agent._currentFloorNum;
                         if (aiDiv && aiDiv.parentNode) aiDiv.parentNode.insertBefore(_recBubble, aiDiv);
@@ -1432,7 +1434,7 @@ async function _executeSend(intent) {
                     // ★ B2: 恢复成功，创建「继续」用户气泡
                     var _recBubbleText = agent._deferredUserText || _qq('ai.recovery.bubble', '继续');
                     agent._deferredUserText = null;
-                    var _recBubble = addMessageEl('user', _recBubbleText);
+                    var _recBubble = addMessageEl('user', _recBubbleText, qid);   // ★ 归属本意图的卡（否则先在后一个卡里留孤儿）
                     if (_recBubble) {
                         _recBubble._floor = agent._currentFloorNum;
                         if (aiDiv && aiDiv.parentNode) aiDiv.parentNode.insertBefore(_recBubble, aiDiv);
@@ -1530,7 +1532,8 @@ async function _executeSend(intent) {
                 setStreaming(false);
                 // ★ 每层完工后保存 quest 元数据（currentFloorNum / passbyBase 等），
                 //   防重启时元数据缺失导致 _restoreAgentFromStore 无法正确恢复基线
-                if (typeof saveQuestData === 'function') saveQuestData().catch(function () { });
+                // ★ 落盘目标 = 本楼层自己的 agent/楼层号（面板全局指针在后台任务并行时不可信）
+                if (typeof saveQuestData === 'function') saveQuestData(agent, floorNum).catch(function () { });
                 if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
                 if (typeof updateQueueBtn === 'function') updateQueueBtn();
                 if (typeof updateGuideBtn === 'function') updateGuideBtn();

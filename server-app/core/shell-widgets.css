@@ -152,7 +152,7 @@ html.qqq-codelens-style .monaco-editor .codelens-decoration > a:hover {
   color: var(--text-primary);
   padding: 1px 4px;
   border-radius: 3px;
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: ui-monospace, Consolas, monospace,qd-emoji;
   font-size: .9em;
   border: 1px solid var(--border-color);
   word-break: break-all;
@@ -270,7 +270,7 @@ html.qqq-codelens-style .monaco-editor .codelens-decoration > a:hover {
   padding: 7px 12px;
   cursor: default;
   font-size: 13px;
-  font-family: Tahoma, sans-serif;
+  font-family: Tahoma, sans-serif,qd-emoji;
   color: var(--text-primary, #586e75);
   margin: 0;
 }

@@ -60,14 +60,14 @@
   #pl-def{width:55px;padding:0;}
   .pl-htxt{width:auto;min-width:52px;height:22px;padding:0 9px;border:1px solid rgba(255,255,255,0.22);border-radius:0;background:rgba(255,255,255,0.08);color:#cfcbc2;
     box-sizing:border-box;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;outline:none;flex:0 0 auto;
-    position:relative;transition:background .12s,color .12s,border-color .12s;font-family:Tahoma,system-ui,sans-serif;}
+    position:relative;transition:background .12s,color .12s,border-color .12s;font-family:Tahoma,system-ui,sans-serif,qd-emoji;}
   .pl-htxt:hover{background:rgba(255,255,255,0.22);color:#fff;border-color:rgba(255,255,255,0.42);}
   .pl-htxt:disabled{opacity:.55;}
   /* ★ 窗口拉伸比例钮 x0.5~x4（2026-10-03 q319 用户定案）：位于星标播放钮左侧——快捷键 1/2/3/4（x0.5 = 「1 左侧键」(`) 或回车；键位在引擎键位表）；
      x1 = 视频像素物理 1:1（win32 DSF=1 天然无视系统缩放）；点击直改窗口尺寸使画面恰为 视频分辨率×N（闭式解一发落点——2026-10-03 提速重写）；
      ★ 一切视频装载即自动 x1（引擎 loadedmetadata 触发——启动值）；右下角 ✓ = 当前生效档（实测几何反推——手动改窗即自动消隐）；
      钮面「x」中性色/倍率标准色 q（= 键位标注，Tahoma 非加粗）；★ x0.5 例外（2026-10-03 用户定案）：0.5 非键位 → 倍率恒白 + 旁挂键帽「`」（金框不变、字符 = 标准色 q；1 左侧键）；音轨/未就绪禁用（引擎回推 avail） */
-  .pl-hzoom{width:auto;min-width:24px;padding:0 4px;font-size:11px;letter-spacing:0;font-family:Tahoma,system-ui,sans-serif;}
+  .pl-hzoom{width:auto;min-width:24px;padding:0 4px;font-size:11px;letter-spacing:0;font-family:Tahoma,system-ui,sans-serif,qd-emoji;}
   .pl-hzoom::after{content:'\2714';position:absolute;right:0;bottom:-1px;font-size:12px;font-weight:400;line-height:1;color:#ffd301;display:none;pointer-events:none;
     text-shadow:0 -1px 0 rgba(0,0,0,.95),0 1px 0 rgba(0,0,0,.95),-1px 0 0 rgba(0,0,0,.95),1px 0 0 rgba(0,0,0,.95),-1px -1px 0 rgba(0,0,0,.85),1px -1px 0 rgba(0,0,0,.85),-1px 1px 0 rgba(0,0,0,.85),1px 1px 0 rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.7);}
   .pl-hzoom.pl-zoom-on::after{display:block;}
@@ -78,11 +78,11 @@
      x0.5 例外（2026-10-03 用户定案）：0.5 非键位恒白（.pl-znw）+ 旁挂键帽「`」（.pl-kc——金框/底色不变、字符 = 标准色 q）；键帽子样式与 .ovmb-kcap 同语言（金边 + 底边 2px 键体感） */
   .pl-zn{color:var(--key-q);margin-left:2px;}
   .pl-znw{color:#fff;}
-  .pl-kc{display:inline-flex;align-items:center;justify-content:center;margin-left:3px;min-width:14px;height:14px;padding:0 3px;border-radius:3px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.12);color:var(--key-q);font-size:10px;line-height:1;font-weight:400;font-family:Tahoma,Verdana,sans-serif;box-sizing:border-box;pointer-events:none;}
+  .pl-kc{display:inline-flex;align-items:center;justify-content:center;margin-left:3px;min-width:14px;height:14px;padding:0 3px;border-radius:3px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.12);color:var(--key-q);font-size:10px;line-height:1;font-weight:400;font-family:Tahoma,Verdana,sans-serif,qd-emoji;box-sizing:border-box;pointer-events:none;}
   /* ★ 媒体信息钮 [!]（2026-10-03 q319 用户定案）：头部唯一圆形钮（圆形中间一个「!」，位于 x0.5 左侧）——
      悬停 = 即时详情框（光标移开即隐）；点击 = 同截图「📂 Roam 定位」——强制召回最相关 IDE + 在其 Roam 定位到正在播放的原文件。
      配色守「金 = 状态」语义（本体中性色同 .pl-hbtn）；圆形为本钮专属形状（用户点名——其余头部钮恒直角）。 */
-  .pl-hinfo{border-radius:50%;font-family:Tahoma,system-ui,sans-serif;font-size:13px;font-weight:700;}
+  .pl-hinfo{border-radius:50%;font-family:Tahoma,system-ui,sans-serif,qd-emoji;font-size:13px;font-weight:700;}
   /* ★ 媒体信息悬浮框（2026-10-03 q319）：[!] 悬停即时显示 / 移开即隐；右缘随钮、贴头部条下缘；
      纯展示（pointer-events:none——绝不挡任何点击；指针不达 → 不可滚动，overflow:hidden 语义明确）；
      内容 = 主进程 ffprobe 详情（编码信息在上、时间垫底）；技术值恒英文原样，标签走 i18n（shell.player.info.*）。 */
@@ -95,7 +95,7 @@
   #pl-mibox .pl-mi-sec:first-child{margin-top:0;}
   #pl-mibox .pl-mi-row{display:flex;gap:8px;align-items:baseline;}
   #pl-mibox .pl-mi-k{flex:0 0 auto;min-width:62px;color:#9a958c;white-space:nowrap;}
-  #pl-mibox .pl-mi-v{flex:1 1 auto;min-width:0;word-break:break-all;font-family:Consolas,'Courier New',monospace;font-size:11.5px;font-variant-numeric:tabular-nums;}
+  #pl-mibox .pl-mi-v{flex:1 1 auto;min-width:0;word-break:break-all;font-family:Consolas,'Courier New',monospace,qd-emoji;font-size:11.5px;font-variant-numeric:tabular-nums;}
   #pl-mibox .pl-mi-note{color:#ffb46b;}
   /* ★ 短窗紧凑双列（[!] 悬停框；内高 < 540 自动启用）：单列 19 行在矮窗（如 240p 视频 x1 = 367 高）必溢出——两列排布把高箱压进视口；
      列间守卫：行不断裂（break-inside）+ 区块标题尾随其行（break-after）；宽度同步放宽保列宽可读（右缘仍随钮、越界钳制不变） */
@@ -148,7 +148,7 @@
   html.ovmb-floatopen #pl-head, html.ovmb-floatopen #pl-body .ovmb-maincol,
   html.squad-dd-open #pl-head, html.squad-dd-open #pl-body .ovmb-maincol{-webkit-app-region:no-drag;}
   /* 空态（异常兜底：会话为空时） */
-  #pl-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;color:#8f8b83;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.7;}
+  #pl-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;color:#8f8b83;font-family:system-ui,-apple-system,sans-serif,qd-emoji;font-size:13px;line-height:1.7;}
   #pl-empty .pl-note{font-size:26px;line-height:1;color:#ffd301;opacity:.75;}
   /* 迷你 qoast（引擎宿主适配：与主窗 qoast 同语义） */
   .pl-qoast-wrap{position:absolute;left:50%;bottom:124px;transform:translateX(-50%);z-index:99990;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;max-width:92%;-webkit-app-region:no-drag;}
@@ -170,6 +170,7 @@
   /* ★ 播放列表滚动块 = 引擎自定义滚动块（media-engine.js「qh 滚动真理机器」接入：ovmb-plsb 6px 滑轨 + 2px 细条（右距 2px）+ hover 变粗贴边 + 点击即跳，
      2026-10-02 q319 定案；2026-10-03 收窄贴缘）——原生态滚动条已隐藏，本窗禁再做局部覆盖（旧局部提亮规则随机器接入废除） */
 </style>
+<link rel="stylesheet" href="../core/emoji-font.css">
 </head>
 <body>
 <div id="pl-root">

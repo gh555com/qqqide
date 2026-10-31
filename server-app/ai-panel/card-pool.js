@@ -1149,16 +1149,28 @@ var CardPool = (function () {
   // ═══ 在建楼：创建 AI div（A1 + 时钟），插入活跃 Card ═══
   // 返回 aiEl 供 startFloorTimer / agent.send 使用
   // 注意：用户消息由外部 addUserMessageEl 创建，此处不重复
+  // ★ 可见性铁律：面板「显示哪个 quest」的唯一真相源 = questActiveId（只由 switchTo 变更）。
+  //   _activeId 是它的派生视图，建楼/渲染绝不允许自行改写。
+  //   旧实现无条件「隐藏当前卡 + 显示目标卡」，却不改 questActiveId → 后台 quest（队列排水 /
+  //   恢复楼 / only facts 压缩楼）一建楼就翻卡：屏幕换成后台任务，回车却仍发进旧任务
+  //   （看清 A 的画面打字，楼层长进 B —— 多任务串台的根因）。
   CardPool.prototype.startBuildingFloor = function (questId, floorNum, allTxtPath) {
     // ★ 兜底：若 card 不存在（新建 quest 首次发消息），自动创建
     var card = this.getOrCreate(questId);
+    var _panelQuest = (typeof questActiveId !== 'undefined') ? questActiveId : null;
+    var _isBackground = !!(_panelQuest && questId !== _panelQuest);
     if (!this._activeId || this._activeId !== questId) {
-      // 活跃 card 不匹配 → 隐藏旧 card，显示目标 card
-      if (this._activeId && this._cards[this._activeId] && this._cards[this._activeId].dom) {
-        this._cards[this._activeId].dom.style.display = 'none';
+      if (_isBackground) {
+        // 后台 quest：只在自己的隐藏卡里长 DOM，可见性/活跃指针零动作
+        if (card.dom) card.dom.style.display = 'none';
+      } else {
+        // 前台 quest：正常翻卡（隐藏旧 card，显示目标 card）
+        if (this._activeId && this._cards[this._activeId] && this._cards[this._activeId].dom) {
+          this._cards[this._activeId].dom.style.display = 'none';
+        }
+        this._activeId = questId;
+        card.dom.style.display = 'block';
       }
-      this._activeId = questId;
-      card.dom.style.display = 'block';
     }
 
     // ★ 防重复：若该楼层已有 AI div（恢复路径），直接复用

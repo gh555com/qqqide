@@ -40,7 +40,7 @@ html { overflow: hidden; }   /* ★ zoom 0.85→1 根治（2026-10-03）：全�
 * { box-sizing: border-box; forced-color-adjust: none; scrollbar-width: none; }
 *:focus { outline: none !important; }
 *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-html, body { font-family: Tahoma; font-size: 11px; margin: 0; padding: 0; height: 100%; width: 100%; background-color: var(--bg-color); color: var(--text-primary); outline: none; }
+html, body { font-family: Tahoma,qd-emoji; font-size: 11px; margin: 0; padding: 0; height: 100%; width: 100%; background-color: var(--bg-color); color: var(--text-primary); outline: none; }
 body { display: flex; flex-direction: column; border: none; overflow: hidden; user-select: none; -webkit-user-select: none; }
 input, textarea { -webkit-user-select: text; user-select: text; }
 ::selection { background: var(--selection-bg, #e8a090); color: var(--selection-text, #000000); }
@@ -52,7 +52,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 /* ★ 拖拽性能（2026-10-03）：拖动分割线期间禁用全部过渡——值直落（跟手零滞后），并消掉每步 200ms 过渡动画引发的逐帧重排重绘 */
 html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-drag .ky-content { transition: none !important; }
 
-.nav-item { appearance: none; -webkit-appearance: none; padding: 7px 3.5px;   /* 左移 5px 贴边 */ border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma; font-size: 11px; }
+.nav-item { appearance: none; -webkit-appearance: none; padding: 7px 3.5px;   /* 左移 5px 贴边 */ border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma,qd-emoji; font-size: 11px; }
 .nav-item:hover { background-color: var(--bg-highlight); }
 .nav-item.active { background-color: var(--base1); color: var(--base3); }
 /* ★ qq 区双区（2026-09-22）：上=文件夹区 / find 框=分界 / 下=文件区；默认精确填空，零溢出零滚动条 */
@@ -115,7 +115,7 @@ html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-dra
 .address-display { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 4.5px 4.5px 4.5px 7px; background-color: var(--bg-color); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 2.5px; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; display: flex; align-items: center; z-index: 5; }
 .address-display.editing { font-style: italic; }
 .path-sep { font-weight: bold; padding: 0 0.5em; color: var(--orange); }
-.address-input { width: 100%; padding: 4.5px 20.5px 4.5px 7px; border: 1px solid var(--border-strong); border-radius: 2.5px; background-color: var(--bg-color); color: var(--text-primary); box-sizing: border-box; position: relative; z-index: 10; font-family: Tahoma; font-size: 11px; }
+.address-input { width: 100%; padding: 4.5px 20.5px 4.5px 7px; border: 1px solid var(--border-strong); border-radius: 2.5px; background-color: var(--bg-color); color: var(--text-primary); box-sizing: border-box; position: relative; z-index: 10; font-family: Tahoma,qd-emoji; font-size: 11px; }
 .address-input:not(:focus) { color: transparent !important; background-color: transparent !important; border-color: transparent !important; }
 .address-input:focus { background-color: var(--bg-color) !important; }
 .address-copy-btn { position: absolute; right: 0; top: 0; width: 20.5px; height: 100%; cursor: pointer; color: var(--icon-subtle); z-index: 100; background: transparent; display: flex; align-items: center; justify-content: center; padding: 0 3.5px; box-sizing: border-box; }
@@ -161,8 +161,8 @@ html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-dra
 .file-item[data-type="file"] .file-name-area > span:not(.file-icon) { padding-left: 1.5px; }
 .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 8.5px; background-color: var(--bg-color); border-top: 1px solid var(--border-strong); display: flex; justify-content: space-between; align-items: center; z-index: 10; box-shadow: 0 -1.5px 4.5px rgba(0,0,0,0.05); gap: 8.5px; }
 .filename-input-container { flex: 1; margin-right: 8.5px; position: relative; }
-.filename-input { width: 100%; padding: 4.5px 4.5px 4.5px 5px; border: 1px solid var(--border-strong); border-radius: 2.5px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma; font-size: 11px; }
-.rename-input { width: 100%; padding: 0; border: 1px solid #ff6b00; box-sizing: border-box; font-family: Tahoma; font-size: 11px; line-height: inherit; background-color: #ff6b00; color: white; }
+.filename-input { width: 100%; padding: 4.5px 4.5px 4.5px 5px; border: 1px solid var(--border-strong); border-radius: 2.5px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma,qd-emoji; font-size: 11px; }
+.rename-input { width: 100%; padding: 0; border: 1px solid #ff6b00; box-sizing: border-box; font-family: Tahoma,qd-emoji; font-size: 11px; line-height: inherit; background-color: #ff6b00; color: white; }
 .button { padding: 5px 10px; border: none; border-radius: 2.5px; cursor: pointer; }
 .save-button { background-color: var(--gold-accent-bg); color: var(--text-primary); }
 .cancel-button { background-color: var(--bg-highlight); color: var(--text-primary); margin-left: 4.5px; }
@@ -178,9 +178,9 @@ html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-dra
 .history-dropdown-item:hover { background-color: var(--bg-highlight); }
 .path-tooltip { display: none; position: fixed; z-index: 99999; background-color: #eee8d5; color: #7a7874; border: 1px solid #a8a6a2; border-radius: 2.5px; padding: 3.5px 7px; box-shadow: 0 1.5px 5px rgba(0, 0, 0, 0.18); pointer-events: none; }
 [data-theme="dark"] .path-tooltip { background-color: #4a4540; color: #eee8d5; border-color: #6a6660; }
-.dropdown-item-tooltip { position: fixed; pointer-events: none; background: var(--tooltip-bg); color: var(--tooltip-text); padding: 3.5px 8.5px; border-radius: 3.5px; font-family: Tahoma, sans-serif; font-size: 11px; z-index: 99999; display: none; box-shadow: 0 1px 1.5px rgba(0,0,0,0.4); white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border-strong); max-width: calc(100vw - 17px); }
+.dropdown-item-tooltip { position: fixed; pointer-events: none; background: var(--tooltip-bg); color: var(--tooltip-text); padding: 3.5px 8.5px; border-radius: 3.5px; font-family: Tahoma, sans-serif,qd-emoji; font-size: 11px; z-index: 99999; display: none; box-shadow: 0 1px 1.5px rgba(0,0,0,0.4); white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border-strong); max-width: calc(100vw - 17px); }
 .qq-filter-container { padding: 1.5px 3.5px; position: relative; flex-shrink: 0; border-top: 1px solid var(--border-color); }
-.qq-filter-input { width: 100%; padding: 1px 3.5px; border: 1px solid var(--border-strong); border-radius: 2.5px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma; font-size: 11px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
+.qq-filter-input { width: 100%; padding: 1px 3.5px; border: 1px solid var(--border-strong); border-radius: 2.5px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma,qd-emoji; font-size: 11px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
 .qq-filter-input::placeholder { color: var(--text-dim); font-style: italic; }
 .qq-filter-input:focus { border-color: var(--gold-accent); box-shadow: 0 0 0 1px var(--gold-accent); }
 /* Responsive: narrow footer mode */
@@ -188,6 +188,7 @@ html.rm-sash-drag .sidebar, html.rm-sash-drag .sidebar-resizer, html.rm-sash-dra
 .footer.responsive-narrow .filename-input-container { margin-right: 3.5px; }
 .footer.responsive-extreme { gap: 1.5px; padding: 3.5px 5px; }
 </style>
+<link rel="stylesheet" href="../../core/emoji-font.css">
 </head>
 <body>
 <div class="container">

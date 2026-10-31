@@ -127,7 +127,7 @@
       '  padding: 4px 0; margin: 0;',
       '  opacity: 0; pointer-events: none;',
       '  transition: opacity .12s ease, transform .12s ease;',
-      '  font-family: Tahoma, sans-serif; font-size: 13px;',
+      '  font-family: Tahoma, sans-serif,qd-emoji; font-size: 13px;',
       '  max-height: calc(100vh - 12px); overflow-y: auto; overflow-x: hidden;',
       '}',
       '.qqq-help-menu { min-width: 148px; transform: translateY(-4px); }',

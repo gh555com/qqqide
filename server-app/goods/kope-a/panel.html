@@ -25,7 +25,7 @@
 }
 html { zoom: 0.85; forced-color-adjust: none !important; height: 100%; }
 body {
-    margin: 0; padding: 0; font-family: Tahoma, sans-serif; font-size: 13px;
+    margin: 0; padding: 0; font-family: Tahoma, sans-serif,qd-emoji; font-size: 13px;
     background: var(--background-color); color: var(--text-primary); overflow: hidden;
     user-select: none; -webkit-user-select: none; height: 100%;
 }
@@ -90,7 +90,7 @@ body {
 }
 
 .search-container { margin: 0; flex-shrink: 0; position: relative; }
-.search-input { width: 100%; background: var(--base2); border: 1px solid var(--border-color); border-radius: 4px; padding: 7.5px 10px; font-family: Tahoma, sans-serif; font-size: 13px; color: var(--text-primary); outline: none; transition: 0.2s; box-sizing: border-box; }
+.search-input { width: 100%; background: var(--base2); border: 1px solid var(--border-color); border-radius: 4px; padding: 7.5px 10px; font-family: Tahoma, sans-serif,qd-emoji; font-size: 13px; color: var(--text-primary); outline: none; transition: 0.2s; box-sizing: border-box; }
 .search-input::selection { background: #FFD302; color: #000; }
 .search-input::placeholder { color: rgba(0,0,0,0.18); }
 [data-theme="dark"] .search-input::selection { background: #6a5a10; color: #f0e8d8; }
@@ -99,9 +99,9 @@ body {
 
 .item-info { display: none; }
 .item-time { font-size: 13px; color: var(--base2); }
-.item-size { font-size: 13px; color: var(--base2); font-family: Tahoma, sans-serif; }
+.item-size { font-size: 13px; color: var(--base2); font-family: Tahoma, sans-serif,qd-emoji; }
 .item-preview {
-    font-size: 13px; font-family: Tahoma, sans-serif;
+    font-size: 13px; font-family: Tahoma, sans-serif,qd-emoji;
     white-space: pre-wrap; word-break: break-all;
     overflow: hidden;
     display: -webkit-box;
@@ -117,7 +117,7 @@ body {
     color: var(--base2);
     padding: 4px 10px;
     border-radius: 4px;
-    font-family: Tahoma, sans-serif;
+    font-family: Tahoma, sans-serif,qd-emoji;
     font-size: 13px;
     z-index: 9999;
     display: none;
@@ -129,7 +129,7 @@ body {
 [data-theme="dark"] #tooltip { background: #2a2520; color: #d4d0c8; }
 .item-actions { margin-top: 5px; display: flex; gap: 5px; }
 
-.action-mini-btn { padding: 2px 6px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--base3); cursor: pointer; color: var(--text-primary); font-family: Tahoma, sans-serif; line-height: 1.2; }
+.action-mini-btn { padding: 2px 6px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--base3); cursor: pointer; color: var(--text-primary); font-family: Tahoma, sans-serif,qd-emoji; line-height: 1.2; }
 .action-mini-btn:hover { background: var(--primary-color); color: #1e1e1e; }
 
 .scrollbar-outer { position: absolute; right: 0; top: 0; width: 7px; height: 100%; z-index: 1000; pointer-events: none; }
@@ -142,7 +142,7 @@ body {
 
 /* kope-a 未启动横幅「启动」小按钮（黑白单色低调款；1px 边框恒可见为按钮） */
 .kope-offline-start-btn {
-    margin-left: 8px; padding: 0 8px; font-size: 11px; font-family: Tahoma, sans-serif;
+    margin-left: 8px; padding: 0 8px; font-size: 11px; font-family: Tahoma, sans-serif,qd-emoji;
     color: var(--text-primary); background: transparent;
     border: 1px solid var(--text-primary); border-radius: 3px;
     line-height: 16px; vertical-align: baseline;
@@ -176,7 +176,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 13px;
-    font-family: Tahoma, sans-serif;
+    font-family: Tahoma, sans-serif,qd-emoji;
     position: relative;
 }
 .history-dropdown-item:hover {

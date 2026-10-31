@@ -9,7 +9,7 @@
 :root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--base01:#97978a;--base2:#eee8d5}
 [data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--base01:#97978a;--base2:#2a2a2a}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Tahoma,system-ui,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--border)}
+body{font-family:Tahoma,system-ui,sans-serif,qd-emoji;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--border)}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}
@@ -22,7 +22,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:13px;color:var(--text);ba
 #drag-handle:hover{opacity:1}
 #drag-handle svg{pointer-events:none;display:block;user-select:none}
 #input-wrap{flex:1;position:relative;display:flex;align-items:center;min-width:0;-webkit-app-region:no-drag}
-.title-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;font-family:Tahoma,ui-monospace,Consolas,monospace;outline:none;min-width:0;white-space:pre;overflow:hidden;line-height:1.6;caret-color:var(--text);user-select:text}
+.title-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;font-family:Tahoma,ui-monospace,Consolas,monospace,qd-emoji;outline:none;min-width:0;white-space:pre;overflow:hidden;line-height:1.6;caret-color:var(--text);user-select:text}
 .title-input:hover{border-color:var(--yellow)}
 .title-input:focus{border-color:var(--yellow);outline:none}
 
@@ -32,7 +32,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:13px;color:var(--text);ba
 #big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;line-height:1;outline:none}
 #big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
 
-#btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 144px));height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,sans-serif;white-space:nowrap;outline:none}
+#btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 144px));height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,sans-serif,qd-emoji;white-space:nowrap;outline:none}
 #btn-diff-only:hover{background:var(--bg)}
 #btn-diff-only.checked{font-weight:800}
 #btn-diff-only.checked::after{content:'';display:inline-block;width:5px;height:10px;border:solid var(--text);border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px}
@@ -41,6 +41,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:13px;color:var(--text);ba
 (function(){var p=new URLSearchParams(location.search);var t=p.get('theme');if(t)document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');})();
 </script>
 <script src="../../core/i18n.js"></script>
+<link rel="stylesheet" href="../../core/emoji-font.css">
 </head>
 <body>
 

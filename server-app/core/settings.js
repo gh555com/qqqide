@@ -1056,7 +1056,7 @@
         var mark = st === 'taken'
           ? '<span style="width:8px; height:8px; background:' + green + '; flex-shrink:0;"></span>'
           : (st === 'cand' ? '<span style="width:8px; height:8px; border:2px solid ' + green + '; box-sizing:border-box; flex-shrink:0;"></span>' : '');
-        h += '<a href="javascript:void(0)" class="qqq-fa-chip" data-fa-ext="' + e + '" title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; font-family:Consolas,monospace; line-height:1.7; padding:2px 8px 2px 6px; border-radius:4px; text-decoration:none; white-space:nowrap; cursor:pointer; border:1px '
+        h += '<a href="javascript:void(0)" class="qqq-fa-chip" data-fa-ext="' + e + '" title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; font-family:Consolas,monospace,qd-emoji; line-height:1.7; padding:2px 8px 2px 6px; border-radius:4px; text-decoration:none; white-space:nowrap; cursor:pointer; border:1px '
           + (isOn ? 'solid ' + accent : 'dashed ' + OFF_LINE) + '; background:' + (isOn ? tint : 'transparent') + '; color:' + (isOn ? text : textOff) + '; font-weight:' + (isOn ? '600' : '400') + ';">'
           + tick + e + mark
           + '</a>';
@@ -1278,7 +1278,7 @@
     html += '<button id="qqq-settings-restart" style="padding:3px 10px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:11px; cursor:default; white-space:nowrap;">' + _i('settings.restart', '重置窗口') + '</button>';
     // ★ 升级健康位（2026-09-22）：壳层快照（版本/更新状态/失败数/暂存态）+ 构建戳比对
     //   → 胶囊 + 悬停明细；SW 缓存旧 → 红色⚠️ 提示按「重置窗口」（core/update-health.js 唯一入口）
-    html += '<span id="qqq-upd-health" style="font-family:Consolas,monospace;font-size:11px;color:' + textDim + ';">···</span>';
+    html += '<span id="qqq-upd-health" style="font-family:Consolas,monospace,qd-emoji;font-size:11px;color:' + textDim + ';">···</span>';
     html += '</div>';
     html += '</div>';
 

@@ -388,9 +388,9 @@ async function initQuests() {
                     var _bfn = _bubbleFloors[_bfi];
                     var _bst = _activeAgent._questErrorState[_bfn];
                     if (!_bst || !_bst.bubbleText) continue;
-                    var _bCard = cardPool && cardPool.getActive();
+                    var _bCard = cardPool && (cardPool.getCard(questActiveId) || cardPool.getActive());
                     if (!_bCard || !_bCard.floorDOM || !_bCard.floorDOM[_bfn] || !_bCard.floorDOM[_bfn].aiEl) continue;
-                    var _bubbleEl = addMessageEl('user', _bst.bubbleText);
+                    var _bubbleEl = addMessageEl('user', _bst.bubbleText, questActiveId);
                     if (_bubbleEl) {
                         _bubbleEl._floor = _bfn;
                         var _bAiEl = _bCard.floorDOM[_bfn].aiEl;

@@ -735,7 +735,7 @@
     try {
       ed.updateOptions({
         codeLens: _level() !== '0',
-        codeLensFontFamily: 'Tahoma, Liberation Sans, DejaVu Sans, sans-serif',
+        codeLensFontFamily: 'Tahoma, Liberation Sans, DejaVu Sans, sans-serif, qd-emoji',
         codeLensFontSize: 11,
       });
     } catch (e) { /* */ }

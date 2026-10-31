@@ -87,7 +87,7 @@
     _ghHealthEl = document.createElement('div');
     _ghHealthEl.className = 'gaea-gh-health';
     _ghHealthEl.textContent = 'GH HEALTH';
-    _ghHealthEl.style.cssText = 'flex:0 0 auto; text-align:center; padding:9px 0; font-size:9px; opacity:0.5; cursor:pointer; font-family:Tahoma,sans-serif;';
+    _ghHealthEl.style.cssText = 'flex:0 0 auto; text-align:center; padding:9px 0; font-size:9px; opacity:0.5; cursor:pointer; font-family:Tahoma,sans-serif,qd-emoji;';
     _ghHealthEl.addEventListener('click', function () {
       var br = window.qqqideBridge;
       if (br && br.shell && br.shell.openExternal) {

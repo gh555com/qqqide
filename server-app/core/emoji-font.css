@@ -1,0 +1,29 @@
+/* ============================================================================
+   emoji-font.css — 单色 emoji 兜底字形（唯一注入点，字体栈末端回退）
+   ----------------------------------------------------------------------------
+   为什么：旧系统（Win7）无彩色 emoji 字体（Segoe UI Emoji 自 Win8 起），
+     Unicode 6.0+ 的 emoji 一律渲染成空心方块。本文件提供一档单色描边字形，
+     仅当字体栈里前面的系统字体全都无该字形时才命中——现代系统命中更早的
+     系统 emoji 字体，视觉零变化，也不会下载本字体。
+   用法：一切 font-family 栈末端追加 `,qd-emoji`（禁写成前置/禁单独使用）。
+   铁律：本文件是 @font-face 唯一声明处；新增窗口/文档只许 <link> 本文件 +
+     栈尾追加标记，禁自建 @font-face、禁自造第二套 emoji 字体。
+   字体：assets/fonts/qd-emoji.woff2（单色轮廓；许可证见同目录 LICENSE 文本）
+   维护：字体含 emoji 全块字形，新增 emoji 无需重做子集。
+   ============================================================================ */
+/* Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. */
+
+@font-face {
+  font-family: qd-emoji;
+  src: url("../assets/fonts/qd-emoji.woff2") format("woff2");
+  font-style: normal;
+  font-weight: normal;
+  font-display: swap;
+  /* 只声明 emoji/符号块：非 emoji 文本永不触发本字体下载 */
+  unicode-range:
+    U+00A9, U+00AE, U+203C, U+2049, U+2122, U+2139,
+    U+2194-2199, U+21A9-21AA, U+231A-231B, U+2328, U+23CF-23FA, U+24C2,
+    U+25AA-25AB, U+25B6, U+25C0, U+25FB-25FE, U+2600-27BF,
+    U+2934-2935, U+2B00-2BFF, U+3030, U+303D, U+3297, U+3299,
+    U+FE0F, U+200D, U+1F000-1FAFF, U+E0020-E007F;
+}

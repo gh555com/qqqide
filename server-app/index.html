@@ -78,6 +78,7 @@ var _orig={};
 #qqq-brand-banner .bl1-logo{display:none;width:1.5em;height:1.2em;background:url(img/gh-health-logo.gif) center/contain no-repeat;flex-shrink:0}
 #qqq-brand-banner .bl2{font-size:14px;font-weight:400;color:var(--text-secondary,#888);letter-spacing:.02em}
 </style>
+<link rel="stylesheet" href="core/emoji-font.css">
 </head>
 <body>
 
@@ -171,9 +172,9 @@ var _orig={};
         <!-- ★ wq 探针（所见即所得粘贴探针 + 缓存读数，2026-09-27 改版）：固定宽按钮（迷你柱状图 + 均值）hover 弹卡片——宽度恒定不吞食状态区；渲染 = core/wq-stats.js -->
         <span class="qqq-status-item qqq-wq-btn" id="qqq-status-wq" aria-label="wq"></span>
         <!-- ★ 启动包监控 a 区域（2026-08-30 合并定案）：内存图标 + 内存占用 + CPU 占用（CPU 图标已移除），hover/点击弹合并卡片（MEM+CPU 双段 + 共用进程列表），一包多窗口恒同值 -->
-        <span id="qqq-status-mem" class="qqq-mem-block" style="font-family:Consolas,monospace;font-size:12px;"><span class="qqq-mem-icon" aria-hidden="true"></span><span class="qqq-mem-val">--</span><span class="qqq-cpu-val">--</span></span>
+        <span id="qqq-status-mem" class="qqq-mem-block" style="font-family:Consolas,monospace,qd-emoji;font-size:12px;"><span class="qqq-mem-icon" aria-hidden="true"></span><span class="qqq-mem-val">--</span><span class="qqq-cpu-val">--</span></span>
         <!-- ★ 总在线时间（累计陪伴 736h）：服务器 wq.doer_state.companion_seconds 权威值——2026-10-02 用户定案：字号 12px、与时钟直接相邻（无分割线；客户端零记录直接打印） -->
-        <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace;font-size:12px;">--</span>
+        <span class="qqq-status-item" id="qqq-status-total" style="font-family:Consolas,monospace,qd-emoji;font-size:12px;">--</span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
         <!-- ★ 三活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding）→ core/shell-activities.js -->
         <span class="qqq-act-widget qqq-act-cool" id="qqq-act-cool" title="">

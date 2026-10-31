@@ -29,7 +29,7 @@
 html,body { height:100%; }
 body {
   background:var(--background-color); color:var(--text-primary);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",Tahoma,sans-serif;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",Tahoma,sans-serif,qd-emoji;
   font-size:14px; line-height:1.65;
   overflow-x:hidden;
 }
@@ -79,7 +79,7 @@ body {
 .msg-ai p { margin:8px 0; }
 .msg-ai ul,.msg-ai ol { margin:6px 0 6px 22px; }
 .msg-ai li { margin:3px 0; }
-.msg-ai code { background:var(--card-bg); color:var(--text-primary); padding:1px 4px; border-radius:3px; font-family:ui-monospace,Consolas,monospace; font-size:.9em; border:1px solid var(--border-color); word-break:break-all; overflow-wrap:break-word; }
+.msg-ai code { background:var(--card-bg); color:var(--text-primary); padding:1px 4px; border-radius:3px; font-family:ui-monospace,Consolas,monospace,qd-emoji; font-size:.9em; border:1px solid var(--border-color); word-break:break-all; overflow-wrap:break-word; }
 .msg-ai table { border-collapse:collapse; width:100%; margin:6px 0; font-size:13px; }
 .msg-ai th,.msg-ai td { border:1px solid var(--border-color); padding:4px 8px; text-align:left; }
 .msg-ai th { background:var(--card-bg); font-weight:600; }
@@ -121,7 +121,7 @@ a.qqq-path-link.qqq-path-ok:hover { text-decoration:underline; background:rgba(1
 .md-empty { color:var(--base01); font-style:italic; padding:8px 0; }
 .md-render-error { color:var(--red); padding:8px 0; font-size:13px; white-space:pre-wrap; }
 /* 缺图占位（onerror 替换，绝不留裂图/空框） */
-.md-img-missing { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border:1px dashed var(--border-color); border-radius:4px; color:var(--base01); font-size:12px; font-family:ui-monospace,Consolas,monospace; }
+.md-img-missing { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border:1px dashed var(--border-color); border-radius:4px; color:var(--base01); font-size:12px; font-family:ui-monospace,Consolas,monospace,qd-emoji; }
 /* 刷新 fab（hover 浮现，低调） */
 #md-refresh-fab { position:fixed; right:12px; top:12px; z-index:60; width:26px; height:26px; border-radius:4px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-primary); font-size:14px; line-height:1; opacity:0; transition:opacity .15s; }
 body:hover #md-refresh-fab { opacity:.45; }
@@ -142,6 +142,7 @@ mark.md-hit-w-cur { background:#E8A090; color:#3a1c14; box-shadow:0 0 0 1px rgba
 [data-theme="dark"] mark.md-hit-cur { background:#d4a017; color:#1b1b18; box-shadow:0 0 0 1px #6b5200 inset; }
 [data-theme="dark"] mark.md-hit-w-cur { background:#5a3a2a; color:#f6e9dd; box-shadow:0 0 0 1px rgba(232,160,144,.45) inset; }
 </style>
+<link rel="stylesheet" href="../../core/emoji-font.css">
 </head>
 <body>
 

@@ -289,7 +289,7 @@
         nm.style.cssText = 'font-weight:bold;font-size:12px;color:' + th.text + ';';
         nm.textContent = t('settings.upd.diagF.' + f.id, f.name);
         var meta = document.createElement('span');
-        meta.style.cssText = 'font-size:11px;color:' + th.dim + ';font-family:Consolas,monospace;';
+        meta.style.cssText = 'font-size:11px;color:' + th.dim + ';font-family:Consolas,monospace,qd-emoji;';
         meta.textContent = f.exists ? (_fmtBytes(f.size) + (f.mtimeMs ? ' · ' + _fmtTs(f.mtimeMs) : '')) : '\u2014';
         var cb = _miniBtn(t('settings.upd.diagCopy', '复制'), th, function () {
           var txt = '===== ' + f.name + ' =====\n' + f.path + '\n' + _fileText(v, f);
@@ -305,7 +305,7 @@
         sec.appendChild(row);
 
         var pth = document.createElement('div');
-        pth.style.cssText = 'font-size:10.5px;color:' + th.dim + ';font-family:Consolas,monospace;word-break:break-all;margin-top:2px;';
+        pth.style.cssText = 'font-size:10.5px;color:' + th.dim + ';font-family:Consolas,monospace,qd-emoji;word-break:break-all;margin-top:2px;';
         pth.textContent = f.path;
         sec.appendChild(pth);
 

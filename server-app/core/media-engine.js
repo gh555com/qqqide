@@ -26,7 +26,7 @@
     //   ——实测 600px 窗裁 4 个 / 460px 裁 5 个 / 视频 640px 裁 6 个（「功能键都没了」实锤）；flex-wrap 换行 = 任何宽度零静默裁切（宽窗零变化）
     '.ovmb{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:5;display:flex;align-items:center;justify-content:center;gap:4px;row-gap:6px;flex-wrap:wrap;' +
     'padding:7px 10px;border-radius:12px;background:rgba(15,15,15,0.84);border:1px solid rgba(255,255,255,0.14);' +
-    'box-shadow:0 6px 24px rgba(0,0,0,0.45);user-select:none;font-family:system-ui,-apple-system,sans-serif;' +
+    'box-shadow:0 6px 24px rgba(0,0,0,0.45);user-select:none;font-family:system-ui,-apple-system,sans-serif,qd-emoji;' +
     'width:min(760px,94%);box-sizing:border-box}' +
     // ★ v16 布局（2026-10-02 q319 用户定案）：根列 = 进度行（顶部整行）+ UI 行（左 = 播放控制行/右 = 控制条按钮组——恒不遮挡视频）+ 壳层行；
     //   控制栈底部浮层整体废除（scrim 随废，零残留）；轻盒内联变体早已删除
@@ -67,8 +67,8 @@
     '.ovmb-dnp{display:flex;align-items:center;justify-content:center;gap:2px;height:18px;padding:0 5px;border:1px solid rgba(255,255,255,0.18);border-radius:4px;background:rgba(255,255,255,0.05);color:#a8a49b;outline:none;flex:0 0 auto;box-sizing:border-box;transition:background .1s,border-color .1s}' +
     '.ovmb-dnp:hover{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.32)}' +
     '.ovmb-dnp:disabled{opacity:.35;background:transparent}' +
-    '.ovmb-npl{font-family:Tahoma,Verdana,sans-serif;font-weight:400;font-size:14px;line-height:1;color:var(--key-q)}' +
-    '.ovmb-chev{font-family:Tahoma,Verdana,sans-serif;font-weight:400;font-size:13px;line-height:1;color:inherit}' +
+    '.ovmb-npl{font-family:Tahoma,Verdana,sans-serif,qd-emoji;font-weight:400;font-size:14px;line-height:1;color:var(--key-q)}' +
+    '.ovmb-chev{font-family:Tahoma,Verdana,sans-serif,qd-emoji;font-weight:400;font-size:13px;line-height:1;color:inherit}' +
 
     // ★ 可见边界（2026-10-01 q319 用户定案）：底部条按钮恒浅边框 + 淡底色——点选范围一眼可见（禁回 border:none 透明底）
     '.ovmb-btn{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid rgba(255,255,255,0.16);box-sizing:border-box;' +
@@ -236,7 +236,7 @@
     '.ovmb-trx .ovmb-play:hover{background:rgba(255,255,255,0.16);border-color:rgba(255,255,255,0.34)}' +
     '.ovmb-trx .ovmb-play svg{width:20px;height:20px}' +
     '.ovmb-tlab{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;pointer-events:none}' +
-    '.ovmb-kcap{display:inline-flex;align-items:center;justify-content:center;min-width:23px;height:17px;padding:0 4px;border-radius:4px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.14);color:var(--key-q);font-size:12px;font-weight:400;text-transform:lowercase;line-height:1;font-family:Tahoma,Verdana,sans-serif;pointer-events:none;box-sizing:border-box}' +
+    '.ovmb-kcap{display:inline-flex;align-items:center;justify-content:center;min-width:23px;height:17px;padding:0 4px;border-radius:4px;border:1px solid rgba(255,211,1,0.5);border-bottom-width:2px;background:rgba(255,211,1,0.14);color:var(--key-q);font-size:12px;font-weight:400;text-transform:lowercase;line-height:1;font-family:Tahoma,Verdana,sans-serif,qd-emoji;pointer-events:none;box-sizing:border-box}' +
     // ★ 恒单行紧凑三档（2026-10-01 q319 用户定案）：行永不换行——窄容器逐档收紧（base≥410 / t1≥340 / t2≥298 / 其余 t3；阈值按实测需求宽在 _fitTrxRow 选档 + 溢出自动降档）
     '.ovmb-trx.ovmb-t1{gap:4px;padding:3px 6px}' +
     '.ovmb-trx.ovmb-t1 .ovmb-trxl,.ovmb-trx.ovmb-t1 .ovmb-trxr{gap:4px}' +
@@ -368,7 +368,7 @@
       _ovTxBarEl.className = 'ovmb-txbar';   // ★ 宿主拖拽区挖洞用（播放器窗 CSS 按此类名 no-drag：防转码条区域被拖拽区吞点击）
       _ovTxBarEl.style.cssText = 'position:absolute;left:50%;bottom:150px;transform:translateX(-50%);z-index:100002;' +
         'display:flex;align-items:center;gap:12px;background:rgba(0,0,0,0.78);color:#fff;border-radius:10px;' +
-        'padding:10px 16px;font-size:13px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 4px 24px rgba(0,0,0,0.5);';
+        'padding:10px 16px;font-size:13px;font-family:system-ui,-apple-system,sans-serif,qd-emoji;box-shadow:0 4px 24px rgba(0,0,0,0.5);';
       _ovTxBarText = document.createElement('span');
       _ovTxBarText.textContent = _ifor(_ovTxLastHost || HOST, 'shell.overlay.transcoding', '正在转码');
       _ovTxCancelBtn = document.createElement('button');

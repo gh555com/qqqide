@@ -242,15 +242,15 @@ function renderUserMessageEl(content) {
     return div;
 }
 
-function addUserMessageEl(content) {
+function addUserMessageEl(content, optQuestId) {
     var displayContent = getUserDisplayContent(content);
     var div = renderUserMessageEl(content);
-    _appendToCard(div);
+    _appendToCard(div, optQuestId);
     _markLongMsg(div, 'user', displayContent);
     scrollToBottom(true);
     // ★ 诊断：记录用户气泡上屏（render-log.jsonl，2MB 双代轮转）
     if (typeof _logRenderEvent === 'function') {
-        _logRenderEvent('user_bubble', questActiveId, div._floor || 0, content);
+        _logRenderEvent('user_bubble', optQuestId || questActiveId, div._floor || 0, content);
     }
     return div;
 }
@@ -262,8 +262,13 @@ function _appendToCard(el, optQuestId) {
         var card = cardPool.getOrCreate(targetId);
         if (card && card._contentWrap) {
             card._contentWrap.appendChild(el);
-            // 若 card 尚未显示（新创建 quest 首次消息），自动显示
-            if (card.dom && card.dom.style.display === 'none') {
+            // ★ 点亮唯一条件：目标就是面板当前显示的 quest。
+            //   旧实现「顺手点亮隐藏卡片」且不隐藏旧卡 → 两张卡同时 display:block（串台放大器：
+            //   气泡画在 B 的卡里、旧卡 A 仍然可见）。后台 quest 的气泡/错误框一律只进自己的隐藏卡。
+            if (card.dom && card.dom.style.display === 'none' && targetId === questActiveId) {
+                if (cardPool._activeId && cardPool._activeId !== targetId && cardPool._cards[cardPool._activeId] && cardPool._cards[cardPool._activeId].dom) {
+                    cardPool._cards[cardPool._activeId].dom.style.display = 'none';
+                }
                 card.dom.style.display = 'block';
                 cardPool._activeId = targetId;
             }
@@ -288,7 +293,7 @@ function addMessageEl(role, content, optQuestId) {
         div.style.whiteSpace = 'pre-wrap';
         div.textContent = content;
     } else {
-        return addUserMessageEl(content);
+        return addUserMessageEl(content, optQuestId);
     }
     _appendToCard(div, optQuestId);  // ★ P10：支持指定 quest，无则走当前 questActiveId
 
@@ -376,8 +381,39 @@ function _renderSendBtn(fromReconcile) {
     _refreshSendTip();
 }
 
+// ═══ 面板真相对账（1s，与 Send 按钮同一拍）：可见卡 / 面板当前 quest / 面板 agent 三者必须同源 ═══
+//   串台事故的判据就是这三者被拉开；留一行日志 = 把「半年时隐时现」变成可定位证据。
+//   静默条件：草稿期（id 未定）与后台任务执行期（_activeAgent 归属于后台 quest 是合法态）。
+var _desyncLogTs = 0;
+function _panelDesyncCheck() {
+    try {
+        if (typeof questActiveId === 'undefined' || !questActiveId || !cardPool) return;
+        var _vis = cardPool._activeId;
+        if (!_vis) return;
+        if (typeof _isDraft === 'function' && (_isDraft(_vis) || _isDraft(questActiveId))) return;
+        var _bad = [];
+        if (_vis !== questActiveId) _bad.push('card=' + _vis);
+        if (!_sending && _activeAgent && _activeAgent._questId && _activeAgent._questId !== questActiveId) _bad.push('agent=' + _activeAgent._questId);
+        if (_bad.length === 0) return;
+        var _now = Date.now();
+        if (_now - _desyncLogTs < 5000) return;
+        _desyncLogTs = _now;
+        var _pool = (parent && parent.__qqq_agentPool) ? parent.__qqq_agentPool : null;
+        var _ag = (_pool && _pool[questActiveId]) || _activeAgent;
+        if (_ag && typeof _ag._writeFileLog === 'function') {
+            _ag._writeFileLog('⚠ PANEL-DESYNC ' + _bad.join(' ') + ' active=' + questActiveId);
+        }
+    } catch (_) { }
+}
+
 // ★ 1s 对账机：任何来源的状态漂移最多存活 1s（自愈兜底；纯布尔读取 + diff 写入，零常态开销）
-setInterval(function () { try { if (!document.hidden) _renderSendBtn(true); } catch (_) { } }, 1000);
+setInterval(function () {
+    try {
+        if (document.hidden) return;
+        _renderSendBtn(true);
+        _panelDesyncCheck();
+    } catch (_) { }
+}, 1000);
 
 // ═══ Send 按钮即时悬停提示（零延迟弹出，仅 Stop... 态展示）═══
 var _sendTipEl = null;
