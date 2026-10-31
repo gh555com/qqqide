@@ -92,8 +92,9 @@ var CardPool = (function () {
       var inFloorGap = link.closest('.floor-gap');
       if (!inFloorGap) return;
       e.preventDefault();
-      var _curAgent = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-      var _curQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : null;
+      var _own = cardPool._linkOwner(null, _card);
+      var _curQuestId = _own.questId;
+      var _curAgent = _own.agent;
       if (_curAgent && _curAgent._stopState === 'fatal') {
         if (!link._qqqRecoveryBusy) {
           link._qqqRecoveryBusy = true;
@@ -145,8 +146,30 @@ var CardPool = (function () {
     }
   };
 
+  // ═══ 「继续任务」链接归属解析（唯一入口）═══
+  //   铁律：红框链接恒归「它所在的那张卡」自己的 quest。
+  //   旧写法读面板指针（_activeAgent + questActiveId）——可见卡一旦与面板当前 quest 分叉，
+  //   点这张卡的红框会去恢复另一张卡的任务（恢复错任务 = 最危险的一种串台）。
+  //   兜底顺序：卡片 id → DOM 的 [data-quest] → 面板当前 quest（非卡片上下文的裸 aiEl，如历史重建）。
+  CardPool.prototype._linkOwner = function (node, card) {
+    var _qid = (card && card.id) ? card.id : null;
+    if (!_qid) {
+      try {
+        var _el = (node && node.closest) ? node.closest('[data-quest]') : null;
+        if (_el) _qid = _el.getAttribute('data-quest');
+      } catch (_) { }
+    }
+    var _ag = null;
+    try { _ag = (_qid && parent.__qqq_agentPool) ? (parent.__qqq_agentPool[_qid] || null) : null; } catch (_) { }
+    if (!_qid) {
+      _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
+      _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    }
+    return { questId: _qid, agent: _ag };
+  };
+
   // ═══ 驱逐 Card ═══
-  // ★ 返回 true = 已驱逐；false = 不可驱逐（正在建楼，调用方跳过）
+  // ★ 返回 true = 已驱逐；false = 不可驱逐（楼未落定，调用方跳过）
   CardPool.prototype._evict = function (questId) {
     var card = this._cards[questId];
     if (!card) return true;
@@ -155,8 +178,10 @@ var CardPool = (function () {
     // ★ 2026-08-24 根治：正在建楼的 quest 不可驱逐——abort/删 DOM/删共享池条目 = 中断建楼
     //   （q152 f8 事故链之二：createNewQuest→removeCard 与池满 LRU 驱逐都走本路径；
     //   建楼中 card 保留，agent 后台继续渲染，建楼完成后由后续驱逐自然回收）
+    //   sending = 建楼执行中；stopping = 停止收尾窗口（强杀 10s 内仍在收尾）；
+    //   _chainBusy = 链上还有活（排队排水/恢复楼）——三者都属「楼未落定」，驱逐即 abort+删池 = 丢数据
     var _evictAgent = parent.__qqq_agentPool && parent.__qqq_agentPool[questId];
-    if (_evictAgent && _evictAgent._stopState === 'sending') {
+    if (_evictAgent && (_evictAgent._stopState === 'sending' || _evictAgent._stopState === 'stopping' || _evictAgent._chainBusy)) {
       return false;
     }
 
@@ -906,9 +931,10 @@ var CardPool = (function () {
       var link = e.target.closest('.msg-err-continue');
       if (link) {
         e.preventDefault();
-        // ★ fatal 态恢复：点击"继续任务"触发完整恢复管线
-        var _curAgent = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-        var _curQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : null;
+        // ★ fatal 态恢复：点击"继续任务"触发完整恢复管线（归属 = 链接所在的那张卡，禁读面板指针）
+        var _ownL = cardPool._linkOwner(aiEl._contentWrap, null);
+        var _curQuestId = _ownL.questId;
+        var _curAgent = _ownL.agent;
         if (_curAgent && _curAgent._stopState === 'fatal') {
           if (!link._qqqRecoveryBusy) {
             link._qqqRecoveryBusy = true;

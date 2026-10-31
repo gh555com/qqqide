@@ -14,8 +14,28 @@ var questUIStates = {};
 var _queueFallback = [];
 var _queuePausedFallback = false;
 var _queuePausedManualFallback = false; // ★ 人工暂停标志（2026-08-20）：仅暂停按钮置位，楼层完结/草稿清空绝不自动恢复
-var _queueBusy = false;
-var _qa = function () { return (typeof _activeAgent !== 'undefined' && _activeAgent); };
+
+
+// ═══ 面板真身解析（唯一入口）：questActiveId → agent pool 直取 ═══
+//   ★ 铁律：面板级状态（_sending / streaming / _queue / _queuePaused / _queuePausedManual）
+//   恒解析「面板当前显示的那个 quest 的 agent」，绝不读可变的 _activeAgent。
+//   _activeAgent 只表示「面板正在显示的任务」，唯一由 switchQuest / 草稿晋升 / _unloadQuest 改写；
+//   链任务（队列排水 / 恢复楼 / only facts 压缩楼）运行期绝不改写它。
+//   旧实现让这些访问器经 _activeAgent 解析，链任务一旦劫持指针 → 前台 Enter 被后台楼静默拒绝、
+//   队列条画别的任务的队列、按钮态跟着后台任务走。
+//   只认真身（有 setStopState = AgentLoop）：草稿态池键可能是链占位对象 → 返回 null 走 fallback。
+function _panelAgent() {
+    try {
+        if (typeof questActiveId === 'undefined' || !questActiveId) return null;
+        var _pool = (typeof parent !== 'undefined' && parent) ? parent.__qqq_agentPool : null;
+        var _ag = _pool ? _pool[questActiveId] : null;
+        if (_ag && typeof _ag.setStopState === 'function') return _ag;
+        // 池内暂无真身（切换窗口/极端竞态）→ 仅当指针确实归属本 quest 时才用它兜底（绝不返回外来 agent）
+        if (typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._questId === questActiveId) return _activeAgent;
+    } catch (_) { }
+    return null;
+}
+var _qa = function () { return _panelAgent(); };
 Object.defineProperty(window, '_queuePaused', {
     get: function () { return _qa() ? _qa()._queuePaused : _queuePausedFallback; },
     set: function (v) { if (_qa()) _qa()._queuePaused = v; else _queuePausedFallback = v; },
@@ -40,17 +60,17 @@ Object.defineProperty(window, '_queue', {
 function renderQueueStrip() { }
 
 // State
-//   _sending = derived getter（单一真相源：_activeAgent._stopState === 'sending'）
-//   streaming = per-agent proxy（通过 _activeAgent 透明路由，后台 quest 流式不阻塞前台发送）
+//   _sending = derived getter（单一真相源：面板真身 agent._stopState === 'sending'）
+//   streaming = per-agent proxy（经 _panelAgent 路由：后台 quest 流式不阻塞前台发送）
 Object.defineProperty(window, 'streaming', {
-    get: function () { return (typeof _activeAgent !== 'undefined' && _activeAgent) ? _activeAgent._streaming : false; },
-    set: function (v) { if (typeof _activeAgent !== 'undefined' && _activeAgent) _activeAgent._streaming = v; },
+    get: function () { var _ag = _panelAgent(); return _ag ? _ag._streaming : false; },
+    set: function (v) { var _ag = _panelAgent(); if (_ag) _ag._streaming = v; },
     enumerable: true, configurable: true
 });
-// ★ 唯一真理机器：_sending 完全由 _activeAgent._stopState 派生，零存储，零 setter
-//   _floorCompletedCleanly 守卫：防止已完成但未复位 stopState 的后台 agent 假报 sending
+// ★ 唯一真理机器：_sending 完全由面板真身 agent._stopState 派生，零存储，零 setter
+//   _floorCompletedCleanly 守卫：防止已完成但未复位 stopState 的 agent 假报 sending
 Object.defineProperty(window, '_sending', {
-    get: function () { return !!(typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._floorCompletedCleanly); },
+    get: function () { var _ag = _panelAgent(); return !!(_ag && _ag._stopState === 'sending' && !_ag._floorCompletedCleanly); },
     enumerable: true, configurable: true
 });
 var _renderPending = false;

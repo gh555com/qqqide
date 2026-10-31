@@ -125,13 +125,6 @@ async function switchQuest(id) {
         // ★ 保存旧 quest UI 状态 + 释放所有权
         if (questActiveId) {
             saveQuestUIState(questActiveId);
-            if (_activeAgent && _activeAgent._compressing) {
-                // 压缩进行中 → 等待完成（最多 220s），防保存半成品
-                var _waitStart = Date.now();
-                while (_activeAgent._compressing && (Date.now() - _waitStart) < 220000) {
-                    await new Promise(function (r) { setTimeout(r, 200); });
-                }
-            }
             // ★ 仅在建楼中的 agent 才有未保存数据需刷盘；idle agent 的数据已在 onDone 时写入
             // ★ 治根：0 houses 时不落盘（无有效数据。agent 后台继续运行，完结后自然保存）
             if (_activeAgent && _activeAgent._stopState === 'sending' && _activeAgent._houses && _activeAgent._houses.length > 0) {
@@ -400,10 +393,8 @@ async function createNewQuest() {
     saveQuestUIState(questActiveId);
     // ★ 先保存快照：建楼中 agent 的流式 buffer 落盘（跨面板迁移安全）
     if (!_isDraft(questActiveId) && _activeAgent && _activeAgent._stopState === 'sending') await saveQuestData();
-    // ★ 2026-08-24 根治：此处禁停流。streaming 是 per-agent 代理，此刻 _activeAgent 仍指向旧 quest
-    //   的建楼 agent → 旧代码 if (streaming) stopStream() 等于掐断正在建的楼（q152 f8 事故实锤：
-    //   _streaming:true 落盘 + content 断句「③ 铁」+ floorFatal:false 非 fatal 停止痕迹）。
-    //   新建 quest 绝不停后台建楼，UI 流式状态由 _unloadQuest → setStreaming(false) 复位。
+    // ★ 此处禁停流：streaming 是 per-agent 代理，此刻面板真身仍指向旧 quest 的建楼 agent，
+    //   停流 = 掐断正在建的楼。新建 quest 绝不停后台建楼；UI 流式状态由 _unloadQuest → setStreaming(false) 复位。
     if (questActiveId && !_isDraft(questActiveId)) {
         _parentReleaseQuest(questActiveId);
         _broadcast('owner-released', questActiveId);
@@ -1471,9 +1462,9 @@ window.addEventListener('message', async function (e) {
                         if (typeof _buildSendIntent === 'function' && typeof _executeSend === 'function') {
                             var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true, backpackEstK: _preBackpackK });
                             var _floorBefore = ag._currentFloorNum || 0;
-                            // ★ 2026-10-03：直调 _executeSend（非链路径）后复位面板 _activeAgent——压缩目标
-                            //   quest 可能 ≠ 面板活跃 quest（F51 解析故意劫持），收尾必须归位（详 _restorePanelAgentHome）
-                            try { await _executeSend(_intent); } finally { if (typeof _restorePanelAgentHome === 'function') _restorePanelAgentHome(); }
+                            // ★ 直调 _executeSend（非链路径）：压缩目标 quest 可能 ≠ 面板显示 quest——
+                            //   任务目标由 _executeSend 内部局部指针持有，面板指针全程不动（无需收尾复位）
+                            await _executeSend(_intent);
                             var _floorAfter = ag._currentFloorNum || 0;
                             if (_floorAfter <= _floorBefore) {
                                 // ★ 2026-08-17 F51: 建楼未真正开始（闸门拦截）→ 恢复饼干原样 + 落盘 + 显式报错
@@ -1598,6 +1589,13 @@ $guideBtn.onclick = async function () {
     // ★ 2026-09-30：粘贴/拖放处理中拦下（图尚未入条，此刻引导会漏图——与发送入口同规）
     if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
 
+    // ★ 目标 agent = 面板正在显示的那个任务（_activeAgent 只由 switchQuest / 草稿晋升改写，
+    //   链任务运行期绝不劫持）→ 引导恒落在用户此刻眼睛看到的楼层上。
+    var _gAg = (typeof _activeAgent !== 'undefined' && _activeAgent) ? _activeAgent
+        : ((typeof _panelAgent === 'function') ? _panelAgent() : null);
+    if (!_gAg) return;
+    var _gFloorNum = _gAg._currentFloorNum;   // 本次引导归属楼层（识别回来后校验同一楼层）
+
     var text = getInputText().trim();
     if (!text && pendingImages.length === 0) return;
 
@@ -1612,13 +1610,58 @@ $guideBtn.onclick = async function () {
     $input._resetUndo();
     $input.focus();
 
-    // ═══ 异步视觉分析 ═══
+    // ═══ ① 立即上屏（识别期空窗根治）═══
+    //   反模式（已废）：await 完 _analyzeImages 才建块 —— 单张图「提交 + 流轮询」5~30s
+    //   （轮询上限 120s × 2 次），这段时间编辑条已清空、楼层里零痕迹 → 用户无法分辨
+    //   「已发出」与「卡死」。现在块 + 状态行在点击瞬间落楼层，识别完成只改块内那一行状态。
+    //   ★ _guideMode（引导窗口丢弃流式残料）仍在注入时刻才置位：识别期间 AI 继续正常渲染，
+    //     屏幕恒有进展，不会提前进入「假死」。
+    var hasImages = capturedImages.length > 0;
     var visionText = '';
+    var _gBlock = null, _gNote = null, _gMarker = null;
+    var _gNoteTextOf = function () {
+        if (!hasImages) return '';
+        return visionText
+            ? _qq('ai.guideImagesAnalyzed', '\ud83d\udcf7 {0} 张图片（已分析）', { 0: capturedImages.length })
+            : _qq('ai.guideImagesPending', '\ud83d\udcf7 {0} 张图片（视觉分析未完成）', { 0: capturedImages.length });
+    };
+    var _mkGuideBlock = function (_noteText) {
+        var _b = document.createElement('div');
+        _b.className = 'msg-flow-guide-inject';
+        _b.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> ' + _qq('ai.guideInfo', '引导信息') + '</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
+        if (hasImages) {
+            _gNote = document.createElement('div');
+            _gNote.style.cssText = 'margin-top:4px;font-size:10px;color:var(--text-secondary);';
+            _gNote.textContent = _noteText;
+            _b.appendChild(_gNote);
+        } else {
+            _gNote = null;
+        }
+        return _b;
+    };
+    var _mkGuideMarker = function () {
+        var _m = document.createElement('div');
+        _m.className = 'msg-flow-guide';
+        _m.style.cssText = 'opacity:0.6;';
+        return _m;
+    };
+    var _aiDiv = _gAg._activeAiDiv;
+    if (_aiDiv && _aiDiv._contentWrap) {
+        _gBlock = _mkGuideBlock(hasImages ? _qq('ai.guideImagesAnalyzing', '\ud83d\udcf7 {0} 张图片（识别中…）', { 0: capturedImages.length }) : '');
+        _aiDiv._contentWrap.appendChild(_gBlock);
+        _gMarker = _mkGuideMarker();
+        _gMarker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> ' + (hasImages ? _qq('ai.guideVisionBusy', '识别图片中…') : _qq('ai.guideConfirming', '确认中...'));
+        _aiDiv._contentWrap.appendChild(_gMarker);
+        _aiDiv._guideMarker = _gMarker;
+        scrollToBottom(true);
+    }
+
+    // ═══ ② 异步视觉分析（块已在屏上：失败/中止只改状态行，界面零回退）═══
     if (capturedImages.length > 0) {
-        var token = (_activeAgent && _activeAgent._token) || ((typeof getLoginToken === 'function') ? getLoginToken() : '');
+        var token = (_gAg && _gAg._token) || ((typeof getLoginToken === 'function') ? getLoginToken() : '');
         if (token) {
             try {
-                var visionResults = await _activeAgent._analyzeImages(capturedImages, token, text);
+                var visionResults = await _gAg._analyzeImages(capturedImages, token, text);
                 if (visionResults && visionResults.length > 0) {
                     var vparts = [];
                     for (var vi = 0; vi < visionResults.length; vi++) {
@@ -1640,48 +1683,75 @@ $guideBtn.onclick = async function () {
     //   下一次带图发送的 agent.send 内——引导不经该路径，滞留会错记到未来某层、或永不显示。
     //   服务端账本已按 floorId 归到当前在建楼层 → 客户端同步并入该楼层费用，展示与账本一致。
     try {
-        if (_activeAgent && _activeAgent._visionCostWge > 0) {
-            _activeAgent._floorCostWge = (_activeAgent._floorCostWge || 0) + _activeAgent._visionCostWge;
-            _activeAgent._visionCostWge = 0;
+        if (_gAg && _gAg._visionCostWge > 0) {
+            _gAg._floorCostWge = (_gAg._floorCostWge || 0) + _gAg._visionCostWge;
+            _gAg._visionCostWge = 0;
         }
     } catch (_) { }
 
-    var hasImages = capturedImages.length > 0;
     var guideText = text + (visionText || '');
 
-    // ══ 注入引导到当前活跃楼层 ══
-    var _aiDiv = _activeAgent._activeAiDiv;
+    // ═══ ③ 状态行定稿（已分析 / 未完成，如实标注；失败降级不再谎称已分析）═══
+    if (_gNote && _gNote.isConnected) _gNote.textContent = _gNoteTextOf();
+
+    // ═══ ④ 楼层在识别期间已结束 → 如实收口，绝不把引导塞进已死楼层 ═══
+    //   旧行为：块照建、_guidePending 挂起而无人消费 → 楼层里「确认中...」永久悬停，
+    //   引导实际要等下一次发送才被顺带送达（静默错位、用户以为丢了）。
+    //   “建楼中”三条件：仍在 sending / 未正常完结 / 仍是同一楼层（识别期楼层完结后用户又发了新楼：
+    //   旧块在旧楼层、确认回合却会落到新楼层 —— 同属错位，一并按“已结束”处理）
+    var _gLive = !!(_gAg && _gAg._stopState === 'sending' && !_gAg._floorCompletedCleanly
+        && _gAg._currentFloorNum === _gFloorNum);
+    if (!_gLive) {
+        if (_gMarker && _gMarker.isConnected) {
+            _gMarker.className = 'msg-flow-guide';
+            _gMarker.style.cssText = 'opacity:0.6;';
+            _gMarker.innerHTML = '<span class="msg-flow-icon">\u26a0\ufe0f</span> ' + _qq('ai.guideFloorEnded', '楼层已结束，本次引导未送达');
+        }
+        if (_aiDiv) _aiDiv._guideMarker = null;
+        // 内容回到编辑条（① 必须还是同一任务的面板 ② 编辑条已有新输入 = 用户已在写别的 → 绝不覆盖）
+        try {
+            if (questActiveId === _gAg._questId && !getInputText().trim()) {
+                if (text) $input.value = text;
+                if (capturedImages.length > 0 && pendingImages.length === 0) {
+                    for (var _ri = 0; _ri < capturedImages.length && pendingImages.length < MAX_IMAGES; _ri++) {
+                        pendingImages.push({ id: pendingImages.length + 1, base64: capturedImages[_ri].base64, dataUrl: capturedImages[_ri].dataUrl });
+                    }
+                    renderImageStrip();
+                }
+                $input._resetUndo();
+                $input.focus();
+                if (typeof _scheduleDraftSave === 'function') _scheduleDraftSave(true);
+            }
+        } catch (_ge) { }
+        saveQuestData(_gAg, _gFloorNum).catch(function () { });
+        updateQueueBtn();
+        return;
+    }
+
+    // ═══ ⑤ 注入（块若在识别期间被楼层重建摧毁 → 就地补建，与原实现等价）═══
+    _aiDiv = _gAg._activeAiDiv || _aiDiv;
     if (_aiDiv && _aiDiv._contentWrap) {
-        _activeAgent._streamBuf = '';
-        _activeAgent._streamCodeFenceOpen = false;
+        _gAg._streamBuf = '';
+        _gAg._streamCodeFenceOpen = false;
         _aiDiv._dirty = false;
         _aiDiv._lastParaEl = null;
         _aiDiv._guideMode = true;
         _aiDiv._guideModeSince = Date.now();  // ★ 保险丝计时起点（agent-loop 渲染端超时兜底解除）
-
-        var guideBlock = document.createElement('div');
-        guideBlock.className = 'msg-flow-guide-inject';
-        var guideHtml = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> ' + _qq('ai.guideInfo', '引导信息') + '</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
-        if (hasImages) {
-            // ★ 2026-09-30 诚实标注：视觉分析失败/未登录降级时不再谎称「已分析」（旧实现恒标已分析）
-            var _gImgNote = visionText
-                ? _qq('ai.guideImagesAnalyzed', '\ud83d\udcf7 {0} 张图片（已分析）', { 0: capturedImages.length })
-                : _qq('ai.guideImagesPending', '\ud83d\udcf7 {0} 张图片（视觉分析未完成）', { 0: capturedImages.length });
-            guideHtml += '<div style="margin-top:4px;font-size:10px;color:var(--text-secondary);">' + _gImgNote + '</div>';
+        if (!_gBlock || !_gBlock.isConnected) {
+            _gBlock = _mkGuideBlock(_gNoteTextOf());
+            _aiDiv._contentWrap.appendChild(_gBlock);
         }
-        guideBlock.innerHTML = guideHtml;
-        _aiDiv._contentWrap.appendChild(guideBlock);
-
-        var marker = document.createElement('div');
-        marker.className = 'msg-flow-guide';
-        marker.style.cssText = 'opacity:0.6;';
-        marker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> ' + _qq('ai.guideConfirming', '确认中...');
-        _aiDiv._contentWrap.appendChild(marker);
-        _aiDiv._guideMarker = marker;
+        if (!_gMarker || !_gMarker.isConnected) {
+            _gMarker = _mkGuideMarker();
+            _aiDiv._contentWrap.appendChild(_gMarker);
+        }
+        _gMarker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> ' + _qq('ai.guideConfirming', '确认中...');
+        _aiDiv._guideMarker = _gMarker;
+        scrollToBottom(true);
     }
-    _activeAgent.injectGuide(guideText);
+    _gAg.injectGuide(guideText);
 
-    saveQuestData().catch(function () { });
+    saveQuestData(_gAg, _gFloorNum).catch(function () { });
     updateQueueBtn();
 };
 
@@ -1700,7 +1770,7 @@ function _debounceSaveQueue() {
 // ★ 2026-10-03 排水竞态根治（q401 f1 实锤「点击排队 + 楼层恰完成 → 队列消息凭空消失」）：
 //   楼层「逻辑完结」（onDone 置 _floorCompletedCleanly/_streaming=false）与其 finally 收尾排水之间
 //   存在数秒窗口（save/rebuild/compress 等 await）。此窗口内点击排队 → 按钮立即排水 shift 队首；
-//   随后该 finally 的 `_queueBusy=false`（无条件复位）+ 二次排水 → 第二条消息被静默搬进 sendChain
+//   随后该 finally 的 `agent._queueBusy=false`（无条件复位）+ 二次排水 → 第二条消息被静默搬进 sendChain
 //   ——既不在队列条、也还没开建（要等前一条楼层跑完才轮到；前一条再遇 fatal 才被 requeue 救回）。
 //   根治 = 点击类入口（排队按钮 / 暂停恢复）只在链条真空闲时排水；链条忙（本 quest 的 send run
 //   仍在执行，含其 finally 收尾）→ 交给 finally 排水接续——一层楼完成恰一次排水，零双排水。
@@ -1714,13 +1784,15 @@ function _triggerQueueSend(_targetQuestId, _srcAgent) {
     //   经 sendMessage 读到新 questActiveId → 队列消息被发进错误 quest。切换期间一律不排水（消息
     //   留在队列条可见，切换完成后在归属 quest 内由点击/楼层完成接续）。
     if (_switching) return;
-    if (_queueBusy) return;
     // ★ 2026-10-03 根治（q401 事故·跨 quest 发错目标 + 队列条画错任务）：显式目标 quest（楼层 finally
     //   排水传入运行任务的 qid——可能 ≠ 面板活跃 quest）+ 队列来源 agent。旧实现恒经 sendMessage
     //   （用面板 questActiveId）且无条件 renderQueueStrip → 后台任务排水会把消息发进本面板正在显示的
     //   错误 quest、把别的任务队列画进本面板。缺省（点击类入口）= 面板活跃 quest，行为不变。
     var _tq = (typeof _targetQuestId === 'string' && _targetQuestId) ? _targetQuestId : questActiveId;
-    var _aq = _srcAgent || _activeAgent;
+    var _aq = _srcAgent || _panelAgent() || null;
+    // ★ 排水锁恒按 quest 持有（agent._queueBusy）：旧实现一份面板全局锁，后台楼建楼期间恒 true
+    //   → 前台排队按钮的立即排水被其他任务堵住数分钟（锁跟着任务走，不跟面板走）。
+    if (_aq && _aq._queueBusy) return;
     var _isHome = (_tq === questActiveId);
     var _canRender = !!(_isHome && _aq && _activeAgent === _aq);
     var _q = (_aq && _aq._queue) ? _aq._queue : _queue;
@@ -1736,7 +1808,7 @@ function _triggerQueueSend(_targetQuestId, _srcAgent) {
     // ★ 直通载荷（2026-08-20 定案）：队列消息不经过编辑框——直接构建 intent 发送。
     //   编辑框草稿（文字/图片）永不被触碰/覆盖 → 草稿保护机制整体废除，
     //   自动暂停唯一来源 = 人工点「暂停」按钮。
-    _queueBusy = true;
+    if (_aq) _aq._queueBusy = true;
     var _sendOpts = {
         images: (next.images && next.images.length > 0)
             ? next.images.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; })

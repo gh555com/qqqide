@@ -85,7 +85,6 @@ var AgentLoop = (function () {
             } catch (_) { /* 静默降级：文件日志失败不影响主流程 */ }
         };
         // 上下文引擎
-        this._compressing = false;
         this._compressAttemptedThisFloor = false;
         this._ctx = { narrative: '', facts: [], totalFloors: 0, lastCompressedFloor: 0, floorArchives: [], biscuitLines: [] };
         this._compactTraces = [];  // 埋点日志（最近 10 条）
@@ -314,7 +313,6 @@ var AgentLoop = (function () {
     // ---- 清空对话 ----
     AgentLoop.prototype.clearConversation = function () {
         this.conversation = [];
-        this._compressing = false;
         this._visionCache.clear();
         this._houses = [];
         this._lastApiPromptTokens = 0;
@@ -397,7 +395,6 @@ var AgentLoop = (function () {
         // ★ 刷新服务器城市（Cloudflare 透传，用于 passby 地理位置展示）
         if (typeof _refreshServerCity === 'function') _refreshServerCity(self);
 
-        self._compressing = false;  // ★ 安全重置：防上次异常未清理
         // ★ 存储 token 供 tools.js 调用 Go 端点时使用
         self._token = token;
         if (typeof window !== 'undefined') { window.__qqq_floorToken = token; }

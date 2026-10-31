@@ -7,7 +7,7 @@
 //   打字/粘贴文本/粘贴图片/删图/undo/redo/切 quest 恢复/发送清空/换行按钮全部自动覆盖，零漏网。
 // ★ 2026-08-20：自动暂停（草稿保护）整体废除——队列发送改为直通载荷不触碰编辑框，此处仅管按钮可用性
 function updateQueueBtn() {
-    var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    var _ag = (typeof _resolveBtnAgent === 'function') ? _resolveBtnAgent() : null;
     if (_ag && _ag._stopState === 'fatal') { $queueBtn.disabled = true; return; }
     var hasText = $input.value.trim().length > 0;
     var hasImages = (typeof pendingImages !== 'undefined') && pendingImages.length > 0;
@@ -322,6 +322,42 @@ function _panelSendTarget() {
     return questActiveId;
 }
 
+// ═══ 发送闸门（唯一入口：Enter 与发送钮共用）═══
+// 语义铁律：Enter = 发送，永不停楼；停止只由发送钮字面 Stop 承担（见 $sendBtn.onclick）。
+// 一切拒绝都在冻结之前完成（内容零消费：编辑框/图片条原样保留），且必有可见反馈——禁静默吞点击。
+function _gateBeforeSend() {
+    if (_switching) return false;                       // quest 切换中（瞬时态，静默）
+    var _qid = _panelSendTarget();                      // 闸门与发送目标同源（不读 questActiveId）
+    // 本任务建楼中（面板真身派生）或同 quest 的链在执行（跨面板 / 草稿晋升窗口）→ 拒
+    if (_sending || (typeof _sendActive === 'function' && _sendActive(_qid))) { _limitQoast('send-busy'); return false; }
+    // fatal（已中断，红框「继续任务」为唯一恢复入口）→ 冻结前拦下：不消费编辑框、不建孤儿气泡
+    // ★ fatal 归属恒本次发送目标自己的 agent（与 _qid 同源；禁先读面板按钮指针——分叉态会拦错任务）
+    var _agGate = null;
+    try { _agGate = (_qid && parent.__qqq_agentPool) ? (parent.__qqq_agentPool[_qid] || null) : null; } catch (_) { }
+    if (!_agGate && _qid === questActiveId && typeof _resolveBtnAgent === 'function') _agGate = _resolveBtnAgent();
+    if (_agGate && _agGate._stopState === 'fatal') {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.pipeline.taskInterrupted', '该任务已中断，请点击楼层红框「继续任务」恢复'), { type: 'warning', duration: 6000 }); } catch (_) { }
+        return false;
+    }
+    if (!_isLoggedIn()) {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_) { }
+        return false;
+    }
+    // 激活门：自带 API Key（自定义模型）= 激活用户专享
+    if (window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()) {
+        try {
+            var _entBk = (window.parent && window.parent.qqqEntitlement) || null;
+            if (_entBk && typeof _entBk.canUse === 'function' && !_entBk.canUse('byok')) {
+                if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.byok.actToast', '自带 API Key 为激活用户专享：请先激活，或关闭自带 Key 后改用平台通道'), { type: 'warning', duration: 6000 });
+                return false;
+            }
+        } catch (_) { }
+    }
+    // 粘贴在飞：图尚未入条，此条会静默漏图 → 拦下（内容零消费）
+    if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return false; }
+    return true;
+}
+
 function _freezeAndSendFromInput() {
     var _txtNow = $input.value;
     var _imgsNow = (typeof pendingImages !== 'undefined' && pendingImages.length > 0)
@@ -368,45 +404,13 @@ function _freezeAndSendFromInput() {
     });
 }
 
-// Enter to send
+// ═══ Enter = 发送（唯一语义，永不停楼）═══
+// 停止只由发送钮字面 Stop 承担（见 $sendBtn.onclick）；忙时 Enter 恒给可见提示，绝不接管停止。
+// 按下即冻结（同一同步段冻结文本+图片快照 → 气泡即时回显 → 清空编辑框/图片条 → 快照随 intent 入链）。
 $input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
-        // ★ 2026-10-03：静默档补可见反馈——「按回车没反应」黑洞根治（q401 事故实锤）；3s 节流防刷屏
-        if (_sending) { _limitQoast('send-busy'); return; }
-        if (_activeAgent && _activeAgent._compressing) { _limitQoast('send-busy'); return; }
-        // ★ 发送活跃检查（同 quest 任何面板链在执行/本面板草稿晋升中 → 拒；不同 quest 三翼并发 → 三通开工）
-        //   链串行结构上不可能并发（2026-08-11 重构替代锁表），此检查仅给用户即时反馈
-        if (typeof _sendActive === 'function' && _sendActive(questActiveId)) {
-            _limitQoast('send-busy');  // ★ 2026-08-11: 拦截 → 节流提示（防"按回车没反应"被误解为卡死）
-            return;
-        }
-        // streaming 时 Enter = 停止生成（不发送）
-        if (streaming) { stopStream(); return; }
-        // 登录闸门
-        if (!_isLoggedIn()) {
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
-            return;
-        }
-        // ★ 激活门（2026-10-06）：自带 API Key（自定义模型）= 激活用户专享——未激活在冻结前拦下（不消费编辑框）
-        if (window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()) {
-            try {
-                var _entBk = (window.parent && window.parent.qqqEntitlement) || null;
-                if (_entBk && typeof _entBk.canUse === 'function' && !_entBk.canUse('byok')) {
-                    if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.byok.actToast', '自带 API Key 为激活用户专享：请先激活，或关闭自带 Key 后改用平台通道'), { type: 'warning', duration: 6000 });
-                    return;
-                }
-            } catch (_eBk) { }
-        }
-        // ★ 粘贴在飞拦截（2026-09-30）：大图/剪贴板读取处理中按回车 → 图尚未入条，本条会静默漏图。
-        //   同步拦下（内容零消费），处理完成后再发送即可带上图片。
-        if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
-        // ★ 按下即冻结（2026-09-30 重构）：文本+图片在按下的同一同步段冻结为消息快照 → 气泡（含图行）即时回显
-        //   → 同步清空编辑框/图片条 → 快照随 intent 入链。管线阶段永不再读编辑条。
-        //   旧缺陷（q386 f1 实锤）：图片不冻结、留给 _executeSend 在晋升/附件处理之后「活读」→
-        //   窗口内点 ✕ 删图 = 静默丢图；窗口内贴新图被本条顺走；窗口内打字被迟到清理擦除。
-        _freezeAndSendFromInput();
+        if (_gateBeforeSend()) _freezeAndSendFromInput();
     }
 });
 // ══ 字符级 Undo/Redo（唯一真理逐字回退机器接管）══
@@ -921,12 +925,22 @@ $input.addEventListener('contextmenu', function (e) {
         row.addEventListener('mouseleave', function () { row.style.background = ''; });
         row.addEventListener('mousedown', function (ev) { ev.preventDefault(); ev.stopPropagation(); _closeInputCtxMenu(); action(); });
         menu.appendChild(row);
-    }
-
-    _addRow('Ctrl+C', function () {
-        $input.focus();
-        if ($input.selectionStart === $input.selectionEnd) $input.select();
-        try { document.execCommand('copy'); } catch (_) { }
+    }
+
+    // ★ Ctrl+Z 撤销：走唯一真理机 qqqCharUndo（与键盘 Ctrl+Z 同一条撤销栈；本框已 attach）。
+    //   不能用 execCommand('undo') 当主路——那是浏览器原生栈，而本框的值经原生 setter 写入，两栈不同源。
+    //   快照回放自身会派发 input 事件（尺寸/进度/队列钮由 autoResizeInput 接住）。
+    _addRow('Ctrl+Z', function () {
+        $input.focus();
+        var cu = window.qqqCharUndo;
+        if (cu && typeof cu.undo === 'function') { cu.undo($input); return; }
+        try { document.execCommand('undo'); } catch (_) { }   // 机器缺席兜底（原生栈）
+    });
+
+    _addRow('Ctrl+C', function () {
+        $input.focus();
+        if ($input.selectionStart === $input.selectionEnd) $input.select();
+        try { document.execCommand('copy'); } catch (_) { }
     });
 
     _addRow('Ctrl+V', function () {
@@ -991,50 +1005,19 @@ $input.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') _closeInputCtxMenu();
 });
 
+// ═══ 发送钮点击 = 字面语义（唯一真理机 _sendBtnTruth）═══
+//   Send → 发送（与 Enter 同一闸门）· Stop → 停楼（fatal 红框活跃 = 封顶收口）· Stop... → 零动作（inert）
+//   禁止「字面 Send 而点击被吞」的组合——点击判定与字面从此由同一个真理机推导。
 $sendBtn.onclick = function () {
     if (_switching) return;
-    // ★ 点击判定与按钮字面同源：恒解析"当前显示任务"的 agent（_resolveBtnAgent）
-    var _agBtn = (typeof _resolveBtnAgent === 'function') ? _resolveBtnAgent() : _activeAgent;
-    // ★ 2026-10-03：静默档补可见反馈（与 Enter 同规）
-    if (_agBtn && _agBtn._compressing) { _limitQoast('send-busy'); return; }
-    // ★ 停止进行中（字面 Stop... + inert）：点击零动作（重复触发不再进链）
-    if (_agBtn && _agBtn._stopState === 'stopping') return;
-
-    if (_agBtn && _agBtn._stopState === 'fatal' && !streaming) {
-        if (typeof _capRedBoxAndSeal === 'function') _capRedBoxAndSeal();
+    var _t = _sendBtnTruth();
+    if (_t.inert) return;
+    if (_t.label !== 'Send') {
+        if (_t.st === 'fatal') { if (typeof _capRedBoxAndSeal === 'function') _capRedBoxAndSeal(); }
+        else stopStream();
         return;
     }
-
-    // ★ 建楼中 → 停止（真值优先）：旧实现此分支为 busy 拒绝（q13 死胡同：字面 Send + 想停停不了）；
-    //   字面已恒为 Stop（真理机），点击必达停止，不再存在"建楼中却停不了"的组合。
-    if (_agBtn && _agBtn._stopState === 'sending') { stopStream(); return; }
-    if (streaming) { stopStream(); }
-    else {
-        // ★ 发送活跃检查：同 quest 忙 → 拒（内容保留编辑框）；不同 quest 三翼并发不受阻
-        if (typeof _sendActive === 'function' && _sendActive(questActiveId)) {
-            _limitQoast('send-busy');  // ★ 2026-08-11: 拦截 → 节流提示
-            return;
-        }
-        // ★ 登录闸门（2026-09-30）：按下即冻结会消费编辑框——未登录必须在冻结前拦截（与 Enter 同规）
-        if (!_isLoggedIn()) {
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.needLogin', '请先在菜单栏点击登录'), { type: 'warning', duration: 6000 }); } catch (_e2) { }
-            return;
-        }
-        // ★ 激活门（2026-10-06，与 Enter 同规）：自带 API Key = 激活用户专享
-        if (window.qqqByok && window.qqqByok.isActive && window.qqqByok.isActive()) {
-            try {
-                var _entBk = (window.parent && window.parent.qqqEntitlement) || null;
-                if (_entBk && typeof _entBk.canUse === 'function' && !_entBk.canUse('byok')) {
-                    if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_qq('ai.byok.actToast', '自带 API Key 为激活用户专享：请先激活，或关闭自带 Key 后改用平台通道'), { type: 'warning', duration: 6000 });
-                    return;
-                }
-            } catch (_eBk) { }
-        }
-        // ★ 粘贴在飞拦截（2026-09-30，与 Enter 同规）：处理中不消费
-        if (_pasteInFlight > 0) { _limitQoast('paste-busy'); return; }
-        // ★ 按下即冻结（与 Enter 共用唯一入口）
-        _freezeAndSendFromInput();
-    }
+    if (_gateBeforeSend()) _freezeAndSendFromInput();
 };
 
 // ═══ 断电安全草稿高频落盘（2026-08-26）═══

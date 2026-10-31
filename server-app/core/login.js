@@ -147,6 +147,12 @@
   function _clearAuthData() {
     _authData = null;
     _lvReset();   // ★ 2026-08-16：登出/换号 LV 双 layer 复位（不留旧进度）
+    // ★ 登出/换号 = 激活真值失效：服务端确认态一并复位（否则换号后 still 用上一个号的缓存）
+    try {
+      api._purchasedServerChecked = false;
+      api._purchasedCheckedAt = 0;
+      api._purchasedInFlight = null;
+    } catch (e) { }
   }
 
   function _persistAuthAsync() {
@@ -1539,23 +1545,37 @@
     },
     isLoggedIn: function () { return !!(_authData && _authData.token); },
     isPurchased: function () { return !!(_authData && _authData.purchased); },
-    // ★ 服务端同步购买状态（默认每次窗口生命周期最多查一次，点击菜单时触发；
-    //   force=true 强制现查——激活门闭环：用户在浏览器完成激活后回到 IDE，force 现查即解锁，免重启）
+    // ★ 服务端同步购买状态 —— 唯一调用者 = qqqEntitlement.refresh（正版验证唯一机器）；
+    //   消费方禁直调本函数（否则现查策略/成本闸门散落各处）。
+    //   force=true 强制现查——激活门闭环：用户在浏览器完成激活后回到 IDE，现查即解锁，免重启。
+    //   freshMs: 现查合并窗（窗内复用上一次结果，零额外请求；0 = 每次都真发）；
+    //            叠加在飞复用（并发触发也只发一次）+ 查到激活即落盘 auth。
     _purchasedServerChecked: false,
-    checkPurchased: function (force) {
+    _purchasedCheckedAt: 0,
+    _purchasedInFlight: null,
+    checkPurchased: function (force, freshMs) {
       var self = this;
-      if (self._purchasedServerChecked && !force) return Promise.resolve(self.isPurchased());
       if (!self.isLoggedIn()) return Promise.resolve(false);
-      return fetch('https://www.gh555.com/api/me/goods', {
+      if (self._purchasedInFlight) return self._purchasedInFlight;   // 在飞复用：一次网络化解决所有并发触发
+      if (self._purchasedServerChecked) {
+        if (!force) return Promise.resolve(self.isPurchased());
+        if (freshMs > 0 && (Date.now() - self._purchasedCheckedAt) < freshMs) return Promise.resolve(self.isPurchased());
+      }
+      self._purchasedInFlight = fetch('https://www.gh555.com/api/me/goods', {
         headers: { 'Authorization': 'Bearer ' + self.getAuthToken() }
       }).then(function (r) { return r.json(); }).then(function (d) {
         self._purchasedServerChecked = true;
+        self._purchasedCheckedAt = Date.now();
+        self._purchasedInFlight = null;
         if (d.ok && Array.isArray(d.goods)) {
           for (var i = 0; i < d.goods.length; i++) {
             if (d.goods[i].Slg === 'qqqide' || d.goods[i].slg === 'qqqide') {
               var _wasNew = !(_authData && _authData.purchased);
               if (_authData) _authData.purchased = true;
-              if (_wasNew) { try { _notifyStateChange(); } catch (e) { } }   // 新激活 → 广播（各门/锁 UI 即时解灰）
+              if (_wasNew) {
+                _persistAuthAsync();                                         // 落盘：激活后下次启动直接命中本地缓存（零请求）
+                try { _notifyStateChange(); } catch (e) { }                  // 新激活 → 广播（各门/锁 UI 即时解灰）
+              }
               return true;
             }
           }
@@ -1563,8 +1583,10 @@
         return self.isPurchased();
       }).catch(function () {
         self._purchasedServerChecked = true;
+        self._purchasedInFlight = null;   // 不写 _purchasedCheckedAt：网络失败不算新鲜结果，下次 force 仍可真查
         return self.isPurchased();
       });
+      return self._purchasedInFlight;
     },
     getAuthToken: function () { return (_authData && _authData.token) ? _authData.token : ''; },
     getPhone: function () { return (_authData && _authData.phone) ? _authData.phone : ''; },

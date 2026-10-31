@@ -712,13 +712,14 @@
     e.stopPropagation();
     close();
   }
-  // 打开即静默复查激活态（服务端每窗口一次；归来重渲染 + 未拉过的云端配置补拉一次）
+  // 打开即静默复查激活态（现查走唯一机器 qqqEntitlement.refresh，背景档合并窗；
+  // 归来重渲染 + 未拉过的云端配置补拉一次）
   function _activationProbe() {
-    var login = null;
-    try { login = window.qqqLogin || null; } catch (e) { login = null; }
-    if (!login || !login.isLoggedIn || !login.isLoggedIn() || !login.checkPurchased) { return; }
+    var ent = null;
+    try { ent = window.qqqEntitlement || null; } catch (e) { ent = null; }
+    if (!ent || !ent.refresh) { return; }
     try {
-      login.checkPurchased().then(function () {
+      ent.refresh({ mode: 'ambient' }).then(function () {
         if (_open) { _render(); }
         try {
           var P = _P();

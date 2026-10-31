@@ -124,7 +124,7 @@ function _renderAllErrorBoxes(agent) {
                 _existingLink = document.createElement('a');
                 _existingLink.href = '#';
                 _existingLink.className = 'msg-err-recovery-light';
-                _existingLink._qqqQuestId = questActiveId;
+                _existingLink._qqqQuestId = agent._questId || questActiveId;   // 归属 = 该红框自己的 quest（后台任务不得绑到前台 quest）
                 _existingLink._qqqAgent = agent;
                 _existingLink._qqqRecoveryBusy = true;
                 _existingLink.textContent = '\u2588';
@@ -135,7 +135,7 @@ function _renderAllErrorBoxes(agent) {
             _existingLink.href = '#';
             _existingLink.className = 'msg-err-continue';
             _existingLink.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
-            _existingLink._qqqQuestId = questActiveId;
+            _existingLink._qqqQuestId = agent._questId || questActiveId;   // 归属 = 该红框自己的 quest
             _existingLink._qqqAgent = agent;
             _existingLink._qqqRecoveryBusy = false;  // ★ 2026-08-17: 显式初始化为 false
             _existingLink.onclick = function (e) {
@@ -241,7 +241,7 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
             _link2.href = '#';
             _link2.className = 'msg-err-continue';
             _link2.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
-            _link2._qqqQuestId = questActiveId;
+            _link2._qqqQuestId = agent._questId || questActiveId;   // 归属 = 该红框自己的 quest
             _link2._qqqAgent = agent;
             _link2._qqqRecoveryBusy = false;  // ★ 2026-08-17: 显式初始化
             _link2.onclick = function (e) {
@@ -632,7 +632,7 @@ function _finishRecovery(linkEl, agent, succeeded) {
 
 // ★ Stop 按钮在 fatal+活跃红框态 → 封顶所有活跃红框 → idle
 function _capRedBoxAndSeal() {
-    var ag = _activeAgent;
+    var ag = (typeof _resolveBtnAgent === 'function') ? _resolveBtnAgent() : _activeAgent;
     if (!ag || ag._stopState !== 'fatal') return;
     // ★ V14: 从 _questErrorState 遍历未封顶楼层
     if (ag._questErrorState) {
@@ -1322,11 +1322,6 @@ window.addEventListener('beforeunload', function () {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
     if (!_ag || !_qid) return;
-    // 压缩中 → 标记异常供下次启动修复
-    if (_ag._compressing && _ag._ctx) {
-        _ag._uncleanShutdown = true;
-        try { console.warn('[beforeunload] agent was compressing — marked unclean'); } catch (_) { }
-    }
     // 尽力保存：fire-and-forget，不拦截关闭
     if (typeof _saveAgentQuestData === 'function') {
         try { _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).catch(function () { }); } catch (_) { }

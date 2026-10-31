@@ -350,12 +350,15 @@ function _shellOpenMenubarPopup(anchorEl, item) {
           labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
           return;
         }
-        // 异步兜底：服务端确认（窗口生命周期只查一次），查到后更新标签
-        ql.checkPurchased().then(function(purchased) {
-          if (purchased) {
-            labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
-          }
-        });
+        // 异步兜底：现查走唯一机器（手势合并窗 10s；已激活短路零请求），查到后更新标签
+        var ent = window.qqqEntitlement;
+        if (ent && ent.refresh) {
+          ent.refresh().then(function (purchased) {
+            if (purchased) {
+              labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
+            }
+          });
+        }
       })(actLab);
 
       (function (rEl) {
@@ -367,22 +370,22 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         e.stopPropagation();
         _shellCloseMenubarPopup();
         var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
-        if (isLoggedIn) {
-          // ★ 已登录: 先服务端同步检测购买状态（窗口生命周期只查一次），再决定跳转目标
-          var login = window.qqqLogin;
-          login.checkPurchased().then(function(purchased) {
+        var ent = window.qqqEntitlement;
+        if (isLoggedIn && ent && ent.refresh) {
+          // ★ 已登录: 现查走唯一机器（手势合并窗；连点只发一次），再决定跳转目标
+          ent.refresh().then(function (purchased) {
             if (purchased) {
               // ★ 更新标签为"已激活"（可能之前显示"激活"）
               actLab.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
               // ★ 激活/个人中心 URL 唯一入口 = 唯一真理机器 qqqEntitlement（2026-09-07）
-              if (window.qqqEntitlement) window.qqqEntitlement.openProfile();
+              ent.openProfile();
             } else {
-              if (window.qqqEntitlement) window.qqqEntitlement.openActivation();
+              ent.openActivation();
             }
           });
         } else {
           // 未登录: 直接跳激活页（走机器唯一 URL 源）
-          if (window.qqqEntitlement) window.qqqEntitlement.openActivation();
+          if (ent) ent.openActivation();
         }
       });
       pop.appendChild(actRow);

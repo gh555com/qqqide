@@ -304,7 +304,7 @@ function addMessageEl(role, content, optQuestId) {
 
 // ═══ 引导按钮：仅建楼中可用（fatal 态禁用） ═══
 function updateGuideBtn() {
-    var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    var _ag = (typeof _resolveBtnAgent === 'function') ? _resolveBtnAgent() : ((typeof _activeAgent !== 'undefined') ? _activeAgent : null);
     if (_ag && _ag._stopState === 'fatal') {
         $guideBtn.disabled = true;
         $guideBtn.style.opacity = '0.35';
@@ -322,16 +322,10 @@ updateGuideBtn();
 // "最后一次"就冻结到任务结束；点击判定却实时读 _stopState → 字面 Send + 点击 busy = 永停不了
 // （q13 事故）。现在：外观恒从真理源（_stopState / 红框）推导，点击与字面同源。
 // 三态字面：Send（闲置）/ Stop（建楼中可点）/ Stop...（stopping = inert 态：置灰外观 + 点击零动作 + 悬停即时提示）。
-// 字面恒此三态（无 '....' / ⏳）：⏳ 依赖的 _compressing 全库无写入者——欲启用压缩态须先补驱动器。
+// 字面恒此三态（无 '....' / ⏳）——新增字面必须同批扩展 _sendBtnTruth 与点击分派（panel-input $sendBtn.onclick）。
 function _resolveBtnAgent() {
-    // 按钮绑定"当前显示任务"的建楼 agent：优先取池内 questActiveId 的真身（后台建楼/指针
-    // 被劫持时仍命中），再回退 _activeAgent（草稿态等）。
-    try {
-        var _pool = (typeof parent !== 'undefined' && parent) ? parent.__qqq_agentPool : null;
-        var _want = (typeof questActiveId !== 'undefined' && questActiveId && !(typeof _isDraft === 'function' && _isDraft(questActiveId))) ? questActiveId : null;
-        if (_want && _pool && _pool[_want]) return _pool[_want];
-    } catch (_) { }
-    return (typeof _activeAgent !== 'undefined') ? (_activeAgent || null) : null;
+    // 按钮绑定"当前显示任务"的建楼 agent = 面板真身（唯一入口 _panelAgent）。
+    return (typeof _panelAgent === 'function') ? _panelAgent() : ((typeof _activeAgent !== 'undefined') ? (_activeAgent || null) : null);
 }
 
 function _sendBtnTruth() {
@@ -383,25 +377,30 @@ function _renderSendBtn(fromReconcile) {
 
 // ═══ 面板真相对账（1s，与 Send 按钮同一拍）：可见卡 / 面板当前 quest / 面板 agent 三者必须同源 ═══
 //   串台事故的判据就是这三者被拉开；留一行日志 = 把「半年时隐时现」变成可定位证据。
-//   静默条件：草稿期（id 未定）与后台任务执行期（_activeAgent 归属于后台 quest 是合法态）。
+//   ★ 指针漂了就地自愈（幂等）：面板级状态全部经 questActiveId 直取真身（panel-state._panelAgent），
+//   此处把 _activeAgent 拉回真身——不依赖任何一条特定链的收尾时机。
+//   静默条件：草稿期（id 未定）与切换进行中（switchQuest 内先改 id 后换 agent 的 await 窗）。
 var _desyncLogTs = 0;
 function _panelDesyncCheck() {
     try {
         if (typeof questActiveId === 'undefined' || !questActiveId || !cardPool) return;
+        if (typeof _switching !== 'undefined' && _switching) return;
         var _vis = cardPool._activeId;
         if (!_vis) return;
         if (typeof _isDraft === 'function' && (_isDraft(_vis) || _isDraft(questActiveId))) return;
         var _bad = [];
         if (_vis !== questActiveId) _bad.push('card=' + _vis);
-        if (!_sending && _activeAgent && _activeAgent._questId && _activeAgent._questId !== questActiveId) _bad.push('agent=' + _activeAgent._questId);
+        var _home = (typeof _panelAgent === 'function') ? _panelAgent() : null;
+        if (_home && _activeAgent !== _home) {
+            _bad.push('agent=' + (_activeAgent && _activeAgent._questId));
+            _activeAgent = _home;   // 自愈：面板指针恒等于真身
+        }
         if (_bad.length === 0) return;
         var _now = Date.now();
         if (_now - _desyncLogTs < 5000) return;
         _desyncLogTs = _now;
-        var _pool = (parent && parent.__qqq_agentPool) ? parent.__qqq_agentPool : null;
-        var _ag = (_pool && _pool[questActiveId]) || _activeAgent;
-        if (_ag && typeof _ag._writeFileLog === 'function') {
-            _ag._writeFileLog('⚠ PANEL-DESYNC ' + _bad.join(' ') + ' active=' + questActiveId);
+        if (_home && typeof _home._writeFileLog === 'function') {
+            _home._writeFileLog('⚠ PANEL-DESYNC ' + _bad.join(' ') + ' active=' + questActiveId);
         }
     } catch (_) { }
 }
@@ -455,12 +454,15 @@ if ($sendBtn) {
     $sendBtn.addEventListener('mouseleave', _hideSendTip);
 }
 
-function setStreaming(val) {
-    // ★ 历史签名保留：val 不再决定按钮外观（旧"一次性打印"是死胡同根因），外观恒从真理源推导；
-    //   val 仅供 quest 电子钟起停等无关副作用使用。
+function setStreaming(val, optAgent) {
+    // ★ 历史签名保留：val 不再决定按钮外观（旧"一次性打印"是死胡同根因），外观恒从真理源推导
+    //   （真理源 = 面板真身，与调用方传入的 agent 无关）；val 仅供 quest 电子钟起停等副作用使用。
     updateGuideBtn();
     _renderSendBtn(false);
     updateQueueBtn();
+    // ★ 电子钟只服务可见任务：后台任务（队列排水/恢复楼/压缩楼）的起停不得动本面板的钟
+    //   （旧实现后台楼收尾 = _stopQuestClock() 把前台正在走的钟一并掐掉）。
+    if (optAgent && optAgent !== _resolveBtnAgent()) return;
     // ★ 微型电子钟：开始建楼启动，建楼结束停止
     if (val) {
         if (typeof _startQuestClock === 'function') _startQuestClock();

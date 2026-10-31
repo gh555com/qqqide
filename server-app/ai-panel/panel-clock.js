@@ -27,8 +27,6 @@ function _saveAgentFloor(ag, questId, force) {
     //   非建楼面板的 agent（从 all.json 恢复，stopState='idle'）禁止写盘，防止覆盖真理数据
     //   force=true（beforeunload）绕过此限制
     if (!force && ag._stopState !== 'sending') return;
-    // ★ 压缩保护：_compressing 期间 _ctx 处于不完整状态（三专家产出/回滚中间态），禁止 auto-save
-    if (ag._compressing) return;
     if (!force) {
         // ★ 去重：仅在 conversation 增长时才写盘（避免无变化的 O(n) slice + payload 构建）
         var convLen = ag.conversation ? ag.conversation.length : 0;
@@ -62,7 +60,7 @@ function _saveAgentFloor(ag, questId, force) {
 var _AUTOSAVE_INTERVAL = 5000;
 var _autoSaveRunning = false;
 // ★ 三面板均运行 auto-save，遍历共享 agentPool
-//   _saveAgentFloor 内置 stopState/_lastAutoSaveLen/_compressing 三重守卫：
+//   _saveAgentFloor 内置 stopState/_lastAutoSaveLen 二重守卫：
 //   主面板正常时侧面板被 _lastAutoSaveLen 去重跳过（零额外写盘）
 //   主面板 crash → 侧面板自然接管（agent stopState 仍为 'sending'）
 function _ensureAutoSave() {

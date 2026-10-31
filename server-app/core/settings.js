@@ -356,8 +356,11 @@
   }
 
   // ── ★ 显示楼层 32/64 = 激活（VIP）功能选值守卫（2026-09-05；64 档 2026-09-06）──
-  //   2026-09-07 起守卫收敛进唯一真理机器 qqqEntitlement.guard（权限门 + 激活页 URL
+  //   守卫收敛进唯一真理机器 qqqEntitlement.guard（权限门 + 激活页 URL
   //   唯一源）；此处只保留 16 免费档直写 + 拒绝红字展示（onDeny）。值域校验与权限门分离。
+  //   ★ 点选即现查：本地缓存可能是旧值（用户刚在浏览器激活完），不现查就会误跳激活页、逼用户重启。
+  //     现查成本闸门全部内建于唯一机器（qqqEntitlement.refresh：已激活短路 / 在飞复用 /
+  //     10s 手势合并窗 / 成功即落盘）——此处零参数，禁再传 force/freshMs 另开口子。
   function _trySelectFloorCapVal(_val) {
     var ent = window.qqqEntitlement;
     var _deniedHint = function () {

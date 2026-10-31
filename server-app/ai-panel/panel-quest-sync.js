@@ -83,13 +83,13 @@ async function _handleSyncMessage(msg) {
                                     if (_fcContainer2) _fcContainer2.scrollTop = _fcScrollTop;
                                 });
                             }
-                        } catch (_) { }
-                        // ★ 若为当前活跃 quest，重连 _activeAiDiv
-                        if (msg.questId === questActiveId && _activeAgent) {
-                            var _lastNums = Object.keys(_fcCard.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
-                            if (_lastNums.length > 0 && _fcCard.floorDOM[_lastNums[0]].aiEl) {
-                                _activeAgent._activeAiDiv = _fcCard.floorDOM[_lastNums[0]].aiEl;
-                            }
+                        } catch (_) { }                        // ★ 若为当前活跃 quest，重连 _activeAiDiv（真身解析，禁读可变指针）
+                        var _fcHome = (typeof _panelAgent === 'function') ? _panelAgent() : null;
+                        if (msg.questId === questActiveId && _fcHome) {
+                            var _lastNums = Object.keys(_fcCard.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
+                            if (_lastNums.length > 0 && _fcCard.floorDOM[_lastNums[0]].aiEl) {
+                                _fcHome._activeAiDiv = _fcCard.floorDOM[_lastNums[0]].aiEl;
+                            }
                         }
                     }
                 }

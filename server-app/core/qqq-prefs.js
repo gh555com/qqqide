@@ -165,8 +165,13 @@
     return _localHandle;
   }
 
-  // ═══ 激活判定（qqqLogin 缺失 = 未激活）═══
+  // ═══ 激活判定（唯一真值入口 = qqqEntitlement.isActivated；机器缺失 → 回退真值层，禁自成一套）═══
   function isActivated() {
+    try {
+      if (window.qqqEntitlement && typeof window.qqqEntitlement.isActivated === 'function') {
+        return !!window.qqqEntitlement.isActivated();
+      }
+    } catch (e) { /* */ }
     try {
       if (window.qqqLogin && typeof window.qqqLogin.isPurchased === 'function') {
         return !!window.qqqLogin.isPurchased();

@@ -714,7 +714,6 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._lastApiCompletionTokens = data.lastApiCompletionTokens || 0;
             ag._accumulatedCompletionTokens = data.accumulatedCompletionTokens || 0;
             ag._lastTier = data.lastTier || null;
-            ag._uncleanShutdown = data.uncleanShutdown || false;
             ag._ctx.lastCompressedFloor = _ctxData.lastCompressedFloor || 0;
             ag._ctx.floorArchives = _ctxData.floorArchives || [];
             ag._ctx.totalFloors = _ctxData.totalFloors || 0;
@@ -838,11 +837,7 @@ async function _restoreAgentFromStore(questId, ag) {
                 }
             }
         }
-        // ★ 崩溃恢复：上次关闭时正在压缩 → 修复可能的半成品状态
-        if (ag._uncleanShutdown) {
-            ag._uncleanShutdown = false;
-            console.warn("[restore] unclean shutdown detected — state cleaned");
-        }
+
         // ★ 刷新服务器城市（Cloudflare 透传，用于 passby 地理位置展示）
         _refreshServerCity(ag);
 

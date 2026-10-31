@@ -14,8 +14,10 @@
 //     run=true 才执行搜索 —— 唯一自动搜索开关（恢复/仅设范围一律不带）；
 //     focus=true 才聚焦搜索框（恢复不抢焦点）。
 //   iframe→tab { type:'qqqide-search-title', path, query }（标签标题随搜索上下文）。
-//   iframe 未建（懒建卡未激活）/未加载完成 → 存 tab._searchPending 单一待发槽，
+//   iframe 未建（懒建卡未激活）/未真就绪 → 存 tab._searchPending 单一待发槽，
 //   构建完成 load 时补发（最新覆盖——同一意图绝不重复执行）。
+//   ★ 就绪唯一判定 = _iframeReady（非 about:blank + readyState complete + 搜索卡真身就位）——
+//     禁以 readyState 单独判就绪：初始空文档恒为 complete，消息会被空文档吞掉。
 // ★ 恢复 ≠ 搜索：重启恢复的卡只回填范围 + 搜索词，停在空闲态（回车才搜）；
 //   恢复卡懒建（tab-manager opts.lazy，未激活连 iframe 都不建）+ 不抢活跃标签/焦点。
 // ============================================================================
@@ -75,20 +77,38 @@
         if (!pane) return null;
         return pane._searchIframe || pane.querySelector('iframe[src*="search-ui.html"]');
     }
+    // ★ 真就绪判定（唯一）：初始 about:blank 的 readyState 恒为 'complete'——若据此判就绪，
+    //   消息会投给空文档被吞掉（待发槽已被清空 → 真文档 load 时不再补发 → 搜索范围静默退回主项目）。
+    //   故必须同时满足：非 about:blank + readyState complete + 搜索卡真身已就位（脚本尾 message 监听已挂）。
+    function _iframeReady(iframe) {
+        if (!iframe) return false;
+        if (iframe._srchLoaded) return true;
+        try {
+            var w = iframe.contentWindow, d = w && w.document;
+            if (!d) return false;
+            var href = String(w.location.href || '');
+            if (!href || href === 'about:blank') return false;   // 仍是初始空文档
+            if (d.readyState !== 'complete') return false;
+            if (!d.getElementById('sp')) return false;           // search-ui 未就位（监听未挂 → 投递即丢）
+            iframe._srchLoaded = true;
+            return true;
+        } catch (_) { return false; }
+    }
+    // 投递成功才清待发槽；未真就绪一律保留（load 主路补发）
     function _flushPending(tab, iframe) {
         var msg = tab && tab._searchPending;
-        if (!msg) return;
+        if (!msg) return false;
+        if (!_iframeReady(iframe)) return false;
         tab._searchPending = null;
-        try { iframe.contentWindow.postMessage(msg, '*'); } catch (_) { }
+        try { iframe.contentWindow.postMessage(msg, '*'); }
+        catch (_) { tab._searchPending = msg; return false; }
+        return true;
     }
     function _tryFlush(tab) {
         if (!tab || !tab._searchPending) return;
         var iframe = _iframeOf(tab.id);
         if (!iframe) return;   // 懒建卡未激活（iframe 未建）→ 留待激活构建后 load 补发
-        if (!iframe._srchLoaded) {
-            try { if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') iframe._srchLoaded = true; } catch (_) { }
-        }
-        if (iframe._srchLoaded) _flushPending(tab, iframe);
+        _flushPending(tab, iframe);
     }
     function _postToTab(tab, msg) {
         if (!tab) return;
@@ -96,6 +116,7 @@
         _tryFlush(tab);
         setTimeout(function () { _tryFlush(tab); }, 400);    // 加载竞态兜底（主路 = load 事件）
         setTimeout(function () { _tryFlush(tab); }, 1200);
+        setTimeout(function () { _tryFlush(tab); }, 3000);    // 冷启动/慢盘兜底（重复投递零副作用：槽已空即 no-op）
     }
 
     // ---- 外部 API: 打开搜索标签并填入搜索范围（+ 可选执行搜索词）----

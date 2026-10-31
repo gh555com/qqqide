@@ -212,7 +212,7 @@
         el.style.display = '';
         el.textContent = '🔒 ' + _t('ai.byok.needActivation', '自带 API Key 与本地模型是正版功能（激活后可用）');
     }
-    // 启用许可：本地缓存先行；拒绝 → 机器 guard（force 现查）→ onDeny 红字 + 激活页
+    // 启用许可：本地缓存先行；拒绝 → 机器 guard（唯一现查通道，手势合并窗内最多一次）→ onDeny 红字 + 激活页
     function _ensureActivation() {
         if (_actOk()) return Promise.resolve(true);
         var st = document.getElementById('byok-test-status');
@@ -224,7 +224,7 @@
         };
         var e = _ent();
         if (!e || typeof e.guard !== 'function') { deny(); return Promise.resolve(false); }
-        return e.guard('byok', { force: true, onDeny: deny });
+        return e.guard('byok', { onDeny: deny });
     }
 
     // 内存配置 → 磁盘形态（有 Key：可加密则仅存密文，否则明文兜底；无 Key：保留既有密文防误清）
