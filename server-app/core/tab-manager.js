@@ -1429,6 +1429,11 @@
       fileGrp = fgs.length >= 1 ? fgs[0] : addGroup('file');
     } else if (opts.group && typeof opts.group === 'object') {
       fileGrp = opts.group;
+    } else if (typeof opts.groupIdx === 'number') {
+      // ★ 恢复路径：回原组（绝对组序号）；组已不存在 → 回落默认分组
+      for (var _cgi = 0; _cgi < groups.length; _cgi++) {
+        if (groups[_cgi].idx === opts.groupIdx && groups[_cgi].type === 'file') { fileGrp = groups[_cgi]; break; }
+      }
     }
     if (!fileGrp) {
       fileGrp = groups.find(g => g.type === 'file');
@@ -1504,6 +1509,7 @@
   // ---- Persistence: editor tabs + gaea tabs + cursor positions → only.sq3 (项目资产) ----
   var _restored = false;
   var _hadTabs = false;   // ★ 2026-09-26: 本会话是否开过文件 tab（空列表写盘守卫——防 fresh/空窗误清既有持久化）
+  var _hadCustom = false; // 同语义：本会话是否开过可恢复 custom tab
   // ★ 2026-09-21: 恢复同步派发窗口标志——Markdown 自动预览此窗口内静默（防 Ctrl+R 恢复风暴）
   var _restoring = false;
   var _persistTimer = null;
@@ -1522,6 +1528,29 @@
     var root = window._workspaceRoot || _folderFromUrl();
     if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
     return window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+  }
+
+  // ★ custom tab（多开实例：inbox 等）持久化——只收「已注册恢复器」的 customId：
+  //   未注册恢复器 = 无重建通道，收进来只会恢复一个空壳 → 一律跳过。
+  //   恢复器由 goods 自己注册（dm.js → registerCustomTabRestorer('inbox', …)）。
+  var _customRestorers = {};
+  function registerCustomTabRestorer(customId, fn) {
+    if (customId && typeof fn === 'function') _customRestorers[customId] = fn;
+  }
+  function _collectCustomTabs() {
+    var out = [];
+    for (var gi = 0; gi < groups.length; gi++) {
+      var grp = groups[gi];
+      if (grp.type !== 'file') continue;
+      for (var ti = 0; ti < grp.tabs.length; ti++) {
+        var t = grp.tabs[ti];
+        if (!t.customId || !_customRestorers[t.customId]) continue;
+        var st = null;
+        try { st = (typeof t.getState === 'function') ? t.getState() : null; } catch (_) { st = null; }
+        out.push({ customId: t.customId, groupIdx: grp.idx, title: t.title, active: t.id === grp.activeTabId, state: st });
+      }
+    }
+    return out;
   }
 
   // ★ 收集 file tabs + gaea 活跃 tab ID + A 区活跃 good ID
@@ -1560,6 +1589,12 @@
     if (all.length > 0) _hadTabs = true;
     if (all.length > 0 || _hadTabs) {
       db.set('editor.tabs', all).catch(function () { });
+    }
+    // ★ 多开 custom tab（inbox）持久化：同「空列表也写」语义（关完 = 显式意图）
+    var custom = _collectCustomTabs();
+    if (custom.length > 0) _hadCustom = true;
+    if (custom.length > 0 || _hadCustom) {
+      db.set('editor.customTabs', custom).catch(function () { });
     }
     // ★ gaea 分组活跃 tab
     var gaeaGrp = getGaeaGroup();
@@ -1634,6 +1669,18 @@
         }
         window.qqqTabs.activateTab(grp, pick.id);
       }, 800);
+    }).catch(function () { });
+
+    // ★ custom tab（inbox 多开）恢复：等文件 tab 落位后按原组重建
+    db.get('editor.customTabs').then(function (customs) {
+      if (!Array.isArray(customs) || !customs.length) return;
+      setTimeout(function () {
+        customs.forEach(function (c) {
+          var fn = c && _customRestorers[c.customId];
+          if (!fn) return;
+          try { fn({ groupIdx: c.groupIdx, title: c.title, state: c.state }); } catch (_) { }
+        });
+      }, 600);
     }).catch(function () { });
 
     // ★ 触发 A 区活性恢复
@@ -1838,6 +1885,8 @@
     roamTitle,
     setTabDirty,
     setTabDeleted: _setTabDeleted,
+    // ★ custom tab 持久化恢复器注册（goods 自管重建；未注册 = 不持久化）
+    registerCustomTabRestorer,
     // ★ 编码徽标外部刷新入口（shell-rpc / editor 外部重载后调用）
     refreshEncForPath,
     // ★ 2026-09-20 面包屑编码徽标（恒显读占位；语义/渲染与 tab 徽标同源）

@@ -19,6 +19,20 @@
   var _bgPollTimer = null;
   var _loadingMore = false;      // 历史分页加载中（防重复点击）
   var _noMoreOld = {};           // peerID → 已翻到最早，不再显示「加载更早」
+
+  // ═══ 多开共享总线（父窗 gaea-host 唯一连接；无总线 → 自建 WS 兜底）═══
+  var _bus = false;              // 能力探测：父窗提供 dmBus
+  var _busOpen = false;          // 父窗 WS 状态（open/closed）
+  var _reportTimer = null;       // 未读表上报节流
+  // ═══ 非活动 tab 静默（D）：切走后零渲染零轮询，数据照收，切回一次补渲染 ═══
+  var _quiet = false;
+  var _dirtyRender = false;
+  // ═══ 贴底跟随（C）：已在底部才自动跟随，否则浮标计数 ═══
+  var _followBottom = true;
+  var _pendingNew = 0;
+  // 恢复：?peer= 上次会话（多开 tab 重启还原）
+  var _pendingPeer = '';
+  try { var _pm = location.search.match(/[?&]peer=([^&]*)/); if (_pm) _pendingPeer = decodeURIComponent(_pm[1]); } catch (_) { }
   // 待发送附件 — per-peer 独立（切会话不串不残留，2026-09-14 重写）
   // chip = {id, file, name, size, loaded, mime, url(缩略图objectURL), status: pending|uploading|done|failed, att(上传成功结果), err}
   var _pendingByPeer = {};       // peerKey → [chip]（先传后发：发送时逐文件上传 bed 1ge/10MB）
@@ -123,6 +137,24 @@
         msgs[pid] = arr.slice(-_CACHE_MAX_PER_CONV);   // 单会话只保最近 N 条
         total += msgs[pid].length;
       });
+      // ★ 多开合并：另一实例（中间/右侧）的分页历史不能被本次覆盖抹掉——写前读旧值并集
+      var prev = null;
+      try { var _raw0 = localStorage.getItem(_CACHE_KEY); if (_raw0) prev = JSON.parse(_raw0); } catch(_) { prev = null; }
+      if (prev && prev.msgs) {
+        Object.keys(prev.msgs).forEach(function(pid){
+          var old = prev.msgs[pid];
+          if (!Array.isArray(old) || !old.length) return;
+          msgs[pid] = _mergeMsgs(old, msgs[pid] || []).slice(-_CACHE_MAX_PER_CONV);
+        });
+        total = 0;
+        Object.keys(msgs).forEach(function(pid){ total += msgs[pid].length; });
+      }
+      if (prev && prev.convs) {
+        Object.keys(prev.convs).forEach(function(pid){
+          if (!convs[pid]) { convs[pid] = prev.convs[pid]; return; }
+          convs[pid] = _mergeConv(prev.convs[pid], convs[pid]);
+        });
+      }
       // 全局超限 → 按最后活跃裁剪最不活跃会话
       if (total > _CACHE_MAX_TOTAL) {
         var order = Object.keys(msgs).sort(function(x,y){
@@ -145,6 +177,21 @@
       });
       localStorage.setItem(_CACHE_KEY, JSON.stringify({convs:convs, msgs:msgs, savedAt:Date.now()}));
     } catch(_) {}   // 超限/不可用 → 放弃缓存，绝不阻塞运行
+  }
+
+  // 会话记录合并：身份字段取非空并集；动态字段（lastMsg/lastTime/unread）取 lastTime 新者
+  //   （未读服务端为真理源，下次 loadConversations 自愈——此处只要求不丢联系人/不丢预览）
+  function _mergeConv(a, b) {
+    a = a || {}; b = b || {};
+    var na = String(a.lastTime || '') > String(b.lastTime || '') ? a : b;   // 同刻 → 本次（b）优先
+    var nb = (na === a) ? b : a;
+    var out = {};
+    Object.keys(nb).forEach(function(k){ out[k] = nb[k]; });
+    Object.keys(na).forEach(function(k){ out[k] = na[k]; });
+    ['kind','gid','gname','memberCnt','peerName','phone','country','nickname','lastSender'].forEach(function(k){
+      if ((na[k] === undefined || na[k] === '' || na[k] === 0) && nb[k] !== undefined) out[k] = nb[k];
+    });
+    return out;
   }
 
   function _cacheLoad() {
@@ -232,6 +279,12 @@
   // ═══ INIT ═══
   init();
   function init() {
+    // 就绪回执（不依赖登录态）：父窗据此下发真实可见性（后台恢复的 tab 出生即非活动）
+    try { parent.postMessage({ type: 'dm:ready' }, '*'); } catch (_) { }
+    // 实例销毁 → 父窗当场除名（徽章不再为「已关闭实例正在看的会话」让路）
+    window.addEventListener('pagehide', function () {
+      try { parent.postMessage({ type: 'dm:bye' }, '*'); } catch (_) { }
+    });
     getAuth(function(tok, did, name) {
       if (!tok) { setConnStatus(false, _kk('goods.dm.notLoggedIn', '未登录'), function () { setConnStatus(false, _kk('goods.dm.notLoggedIn', '未登录')); }); return; }
       _token = tok;
@@ -244,12 +297,34 @@
         renderConvList();
         setConnStatus(false, _kk('goods.dm.cacheSync', '缓存模式 · 同步中…'), function () { setConnStatus(false, _kk('goods.dm.cacheSync', '缓存模式 · 同步中…')); });
       }
-      connectWS();
+      // ★ 连接路径唯一裁决：父窗提供共享总线 → 0 自建连接（多开 = 一个窗口仍只 1 条 WS）
+      _bus = _busOK();
+      if (_bus) {
+        _busSend({ type: 'dm:hello' });
+        // 定期重报真值：兼作存活心跳（父窗超时踢尸 + 徽章与真值不漂）
+        setInterval(_reportState, 45000);
+        _setConn(false, 'goods.dm.connecting', '连接中…');
+      } else {
+        connectWS();
+      }
       loadConversations();
       loadGroups();
       loadBedStats();
       bindVisibility();
     });
+  }
+
+  // 状态行设置：同时登记「同态重放」闭包（切语言后重算，禁旧语言快照）
+  function _setConn(ok, key, fb, arg) {
+    var re = function () { setConnStatus(ok, (arg === undefined) ? _kk(key, fb) : _kk(key, fb, arg), re); };
+    re();
+  }
+  function _busOK() {
+    try { return !!(parent.qqqGaea && parent.qqqGaea.dmBus); } catch (_) { return false; }
+  }
+  function _busSend(msg) {
+    if (!_bus) return;
+    try { parent.postMessage(msg, '*'); } catch (_) { }
   }
 
   function getAuth(cb) {
@@ -352,6 +427,7 @@
   // ═══ 节能模式（窗口不可见 → 断 WS 长连接，60s REST 轮询只维护未读数）═══
   // 开销对比: 常驻 WS = 服务器长连接 + 30s 心跳; 后台轮询 = 服务器零驻留 + 60s 一次 ~1KB HTTP
   function isHidden() {
+    if (_quiet) return true;   // 非活动 tab（同窗其它标签页在前）= 不可见，同语义节能
     try { if (document.hidden) return true; } catch(_) {}
     try { if (parent.document && parent.document.hidden) return true; } catch(_) {}
     return false;
@@ -369,16 +445,19 @@
       try { _w._qqqDead = true; } catch(_) {}
       try { if (_w.readyState === WebSocket.OPEN) _w.close(); } catch(_) {}
     }
+    // 总线模式 → 父窗节能轮询 + dm:bg 广播（实例零自轮询）；无总线 → 自建连接 + 自轮询
     var _rfb = function () { setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'), _rfb); };
     setConnStatus(false, _kk('goods.dm.bgMode', '节能 · 后台仅未读数'), _rfb);
-    startBgPoll();
+    if (!_bus) startBgPoll();
   }
-  function exitBg() {
+  function exitBg(skipFetch) {
     if (!_bgMode) return;
     _bgMode = false;
     stopBgPoll();
     _wsReconnectDelay = 0;   // 前台恢复 → 重连退避归零
-    connectWS();             // 恢复实时推送
+    if (_bus) _busSend({ type: 'dm:hello' });   // 总线：重新登记并取父窗当前连接状态
+    else connectWS();                           // 恢复实时推送
+    if (skipFetch) return;                      // tab 切回（数据由总线推送保活）→ 免 REST 重拉
     loadConversations();     // 补后台错过的会话（含在线状态，回来时自动刷新头部）
     if (_activePeer) {
       loadMessages(_activePeer);  // 后台期间到达的消息正文
@@ -392,49 +471,117 @@
   function stopBgPoll() {
     if (_bgPollTimer) { clearInterval(_bgPollTimer); _bgPollTimer = null; }
   }
+  // 节能期未读数据落地（自轮询 与 父窗 dm:bg 广播 共用唯一实现；仅数据，不渲染）
+  function _applyBgData(d) {
+    if (!d) return;
+    if (Array.isArray(d.conversations)) {
+      d.conversations.forEach(function(cv){
+        var c = _convMap[cv.peer_id];
+        if (!c) { c = _convMap[cv.peer_id] = {unread:0,lastMsg:'',lastTime:'',peerName:'',phone:'',country:''}; }
+        if (cv.peer_id !== _activePeer) c.unread = cv.unread_count || 0;   // 正在看的会话恒免未读
+        if (cv.last_msg) c.lastMsg = cv.last_msg;
+        if (cv.last_time) c.lastTime = cv.last_time;
+        if (cv.peer_name) c.peerName = cv.peer_name;
+        if (cv.peer_phone) c.phone = cv.peer_phone;
+        if (cv.peer_country) c.country = cv.peer_country;
+        c.nickname = cv.nickname || '';
+      });
+      _reportSoon();
+      _cacheSaveSoon();   // 后台拿到的未读数/预览也入缓存 → 重启后启动即准
+    }
+    if (Array.isArray(d.groups)) {
+      d.groups.forEach(function(g){
+        var key = gkey(g.gid);
+        var c = _convMap[key];
+        if (!c) { c = _convMap[key] = {kind:'group', gid:g.gid, gname:g.gname||_kk('goods.dm.group', '群'), memberCnt:g.member_cnt||0, unread:0, lastMsg:'', lastTime:''}; }
+        if (key !== _activePeer) c.unread = g.unread_count || 0;
+        if (g.last_msg) c.lastMsg = g.last_msg;
+        if (g.last_time) c.lastTime = g.last_time;
+        if (g.last_sender) c.lastSender = g.last_sender;
+      });
+      _reportSoon();
+      _cacheSaveSoon();
+    }
+  }
   function bgPoll() {
-    if (!_token) return;
+    if (!_token || _bus) return;   // 总线模式：父窗轮询 + dm:bg 广播（实例零额外请求）
     fetch('https://cnk.gh555.com/api/dm/conversations', {
       headers:{'Authorization':'Bearer '+_token}
-    }).then(function(r){return r.json();}).then(function(d){
-      if (!d.conversations) return;
-         d.conversations.forEach(function(cv){
-          var c = _convMap[cv.peer_id];
-          if (!c) { c = _convMap[cv.peer_id] = {unread:0,lastMsg:'',lastTime:'',peerName:'',phone:'',country:''}; }
-          c.unread = cv.unread_count || 0;
-          if (cv.last_msg) c.lastMsg = cv.last_msg;
-          if (cv.last_time) c.lastTime = cv.last_time;
-          if (cv.peer_name) c.peerName = cv.peer_name;
-          if (cv.peer_phone) c.phone = cv.peer_phone;
-          if (cv.peer_country) c.country = cv.peer_country;
-          c.nickname = cv.nickname || '';
-        });
-      // 窗口级徽章由 gaea-host 自己的 WS/轮询管理；此处免 DOM 渲染（不可见无意义）
-      _cacheSaveSoon();   // 后台轮询拿到的未读数/预览也入缓存 → 重启后启动即准
-    }).catch(function(){});
-    // 群未读同样轮询（仅数据，不渲染）
+    }).then(function(r){return r.json();}).then(_applyBgData).catch(function(){});
     fetch('https://cnk.gh555.com/api/group/list', {
       headers:{'Authorization':'Bearer '+_token}
-    }).then(function(r){return r.json();}).then(function(d){
-      if (d.groups) {
-        d.groups.forEach(function(g){
-          var key = gkey(g.gid);
-          var c = _convMap[key];
-          if (!c) { c = _convMap[key] = {kind:'group', gid:g.gid, gname:g.gname||_kk('goods.dm.group', '群'), memberCnt:g.member_cnt||0, unread:0, lastMsg:'', lastTime:''}; }
-          c.unread = g.unread_count || 0;
-          if (g.last_msg) c.lastMsg = g.last_msg;
-          if (g.last_time) c.lastTime = g.last_time;
-          if (g.last_sender) c.lastSender = g.last_sender;
-        });
-        _cacheSaveSoon();
-      }
-    }).catch(function(){});
+    }).then(function(r){return r.json();}).then(_applyBgData).catch(function(){});
   }
   function bindVisibility() {
-    function onVis() { if (isHidden()) enterBg(); else exitBg(); }
+    function onVis() { if (isHidden()) enterBg(); else exitBg(false); }
     document.addEventListener('visibilitychange', onVis);
     try { parent.document.addEventListener('visibilitychange', onVis); } catch(_) {}
     onVis();  // 初始状态直接判定：启动即最小化 → 立即节能
+  }
+
+  // ═══ 共享总线通道（父窗 gaea-host ↔ 本实例）═══
+  //   唯一连接在父窗（一个窗口恒 1 条 WS，多开 N 实例均摊 0 条）
+  function _reportState() {
+    _reportTimer = null;
+    if (!_bus) return;
+    var convs = {};
+    Object.keys(_convMap).forEach(function (k) {
+      var c = _convMap[k] || {};
+      convs[k] = { unread: c.unread || 0, lastTime: c.lastTime || '' };
+    });
+    _busSend({ type: 'dm:state', convs: convs, active: _activePeer || '' });
+  }
+  function _reportSoon() {
+    if (!_bus || _reportTimer) return;
+    _reportTimer = setTimeout(_reportState, 200);
+  }
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || typeof d.type !== 'string') return;
+    if (d.type !== 'dm:push' && d.type !== 'dm:bus' && d.type !== 'dm:read' && d.type !== 'dm:bg' && d.type !== 'dm:visible') return;
+    if (e.source !== parent) return;   // 只认父窗
+    if (d.type === 'dm:push') {
+      if (d.kind === 'group') handleGroupPush(d.data); else handlePush(d.data);
+      return;
+    }
+    if (d.type === 'dm:bus') {
+      _busOpen = (d.state === 'open');
+      if (_busOpen) _setConn(true, 'goods.dm.inboxReady', '收件箱已就绪');
+      else if (_bgMode) _setConn(false, 'goods.dm.bgMode', '节能 · 后台仅未读数');
+      else if (d.state === 'connecting') _setConn(false, 'goods.dm.connecting', '连接中…');
+      else _setConn(false, 'goods.dm.busDown', '连接中断 · 自动重连中');
+      return;
+    }
+    if (d.type === 'dm:read') {
+      var c = _convMap[d.peer];
+      if (c && c.unread) { c.unread = 0; renderConvList(); }
+      return;
+    }
+    if (d.type === 'dm:bg') { _applyBgData(d); return; }
+    if (d.type === 'dm:visible') { _setQuiet(!d.visible); }
+  });
+
+  // 非活动 tab 静默：切走零渲染/零轮询（数据照收），切回一次补渲染（D）
+  function _setQuiet(v) {
+    v = !!v;
+    if (_quiet === v) return;
+    _quiet = v;
+    if (_quiet) {
+      enterBg();
+      // 静默 ≠ 断流：总线推送照收，只是不画（文案必须如实）
+      _setConn(false, 'goods.dm.inactive', '非活动 · 切回即刷新');
+      return;
+    }
+    exitBg(true);
+    if (_bus) {
+      if (_busOpen) _setConn(true, 'goods.dm.inboxReady', '收件箱已就绪');
+      else _setConn(false, 'goods.dm.busDown', '连接中断 · 自动重连中');
+    }
+    if (_dirtyRender) {
+      _dirtyRender = false;
+      renderConvList();
+      if (_activePeer) renderMessages(_activePeer, { force: true });
+    }
   }
 
   // ═══ PUSH HANDLER ═══
@@ -472,11 +619,7 @@
 
     if (_activePeer === peerID && !dup) {
       appendBubble(dm);
-      scrollBottom();
-      if (dm.sender_id !== _doerID) {
-        // Tell parent to reset unread badge
-        try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
-      }
+      _followOrPill();   // 贴底跟随 / 否则浮标计数（禁抢滚动条）
     }
     _cacheSaveSoon();
   }
@@ -503,6 +646,7 @@
         });
         renderConvList();
         _cacheSaveSoon();
+        _openPendingPeer();
       }
     }).catch(function(){});
   }
@@ -532,10 +676,7 @@
     renderConvList();
     if (_activePeer === key && !dup) {
       appendBubble(d);
-      scrollBottom();
-      if (!isSelf) {
-        try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
-      }
+      _followOrPill();
     }
     _cacheSaveSoon();
   }
@@ -550,7 +691,7 @@
         d.conversations.forEach(function(cv){
           // ★ 永久联系人：服务器 PG 为唯一真理源，重启 IDE 后此列表原样恢复
           _convMap[cv.peer_id] = {
-            unread: cv.unread_count||0,
+            unread: (cv.peer_id === _activePeer) ? 0 : (cv.unread_count||0),
             lastMsg: cv.last_msg||'',
             lastTime: cv.last_time||'',
             peerName: cv.peer_name||cv.peer_phone||cv.peer_id,
@@ -561,10 +702,17 @@
         });
         renderConvList();
         _cacheSaveSoon();
-        // Notify parent to reset badge after initial load
-        try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
+        _openPendingPeer();   // 恢复：上次停留的会话（?peer=）
       }
     }).catch(function(){});
+  }
+
+  // 恢复入口：列表到位后打开上次会话（用户已抢先手点 → 让路）
+  function _openPendingPeer() {
+    if (!_pendingPeer) return;
+    var p = _pendingPeer;
+    _pendingPeer = '';
+    setTimeout(function () { if (!_activePeer) openChat(p); }, 200);
   }
 
   function loadMessages(peerID) {
@@ -656,11 +804,11 @@
       if (d.messages && d.messages.length) {
         _msgCache[peerID] = _mergeMsgs(msgs, d.messages);
         if (d.messages.length < 99) _noMoreOld[peerID] = true;   // 不满一页 = 已到底
-        renderMessages(peerID);
+        renderMessages(peerID, { keepScroll: true });   // 前插历史不能把视野拓到底部
         _cacheSaveSoon();
       } else {
         _noMoreOld[peerID] = true;   // 没有更早（id 空洞）→ 按钮消失
-        renderMessages(peerID);
+        renderMessages(peerID, { keepScroll: true });
       }
     }).catch(function(){
       var b = document.getElementById('btn-load-more');
@@ -718,12 +866,14 @@
     try {
       var cv = _convMap[_activePeer] || {};
       var nm = cv.kind === 'group' ? (cv.gname || _kk('goods.dm.group', '群')) : (_activePeer ? dispPlain(cv, _activePeer) : '');
-      parent.postMessage({ type: 'dm:title', title: nm ? nm : 'inbox' }, '*');
+      parent.postMessage({ type: 'dm:title', title: nm ? nm : 'inbox', peer: _activePeer || '' }, '*');
     } catch (_) {}
   }
 
   // ═══ RENDER ═══
   function renderConvList() {
+    _reportSoon();                                   // 未读真值上报父窗（徽章单一写者）
+    if (_quiet) { _dirtyRender = true; return; }      // 非活动 tab：数据先存，切回再画
     var peers = Object.keys(_convMap).sort(function(a,b){
       return (_convMap[b].lastTime||'') > (_convMap[a].lastTime||'') ? 1 : -1;
     });
@@ -767,7 +917,10 @@
     });
   }
 
-  function renderMessages(peerID) {
+  function renderMessages(peerID, opts) {
+    opts = opts || {};
+    if (_quiet) { _dirtyRender = true; return; }
+    var _prevH = $msgList.scrollHeight, _prevTop = $msgList.scrollTop;
     $msgList.innerHTML = '';
     var msgs = _msgCache[peerID] || [];
     if (msgs.length === 0) {
@@ -820,10 +973,17 @@
       lastTime = mTime;
     });
 
-    scrollBottom();
+    // 滚动裁决：keepScroll（加载更早）→ 保持视野不跳；否则贴底跟随才下移
+    if (opts.keepScroll) {
+      $msgList.scrollTop = _prevTop + ($msgList.scrollHeight - _prevH);
+    } else if (opts.force || _followBottom) {
+      scrollBottom();
+    }
+    _updatePill();
   }
 
   function appendBubble(m) {
+    if (_quiet) { _dirtyRender = true; return; }   // 非活动 tab：只入缓存不碰 DOM
     // 空态/错误占位 → 新消息到达即移除（防「暂无消息」压在已发消息上方）
     var hintEl = $msgList.querySelector('[data-empty-hint]');
     if (hintEl) hintEl.remove();
@@ -1413,6 +1573,10 @@
   // ═══ ACTIONS ═══
   function openChat(peerID) {
     _activePeer = peerID;
+    _pendingPeer = '';
+    _followBottom = true;
+    _pendingNew = 0;
+    _updatePill();
     _searchFilter = '';
     $searchInput.value = '';
 
@@ -1425,14 +1589,15 @@
 
     refreshChatHeader();
 
-    // Reset unread
+    // 本实例抹零 + 广播其余实例同步抹零（徽章 = 父窗按真值重算，不再「打开即全清零」）
     cv.unread = 0;
-    try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
+    _busSend({ type: 'dm:read', peer: peerID });
+    _reportSoon();
 
     if (cv.kind === 'group') {
       loadGroupMessages(peerID);
     } else if (Array.isArray(_msgCache[peerID]) && _msgCache[peerID].length > 0) {
-      renderMessages(peerID);   // 缓存秒开（弱网/离线也能读）
+      renderMessages(peerID, { force: true });   // 缓存秒开（弱网/离线也能读）
       loadMessages(peerID);     // 后台拉最新段增量合并修正
     } else {
       loadMessages(peerID);
@@ -1564,6 +1729,15 @@
     _searchFilter = $searchInput.value;
     renderConvList();
   });
+
+  // 贴底跟随裁决（C）：距底 < 40px = 跟随态；往上翻 → 停住，新消息只计数
+  $msgList.addEventListener('scroll', function () {
+    var atBottom = ($msgList.scrollHeight - $msgList.scrollTop - $msgList.clientHeight) < 40;
+    _followBottom = atBottom;
+    if (atBottom && _pendingNew) { _pendingNew = 0; _updatePill(); }
+  });
+  var _pillEl = document.getElementById('new-msg-pill');
+  if (_pillEl) _pillEl.addEventListener('click', function () { scrollBottom(); });
 
   // ★ 新建对话唯一入口：键入框 Enter 与「新建消息」按钮共用
   // 2026-09-14：自投拦截（本地脱敏比对 + 服务端权威探测双保险）——自己的号码不进入会话，就地提示
@@ -1931,6 +2105,28 @@
 
   function scrollBottom() {
     $msgList.scrollTop = $msgList.scrollHeight;
+    _followBottom = true;
+    _pendingNew = 0;
+    _updatePill();
+  }
+
+  // 新消息落屏后的滚动裁决：已贴底 → 跟随；正在往上翻 → 浮标计数（不抢滚动条）
+  function _followOrPill() {
+    if (_quiet) return;
+    if (_followBottom) { scrollBottom(); return; }
+    _pendingNew++;
+    _updatePill();
+  }
+  function _updatePill() {
+    var el = document.getElementById('new-msg-pill');
+    if (!el) return;
+    var n = document.getElementById('new-msg-n');
+    if (_pendingNew > 0) {
+      el.style.display = '';
+      if (n) n.textContent = _pendingNew > 99 ? '99+' : String(_pendingNew);
+    } else {
+      el.style.display = 'none';
+    }
   }
 
   function fmtTime(d) {

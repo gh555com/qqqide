@@ -52,6 +52,8 @@
   var _inboxVisBound = false;
   var _inboxBadgeEl = null;
   var _inboxBtnEl = null;
+  // ★ inbox 多开共享总线客户端表（多开实例零自建连接，推送/未读全走本窗唯一 WS）
+  var _dmClients = [];
 
   // ---- ctx factory ----
   function makeCtx(id) {
@@ -634,10 +636,89 @@
     }
   }
 
-  function resetInboxUnread() {
-    _inboxUnread = 0;
+
+
+  // ═══════════════════════════════════════════════════════════════════
+  // inbox 多开共享总线：一个窗口恒只有一条 inbox WS（本机），多开实例（中间/右侧）
+  // 不再各自建连——推送、未读、缓存抹写全经本总线，徽章单一写者（本机）。
+  //   实例 → 宿主: dm:hello / dm:bye / dm:state{convs,active} / dm:read{peer}
+  //   宿主 → 实例: dm:push{kind,data} / dm:bus{state} / dm:read{peer} / dm:bg{conversations,groups}
+  // 徽章口径 = 各实例未读表的并集（同 key 取 lastTime 新者）− 任一实例正在看的会话
+  // ═══════════════════════════════════════════════════════════════════
+  function _dmClient(src) {
+    for (var i = 0; i < _dmClients.length; i++) { if (_dmClients[i].src === src) return _dmClients[i]; }
+    return null;
+  }
+  function _dmDropClient(src) {
+    for (var i = 0; i < _dmClients.length; i++) {
+      if (_dmClients[i].src === src) { _dmClients.splice(i, 1); return; }
+    }
+  }
+  function _dmBroadcast(msg) {
+    for (var i = _dmClients.length - 1; i >= 0; i--) {
+      try { _dmClients[i].src.postMessage(msg, '*'); }
+      catch (_) { _dmClients.splice(i, 1); }   // 已销毁的 iframe → 当场除名（防僵尸源堆积）
+    }
+  }
+  function _dmWsState() {
+    if (!_inboxWs) return 'closed';
+    if (_inboxWs.readyState === WebSocket.OPEN) return 'open';
+    if (_inboxWs.readyState === WebSocket.CONNECTING) return 'connecting';
+    return 'closed';
+  }
+  function _dmBadge() {
+    if (!_dmClients.length) return;   // 无实例 → 徽章由推送自增（旧口径）
+    // 踢尸：实例定期重报真值兼心跳，超 120s 无音讯 = iframe 已被销毁（无 pagehide 的境况）
+    var _now = Date.now();
+    for (var _di = _dmClients.length - 1; _di >= 0; _di--) {
+      var _c0 = _dmClients[_di];
+      if (_c0.ts && _now - _c0.ts > 120000) _dmClients.splice(_di, 1);
+    }
+    if (!_dmClients.length) return;
+    var actives = {}, merged = {};
+    _dmClients.forEach(function (c) {
+      if (c.active) actives[c.active] = 1;
+      var map = c.convs || {};
+      Object.keys(map).forEach(function (k) {
+        var e = map[k] || {}, cur = merged[k];
+        if (!cur || String(e.lastTime || '') > String(cur.lastTime || '')) {
+          merged[k] = { unread: e.unread || 0, lastTime: e.lastTime || '' };
+        }
+      });
+    });
+    var sum = 0;
+    Object.keys(merged).forEach(function (k) { if (!actives[k]) sum += (merged[k].unread || 0); });
+    _inboxUnread = sum;
     _updateInboxBadge();
   }
+
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || typeof d.type !== 'string' || d.type.indexOf('dm:') !== 0) return;
+    if (d.type === 'dm:hello') {
+      var hc = _dmClient(e.source);
+      if (!hc) { hc = { src: e.source, convs: {}, active: '', ts: 0 }; _dmClients.push(hc); }
+      hc.ts = Date.now();
+      try { e.source.postMessage({ type: 'dm:bus', state: _dmWsState() }, '*'); } catch (_) { }
+      return;
+    }
+    if (d.type === 'dm:bye') { _dmDropClient(e.source); _dmBadge(); return; }
+    var cl = _dmClient(e.source);
+    if (!cl) { cl = { src: e.source, convs: {}, active: '', ts: 0 }; _dmClients.push(cl); }
+    cl.ts = Date.now();
+    if (d.type === 'dm:state') {
+      cl.convs = d.convs || {};
+      cl.active = d.active || '';
+      _dmBadge();
+      return;
+    }
+    if (d.type === 'dm:read') {
+      // 一个实例读了 → 立刻从全表抹零（其余实例同刻变白）+ 广播其余实例刷新列表
+      _dmClients.forEach(function (c) { if (c.convs && c.convs[d.peer]) c.convs[d.peer].unread = 0; });
+      _dmBroadcast({ type: 'dm:read', peer: d.peer });
+      _dmBadge();
+    }
+  });
 
   // ★ 节能：主窗口不可见 → 断 WS 长连接，60s REST 轮询只求和未读数（零长连接驻留）
   function _inboxIsHidden() {
@@ -689,6 +770,8 @@
         if (d.groups) d.groups.forEach(function (g) { sum += (g.unread_count || 0); });
         _inboxUnread = sum;
         _updateInboxBadge();
+        // 实例免自轮询：本机节能期只发一发，结果广播给全部 inbox 实例
+        if (_dmClients.length) _dmBroadcast({ type: 'dm:bg', conversations: d.conversations || [], groups: d.groups || [] });
       })
       .catch(function (e) {
         if (e && e.message === 'legacy') _inboxBgPollLegacy(token);
@@ -704,6 +787,7 @@
         d.conversations.forEach(function (cv) { sum += (cv.unread_count || 0); });
         _inboxUnread = sum;
         _updateInboxBadge();
+        if (_dmClients.length) _dmBroadcast({ type: 'dm:bg', conversations: d.conversations });
       })
       .catch(function () {});
     // 群未读（q150 F16）：与私聊同通道求和
@@ -715,6 +799,7 @@
         d.groups.forEach(function (g) { sum += (g.unread_count || 0); });
         _inboxUnread = sum;
         _updateInboxBadge();
+        if (_dmClients.length) _dmBroadcast({ type: 'dm:bg', groups: d.groups });
       })
       .catch(function () {});
   }
@@ -763,6 +848,7 @@
         if (ws._qqqDead) { try { ws.close(); } catch (_) {} return; }
         _inboxReconnectDelay = 0;
         ws.send(JSON.stringify({ type: 'sub', ch: 'inbox:' + _inboxDoerID }));
+        _dmBroadcast({ type: 'dm:bus', state: 'open' });   // 实例据此把状态行改「已连接」
       };
 
       _inboxWs.onmessage = function (e) {
@@ -770,14 +856,15 @@
           var msg = JSON.parse(e.data);
           if (msg.type === 'dm_msg' && msg.data) {
             var dm = msg.data;
-            // Only count messages from others (not self-sent)
-            if (dm.sender_id !== _inboxDoerID) {
+            _dmBroadcast({ type: 'dm:push', kind: 'dm', data: dm });
+            // 有实例在场 → 徽章由实例真值（_dmBadge）单一写者；无实例（未开 inbox）才自增
+            if (!_dmClients.length && dm.sender_id !== _inboxDoerID) {
               _inboxUnread++;
               _updateInboxBadge();
             }
           } else if (msg.type === 'group_msg' && msg.data) {
-            // 群消息（q150 F16）：非自己发的计入徽章
-            if (msg.data.sender_id !== _inboxDoerID) {
+            _dmBroadcast({ type: 'dm:push', kind: 'group', data: msg.data });
+            if (!_dmClients.length && msg.data.sender_id !== _inboxDoerID) {
               _inboxUnread++;
               _updateInboxBadge();
             }
@@ -787,6 +874,7 @@
 
       _inboxWs.onclose = function () {
         _inboxWs = null;
+        _dmBroadcast({ type: 'dm:bus', state: 'closed' });
         if (_inboxHidden) return;  // 节能模式不重连（REST 轮询接管未读数）
         _inboxReconnectDelay = Math.min((_inboxReconnectDelay || 0) + 5000, 30000);
         _inboxReconnectTimer = setTimeout(tryConnect, _inboxReconnectDelay);
@@ -1038,5 +1126,10 @@
   });
 
   // ---- Expose ----
-  window.qqqGaea = { build, register, remove, show, open, list, active, get, next, prev, syncTheme, listPanelGoods: listPanelGoods, resetInboxUnread: resetInboxUnread };
+  window.qqqGaea = {
+    build, register, remove, show, open, list, active, get, next, prev, syncTheme,
+    listPanelGoods: listPanelGoods,
+    // ★ inbox 共享总线能力声明（dm-ui 据此决定「用本机唯一连接」还是自建 WS 兜底）
+    dmBus: { version: 1 }
+  };
 })();

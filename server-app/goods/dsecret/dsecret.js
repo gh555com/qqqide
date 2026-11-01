@@ -3,14 +3,14 @@
 // ============================================================================
 // goods/dsecret/dsecret.js — dsecret goods manifest（密钥脱敏专职控制台）
 //
-// 定位（2026-08-21）: secret-guard.js（core/，后台事件驱动懒惰脱敏引擎）的
-//   专职控制台 —— 干净独立应用（同 kmd 模式，X 区 file 分组 custom tab）。
+// 定位: secret-guard.js（core/，后台事件驱动懒惰脱敏引擎）的
+//   专职控制台 —— X 区 gaea 分组 tab（与 git/search 同族；单例，可关闭）。
 //   引擎仍跑在后台（git badge 上升沿自动抹除 T1/T2 + T3 常驻 qoast），
 //   dsecret 提供: 主动扫描（未提交/全量体检）、T3 协同队列、自动抹除审计、
 //   白名单管理、.gitignore 忽略工具、历史暴露检查（git log -S）。
 //
-// 打开入口 = qqqGaea.open('dsecret') → def.opener → qqqTabs.openFileCustomTab
-//   （菜单行2 按钮 / gaea-host toolbarIds 同路由）
+// 打开入口 = qqqGaea.open('dsecret') → def.opener → qqqTabs.addGaeaTab
+//   （菜单行2 按钮 / gaea-host toolbarIds / qoast「去处理」同路由）
 //
 // 职责双份：
 //   ① goods 注册（opener 路由，打开 file 分组 custom tab，单例）
@@ -70,10 +70,10 @@
       } catch (_) { return false; }
     }
 
-    // ── 打开 dsecret：X 区 file 分组 custom tab（单例，同 kmd 模式） ──
-    function openDsecretTab(side) {
-      if (!window.qqqTabs || !window.qqqTabs.openFileCustomTab) return false;
-      var tab = window.qqqTabs.openFileCustomTab('dsecret', 'dsecret', function (pane) {
+    // ── 打开 dsecret：X 区 gaea 分组 tab（单例：已开则激活） ──
+    function openDsecretTab() {
+      if (!window.qqqTabs || !window.qqqTabs.addGaeaTab) return false;
+      var tab = window.qqqTabs.addGaeaTab('dsecret', 'dsecret', function (pane) {
         pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
         var iframe = document.createElement('iframe');
         iframe.src = '/qqqide/goods/dsecret/dsecret-ui.html';
@@ -145,7 +145,6 @@
         });
         mo.observe(pane.parentNode || document.body, { childList: true });
       }, { closable: true });
-      if (tab) tab.onReopen = function (s) { return openDsecretTab(s); };
       return !!tab;
     }
 
@@ -196,7 +195,7 @@
       version: '1.0.0',
       protoVer: 2,
 
-      // ★ 打开路由：gaea-host.open('dsecret') → opener → file 分组 custom tab
+      // ★ 打开路由：gaea-host.open('dsecret') → opener → gaea 分组 tab（单例）
       opener: function () { return openDsecretTab(); },
 
       commands: ['dsecret.open'],
