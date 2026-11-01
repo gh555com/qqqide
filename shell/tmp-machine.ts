@@ -14,6 +14,7 @@
 //   与目录内 .pin（空文件即可，钉整棵子树）。
 //
 // 节奏：UI 就绪后 60s 首扫 + 每 6h；未回落 30min 补扫 ≤3 连；手动 IPC（qqqide:tmp:sweep）。
+// 出声：自动档双重静默（24h ≤1 条 + 释放量 <20MB 的碎清不出声；失败/仍超硬线照常报）。
 // 统一收敛（覆盖极端边界）：任何单项失败 → 重试 3×200ms → 跳过 + 入账，绝不阻塞绝不冒险；
 //   无事务幂等（每项独立，下轮全量重扫）；符号链接/junction 一概不跟随；realpath + 前缀
 //   双断言（防跑飞）；单飞（内存 + per-root 锁，10min 陈旧接管）；符号链接 tmp 根拒绝运行；
@@ -42,7 +43,9 @@ export const TMP = {
     RESCAN_MS: 18e5, RESCAN_MAX: 3,                  // 未回落补扫：30min，≤3 连
     LEDGER_CAP: 500,                                 // 账本环
     LOCK_STALE_MS: 6e5,                              // 锁陈旧（10min 接管）
-    NOTIFY_GAP_MS: 6 * 36e5,                         // qoast 节流（自动档每 6h ≤1 条）
+    NOTIFY_GAP_MS: 24 * 36e5,                        // qoast 节流（自动档每 24h ≤1 条）
+    NOTIFY_MIN_MB: 20,                               // 出声门槛（自动档释放 <20MB 的碎清静默）
+    NOTIFY_TRASH_MAX: 5,                             // 事件里带的隔离区路径上限
     MANUAL_GAP_MS: 60000,                            // 手动触发硬限（60s 防连点）
     MAX_ENTRIES: 200000, MAX_DEPTH: 64, YIELD_EVERY: 64,  // 扫描防线 / 分片让出
     SAMPLE_MIN: 1024 * 1024,                         // 账本样本门槛（≥1MB 的删除/隔离逐项留名）
@@ -88,6 +91,7 @@ export interface SweepOut {
     roots: number; deleted: number; quarantined: number; failed: number;
     freedMb: number; pinMb: number; overAfter: boolean;
     levelAfter: WaterLevel | null; tookMs: number;
+    trashDirs?: string[];   // 本轮发生过隔离的 .trash 绝对路径（≤NOTIFY_TRASH_MAX；qoast 钮直达）
 }
 
 // ═══ 纯函数（单测主战场） ═══
@@ -133,6 +137,18 @@ export function parseTrashTs(name: string): number | null {
     if (i <= 0) { return null; }
     const v = parseInt(name.slice(0, i), 36);
     return Number.isFinite(v) && v > 1e12 ? v : null;   // 合理毫秒下界（≈2001 年）
+}
+
+/** 出声判决（纯函数）：自动/补扫档双重静默（间隔 + 释放量门槛），手动恒答；无删且未超硬线 = 零声 */
+export function shouldNotify(
+    mode: SweepMode,
+    s: { deleted: number; quarantined: number; failed: number; freedMb: number; overAfter: boolean },
+    lastAt: number, now: number,
+): boolean {
+    if (s.deleted + s.quarantined + s.failed <= 0 && !s.overAfter) { return false; }
+    if (mode === 'manual') { return true; }
+    if (s.failed <= 0 && !s.overAfter && s.freedMb < TMP.NOTIFY_MIN_MB) { return false; }   // 碎清静默
+    return now - lastAt >= TMP.NOTIFY_GAP_MS;
 }
 
 /** 三线判决（纯函数）：熔断 → 年龄 → 水压；返回直删/隔离/空目录候选 */
@@ -493,9 +509,15 @@ export async function runSweep(mode: SweepMode): Promise<SweepOut> {
     try {
         const roots = await resolveRoots(_store);
         const recs: LedgerRec[] = [];
+        const trashDirs: string[] = [];   // 本轮真发生过隔离的 .trash（捞回入口：通知/qoast 钮直达）
         for (const root of roots) {
             const r = await sweepRoot(root, mode);
-            if (r) { recs.push(r); }
+            if (!r) { continue; }
+            recs.push(r);
+            if (r.quarantined > 0 && trashDirs.length < TMP.NOTIFY_TRASH_MAX) {
+                const t = path.join(root, '_qqq', 'tmp', TMP.TRASH);
+                try { if ((await fs.promises.stat(t)).isDirectory()) { trashDirs.push(t); } } catch { /* 已不在 → 不列 */ }
+            }
         }
         // 汇总
         let deleted = 0, quarantined = 0, failed = 0, freedMb = 0, pinMb = 0;
@@ -512,10 +534,13 @@ export async function runSweep(mode: SweepMode): Promise<SweepOut> {
             freedMb: freedMb, pinMb: pinMb, overAfter: overAfter,
             levelAfter: recs.length ? worstAfter : null, tookMs: Date.now() - t0,
         };
-        // qoast 通知（自动档每 6h ≤1 条；手动必答不节流；无删且未超硬线 = 零声）
-        if ((deleted + quarantined + failed > 0 || overAfter) && recs.length > 0) {
-            const skip = mode !== 'manual' && (Date.now() - _lastNotifyAt < TMP.NOTIFY_GAP_MS);
-            if (!skip) { _lastNotifyAt = Date.now(); _notify(res); }
+        // qoast 通知（判决唯一源 = shouldNotify：自动档 24h ≤1 条 + 碎清静默；手动必答不节流）
+        if (recs.length > 0) {
+            const now = Date.now();
+            if (shouldNotify(mode, { deleted, quarantined, failed, freedMb, overAfter }, _lastNotifyAt, now)) {
+                _lastNotifyAt = now;
+                _notify(res);
+            }
         }
         // 未回落补扫（≤3 连；回落且无失败 → 计数归零）
         if (mode !== 'manual' && (overAfter || failed > 0) && _rescanLeft < TMP.RESCAN_MAX) {
@@ -543,6 +568,7 @@ function _notify(res: SweepOut): void {
             mode: res.mode, deleted: res.deleted, quarantined: res.quarantined,
             failed: res.failed, freedMb: res.freedMb, pinMb: res.pinMb,
             overAfter: res.overAfter, levelAfter: res.levelAfter, roots: res.roots,
+            trashDirs: res.trashDirs || [],   // 隔离区绝对路径（qoast「打开隔离区」钮直达）
         });
     } catch { /* ignore */ }
 }

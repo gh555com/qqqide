@@ -766,6 +766,19 @@ export function registerFsIpc(cacheStore?: CacheStore): void {
         return true;
     });
 
+    // ★ 原子独占建目录（落座机器的唯一占用判定）：ok=true 表示「这个名字是我的」；
+    //   EEXIST 表示已被占用（可能是别的进程刚建的）。fs:mkdir 的 recursive:true 恒返回 true，
+    //   判不出「是不是我刚建的」——预检 exists 再建存在 TOCTOU，故单开本原语。
+    ipcMain.handle('qqqide:fs:mkdirExclusive', async (_e, p: string) => {
+        try {
+            if (!p) { return { ok: false, code: 'EINVAL' }; }
+            await fs.promises.mkdir(p, { recursive: false });
+            return { ok: true };
+        } catch (e: any) {
+            return { ok: false, code: (e && e.code) || 'EFAIL' };
+        }
+    });
+
     ipcMain.handle('qqqide:fs:remove', async (_e, p: string) => {
         try {
             const s = await fs.promises.stat(p);

@@ -134,6 +134,48 @@ function _runJxa(script: string): Promise<any> {
 }
 
 export interface FaMacResult { ok: boolean; code?: string; total?: number; taken?: number; fails?: string[]; err?: string; }
+export interface FaMacStateResult { ok: boolean; code?: string; states: Record<string, string>; err?: string; }
+
+/** 只读状态 JXA：逐扩展回当前默认 app 路径 → taken（= 本应用）/ cand / free
+ *  （无写入、无 LSRegisterURL——纯查询，可任意频繁调用）。 */
+function _jxaState(items: any[], appPath: string): string {
+    return [
+        "'use strict';",
+        "ObjC.import('Foundation');",
+        "ObjC.import('AppKit');",
+        'var APP = ' + JSON.stringify(appPath) + ';',
+        'var ITEMS = ' + JSON.stringify(items) + ';',
+        'var ws = $.NSWorkspace.sharedWorkspace;',
+        "function _js(x){ try { return x ? ObjC.unwrap(x) : ''; } catch(e){ return ''; } }",
+        "function _cur(p){ try { var u = ws.URLForApplicationToOpenURL($.NSURL.fileURLWithPath(p)); return u ? _js(u.path) : ''; } catch(e){ return ''; } }",
+        "function _norm(s){ return String(s || '').replace(/\\/+$/,'').toLowerCase(); }",
+        'var ours = _norm(APP);',
+        'var out = {};',
+        'var i;',
+        'for (i = 0; i < ITEMS.length; i++) {',
+        '  var e = ITEMS[i].e;',
+        '  if (!ITEMS[i].u) { out[e] = "free"; continue; }',
+        '  var cur = _cur(ITEMS[i].p);',
+        '  if (cur && _norm(cur) === ours) { out[e] = "taken"; } else { out[e] = "cand"; }',
+        '}',
+        'var s = JSON.stringify({ ok: true, states: out });',
+        "try { $.NSFileHandle.fileHandleWithStandardOutput.writeData($('QFA1' + s + '\\n').dataUsingEncoding($.NSUTF8StringEncoding)); } catch(e){ }",
+        'void 0;',
+    ].join('\n');
+}
+
+/** mac 编辑器域状态（per-extension 当前默认 app 归属） */
+export async function faMacEditorState(exts: string[]): Promise<FaMacStateResult> {
+    if (process.platform !== 'darwin') { return { ok: false, code: 'unsupported', states: {} }; }
+    try {
+        const files = _ensureSamples(exts);
+        const utis = await _resolveUtis(files);
+        const r = await _runJxa(_jxaState(_items(exts, files, utis), macOwnBundlePath()));
+        return { ok: true, states: (r && r.states) || {} };
+    } catch (e: any) {
+        return { ok: false, code: 'state-failed', states: {}, err: String((e && e.message) || e).slice(0, 300) };
+    }
+}
 
 async function _run(exts: string[]): Promise<any> {
     const files = _ensureSamples(exts);

@@ -2231,10 +2231,18 @@
     block.addEventListener('click', async (e) => {
       closeDropdown();
       if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
-      const result = await bridge.dialog.open({
+      // ★ 默认落点 = 项目基地（从源头治住「对话框开到 Downloads、新手就地挑一个」）
+      var opts = {
         properties: ['openDirectory'],
         title: window._i('shell.viewport.selectFolder', '选择要添加到 AI 视口的文件夹'),
-      });
+      };
+      try {
+        if (window.qqqideSeat && window.qqqideSeat.baseHint) {
+          var hint = await window.qqqideSeat.baseHint();
+          if (hint) opts.defaultPath = hint;
+        }
+      } catch (_h) { }
+      const result = await bridge.dialog.open(opts);
       if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
         addProject(result.filePaths[0]);
       }
@@ -2495,18 +2503,83 @@
     }
   }
 
+  // ---- 项目路径收口（唯一谓词；落座机器与 addProject 共用）----
+  //   两条硬禁（都不是评价用户品味，而是会写坏我们自己）：
+  //     program — 项目域与程序域必须互斥（项目 ⊂ 程序 → 家目录随换版进交换域；程序 ⊂ 项目 → 时间线/索引扫全包）
+  //     root    — 盘根（家目录/时间线/搜索会把整盘当项目扫）
+  let _progRoot = null;
+  function _clsNorm(p) {
+    var s = String(p || '').replace(/\\/g, '/');
+    while (s.length > 1 && s.charAt(s.length - 1) === '/') s = s.slice(0, -1);
+    return s;
+  }
+  function _progRootGet() {
+    if (_progRoot !== null) return Promise.resolve(_progRoot);
+    var bi = window.qqqBootInfo;
+    if (bi && bi.appRoot) { _progRoot = _clsNorm(bi.appRoot); return Promise.resolve(_progRoot); }
+    if (bridge && bridge.app && bridge.app.root) {
+      return bridge.app.root().catch(function () { return ''; }).then(function (r) {
+        _progRoot = _clsNorm(r);
+        return _progRoot;
+      });
+    }
+    _progRoot = '';
+    return Promise.resolve('');
+  }
+  function classifyProjectPath(folderPath) {
+    var raw = _clsNorm(folderPath);
+    if (!raw) return Promise.resolve({ ok: false, code: 'empty' });
+    if (/^[a-zA-Z]:$/.test(raw) || raw === '/') return Promise.resolve({ ok: false, code: 'root' });
+    return _progRootGet().then(function (prog) {
+      if (!prog) return { ok: true };
+      var plat = (window.qqqBootInfo && window.qqqBootInfo.platform) || 'win32';
+      var fold = plat !== 'linux';
+      var a = fold ? raw.toLowerCase() : raw;
+      var b = fold ? prog.toLowerCase() : prog;
+      if (a === b) return { ok: false, code: 'program' };
+      if (a.indexOf(b + '/') === 0) return { ok: false, code: 'program' };
+      if (b.indexOf(a + '/') === 0) return { ok: false, code: 'program' };
+      return { ok: true };
+    }).catch(function () { return { ok: true }; });
+  }
+
+  // 拒收处置：主文件夹场景不教育、不重开框 → 直接落座（唯一例外）；辅项目场景一句 qoast
+  function _rejectProjectPath(folderPath, cls) {
+    console.warn('[ai-viewport] project path rejected: ' + folderPath + ' (' + cls.code + ')');
+    var msg = cls.code === 'root'
+      ? window._i('shell.viewport.rejectRoot', '磁盘根目录不能作为项目')
+      : window._i('shell.viewport.rejectProgram', '该目录是程序目录，不能作为项目');
+    if (projects.length === 0 && window.qqqideSeat && typeof window.qqqideSeat.run === 'function') {
+      var job = null;
+      try { job = window.qqqideSeat.run(); } catch (_) { job = null; }
+      if (job && job.then) {
+        job.then(function (r) {
+          if (r && r.ok) return;
+          if (window.qqqideQoast) window.qqqideQoast.show(msg, { duration: 6000, type: 'warning' });
+        }, function () { });
+      } else if (window.qqqideQoast) {
+        window.qqqideQoast.show(msg, { duration: 6000, type: 'warning' });
+      }
+      return;
+    }
+    if (window.qqqideQoast) window.qqqideQoast.show(msg, { duration: 6000, type: 'warning' });
+  }
+
   // ---- public API ----
   function addProject(folderPath) {
     const name = basename(folderPath);
     _dedupProjects(); // ★ 先去重，再判断重复
     // no duplicates
     if (projects.some(p => p.path === folderPath)) return;
-    // 当视口为空时（即将成为主文件夹），异步校验锁
-    if (projects.length === 0) {
-      _verifyFolderLockBeforeAdd(folderPath, name);
-    } else {
-      _doAddProject(folderPath, name);
-    }
+    classifyProjectPath(folderPath).then(function (cls) {
+      if (!cls || !cls.ok) { _rejectProjectPath(folderPath, cls || { code: 'empty' }); return; }
+      // 当视口为空时（即将成为主文件夹），异步校验锁
+      if (projects.length === 0) {
+        _verifyFolderLockBeforeAdd(folderPath, name);
+      } else {
+        _doAddProject(folderPath, name);
+      }
+    });
   }
 
   function _doAddProject(folderPath, name) {
@@ -2722,5 +2795,5 @@
     var os = _osBridge();
     if (os) { os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { }); }
   }
-  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots, clearAllProjects, bumpRecent: _bumpRecent };
+  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots, clearAllProjects, bumpRecent: _bumpRecent, classifyProjectPath };
 })();

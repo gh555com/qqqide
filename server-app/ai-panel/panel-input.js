@@ -13,70 +13,104 @@ function updateQueueBtn() {
     var hasImages = (typeof pendingImages !== 'undefined') && pendingImages.length > 0;
     $queueBtn.disabled = !(hasText || hasImages);
     // ★ 2026-08-20 修订：自动暂停已整体废除（队列直通发送不触碰编辑框），此处无自愈逻辑
-}
-
-// ── 无主文件夹时直接弹文件夹选择 ──
-var _selectingProject = false;
-function _hasMainProject() {
-    try {
-        if (parent && parent.qqqideViewport && parent.qqqideViewport.getMainProject()) return true;
-    } catch (_) { }
-    return !!_workspaceRoot;
-}
-async function _triggerSelectMainProject() {
-    if (_selectingProject) return;
-    _selectingProject = true;
-    try {
-        if (parent === window) {
-            // [silent] rules standalone window
-            return;
-        }
-        var bridge = parent && parent.qqqideBridge;
-        if (!bridge) return;
-        var title = '请选择一个主文件夹';
-        try { if (parent.window && parent.window._i) title = parent.window._i('ai.onboarding.selectFolderTitle', title); } catch (_) { }
-        var result = await bridge.dialog.open({
-            properties: ['openDirectory'],
-            title: title
-        });
-        if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
-            if (parent.qqqideViewport && parent.qqqideViewport.addProject) {
-                parent.qqqideViewport.addProject(result.filePaths[0]);
-            }
-        }
-    } catch (_) {
-    } finally {
-        _selectingProject = false;
-    }
-}
-
-// ═══ 统一守卫管线：无主项目时直接弹文件夹选择 ═══
-// ① 所有鼠标点击 → 在 #input-area 内直接触发
-document.addEventListener('mousedown', function (e) {
-    if (_hasMainProject() || _selectingProject) return;
-    var el = e.target;
-    if (el.closest('#input-area')) {
-        _triggerSelectMainProject();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
-// ② Enter 键发送
-document.addEventListener('keydown', function (e) {
-    if (_hasMainProject() || _selectingProject) return;
-    if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
-        _triggerSelectMainProject();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
-// ③ 粘贴拦截
-$input.addEventListener('paste', function (e) {
-    if (!_hasMainProject() && !_selectingProject) {
-        _triggerSelectMainProject();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
+}// ── 无主文件夹守卫：先落座（主窗口 workspace-seat 打样），失败才回落到系统对话框 ──
+//   落座成功 → 自动聚焦编辑框（吞掉的那次点击必须替用户补回来，否则就是「点了没反应」）
+var _selectingProject = false;
+function _hasMainProject() {
+    try {
+        if (parent && parent.qqqideViewport && parent.qqqideViewport.getMainProject()) return true;
+    } catch (_) { }
+    return !!_workspaceRoot;
+}
+function _seatMachine() {
+    try { if (parent && parent !== window && parent.qqqideSeat) return parent.qqqideSeat; } catch (_) { }
+    return null;
+}
+// 对话框退路（唯一逃生口）：默认落点恒指向项目基地
+async function _pickMainProjectDialog() {
+    var bridge = parent && parent.qqqideBridge;
+    if (!bridge) return false;
+    var title = '请选择一个主文件夹';
+    try { if (parent.window && parent.window._i) title = parent.window._i('ai.onboarding.selectFolderTitle', title); } catch (_) { }
+    var opts = { properties: ['openDirectory'], title: title };
+    try {
+        var seat = _seatMachine();
+        if (seat && seat.baseHint) {
+            var hint = await seat.baseHint();
+            if (hint) opts.defaultPath = hint;
+        }
+    } catch (_) { }
+    var result = null;
+    try { result = await bridge.dialog.open(opts); } catch (_) { return false; }
+    if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+        if (parent.qqqideViewport && parent.qqqideViewport.addProject) {
+            parent.qqqideViewport.addProject(result.filePaths[0]);
+            return true;
+        }
+    }
+    return false;
+}
+// 唯一入口：保证有主文件夹（幂等 / 单飞 / 已有一律短路）
+async function _ensureMainProject() {
+    if (_hasMainProject()) return true;
+    if (parent === window) return false;   // 独立窗口（规则中心）无项目概念
+    if (_selectingProject) return false;
+    _selectingProject = true;
+    var ok = false;
+    try {
+        var seat = _seatMachine();
+        if (seat && typeof seat.run === 'function') {
+            var r = null;
+            try { r = await seat.run(); } catch (_) { r = null; }
+            ok = !!(r && r.ok);
+        }
+        if (!ok) ok = await _pickMainProjectDialog();
+    } finally {
+        _selectingProject = false;
+    }
+    return ok;
+}
+function _ensureMainProjectThenFocus() {
+    _ensureMainProject().then(function (ok) {
+        if (!ok) return;
+        try {
+            if ($input) {
+                $input.focus();
+                var n = $input.value.length;
+                $input.setSelectionRange(n, n);
+                _lastInputCaret = n;
+            }
+        } catch (_) { }
+    });
+}
+
+// ═══ 统一守卫管线：无主项目时先落座再放行 ═══
+// ① 所有鼠标点击 → 在 #input-area 内直接触发
+document.addEventListener('mousedown', function (e) {
+    if (_hasMainProject() || _selectingProject) return;
+    var el = e.target;
+    if (el.closest('#input-area')) {
+        _ensureMainProjectThenFocus();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+// ② Enter 键发送
+document.addEventListener('keydown', function (e) {
+    if (_hasMainProject() || _selectingProject) return;
+    if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
+        _ensureMainProjectThenFocus();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+// ③ 粘贴拦截
+$input.addEventListener('paste', function (e) {
+    if (!_hasMainProject() && !_selectingProject) {
+        _ensureMainProjectThenFocus();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
 }, true);
 
 // ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──

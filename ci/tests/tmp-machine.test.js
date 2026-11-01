@@ -55,6 +55,29 @@ test('parseTrashTs：{base36}~{名} → 隔离时刻；无效 → null', () => {
     assert.strictEqual(tm.parseTrashTs('~x'), null);
 });
 
+test('shouldNotify：无删且未超硬线 = 零声（任何档）', () => {
+    const quiet = { deleted: 0, quarantined: 0, failed: 0, freedMb: 0, overAfter: false };
+    assert.strictEqual(tm.shouldNotify('auto', quiet, 0, NOW), false);
+    assert.strictEqual(tm.shouldNotify('manual', quiet, 0, NOW), false);
+});
+
+test('shouldNotify：手动必答不节流；自动档受间隔门控', () => {
+    const s = { deleted: 3, quarantined: 0, failed: 0, freedMb: 100, overAfter: false };
+    assert.strictEqual(tm.shouldNotify('manual', s, NOW - 1, NOW), true);
+    assert.strictEqual(tm.shouldNotify('auto', s, 0, NOW), true);
+    assert.strictEqual(tm.shouldNotify('auto', s, NOW - 36e5, NOW), false);                     // 1h 前刚报过
+    assert.strictEqual(tm.shouldNotify('auto', s, NOW - TMP.NOTIFY_GAP_MS, NOW), true);          // 满 24h
+    assert.strictEqual(tm.shouldNotify('rescan', s, NOW - 36e5, NOW), false);
+});
+
+test('shouldNotify：碎清静默（<20MB 不出声）；失败/仍超硬线例外', () => {
+    const small = { deleted: 2, quarantined: 0, failed: 0, freedMb: TMP.NOTIFY_MIN_MB - 1, overAfter: false };
+    assert.strictEqual(tm.shouldNotify('auto', small, 0, NOW), false);
+    assert.strictEqual(tm.shouldNotify('auto', { ...small, freedMb: TMP.NOTIFY_MIN_MB }, 0, NOW), true);
+    assert.strictEqual(tm.shouldNotify('auto', { ...small, failed: 1 }, 0, NOW), true);         // 占用失败必报
+    assert.strictEqual(tm.shouldNotify('auto', { ...small, overAfter: true }, 0, NOW), true);   // 仍超硬线必报
+});
+
 test('planSweep：熔断——单文件 >1GB 且落定 ≥1h 直删（无视年龄）', () => {
     const files = [f('dump.txt', 1.5 * GB, 2 / 24)];          // 2 小时前落定
     const p = tm.planSweep(files, [], sumSize(files), files.length, NOW);

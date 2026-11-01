@@ -1131,9 +1131,13 @@ html[data-theme="dark"] .qc-pop {
   pointer-events: none;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
 }
+/* 档位按钮（30d/180d/720d）悬停框：贴近按钮下缘（按钮 1+13=14px，再留 3px）——
+   按钮态与曲线单点框共用同一个盒子，只差竖直位置（曲线单点框恒在图表下缘下方 6px、不遮挡图表） */
+.qqq-onl-tip.zoom { top: 17px; }
 .qqq-onl-tip .r1 { color: var(--text-dim); }
 .qqq-onl-tip .r2 { color: var(--text-primary); font-weight: bold; }
 .qqq-onl-tip .r3 { color: var(--orange); }
+.qqq-onl-tip .ge { color: var(--orange); }
 /* 双轴刻度列（左列 = 在线峰/谷〔主色〕，右列 = 消费峰/0〔橙，0 基线〕）——
    颜色即归属，无需图例零占位；与 30px 曲线等高，两行一位小数/紧凑 ge */
 .qqq-onl-scale {

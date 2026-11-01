@@ -67,8 +67,6 @@
     "lang": {
       "switch": "切换语言"
     },
-
-
     "output": {
       "title": "产出",
       "hide": "隐藏产出"
@@ -284,7 +282,9 @@
       "clearedBusy": "⚠️ 主文件夹已被另一窗口占用，AI 视口已清空为干净窗口",
       "filterPh": "筛选...",
       "sortByName": "按文件名排序",
-      "sortByMtime": "按修改时间排序"
+      "sortByMtime": "按修改时间排序",
+      "rejectProgram": "该目录是程序目录，不能作为项目",
+      "rejectRoot": "磁盘根目录不能作为项目"
     },
     "gaeaHostLoading": "gaea host 加载中...",
     "onl": {
@@ -314,6 +314,8 @@
     "tmp": {
       "swept": "临时区轮转：清理 {n} 项，释放 {mb}",
       "trash": "（{n} 项在隔离区，7 天内可捞回）",
+      "trashAt": "位置：{p}",
+      "openTrash": "打开隔离区",
       "occupied": "{n} 项被占用，稍后重试",
       "pinned": "清理后仍超线；钉子占用 {mb}",
       "running": "临时区轮转中…",
@@ -439,11 +441,13 @@
     "bulb": {
       "left": "左 AI 面板",
       "right": "右 AI 面板"
+    },
+    "seat": {
+      "ready": "已就绪 · {p} 你可以直接开始"
     }
   },
   "editor": {
     "copyPath": "复制路径",
-
     "timelineNoRoot": "无法确定该文件的项目根目录，时间线不可用",
     "timelineOpenFail": "时间线窗口打开失败，请稍后重试",
     "minimap": "小地图",
@@ -501,8 +505,6 @@
       "closeDiscard": "不保存",
       "closeCancel": "取消"
     },
-
-
     "undo": "撤销 (Ctrl+Z)",
     "redo": "重做 (Ctrl+Y)",
     "unsaved": "未保存",
@@ -550,7 +552,6 @@
       "copyFileFailed": "复制失败 — 文件: {0}",
       "copyImageSuccess": "已复制成功 — 位图二进制",
       "copyImageFailed": "复制失败 — 位图二进制: {0}",
-
       "sysFallback": "qd 打不开该文件，已用系统默认程序打开",
       "openMissing": "文件不存在（可能已被删除或移动）: {0}"
     }
@@ -615,7 +616,8 @@
       "allTime": "历史总排行",
       "lastSeason": "上赛季排行",
       "current": "本周排行",
-      "currentSub": "未决算 · 前 10 名结算日返还消费（20%↓5%）",
+      "currentSub": "赛季{n} · 未决算（前十名将返还5%~20%）",
+      "currentSubNoSeason": "未决算（前十名将返还5%~20%）",
       "refunded": "已返 {v}",
       "prep": "数据准备中",
       "noJoin": "本周暂无参与",
@@ -699,8 +701,6 @@
     "inputSendBusy": "AI 正在处理中，请稍候…",
     "inputPasteBusy": "粘贴处理中，请稍候再发送",
     "embedImage": "嵌入",
-
-
     "floor": "楼层",
     "house": "房子",
     "room": "房间",
@@ -711,10 +711,6 @@
     "confirmConnect": "确认连接",
     "thinking": "思考中...",
     "streaming": "生成中...",
-
-
-
-
     "quest": {
       "switch": "切换项目",
       "newQuest": "新建对话",
@@ -790,6 +786,7 @@
       "clipFail": "无法读取剪贴板，请授予权限后重试",
       "clipEmpty": "剪贴板为空，请先复制内容",
       "fired": "子弹已射出 {0} → {1}",
+      "roam": "Roam",
       "writeFail": "子弹写入失败: {0}"
     },
     "pipeline": {
@@ -986,7 +983,6 @@
     "floorAbortedMsg": "⚠️ 楼层异常中断，对话已保存。",
     "sseSkipNote": "[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: {0}。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]",
     "share": {
-
       "tabNew": "分享",
       "tabMine": "我的分享",
       "close": "关闭",
@@ -998,7 +994,6 @@
       "pricing": "按分享条数计费：一次生成 = 一条快照（与楼层数 / 文件数无关）；图片随租约，到期或撤销即真删；永久档正文 ≤512 KB",
       "foreverTooBig": "内容超过 512 KB，永久档不可用：请选 1 年档，或缩小范围",
       "redact": "自动脱敏（本机路径 / IP / 密钥 / 令牌）",
-
       "cancel": "取消",
       "go": "生成链接",
       "costFree": "免费 · 30 天后自动清理",
@@ -1122,9 +1117,6 @@
       "compressingNow": "⏳ 压缩中…",
       "guardPh": "[服务端 Go 注入到 messages[0] 之前，客户端不可见]\n[文件: gaea/guard/system-prompt.txt，{n} 字符]"
     },
-
-
-
     "kmd": {
       "namePh": "命名此终端",
       "nameTitle": "命名此终端（实时同步标签标题）",
@@ -1432,6 +1424,16 @@
     },
     "dsecret": {
       "targetProject": "目标项目",
+      "pendingN": "待协同 {0}",
+      "allProjects": "ALL（所有项目）",
+      "allHint": "ALL = 汇总各项目已发现的待协同（不扫盘、不写盘）",
+      "allNoScan": "ALL 模式不扫盘 — 只汇总引擎已发现的待协同",
+      "allEmpty": "各项目暂无待协同条目",
+      "allTitle": "T3 待协同 · 所有项目（{0} 条 / {1} 个项目）",
+      "allBatchHint": "批量按每条所属项目分别处理（不跨项目串位）",
+      "updatedAll": "已更新（所有项目剩余 {0} 条待协同）",
+      "noPending": "当前项目暂无待协同条目 — 点「扫描」再查一次",
+      "orphanTag": "（已移出 AI 视口）",
       "modeDirty": "未提交",
       "modeFull": "全量体检",
       "scanBtn": "扫描",
@@ -1483,6 +1485,9 @@
       "notChecked": "（未检查）"
     },
     "roam": {
+      "publish": "发布页面…",
+      "publishDir": "发布当前目录…",
+      "bedLink": "在 bed 取链接",
       "qBatchIgnore": "Q 播放列表：已加入 {0} 个 · 忽略 {1} 个（非媒体）",
       "mplAdd": "加入播放列表",
       "mplAdded": "已加入 {0} 首 ▶ {1}",
@@ -1559,10 +1564,52 @@
       "cfgError": "配置{op}时发生错误:\n{err}"
     }
   },
-
-
-
-
+  "deploy": {
+    "title": "发布页面",
+    "scanning": "正在读取目录…",
+    "scanFail": "读取目录失败",
+    "mdUnreadable": "读不到这个 Markdown 文件",
+    "noBridge": "主进程接口不可用（请重启实例）",
+    "fail": "发布失败",
+    "ok": "已发布",
+    "expiry": "30 天后自动删除（含全部字节）",
+    "open": "打开",
+    "revoke": "撤销发布",
+    "revokeConfirm": "再点一次确认撤销",
+    "revoked": "已撤销（30 秒内全网失效）",
+    "revokeFail": "撤销失败：{c}",
+    "already": "这个文件夹已经发布过了",
+    "summary": "{n} 个文件 · {s}",
+    "warn404": "{n} 个文件会 404",
+    "warnOutside": "{n} 处引用在目录外",
+    "warnBig": "{n} 个文件太大，不会被带上",
+    "warnOver": "超过 {m} 上限",
+    "truncated": "目录很大，只列出了前 {n} 个文件（可手动勾选）",
+    "files": "文件清单",
+    "toggleAll": "全选 / 反选",
+    "noFiles": "没有可发布的文件",
+    "publish": "发布",
+    "adv": "高级",
+    "advHide": "收起",
+    "uploading": "正在上传…",
+    "uploadingFile": "正在上传 {n}",
+    "reading": "正在读取文件…",
+    "reserving": "正在准备上传…",
+    "finishing": "正在完成…",
+    "needLogin": "请先登录 qd 账号（发布需要归属一个账号）",
+    "netFail": "网络中断，页面没有发布成功（可重试）",
+    "readFail": "读不到文件：{f}",
+    "putFail": "上传失败：{f}（可重试）",
+    "quota": "免费额度已满（在架 2 页 / 每天 5 页）——先撤销一个旧页面再发",
+    "bytesQuota": "在架字节额度已满——先撤销一个旧页面",
+    "tooLarge": "这个页面超过 {m}（单页上限）",
+    "fileTooLarge": "有单个文件超过上限",
+    "fileMissing": "有文件没传成功：{f}",
+    "noEntry": "这个目录里没有 .html 文件——发布的是「一个网页」，不是任意目录",
+    "noBalance": "余额不足",
+    "failDetail": "发布失败：{c}",
+    "docMode": "单篇文档 · 渲染成一页"
+  },
   "wings": {
     "redrawing": "重绘中"
   },
@@ -1734,7 +1781,7 @@
     }
   },
   "secretGuard": {
-    "qoastMsg": "⚠️ 检测到 {n} 处疑似密钥（无法自动确认），提交前请处理",
+    "qoastMsgProj": "⚠️ {name}：检测到 {n} 处疑似密钥（无法自动确认），提交前请处理",
     "btnGo": "去处理",
     "dirtySkip": "该文件在编辑器里有未保存修改 — 先保存，再抹除",
     "btnErase": "抹除",
@@ -2001,8 +2048,6 @@
     "exportWillExport": "即将导出：{0}",
     "opTargetTip": "即将操作：{0}",
     "cloudSyncTip": "云同步：↑ 上传 = 先与云端合并再上传（两边都不丢数据）；↓ 下载 = 把云端数据合并到本地。包含 roam 配置、各文件夹偏好、剪贴板历史。",
- 
-
     "videoUrlTip": "输入视频/网页网址 → 回车或点 ▶：直链直接下载；平台/分片视频自动走 yt-dlp；普通网页自动抓取嗅探视频。下载到目标文档旁的 _qqqvault 并插入相框；历史自动收录（空输入框聚焦回看）。",
     "videoUrlGo": "开始下载（= 回车）",
     "videoUrlInvalid": "网址无效（需以 http:// 或 https:// 开头的完整链接）",
@@ -2378,7 +2423,7 @@
     },
     "enc": {
       "saveRejected": "保存被拒：字符 \"{ch}\"（{cp}）无法用 {enc} 编码表示，内容未写入。可：① 删除该字符后重存；② 点顶部路径旁的编码徽标，选「另存为 UTF-8/GB18030」（全字符编码，永不丢失）。",
-      "saveRejectedDecode": "保存被拒：文件含 {n} 处无法解码的字符（显示为 \uFFFD，并非你输入的内容）——{enc} 装不下它们，直接保存会把它们改写成别的字符。可：① 点顶部路径旁的编码徽标换一种编码重新打开；② 或「另存为 UTF-8」把当前内容原样转存。"
+      "saveRejectedDecode": "保存被拒：文件含 {n} 处无法解码的字符（显示为 �，并非你输入的内容）——{enc} 装不下它们，直接保存会把它们改写成别的字符。可：① 点顶部路径旁的编码徽标换一种编码重新打开；② 或「另存为 UTF-8」把当前内容原样转存。"
     },
     "search": {
       "rgMissing": "ripgrep 未安装。运行: python op/components.py ensure ripgrep",

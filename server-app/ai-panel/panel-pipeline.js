@@ -433,7 +433,19 @@ async function _executeSend(intent) {
         _pressRejectRollback();
         return;
     }
-    if (!_hasMainProject()) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); _triggerSelectMainProject(); return; }
+    // ★ 落座后立即发送的抢跑窗：视口已定主文件夹但本面板尚未绑定 → 等绑定完成再判定
+    //   （否则刚建好就点发送 → 闸门拦下且无任何反应；更重的是拿空 root 进建楼）
+    if (!_workspaceRoot && !(typeof _lockBlocked !== 'undefined' && _lockBlocked)
+        && window.parent && window.parent.qqqideViewport && window.parent.qqqideViewport.getMainProject
+        && window.parent.qqqideViewport.getMainProject()) {
+        try {
+            await Promise.race([
+                bindMainProject(),
+                new Promise(function (r) { setTimeout(r, 3000); })
+            ]);
+        } catch (_bindWait) { }
+    }
+    if (!_hasMainProject()) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); _ensureMainProject(); return; }
     // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
     if (!_isLoggedIn()) {
         if (intent.fromQueue) _requeueFromQueue();

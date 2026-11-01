@@ -144,6 +144,8 @@
         { kind: 'secret', re: /((?:api[_-]?key|secret|passwd|password|access[_-]?token)\s*[:=]\s*["']?)[A-Za-z0-9._\-]{16,}/gi, to: '$1⟨redacted⟩' },
         { kind: 'ip', re: /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g, to: '⟨ip⟩' },
         { kind: 'win-path', re: /[A-Za-z]:[\\/][^\s"'<>|)`]+/g, to: '⟨本机路径⟩' },
+        // mac / Linux 家目录路径（含用户名 = 个人信息，与 Windows 盘符路径同待遇）
+        { kind: 'unix-home', re: /(?<![\w.:\/-])\/(?:Users|home)\/[^\s"'<>|)`]+/g, to: '⟨本机路径⟩' },
         { kind: 'unix-path', re: /\/(?:srv|var\/www|root|opt|etc)\/[^\s"'<>|)`]*/g, to: '⟨服务器路径⟩' },
         { kind: 'file-url', re: /file:\/\/\/[^\s"'<>|)`]+/gi, to: '⟨本地文件⟩' }
     ];
@@ -393,16 +395,29 @@
     }
 
     // 目的地 → 本机路径（唯一解析）：file:///E:/a.png · file://E:/a.png · <file:///E:/a b.png> · E:/a.png
-    // 裸盘符路径不解码（% 在真实文件名里是普通字符，解码反而改坏路径）。
+    // ★ 逆映射恒过 core/file-url.js（唯一真理源）：POSIX 前导斜杠必须补回——
+    //   file:///Users/q/a.png → /Users/q/a.png。旧实现把三个斜杠一起剥掉，mac 上恒得相对路径
+    //   Users/q/a.png（读不到文件 → 附图在脱敏阶段被换成占位符后静默消失）。
+    //   裸盘符 / POSIX 绝对路径不解码（% 在真实文件名里是普通字符，解码反而改坏路径）。
     function fileURLToPath(u) {
         var s = String(u == null ? '' : u).trim();
         if (s.charAt(0) === '<' && s.charAt(s.length - 1) === '>') s = s.slice(1, -1).trim();
         if (!/^file:/i.test(s)) return s;
         try {
-            s = decodeURIComponent(s.replace(/^file:\/\/\//i, '').replace(/^file:\/\//i, '').replace(/^file:/i, ''));
-            if (/^\/[A-Za-z]:/.test(s)) s = s.slice(1);
-            return s;
-        } catch (_) { return s; }
+            if (typeof window !== 'undefined' && typeof window.qqqFilePathFromUrl === 'function') {
+                var canon = window.qqqFilePathFromUrl(s);
+                if (canon) return canon;
+            }
+        } catch (_) { /* 回退本地实现 */ }
+        var m = /^file:\/\/([^\/]*)(\/[\s\S]*)$/i.exec(s);
+        if (!m) return s;
+        var host = m[1], pathPart = m[2], p;
+        if (host && !/^[A-Za-z]:$/.test(host)) { p = '//' + host + pathPart; }
+        else if (host) { p = host + pathPart; }
+        else if (/^\/[A-Za-z]:\//.test(pathPart)) { p = pathPart.slice(1); }
+        else { p = pathPart; }
+        try { p = decodeURIComponent(p); } catch (_) { /* 保留原样 */ }
+        return p;
     }
 
     function base64Of(res) {

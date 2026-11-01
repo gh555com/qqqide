@@ -170,6 +170,16 @@ function bootRpcForwarder() {
       return;
     }
 
+    // ★ 页面发布（Roam 右键）：文件类动作的宿主恒为主窗口模态（禁挂进 AI 面板）
+    if (e.data.type === 'qqq-deploy-publish') {
+      try { if (window.qqqPageDeploy && e.data.path) window.qqqPageDeploy.open({ path: e.data.path, isDir: !!e.data.isDir }); } catch (_) { }
+      return;
+    }
+    if (e.data.type === 'qqq-deploy-bed') {
+      try { if (window.qqqPageDeploy && window.qqqPageDeploy.openBed) window.qqqPageDeploy.openBed(); } catch (_) { }
+      return;
+    }
+
     if (e.data.type === 'qqq-file-open-right' && e.data.path && window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
       if (e.data.readOnly) { window._nextPaneOpts = { readOnly: true }; }
       if (e.data.search) { window._nextSearch = e.data.search; }

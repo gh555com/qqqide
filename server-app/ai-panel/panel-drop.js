@@ -19,7 +19,7 @@
 //   · 外部拖拽一律 preventDefault（防链接/URL 拖入触发 iframe 默认导航）
 //   · 无主文件夹时拖入 → 弹文件夹选择（与粘贴守卫同语义）
 //
-// 依赖: panel-input.js（_enqueuePasteBusy/_pasteImages/_insertPlainText/_hasMainProject/_triggerSelectMainProject）
+// 依赖: panel-input.js（_enqueuePasteBusy/_pasteImages/_insertPlainText/_hasMainProject/_ensureMainProject）
 //       panel-send.js（insertChipAtCursor）
 //       ../core/drag-text.js（window.qqqDragText: classify/extractText/installInternalGuard）
 // 加载点: ai-panel/index.html（core/drag-text.js 之后、panel-send.js 之后）
@@ -100,7 +100,7 @@
 
     // ══ 文本分支: 等同在编辑框 Ctrl+V（插入机与粘贴同源）══
     if (k === 'text') {
-      if (!_hasMainProject()) { _triggerSelectMainProject(); return; }   // 与粘贴守卫同语义
+      if (!_hasMainProject()) { _ensureMainProject(); return; }   // 与粘贴守卫同语义
       var text = DT ? DT.extractText(dt) : '';
       if (!text) return;   // 空文本载荷 → 定义为 no-op（默认导航已由 preventDefault 封死）
       _enqueuePasteBusy(function () {
@@ -120,7 +120,7 @@
     for (var i = 0; i < dt.files.length; i++) files.push(dt.files[i]);
 
     // 无主文件夹 → 与粘贴守卫同语义：弹文件夹选择
-    if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
+    if (!_hasMainProject()) { _ensureMainProject(); return; }
 
     var imgs = [];
     var others = [];

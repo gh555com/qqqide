@@ -832,6 +832,7 @@
         };
         // 非静默模式 OR 面板仍开着 → 渲染
         if (!silent || (_$ldrOverlay && _$ldrOverlay.style.display !== 'none')) {
+          _ldrSyncCurSub();
           if ($cur) $cur.innerHTML = _ldrBuildCurrentRows(d.current);
           if ($curMe) $curMe.innerHTML = _ldrBuildCurrentMe(d.current_me);
           if ($freebie && d.freebie) $freebie.innerHTML = _ldrBuildFreebieRows(d.freebie);
@@ -944,6 +945,16 @@
     if (_$ldrHelpTip) _$ldrHelpTip.style.display = 'none';
   }
 
+  // ★ 本周榜副标题：赛季号现算（累计序号 + 1）——跨 UTC 周自动滚动，禁写死季号
+  function _ldrSyncCurSub() {
+    var $sub = document.getElementById('qqq-ldr-cur-sub');
+    if (!$sub) return;
+    var n = _seasonNo();
+    $sub.innerHTML = n > 0
+      ? _i18('login.lbr.currentSub', '赛季{n} · 未决算（前十名将返还5%~20%）', { n: n })
+      : _i18('login.lbr.currentSubNoSeason', '未决算（前十名将返还5%~20%）');
+  }
+
   function _ldrOpen() {
     if (_$ldrOverlay && _$ldrOverlay.style.display !== 'none') { _ldrClose(); return; }
     var token = _authData && _authData.token ? _authData.token : '';
@@ -951,6 +962,7 @@
 
     _initLdr();
     _ldrUpdateHeader();
+    _ldrSyncCurSub();
     var $freebie = document.getElementById('qqq-ldr-freebie');
     var $left = document.getElementById('qqq-ldr-left');
     var $right = document.getElementById('qqq-ldr-right');
@@ -1021,7 +1033,7 @@
       '<div id="qqq-ldr-right"></div></div>' +
       '<div style="flex:1.05;padding:10px 12px;">' +
       '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:2px;">' + _qIco('tier') + _i18('login.lbr.current', '本周排行') + '</div>' +
-      '<div style="font-size:10.5px;color:' + titleClr + ';opacity:0.72;margin-bottom:8px;">' + _i18('login.lbr.currentSub', '未决算 · 前 10 名结算日返还消费（20%↓5%）') + '</div>' +
+      '<div id="qqq-ldr-cur-sub" style="font-size:10.5px;color:' + titleClr + ';opacity:0.72;margin-bottom:8px;"></div>' +
       '<div id="qqq-ldr-current"></div>' +
       '<div id="qqq-ldr-current-me" style="margin-top:6px;padding-top:6px;border-top:1px dashed ' + border + ';font-size:11.5px;color:' + titleClr + ';line-height:1.6;"></div>' +
       '<div id="qqq-ldr-current-cd" style="margin-top:7px;font-size:11px;color:' + titleClr + ';opacity:0.85;"></div>' +
@@ -1217,6 +1229,21 @@
     }
   }
 
+  // ── 赛季号显示唯一机（尾号 = 服务端累计序号 + 1）──
+  //   服务端 season_short 形如 "2026_44W17"，尾号 = 累计序号（W0 起 0）——直接显示会少一个赛季；
+  //   口径与服务端 SeasonCumulativeIndex+1 一致（= 官网「赛季N」/ vibe 加成标签同口径），禁本地推算赛季序号。
+  function _seasonNo() {
+    var d = _lvData;
+    if (d && typeof d.season_idx === 'number' && d.season_idx >= 0) return d.season_idx + 1;
+    var m = d && d.season_short ? /W(\d+)\s*$/.exec(String(d.season_short)) : null;
+    return m ? parseInt(m[1], 10) + 1 : 0;
+  }
+  function _seasonShortLabel(d) {
+    var sh = (d && d.season_short) ? String(d.season_short) : '?';
+    var n = _seasonNo();
+    return n > 0 ? sh.replace(/W\d+\s*$/, 'W' + n) : sh;
+  }
+
   // ── 自定义即时 tooltip（零延迟）──
   var _$lvTip = null;
   function _lvShowTip(e) {
@@ -1230,10 +1257,10 @@
     var d = _lvData;
     if (!d) return;
     var rect = _$lvBar.getBoundingClientRect();
-    var sh = (d.season_short || '?');
+    var sh = _seasonShortLabel(d);
     var cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
 
-    // ★ 第一行：赛季信息（格式: "2026_30W3:4.5574"）
+    // ★ 第一行：赛季信息（格式: "2026_44W18:4.5574"；尾号 = 服务端累计序号 + 1）
     var paid = d.total_consumed_ge || '0';
     var free = d.total_free_ge || '0';
     var paidAll = d.total_consumed_all_ge || paid; // 历史总付费

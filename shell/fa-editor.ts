@@ -28,7 +28,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { runPs, b64d } from './ipc-syspy';
 import { FA_PS } from './fa-ps';
-import { faMacApply, faMacRegister } from './fa-mac';
+import { faMacApply, faMacRegister, faMacEditorState } from './fa-mac';
 import { faLinuxApply } from './fa-linux';
 import { MEDIA_ASSOC_EXTS, faSerial } from './ipc-fileassoc';
 import { getDataDir, getOsBaseDir } from './portable-paths';
@@ -400,6 +400,11 @@ async function _heal(): Promise<void> {
 //   仅 Windows 有逐扩展默认槽位可读；mac/Linux 无（返回 unsupported——面板如实不画角标，禁猜）。
 export interface FaEditorStateResult { ok: boolean; code?: string; states: Record<string, string>; err?: string }
 export async function faEditorState(): Promise<FaEditorStateResult> {
+    // mac：LaunchServices 只读查询（NSWorkspace 逐扩展回当前默认 app —— taken/cand/free 三态同源）
+    if (process.platform === 'darwin') {
+        const r = await faMacEditorState(EDITOR_ASSOC_EXTS);
+        return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'state-failed'), states: r.states || {}, err: r.err };
+    }
     if (process.platform !== 'win32') { return { ok: false, code: 'unsupported', states: {} }; }
     try {
         const x = _exeInfo();

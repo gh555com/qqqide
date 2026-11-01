@@ -309,7 +309,7 @@ function _onRoamChanged(key, value) {
 	switch (key) {
 		case 'roam.fineScm': if (typeof value === 'object') _fineScm = value; break;
 		case 'roam.qqiq': if (Array.isArray(value)) { _qqiq = value; renderQqiqSection(); } break;
-		case 'roam.pinnedDirs': if (Array.isArray(value)) _pinnedDirs = value; break;
+		case 'roam.pinnedDirs': if (Array.isArray(value)) { _pinnedDirs = value; renderPinnedDirs(); } break;   // 跨窗写入（主窗口落座 → 基地入置顶区）必须即时上屏
 		case 'roam.cmdHistory': if (value && typeof value === 'object') _cmdHistory = value; break;
 		case 'roam.prefs':
 			// 全局 sz/排序 已迁设置中心（qqq-prefs）——roam.prefs 仅剩 lineSpacing
@@ -1874,6 +1874,15 @@ function _copyPathText(text) {
 	});
 }
 
+// ── 页面发布 / bed 取链（文件类动作恒由主窗口承接：Roam 只是发出意图，不自己造面板）──
+function _deployPublish(path, isDir) {
+	if (!path) return;
+	try { window.parent.postMessage({ type: 'qqq-deploy-publish', path: path, isDir: !!isDir }, '*'); } catch (_) { }
+}
+function _deployBed() {
+	try { window.parent.postMessage({ type: 'qqq-deploy-bed' }, '*'); } catch (_) { }
+}
+
 function performCopyPathAction() {
 	var paths = [];
 	// ★ 优先使用 selectedItems（键盘 z 键时 ctxTarget 可能为 stale）
@@ -1906,6 +1915,36 @@ function showContextMenu(x, y, path, entry) {
 	//   文件侧仅目标集含媒体时显（扩展名判断零成本）；同样在定位前定妥
 	var _mplRow = ctxMenu.querySelector('[data-action="queue"]');
 	if (_mplRow) _mplRow.style.display = _mplShowable() ? '' : 'none';
+	// ★ 页面发布 / bed 取链（线下首行）：单选文件夹或 .html/.htm/.md → 发布；单选其它文件 → bed；
+	//   多选（含混合）→ 两行都不出现（意图不清就不出手）。同样在定位前定妥。
+	var _pubRow = ctxMenu.querySelector('[data-action="publish"]');
+	var _bedRow = ctxMenu.querySelector('[data-action="bedlink"]');
+	var _showPub = false, _showBed = false;
+	if (selectedItems.length <= 1 && entry && entry.name !== '..') {
+		if (entry.isDir) { _showPub = true; }
+		else {
+			var _nm = String(entry.name || '').toLowerCase();
+			var _dot = _nm.lastIndexOf('.');
+			var _ext = _dot < 0 ? '' : _nm.slice(_dot);
+			if (_ext === '.html' || _ext === '.htm' || _ext === '.md' || _ext === '.markdown') _showPub = true;
+			else _showBed = true;
+		}
+	}
+	if (_pubRow) _pubRow.style.display = _showPub ? '' : 'none';
+	if (_bedRow) _bedRow.style.display = _showBed ? '' : 'none';
+
+	// ★ 分组线显隐：线下（无快捷键组）若一行可见都没有，线也隐藏（禁留孤线）；
+	//   必须在 _placeFixedMenu 之前裁定 —— 量高度要用最终行集。
+	var _sepNoKey = ctxMenu.querySelector('[data-sep="nokey"]');
+	if (_sepNoKey) {
+		var _underShown = false;
+		var _n = _sepNoKey.nextElementSibling;
+		while (_n) {
+			if (_n.style.display !== 'none') { _underShown = true; break; }
+			_n = _n.nextElementSibling;
+		}
+		_sepNoKey.style.display = _underShown ? '' : 'none';
+	}
 
 	// ★ 菜单定位唯一入口（先量后位 + 视口钳制/上翻 + 贴边）——详 _placeFixedMenu
 	_placeFixedMenu(ctxMenu, x, y);
@@ -2060,10 +2099,18 @@ if (emptyCtxMenu) {
 			else if (act === 'copyFolderPath') { if (currentPath) { _copyPathText(currentPath); _playSfx('enter'); } }
 			else if (act === 'openFolder') { if (currentPath) { bridge.shell.openPath(currentPath).catch(function(){}); _playSfx('enter'); } }
 			else if (act === 'openKmd') { _openKmdAt(currentPath); }
-			else if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
-			else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); _playSfx('terminal'); }
-		});
-	});
+	                   else if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
+                   else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); _playSfx('terminal'); }
+                   else if (act === 'publishDir') { _deployPublish(currentPath, true); }
+           });
+   });
+   // 平台门：PowerShell / CMD 是 Windows 专有 shell（mac/Linux 的 kmd 恒 zsh/bash，见 ipc-kmd 平台分支）
+   //   ——非 Windows 直接把这两行拆掉（留着就是点了没反应的静默失败面）
+   if (!/Win/i.test(String((navigator && navigator.platform) || ''))) {
+           emptyCtxMenu.querySelectorAll('[data-action="openAdminCmd"],[data-action="openAdminPowershell"]').forEach(function(el) {
+                   if (el.parentNode) el.parentNode.removeChild(el);
+           });
+   }
 }
 
 // Show empty context menu on right-click on empty area of file list

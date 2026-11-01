@@ -23,6 +23,8 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 			case 'copyPath': performCopyPathAction(); break;
 			case 'queue': _playlistAddFromMenu(); break;
 			case 'search': _openSearchAt(ctxTarget); break;
+			case 'publish': _deployPublish(ctxTarget, !!(ctxEntry && ctxEntry.isDir)); break;
+			case 'bedlink': _deployBed(); break;
 
 		}
 	});
@@ -474,20 +476,22 @@ async function updateDriveDisplay() {
 			_xArm(currentPath, fn);
 			return;
 		}
-		if (k === 'm') {
-			e.preventDefault();
-			_vigBump('roam', { x: 1 });
-			bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){});
-			_playSfx('terminal');
-			return;
-		}
-		if (k === 'p') {
-			e.preventDefault();
-			_vigBump('roam', { x: 1 });
-			bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){});
-			_playSfx('terminal');
-			return;
-		}
+	            if (k === 'm') {
+                    if (_RUI_POSIX) return;   // cmd = Windows 专有（mac/Linux 不接管这个键）
+                    e.preventDefault();
+                    _vigBump('roam', { x: 1 });
+                    bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){});
+                    _playSfx('terminal');
+                    return;
+            }
+            if (k === 'p') {
+                    if (_RUI_POSIX) return;   // powershell = Windows 专有
+                    e.preventDefault();
+                    _vigBump('roam', { x: 1 });
+                    bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){});
+                    _playSfx('terminal');
+                    return;
+            }
 		// ★ 无有效选中（含仅 '..'）时 z/w 作用于当前文件夹本身：z → 复制当前文件夹路径 / w → 系统资源管理器打开
 		if (k === 'z' || k === 'w') {
 			e.preventDefault();

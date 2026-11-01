@@ -43,9 +43,22 @@
   var _wlFiles = {};         // path → { filePath: ts }
   var _wlValues = {};        // path → { vKey: ts }
   var _wlLoaded = {};
-  var _pendingT3 = {};       // path → [ {file,line,value,label,context,start,end,quote,staged,_vKey} ]
+  var _pendingT3 = {};       // 归一化项目路径 → [ {file,line,value,label,context,start,end,quote,staged,_vKey} ]
   var _qoast = null;         // 常驻 qoast 句柄
   var _gitBinCache = null;
+  var PENDING_ALL = '__all__';  // 待协同视图的「所有项目」哨兵（真项目路径恒为绝对路径，不会撞车）
+
+  // ═══════════ 待协同队列键（唯一口径） ═══════════
+  // 反斜杠/尾斜杠归一：事件路径、下拉路径、dsecret 传来的路径可能三种写法，
+  // 同一项目必须是同一个键——否则「项目旁的数字」与「ALL 的总数」会各算一套（闭环破裂）。
+  function _projNorm(p) { return String(p || '').replace(/\\/g, '/').replace(/\/+$/, ''); }
+  function _projBase(p) { var n = _projNorm(p); var i = n.lastIndexOf('/'); return i === -1 ? n : n.slice(i + 1); }
+  function _pendingSet(projPath, list) {
+    var k = _projNorm(projPath);
+    if (!k) return;
+    if (list && list.length) _pendingT3[k] = list; else delete _pendingT3[k];
+  }
+  function _pendingGet(projPath) { return _pendingT3[_projNorm(projPath)] || []; }
 
   // ═══════════ 工具 ═══════════
   function _b() { return window.qqqideBridge || null; }
@@ -442,7 +455,7 @@
         }
       }
 
-      if (t3List.length) { _pendingT3[projPath] = t3List; _showCoopQoast(projPath); }
+      if (t3List.length) { _pendingSet(projPath, t3List); _showCoopQoast(projPath); }
       else { _clearPending(projPath); }
     } catch (err) {
       _appendLog(projPath, 'ERROR ' + (err && err.message ? err.message : err));
@@ -550,44 +563,52 @@
   // ═══════════ 协同 qoast（唯一处置界面 = dsecret 控制台） ═══════════
   function _showCoopQoast(projPath) {
     if (!_enabled()) return;
-    var list = _pendingT3[projPath] || [];
+    var key = _projNorm(projPath);
+    var list = _pendingT3[key] || [];
     if (!list.length) return;
     if (_qoast) {
-      if (_qoast._proj !== projPath) { try { _qoast.dismiss(); } catch (_) {} _qoast = null; }
+      if (_qoast._proj !== key) { try { _qoast.dismiss(); } catch (_) {} _qoast = null; }
       else return;
     }
-    var msg = _t('secretGuard.qoastMsg', '⚠️ 检测到 {n} 处疑似密钥（无法自动确认），提交前请处理', { n: list.length });
+    // 文案带项目名：多项目时一眼看出是哪个项目报的（否则「去处理」打开别的项目 = 一片空白）
+    var msg = _t('secretGuard.qoastMsgProj', '⚠️ {name}：检测到 {n} 处疑似密钥（无法自动确认），提交前请处理', { name: _projBase(key), n: list.length });
     _qoast = window.qqqideQoast.show(msg, {
       duration: 0,
       type: 'warning',
       action: {
         label: _t('secretGuard.btnGo', '去处理'),
-        onClick: function () { _openDsecret(); }
+        // ★ 焦点接力：把「哪个项目报的」一起带到控制台，落该项目 + 直接铺它的待协同队列
+        onClick: function () { _openDsecret(key); }
       }
     });
-    _qoast._proj = projPath;
+    _qoast._proj = key;
   }
 
   function _clearPending(projPath) {
-    if (_pendingT3[projPath]) delete _pendingT3[projPath];
-    if (_qoast && _qoast._proj === projPath) {
+    var key = _projNorm(projPath);
+    if (_pendingT3[key]) delete _pendingT3[key];
+    if (_qoast && _qoast._proj === key) {
       try { _qoast.dismiss(); } catch (_) {}
       _qoast = null;
     }
   }
 
   // ── 协同处理控制台 = dsecret（唯一处置界面；本文件不再自带面板）──
-  function _openDsecret() {
+  function _openDsecret(projPath) {
     try {
-      if (window.qqqGaea && window.qqqGaea.open) return window.qqqGaea.open('dsecret');
+      if (!window.qqqGaea || !window.qqqGaea.open) return false;
+      var k = _projNorm(projPath);
+      return window.qqqGaea.open('dsecret', k ? { focusProject: k } : undefined);
     } catch (_) {}
     return false;
   }
 
   // ── 协同动作 ──
   function _dropFromQueue(projPath, fn) {
-    var list = _pendingT3[projPath] || [];
-    _pendingT3[projPath] = list.filter(fn);
+    var key = _projNorm(projPath);
+    var list = _pendingT3[key] || [];
+    _pendingT3[key] = list.filter(fn);
+    if (!_pendingT3[key].length) delete _pendingT3[key];
   }
 
   async function _eraseOne(projPath, item) {
@@ -649,13 +670,22 @@
   }
 
   async function _eraseAll(projPath) {
-    var list = (_pendingT3[projPath] || []).slice();
+    var list = _pendingGet(projPath).slice();
     for (var i = 0; i < list.length; i++) await _eraseOne(projPath, list[i]);
   }
 
   async function _keepAll(projPath) {
-    var list = (_pendingT3[projPath] || []).slice();
+    var list = _pendingGet(projPath).slice();
     for (var i = 0; i < list.length; i++) await _keepOne(projPath, list[i]);
+  }
+
+  // 跨项目批量（ALL 视图的「全部抹除 / 全部保留」）
+  async function _actMany(projPaths, action) {
+    var arr = Array.isArray(projPaths) ? projPaths : [];
+    for (var i = 0; i < arr.length; i++) {
+      if (action === 'eraseAll') await _eraseAll(arr[i]);
+      else if (action === 'keepAll') await _keepAll(arr[i]);
+    }
   }
 
   // ═══════════ 开关联动 ═══════════
@@ -731,7 +761,7 @@
         if (res.t3 && res.t3.length) { for (var tj = 0; tj < res.t3.length; tj++) t3.push(res.t3[tj]); }
       }
     }
-    if (t3.length) { _pendingT3[projPath] = t3; _showCoopQoast(projPath); }
+    if (t3.length) { _pendingSet(projPath, t3); _showCoopQoast(projPath); }
     else { _clearPending(projPath); }
     _engineReadOnly = false;
     return { mode: 'dirty', porcelain: porcelain, fileCount: files.length, auto: auto, t3: t3, skip: skip, disabled: off };
@@ -782,7 +812,7 @@
       var b = _b();
       if (b && b.fs && b.fs.read) log = (await b.fs.read(_logFile(projPath))) || '';
     } catch (_) {}
-    return { state: state, wlFiles: wl.files, wlValues: wl.values, log: log, pendingT3: _pendingT3[projPath] || [] };
+    return { state: state, wlFiles: wl.files, wlValues: wl.values, log: log, pendingT3: _pendingGet(projPath) };
   }
 
   async function _sgRemoveWl(projPath, kind, key) {
@@ -825,6 +855,62 @@
     } catch (e) { return { ok: false, msg: 'err: ' + (e && e.message ? e.message : e) }; }
   }
 
+  // ═══════════ 待协同视图（ALL 汇总 / 下拉计数；纯内存零 IO） ═══════════
+  // 权威口径：行集合 = 传入项目列表（顺序不变）+ 仍有待协同但未在列表里的项目（孤儿行）。
+  // all = 这些行 count 之和 —— 同一次计算得出 →「下方各行数字之和 == ALL」恒成立（闭环靠构造保证）。
+  function _pendingRows(projectList) {
+    var rows = [], seen = {}, all = 0;
+    var arr = Array.isArray(projectList) ? projectList : [];
+    for (var i = 0; i < arr.length; i++) {
+      var it = arr[i];
+      var raw = (it && typeof it === 'object') ? it.path : it;
+      var k = _projNorm(raw);
+      if (!k || seen[k]) continue;
+      seen[k] = 1;
+      var n = (_pendingT3[k] || []).length;
+      rows.push({
+        path: k,
+        name: (it && typeof it === 'object' && it.name) ? String(it.name) : _projBase(k),
+        count: n,
+        orphan: false
+      });
+      all += n;
+    }
+    for (var kk in _pendingT3) {
+      if (seen[kk]) continue;
+      var ln = (_pendingT3[kk] || []).length;
+      if (!ln) continue;
+      rows.push({ path: kk, name: _projBase(kk), count: ln, orphan: true });
+      all += ln;
+    }
+    return { list: rows, all: all };
+  }
+
+  function _copyItem(it, proj, projName) {
+    var o = {};
+    for (var k in it) o[k] = it[k];
+    o.proj = proj;
+    o.projName = projName;
+    return o;
+  }
+
+  // path === PENDING_ALL → 合并所有项目；否则只取该项目
+  function _pendingView(projectList, path) {
+    var table = _pendingRows(projectList);
+    var nameOf = {};
+    for (var i = 0; i < table.list.length; i++) nameOf[table.list[i].path] = table.list[i].name;
+    var items = [];
+    var wantAll = !path || path === PENDING_ALL;
+    var want = wantAll ? null : _projNorm(path);
+    for (var kk in _pendingT3) {
+      if (!wantAll && kk !== want) continue;
+      var list = _pendingT3[kk] || [];
+      var nm = nameOf[kk] || _projBase(kk);
+      for (var j = 0; j < list.length; j++) items.push(_copyItem(list[j], kk, nm));
+    }
+    return { table: table, items: items };
+  }
+
   function _sgSetEnabled(on) {
     try {
       var s = window.qqqSettings;
@@ -852,8 +938,13 @@
       else if (action === 'ignoreFile') await _ignoreFile(projPath, item);
       else if (action === 'eraseAll') await _eraseAll(projPath);
       else if (action === 'keepAll') await _keepAll(projPath);
-      return _pendingT3[projPath] || [];
+      return _pendingGet(projPath);
     },
+    // ALL 视图跨项目批量（每条自带 proj，抹除/保留按项归属回投）
+    actMany: _actMany,
+    // 待协同快照：{ table: {list:[{path,name,count,orphan}], all}, items: [...带 proj/projName] }
+    pendingView: _pendingView,
+    PENDING_ALL: PENDING_ALL,
     getData: _sgGetData,
     removeWl: _sgRemoveWl,
     gitLogSearch: _sgGitLogSearch,

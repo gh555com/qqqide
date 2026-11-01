@@ -285,6 +285,8 @@
 						_syncZoomBtns();
 						_sparkHoverOff();   // 档位切换 = X 轴点位全换，旧悬停下标作废
 						_renderSpark();
+						// 光标仍在按钮上（点而不移）→ 区间摘要就地重投射（新档的起止日/天数/日均立即可读）
+						try { if (b.matches(':hover')) _rangeHoverPaint(r); } catch (_) { }
 					}
 				});
 			}
@@ -337,6 +339,7 @@
 		//   ① 日期 YYYY-MM-DD  ② 在线 N.Np（一位小数）  ③ 消费 Nge（ge 恒四舍五入取整）。
 		//   吸附到最近数据点：线/框恒描述同一个真实点（禁打印插值出的假值）。
 		var _onlHoverIdx = -1;   // 当前悬停数据点下标（-1 = 无）
+		var _onlHoverR = '';     // 当前悬停的档位按钮（'30'/'180'/'720'，'' = 无）—— 区间摘要浮读框（与曲线浮读框同一个盒子，二者互斥）
 		var _onlSparkGeo = null; // 当前曲线几何（悬停层唯一读源；_renderSpark 每次重绘就地更新）
 		var _onlCursorEl = null; // 刻印竖线
 		var _onlTipEl = null;    // 垂足浮读框
@@ -362,14 +365,36 @@
 
 		function _sparkHoverOff() {
 			_onlHoverIdx = -1;
+			_onlHoverR = '';
 			if (_onlCursorEl) _onlCursorEl.style.opacity = '0';
 			if (_onlTipEl) _onlTipEl.style.display = 'none';
+		}
+
+		// ★ 浮读框定位唯一机（曲线单点框 / 档位区间框共用）：cx = 期望垂足（$spark 局部 px）
+		//   框恒落在图表下缘正下方（不遮挡图表），水平钳制在面板可视宽内（贴边即贴边，绝不被面板 overflow 裁掉）
+		function _placeSparkTip(cx) {
+			var $spark = document.getElementById('qqq-onl-spark');
+			if (!_onlTipEl || !$spark) return;
+			_onlTipEl.style.display = 'block';
+			if (!_onlTipW) { try { _onlTipW = _onlTipEl.offsetWidth | 0; } catch (_) { _onlTipW = 0; } }
+			var x = cx, tw = _onlTipW | 0;
+			if (tw > 0) {
+				var sr = $spark.getBoundingClientRect();
+				var pr = _onlPanel ? _onlPanel.getBoundingClientRect() : sr;
+				var mn = (pr.left + 4 - sr.left) + (tw >> 1);
+				var mx = (pr.right - 12 - sr.left) - (tw >> 1);
+				if (mx < mn) x = ($spark.clientWidth || 0) >> 1;
+				else { if (x < mn) x = mn; if (x > mx) x = mx; }
+			}
+			_onlTipEl.style.left = x + 'px';
 		}
 
 		function _sparkHoverPaint() {
 			var g = _onlSparkGeo;
 			var $spark = _ensureSparkOverlay();
 			if (!g || !$spark || _onlHoverIdx < 0) return;
+			_onlHoverR = '';   // 单点框接管 → 区间摘要模式退出（两模式互斥）
+			if (_onlTipEl.className !== 'qqq-onl-tip') _onlTipEl.className = 'qqq-onl-tip';
 			var d = g.daily[_onlHoverIdx];
 			if (!d) { _sparkHoverOff(); return; }
 			var step = g.n > 1 ? g.iw / (g.n - 1) : 0;
@@ -388,27 +413,70 @@
 				'<div class="r2">' + _fmt1(d.v) + 'p</div>' +
 				'<div class="r3">' + (typeof d.c === 'number' ? _fmtGe(d.c) + 'ge' : '--') + '</div>';
 			if (html !== _onlTipHtml) { _onlTipHtml = html; _onlTipEl.innerHTML = html; _onlTipW = 0; }
-			_onlTipEl.style.display = 'block';
-			if (!_onlTipW) { try { _onlTipW = _onlTipEl.offsetWidth | 0; } catch (_) { _onlTipW = 0; } }
-			// 钳制：框恒落在面板可视宽内（垂足居中 → 贴边即贴边，绝不被面板 overflow 裁掉）
-			var cx = px, tw = _onlTipW | 0;
-			if (tw > 0) {
-				var sr = $spark.getBoundingClientRect();
-				var pr = _onlPanel ? _onlPanel.getBoundingClientRect() : sr;
-				var mn = (pr.left + 4 - sr.left) + (tw >> 1);
-				var mx = (pr.right - 12 - sr.left) - (tw >> 1);
-				if (mx < mn) cx = cw >> 1;
-				else { if (cx < mn) cx = mn; if (cx > mx) cx = mx; }
+			_placeSparkTip(px);
+		}
+
+		// ★ 档位区间统计（悬停 30d/180d/720d 按钮）：该档实际对应的起止日 + 实际统计天数 + 区间日均
+		//   窗口恒 = 按钮口径的 N 天（30/180/720，含今天）——禁 31/181/721：按钮写 30 却报 31day 是自相矛盾的破绽（用户实锤）
+		//   历史不足 N 天时如实按实有天数报（禁假装满档）
+		function _rangeStats(r) {
+			var h = _onlDailyHist;
+			if (!h || !h.length) return null;
+			var maxN = r === '720' ? 720 : (r === '180' ? 180 : 30);
+			var arr = h.length > maxN ? h.slice(h.length - maxN) : h;
+			var n = arr.length;
+			if (!n) return null;
+			var sv = 0, sc = 0;
+			for (var i = 0; i < n; i++) {
+				sv += (typeof arr[i].v === 'number' && isFinite(arr[i].v)) ? arr[i].v : 0;
+				sc += (typeof arr[i].c === 'number' && isFinite(arr[i].c)) ? arr[i].c : 0;
 			}
-			_onlTipEl.style.left = cx + 'px';
+			return {
+				a: arr[0].t || arr[0].d || '',
+				b: arr[n - 1].t || arr[n - 1].d || '',
+				n: n,
+				av: sv / n,
+				cv: sc / n
+			};
+		}
+
+		// ★ 档位区间浮读框（与曲线单点框同一个盒子 → 一屏恒只有一个浮读框）：两行左对齐
+		//   ① A > B  Nday（起止日 + 实际统计天数，两段之间空两格、禁分隔符）  ② N.Np Nge（区间日均在线 / 区间日均 ge，ge 取整）
+		//   竖直位置：按钮态更贴近按钮下缘（.qqq-onl-tip.zoom，见 CSS）；曲线单点框仍恒在图表下缘下方 6px
+		function _rangeHoverPaint(r) {
+			var $spark = _ensureSparkOverlay();
+			if (!$spark) return;
+			var s = _rangeStats(r);
+			if (!s) { _sparkHoverOff(); return; }
+			_onlHoverIdx = -1;          // 区间摘要无单点语义 → 刻印竖线收起
+			_onlHoverR = r;
+			if (_onlCursorEl) _onlCursorEl.style.opacity = '0';
+			if (_onlTipEl.className !== 'qqq-onl-tip zoom') _onlTipEl.className = 'qqq-onl-tip zoom';
+			var html = '<div class="r1">' + s.a + ' &gt; ' + s.b + '&nbsp;&nbsp;' + s.n + 'day</div>' +
+				'<div class="r2">' + _fmt1(s.av) + 'p <span class="ge">' + _fmtGe(s.cv) + 'ge</span></div>';
+			if (html !== _onlTipHtml) { _onlTipHtml = html; _onlTipEl.innerHTML = html; _onlTipW = 0; }
+			// 垂足 = 被悬停按钮中心（框仍在图表下缘正下方，不遮挡图表）
+			var cx = ($spark.clientWidth || 0) >> 1;
+			try {
+				var $btn = document.querySelector('#qqq-onl-zoom button[data-r="' + r + '"]');
+				if ($btn) {
+					var br = $btn.getBoundingClientRect(), sr = $spark.getBoundingClientRect();
+					cx = br.left - sr.left + br.width / 2;
+				}
+			} catch (_) { }
+			_placeSparkTip(cx);
 		}
 
 		function _sparkHoverMove(e) {
 			var g = _onlSparkGeo;
 			var $spark = _ensureSparkOverlay();
 			if (!g || !$spark) return;
-			// 档位按钮区让路（按钮自有点击语义，悬停刻印无意义）
-			if (e.target && e.target.closest && e.target.closest('.qqq-onl-zoom')) { _sparkHoverOff(); return; }
+			// 档位按钮：悬停 = 该档区间摘要（同款浮读框，两行）；按钮之间的空隙 = 收起
+			if (e.target && e.target.closest) {
+				var $zb = e.target.closest('.qqq-onl-zoom button');
+				if ($zb) { _rangeHoverPaint($zb.getAttribute('data-r') || ''); return; }
+				if (e.target.closest('.qqq-onl-zoom')) { _sparkHoverOff(); return; }
+			}
 			var r = $spark.getBoundingClientRect();
 			if (!r.width) return;
 			var step = g.n > 1 ? g.iw / (g.n - 1) : 0;
@@ -510,6 +578,8 @@
 			if (_onlHoverIdx >= 0) {
 				if (_onlHoverIdx > n - 1) _onlHoverIdx = n - 1;
 				_sparkHoverPaint();
+			} else if (_onlHoverR) {
+				_rangeHoverPaint(_onlHoverR); // 区间框在场时数据刷新 → 数字就地跟上（不消失）
 			}
 		}
 

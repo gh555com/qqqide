@@ -573,7 +573,7 @@ def _mac_rename_devtools(new_title: str) -> dict:
     encoded = base64.b64encode(new_title.encode("utf-8")).decode()
     script = f'''
 tell application "System Events"
-    set appList to name of every process whose name contains "Electron"
+    set appList to name of every process whose name contains "Electron" or name contains "qqqide"
     repeat with appName in appList
         tell process appName
             repeat with w in windows

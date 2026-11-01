@@ -80,7 +80,9 @@ const QQQ = {    // ---- app info ----
         // ★ 头部字节读取（文本探针用：只读前 N 字节，200MB 级文件零负担）
         readHead: (p: string, n?: number) => ipcRenderer.invoke('qqqide:fs:readHead', p, n),
         exists: (p: string) => ipcRenderer.invoke('qqqide:fs:exists', p),
-        mkdir: (p: string) => ipcRenderer.invoke('qqqide:fs:mkdir', p),
+        mkdir: (p: string) => ipcRenderer.invoke('qqqide:fs:mkdir', p),
+        // ★ 原子独占建目录（{ok:true} / {ok:false,code:'EEXIST'}）——落座机器判定「目录名归属」用
+        mkdirExclusive: (p: string) => ipcRenderer.invoke('qqqide:fs:mkdirExclusive', p),
         remove: (p: string) => ipcRenderer.invoke('qqqide:fs:remove', p),
         // ★ 删除到回收站（2026-09-19）：roam 'd' 键语义（系统回收站/废纸篓，可还原）
         trashItem: (p: string) => ipcRenderer.invoke('qqqide:fs:trash', p),

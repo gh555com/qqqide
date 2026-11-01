@@ -714,7 +714,7 @@ window.qqqideAiAttach = insertChipAtCursor;
 
 window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-ai-attach') {
-        if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
+        if (!_hasMainProject()) { _ensureMainProject(); return; }
         var path = e.data.path;
         var isDir = e.data.isDir;
         var lineRange = e.data.lineRange;
@@ -1189,8 +1189,15 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         // 非动画时：CSS top:60% 自动跟随，无需 JS 干预
     });
     _bulletResizeObs.observe(_bulletBtn);
+    // ★ qoast「Roam」钮唯一出口：定位机器 = 父窗口 __qqq_roamRevealPath（shell-overlay 定位引擎——
+    //   命中选中+滚动 / 缺失爬升最近祖先 + qoast）；父窗口不可直达 → 同源 postMessage(roam-reveal-path) 通道。
+    function _bulletRoamLocate(p) {
+        try { if (parent && typeof parent.__qqq_roamRevealPath === 'function') { parent.__qqq_roamRevealPath(p); return; } } catch (_) { }
+        try { parent.postMessage({ type: 'qqqide-overlay', action: 'roam-reveal-path', text: p, ctx: '', line: 0 }, '*'); } catch (_) { }
+    }
+
     _bulletBtn.onclick = async function () {
-        if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
+        if (!_hasMainProject()) { _ensureMainProject(); return; }
 
         // 1. 读粘贴板 — 走 IPC bridge（Electron 主进程 clipboard），绕过 iframe 权限限制
         var clipText = '';
@@ -1280,10 +1287,15 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
             _bulletPlaySound();
             _bulletAnimate();
 
-            // 9. Qoast
+            // 9. Qoast（附「Roam」钮 → 在 Roam 中定位刚射出的这颗子弹文件）
             var sizeKB = Math.round(clipText.length / 1024);
             var sizeStr = sizeKB >= 1024 ? (sizeKB / 1024).toFixed(1) + 'MB' : sizeKB + 'KB';
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(_qq('ai.bullet.fired', '子弹已射出 {0} → {1}', { 0: sizeStr, 1: filename }), { type: 'success', duration: 3500 }); } catch (_) { }
+            try {
+                if (parent && parent.qqqideQoast) parent.qqqideQoast.show(_qq('ai.bullet.fired', '子弹已射出 {0} → {1}', { 0: sizeStr, 1: filename }), {
+                    type: 'success', duration: 6000,
+                    actions: [{ label: _qq('ai.bullet.roam', 'Roam'), onClick: function () { _bulletRoamLocate(filePath); } }]
+                });
+            } catch (_) { }
 
         } catch (err) {
             try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(_qq('ai.bullet.writeFail', '子弹写入失败: {0}', { 0: (err.message || err) }), { type: 'error', duration: 5000 }); } catch (_) { }

@@ -293,6 +293,8 @@ var _orig={};
 <!-- 恒红目录唯一判定（Roam 文件列表 + AI 视口目录树两处共用；规则清单见文件头注释） -->
 <script src="core/qqq-reddirs.js"></script>
 <script src="core/ai-viewport.js?v=2"></script>
+<!-- 落座机器（首启打样：点编辑框/无主文件夹时静默建 {盘}/az/projN → 设为主文件夹 → 基地进 Roam 置顶区 → qoast） -->
+<script src="core/workspace-seat.js"></script>
 <!-- 协助密钥脱敏（订阅 ai-viewport 的 qqq:git-dirty 事件，懒惰脱敏） -->
 <script src="core/secret-guard.js"></script>
 <!-- gitignore 保障机器（git 仓库首次可见 → _qqq/ _qqqvault/ 忽略缺失 → qoast 一键补全；2026-09-24） -->
@@ -319,6 +321,8 @@ var _orig={};
 
 <script src="core/shell-activities.js"></script>
 <script src="core/shell-rpc.js"></script>
+<!-- 页面发布唯一机器（主窗口模态）：Roam 右键「发布页面…」→ 扫目录/选范围/上传/撤销 -->
+<script src="core/page-deploy.js"></script>
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {

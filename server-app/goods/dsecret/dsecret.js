@@ -23,8 +23,11 @@
 //                     {type:'dsecret:data'} / {type:'dsecret:wl-remove', kind, key}
 //                     {type:'dsecret:git-log', value} / {type:'dsecret:gitignore', relPath, rmCached}
 //                     {type:'dsecret:toggle', on} / {type:'dsecret:open-file', relPath, line, path}
-//   parent → iframe: {type:'dsecret:init', enabled, projects, current}
+//                     {type:'dsecret:pending', projects, path}（待协同快照：纯内存零 IO）
+//   parent → iframe: {type:'dsecret:init', enabled, projects, current, focus}
+//                     {type:'dsecret:focus', path}（qoast「去处理」焦点接力：落该项目 + 铺它的队列）
 //                     {type:'dsecret:enabled', on}（设置面板侧改开关 → 本页实时同步）
+//                     {type:'dsecret:pending-result', view}（table=各项目计数 + items=队列）
 //                     {type:'dsecret:scan-result', result} / {type:'dsecret:act-result', pending}
 //                     {type:'dsecret:data', data} / {type:'dsecret:git-dirty', path, count}
 //                     {type:'dsecret:git-log-result', result} / {type:'dsecret:gitignore-result', relPath, result}
@@ -44,6 +47,8 @@
   function registerDsecret() {
     var bridge = window.qqqideBridge;
     var _iframe = null;     // 当前 dsecret tab 的 contentWindow（单例）
+    var _readyWin = null;   // iframe 已发 ready 的 contentWindow（未就绪 = null，此时投递会丢）
+    var _focusWant = null;  // 待送达的「聚焦某项目」请求（未就绪则跟随 init 一起下发）
     var _offDirty = null;   // git-dirty 事件桥退订函数
     var _offSetting = null; // secret.maskHelp 设置变更退订函数
 
@@ -71,8 +76,11 @@
     }
 
     // ── 打开 dsecret：X 区 gaea 分组 tab（单例：已开则激活） ──
-    function openDsecretTab() {
+    //   focusProject: 从 qoast「去处理」带来的项目路径 → 控制台落到该项目 + 直接铺它的待协同队列
+    function openDsecretTab(focusProject) {
       if (!window.qqqTabs || !window.qqqTabs.addGaeaTab) return false;
+      if (focusProject) _focusWant = String(focusProject);
+      var reused = !!_iframe;   // 已开着 = 本次只激活，focus 需要单独投递
       var tab = window.qqqTabs.addGaeaTab('dsecret', 'dsecret', function (pane) {
         pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
         var iframe = document.createElement('iframe');
@@ -87,7 +95,8 @@
           if (!e.data || e.data.type !== 'dsecret:ready') return;
           if (e.source !== iframe.contentWindow) return;
           window.removeEventListener('message', dsecretInit);
-          postInit(iframe.contentWindow);
+          _readyWin = iframe.contentWindow;
+          postInit(_readyWin);
         };
         window.addEventListener('message', dsecretInit);
 
@@ -108,11 +117,25 @@
             return;
           }
           if (d.type === 'dsecret:act') {
-            sg.act(d.path, d.action, d.item).then(function (pending) {
-              post(win, 'dsecret:act-result', { action: d.action, pending: pending });
+            var isBatch = (d.action === 'eraseAll' || d.action === 'keepAll');
+            var run;
+            if (isBatch && Array.isArray(d.paths) && d.paths.length) {
+              // ALL 视图批量：跨项目逐项回投（每条自带 proj）
+              run = sg.actMany(d.paths, d.action).then(function () { return []; });
+            } else {
+              run = sg.act(d.path, d.action, d.item);
+            }
+            run.then(function (pending) {
+              post(win, 'dsecret:act-result', { action: d.action, pending: pending || [] });
             }).catch(function (err) {
               post(win, 'dsecret:act-result', { action: d.action, error: String(err && err.message || err) });
             });
+            return;
+          }
+          if (d.type === 'dsecret:pending') {
+            var view = { table: { list: [], all: 0 }, items: [] };
+            try { view = sg.pendingView(d.projects || [], d.path || null); } catch (_) { }
+            post(win, 'dsecret:pending-result', { view: view, path: d.path || null });
             return;
           }
           if (d.type === 'dsecret:data') {
@@ -141,10 +164,16 @@
             mo.disconnect();
             if (_offDirty) { try { _offDirty(); } catch (_) {} _offDirty = null; }
             _iframe = null;
+            _readyWin = null;
           }
         });
         mo.observe(pane.parentNode || document.body, { childList: true });
       }, { closable: true });
+      // 已开着 → 单例分支只做激活：这里补一次「聚焦项目」投递（iframe 未就绪则留给 init 携带）
+      if (reused && _focusWant && _readyWin) {
+        post(_readyWin, 'dsecret:focus', { path: _focusWant });
+        _focusWant = null;
+      }
       return !!tab;
     }
 
@@ -168,7 +197,9 @@
         }
       } catch (_) {}
       ensureSettingBridge();
-      post(win, 'dsecret:init', { enabled: enabled, projects: projects, current: current });
+      var focus = _focusWant;
+      _focusWant = null;
+      post(win, 'dsecret:init', { enabled: enabled, projects: projects, current: current, focus: focus });
     }
 
     // ── git-dirty 事件桥：后台 badge 轮询 → dsecret tab 实时刷新 ──
@@ -195,8 +226,8 @@
       version: '1.0.0',
       protoVer: 2,
 
-      // ★ 打开路由：gaea-host.open('dsecret') → opener → gaea 分组 tab（单例）
-      opener: function () { return openDsecretTab(); },
+      // ★ 打开路由：gaea-host.open('dsecret', opts) → opener(ctx, opts) → gaea 分组 tab（单例）
+      opener: function (ctx, opts) { return openDsecretTab(opts && opts.focusProject); },
 
       commands: ['dsecret.open'],
       provides: ['dsecret'],
