@@ -23,9 +23,9 @@
     //   www 直连源站无边缘超时；与既有登录 / goods / 推广写请求同一宿主（唯一口径）。
     var API = 'https://www.gh555.com/api';
     var BUNDLE_V = 1;
-    var RENDERER = 's3'; // s3 = role=doc/sel + asset:N 图片引用
+    var RENDERER = 's3'; // s3 = role=sel + asset:N 图片引用
     var MAX_ITEMS = 200;
-    var MAX_FILE_BYTES = 700000; // 快照解压上限 1 MiB（字节，非字符：中文 1 字 = 3 字节）；留出 JSON 包装余量
+    
 
     // 资产上限（与服务端同值；客户端只做「上传前早提示」，裁决永远在服务端）
     var ASSET_MAX_EACH = 16 * 1024 * 1024;
@@ -286,20 +286,7 @@
         return items;
     }
 
-    // ── 文件源（Roam / 编辑器）：文本 → 快照；图片 → 资产域 ────────────
-    // 铁律：快照里永不写本机绝对路径（只留文件名）——分享内容一旦上公网，路径即泄密。
-    var MD_RAW = { md: 1, markdown: 1, mdx: 1 };
-    var LANG = {
-        js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx', mjs: 'javascript', cjs: 'javascript',
-        json: 'json', jsonc: 'json', css: 'css', scss: 'scss', less: 'less',
-        html: 'html', htm: 'html', xml: 'xml', svg: 'xml', vue: 'vue', svelte: 'svelte',
-        py: 'python', pyw: 'python', go: 'go', rs: 'rust', java: 'java', kt: 'kotlin',
-        c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp', cs: 'csharp',
-        sh: 'bash', bash: 'bash', zsh: 'bash', bat: 'bat', cmd: 'bat', ps1: 'powershell',
-        sql: 'sql', yml: 'yaml', yaml: 'yaml', toml: 'toml', ini: 'ini', conf: 'ini',
-        php: 'php', rb: 'ruby', lua: 'lua', swift: 'swift', dart: 'dart',
-        txt: 'text', log: 'text', csv: 'csv', tsv: 'text', env: 'ini'
-    };
+    // ── 图片引用（唯一的图片形态）────────────────────────────────
     var IMG_EXT = { png: 1, jpg: 1, jpeg: 1, gif: 1, webp: 1, bmp: 1, svg: 1 };
     var EXT_MIME = {
         png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
@@ -318,84 +305,8 @@
 
     function mimeOfExt(p) { return EXT_MIME[extOf(p)] || ''; }
 
-    // 围栏长度动态：取正文里最长反引号串 +1（禁写死 ``` —— 含代码块的文件会被提前截断）
-    function fenceWrap(text, lang) {
-        var longest = 0, run = 0;
-        for (var i = 0; i < text.length; i++) {
-            if (text.charAt(i) === '`') { run++; if (run > longest) longest = run; }
-            else run = 0;
-        }
-        var f = new Array(Math.max(3, longest + 1) + 1).join('`');
-        return f + (lang || '') + '\n' + text.replace(/\s+$/, '') + '\n' + f;
-    }
-
-    function mdForFile(ext, text) {
-        if (MD_RAW[ext]) return text;               // md 系原文直通（读者看到的 = 作者写的）
-        return fenceWrap(text, LANG[ext] || '');     // 其余一切文本 → 围栏代码块（空格/缩进保真）
-    }
-
-    function modeForExt(ext) {
-        if (IMG_EXT[ext]) return 'image';
-        if (MD_RAW[ext]) return 'md';
-        return 'code';
-    }
-
     // 读多个文件 → 快照条目（图片只登记引用，字节在 create 前经资产域上传）
     // 返回 {items, failed, doc}
-    function loadFiles(paths, onProgress) {
-        var list = Array.isArray(paths) ? paths.slice(0, 20) : [];
-        if (!list.length) return Promise.reject(new Error(_qq('ai.share.noFile', '没有可分享的文件')));
-        var items = [], failed = [], seq = Promise.resolve();
-        var usedBytes = 0;
-        var b = bridge();
-        list.forEach(function (p, idx) {
-            seq = seq.then(function () {
-                var name = baseName(p), ext = extOf(p);
-                if (onProgress) onProgress(idx / list.length, name);
-                if (IMG_EXT[ext]) {
-                    items.push({
-                        role: 'doc', n: idx + 1, name: name, md: '',
-                        imgs: [{ id: 0, name: name, ref: { kind: 'path', v: p, mime: mimeOfExt(name), name: name } }]
-                    });
-                    return;
-                }
-                // 只收文本族（md / 代码 / 配置）：未登记扩展名 = 可能是二进制（.exe/.zip/.docx）——
-                // 裸读会把乱码当正文发上公网，一律如实拒绝（多选时略过该件并报数）
-                if (!MD_RAW[ext] && !LANG[ext]) {
-                    if (list.length === 1) {
-                        throw new Error(_qq('ai.share.unsupported', '{0} 暂不支持分享（仅文本 / Markdown / 代码 / 图片）', { 0: name }));
-                    }
-                    failed.push(name);
-                    return;
-                }
-                if (!b || !b.fs || !b.fs.read) {
-                    return Promise.reject(new Error(_qq('ai.share.noBridge', '当前环境无法读取本地文件')));
-                }
-                return Promise.resolve(b.fs.read(p)).then(function (text) {
-                    if (text == null || !String(text).trim()) { failed.push(name); return; }
-                    text = String(text);
-                    var nBytes = bytesOf(text);
-                    if (usedBytes + nBytes > MAX_FILE_BYTES) {
-                        throw new Error(_qq('ai.share.fileTooLarge', '{0} 太大（{1} KB，上限 {2} KB）——请先截取或压缩',
-                            { 0: name, 1: Math.round(nBytes / 1024), 2: Math.round(MAX_FILE_BYTES / 1024) }));
-                    }
-                    var md = mdForFile(ext, text);
-                    usedBytes += bytesOf(md);
-                    items.push({ role: 'doc', n: idx + 1, name: name, md: md });
-                });
-            });
-        });
-        return seq.then(function () {
-            if (!items.length) throw new Error(_qq('ai.share.noFile', '没有可分享的文件'));
-            var doc = null;
-            if (list.length === 1) {
-                var e1 = extOf(list[0]);
-                doc = { name: baseName(list[0]), ext: e1, mode: modeForExt(e1) };
-            }
-            return { items: items, feeGe: 0, failed: failed, doc: doc };
-        });
-    }
-
     // ── 图片引用（唯一的图片形态） ─────────────────────────────────────
     // ref = {kind:'b64'|'path'|'floor', v, mime, name, ctx?}
     // ★ 本机图片目的地（唯一正则）：三种合法写法都必须认——漏认的后果不是报错，而是图片被脱敏
@@ -795,7 +706,6 @@
         collect: collect,
         listImages: listImages,
         prepareAssets: prepareAssets,
-        loadFiles: loadFiles,
         bytesOf: bytesOf,
         baseName: baseName,
         extOf: extOf,

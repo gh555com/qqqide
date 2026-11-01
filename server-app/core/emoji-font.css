@@ -2,10 +2,15 @@
    emoji-font.css — 单色 emoji 兜底字形（唯一注入点，字体栈末端回退）
    ----------------------------------------------------------------------------
    为什么：旧系统（Win7）无彩色 emoji 字体（Segoe UI Emoji 自 Win8 起），
-     Unicode 6.0+ 的 emoji 一律渲染成空心方块。本文件提供一档单色描边字形，
-     仅当字体栈里前面的系统字体全都无该字形时才命中——现代系统命中更早的
-     系统 emoji 字体，视觉零变化，也不会下载本字体。
-   用法：一切 font-family 栈末端追加 `,qd-emoji`（禁写成前置/禁单独使用）。
+     Unicode 6.0+ 的 emoji 一律渲染成空心方块。本文件提供一档单色描边字形。
+   ★ 栈序铁律（唯一写法）：系统彩色 emoji 族在前，qd-emoji 收尾——
+       font-family: …,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji
+     原因：qd-emoji 是 @font-face 声明的字体族，只要出现在列表里就参与逐字命中，
+     位置排在浏览器「系统兜底」之前。只写 `,qd-emoji` = 全平台（含 Win10/mac）
+     都被单色字形命中，彩色 emoji 整体消失（已实机复现）。系统族放前面后：
+     有彩色字体的系统命中前面那几家（视觉与引入本字体前逐像素相同，也不下载
+     本字体）；只有三家都没有的旧系统才落到 qd-emoji。
+   用法：一切 font-family 栈按上面整段追加（禁只写裸 `,qd-emoji`／禁写成前置）。
    铁律：本文件是 @font-face 唯一声明处；新增窗口/文档只许 <link> 本文件 +
      栈尾追加标记，禁自建 @font-face、禁自造第二套 emoji 字体。
    字体：assets/fonts/qd-emoji.woff2（单色轮廓；许可证见同目录 LICENSE 文本）

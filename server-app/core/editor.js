@@ -271,7 +271,7 @@
       useShadowDOM: false,
       automaticLayout: true,
       fontSize: _editorFontSize,
-      fontFamily: 'ui-monospace, Consolas, Menlo, monospace, qd-emoji',
+      fontFamily: 'ui-monospace, Consolas, Menlo, monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji',
       // ═══ LSP OFF: strip all smart features ═══
       minimap: { enabled: false },
       scrollBeyondLastLine: 20,
@@ -621,37 +621,6 @@
       }
     });
     _feedToAiActions.set(ed, { disposable: disposable, filePath: filePath, monaco: monaco });
-  }
-
-  // ── 分享：编辑器右键 → 生成公网快照链接（唯一机器 = AI 面板 panel-share.js）──
-  //   本机绝对路径不进快照（share-machine 只取文件名）；选区非空时面板里多一项「仅选中内容」。
-  function _addShareAction(ed, monaco, filePath) {
-    if (!ed || !monaco || !filePath) return;
-    ed.addAction({
-      id: 'qqq-share-file',
-      label: window._i ? window._i('editor.shareFile', '分享到公网…') : '分享到公网…',
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 1.7,
-      run: function () {
-        var sel = '';
-        try {
-          var s = ed.getSelection();
-          if (s && !s.isEmpty() && ed.getModel()) sel = ed.getModel().getValueInRange(s) || '';
-        } catch (_) { }
-        var ok = false;
-        try {
-          if (typeof window.qqqideShareOpen === 'function') {
-            ok = window.qqqideShareOpen({ paths: [filePath], selText: sel }) !== false;
-          }
-        } catch (_) { ok = false; }
-        if (!ok) {
-          try {
-            window.qqqideQoast && window.qqqideQoast.show('分享不可用：AI 面板未就绪，稍后重试',
-              { type: 'error', duration: 3200 });
-          } catch (_) { }
-        }
-      }
-    });
   }
 
   // ── 运行：编辑器右键 → 用内置解释器运行（core/run-machine.js 唯一机；.py/.pyw→Python、.js/.mjs/.cjs→Node）──
@@ -1118,7 +1087,6 @@
       _applyMinimapPref(ed, monaco, filePath);
       _addFeedToAiAction(ed, monaco, filePath);
       _addRunAction(ed, monaco, filePath);
-      _addShareAction(ed, monaco, filePath);
       // ★ Markdown 预览 action（pane 编辑器；同 md-preview.js）
       try { window.__qqqMdAttachAction && window.__qqqMdAttachAction(ed, monaco, filePath); } catch (_) {}
       // 括号匹配（自实现）
@@ -1323,7 +1291,7 @@
       console.warn('[editor] openInPane fallback:', e && e.message);
       host.innerHTML = '';
       const ta = document.createElement('textarea');
-      ta.style.cssText = 'width:100%; height:100%; box-sizing:border-box; border:0; outline:0; padding:12px; font-family:ui-monospace,Consolas,Menlo,monospace,qd-emoji; font-size:13px; resize:none; background:var(--background-color); color:var(--text-primary);';
+      ta.style.cssText = 'width:100%; height:100%; box-sizing:border-box; border:0; outline:0; padding:12px; font-family:ui-monospace,Consolas,Menlo,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji; font-size:13px; resize:none; background:var(--background-color); color:var(--text-primary);';
       ta.value = content == null ? '' : String(content);
       host.appendChild(ta);
       // fallback: dirty tracking + blur auto-save

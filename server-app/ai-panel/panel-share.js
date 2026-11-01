@@ -104,11 +104,6 @@
  		items: [],
 		imgList: [],     // 当前可分享图片（S.listImages 唯一清单；缩略图与上传共用）
 		drop: {},        // 逐图排除（key → 1）；默认空 = 全含
-		docMeta: null,
-		fileItems: [],    // 文件源的整份条目（scope 切回 0 时复原）
-
-        loading: false,
-        loadErr: '',
         busy: false
     };
 
@@ -145,13 +140,9 @@
 		st.busy = false;
 		st.imgList = [];
 		st.drop = {};
-		st.docMeta = (src && src.doc) || null;
 
         st.items = (src && src.items && src.items.length) ? src.items : [];
-        st.fileItems = st.items.slice();   // 文件源的整份内容（切回「整份」时复原）
-        st.loading = !!(src && src.type === 'file' && !st.items.length);
-        st.loadErr = '';
-        if (!st.loading) refreshItems();
+        refreshItems();
         st.title = defaultTitle();
     }
 
@@ -160,37 +151,6 @@
         reset({ type: 'ai', el: el, selText: selText || '' });
         renderNew();
         $mask.style.display = 'flex';
-    }
-
-    // 文件源（Roam / 编辑器）：读盘与组包全在 share-machine 唯一处；快照里永不写本机绝对路径
-    function openFiles(opt) {
-        ensureDom();
-        opt = opt || {};
-        var paths = Array.isArray(opt.paths) ? opt.paths : [];
-        if (!paths.length) { qoast(T('ai.share.noFile', '没有可分享的文件'), 'error'); return; }
-        reset({ type: 'file', paths: paths, selText: String(opt.selText || ''), doc: null });
-        renderNew();
-        $mask.style.display = 'flex';
-        S.loadFiles(paths, function (pct) {
-            var go = $dlg && $dlg.querySelector('#sh-go');
-            if (go) go.textContent = T('ai.share.reading', '读取中… {0}%', { 0: Math.round(pct * 100) });
-        }).then(function (r) {
-            st.loading = false;
-            st.items = r.items;
-            st.fileItems = r.items.slice();
-            st.docMeta = r.doc;
-
-            if (r.failed && r.failed.length) {
-                qoast(T('ai.share.fileSkipped', '{0} 个文件读取失败，已略过', { 0: r.failed.length }), 'error');
-            }
-            st.title = defaultTitle();
-            refreshItems();
-            renderNew();
-        }).catch(function (err) {
-            st.loading = false;
-            st.loadErr = (err && err.message) || 'failed';
-            renderNew();
-        });
     }
 
     function close() {
@@ -208,19 +168,8 @@
         return '';
     }
 
-    function stripExt(n) {
-        return String(n || '').replace(/\.[^.]+$/, '');
-    }
 
     function defaultTitle() {
-        if (st.src && st.src.type === 'file') {
-            if (st.docMeta && st.docMeta.name) return stripExt(st.docMeta.name);
-            if (st.items.length > 1) {
-                return T('ai.share.filesTitle', '{0} 等 {1} 个文件', { 0: stripExt(st.items[0].name), 1: st.items.length });
-            }
-            if (st.items.length === 1) return stripExt(st.items[0].name);
-            return T('ai.share.fileTitle', '分享的文件');
-        }
         var items = S.collect(st.aiEl, 0);
         var q = '';
         for (var i = 0; i < items.length; i++) {
@@ -232,16 +181,13 @@
     }
 
     function refreshItems() {
-        var isFile = !!(st.src && st.src.type === 'file');
         if (st.scope === -1) {
             // 精确截取：只带选中文本
             st.items = [{ role: 'sel', n: 1, md: st.selText }];
-        } else if (isFile) {
-            st.items = st.fileItems.slice();
         } else {
             st.items = S.collect(st.aiEl, st.scope);
         }
-        // 图片清单只有一只真相源（提问气泡图 + md 内的本机图片 + 文件源图片）
+        // 图片清单只有一只真相源（提问气泡图 + md 内的本机图片）
         st.imgList = S.listImages(st.items);
         Object.keys(st.drop).forEach(function (k) {
             var still = st.imgList.some(function (x) { return x.key === k; });
@@ -272,10 +218,6 @@
     // 可选范围：AI = 本轮/近三轮/整段（有选区时多一项）；文件 = 整份/仅选中（有选区时）
     function scopesFor() {
         if (!st.src) return AI_SCOPES;
-        if (st.src.type === 'file') {
-            if (!st.selText) return [];
-            return [{ key: 0, label: T('ai.share.scopeWhole', '整份文件') }, SEL_SCOPE];
-        }
         var list = AI_SCOPES.slice();
         if (st.selText) list.unshift(SEL_SCOPE);
         return list;
@@ -354,8 +296,8 @@
             '<span class="sh-cost" id="sh-cost">' + esc(costLabel(totalFee())) + '</span>' +
             '<button class="sh-btn" data-act="close">' + esc(T('ai.share.cancel', '取消')) + '</button>' +
             '<button class="sh-btn primary" data-act="go" id="sh-go"' +
-            (st.loading || st.loadErr || tooBigForForever ? ' disabled' : '') + '>' +
-            esc(st.loading ? T('ai.share.reading0', '读取中…') : T('ai.share.go', '生成链接')) + '</button>' +
+            (tooBigForForever ? ' disabled' : '') + '>' +
+            esc(T('ai.share.go', '生成链接')) + '</button>' +
             '</div>';
 
         renderPreview();
@@ -396,22 +338,14 @@
     function renderPreview() {
         var box = $dlg.querySelector('#sh-prev');
         if (!box) return;
-        if (st.loading) {
-            box.innerHTML = '<div class="sh-empty">' + esc(T('ai.share.reading1', '正在读取文件…')) + '</div>';
-            return;
-        }
-        if (st.loadErr) {
-            box.innerHTML = '<div class="sh-warn">' + esc(st.loadErr) + '</div>';
-            return;
-        }
+
         var html = '';
         var items = st.items;
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
-            var isDoc = it.role === 'doc' || it.role === 'sel';
+            var isDoc = it.role === 'sel';
             var isQ = it.role === 'q';
-            var label = isDoc ? (it.role === 'sel' ? T('ai.share.selLabel', '选中') : (it.name || T('ai.share.fileLabel', '文件')))
-                : (isQ ? T('ai.share.q', '问') : T('ai.share.a', '答'));
+            var label = isDoc ? T('ai.share.selLabel', '选中') : (isQ ? T('ai.share.q', '问') : T('ai.share.a', '答'));
             var meta = isDoc ? '' : (it.n ? '#' + it.n : '');
             var body;
             try {
@@ -419,15 +353,7 @@
             } catch (_) {
                 body = '<pre>' + esc(it.md) + '</pre>';
             }
-            // 图片文件源：正文尚未生成（asset:N 在上传后写入）→ 预览直接给缩略图
-            if ((!it.md || !String(it.md).trim()) && it.imgs && it.imgs.length) {
-                body = it.imgs.map(function (im) {
-                    var s2 = previewSrcOf(im.ref);
-                    return s2
-                        ? '<img src="' + esc(s2) + '" alt=""/>'
-                        : '<span class="sh-imgph">' + esc(im.name || 'image') + '</span>';
-                }).join('');
-            }
+
             html += '<div class="sh-it ' + (isQ ? 'q' : 'a') + (isDoc ? ' doc' : '') + '">' +
                 '<div class="sh-it-hd"><b>' + esc(label) + '</b>' +
                 '<span>' + esc(meta) + '</span></div>' +
@@ -533,8 +459,7 @@
 
     // ─── 创建 ───
     function doCreate() {
-        if (st.busy || st.loading) return;
-        if (st.loadErr) { qoast(st.loadErr, 'error'); return; }
+        if (st.busy) return;
         if (!S.token()) { qoast(T('ai.share.needLogin', '请先登录 qd 账号'), 'error'); return; }
         if (st.vis === 'password' && (st.password || '').trim().length < 4) {
             qoast(T('ai.share.pwShort', '口令至少 4 位'), 'error');
@@ -542,10 +467,9 @@
         }
         if (!st.items.length) { qoast(T('ai.share.empty', '没有可分享的内容'), 'error'); return; }
 
-        // kind 只影响阅读页的呈现语义（问/答 或 文件）；计费维度恒为「分享条数」
+        // kind 只影响阅读页的呈现语义（问/答 或 选中片段）；计费维度恒为「分享条数」
         var kind = 'floor';
-        if (st.src && st.src.type === 'file') kind = (st.scope === -1) ? 'selection' : 'file';
-        else if (st.scope === -1) kind = 'selection';
+        if (st.scope === -1) kind = 'selection';
         else if (st.scope === 999) kind = 'thread';
         // 永久档体积闸的前置提示（真裁决在服务端：FOREVER_TOO_LARGE）
         if (st.tier === 'forever' && roughBytes() > 512 * 1024) {
@@ -592,8 +516,7 @@
                 title: st.title,
                 quest: quest,
                 redact: st.redact,
-                kind: kind,
-                doc: st.docMeta
+                kind: kind
             });
             return S.create({
                 bundle: bundle,
@@ -882,8 +805,7 @@
 
     // ─── 对外导出（唯一入口：AI 楼层 / 编辑器 / Roam 三个触发面共用同一台面板）───
     window.shareOpen = function (el, selText) { openAi(el, selText); };
-    // 文件源：{ paths: [绝对路径...], selText?: '编辑器选区' }——读盘/组包在 share-machine 唯一处
-    window.shareOpenFiles = function (opt) { openFiles(opt); };
+
     window.shareImport = importShare;
     window.shareOpenMine = function () {
         ensureDom();

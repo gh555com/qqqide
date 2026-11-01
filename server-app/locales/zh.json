@@ -553,8 +553,7 @@
 
       "sysFallback": "qd 打不开该文件，已用系统默认程序打开",
       "openMissing": "文件不存在（可能已被删除或移动）: {0}"
-    },
-    "shareFile": "分享到公网…"
+    }
   },
   "mdview": {
     "action": "预览 Markdown",
@@ -987,11 +986,6 @@
     "floorAbortedMsg": "⚠️ 楼层异常中断，对话已保存。",
     "sseSkipNote": "[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: {0}。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]",
     "share": {
-      "reading": "读取中… {0}%",
-      "fileSkipped": "{0} 个文件读取失败，已略过",
-      "filesTitle": "{0} 等 {1} 个文件",
-      "fileTitle": "分享的文件",
-      "scopeWhole": "整份文件",
 
       "tabNew": "分享",
       "tabMine": "我的分享",
@@ -1006,13 +1000,10 @@
       "redact": "自动脱敏（本机路径 / IP / 密钥 / 令牌）",
 
       "cancel": "取消",
-      "reading0": "读取中…",
       "go": "生成链接",
       "costFree": "免费 · 30 天后自动清理",
       "costFee": "本次 {0} ge · 一次性，不退",
-      "reading1": "正在读取文件…",
       "selLabel": "选中",
-      "fileLabel": "文件",
       "q": "问",
       "a": "答",
       "empty": "没有可分享的内容",
@@ -1520,10 +1511,7 @@
       "itemsCopied": "{0} 项已复制",
       "canceledFiles": "已取消 · {0} 个完成",
       "filesResult": "{0} 个成功，{1} 个失败",
-      "filesCopied": "{0} 个已复制",
-      "share": "分享到公网…",
-      "shareNeedFile": "只能分享文件（文件夹请先打包）",
-      "shareFail": "分享不可用"
+      "filesCopied": "{0} 个已复制"
     },
     "kopea": {
       "offline": "当前面板：kope-a 未启动",

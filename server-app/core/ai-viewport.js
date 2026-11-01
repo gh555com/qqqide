@@ -1519,28 +1519,6 @@
   }
   window.__qqq_aiFeedFile = _feedToAiPanel;
 
-  // ---- 分享入口（编辑器 / Roam 右键）——唯一机器 = AI 面板内的 panel-share.js ----
-  //   opt = { paths: [绝对路径...], selText?: '编辑器选区' }
-  //   读盘/组包/脱敏/上传全在 share-machine.js（快照里永不写本机绝对路径）
-  function _shareOpenInPanel(opt) {
-    var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
-    var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
-    var zone = document.getElementById(zoneId);
-    var aiFrame = zone ? zone.querySelector('iframe') : null;
-    if (!aiFrame || !aiFrame.contentWindow) {
-      aiFrame = document.querySelector('#qqq-ai-zone iframe');
-    }
-    if (!aiFrame || !aiFrame.contentWindow) return false;
-    try {
-      if (typeof aiFrame.contentWindow.shareOpenFiles === 'function') {
-        aiFrame.contentWindow.shareOpenFiles(opt || {});
-        return true;
-      }
-    } catch (e) { console.warn('[ai-viewport] shareOpen error:', e); }
-    return false;
-  }
-  window.qqqideShareOpen = _shareOpenInPanel;
-
   function attachToAi(filePath, isDir) {
     _feedToAiPanel(filePath, isDir, null);
   }
@@ -1684,7 +1662,7 @@
     var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
     // 构建 CSS：左面板→靠左，中面板→居中，右面板→靠右
     var cssText = 'position:absolute; bottom:12px; ' +
-      'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif,qd-emoji; ' +
+      'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji; ' +
       'color:var(--text-primary); opacity:0.90; pointer-events:none; ' +
       'z-index:1; user-select:none; white-space:nowrap;';
     if (target === 0) {
