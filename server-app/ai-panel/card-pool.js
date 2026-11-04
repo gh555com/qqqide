@@ -391,31 +391,40 @@ var CardPool = (function () {
 
     var parts = [];
     var seenFirstUser = false;
+    var _guideAckPaired = false;   // 引导条目已自带绿条 → 紧随的确认会话消息不重复渲染
 
     for (var i = 0; i < conv.length; i++) {
       var m = conv[i];
       if (!m || typeof m !== 'object') continue;
 
       // 跳过第一个 user 消息（由 userEl 单独渲染）
-      if (m.role === 'user' && !seenFirstUser) {
+      // ★ 引导条目（_injected）恒不算「问题气泡」，即使排在首个也不得被吞（引导块丢失的旁路）
+      if (m.role === 'user' && !seenFirstUser && !m._injected) {
         seenFirstUser = true;
         continue;
       }
 
       // ═══ flag 白名单 ═══
-      if (m._guideAck && m.role === 'assistant') {
-        // 引导确认回合：渲染引导注入信息 + AI 确认回复
-        if (m._guideText) {
-          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">⚡</span> ' + _escHtml(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + _escHtml(m._guideText) + '</div></div>');
-        }
-        var _ackText = (m.content || _qq('ai.guideAck', '已收到引导')).replace(/^✅\s*/, '').trim();
-        // ★ 始终渲染绿条（即使 _ackText 为空也显示占位，防止空洞）
-        parts.push('<div class="msg-flow-guide-ack"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> ' + _escHtml(_qq('ai.guideAck', '已收到引导')) + '</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackText || _qq('ai.guideAck', '已收到引导')) + '</div></div>');
-      } else if (m._injected && m.role === 'user') {
-        // 降级注入消息（如 [GUIDE] 注入）
+      // ★ 引导条目（_injected user）= 引导事件的唯一 UI 真理：引导原文 + 确认回复（_guideAckText）同挂一条，
+      //   恒随 conversation 落盘 → 终稿 innerHTML 重写 / 切卡重建 / 重启后红绿成对还原。
+      //   data-guide-idx = 会话下标（_restoreGuideBlocksToContentWrap 按此去重，可反复调用）。
+      if (m._injected && m.role === 'user') {
         var _injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '').trim();
         if (_injText) {
-          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> ' + _escHtml(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
+          parts.push('<div class="msg-flow-guide-inject" data-guide-idx="' + i + '"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> ' + _escHtml(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
+        }
+        if (m._guideAckText) {
+          var _ackT = String(m._guideAckText).replace(/^✅\s*/, '').trim();
+          parts.push('<div class="msg-flow-guide-ack" data-guide-idx="' + i + 'a"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> ' + _escHtml(_qq('ai.guideAck', '已收到引导')) + '</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackT || _qq('ai.guideAck', '已收到引导')) + '</div></div>');
+          _guideAckPaired = true;
+        }
+      } else if (m._guideAck && m.role === 'assistant') {
+        // 旧楼层兜底：确认消息自带绿条（新数据已由引导条目呈现 → 消费标记，不重复）
+        if (_guideAckPaired) {
+          _guideAckPaired = false;
+        } else {
+          var _ackText = (m.content || _qq('ai.guideAck', '已收到引导')).replace(/^✅\s*/, '').trim();
+          parts.push('<div class="msg-flow-guide-ack" data-guide-idx="' + i + '"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> ' + _escHtml(_qq('ai.guideAck', '已收到引导')) + '</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackText || _qq('ai.guideAck', '已收到引导')) + '</div></div>');
         }
       } else if (m._error && m.role === 'assistant') {
         // ★ 错误消息：跳过不渲染（红框由 DOM 层 floor-gap 单独管理）

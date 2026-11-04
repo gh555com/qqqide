@@ -29,7 +29,7 @@ import * as path from 'path';
 import { runPs, b64d } from './ipc-syspy';
 import { FA_PS } from './fa-ps';
 import { faMacApply, faMacRegister, faMacEditorState } from './fa-mac';
-import { faLinuxApply } from './fa-linux';
+import { faLinuxApply, faLinuxState } from './fa-linux';
 import { MEDIA_ASSOC_EXTS, faSerial } from './ipc-fileassoc';
 import { getDataDir, getOsBaseDir } from './portable-paths';
 import { EDITOR_PROGID, EDITOR_DESKTOP_ID, EDITOR_OPEN_MARK } from './fa-ids';
@@ -396,13 +396,25 @@ async function _heal(): Promise<void> {
 }
 
 // ── 逐扩展真实归属（只读；`1 by 1` 明细的角标真相） ──
-//   taken = 当前真的是 qd 打开（有效关联命令带本域标记）/ cand = 仅列在「打开方式」候选面 / free = 无关。
-//   仅 Windows 有逐扩展默认槽位可读；mac/Linux 无（返回 unsupported——面板如实不画角标，禁猜）。
+//   taken = 当前真的是 qd 打开 / cand = 仅列在「打开方式」候选面 / free = 无关。
+//   三平台各有自己的权威只读源：Windows = 注册表槽位（fa-ps）/ mac = LaunchServices（fa-mac）/
+//   Linux = xdg-mime 当前默认（fa-linux）——面板零分叉，恒读同一形状 {states:{ext:state}}。
 export interface FaEditorStateResult { ok: boolean; code?: string; states: Record<string, string>; err?: string }
 export async function faEditorState(): Promise<FaEditorStateResult> {
     // mac：LaunchServices 只读查询（NSWorkspace 逐扩展回当前默认 app —— taken/cand/free 三态同源）
     if (process.platform === 'darwin') {
         const r = await faMacEditorState(EDITOR_ASSOC_EXTS);
+        return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'state-failed'), states: r.states || {}, err: r.err };
+    }
+    // Linux：xdg-mime 只读查询（逐扩展当前默认条目 → taken/cand/free 三态同源）
+    if (process.platform === 'linux') {
+        const r = await faLinuxState(EDITOR_ASSOC_EXTS, {
+            desktopId: EDITOR_DESKTOP_ID,
+            name: APP_NAME,
+            desc: APP_DESC,
+            marker: EDITOR_OPEN_MARK,
+            neverTake: ['application/octet-stream', 'application/x-zerosize'],
+        });
         return { ok: !!r.ok, code: r.ok ? undefined : (r.code || 'state-failed'), states: r.states || {}, err: r.err };
     }
     if (process.platform !== 'win32') { return { ok: false, code: 'unsupported', states: {} }; }

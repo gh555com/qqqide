@@ -39,7 +39,9 @@ export interface LvData {
     level_floor: number;
     progress_pct: number;
     season_short: string;
+    season_idx?: number;          // 累计赛季序号（服务端下发，0 起；展示恒 +1）
     total_consumed_ge: string;
+    companion_ge: string;         // 当前赛季陪伴折算 ge（等级 = (消费 + 陪伴) / 10）
     total_free_ge: string;
     total_consumed_all_ge: string;
     last_season_level: number;
@@ -394,7 +396,9 @@ class AuthBrain {
                         level_floor: data.level_floor ?? 0,
                         progress_pct: data.progress_pct ?? 0,
                         season_short: data.season_short || '',
+                        season_idx: typeof data.season_idx === 'number' ? data.season_idx : undefined,
                         total_consumed_ge: data.total_consumed_ge || '0',
+                        companion_ge: data.companion_ge || '0',
                         total_free_ge: data.total_free_ge || '0',
                         total_consumed_all_ge: data.total_consumed_all_ge || data.total_consumed_ge || '0',
                         last_season_level: data.last_season_level ?? 0,

@@ -713,25 +713,47 @@ function bootAiOverlay() {
   var _mainEl = document.getElementById('qqq-main');
   (_mainEl || document.body).appendChild(overlay);
 
-  // ═══ ★ 焦点接管 + 层状态广播（2026-10-05）════
+  // ═══ ★ 焦点接管 + 层状态广播（2026-10-05；2026-11-03 暴露例外）════
   // 打开即抢焦点：键盘事件从来源 iframe（Roam/AI 面板）回到本层——来源快捷键不再被误触；
   // 同时向全部 iframe 广播层状态（iframe 侧据此屏蔽自身快捷键，q/w 反向转发回本层翻页）；
   // 关闭即归还焦点给来源元素（回到 Roam 后一切键照旧）。
+  // ★ 暴露例外：本层覆盖域恒 = #qqq-main（inset:0），左右翼是它的兄弟节点 → 翼板 AI 面板在层打开期间
+  //   仍完整可见可交互。来源若是暴露面板（不在覆盖域内）→ 不抢焦点、不发盾：面板 1/2 滚动 + q/w 跳楼照旧可接
+  //   （「开层 + 暴露焦点面板」是合法态）。盾按几何分派：只有被层遮住的 iframe 才屏蔽自身快捷键。
   var _ovFocusReturn = null;
+  function _ovFrameOf(win) {
+    if (!win) return null;
+    var _fs = document.querySelectorAll('iframe');
+    for (var _fi = 0; _fi < _fs.length; _fi++) { try { if (_fs[_fi].contentWindow === win) return _fs[_fi]; } catch (_) { } }
+    return null;
+  }
+  // 覆盖判定（唯一谓词）：iframe 在 #qqq-main 内 = 被层遮住；翼板 iframe 不在 = 暴露
+  function _ovFrameCovered(fr) {
+    if (!fr || !_mainEl) return true;   // 非 iframe 来源（主窗口自身，如 help 菜单二维码）/ 主区域缺失 → 按被遮处理（旧行为）
+    return _mainEl.contains(fr);
+  }
   function _ovBroadcastState(open) {
     try {
       var _fr = document.querySelectorAll('iframe');
       for (var _fi = 0; _fi < _fr.length; _fi++) {
-        try { if (_fr[_fi].contentWindow) _fr[_fi].contentWindow.postMessage({ type: 'qqqide-overlay-state', open: !!open }, '*'); } catch (_) { }
+        try {
+          if (_fr[_fi].contentWindow) {
+            _fr[_fi].contentWindow.postMessage({ type: 'qqqide-overlay-state', open: !!open, shield: open ? _ovFrameCovered(_fr[_fi]) : false }, '*');
+          }
+        } catch (_) { }
       }
     } catch (_) { }
   }
-  function _ovClaimFocus() {
-    if (_ovFocusReturn === null) {
-      var _ae = document.activeElement;
-      _ovFocusReturn = (_ae && _ae !== document.body && _ae !== document.documentElement && typeof _ae.focus === 'function') ? _ae : false;
+  function _ovClaimFocus(srcWin) {
+    if (_ovFrameCovered(_ovFrameOf(srcWin))) {
+      if (_ovFocusReturn === null) {
+        var _ae = document.activeElement;
+        _ovFocusReturn = (_ae && _ae !== document.body && _ae !== document.documentElement && typeof _ae.focus === 'function') ? _ae : false;
+      }
+      try { overlay.focus({ preventScroll: true }); } catch (_) { }
+    } else {
+      _ovFocusReturn = false;   // 暴露来源：焦点留在面板（不抢就不还），关层零回填
     }
-    try { overlay.focus({ preventScroll: true }); } catch (_) { }
     _ovBroadcastState(true);
   }
   // 全局可见探针（shell.js x 键呈递机器等按需查询；关闭态恒 false）
@@ -1171,7 +1193,7 @@ function bootAiOverlay() {
       }
       _ovShowImage(e.data.src, e.data.localPath || null, false);
       _ovRotDeg = _ovNav ? (_ovNav.list[_ovNav.index].rot || 0) : _ovRotGet(_ovLocalPath);
-      _ovClaimFocus();   // 抢焦点 + 广播层状态（来源 iframe 快捷键让路）
+      _ovClaimFocus(e.source);   // 抢焦点 + 广播层状态（被遮的 iframe 让路；暴露来源不动焦点）
     }
 
     if (e.data.action === 'open-table') {
@@ -1302,7 +1324,7 @@ function bootAiOverlay() {
         zoomInBtn.style.display = '';
         rotLBtn.style.display = 'none';   // 旋转仅属图片模式
         rotRBtn.style.display = 'none';
-        _ovClaimFocus();   // 抢焦点 + 广播层状态（来源 iframe 快捷键让路）
+        _ovClaimFocus(e.source);   // 抢焦点 + 广播层状态（被遮的 iframe 让路；暴露来源不动焦点）
       } catch (_) {
         // 出错时强制复位，避免 overlay 残留 invisible 阻挡 UI
         overlay.style.display = 'none';

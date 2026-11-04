@@ -589,6 +589,7 @@
     "openFail": "登录窗口无法打开，请检查网络连接",
     "secondAuthMsg": "需进行二次认证\n点击按钮走正常登录流程（与右上角登录一致）",
     "secondAuthBtn": "二次认证",
+    "lvTipParts": "消费 {paid} + 陪伴 {comp}",
     "lvRules": {
       "title": "等级及免费额度规则",
       "periods": "一周共 13 个免费时段：",

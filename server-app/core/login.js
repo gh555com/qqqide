@@ -1238,6 +1238,13 @@
     var m = d && d.season_short ? /W(\d+)\s*$/.exec(String(d.season_short)) : null;
     return m ? parseInt(m[1], 10) + 1 : 0;
   }
+  // 两笔 ge（字符串，服务端 FormatGe）求和 → 4 位小数字符串
+  function _sumGe4(a, b) {
+    var x = parseFloat(a), y = parseFloat(b);
+    if (!isFinite(x)) x = 0;
+    if (!isFinite(y)) y = 0;
+    return (x + y).toFixed(4);
+  }
   function _seasonShortLabel(d) {
     var sh = (d && d.season_short) ? String(d.season_short) : '?';
     var n = _seasonNo();
@@ -1260,21 +1267,27 @@
     var sh = _seasonShortLabel(d);
     var cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
 
-    // ★ 第一行：赛季信息（格式: "2026_44W18:4.5574"；尾号 = 服务端累计序号 + 1）
+    // ★ 第一行：赛季信息（格式: "2026_44W18:364.6402"；尾号 = 服务端累计序号 + 1）
+    //   大数字 = 本赛季合计（实扣消费 + 陪伴折算）——等级 = 该数 ÷ 10，与榜单 Lv 恒等；
+    //   下面一行小字给拆解（消费 + 陪伴），防「金额和等级对不上」的老歧义。
     var paid = d.total_consumed_ge || '0';
+    var comp = d.companion_ge || '0';
+    var seasonTotal = _sumGe4(paid, comp);
     var free = d.total_free_ge || '0';
     var paidAll = d.total_consumed_all_ge || paid; // 历史总付费
     var m = sh.match(/^(\([^)]+\))\s+(.+)$/);
     var line1 = '';
     if (m) {
-      line1 = '<span style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[1] + '</span> <b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + paid + '</span>';
+      line1 = '<span style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[1] + '</span> <b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + seasonTotal + '</span>';
     } else {
-      line1 = '<b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + sh + ':</b><span style="color:#b58900;font-size:44px">' + paid + '</span>';
+      line1 = '<b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + sh + ':</b><span style="color:#b58900;font-size:44px">' + seasonTotal + '</span>';
     }
+    var line1b = '<div style="margin-top:2px;font-size:20px;color:rgba(251,233,188,0.55);font-family:Consolas,monospace">'
+      + _i18('login.lvTipParts', '消费 {paid} + 陪伴 {comp}', { paid: paid, comp: comp }) + '</div>';
     // ★ 第二行：历史总付费 + 历史白嫖（居中大号，白嫖绿色）
     var line2 = '<div style="margin-top:4px;text-align:center;"><span style="color:#b58900;font-size:28px;font-family:Consolas,monospace">' + paidAll + '</span> <span style="color:rgba(251,233,188,0.50);font-size:22px;font-family:Consolas,monospace">+</span> <span style="color:#859900;font-size:28px;font-family:Consolas,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji">' + free + '</span></div>';
 
-    _$lvTip.innerHTML = line1 + line2;
+    _$lvTip.innerHTML = line1 + line1b + line2;
     _$lvTip.style.left = (cx - _$lvTip.offsetWidth / 2) + 'px';
     _$lvTip.style.top = (rect.bottom + 4) + 'px';
     _$lvTip.style.display = '';

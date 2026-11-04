@@ -32,8 +32,11 @@ test('引导确认回合：确认指令只活在请求副本（禁写会话）',
 
 test('引导确认回合：引导原文以 [GUIDE] 用户消息永久入会话（_injected → 恢复渲染引导块）', () => {
   const seg = ackBlock();
-  const m = seg.match(/self\.conversation\.push\(\{ role: 'user', content: '\[GUIDE\] ' \+ _guideText, _injected: true/);
-  assert.ok(m, "引导原文必须以 { role:'user', content:'[GUIDE] '+_guideText, _injected:true } 入会话");
+  // 对象形态守恒（变量名可重构：内联字面量或 _guideMsg 均可，字段与值必须逐字如此）
+  const shape = /\{ role: 'user', content: '\[GUIDE\] ' \+ _guideText, _injected: true/;
+  assert.ok(shape.test(seg), "引导原文必须以 { role:'user', content:'[GUIDE] '+_guideText, _injected:true } 形态存在");
+  assert.ok(/self\.conversation\.push\(\s*_guideMsg\s*\)/.test(seg) || /self\.conversation\.push\(\{\s*role: 'user', content: '\[GUIDE\] '/.test(seg),
+    '引导原文必须 push 进 self.conversation');
   assert.ok(seg.indexOf('self.conversation.pop()') === -1, '确认回合禁再 pop 会话（原实现 pop 掉原文 = 引导语义丢失）');
 });
 

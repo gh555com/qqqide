@@ -495,13 +495,28 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         }
         return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason, _truncatedByError: _hadSseError, _sseErrorCode: _sseErrorCode };
     }
-    // 仅有 usage 无内容 → 上游可能拒绝了请求（上下文超限等）
+    // 仅有 usage 无内容 → 必须分两类，别一律当「上游拒绝」（2026-11-03 q41 f3 实证：
+    //   上游 200 正常收流、completion_tokens=682 真实产出、prompt 仅 13775（离 1M 墙十万八千里），
+    //   却被判定成「upstream likely rejected request」→ 弹组自愈白扔一组历史 + 重发数万 token）
+    //   ① completion_tokens=0，或 prompt 已贴近窗口上限 = 真·上下文静默拒绝 → 保留 400 弹组自愈
+    //   ② completion_tokens>0 且 prompt 远离上限 = 上游确实产出了 token，只是没落进 content
+    //      （思考占满/内部块被剥离/…）→ 与上下文无关，只走干净重试，禁动 conversation
     if (_usage && _usage.prompt_tokens) {
-        var _msg = '⚠ SSE ended with usage only, no content — upstream likely rejected request (prompt_tokens=' + _usage.prompt_tokens + ' total_tokens=' + (_usage.total_tokens || '?') + ' completion_tokens=' + (_usage.completion_tokens || '?') + ')';
+        var _gen = _usage.completion_tokens || 0;
+        var _reasonChars = (reasoningContent || '').length;
+        var _rawTail = (stripper.raw || '').slice(-160).replace(/\x0a/g, '⏎');
+        var _why = _gen > 0
+            ? ('upstream produced ' + _gen + ' completion tokens but none reached content — reasoning=' + _reasonChars + ' chars, finish=' + (_finishReason || '?') + ', raw tail=' + (_rawTail || '∅') + ')')
+            : ('upstream returned usage only, zero completion tokens (prompt_tokens=' + _usage.prompt_tokens + ', finish=' + (_finishReason || '?') + ')');
+        var _msg = '⚠ SSE ended with usage only, no content — ' + _why;
         self._log(_msg);
         if (typeof self._writeFileLog === 'function') self._writeFileLog(_msg);
-        // ★ 设 _lastGatewayError=400，触发 agent-loop auto-repair：弹掉最后一组 assistant+tool 减轻上下文后重试
-        self._lastGatewayError = 400;
+        var _ctxCap = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
+        var _nearCap = _usage.prompt_tokens >= Math.floor(_ctxCap * 0.6);
+        if (_gen === 0 || _nearCap) {
+            // ★ 设 _lastGatewayError=400，触发 agent-loop auto-repair：弹掉最后一组 assistant+tool 减轻上下文后重试
+            self._lastGatewayError = 400;
+        }
         // ★ 2026-08-14 q145 f5：同时写 _lastGatewayMessage —— 修复耗尽后最终报错不再退化为泛化 "Unexpected response"
         self._lastGatewayMessage = _msg;
         // ★ 用 API 返回的真实 token 数更新计数器，供压缩守护准确判断（不用客户端估算值）

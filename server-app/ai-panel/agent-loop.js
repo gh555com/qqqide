@@ -633,7 +633,10 @@ var AgentLoop = (function () {
                     //      引导语义只剩 AI 的转述（用户说 A，模型记成 B 就永久跑偏）；
                     //   ② 请求尾恒为 user 消息，绝不制造「assistant 尾」的畸形请求；
                     //   ③ _injected → 恢复渲染为「引导信息」块（card-pool 白名单）。
-                    self.conversation.push({ role: 'user', content: '[GUIDE] ' + _guideText, _injected: true, _floor: self._ctx.totalFloors });
+                    //   ④ 本条 = 引导事件的唯一 UI 真理源：确认回复文本回挂 _guideAckText，
+                    //      红条/绿条成对还原（终稿 innerHTML 重写、切卡重建、重启均不丢）。
+                    var _guideMsg = { role: 'user', content: '[GUIDE] ' + _guideText, _injected: true, _floor: self._ctx.totalFloors };
+                    self.conversation.push(_guideMsg);
 
                     if (_ackResp && _ackResp.content) {
                         // ★ 防御：剥离 XML 标签（<thinking> <qqq_tool_call> 等）
@@ -646,6 +649,9 @@ var AgentLoop = (function () {
                             .replace(/\n{3,}/g, '\n\n')
                             .trim();
                         if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
+                        // ★ UI 纪要与「入不入会话」解耦：确认文本恒挂引导条目（_guideAckText），
+                        //   渲染端只认这一处 → 无论确认消息是否入会话，绿条都能随终稿重写完整还原。
+                        _guideMsg._guideAckText = _cleanAck;
                         // ★ 回传铁律（引导双连必死的根因）：请求携带 tools 时，本轮在飞链上的 assistant 消息
                         //   必须原样带回 reasoning_content —— 缺它上游必然 400「reasoning_content must be
                         //   passed back」。确认回复没带推理 → 只做 UI 纪要 + houses 归档，绝不入会话
@@ -803,7 +809,12 @@ var AgentLoop = (function () {
                     // ★ 预算计数（非一击即死）：旧实现 `!opts._repairAttempted` 一楼层只允许修一次 →
                     //   同因二次 400 直接判死楼层（引导双连必死的主因：第二发引导触发同型 400 时
                     //   已无修复预算）。现按次数计，上限 3。
-                    if (ContentGateway.HttpError.isAutoRepairable(self._lastGatewayError) && (opts._repairCount || 0) < 3) {
+                    // ★ 2026-11-03 上游过载（502/503/504）与对话内容无关 —— 禁走「弹组修复」：
+                    //   旧行为每遇一次 503 就删掉最后一组 assistant+tool 并整段重发（数万 token），
+                    //   而病因在供应商侧拥堵，砍历史只会毁掉上下文、下一发照样 503。
+                    //   重试/切线路由网关层照旧，此处只把「改对话」这条路彻底排除。
+                    if (!ContentGateway.HttpError.isGatewayDown(self._lastGatewayError)
+                        && ContentGateway.HttpError.isAutoRepairable(self._lastGatewayError) && (opts._repairCount || 0) < 3) {
                         opts._repairCount = (opts._repairCount || 0) + 1;
                         self._lastGatewayError = 0;
                         // ★ 推理回传真因（上游原文点名 reasoning_content）→ 精确修复：摘掉本轮

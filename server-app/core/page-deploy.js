@@ -90,8 +90,12 @@
     }
 
     // ── 发布根的哈希（"这个文件夹是否已发布"的唯一判据；明文路径永不上服务器）──
+    //   大小写仅 Windows 形态路径归一（盘符/反斜杠）—— POSIX 上 /a/Proj 与 /a/proj 是两个不同目录，
+    //   降大小写 = 误判「已发布」（判据用形态而非平台探测，同 share-machine.keyPath）。
     function rootKeyOf(root) {
-        var norm = toSlash(root).replace(/\/+$/, '').toLowerCase();
+        var raw = String(root || '');
+        var norm = toSlash(root).replace(/\/+$/, '');
+        if (raw.indexOf('\\') >= 0 || /^[A-Za-z]:\//.test(norm)) { norm = norm.toLowerCase(); }
         return sha256Hex(norm).then(function (h) { return h ? h.slice(0, 24) : ''; }, function () { return ''; });
     }
     function sha256Hex(s) {

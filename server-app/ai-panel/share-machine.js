@@ -312,10 +312,11 @@
     // ── 图片引用（唯一的图片形态） ─────────────────────────────────────
     // ref = {kind:'b64'|'path'|'floor', v, mime, name, ctx?}
     // ★ 本机图片目的地（唯一正则）：三种合法写法都必须认——漏认的后果不是报错，而是图片被脱敏
-    //   规则（win-path / file-url）换成占位符后静默消失：
+    //   规则（win-path / unix-home）换成占位符后静默消失：
     //     ① ![](file:///E:/a.png)   ② ![](<file:///E:/a b.png>)（CommonMark 尖括号，路径带空格/中文）
     //     ③ ![](E:/a.png) / ![](E:\a.png)（模型漏写 file:/// 的裸盘符路径）
-    var FILE_MD_RE = /!\[([^\]]*)\]\(\s*(?:<([^>]+)>|(file:\/\/\/[^)]+?|file:\/\/[^)]+?|[A-Za-z]:[\\/][^)]+?))\s*\)/gi;
+    //     ④ ![](/Users/q/a.png) / ![](/home/q/a.png)（POSIX 家目录绝对路径——旧分母脱敏必吃）
+    var FILE_MD_RE = /!\[([^\]]*)\]\(\s*(?:<([^>]+)>|(file:\/\/\/[^)]+?|file:\/\/[^)]+?|[A-Za-z]:[\\/][^)]+?|\/(?:Users|home)\/[^)]+?))\s*\)/gi;
 
     // 捕获组归一：m[2] = <…> 内文，m[3] = 裸写法
     function pickDest(br, plain) {
@@ -350,14 +351,23 @@
         if (/^data:image\//i.test(src)) return { kind: 'b64', v: String(src).split(',')[1] || '', mime: dataUrlMime(src), name: name };
         if (/^file:\/\//i.test(src)) { var fp = fileURLToPath(src); return { kind: 'path', v: fp, mime: mimeOfExt(fp), name: (name === 'image' ? baseName(fp) : name) || 'image' }; }
         if (/^[A-Za-z]:[\\/]/.test(src)) return { kind: 'path', v: src, mime: mimeOfExt(src), name: baseName(src) };
+        if (/^\/(?:Users|home)\//.test(src)) return { kind: 'path', v: src, mime: mimeOfExt(src), name: baseName(src) };
         if (/^https?:/i.test(src)) return null;   // 已是公网地址 → 原样保留，不进资产域
         if (ds.fileName) return { kind: 'floor', v: ds.fileName, mime: mimeOfExt(ds.fileName), name: ds.fileName, ctx: floorCtxOf(msgEl, imgEl) };
         return null;
     }
 
-    // 键归一：Windows 路径不分大小写、斜杠两种写法 → 同一张图必须只算一次（否则缩略图重复、
-    // 正文里出现两遍、字节账翻倍）。禁把归一值当路径用（读取永远走 ref.v 原值）。
-    function keyPath(p) { return String(p == null ? '' : p).replace(/\\/g, '/').toLowerCase(); }
+    // 键归一：斜杠两种写法 → 同一张图必须只算一次（否则缩略图重复、正文里出现两遍、字节账翻倍）。
+    //   大小写归一**只对 Windows 形态路径**（盘符 / 反斜杠）——那才是「卷不区分大小写」的语义。
+    //   POSIX 绝对路径（/ 开头）恒不降大小写：/a/A.png 与 /a/a.png 是两个真实文件，降了 = 静默丢图。
+    //   判据用路径形态而非平台探测（同步函数拿不到异步 bootInfo；且形态本身就是卷语义的直接证据）。
+    //   禁把归一值当路径用（读取永远走 ref.v 原值）。
+    function keyPath(p) {
+        var raw = String(p == null ? '' : p);
+        var s = raw.replace(/\\/g, '/');
+        var winShape = raw.indexOf('\\') >= 0 || /^[A-Za-z]:\//.test(s);
+        return winShape ? s.toLowerCase() : s;
+    }
 
     function refKey(ref) {
         if (!ref) return '';

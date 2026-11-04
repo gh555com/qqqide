@@ -172,3 +172,63 @@ export async function faLinuxApply(exts: string[], opts?: FaLinuxOpts): Promise<
     try { fs.rmSync(probeDir, { recursive: true, force: true }); } catch { /* ignore */ }
     return { ok: taken > 0, code: taken === list.length ? undefined : 'partial', total: list.length, taken, fails };
 }
+
+/**
+ * 逐扩展真实归属（只读；`1 by 1` 明细的角标真相）。权威源 = 同一套 xdg 工具：
+ *   taken = 当前默认就是我方桌面条目（xdg-mime query default）
+ *   cand  = 我方条目已声明该 MIME（在「打开方式」候选面）但它不是默认
+ *   free  = 两不沾
+ * 禁猜：探针解析不到 MIME 的扩展恒 free（与 Windows/mac 同口径——面板如实不画角标）。
+ */
+export async function faLinuxState(exts: string[], opts?: FaLinuxOpts): Promise<{ ok: boolean; code?: string; states: Record<string, string>; err?: string }> {
+    if (process.platform !== 'linux') { return { ok: false, code: 'unsupported', states: {} }; }
+    const o = opts || {};
+    const desktopId = o.desktopId || DESKTOP_ID;
+    const neverTake = o.neverTake || NEVER_TAKE;
+    const list = (exts || []).filter((e) => /^\.[a-z0-9]+$/i.test(e));
+    if (list.length === 0) { return { ok: true, states: {} }; }
+    const appsDir = path.join(os.homedir(), '.local', 'share', 'applications');
+
+    // ① 我方桌面条目已声明的 MIME 集合（候选面真相：声明了才会出现在「打开方式」列表）
+    const declared = new Set<string>();
+    try {
+        const raw = fs.readFileSync(path.join(appsDir, desktopId), 'utf8');
+        for (const line of raw.split('\n')) {
+            if (line.indexOf('MimeType=') === 0) {
+                for (const m of line.slice(9).split(';')) { const t = m.trim(); if (t) { declared.add(t); } }
+            }
+        }
+    } catch { /* 条目不存在 = 全 free */ }
+
+    // ② 探针→MIME（与 apply 同法：探针内容为纯文本，否则全被归成 octet-stream）
+    const probeDir = path.join(os.tmpdir(), 'qqqide-fa-lnx-state');
+    try { fs.rmSync(probeDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    try { fs.mkdirSync(probeDir, { recursive: true }); } catch { /* ignore */ }
+    for (const e of list) { try { fs.writeFileSync(path.join(probeDir, 'probe' + e), PROBE_CONTENT); } catch { /* ignore */ } }
+    const types = await Promise.all(list.map((e) => _run('xdg-mime', ['query', 'filetype', path.join(probeDir, 'probe' + e)], 8000)));
+    const mimeOf: Record<string, string> = {};
+    const uniq: string[] = [];
+    for (let i = 0; i < list.length; i++) {
+        const mime = String(types[i].out || '').trim().split('\n')[0].trim();
+        let hit = '';
+        if (types[i].code === 0 && mime.indexOf('/') > 0 && neverTake.indexOf(mime) < 0) { hit = mime; }
+        else if (MIME_FALLBACK[list[i]]) { hit = MIME_FALLBACK[list[i]]; }
+        if (hit) { mimeOf[list[i]] = hit; if (uniq.indexOf(hit) < 0) { uniq.push(hit); } }
+    }
+    try { fs.rmSync(probeDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
+    // ③ 逐 MIME 查当前默认条目（并行；按 mimeapps.list + 系统级同口径）
+    const cur = await Promise.all(uniq.map((m) => _run('xdg-mime', ['query', 'default', m], 8000)));
+    const defOf: Record<string, string> = {};
+    for (let i = 0; i < uniq.length; i++) { defOf[uniq[i]] = (cur[i].code === 0) ? String(cur[i].out || '').trim() : ''; }
+
+    const states: Record<string, string> = {};
+    for (const e of list) {
+        const m = mimeOf[e];
+        if (!m) { states[e] = 'free'; continue; }
+        if (defOf[m] === desktopId) { states[e] = 'taken'; }
+        else if (declared.has(m)) { states[e] = 'cand'; }
+        else { states[e] = 'free'; }
+    }
+    return { ok: true, states };
+}

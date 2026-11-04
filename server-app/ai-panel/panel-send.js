@@ -748,11 +748,13 @@ document.addEventListener('qqq-ai-attach', function (e) {
 //   ③ 活跃看门狗：只在「见过连发/补发继续事件」的机器上武装——继续事件断绝 >1.8s 即判定真松开
 //      （无连发机器永不武装，保住自驱节拍原样）。
 //   ④ 意图救援：焦点落入任何编辑控件 / 面板内任意按下 → 立即硬停。
-// ★ 悬浮预览层（主窗口）打开期间：面板快捷键整体让路——q/w 反向转发给预览层翻页，1/2 吞（2026-10-05 用户定案）；
-//   层状态由主窗口广播 qqqide-overlay-state（详 core/shell-overlay.js _ovClaimFocus/_ovBroadcastState）。
+// ★ 悬浮预览层（主窗口）打开期间：被层遮住的面板快捷键让路——q/w 反向转发给预览层翻页，1/2 吞（2026-10-05 用户定案）；
+//   ★ 盾按几何分派（2026-11-03 用户实锤「层里按 1/2/q/w 全死」）——层覆盖域 = #qqq-main，翼板面板不被遮 →
+//   消息带 shield:false → 1/2 滚动 + q/w 跳楼照旧作用于本面板（开层 + 暴露焦点面板并行可用）；
+//   缺 field=旧层（按旧行为全盾）。层状态由主窗口广播 qqqide-overlay-state（详 core/shell-overlay.js _ovClaimFocus/_ovBroadcastState）。
 var _ovShield = false;
 window.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'qqqide-overlay-state') _ovShield = !!e.data.open;
+    if (e.data && e.data.type === 'qqqide-overlay-state') _ovShield = !!e.data.open && e.data.shield !== false;
 });
 var _HOLD_KEYS = { '1': 1, '2': 1, 'q': 1, 'w': 1 };
 var _holdKey = null;          // 当前连发键（含结算期，直到彻底收工才置空）
@@ -1003,33 +1005,55 @@ window.addEventListener('beforeunload', function () {
     }
 });
 
-// ═══ 引导块恢复：扫描 conversation 中 _guideAck 消息，重建 DOM 引导块 ═══
-// ★ 方案 C 根治：onDone 的 innerHTML=renderMarkdown(content) 会摧毁建楼期间 DOM 追加的引导块；
-//    ai_html 保存的也是摧毁后的 DOM → 重启后引导块 100% 丢失。
-//    此函数同时在 onDone 和 _buildFloorDOM 两处调用，确保引导块永不丢失。
+// ═══ 引导块恢复：从 conversation 重建 DOM 引导块（幂等） ═══
+// ★ 根因：onDone 的 innerHTML=renderMarkdown(content) 会摧毁建楼期间 DOM 追加的引导块，
+//    ai_html 捕获的也是摧毁后的 DOM → 只靠 DOM 快照时引导块必丢。
+// ★ 唯一真理源 = conversation 里的引导条目（_injected user）：引导原文 + 确认回复（_guideAckText）
+//    同挂一条 → 红条/绿条成对还原；旧楼层（确认消息自带绿条）走 _guideAck 分支兜底。
+//    onDone / _buildFloorDOM 两处调用；按 data-guide-idx（会话下标）去重，可反复调用。
 function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
     if (!contentWrap || !conv || !conv.length) return;
-    // ★ 去重：引导块已存在则跳过（_buildConversationFlowHtml 已含时不重复追加）
-    if (contentWrap.querySelector('.msg-flow-guide-inject') || contentWrap.querySelector('.msg-flow-guide-ack')) return;
+    // ★ 现场块（引导点击瞬间建、无 data-guide-idx）仍在 → 它就是本层真理，不重复补
+    if (contentWrap.querySelector('.msg-flow-guide-inject:not([data-guide-idx]), .msg-flow-guide-ack:not([data-guide-idx])')) return;
     var escFn = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    var _mkInject = function (idx, text) {
+        var el = document.createElement('div');
+        el.className = 'msg-flow-guide-inject';
+        el.setAttribute('data-guide-idx', idx);
+        el.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> ' + escFn(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + escFn(text) + '</div>';
+        return el;
+    };
+    var _mkAck = function (idx, text) {
+        var el = document.createElement('div');
+        el.className = 'msg-flow-guide-ack';
+        el.setAttribute('data-guide-idx', idx);
+        var _t = String(text || '').replace(/^\u2705\s*/, '').trim();
+        el.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">\u2705</span> ' + escFn(_qq('ai.guideAck', '已收到引导')) + '</div><div class="msg-flow-guide-ack-body">' + escFn(_t || _qq('ai.guideAck', '已收到引导')) + '</div>';
+        return el;
+    };
+    var frag = document.createDocumentFragment();
+    var paired = false;   // 引导条目已自带绿条 → 紧随的确认会话消息不重复渲染
     for (var i = 0; i < conv.length; i++) {
         var m = conv[i];
-        if (!m || !m._guideAck) continue;
-        if (m._floor !== floorNum) continue;
-        // 引导确认块（✅）— 先插入，作为锚点
-        var ackText = (m.content || _qq('ai.guideAck', '已收到引导')).replace(/^\u2705\s*/, '').trim();
-        var ackEl = document.createElement('div');
-        ackEl.className = 'msg-flow-guide-ack';
-        ackEl.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">\u2705</span> ' + escFn(_qq('ai.guideAck', '已收到引导')) + '</div><div class="msg-flow-guide-ack-body">' + escFn(ackText || _qq('ai.guideAck', '已收到引导')) + '</div>';
-        contentWrap.insertBefore(ackEl, contentWrap.firstChild);
-        // 引导注入块（⚡）— 插入到 ackEl 之前 → 红条在绿条上方
-        if (m._guideText) {
-            var injectEl = document.createElement('div');
-            injectEl.className = 'msg-flow-guide-inject';
-            injectEl.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> ' + escFn(_qq('ai.guideInfo', '引导信息')) + '</div><div class="msg-flow-guide-body">' + escFn(m._guideText) + '</div>';
-            contentWrap.insertBefore(injectEl, ackEl);
+        if (!m || m._floor !== floorNum) continue;
+        var idx = String(i);
+        if (m._injected && m.role === 'user') {
+            var injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '').trim();
+            if (injText && !contentWrap.querySelector('[data-guide-idx="' + idx + '"]')) frag.appendChild(_mkInject(idx, injText));
+            if (m._guideAckText) {
+                if (!contentWrap.querySelector('[data-guide-idx="' + idx + 'a"]')) frag.appendChild(_mkAck(idx + 'a', m._guideAckText));
+                paired = true;
+            }
+        } else if (m._guideAck && m.role === 'assistant') {
+            if (paired) { paired = false; continue; }
+            if (contentWrap.querySelector('[data-guide-idx="' + idx + '"]')) continue;
+            frag.appendChild(_mkAck(idx, m.content));
         }
     }
+    if (!frag.childNodes.length) return;
+    // 插到已有引导块之前（保持对话顺序），无则插到最前——引导恒在终稿正文之前
+    var _firstGuide = contentWrap.querySelector('.msg-flow-guide-inject, .msg-flow-guide-ack');
+    contentWrap.insertBefore(frag, _firstGuide || contentWrap.firstChild);
 }
 
 // ═══ 子弹按钮 — 粘贴板→磁盘文件→编辑框 📎 注入 ═══

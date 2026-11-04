@@ -264,6 +264,24 @@ try:
 except Exception as e:
     check(False, 'run-machine readable (%s)' % e)
 
+# ── 路径域 POSIX 防线（分享附图目的地 / 去重键 / 发布根键 / 编辑器域状态三平台）──
+try:
+    _sm = tf.extractfile(EP + 'webapp/ai-panel/share-machine.js').read().decode('utf-8', 'replace')
+    check('(?:Users|home)' in _sm, 'share-machine: POSIX home paths accepted as image destinations')
+    check('winShape' in _sm, 'share-machine: key normalization by path shape (POSIX keeps case)')
+except Exception as e:
+    check(False, 'share-machine readable (%s)' % e)
+try:
+    _pd = tf.extractfile(EP + 'webapp/core/page-deploy.js').read().decode('utf-8', 'replace')
+    check('winShape' in _pd or 'A-Za-z]:\\/' in _pd, 'page-deploy: root key normalization by path shape')
+except Exception as e:
+    check(False, 'page-deploy readable (%s)' % e)
+try:
+    _fal = tf.extractfile(EP + 'shell-out/main.js').read().decode('utf-8', 'replace')
+    check('faLinuxState' in _fal or 'xdg-mime' in _fal, 'shell: linux editor-assoc state reader bundled')
+except Exception as e:
+    check(False, 'shell-out main.js readable (%s)' % e)
+
 # ── factory_version（发布闸门会再比对源码版本）──
 fv = None
 try:
