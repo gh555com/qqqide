@@ -190,13 +190,12 @@ body{font-family:system-ui,-apple-system,sans-serif,Segoe UI Emoji,Apple Color E
 /* 用户气泡内粘贴图片约束 */
 .msg-user img{max-width:100%;height:auto;display:block;border-radius:4px}
 .msg-img-wrap{display:inline-block;position:relative;max-width:100%}
-/* ── 楼层动作组（复制 / 分享）：只活在 az 行（时钟行）内、紧贴收藏星标左侧；严禁 position:sticky（会在正文前造一条行盒 = 问与答之间的空隙） ──
-   ★ 三钮（复制·分享·☆收藏）恒显（非 hover 显隐）· 同网格同笔触同尺寸（图标唯一真源 qqq-icons 的 act-* 三件套）·
+/* ── 楼层动作行（复制 · 分享 · ☆收藏 · 生成来源标识）：恒在时钟行上方、自最左端起排；严禁 position:sticky（会在正文前造一条行盒 = 问与答之间的空隙） ──
+   ★ 四件恒显（非 hover 显隐）· 三钮同网格同笔触同尺寸（图标唯一真源 qqq-icons 的 act-* 三件套）·
    配色与星标同源（同一套灰阶，无第二套配色）。
-   ★ 位置契约：收藏钮的居中位由 .msg-ai-fav 的 auto 外边距维持（= 历史位置）；动作组绝对定位挂其左缘外侧——
-     零布局占位、不推动星标与 ge。禁把 auto 外边距挪回动作组（一挪星标就偏右，已返工一次）。 */
-.msg-ai-fav{position:relative;display:inline-flex;align-items:center;flex-shrink:0;margin:0 auto}
-.msg-ai-fav>.msg-ai-acts{position:absolute;right:100%;top:50%;transform:translateY(-50%);margin-right:2px}
+   ★ 位置契约：动作行 = .ai-acts-row，子节点序恒「.msg-ai-acts（复制→分享）· ☆收藏 · .ai-gen-mark（生成来源标识整句）」，整行左对齐；
+     时钟/饼图/ge 在下方 .ai-az-row（ge 恒贴右端）。改顺序 = 改该行子节点序（panel-clock.js _initClockBlock 唯一构建点）。 */
+.ai-acts-row{display:flex;align-items:center;gap:6px;min-height:26px}
 .msg-ai-acts{display:flex;align-items:center;gap:2px;flex-shrink:0}
 .msg-ai-copy,.msg-ai-share{width:26px;height:26px;font-size:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:0;cursor:pointer;color:rgba(0,0,0,0.16);flex-shrink:0;transition:color .15s}
 /* 悬停只变粗 + 变深，恒无底色块（hover 禁出现方形背景） */
@@ -325,7 +324,8 @@ body{font-family:system-ui,-apple-system,sans-serif,Segoe UI Emoji,Apple Color E
 a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animation:recovery-bounce 0.55s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:middle;pointer-events:none}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
-.msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
+.msg-ai-clock{display:flex;flex-direction:column;align-items:stretch;padding:8px 0 0;user-select:none}
+.ai-az-row{display:flex;align-items:center;gap:8px;margin-top:2px}
 .msg-ai-clock .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;font-weight:700;color:#000;line-height:1;flex-shrink:0}
 [data-theme="dark"] .msg-ai-clock .clock{color:#fff}
 /* 流式态动态颜色：AI思考=绿 / 工具执行=黄 / 网络=红 */
@@ -339,9 +339,14 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 .msg-ai-clock .clock-min{font-size:48px}
 .msg-ai-clock .clock-sec{font-size:24px}
 .msg-ai-clock canvas{width:42px;height:42px;border-radius:50%;flex-shrink:0}
-.msg-ai-clock .clock-cost{font-family:ui-monospace,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;font-weight:700;font-size:18px;flex-shrink:0}
-/* 楼层收藏星标：居中由外层 .msg-ai-fav 的 auto 外边距决定（本钮自身零外边距）；未收藏低对比 / 已收藏金色 */
-.msg-ai-clock .clock-fav{border:none;background:none;padding:0 4px;font-size:26px;line-height:1;display:inline-flex;align-items:center;color:rgba(0,0,0,0.16);flex-shrink:0;margin:0;transition:color 0.15s}
+.msg-ai-clock .clock-cost{font-family:ui-monospace,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;font-weight:700;font-size:18px;flex-shrink:0;margin-left:auto}
+/* 生成合成内容显式标识（动作行末、三钮之后）：行内恒显的整句灰字「内容由人工智能生成」。
+   ★ 恒显不隐藏、不进 hover——显式标识要求用户可直接感知（备案佐证截图直接截这一行）；
+   flex-shrink:0 不挤出可视区；文案走 i18n（data-i18n，缺键时 updateDom 保留中文回退） */
+.msg-ai-clock .ai-gen-mark{font-size:12px;line-height:1;color:rgba(0,0,0,0.32);flex-shrink:0;white-space:nowrap;cursor:default;letter-spacing:.2px}
+[data-theme="dark"] .msg-ai-clock .ai-gen-mark{color:rgba(255,255,255,0.30)}
+/* 楼层收藏星标：动作行第三件，与复制/分享同 26px 盒（padding 0）；未收藏低对比 / 已收藏金色 */
+.msg-ai-clock .clock-fav{border:none;background:none;padding:0;width:26px;height:26px;font-size:26px;line-height:1;display:inline-flex;align-items:center;justify-content:center;color:rgba(0,0,0,0.16);flex-shrink:0;margin:0;transition:color 0.15s}
 [data-theme="dark"] .msg-ai-clock .clock-fav{color:rgba(255,255,255,0.18)}
 .msg-ai-clock .clock-fav:hover{color:rgba(0,0,0,0.65)}
 [data-theme="dark"] .msg-ai-clock .clock-fav:hover{color:rgba(255,255,255,0.75)}
@@ -483,10 +488,10 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 /* ★ 图片底部三按钮 mem/file/path（2026-09-24）——位置=底部正中（.img-info 左侧）；纯英文零 i18n；与悬浮预览层三按钮同款复制功能 */
 .img-act-bar{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:inline-flex;gap:4px;opacity:0;pointer-events:none;z-index:5;transition:opacity 0.08s 0s}.table-wrap:hover .img-act-bar{opacity:1;pointer-events:auto}
 .img-act-bar .img-act-btn{display:inline-flex;align-items:center;justify-content:center;height:22px;padding:0 10px;box-sizing:border-box;font-size:11px;line-height:1;color:#fff;background:rgba(0,0,0,0.7);border-radius:3px;user-select:none;white-space:nowrap}.img-act-bar .img-act-btn:hover{background:var(--orange,#cb4b16)}
-/* ★ 代码框复制按钮（2026-10-02 用户定案）——位置=代码框底部正中（与图片三按钮同位）；图标=面包屑复制钮同款（qqq-icons 手绘 SVG qqi-copy；纯图标零 i18n） */
-.code-copy-btn{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:inline-flex;align-items:center;justify-content:center;height:22px;padding:0 10px;box-sizing:border-box;font-size:13px;line-height:1;color:#fff;background:rgba(0,0,0,0.7);border-radius:3px;opacity:0;pointer-events:none;user-select:none;z-index:5;transition:opacity 0.08s 0s}
-.table-wrap:hover .code-copy-btn{opacity:1;pointer-events:auto}
-.code-copy-btn:hover{background:var(--orange,#cb4b16)}.table-wrap.img-wrap{border:none;background:transparent;margin:8px 0}.table-inner{overflow-x:auto;padding:8px 10px}.table-inner table{width:auto;min-width:100%;font-size:13px}.table-inner th,.table-inner td{padding:4px 8px;text-align:left;white-space:nowrap}.table-wrap>pre{border:none;margin:0;border-radius:0;background:transparent}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
+/* ★ 块复制按钮（代码框 / 表格）——位置=块底部正中（与图片三按钮同位）；图标=面包屑复制钮同款（qqq-icons 手绘 SVG qqi-copy；纯图标零 i18n） */
+.block-copy-btn{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:inline-flex;align-items:center;justify-content:center;height:22px;padding:0 10px;box-sizing:border-box;font-size:13px;line-height:1;color:#fff;background:rgba(0,0,0,0.7);border-radius:3px;opacity:0;pointer-events:none;user-select:none;z-index:5;transition:opacity 0.08s 0s}
+.table-wrap:hover .block-copy-btn{opacity:1;pointer-events:auto}
+.block-copy-btn:hover{background:var(--orange,#cb4b16)}.table-wrap.img-wrap{border:none;background:transparent;margin:8px 0}.table-inner{overflow-x:auto;padding:8px 10px}.table-inner table{width:auto;min-width:100%;font-size:13px}.table-inner th,.table-inner td{padding:4px 8px;text-align:left;white-space:nowrap}.table-wrap>pre{border:none;margin:0;border-radius:0;background:transparent}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
 
 .ctx-files span{background:var(--card-bg);padding:1px 6px;border-radius:3px;margin-right:4px}
 /* 排队信封 — 背包卡片 */

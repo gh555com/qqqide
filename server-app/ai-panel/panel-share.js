@@ -290,6 +290,8 @@
 
             imgsBlock() +
 
+            '<div class="sh-note">' + esc(T('ai.share.aiMark', '对外发布时请标注：内容由人工智能生成')) + '</div>' +
+
             '<div class="sh-report" id="sh-report"></div>' +
             '</div></div>' +
             '<div class="sh-ft">' +

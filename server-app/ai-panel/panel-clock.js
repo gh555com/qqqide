@@ -321,10 +321,11 @@ function _initClockBlock(aiDiv) {
     if (aiDiv._clockBlock) return;
     var block = document.createElement('div');
     block.className = 'msg-ai-clock';
-    // ★ az 行布局：时间 · 饼图 ·〔复制 分享 ☆收藏〕· ge。
-    //   位置契约：收藏钮的居中位 = .msg-ai-fav 的 auto 外边距（历史位，禁把 auto 挪回动作组——挪了星标就偏右）；
-    //   动作组绝对定位挂星标左缘外侧（零布局占位，不推动星标与 ge）；ge 恒贴右端。
-    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="msg-ai-fav"><span class="msg-ai-acts"></span><button type="button" tabindex="-1" class="clock-fav"><span class="qqi qqi-act-star"></span></button></span><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;font-weight:700;font-size:18px;color:var(--text-primary)">0.00 ge</span>';
+    // ★ 两层结构（恒此顺序）：
+    //   ① .ai-acts-row 动作行（在时钟行上方、自最左边起）：〔复制 分享〕· ☆收藏 · 生成来源标识
+    //   ② .ai-az-row 时钟行：时间 · 饼图 · ge（ge 恒贴右端，margin-left:auto）
+    //   插入点/顺序契约唯一构建点 = 本行；其他模块禁自建第二套。
+    block.innerHTML = '<div class="ai-acts-row"><span class="msg-ai-acts"></span><button type="button" tabindex="-1" class="clock-fav"><span class="qqi qqi-act-star"></span></button><span class="ai-gen-mark" data-i18n="ai.share.genmark">内容由人工智能生成</span></div><div class="ai-az-row"><span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;font-weight:700;font-size:18px;color:var(--text-primary)">0.00 ge</span></div>';
     aiDiv.appendChild(block);
     aiDiv._clockBlock = block;
     aiDiv._clockMin = block.querySelector('.clock-min');
@@ -334,8 +335,8 @@ function _initClockBlock(aiDiv) {
     aiDiv._clockFav = block.querySelector('.clock-fav');
     // ★ 楼层收藏：星标接线（panel-fav.js 唯一实现）——建楼/历史恢复两条路径同此一处汇入
     try { if (typeof window._favHookStar === 'function') window._favHookStar(aiDiv); } catch (_eFav) { }
-    // ★ 楼层动作：复制/分享归位到 az 行（panel-render.js _ensureAiActs 唯一实现）
-    //   历史恢复路径会在时钟创建前先挂过一份独立动作组 → 这里就地收养并迁移进时钟行。
+    // ★ 楼层动作：复制/分享归位到动作行 .ai-acts-row（panel-render.js _ensureAiActs 唯一实现）
+    //   历史恢复路径会在时钟创建前先挂过一份独立动作组 → 这里就地收养并迁移进动作行。
     try { if (typeof _ensureAiActs === 'function') _ensureAiActs(aiDiv); } catch (_eActs) { }
     var clockCost = aiDiv._clockCost;
     clockCost.addEventListener('mouseenter', function (e) {

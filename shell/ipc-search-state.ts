@@ -20,6 +20,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { ipcMain, BrowserWindow } from 'electron';
+import { hasSqliteHeaderOnDisk, writeFileDurableSync } from './db-durable';
 import { getOsBaseDir } from './portable-paths';
 
 const initSqlJs = require('sql.js');
@@ -126,12 +127,13 @@ function _saveDb(): void {
             }
         }
         // ★ 写前保留上一完好版 (.prev)
-        if (fs.existsSync(dbPath)) {
+        //   ★ 轮换闸门：主库本身不是合法 SQLite 时不许覆盖 .prev（防坏库污染好备份）
+        if (fs.existsSync(dbPath) && hasSqliteHeaderOnDisk(dbPath)) {
             fs.copyFileSync(dbPath, dbPath + '.prev');
         }
         const data = _db.export();
         const tmp = dbPath + '.tmp';
-        fs.writeFileSync(tmp, Buffer.from(data));
+        writeFileDurableSync(tmp, Buffer.from(data));
         fs.renameSync(tmp, dbPath);   // ★ 原子替换（铁律 8.2）
         _lastDiskMtime = fs.statSync(dbPath).mtimeMs;
     } catch (e: any) {

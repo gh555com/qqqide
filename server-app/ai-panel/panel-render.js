@@ -124,10 +124,10 @@ function _addCopyBtnToUserMsg(el) {
     }
 }
 
-// ═══ 楼层动作（复制 / 分享）——唯一真理机：只活在 az 行内、收藏星标左侧 ═══
+// ═══ 楼层动作（复制 / 分享）——唯一真理机：只活在动作行 .ai-acts-row 内（时钟行上方、左端起排） ═══
 // 反模式（已废，禁回潮）：① sticky 悬浮 + 插为 el 首子节点 → 正文前多出一条 22px 行盒
 //   （就是「问与答之间那条空隙」的根因）；② 追加为 el 末子节点 → 尾巴再多一条行盒。
-// 结论：按钮不属于正文流，只属于 az 行（时钟行）；一切插入点收敛到 _ensureAiActs。
+// 结论：按钮不属于正文流，只属于动作行（.ai-acts-row）；一切插入点收敛到 _ensureAiActs。
 function _mkAiCopyBtn(el) {
     var btn = document.createElement('span');
     btn.className = 'msg-ai-copy';
@@ -197,27 +197,19 @@ function _mkAiShareBtn(el) {
     return shBtn;
 }
 
-// ★ 动作组归位（幂等）：有时钟行 → 恒在时钟行内、星标左侧；无时钟行（致命楼/遗留注记）→ 自挂一行
+// ★ 动作组归位（幂等）：有时钟块 → 恒占动作行 .ai-acts-row 首位（其右恒为 ☆收藏 与生成来源标识）；
+//   无时钟块（致命楼 / 遗留注记）→ 自挂到楼层尾部。
 function _ensureAiActs(el) {
     var host = el._clockBlock || null;
+    var row = host ? host.querySelector('.ai-acts-row') : null;
     var orphan = el.querySelector(':scope > .msg-ai-acts');
-    var grp = host ? host.querySelector('.msg-ai-acts') : orphan;
-    if (host && orphan && orphan !== grp && orphan.parentNode) orphan.parentNode.removeChild(orphan);
+    var grp = row ? row.querySelector('.msg-ai-acts') : orphan;
+    if (orphan && orphan !== grp && orphan.parentNode) orphan.parentNode.removeChild(orphan);
     if (!grp) {
         grp = document.createElement('span');
         grp.className = 'msg-ai-acts';
-        if (host) {
-            // ★ 星标外层的 .msg-ai-fav 是位置保险（auto 外边距在它身上）——动作组挂它内部、星标左侧
-            var favWrap = host.querySelector(':scope > .msg-ai-fav');
-            if (favWrap) {
-                favWrap.insertBefore(grp, favWrap.firstChild);
-            } else {
-                var star = host.querySelector(':scope > .clock-fav');
-                host.insertBefore(grp, star || null);
-            }
-        } else {
-            el.appendChild(grp);
-        }
+        if (row) row.insertBefore(grp, row.firstChild);
+        else el.appendChild(grp);
     }
     if (!grp.querySelector('.msg-ai-copy')) grp.appendChild(_mkAiCopyBtn(el));
     if (!grp.querySelector('.msg-ai-share')) grp.appendChild(_mkAiShareBtn(el));

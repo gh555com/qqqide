@@ -542,15 +542,27 @@ var CardPool = (function () {
     wrap.appendChild(bar);
   }
 
-  // ★ 代码框复制按钮（2026-10-02 用户定案）——位置 = 代码框底部正中（与图片三按钮同位）；图标 = 面包屑复制钮同款（qqq-icons 手绘 SVG qqi-copy；纯图标零 i18n）；
-  //   点击 = 复制该代码块纯文本（桥 clipboard.writeText；桥缺失回落 execCommand——与面包屑复制按钮同机）；✓ 800ms 反馈后图标还原
-  function _ensureCodeCopyBtn(wrap) {
+  // ★ 块复制按钮（代码框 / 表格）——位置 = 块底部正中（与图片三按钮同位）；图标 = 面包屑复制钮同款（qqq-icons 手绘 SVG qqi-copy；纯图标零 i18n）；
+  //   点击 = 复制该块纯文本（代码框 = pre 文本；表格 = 表格可见文本，与悬浮预览层「复制到剪贴板」同源：单元格 \t / 行 \n）；
+  //   桥 clipboard.writeText；桥缺失回落 execCommand——与面包屑复制按钮同机；✓ 800ms 反馈后图标还原
+  function _blockCopyTarget(wrap) {
+    if (!wrap) return null;
+    return wrap.querySelector(':scope > pre') || wrap.querySelector(':scope > .table-inner') || wrap.querySelector(':scope > table');
+  }
+  function _blockCopyText(wrap) {
+    var t = _blockCopyTarget(wrap);
+    if (!t) return '';
+    if (t.tagName === 'PRE') return t.textContent || '';
+    return t.innerText || t.textContent || '';
+  }
+  function _ensureBlockCopyBtn(wrap) {
     if (!wrap) return;
-    if (wrap.querySelector(':scope > .code-copy-btn')) return;
-    if (!wrap.querySelector(':scope > pre')) return;  // 非代码框（表格/图片框）
+    if (wrap.querySelector(':scope > .block-copy-btn')) return;
+    var _tgt = _blockCopyTarget(wrap);
+    if (!_tgt) return;  // 非代码框/表格（图片框）
     var b = document.createElement('span');
-    b.className = 'code-copy-btn';
-    b.title = 'Copy code';
+    b.className = 'block-copy-btn';
+    b.title = _tgt.tagName === 'PRE' ? 'Copy code' : 'Copy table';
     var ico = (window.qqqIcons && window.qqqIcons.el) ? window.qqqIcons.el('copy') : (function () {
       var s = document.createElement('span'); s.className = 'qqi qqi-copy'; return s;
     })();
@@ -559,7 +571,7 @@ var CardPool = (function () {
     wrap.appendChild(b);
   }
 
-  function _codeCopyDo(btn, text) {
+  function _blockCopyDo(btn, text) {
     text = String(text || '').replace(/\n+$/, '');
     if (!text) return;
     var done = function (ok) {
@@ -655,7 +667,7 @@ var CardPool = (function () {
       if (_img && _inf) _fillImgInfo(_img, _inf);
       _ensureRoamBtn(wraps[_wi], _img);
       _ensureImgActBar(wraps[_wi], _img);
-      _ensureCodeCopyBtn(wraps[_wi]);  // ★ 代码框复制钮同机挂载（初始扫描 + Observer 双路幂等）
+      _ensureBlockCopyBtn(wraps[_wi]);  // ★ 代码框/表格复制钮同机挂载（初始扫描 + Observer 双路幂等）
     }
   }
 
@@ -971,11 +983,9 @@ var CardPool = (function () {
         if (_imgA) _imgActDo(_actBtn.getAttribute('data-act'), _imgA);
         return;
       }
-      var _codeBtn = e.target.closest('.code-copy-btn');
-      if (_codeBtn) {
-        var _wrapC = _codeBtn.closest('.table-wrap');
-        var _preC = _wrapC ? _wrapC.querySelector(':scope > pre') : null;
-        if (_preC) _codeCopyDo(_codeBtn, _preC.textContent);
+      var _copyBtn = e.target.closest('.block-copy-btn');
+      if (_copyBtn) {
+        _blockCopyDo(_copyBtn, _blockCopyText(_copyBtn.closest('.table-wrap')));
         return;
       }
       var btn = e.target.closest('.table-view-btn');
@@ -1268,11 +1278,9 @@ var CardPool = (function () {
         if (_imgA2) _imgActDo(_actBtn2.getAttribute('data-act'), _imgA2);
         return;
       }
-      var _codeBtn2 = e.target.closest('.code-copy-btn');
-      if (_codeBtn2) {
-        var _wrapC2 = _codeBtn2.closest('.table-wrap');
-        var _preC2 = _wrapC2 ? _wrapC2.querySelector(':scope > pre') : null;
-        if (_preC2) _codeCopyDo(_codeBtn2, _preC2.textContent);
+      var _copyBtn2 = e.target.closest('.block-copy-btn');
+      if (_copyBtn2) {
+        _blockCopyDo(_copyBtn2, _blockCopyText(_copyBtn2.closest('.table-wrap')));
         return;
       }
       var btn = e.target.closest('.table-view-btn');

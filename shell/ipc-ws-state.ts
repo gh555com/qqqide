@@ -25,6 +25,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { ipcMain, BrowserWindow } from 'electron';
 import { getOsBaseDir } from './portable-paths';
+import { hasSqliteHeaderOnDisk, writeFileDurableSync } from './db-durable';
 
 const initSqlJs = require('sql.js');
 
@@ -110,7 +111,7 @@ function _migrateFromAiState(): void {
         if (moved > 0 && aiData) {
             // 写回 ai.sq3（已迁移 key 删除，tmp+rename 原子，保持 ai.sq3 纯净）
             const aiTmp = aiPath + '.tmp';
-            fs.writeFileSync(aiTmp, Buffer.from(aiData));
+            writeFileDurableSync(aiTmp, Buffer.from(aiData));
             fs.renameSync(aiTmp, aiPath);
             console.log('[ws-state] migrated ' + moved + ' key(s), cleaned ' + cleanedOnly + ' stale key(s) from ai.sq3 → ws.sq3');
         }
@@ -186,12 +187,13 @@ function _saveDb(): void {
             }
         }
         // ★ 写前保留上一完好版 (.prev)
-        if (fs.existsSync(dbPath)) {
+        //   ★ 轮换闸门：主库本身不是合法 SQLite 时不许覆盖 .prev（防坏库污染好备份）
+        if (fs.existsSync(dbPath) && hasSqliteHeaderOnDisk(dbPath)) {
             fs.copyFileSync(dbPath, dbPath + '.prev');
         }
         const data = _db.export();
         const tmp = dbPath + '.tmp';
-        fs.writeFileSync(tmp, Buffer.from(data));
+        writeFileDurableSync(tmp, Buffer.from(data));
         fs.renameSync(tmp, dbPath);   // ★ 原子替换（铁律 8.2）
         _lastDiskMtime = fs.statSync(dbPath).mtimeMs;
     } catch (e: any) {

@@ -984,7 +984,7 @@
     "floorAbortedMsg": "⚠️ 楼层异常中断，对话已保存。",
     "sseSkipNote": "[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: {0}。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]",
     "share": {
-      "tabNew": "分享",
+      "tabNew": "分享", "genmark": "内容由人工智能生成", "aiMark": "对外发布时请标注：内容由人工智能生成",
       "tabMine": "我的分享",
       "close": "关闭",
       "title": "标题",

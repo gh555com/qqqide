@@ -372,6 +372,9 @@ export function buildDocxParts(elements: ExportElement[], attachments: Attachmen
         'xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
         `<dc:title>${xmlEscape(xmlClean(title || ''))}</dc:title>` +
         '<dc:creator>qqqide</dc:creator><cp:lastModifiedBy>qqqide</cp:lastModifiedBy>' +
+        '<dc:subject>AI-Generated Content</dc:subject>' +
+        '<dc:description>Content produced with AI assistance.</dc:description>' +
+        '<cp:keywords>AI-generated</cp:keywords>' +
         `<dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>` +
         '</cp:coreProperties>';
 
