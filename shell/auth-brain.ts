@@ -68,10 +68,56 @@ export function initAuthBrain(userDataPath: string, portableRoot: string, appVer
 // ═══ 常量 ═══
 
 const AUTH_FILE = 'auth.enc';
-// ★ F40: 统一走 gh555.com 主域（与登录页同域）——客户能打开登录页就能拉余额/LV。
-//   direct-cn 灰云域名在部分客户网络（运营商污染/DNS 问题）不通，导致余额/LV 永远拉不到。
-const API_BASE = 'https://gh555.com/api';
-const LOGIN_URL = 'https://gh555.com/login';
+// ★ 2026-11-20 入口多线（境内反诈名单事件）：apex `gh555.com` 在境内被置 0.0.0.0（阿里/腾讯递归 DNS）
+//   且浏览器 TLS 被 RST → 登录页与 API 全断；子域（灰云直连 CN）不受影响（三条实测全 200）。
+//   策略：登录页 + API 一律走子域候选表，按需探活（5 分钟缓存），请求异常自动轮换下一条，永不回退 apex。
+const HOST_CANDIDATES = ['www.gh555.com', 'cnk.gh555.com', 'direct-cn.gh555.com'];
+const HOST_TTL_MS = 300_000;
+let _hostIdx = 0;
+let _hostAt = 0;
+let _hostProbe: Promise<void> | null = null;
+
+function _host(): string { return HOST_CANDIDATES[_hostIdx]; }
+function _origin(): string { return 'https://' + _host(); }
+function _apiUrl(p: string): string { return _origin() + '/api' + p; }
+
+// 换下一条线（只在确认该线不可用时调用）
+function _rotateHost(reason: string): void {
+    if (Date.now() - _hostAt < 10_000) return;   // 抖动保护：10s 内不重复轮换
+    _hostIdx = (_hostIdx + 1) % HOST_CANDIDATES.length;
+    _hostAt = Date.now();
+    console.warn('[auth-brain] host rotate → ' + _host() + ' (' + reason + ')');
+}
+
+// 探活：GET /dl/qqqide-up/latest.txt（6 字节静态文本，任意 <400 即视为该线可用）
+function _probeHost(host: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = (ok: boolean) => { if (!done) { done = true; resolve(ok); } };
+        try {
+            const req = https.get('https://' + host + '/dl/qqqide-up/latest.txt',
+                { timeout: 5000, headers: { 'User-Agent': 'qqqide-auth' } },
+                (res) => { res.resume(); finish((res.statusCode || 0) > 0 && (res.statusCode || 0) < 400); });
+            req.on('timeout', () => { try { req.destroy(); } catch (_) { } finish(false); });
+            req.on('error', () => finish(false));
+        } catch { finish(false); }
+    });
+}
+
+// 保证当前主机可用（缓存 5 分钟；全不可用也不阻塞流程，5 分钟后重试）
+async function ensureHost(): Promise<void> {
+    if (_hostAt > 0 && Date.now() - _hostAt < HOST_TTL_MS) return;
+    if (_hostProbe) return _hostProbe;
+    _hostProbe = (async () => {
+        const start = _hostIdx;
+        for (let i = 0; i < HOST_CANDIDATES.length; i++) {
+            const idx = (start + i) % HOST_CANDIDATES.length;
+            if (await _probeHost(HOST_CANDIDATES[idx])) { _hostIdx = idx; _hostAt = Date.now(); return; }
+        }
+        _hostAt = Date.now();
+    })().then(() => { _hostProbe = null; }, () => { _hostProbe = null; });
+    return _hostProbe;
+}
 // ★ 2026-10-02 请求治理：余额/LV 后台轮询 60s → 180s。即时性不靠轮询——
 //   每笔计费由 onBillingEvent 合并式补拉（≤2s 广播全窗口），渲染层已停自拉（300s 心跳门）；
 //   后台轮询只兜日常闲变（收礼/推荐奖励/陪伴折算），3 分钟节拍无感。
@@ -242,7 +288,9 @@ class AuthBrain {
     async openLoginExternal(): Promise<string> {
         const sessionId = this._genSessionId();
         this._sessionId = sessionId;
-        const loginUrl = `${LOGIN_URL}?from=ide&session=${sessionId}&device_name=${_deviceName()}&goods=qqqide`;
+        // ★ 2026-11-20：先确认一条可用入口线（这是「用户浏览器能不能打开登录页」的唯一决定点）
+        await ensureHost();
+        const loginUrl = `${_origin()}/login?from=ide&session=${sessionId}&device_name=${_deviceName()}&goods=qqqide`;
 
         console.log('[auth-brain] openLoginExternal: session=' + sessionId.slice(0, 8) + '...');
 
@@ -277,9 +325,8 @@ class AuthBrain {
                 return;
             }
             try {
-                // ★ F39: 与登录页同域（https://gh555.com/api）——客户能打开登录页就能 poll，
-                //   不再依赖 direct-cn 灰云域名（客户网络环境可能直连不通）。
-                const resp = await _apiGetJson(`https://gh555.com/api/gaea/qqq/auth/poll?session=${sid}`);
+                // ★ 与登录页同域（同一 host 候选）——客户能打开登录页就能 poll。
+                const resp = await _apiGetJson(_apiUrl(`/gaea/qqq/auth/poll?session=${sid}`));
                 if (!resp.ok) {
                     console.warn('[auth-brain] poll HTTP ' + resp.status + ' for session=' + sid.slice(0, 8));
                     return;
@@ -292,6 +339,7 @@ class AuthBrain {
                 }
             } catch (e: any) {
                 console.warn('[auth-brain] poll fetch error for session=' + sid.slice(0, 8) + ': ' + (e?.message || e));
+                _rotateHost('poll fetch failed');
             }
         }, SESSION_POLL_MS);
     }
@@ -366,7 +414,7 @@ class AuthBrain {
         if (!this.authData?.token) return;
         this._lastBalanceFetchAt = Date.now();
         try {
-            const resp = await _apiGetJson(API_BASE + '/wallet/balance', {
+            const resp = await _apiGetJson(_apiUrl('/wallet/balance'), {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
             });
             if (resp.ok) {
@@ -378,14 +426,14 @@ class AuthBrain {
             } else if (resp.status === 401 || resp.status === 403) {
                 this._stopPolling();
             }
-        } catch { /* ignore */ }
+        } catch { _rotateHost('balance fetch failed'); }
     }
 
     private async _fetchLv(): Promise<void> {
         if (!this.authData?.token) return;
         this._lastLvFetchAt = Date.now();
         try {
-            const resp = await _apiGetJson(API_BASE + '/qqq/lv', {
+            const resp = await _apiGetJson(_apiUrl('/qqq/lv'), {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
             });
             if (resp.ok) {
@@ -414,7 +462,7 @@ class AuthBrain {
                 console.warn('[auth-brain] lv fetch returned ' + resp.status + ', auto-logout');
                 await this.clearAuth();
             }
-        } catch { /* ignore */ }
+        } catch { _rotateHost('lv fetch failed'); }
     }
 
     // ★ 2026-10-01 请求治理：billing 触发的补拉必须合并 + 限频

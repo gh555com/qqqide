@@ -277,6 +277,8 @@ const QQQ = {    // ---- app info ----
         hasImage: () => ipcRenderer.invoke('qqqide:clipboard:hasImage'),
         readHtml: () => ipcRenderer.invoke('qqqide:clipboard:readHtml'),
         readFiles: (expected?: number) => ipcRenderer.invoke('qqqide:clipboard:readFiles', expected),
+        // 最近一次读文件剪贴板的链路报告（哪一路读的/读了几条/卡在哪）——粘贴失败时的唯一证据
+        lastRead: () => ipcRenderer.invoke('qqqide:clipboard:lastRead'),
         writeFiles: (paths: string[]) => ipcRenderer.invoke('qqqide:clipboard:writeFiles', paths),
         writeImage: (payload: { path?: string; dataUrl?: string }) => ipcRenderer.invoke('qqqide:clipboard:writeImage', payload),
     },

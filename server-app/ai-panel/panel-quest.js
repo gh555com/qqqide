@@ -204,8 +204,47 @@ function saveQuestUIState(id) {
     _updateDraftFlag(id);
 }
 
+// ★ 已发出的楼 ≠ 草稿（恢复前守卫）
+//   快照文本若是「最近一条已发送提问」的严格前缀（且图片数与该楼层随信图片数一致），
+//   它就是发送那一刻没归零的旧快照（编辑框已清空、快照没清）→ 归属已建成的楼层，
+//   恢复它等于把建完的提问与图片又抓回编辑框。真草稿（未发出的新内容）永不是已发提问的前缀。
+function _normDraftText(s) {
+    return String(s || '').replace(/\s+/g, ' ').trim();
+}
+function _isSentDraft(state, id) {
+    try {
+        if (!state || !id) return false;
+        var _d = _normDraftText(state.inputValue);
+        if (_d.length < 12) return false;
+        var _ag = (id === questActiveId && typeof _activeAgent !== 'undefined' && _activeAgent) ? _activeAgent : null;
+        if (!_ag) { try { _ag = (parent && parent.__qqq_agentPool) ? (parent.__qqq_agentPool[id] || null) : null; } catch (_) { } }
+        var _conv = (_ag && _ag.conversation && _ag.conversation.length) ? _ag.conversation : null;
+        if (!_conv) return false;
+        var _lastQ = '';
+        for (var _i = _conv.length - 1; _i >= 0; _i--) {
+            var _m = _conv[_i];
+            if (!_m || _m.role !== 'user' || _m._system || _m._injected || _m._persistent || _m._compressFloor) continue;
+            _lastQ = String(_m.content || '');
+            break;
+        }
+        if (!_lastQ) return false;
+        var _q = _normDraftText(_lastQ);
+        if (_d.length >= _q.length || _q.indexOf(_d) !== 0) return false;
+        // 图片校验：草稿 N 张 ↔ 该楼层随信图片块必须正好 N 条（同文同图 = 同一条消息；不符一律保留草稿）
+        var _n = (state.pendingImages && state.pendingImages.length) ? state.pendingImages.length : 0;
+        if (_n !== (_lastQ.match(/^图#\d+:/gm) || []).length) return false;
+        return true;
+    } catch (_) { return false; }
+}
+
 async function restoreQuestUIState(id) {
     var state = questUIStates[id];
+    // ★ 守卫：已发出的楼绝不回填（快照与高频文本两条草稿通道同批归零）
+    if (_isSentDraft(state, id)) {
+        if (typeof _clearDraftSnapshotNow === 'function') _clearDraftSnapshotNow(id);
+        if (typeof _clearDraftTextNow === 'function') { try { _clearDraftTextNow(id); } catch (_) { } }
+        state = questUIStates[id];
+    }
     // ★ per-quest 等级偏好（2026-08-27）：ai.questTier.{questId} 三面板共享唯一 key
     //   优先级：per-quest 偏好 → 面板快照旧值（兼容迁移）→ 全局默认
     //   → 切面板/切后台/刷新/重启均保持用户明确选择的等级

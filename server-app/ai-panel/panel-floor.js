@@ -877,6 +877,9 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         } catch (_zf) { }
 
+        // ★ 恢复态「磁盘即真理」标记（详 panel-clock._saveAgentFloor）：本次恢复没产生任何未保存数据
+        //   → 强制落盘（beforeunload）禁止重写当前楼层，否则 conv / 全 house 工具数会被刷零
+        ag._restoredClean = true;
         // [silent] restored agent state
     } catch (e) {
         console.warn('[quests] _restoreAgentFromStore error:', e && e.message);

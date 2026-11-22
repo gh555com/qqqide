@@ -129,7 +129,12 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
     if (!floorNum) floorNum = ag._currentFloorNum;
     // ★ 完结密封守卫（2026-08-08 F10 根因）：已完结楼层禁止再次写盘
     //   （压缩后 conversation 已截短，重复保存 slice 出空 → conv=0 覆盖完整保存）
-    if (floorNum > 0 && ag._floorSealed && ag._floorSealed[floorNum]) return;
+    if (floorNum > 0 && ag._floorSealed && ag._floorSealed[floorNum]) return;
+    // ★ 恢复态禁重写（与 panel-clock._saveAgentFloor 同一道闸）：恢复来的 conversation 已跳过压缩层
+    //   （可能为空）、houses 只剩 toolCount 没有 tools 数组 —— 重写会把磁盘楼层刷成
+    //   conversation=[] + 全 house 工具数 0（计费明细整列 0 实锤）。恢复态没有任何未保存数据。
+    if (ag._restoredClean && ag._stopState !== 'sending') return;
+
 
     // ═══ 1) 如果楼层号有效且有元数据 → 保存楼层 payload ═══
     if (floorNum && floorNum > 0) {

@@ -420,7 +420,8 @@ function _freezeAndSendFromInput() {
     //   本条预建气泡变孤儿 + 重复新建；随身引用天然归属本意图，零串号。
     // ② 同步清空编辑框 + 图片条（内容已移入消息；图片条清空 = 「✕ 删掉在飞图片」的竞态窗口结构性闭合）
     if (_txtNow !== '') $input.value = '';
-    _clearDraftTextNow(_sendQid);  // 发送即清高频草稿键（防断电窗口旧文本复活）
+    _clearDraftTextNow(_sendQid);        // 发送即清高频草稿键（text 通道）
+    _clearDraftSnapshotNow(_sendQid);    // ★ 发送即清完整快照（文字+图片）——两条草稿通道同批归零
     if ($input._resetUndo) $input._resetUndo();
     if (_imgsNow.length > 0) {
         pendingImages = [];
@@ -773,39 +774,133 @@ function _syncImgTokensAfterRemove(removedId) {
     } catch (_) { }
 }
 
-// ══ 剪贴板文件附加（唯一实现，2026-10-05）：非图片文件 → 📎"path" 锚点（多选按序，与拖放同语义）══
-// 路径解析：① 事件的 File.path（Electron）→ ② 系统剪贴板文件表直读（CF_HDROP，子毫秒、覆盖目录/多选）
-async function _attachClipboardFiles(files) {
-    var paths = [];
-    for (var i = 0; i < files.length; i++) {
-        try { if (files[i].path) paths.push(String(files[i].path)); } catch (_) { }
+// ══ 剪贴板文件附加（唯一实现）：非图片文件 → 📎"path" 锚点（多选按序，与拖放同语义）══
+//   四路递进：① 事件 File.path（Electron 直给）→ ② 系统剪贴板文件表 CF_HDROP（覆盖目录/多选）
+//             ③ 剪贴板文本侧路径行（uri-list）→ ④ 字节兜底（落 {工作区}/_qqqvault/ 再 chip）
+//   每路失败原文进 events.log（q='ai-paste'）；四路全空 → 一条 qoast（禁静默）。
+var _AI_PASTE_BYTES_CAP = 32 * 1024 * 1024;   // 字节兜底单文件上限（base64 跨 IPC，大文件如实拒绝）
+function _pBridge() { return (window.parent && window.parent.qqqideBridge) || window.qqqideBridge; }
+function _pErr(ex) { try { return String((ex && (ex.message || ex.code)) || ex).slice(0, 160); } catch (_) { return 'err'; } }
+function _pLog(state, detail) {
+    try { console.warn('[ai-paste] ' + state, detail); } catch (_) { }
+    try { var b = _pBridge(); if (b && b.log) b.log({ q: 'ai-paste', state: state, detail: detail }); } catch (_) { }
+}
+// 剪贴板文本侧本地路径行（uri-list；只认绝对路径形状——普通句子绝不误判成文件）
+function _clipTextPaths(uriList) {
+    var out = [];
+    if (!uriList) return out;
+    var lines = String(uriList).split(/\r?\n/);
+    for (var i = 0; i < lines.length && out.length < 200; i++) {
+        var s = String(lines[i] == null ? '' : lines[i]).trim();
+        if (!s || s.charAt(0) === '#' || s === 'copy' || s === 'cut') continue;   // RFC 2483 注释行 / gnome 语义行
+        var p = s;
+        if (/^file:\/\//i.test(p)) {
+            p = p.replace(/^file:\/\//i, '').replace(/^\/([A-Za-z]:)/, '$1');
+            try { p = decodeURIComponent(p); } catch (_) { }
+        }
+        if (!/^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(p)) continue;
+        if (out.indexOf(p) < 0) out.push(p);
     }
-    if (paths.length < files.length) {
+    return out;
+}
+function _blobToB64(blob) {
+    return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload = function () {
+            var s = String(r.result || '');
+            var i = s.indexOf(',');
+            resolve(i >= 0 ? s.slice(i + 1) : '');
+        };
+        r.onerror = function () { reject(new Error('read-failed')); };
+        r.readAsDataURL(blob);
+    });
+}
+// 落盘目录内同名不覆盖（重名 name_1.ext 唯一化——与全场改名风格同一式）
+async function _uniqPastePath(b, dir, name) {
+    var base = String(name || 'file').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim() || ('paste_' + Date.now());
+    var dot = base.lastIndexOf('.');
+    var stem = dot > 0 ? base.slice(0, dot) : base;
+    var ext = dot > 0 ? base.slice(dot) : '';
+    var cand = base;
+    for (var n = 1; n <= 999; n++) {
+        var ex = false;
+        try { ex = !!(await b.fs.exists(dir + '/' + cand)); } catch (_) { ex = false; }
+        if (!ex) return dir + '/' + cand;
+        cand = stem + '_' + n + ext;
+    }
+    return dir + '/' + stem + '_' + Date.now() + ext;
+}
+async function _attachClipboardFiles(files, uriList) {
+    var b = _pBridge();
+    var paths = [];
+    var needBytes = [];
+    var errors = [];
+    var via = { domPath: 0, hdrop: 0, uri: 0, bytes: 0 };
+    function _addPath(p) {
+        if (!p) return false;
+        p = String(p);
+        if (paths.indexOf(p) >= 0) return false;
+        paths.push(p);
+        return true;
+    }
+    // ① 事件的 File.path（Electron 渲染层直给完整路径）
+    for (var i = 0; i < files.length; i++) {
+        var p0 = '';
+        try { p0 = String((files[i] && files[i].path) || ''); } catch (_) { p0 = ''; }
+        if (p0) { if (_addPath(p0)) via.domPath++; } else { needBytes.push(files[i]); }
+    }
+    // ② 系统剪贴板文件表（CF_HDROP：覆盖文件夹/多选）
+    if (needBytes.length > 0) {
         try {
-            var b = (window.parent && window.parent.qqqideBridge) || window.qqqideBridge;
             if (b && b.clipboard && b.clipboard.readFiles) {
-                var more = await _withStepTimeout(b.clipboard.readFiles(), 10000, 'clipFiles');
-                if (more && more.length) {
-                    for (var j = 0; j < more.length; j++) {
-                        if (paths.indexOf(more[j]) === -1) paths.push(more[j]);
-                    }
-                }
-            }
-        } catch (_) { }
+                var more = await _withStepTimeout(b.clipboard.readFiles(files.length), 10000, 'clipFiles');
+                if (more && more.length) { for (var j = 0; j < more.length; j++) { if (_addPath(more[j])) via.hdrop++; } }
+                else errors.push('hdrop:empty');
+            } else { errors.push('hdrop:no-bridge'); }
+        } catch (ex) { errors.push('hdrop:' + _pErr(ex)); }
+    }
+    // ③ 剪贴板文本侧路径行（仅前两路颗粒无收时；文本路径可能过期 → 逐个 stat 验真）
+    if (paths.length === 0) {
+        var tps = _clipTextPaths(uriList);
+        for (var k = 0; k < tps.length; k++) {
+            var okT = false;
+            try { okT = !!(b && b.fs && b.fs.stat && await b.fs.stat(tps[k])); } catch (_) { okT = false; }
+            if (okT && _addPath(tps[k])) via.uri++;
+        }
+        if (tps.length > 0 && via.uri === 0) errors.push('uri:stale');
+    }
+    // ④ 字节兜底（连 path 都没有：字节是最后的真相 → 落工作区 _qqqvault/ 再按路径 chip）
+    if (needBytes.length > 0 && via.hdrop === 0 && via.uri === 0) {
+        var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) ? String(_workspaceRoot).replace(/\\/g, '/').replace(/\/$/, '') : '';
+        var dirB = root ? (root + '/_qqqvault') : '';
+        for (var m = 0; m < needBytes.length; m++) {
+            var fb = needBytes[m];
+            var bn = (fb && fb.name) || ('paste_' + Date.now());
+            try {
+                if (!dirB) throw new Error('no-workspace');
+                if (!b || !b.fs || !b.fs.writeBase64) throw new Error('fs.writeBase64 missing');
+                if (fb && fb.size > _AI_PASTE_BYTES_CAP) throw new Error('too-large:' + fb.size);
+                try { await b.fs.mkdir(dirB); } catch (_) { }
+                var dst = await _uniqPastePath(b, dirB, bn);
+                await b.fs.writeBase64(dst, await _blobToB64(fb));
+                if (_addPath(dst)) via.bytes++;
+            } catch (ex2) { errors.push('bytes:' + bn + ':' + _pErr(ex2)); }
+        }
     }
     if (paths.length === 0) {
+        _pLog('fail', { exp: files.length, uri: String(uriList || '').length, errors: errors.slice(0, 6) });
         _limitQoastMsg(_i18nQ('ai.inputLimitQoastFilePath', '有 {0} 个文件无法获取路径，未附加').replace('{0}', String(files.length)));
         return;
     }
+    _pLog('ok', { n: paths.length, exp: files.length, via: via, errors: errors.slice(0, 4) });
     if (typeof insertChipAtCursor !== 'function') return;
-    var b2 = (window.parent && window.parent.qqqideBridge) || window.qqqideBridge;
-    for (var k = 0; k < paths.length; k++) {
+    for (var q = 0; q < paths.length; q++) {
         try {
             var isDir = null;
-            if (b2 && b2.fs && b2.fs.stat) {
-                try { var st = await b2.fs.stat(paths[k]); isDir = !!(st && st.isDir); } catch (_) { isDir = null; }
+            if (b && b.fs && b.fs.stat) {
+                try { var st = await b.fs.stat(paths[q]); isDir = !!(st && st.isDir); } catch (_) { isDir = null; }
             }
-            insertChipAtCursor(paths[k], isDir, null);
+            insertChipAtCursor(paths[q], isDir, null);
         } catch (_) { }
     }
 }
@@ -897,11 +992,13 @@ $input.addEventListener('paste', function (e) {
     // ★ 同步收集剪贴板（clipboardData 仅事件回调内有效，必须同步读）
     var plainText = '';
     var imageFiles = [];
-    var otherFiles = [];   // ★ 2026-10-05：非图片文件（资源管理器复制的文件/文件夹）→ 📎 锚点附加
+    var otherFiles = [];   // 非图片文件（资源管理器复制的文件/文件夹）→ 📎 锚点附加
+    var uriList = '';      // ★ 同步取走 text/uri-list（事件结束后 ClipboardData 失效；供文件路径第四路用）
     try {
         var cd = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
         if (!cd) return;
         plainText = cd.getData('text/plain') || '';
+        try { uriList = cd.getData('text/uri-list') || ''; } catch (_) { uriList = ''; }
         var items = cd.items;
         if (items) {
             for (var i = 0; i < items.length; i++) {
@@ -926,9 +1023,9 @@ $input.addEventListener('paste', function (e) {
         // 纯文本分支：硬上限保护（唯一插入机 _insertPlainText——右键菜单/外拖文本同源）
         if (plainText) _insertPlainText(plainText);
 
-        // 文件分支（2026-10-05）：非图片文件 → 📎 锚点附加（与拖放同语义；路径经系统剪贴板文件表直读）
+        // 文件分支：非图片文件 → 📎 锚点附加（与拖放同语义；四路递进取路径）
         if (otherFiles.length > 0) {
-            await _attachClipboardFiles(otherFiles);
+            await _attachClipboardFiles(otherFiles, uriList);
         }
     });
 });
@@ -1109,6 +1206,25 @@ async function _saveDraftText() {
             onlyStore.set('ai.draftText.' + _panelId, _m);
         }
         if (typeof _updateDraftFlag === 'function') _updateDraftFlag(questActiveId);
+    } catch (_) { }
+}
+
+// 同步清除某 quest 的完整 UI 快照（文字 + 图片）并立即落盘
+//   发送瞬间编辑条已清空 → 快照必须同批归零：楼层建成 ≠ 草稿。
+//   只清 text 通道会让 ai.uiStates 里的旧文字 + 旧图片在重启（异常退出恢复）时
+//   把已经发出去的楼层问题重新抓回编辑框。
+function _clearDraftSnapshotNow(id) {
+    if (!id) return;
+    try {
+        var _st = questUIStates[id];
+        if (!_st) _st = questUIStates[id] = {};
+        _st.inputValue = '';
+        _st.inputCaret = 0;
+        _st.pendingImages = [];
+        if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+            onlyStore.setNow('ai.uiStates.' + _panelId, questUIStates);
+        }
+        if (typeof _updateDraftFlag === 'function') _updateDraftFlag(id);
     } catch (_) { }
 }
 

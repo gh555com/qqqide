@@ -27,6 +27,11 @@ function _saveAgentFloor(ag, questId, force) {
     //   非建楼面板的 agent（从 all.json 恢复，stopState='idle'）禁止写盘，防止覆盖真理数据
     //   force=true（beforeunload）绕过此限制
     if (!force && ag._stopState !== 'sending') return;
+    // ★ 恢复态禁强制重写（计费明细整列 0 / conv=0 事故根因）：beforeunload 的 force 一度绕过上面的写保护，
+    //   拿恢复来的 conversation（压缩层已跳过 → 可能为空）与 houses（tools 已删、只剩 toolCount）
+    //   原地重写磁盘 → 楼层被刷成 conversation=[] + 每个 house 工具数 0（room_count 仍是真值）。
+    //   恢复态没有任何未保存数据，恒跳过；真在建的楼层 stopState 必为 'sending'，不受影响。
+    if (force && ag._restoredClean && ag._stopState !== 'sending') return;
     if (!force) {
         // ★ 去重：仅在 conversation 增长时才写盘（避免无变化的 O(n) slice + payload 构建）
         var convLen = ag.conversation ? ag.conversation.length : 0;
@@ -226,8 +231,8 @@ function _buildBillingTable(houses, passby) {
         // ★ House 列：本层楼内编号 1 2 3 4 ...
         var houseLabel = (j + 1);
         var type = h.type === 'effect' ? (h.effectType || 'effect') : (h.type || '?');
-        // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字
-        var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : 0);
+        // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字；两者皆无 = 未知（禁假 0）
+        var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : '-');
         // ★ AI Lv（2026-09-17）：BYOK 行显 'Z'——自带密钥通道下平台档位对请求零参与，
         //   与 aq 楼层标签 / 费用后缀 ' BYOK' 三处同源；平台行提取 wire 档位并映射三键显示（⌈n/2⌉）
         var aiLv = '?';

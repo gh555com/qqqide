@@ -704,8 +704,10 @@ function cmpVersion(a: string, b: string): number {
 }
 
 function readConfig(ctx: UpdaterCtx): Cfg {
-  const def: Cfg = {
-    update_host: 'gh555.com',
+     // ★ 2026-11-20 主源主机改子域：apex gh555.com 境内被列入反诈名单（DNS→0.0.0.0 / TLS RST）。
+    //   子域 www.gh555.com = 灰云直连 CN（同一源站、同一条 nginx /dl/* 路由），升级链不再经过被拦域。
+    const def: Cfg = {
+        update_host: 'www.gh555.com',
     latest_path: '/dl/qqqide-up/latest.txt',
     r_path: '/dl/qqqide-up/r',
     units_path: '/dl/qqqide-up/units.json',
@@ -717,7 +719,10 @@ function readConfig(ctx: UpdaterCtx): Cfg {
   };
   try {
     const raw = JSON.parse(fs.readFileSync(path.join(ctx.dataDir, 'launcher-config.json'), 'utf8'));
-    if (raw.update_host) def.update_host = raw.update_host;
+         // ★ 2026-11-20 存量配置自愈：老 Data/launcher-config.json 写死的已死主机（主源+镜像双死 = 升级链死锁）
+        //   就地纠正为默认值（子域主源 + OSS 镜像），用户无需手工改文件。
+        const _deadHost = (h: string) => h === 'gh555.com' || h === 'cdn.gh555.com';
+        if (raw.update_host && !_deadHost(String(raw.update_host))) def.update_host = raw.update_host;
     if (raw.latest_path) def.latest_path = raw.latest_path;
     if (raw.r_path) def.r_path = raw.r_path;
     // ★ 2026-09-02 双清单分路: units_path 仅供老启动器（恒指桥接 units.bridge.json）;
@@ -727,7 +732,7 @@ function readConfig(ctx: UpdaterCtx): Cfg {
     if (typeof raw.units_enabled === 'boolean') def.units_enabled = raw.units_enabled;
     if (typeof raw.use_https === 'boolean') def.use_https = raw.use_https;
     if (raw.timeout_sec) def.timeout_sec = raw.timeout_sec;
-    if (raw.mirror_host) def.mirror_host = raw.mirror_host;
+         if (raw.mirror_host && !_deadHost(String(raw.mirror_host))) def.mirror_host = raw.mirror_host;
     if (raw.mirror_prefix) def.mirror_prefix = raw.mirror_prefix;
   } catch (_) { }
   return def;

@@ -12,8 +12,13 @@
 
 	// ═══ roam paste handler (M8) ═══
 	// Intercepts Ctrl+V in roam, copies files to current directory.
-	// ★ Key: preventDefault() must be synchronous (before first await) otherwise
-	//    the browser's default paste fires before our async probe completes.
+	// ★ preventDefault() 必须同步（首个 await 之前），否则浏览器默认粘贴先发生。
+	// ★ 读取四路递进（禁静默）：① 壳层 readFiles（CF_HDROP 全量，含文件夹）→
+	//   ② DOM File.path（Electron 自带完整路径 → 原生复制引擎，流式不吃内存）→
+	//   ③ DOM FileReader（无 path 的极端场景）→ ④ 剪贴板文本里的路径行。
+	//   四路全空 → 写 events.log + 明确告知用户。
+	//   ★ 为何不能只走 ①：python/PS 两路都吃机器环境（缺解释器/PS 被策略限），
+	//   旧实现在 ① 空 + 无 DOM 文件项时直接 return——用户看到的只是「什么都没发生」。
 	var _pasteHandlerAttached = false;
 	function _attachRoamPaste() {
 		if (_pasteHandlerAttached) return;
@@ -21,83 +26,135 @@
 		if (!target) return;
 		_pasteHandlerAttached = true;
 
-		// Capture-phase paste: sync preventDefault, then async probe+copy
 		target.addEventListener('paste', function(e) {
 			if (!currentPath) return;
 
-			var evtClip = e.clipboardData;
-			var hasFileItem = false;
-			if (evtClip && evtClip.items) {
-				for (var i = 0; i < evtClip.items.length; i++) {
-					if (evtClip.items[i].kind === 'file') { hasFileItem = true; break; }
-				}
-			}
+			var domFiles = _collectEventFiles(e.clipboardData);
 
-			// ★ 如果正在编辑框内且没有文件项：让文本粘贴正常走，不做拦截
+			// ★ 正在编辑框内且剪贴板没有文件项：让文本粘贴正常走，不做拦截
 			var el = document.activeElement;
 			var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
 			var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
-			if (editing && !hasFileItem) return;
+			if (editing && domFiles.length === 0) return;
 
 			// ★ Sync block: prevent default immediately, then spawn async work
 			e.preventDefault();
 			e.stopPropagation();
 
-			// ★ 2026-08-13: 统一走 CF_HDROP 完整路径（readFiles-first）——
-			//   支持 文件夹+文件 混合复制（主进程 copyFile 目录感知递归复制），
-			//   DOM File 无完整路径且读不了文件夹，仅作兜底。
-			if (hasFileItem) {
-				_pasteFilesFromEvent(evtClip);
-				return;
-			}
-
-			// No DOM file items: async probe for CF_HDROP (PowerShell-spawned files from Explorer)
-			_asyncProbeAndPaste();
-		}, true);
-
-		// ★ Also listen on window for when body doesn't have focus
-		window.addEventListener('paste', function(e) {
-			if (!currentPath) return;
-			// Only handle if body handler didn't already catch it
-			if (e.target && e.target !== document.body && !document.body.contains(e.target)) return;
+			_pasteFromClipboard(domFiles);
 		}, true);
 	}
 
-	async function _pasteFilesFromEvent(evtClip) {
-		// ★ 2026-08-13: CF_HDROP 完整路径优先（支持文件夹递归复制 + 原生流式，统一引擎）。
-		//   DOM File 读不了文件夹（readAsArrayBuffer 失败）且无完整路径 → 仅兜底纯文件场景。
-		var paths = null;
-		try { paths = await bridge.clipboard.readFiles(); } catch (err) { paths = null; }
-		if (paths && paths.length > 0) {
-			await _copyPathsToCurrentDir(paths);
-			return;
-		}
-
-		// DOM File 兜底（无 CF_HDROP 场景：拖拽等）—— 仅文件
-		var files = [];
-		if (evtClip && evtClip.items) {
+	// DOM 侧文件清单——必须在 paste 事件同步段取（FileList 离开事件即失效）
+	function _collectEventFiles(evtClip) {
+		var out = [];
+		if (!evtClip) return out;
+		if (evtClip.items) {
 			for (var i = 0; i < evtClip.items.length; i++) {
-				var it = evtClip.items[i];
-				if (it.kind === 'file') {
-					var f = it.getAsFile();
-					if (f) files.push(f);
+				if (evtClip.items[i].kind === 'file') {
+					var f = evtClip.items[i].getAsFile();
+					if (f) out.push(f);
 				}
 			}
 		}
-		if (files.length === 0) return;
-		await _copyFilesToCurrentDir(files);
+		if (out.length === 0 && evtClip.files) {
+			for (var j = 0; j < evtClip.files.length; j++) { if (evtClip.files[j]) out.push(evtClip.files[j]); }
+		}
+		return out;
 	}
 
-	async function _asyncProbeAndPaste() {
-		var probe;
-		try { probe = await bridge.clipboard.probe(); } catch(err) { return; }
-		if (!probe || !probe.hasFile) return;
+	// 粘贴链路诊断（唯一出口 = 壳层 crash-net events.log，随 Data 目录可回收）
+	function _pasteDiag(state, detail) {
+		try { console.warn('[roam] paste ' + state, detail); } catch (e) { }
+		try {
+			if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.log) {
+				window.parent.qqqideBridge.log({ q: 'roam-paste', state: state, detail: detail });
+			}
+		} catch (e) { }
+	}
 
-		var filePaths;
-		try { filePaths = await bridge.clipboard.readFiles(); } catch(err) { return; }
-		if (!filePaths || filePaths.length === 0) return;
+	async function _pasteFromClipboard(domFiles) {
+		// ★ 快判：DOM 无文件项且壳层探针说「没有文件」→ 纯文本粘贴，零 spawn 开销（同旧行为）
+		var probe = null;
+		try { probe = await bridge.clipboard.probe(); } catch (err0) { probe = null; }
+		var looksFile = !!(probe && probe.hasFile);
+		// ★ 探针什么都没看见（无文件也无文本/图片/HTML）= 剪贴板是「说不清的格式」——
+		//   旧壳层没认出 text/uri-list 就属这一类；仍给 readFiles 一次机会，
+		//   宁可多花一次探测，不能让文件粘贴静默消失。
+		var probeBlind = !!(probe && !looksFile && !probe.hasText && !probe.hasImage && !probe.hasHtml);
+		if (domFiles.length === 0 && !looksFile && !probeBlind) {
+			var tp0 = await _pathsFromClipboardText();
+			if (tp0.length > 0) {
+				_pasteDiag('text-path', { n: tp0.length });
+				await _copyPathsToCurrentDir(tp0);
+			}
+			return;	// 纯文本 → 不拦不报（Roam 无编辑器语义）
+		}
 
-		await _copyPathsToCurrentDir(filePaths);
+		// ① 壳层 CF_HDROP（全量权威，文件夹也能递归）
+		var paths = null, readErr = '';
+		try { paths = await bridge.clipboard.readFiles(domFiles.length || 0); } catch (err) { paths = null; readErr = String((err && err.message) || err); }
+		if (paths && paths.length > 0) { await _copyPathsToCurrentDir(paths); return; }
+
+		// ② DOM File.path → 原生复制引擎（流式、不吃内存）
+		var domPaths = [];
+		for (var i = 0; i < domFiles.length; i++) { var dp = domFiles[i] && domFiles[i].path; if (dp) domPaths.push(dp); }
+		if (domFiles.length > 0 && domPaths.length === domFiles.length) {
+			_pasteDiag('dom-path', { n: domPaths.length, readErr: readErr, lastRead: await _pasteLastRead() });
+			await _copyPathsToCurrentDir(domPaths);
+			return;
+		}
+
+		// ③ DOM FileReader（无 path 的极端场景）
+		if (domFiles.length > 0) {
+			_pasteDiag('dom-reader', { n: domFiles.length, readErr: readErr });
+			await _copyFilesToCurrentDir(domFiles);
+			return;
+		}
+
+		// ④ 剪贴板文本里的路径行（Roam 自己 Ctrl+C 也写一份文本路径）
+		var textPaths = await _pathsFromClipboardText();
+		if (textPaths.length > 0) {
+			_pasteDiag('text-path', { n: textPaths.length, readErr: readErr, lastRead: await _pasteLastRead() });
+			await _copyPathsToCurrentDir(textPaths);
+			return;
+		}
+
+		// ⑤ 有文件却四路全空：留痕 + 让用户看到（禁静默）
+		_pasteDiag('empty', {
+			dom: domFiles.length,
+			readErr: readErr,
+			fmts: (probe && probe._rawFormats) || null,
+			hasFile: looksFile,
+			lastRead: await _pasteLastRead()
+		});
+		try {
+			if (window.parent && window.parent.qqqideQoast) {
+				window.parent.qqqideQoast.show(_kk('goods.roam.pasteReadFail', '粘贴失败：读不到剪贴板里的文件（已记录日志）'), { duration: 6000, type: 'error' });
+			}
+		} catch (e) { }
+	}
+
+	// 壳层「最近一次读文件剪贴板」的链路报告（失败时取证；旧壳层无此 IPC → null）
+	async function _pasteLastRead() {
+		try { if (bridge.clipboard.lastRead) return await bridge.clipboard.lastRead(); } catch (e) { }
+		return null;
+	}
+
+	// 剪贴板纯文本里「一行一个真实路径」→ 路径清单（最多 200 行，逐条验存）
+	async function _pathsFromClipboardText() {
+		var txt = '';
+		try { txt = String((await bridge.clipboard.readText()) || ''); } catch (e) { return []; }
+		if (!txt) return [];
+		var lines = txt.split(/\r?\n/).slice(0, 200);
+		var out = [];
+		for (var i = 0; i < lines.length; i++) {
+			var p = lines[i].trim().replace(/^"+|"+$/g, '');
+			if (!p) continue;
+			if (!/^[a-zA-Z]:[\\/]/.test(p) && p.indexOf('\\\\') !== 0) continue;
+			try { if (await bridge.fs.exists(p)) out.push(p); } catch (e) { }
+		}
+		return out;
 	}
 
 	// ★ 2026-08-24: q3 getUniquePath 语义——目标已存在（含同目录粘贴 src===dest）→ 追加 "_n" 改名（2026-09-26 注释校正：实现即 _n，注释文字曾遗留旧式）。

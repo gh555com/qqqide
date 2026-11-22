@@ -1609,6 +1609,9 @@ $guideBtn.onclick = async function () {
     $input.value = '';
     $input._resetUndo();
     $input.focus();
+    // ★ 引导内容已进楼层 ≠ 草稿：两条草稿通道同批归零（否则重启把引导内容抓回编辑框）
+    if (typeof _clearDraftTextNow === 'function') { try { _clearDraftTextNow(questActiveId); } catch (_) { } }
+    if (typeof _clearDraftSnapshotNow === 'function') _clearDraftSnapshotNow(questActiveId);
 
     // ═══ ① 立即上屏（识别期空窗根治）═══
     //   反模式（已废）：await 完 _analyzeImages 才建块 —— 单张图「提交 + 流轮询」5~30s
@@ -2056,6 +2059,9 @@ $queueBtn.onclick = function () {
     pendingImages = [];
     renderImageStrip();
     $input.focus();
+    // ★ 已收编进队列 ≠ 草稿：两条草稿通道同批归零，否则重启会把队列消息又抓回编辑框（与队列条重影）
+    if (typeof _clearDraftTextNow === 'function') { try { _clearDraftTextNow(questActiveId); } catch (_) { } }
+    if (typeof _clearDraftSnapshotNow === 'function') _clearDraftSnapshotNow(questActiveId);
     _debounceSaveQueue();
     // ★ 空闲时立即触发：若当前无发送/无流式/未暂停，直接排水
     //   （2026-08-20：入队后草稿已被本按钮收编清空 → 若此前因草稿自动暂停，立即恢复排水；人工暂停不动）

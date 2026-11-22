@@ -868,7 +868,10 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         delete c.reasoning;
         delete c.answer;            // ★ 去除冗余：与 conversation 中 assistant.content 完全重复
         // ★ 保存工具调用次数（room 计数用），再删除 tools 数组
-        c.toolCount = (c.tools && c.tools.length) || 0;
+        //   ★ 已有数字 toolCount 必须保活（计费明细整列 0 事故根因）：从磁盘恢复的 house 没有 tools 数组、
+        //     只剩 toolCount；旧写法无条件按 tools.length 重算 → 恢复态重写楼层时把每个 house 的工具数刷成 0，
+        //     而同一 payload 里 room_count 仍按真实计数汇总（指纹：room_count>0 而全 house 工具数 0）。
+        c.toolCount = (c.tools && Array.isArray(c.tools)) ? c.tools.length : (typeof c.toolCount === 'number' ? c.toolCount : 0);
         delete c.tools;
         delete c.toolResults;
         return c;

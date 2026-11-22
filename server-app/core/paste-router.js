@@ -280,7 +280,8 @@
 
   // ═══ 写盘 + hash ═══
   // _saveBytes: 字节直落（sha256 + 同目录指纹去重 + 写盘）——粘贴图片 blob 与网页粘贴(data:/本地字节)共用
-  async function _saveBytes(ab, ext, e) {
+  //   opts.fileName：保留剪贴板原始文件名（仅「无 path 的 DOM File 走字节」这一路传；传了即 name_N.ext 唯一化，绝不覆盖）
+  async function _saveBytes(ab, ext, e, opts) {
     var dir = _getPasteDir(e);
     if (!dir) {
       console.error('[paste-router] _saveBytes: _getPasteDir returned null');
@@ -322,8 +323,9 @@
     }
 
     // Write
-    var fileName = genName(ext);
     var sep = dir.indexOf('\\') >= 0 ? '\\' : '/';
+    var fileName = (opts && opts.fileName) ? _sanitizeFileName(opts.fileName, ext) : genName(ext);
+    if (opts && opts.fileName) fileName = await _uniqueVaultName(dir, sep, fileName);
     var fullPath = dir + sep + fileName;
     try {
       if (!bridge || !bridge.fs || !bridge.fs.writeBase64) {
@@ -1271,6 +1273,19 @@
     //   → 直链图片/视频直接下载；平台视频走 yt-dlp；普通网页抓取嗅探视频；失败一律回落普通纯文本粘贴。
     var _hasRichHtml = !!(pr.hasHtml && !pr.hasImage && !pr.hasFile);
     if (pr.isPureText && !_hasRichHtml) {
+      // ★ 少数文件管理器只给 text/uri-list（不给 Files 项）：本地文件 URI → 走文件粘贴四路递进
+      var _uriType = false;
+      try { _uriType = (pr.types || []).indexOf('text/uri-list') >= 0; } catch (_) { _uriType = false; }
+      if (_uriType && _filePathsFromClipboardData(e && e.clipboardData).length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        try { _getPasteDir(e); } catch (_) { }
+        var _ancUri = _anchorNew(targetEd);
+        try { await _pasteFilesIntoVault(targetEd, e, [], _ancUri); }
+        catch (errUri) { _pasteDiag('uri-fail', { err: _errText(errUri) }); }
+        finally { _anchorDrop(_ancUri); }
+        return;
+      }
       if (_autoDownloadOn() && bridge && bridge.pasteDl) {
         var _urltxt = '';
         try { _urltxt = e.clipboardData ? (e.clipboardData.getData('text/plain') || '') : ''; } catch (_) { _urltxt = ''; }
@@ -1312,6 +1327,182 @@
     }
   }
 
+  // ═══ 粘贴诊断（唯一出口 = 壳层 crash-net events.log；事件形状与 roam 粘贴同规：q/state/detail）═══
+  //   粘贴是最容易「什么都不发生」的操作——没有这条记录，现场只能得到「没反应」，查不出哪一路断。
+  function _pasteDiag(state, detail) {
+    try { console.warn('[paste-router] paste ' + state, detail); } catch (_) { }
+    try { if (bridge && bridge.log) bridge.log({ q: 'editor-paste', state: state, detail: detail }); } catch (_) { }
+  }
+  function _errText(ex) {
+    try { return String((ex && (ex.message || ex.code)) || ex).slice(0, 160); } catch (_) { return 'err'; }
+  }
+  async function _pasteLastRead() {
+    try { if (bridge && bridge.clipboard && bridge.clipboard.lastRead) return await bridge.clipboard.lastRead(); } catch (_) { }
+    return null;
+  }
+
+  // 文件名消毒（剪贴板来的名字可能含 Windows 非法字符——只做最小替换，其余字符一律不动）
+  function _sanitizeFileName(name, ext) {
+    var s = String(name == null ? '' : name).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim();
+    if (!s || s === '.' || s === '..') return genName(ext || '');
+    return s;
+  }
+
+  // _qqqvault 内同名不覆盖（重名 name_1.ext 唯一化——与全场改名风格同一式）
+  async function _uniqueVaultName(dir, sep, name) {
+    var base = String(name || 'file');
+    var dot = base.lastIndexOf('.');
+    var stem = dot > 0 ? base.slice(0, dot) : base;
+    var ext = dot > 0 ? base.slice(dot) : '';
+    if (!(bridge && bridge.fs && bridge.fs.exists)) return base;
+    var cand = base;
+    for (var n = 1; n <= 999; n++) {
+      var ex = false;
+      try { ex = await bridge.fs.exists(dir + sep + cand); } catch (_) { ex = false; }
+      if (!ex) return cand;
+      cand = stem + '_' + n + ext;
+    }
+    return stem + '_' + Date.now() + ext;
+  }
+
+  // 剪贴板文本侧的本地文件路径（text/uri-list + 逐行路径）
+  //   少数文件管理器只放 uri-list（不给 Files 项）；Roam 自己 Ctrl+C 也写一份路径文本。
+  //   只认「像绝对路径」的行（盘符 / 正斜杠 / UNC）——普通句子绝不误判成文件。
+  function _filePathsFromClipboardData(cd) {
+    var out = [];
+    if (!cd) return out;
+    var uri = '', txt = '';
+    try { uri = cd.getData('text/uri-list') || ''; } catch (_) { uri = ''; }
+    try { txt = cd.getData('text/plain') || ''; } catch (_) { txt = ''; }
+    var lines = String(uri || '').split(/\r?\n/);
+    if (txt) lines = lines.concat(String(txt).split(/\r?\n/));
+    for (var i = 0; i < lines.length && out.length < 500; i++) {
+      var s = String(lines[i] == null ? '' : lines[i]).trim();
+      if (!s || s.charAt(0) === '#' || s === 'copy' || s === 'cut') continue;   // RFC 2483 注释行 / gnome 语义行
+      var p = /^file:\/\//i.test(s) ? _fileUriToLocalPath(s) : s;
+      if (!p || !/^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(p)) continue;
+      if (out.indexOf(p) < 0) out.push(p);
+    }
+    return out;
+  }
+
+  // ═══ 剪贴板文件粘贴（唯一实现：四路递进）═══
+  //   ① 壳层 CF_HDROP（唯一能覆盖文件夹/多选的权威路）
+  //   ② DOM File.path → 原生流式 copyFile（壳层读表全败也能成）
+  //   ③ DOM FileReader 字节落盘（连 path 都没有时，字节是最后的真相）
+  //   ④ 剪贴板文本侧路径行（uri-list / 逐行路径）
+  //   四路全空 = 一条 qoast + 一条诊断事件（禁静默、禁插「假成功」空路径锚点）。
+  async function _pasteFilesIntoVault(targetEd, e, domFiles, anchor) {
+    var files = domFiles || [];
+    var pdir = _getPasteDir(e);
+
+    // 目标文档未落盘（无目录）→ 无处可放：仅文件名锚点 + 诊断（不谎报成功）
+    if (!pdir) {
+      var seen0 = {};
+      for (var z0 = 0; z0 < files.length; z0++) {
+        var n0 = (files[z0] && files[z0].name) || 'file';
+        if (seen0[n0]) continue;
+        seen0[n0] = true;
+        _insertTokenAtCursor(_makeAnchorToken('', n0), { path: null, sha256: '', fileName: n0 }, targetEd, anchor);
+      }
+      _pasteDiag('no-dir', { n: files.length });
+      return;
+    }
+    try { if (bridge && bridge.fs && bridge.fs.mkdir) await bridge.fs.mkdir(pdir); } catch (_) { }
+    var sep = pdir.indexOf('\\') >= 0 ? '\\' : '/';
+
+    var errors = [];
+    var srcPaths = [];        // 路径源（① + ② + ④）
+    var needBytes = [];       // 无 path 的 DOM File（③）
+    var hdropN = 0, domPathN = 0, byteN = 0, textN = 0;
+    var landed = [], failN = 0, lostN = 0;
+
+    function _addPath(p) {
+      if (!p || typeof p !== 'string') return false;
+      if (srcPaths.indexOf(p) >= 0) return false;
+      srcPaths.push(p);
+      return true;
+    }
+
+    // ① 壳层 CF_HDROP
+    try {
+      if (bridge && bridge.clipboard && bridge.clipboard.readFiles) {
+        // expected 仅用于壳侧「读少了」告警（DOM 看到的条目数）——不参与结果裁剪
+        var got = await bridge.clipboard.readFiles(files.length || 0);
+        if (got && got.length) { for (var g = 0; g < got.length; g++) { if (_addPath(got[g])) hdropN++; } }
+        else { errors.push('hdrop:empty'); }
+      } else { errors.push('hdrop:no-bridge'); }
+    } catch (ex) { errors.push('hdrop:' + _errText(ex)); }
+
+    // ② DOM File.path
+    for (var i2 = 0; i2 < files.length; i2++) {
+      var f2 = files[i2];
+      var dp2 = '';
+      try { dp2 = String((f2 && f2.path) || ''); } catch (_) { dp2 = ''; }
+      if (!dp2) { needBytes.push(f2); continue; }
+      if (_addPath(dp2)) domPathN++;
+    }
+
+    // ④ 文本侧路径（仅当 ①② 一个都没拿到；③ 仍优先——文本路径可能已过期）
+    if (srcPaths.length === 0) {
+      var tps = _filePathsFromClipboardData(e && e.clipboardData);
+      for (var t2 = 0; t2 < tps.length; t2++) { if (_addPath(tps[t2])) textN++; }
+    }
+
+    // 路径源复制（原生流式引擎：目录递归 + 同内容去重 + 重名唯一化；返回值为最终落盘路径）
+    for (var q = 0; q < srcPaths.length; q++) {
+      var src = srcPaths[q];
+      var nm = src.replace(/\\/g, '/').split('/').pop() || 'file';
+      try {
+        if (!bridge || !bridge.fs || !bridge.fs.copyFile) throw new Error('fs.copyFile missing');
+        var landedRet = await bridge.fs.copyFile(src, pdir + sep + nm);
+        if (landedRet === false || landedRet == null) throw new Error('copy returned false');
+        var finalPath = (typeof landedRet === 'string' && landedRet) ? landedRet : (pdir + sep + nm);
+        landed.push(finalPath);
+        var finalName = finalPath.replace(/\\/g, '/').split('/').pop() || nm;
+        if (_insertTokenAtCursor(_makeAnchorToken('', finalName), { path: finalPath, sha256: '', fileName: finalName }, targetEd, anchor) === 'dead') lostN++;
+      } catch (ex2) { failN++; errors.push('copy:' + nm + ':' + _errText(ex2)); }
+    }
+
+    // ③ 无 path 的 DOM File → 字节落盘（保留原始文件名；同内容走指纹去重）
+    for (var b2 = 0; b2 < needBytes.length; b2++) {
+      var fb = needBytes[b2];
+      var bn = (fb && fb.name) || 'file';
+      try {
+        var ab2 = await blobToArrayBuffer(fb);
+        var extB = _extFromName(bn) || mimeToExt[String((fb && fb.type) || '')] || '';
+        var rb = await _saveBytes(ab2, extB, e, { fileName: bn });
+        if (rb && rb.path) {
+          byteN++;
+          landed.push(rb.path);
+          var rbName = rb.fileName || bn;
+          if (_insertTokenAtCursor(_makeAnchorToken(rb.sha256, rbName), { path: rb.path, sha256: rb.sha256 || '', fileName: rbName }, targetEd, anchor) === 'dead') lostN++;
+        } else {
+          failN++;
+          errors.push('bytes:' + bn + ':' + ((rb && rb.error) || 'unknown'));
+        }
+      } catch (ex3) { failN++; errors.push('bytes:' + bn + ':' + _errText(ex3)); }
+    }
+
+    if (landed.length > 0) {
+      try { if (bridge && bridge.assetRoots && bridge.assetRoots.add) bridge.assetRoots.add(pdir).catch(function () { }); } catch (_) { }
+      _vigPaste(await _sumSizes(landed));
+      _pasteDiag('ok', { n: landed.length, hdrop: hdropN, domPath: domPathN, bytes: byteN, textPath: textN, fail: failN, exp: files.length, errors: errors.slice(0, 4) });
+    } else {
+      var _lr = await _pasteLastRead();
+      _pasteDiag('fail', { exp: files.length, hdrop: hdropN, domPath: domPathN, bytes: byteN, textPath: textN, errors: errors.slice(0, 6), lastRead: _lr });
+      if (window.qqqideQoast) {
+        window.qqqideQoast.show(_i18n('pasteRouter.fileReadFail', '粘贴失败：读不到剪贴板里的文件（内容可能已失效，请重新复制）'), { duration: 6000 });
+      }
+    }
+    if (failN > 0 && landed.length > 0 && window.qqqideQoast) {
+      window.qqqideQoast.show((window._i ? window._i('pasteRouter.imgPasteDone', '粘贴: {ok} 成功, {fail} 失败', { ok: landed.length, fail: failN }) : ('粘贴: ' + landed.length + ' 成功, ' + failN + ' 失败')), { duration: 4000 });
+    }
+    if (lostN > 0 && landed.length > 0 && window.qqqideQoast) {
+      window.qqqideQoast.show(_i18n('pasteRouter.editorClosed', '目标编辑器已关闭：{n} 个媒体已保存到 _qqqvault（内容仍在剪贴板，可重新粘贴）', { n: landed.length }), { duration: 8000 });
+    }
+  }
+
   // ── 已接管粘贴的实体（第 5/6/7 步：图片 / 文件 / HTML 富文本；anchor = 位置冻结锚，可空）──
   async function _handleOwnedPaste(targetEd, e, pr, anchor) {
 
@@ -1347,70 +1538,11 @@
     }
 
     // ★ 第 6 步：文件/文件夹粘贴
-    //   2026-08-13 升级: CF_HDROP 完整路径优先 → 文件夹递归复制 + 原生流式，与 roam 共用
-    //   同一主进程引擎（qqqide:fs:copyFile 目录感知）；文件夹复制进 _qqqvault/ 后插锚点
-    //   （所见即所得：锚点带真实 path，可打开/渲染）。DOM-only（无 CF_HDROP）降级插文件名锚点。
+    //   四路递进（唯一实现见 _pasteFilesIntoVault）：CF_HDROP → DOM File.path 原生复制 →
+    //   DOM 字节落盘 → 剪贴板文本路径行。任一路成功即出锚点（文件夹递归复制，与 roam 同一主进程引擎）；
+    //   四路全空 → qoast + 诊断事件（旧实现只插「空路径文件名锚点」，看上去像成功实则全断）。
     if (pr.hasFile && pr.fileList.length > 0) {
-      var fullPaths = [];
-      if (bridge && bridge.clipboard && bridge.clipboard.readFiles) {
-        // expected 仅用于壳侧「读少了」告警（DOM 看到的条目数）——不参与结果裁剪
-        try { fullPaths = await bridge.clipboard.readFiles(pr.fileList.length || 0); } catch (_) { fullPaths = []; }
-      }
-      if (fullPaths.length > 0) {
-        var pdir = _getPasteDir(e);
-        if (pdir) {
-          try { if (bridge && bridge.fs && bridge.fs.mkdir) await bridge.fs.mkdir(pdir); } catch (_) {}
-          var psep = pdir.indexOf('\\') >= 0 ? '\\' : '/';
-          var seenP = {};
-          var copiedOk = 0, copiedFail = 0, _fileLost = 0;
-          var landedListP = [];
-          for (var n = 0; n < fullPaths.length; n++) {
-            var fp = fullPaths[n];
-            var fnP = fp.replace(/\\/g, '/').split('/').pop() || 'file';
-            // 去重键 = 完整路径（同名不同目录的文件必须各粘一份；按文件名去重会静默丢文件）
-            if (seenP[fp]) continue;
-            seenP[fp] = true;
-            var dstP = pdir + psep + fnP;
-            try {
-              if (!bridge || !bridge.fs || !bridge.fs.copyFile) throw new Error('fs.copyFile missing');
-              // ★ 2026-08-24: copyFile 返回最终落盘路径——去重命中（同内容已存在）或
-              //   唯一化改名（" (n)"）后锚点必须指向真实文件，禁死用 dstP。
-              var landed = await bridge.fs.copyFile(fp, dstP);
-              copiedOk++;
-              var landedPath = (typeof landed === 'string' && landed) ? landed : dstP;
-              landedListP.push(landedPath);
-              var landedName = landedPath.replace(/\\/g, '/').split('/').pop() || fnP;
-              // 注册资产根目录（缩略图/打开可用）
-              if (bridge && bridge.assetRoots && bridge.assetRoots.add) {
-                bridge.assetRoots.add(pdir).catch(function () {});
-              }
-              if (_insertTokenAtCursor(_makeAnchorToken('', landedName), { path: landedPath, sha256: '', fileName: landedName }, targetEd, anchor) === 'dead') _fileLost++;
-            } catch (err) {
-              copiedFail++;
-              console.warn('[paste-router] 复制失败:', fp, err && err.message);
-            }
-          }
-          if (copiedFail > 0 && window.qqqideQoast) {
-            window.qqqideQoast.show((window._i ? window._i('pasteRouter.imgPasteDone', '粘贴: {ok} 成功, {fail} 失败', { ok: copiedOk, fail: copiedFail }) : ('粘贴: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败')), { duration: 4000 });
-          }
-          if (copiedOk > 0) { _vigPaste(await _sumSizes(landedListP)); }
-          if (_fileLost > 0 && copiedOk > 0 && window.qqqideQoast) {
-            window.qqqideQoast.show(_i18n('pasteRouter.editorClosed', '目标编辑器已关闭：{n} 个媒体已保存到 _qqqvault（内容仍在剪贴板，可重新粘贴）', { n: copiedOk }), { duration: 8000 });
-          }
-          return;
-        }
-        // 无编辑文件（_getPasteDir null）→ 降级插文件名锚点
-      }
-      // DOM-only 兜底（无 CF_HDROP：浏览器拖拽等）→ 仅文件名锚点
-      var seen = {};
-      for (var m = 0; m < pr.fileList.length; m++) {
-        var df = pr.fileList[m];
-        var fn = df.name || 'file';
-        if (seen[fn]) continue;
-        seen[fn] = true;
-        var token3 = _makeAnchorToken('', fn);
-        _insertTokenAtCursor(token3, { path: null, sha256: '', fileName: fn }, targetEd, anchor);
-      }
+      await _pasteFilesIntoVault(targetEd, e, pr.fileList, anchor);
       return;
     }
 

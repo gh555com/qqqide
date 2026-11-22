@@ -1521,7 +1521,8 @@
       "itemsCopied": "{0} 项已复制",
       "canceledFiles": "已取消 · {0} 个完成",
       "filesResult": "{0} 个成功，{1} 个失败",
-      "filesCopied": "{0} 个已复制"
+      "filesCopied": "{0} 个已复制",
+      "pasteReadFail": "粘贴失败：读不到剪贴板里的文件（已记录日志）"
     },
     "kopea": {
       "offline": "当前面板：kope-a 未启动",
@@ -2492,7 +2493,8 @@
     "mediaSummary": "成功 {ok} · 失败 {fail}",
     "richSomeFail": "网页粘贴：{n} 个媒体未下载（{detail}）",
     "videoSkipped": "已保留 {n} 个视频链接（自动下载已关闭）",
-    "editorClosed": "目标编辑器已关闭：{n} 个媒体已保存到 _qqqvault（内容仍在剪贴板，可重新粘贴）"
+    "editorClosed": "目标编辑器已关闭：{n} 个媒体已保存到 _qqqvault（内容仍在剪贴板，可重新粘贴）",
+    "fileReadFail": "粘贴失败：读不到剪贴板里的文件（内容可能已失效，请重新复制）"
   },
   "pasteDl": {
     "errProtocol": "不支持的链接协议（仅 http/https）",

@@ -844,8 +844,10 @@ async function _executeSend(intent) {
         // ★ 2026-09-26：图片 badge 楼层号回填（闭包点击时读 dataset.fn 取真实楼层——防解析到新楼层目录）
         // ★ 2026-09-30：questId 同步回填（按下即冻结路径建行时草稿 id 未定，badge 点击惰性读 dataset.qid）
         try { if (imgRow) { imgRow.dataset.fn = String(floorNum); imgRow.dataset.qid = String(qid || ''); } } catch (_) { }
-        agent._houses = [];
-        agent._a4Snapshots = {};
+        agent._houses = [];
+        // ★ 新楼层开始 = 本会话已有未保存数据 → 解除「磁盘即真理」标记（详 panel-clock._saveAgentFloor）
+        agent._restoredClean = false;
+        agent._a4Snapshots = {};
         agent._lastAutoSaveLen = 0;
         agent._lastFloorTimingRecord = null;
         if (!agent._floorMeta) agent._floorMeta = {};

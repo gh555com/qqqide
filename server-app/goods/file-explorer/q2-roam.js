@@ -167,12 +167,19 @@ var bridge = {
 		trashItem: (p) => rpc('fs.trashItem', p),
 		rename: (o, n) => rpc('fs.rename', { __spread: true, args: [o, n] }),
 		stat: (p) => rpc('fs.stat', p),
-		copyFile: (src, dest) => rpc('fs.copyFile', { __spread: true, args: [src, dest] }),
+		exists: (p) => rpc('fs.exists', p),
+		// ★ streamId 必须透传：粘贴取消（ioast 取消钮）靠它向主进程发信号；旧代理把它吞了 → 取消永不生效
+		copyFile: (src, dest, _onProgress, streamId) => rpc('fs.copyFile', { __spread: true, args: streamId ? [src, dest, streamId] : [src, dest] }),
+		cancelCopy: (streamId) => rpc('fs.cancelCopy', streamId),
+		copyTxEnd: (streamId) => rpc('fs.copyTxEnd', streamId),
 	},
 	clipboard: {
 		writeText: (s) => rpc('clipboard.writeText', s),
+		readText: () => rpc('clipboard.readText'),
 		probe: () => rpc('clipboard.probe'),
-		readFiles: () => rpc('clipboard.readFiles'),
+		// expected = DOM 侧看到的条目数（仅供壳层「读少了」诊断，绝不裁剪结果）
+		readFiles: (expected) => rpc('clipboard.readFiles', expected),
+		lastRead: () => rpc('clipboard.lastRead'),
 		writeFiles: (paths) => rpc('clipboard.writeFiles', paths),
 		readImage: () => rpc('clipboard.readImage'),
 	},
