@@ -283,9 +283,7 @@
       "filterPh": "筛选...",
       "sortByName": "按文件名排序",
       "sortByMtime": "按修改时间排序",
-      "rejectProgram": "该目录是本窗口 qd 运行环境的启动目录，不能添加进 AI 视口；换一个启动目录后才能添加",
-      "rejectProgramInside": "该目录位于本窗口 qd 运行环境内部，不能添加进 AI 视口",
-      "rejectProgramParent": "该目录包含本窗口 qd 运行环境的启动目录，不能添加进 AI 视口；请选择它下面的具体项目目录",
+      "rejectProgram": "该目录与本窗口 qd 的运行目录（{p}）有包含关系，不能添加进 AI 视口",
       "rejectRoot": "磁盘根目录不能作为项目"
     },
     "seat": {
@@ -980,29 +978,6 @@
     "featureWip": "该功能正在建设中",
     "tasks": {
       "inputBusy": "编辑框里已有内容，先发送或清空再点任务"
-    },
-    "eflow": {
-      "tip": "文档地基：每轮要喂给 AI 多少字、体检、接入/升级、卸载",
-      "title": "文档地基",
-      "loading": "正在读取…",
-      "upgrade": "接入 / 升级",
-      "check": "体检",
-      "rotate": "整理归档",
-      "detach": "卸载",
-      "hint": "只动这个项目的 _qqq/alphal/expert/ 与 project.txt 里那一行；你自己的规则和文件不会被改。",
-      "stBlank": "未接入 · 每轮不注入任何文档",
-      "stCustom": "自定义规则 · 每轮注入",
-      "stOn": "已接入 · 每轮注入",
-      "stUnknown": "状态未知",
-      "stFail": "读取失败",
-      "noBridge": "当前窗口不可用（缺文件通道）",
-      "noRoot": "没有打开的项目",
-      "running": "正在执行…",
-      "noOut": "（没有输出）",
-      "failed": "失败",
-      "confirm": "再点一次确认",
-      "confirmUpgrade": "再点一次：会往 project.txt 写一行 rule",
-      "confirmDetach": "再点一次：只摘掉那一行，文件不删"
     },
     "auditBtn": "审计",
     "translateBtn": "翻译",

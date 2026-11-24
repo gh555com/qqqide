@@ -292,6 +292,27 @@ test('eflow: 自家 L0 路径只差大小写 = 仍认作背包（禁误判成别
     assert.ok(/EF2 1 行 rule/.test(chk.text), chk.text);
 });
 
+test('eflow: global 开关（on/off 回读一致；绝不碰用户的 global.txt）', async () => {
+    const r = fresh('global-proj');
+    const dr = fresh('global-data');
+    let s = await core.run('global', IO, r, { dataRoot: dr, action: 'status' });
+    assert.equal(s.data.on, false, s.text);
+    const on = await core.run('global', IO, r, { dataRoot: dr, action: 'on' });
+    assert.equal(on.ok, true, on.text);
+    assert.equal(on.data.on, true, on.text);
+    assert.ok(/已回读确认/.test(on.text), on.text);
+    assert.equal(fs.existsSync(dr + '/alphal/eflow.json'), true, '开关必须落盘');
+    assert.equal(JSON.parse(R(dr + '/alphal/eflow.json')).global, true);
+    assert.equal(fs.existsSync(dr + '/global.txt'), false, '禁往用户的全局规则文件写产品文案');
+    s = await core.run('global', IO, r, { dataRoot: dr, action: 'status' });
+    assert.equal(s.data.on, true, s.text);
+    const off = await core.run('global', IO, r, { dataRoot: dr, action: 'off' });
+    assert.equal(off.data.on, false, off.text);
+    assert.equal(JSON.parse(R(dr + '/alphal/eflow.json')).global, false);
+    const bad = await core.run('global', IO, r, { action: 'on' });
+    assert.equal(bad.ok, false, '缺 dataRoot 必须如实失败：' + bad.text);
+});
+
 test.after(() => {
     try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) { /* ignore */ }
 });

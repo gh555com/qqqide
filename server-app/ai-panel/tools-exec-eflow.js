@@ -10,7 +10,7 @@
 // 必须机器判。让 AI 自己数、自己对齐 = 每个项目一套口径 = 等于没闸门。
 // ════════════════════════════════════════════════════════════════════════════
 
-var EFLOW_OPS = ['status', 'check', 'index', 'init', 'upgrade', 'detach', 'rotate'];
+var EFLOW_OPS = ['status', 'check', 'index', 'init', 'upgrade', 'detach', 'rotate', 'global'];
 
 function _eflowRoot() {
     try {
@@ -18,6 +18,21 @@ function _eflowRoot() {
             var r = questStore.getProjectRoot();
             if (r) return String(r).replace(/\\/g, '/').replace(/\/+$/, '');
         }
+    } catch (_) { }
+    return '';
+}
+
+// 用户级目录（全局开关的家）：mac 的 app.root() 在 bundle 内 → 真值走 bootinfo.userData
+async function _eflowDataRoot(bridge) {
+    try {
+        if (bridge && bridge.boot && bridge.boot.getInfo) {
+            var bi = await bridge.boot.getInfo();
+            if (bi && bi.userData) return String(bi.userData).replace(/\\/g, '/').replace(/\/+$/, '');
+        }
+    } catch (_) { }
+    try {
+        var r = await bridge.app.root();
+        if (r) return String(r).replace(/\\/g, '/').replace(/\/+$/, '') + '/Data';
     } catch (_) { }
     return '';
 }
@@ -56,7 +71,9 @@ async function executeEflow(args) {
             days: (args && args.days) || 0,
             link: !(args && args.link === false),   // init：false = 只铺骨架、不接背包
             keepRules: !!(args && args.keepRules),   // upgrade：true = 不降级用户已有的 rule
-            purge: !!(args && args.purge)            // detach：true = 骨架目录改名归档
+            purge: !!(args && args.purge),           // detach：true = 骨架目录改名归档
+            action: String((args && args.action) || 'status'),   // global：status / on / off
+            dataRoot: (op === 'global') ? await _eflowDataRoot(bridge) : ''
         });
     } catch (e) {
         return 'Error: eflow ' + op + ' failed: ' + ((e && e.message) || e);

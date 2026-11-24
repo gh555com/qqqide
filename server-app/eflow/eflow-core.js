@@ -1078,6 +1078,72 @@
         return { ok: true, text: out.join('\n') };
     }
 
+    // ── op: global（全局接管开关）────────────────────────────────────────
+    //   真值 = 一份小 JSON：{dataRoot}/alphal/eflow.json  {"global":true,"since":…,"ver":…}
+    //   ★ 绝不往用户的 global.txt 写任何产品文案：规则文件归用户，产品状态归产品。
+    //   ★ 全局接管只对「白纸项目」生效（没有自己的 rule、也没接 EF2）：
+    //     已经有自己知识库的项目一个字都不动，由 AI 把数字报给用户，人拍板。
+    //   action = status | on | off
+    function globalFile(dataRoot) {
+        return joinp(norm(dataRoot), 'alphal/eflow.json');
+    }
+
+    async function opGlobal(io, root, opts) {
+        opts = opts || {};
+        var action = String(opts.action || 'status').toLowerCase();
+        var dr = opts.dataRoot ? norm(opts.dataRoot) : '';
+        if (!dr) return { ok: false, text: '✗ 缺 dataRoot（全局开关需要一个用户级目录：win/dev = {appRoot}/Data，mac = bootinfo.userData）', data: { on: false, known: false } };
+        var gp = globalFile(dr);
+        var cur = null;
+        try { cur = JSON.parse((await safeRead(io, gp)) || 'null'); } catch (_) { cur = null; }
+        var on = !!(cur && cur.global);
+
+        if (action === 'status' || action === '') {
+            var out = [];
+            out.push('E-Flow v' + VER + ' · 全局接管：' + (on ? '开' : '关'));
+            out.push('  开关文件   ' + gp + (cur ? '' : '（还没建 = 关）'));
+            if (on) {
+                out.push('  生效方式   打开任何白纸项目 → 自动铺 L0 骨架并接一行 rule（幂等；已有自己规则的项目不动）');
+            } else {
+                out.push('  生效方式   什么都不做：项目只有在你明确要求时才接入');
+            }
+            return { ok: true, text: out.join('\n'), data: { on: on, known: !!cur } };
+        }
+        if (action !== 'on' && action !== 'off') {
+            return { ok: false, text: '✗ 未知动作：' + action + '（status / on / off）', data: { on: on, known: !!cur } };
+        }
+
+        var nextOn = (action === 'on');
+        var body = {
+            global: nextOn,
+            since: nextOn ? ((cur && cur.since) || new Date().toISOString()) : (cur && cur.since) || '',
+            offAt: nextOn ? '' : new Date().toISOString(),
+            ver: VER
+        };
+        try {
+            if (io.mkdir) { try { await io.mkdir(dr + '/alphal'); } catch (_) { } }
+            await io.write(gp, JSON.stringify(body, null, 2) + '\n');
+        } catch (e) {
+            return { ok: false, text: '✗ 写开关失败：' + ((e && e.message) || e), data: { on: on, known: !!cur } };
+        }
+        // 回读验真（写成功不等于生效）
+        var back = null;
+        try { back = JSON.parse((await safeRead(io, gp)) || 'null'); } catch (_) { back = null; }
+        var okNow = !!(back && back.global === nextOn);
+        var o = [];
+        o.push('E-Flow v' + VER + ' · 全局接管：' + (nextOn ? '已开启' : '已关闭') + (okNow ? '（已回读确认）' : '（⚠ 写入后回读不一致）'));
+        if (nextOn) {
+            o.push('  · 以后任何白纸项目（没有自己的规则、也没接过）→ 自动铺骨架 + 接一行 rule，用户什么都不用做');
+            o.push('  · 已经有自己知识库的项目：一个字都不动，只把每轮注入字数报出来');
+            o.push('  · 当前项目：' + (root ? '现在就按上面这条规则接入（本楼层继续用 upgrade 落地）' : '（没有打开的项目）'));
+            o.push('  · 关掉：eflow op=global action=off');
+        } else {
+            o.push('  · 已接入的项目保持现状（它们各自 project.txt 里的那一行不动）；要拆某个项目：eflow op=detach');
+            o.push('  · 想再开：eflow op=global action=on');
+        }
+        return { ok: okNow, text: o.join('\n'), data: { on: nextOn, known: true } };
+    }
+
     // ── 统一入口（工具与 CLI 都走这里）───────────────────────────────────
     async function run(op, io, root, opts) {
         opts = opts || {};
@@ -1093,7 +1159,8 @@
                 case 'rotate': r = await opRotate(io, root, opts); break;
                 case 'upgrade': r = await opUpgrade(io, root, opts); break;
                 case 'detach': r = await opDetach(io, root, opts); break;
-                default: return { ok: false, text: '✗ 未知操作：' + op + '（status/check/index/init/rotate/upgrade/detach）' };
+                case 'global': r = await opGlobal(io, root, opts); break;
+                default: return { ok: false, text: '✗ 未知操作：' + op + '（status/check/index/init/rotate/upgrade/detach/global）' };
             }
             return r;
         } catch (e) {
@@ -1106,7 +1173,7 @@
         DEF: DEF, run: run,
         // 供测试直接调
         opStatus: opStatus, opCheck: opCheck, opIndex: opIndex, opInit: opInit,
-        opRotate: opRotate, opUpgrade: opUpgrade, opDetach: opDetach,
+        opRotate: opRotate, opUpgrade: opUpgrade, opDetach: opDetach, opGlobal: opGlobal, globalFile: globalFile,
         parseHead: parseHead, parseFront: parseFront, buildBlock: buildBlock, sliceBlock: sliceBlock,
         nchars: nchars, tplL0: tplL0, tplArch: tplArch, tplState: tplState
     };

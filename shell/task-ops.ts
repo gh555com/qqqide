@@ -341,7 +341,9 @@ function _installBase(commit: boolean = true): InstallBase {
     }
 
     const ld = _launcherDir();
-    const packDrive = ld ? path.parse(ld).root : '';
+    // 盘符判定用「包根」；开发态（源码直跑，包里没有 qqqide.exe/joker.exe）退回 _ctx.root
+    const anchor = ld || _ctx.root || '';
+    const packDrive = anchor ? path.parse(anchor).root : '';
     const sysRoot = _systemDriveRoot();
 
     // ② qd 装在 program 目录里（D:\program\qd → D:\program\everything）

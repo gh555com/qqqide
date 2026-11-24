@@ -45,7 +45,6 @@
     var PANE_ID = 'task-pane';
     // 条件卡（when）本地判定：只认白名单条件，未知条件恒 true（老客户端/新条件不互噬）
     var WHEN_TTL = 5 * 60 * 1000;          // 判定结果缓存 5min（进空白面板不反复读盘）
-    var WHEN_DOCS_MIN = 12000;             // 「值得整理」阈值：每轮固定注入 ≥ 12000 字（≈5K tokens/轮）
 
     // ★ 出厂兜底（运维台 gaea/cf/qqqide/默认任务.py 的 DEFAULT_TASKS 双写同步点）
     //   提词一律「用户口吻一句话」——它就是楼层里用户气泡的原文。
@@ -64,11 +63,11 @@
                 prompt: '把 qd 设成开机自启，以后开机就自动打开。'
             },
             {
-                // 只在「真能省钱」时出现（when 由客户端本地判定，见 _ensureWhen）——
-                // 已接入 / 本来就没多长 → 这张卡不出现（不当广告）。
-                id: 'eflow-upgrade', icon: 'compass', platforms: ['win', 'mac', 'linux'], when: ['docs.gain'],
+                // 全局接管的唯一主入口（发现层）：点一下 = 发一句话 = 把文档地基交给 qd 管。
+                // 已经开了 → 整张卡不出现（when 由客户端本地判定，见 _ensureWhen），不当广告。
+                id: 'eflow-adopt', icon: 'compass', platforms: ['win', 'mac', 'linux'], when: ['eflow.off'],
                 title: { zh: 'AI 读懂我的项目', en: 'Make AI understand my project' },
-                prompt: '帮我看看这个项目现在每轮要给 AI 塞多少字的说明文档，如果太多就帮我理成一份精简的（保留铁律和路线、删重复），弄完告诉我省了多少；如果我已经有自己的规则就别乱改，只把数字报给我看。'
+                prompt: '我把项目文档交给你管：以后每个项目你都自动接管（铺好骨架、维护知识库）；这个项目也现在接进来，接完告诉我每轮给 AI 塞多少字、省了多少。我自己的规则不要乱改。'
             },
             {
                 id: 'install-everything', icon: 'search', platforms: ['win'],
@@ -286,8 +285,8 @@
 
     // ── 条件卡：本地判定「这张卡现在值得出现吗」──────────────────────────
     // 只认白名单条件（未知条件 = 恒 true，新条件不会把老客户端卡全灭）：
-    //   docs.gain — 未接入文档地基，且每轮固定注入 ≥ WHEN_DOCS_MIN 字（真能省 token 才推）
-    // 失败一律 fail-open（显示）：卡片本身零副作用，点了 AI 也会先看数字再动手。
+    //   eflow.off — 全局接管还没开（开了这张卡就不出现：它只是一次性开关）
+    // 失败一律 fail-open（显示）：卡片本身零副作用，点了 AI 也会先看状态再动手。
     var _whenState = null;          // { root, at, map }
     var _whenBusy = false;
     function _whenHit(t) {
@@ -316,39 +315,19 @@
         try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) root = String(questStore.getProjectRoot() || '').replace(/\\/g, '/'); } catch (_) { root = ''; }
         if (_whenState && _whenState.root === root && (Date.now() - _whenState.at) < WHEN_TTL) return;
         if (_whenBusy) return;
-        var core = (typeof EflowCore !== 'undefined' && EflowCore && EflowCore.run) ? EflowCore : null;
-        var br = null;
-        try { br = (typeof getBridge === 'function') ? getBridge() : null; } catch (_) { br = null; }
-        if (!br) { try { br = window.qqqideBridge || null; } catch (_) { br = null; } }
-        if (!core || !br || !br.fs || !root) {
-            _whenState = { root: root, at: Date.now(), map: { 'docs.gain': true } };   // fail-open
+        var ef = (typeof ExpertFlow !== 'undefined' && ExpertFlow && ExpertFlow.globalOn) ? ExpertFlow : null;
+        if (!root || !ef) {
+            _whenState = { root: root, at: Date.now(), map: { 'eflow.off': true } };   // fail-open（显示）
             _paint();
             return;
         }
         _whenBusy = true;
-        var io = {
-            read: function (p) { return br.fs.read(p); },
-            write: function (p, t) { return br.fs.write(p, t); },
-            list: function (p) { return br.fs.list(p); },
-            exists: function (p) { return br.fs.exists(p); },
-            mkdir: function (p) { return br.fs.mkdir(p); },
-            remove: function (p) { return br.fs.remove(p); },
-            rename: function (p, q) { return br.fs.rename(p, q); }
-        };
         (async function () {
-            var map = { 'docs.gain': true };
+            var map = { 'eflow.off': true };
             try {
-                var adopted = false;
-                try {
-                    var stat = await br.fs.stat(String(root).replace(/\/+$/, '') + '/_qqq/alphal/expert/index.md');
-                    adopted = !!(stat && !stat.isDir);
-                } catch (_) { adopted = false; }
-                var r = await core.run('status', io, root, {});
-                var d = (r && r.data) || {};
-                var inject = (typeof d.inject === 'number') ? d.inject : 0;
-                map['docs.gain'] = (!adopted && inject >= WHEN_DOCS_MIN);
+                map['eflow.off'] = !(await ef.globalOn());     // 全局接管已开 → 这张卡不出现
             } catch (_) {
-                map['docs.gain'] = true;          // fail-open
+                map['eflow.off'] = true;                       // fail-open
             }
             _whenState = { root: root, at: Date.now(), map: map };
             _whenBusy = false;

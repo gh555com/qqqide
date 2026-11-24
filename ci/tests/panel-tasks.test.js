@@ -104,7 +104,7 @@ test('tasks: 线路全挂 → 出厂兜底 5 张卡（清理 / 自启 / 文档�
     t.after(() => dom.window.close());
     await tick(40);
     const ids = cards(win).map(function (c) { return c.getAttribute('data-id'); });
-    assert.deepStrictEqual(ids, ['clean-c', 'autostart-qd', 'eflow-upgrade', 'install-everything', 'startup-clean']);
+    assert.deepStrictEqual(ids, ['clean-c', 'autostart-qd', 'eflow-adopt', 'install-everything', 'startup-clean']);
     assert.deepStrictEqual(titles(win), ['清理 C 盘', 'qd 开机自启', 'AI 读懂我的项目', '装 Everything', '电脑卡顿？'],
         '兜底标题必须与下发台 DEFAULT_TASKS 逐字一致');
     dom.window.close();
@@ -115,26 +115,15 @@ function harnessWhen(state) {
     const h = harness({ fetchFail: true });
     const win = h.win;
     win.questStore = { getProjectRoot: function () { return 'C:/proj'; } };
-    win.qqqideBridge.fs = {
-        stat: function () { return Promise.resolve(state.adopted ? { isDir: false, size: 100 } : null); },
-        read: function () { return Promise.resolve(''); },
-        list: function () { return Promise.resolve([]); },
-        exists: function () { return Promise.resolve(!!state.adopted); },
-        mkdir: function () { return Promise.resolve(true); },
-        remove: function () { return Promise.resolve(true); },
-        rename: function () { return Promise.resolve(true); },
-        write: function () { return Promise.resolve(true); }
-    };
-    win.EflowCore = { run: function () { return Promise.resolve({ ok: true, text: '', data: { inject: state.inject } }); } };
+    win.ExpertFlow = { globalOn: function () { return Promise.resolve(!!state.globalOn); } };
     return h;
 }
 
 for (const [name, state, want] of [
-    ['真能省钱（未接入 + 每轮 30000 字）', { adopted: false, inject: 30000 }, true],
-    ['已接入（无事可做）', { adopted: true, inject: 30000 }, false],
-    ['注入本来就小（3000 字）', { adopted: false, inject: 3000 }, false]
+    ['真能省钱（未接入 + 每轮 30000 字）', { globalOn: false }, true],
+    ['已接入（无事可做）', { globalOn: true }, false],
 ]) {
-    test('tasks: 条件卡 docs.gain —— ' + name + ' → ' + (want ? '出现' : '不出现'), async (t) => {
+    test('tasks: 条件卡 eflow.off —— ' + name + ' → ' + (want ? '出现' : '不出现'), async (t) => {
         const { dom, win } = harnessWhen(state);
         t.after(() => dom.window.close());
         await tick(80);

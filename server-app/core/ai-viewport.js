@@ -2505,8 +2505,9 @@
 
   // ---- 项目路径收口（唯一谓词；落座机器与 addProject 共用）----
   //   两条硬禁（都不是评价用户品味，而是会写坏我们自己）：
-  //     program — 项目域与程序域必须互斥（项目 ⊂ 程序 → 家目录随换版进交换域；程序 ⊂ 项目 → 时间线/索引扫全包）
-  //               三种关系各带一支 code，只为给对得上的话术（= 启动目录 / 在其内部 / 含它）
+  //     program — 项目域与程序域必须互斥：项目 = 运行目录 / 在其内部 / 含它
+  //               （前者 → 家目录随换版进交换域；后两者 → 时间线/索引把整包或整盘当项目扫）
+  //               三种关系共用一句判定 + 一条话术（提示里带上运行目录真身，用户看到路径自然就懂）
   //     root    — 盘根（家目录/时间线/搜索会把整盘当项目扫）
   let _progRoot = null;
   function _clsNorm(p) {
@@ -2537,9 +2538,7 @@
       var fold = plat !== 'linux';
       var a = fold ? raw.toLowerCase() : raw;
       var b = fold ? prog.toLowerCase() : prog;
-      if (a === b) return { ok: false, code: 'program' };
-      if (a.indexOf(b + '/') === 0) return { ok: false, code: 'programInside' };
-      if (b.indexOf(a + '/') === 0) return { ok: false, code: 'programParent' };
+      if (a === b || a.indexOf(b + '/') === 0 || b.indexOf(a + '/') === 0) return { ok: false, code: 'program' };
       return { ok: true };
     }).catch(function () { return { ok: true }; });
   }
@@ -2552,12 +2551,13 @@
     var msg;
     if (code === 'root') {
       msg = window._i('shell.viewport.rejectRoot', '磁盘根目录不能作为项目');
-    } else if (code === 'programInside') {
-      msg = window._i('shell.viewport.rejectProgramInside', '该目录位于本窗口 qd 运行环境内部，不能添加进 AI 视口');
-    } else if (code === 'programParent') {
-      msg = window._i('shell.viewport.rejectProgramParent', '该目录包含本窗口 qd 运行环境的启动目录，不能添加进 AI 视口；请选择它下面的具体项目目录');
+    } else if (code === 'program') {
+      // 提示里的路径按用户看得见的写法给（Windows 反斜杠——与资源管理器一致，降低理解成本）
+      var disp = _progRoot || '';
+      if (((window.qqqBootInfo && window.qqqBootInfo.platform) || 'win32') !== 'linux') disp = disp.replace(/\//g, '\\');
+      msg = window._i('shell.viewport.rejectProgram', '该目录与本窗口 qd 的运行目录（{p}）有包含关系，不能添加进 AI 视口', { p: disp });
     } else {
-      msg = window._i('shell.viewport.rejectProgram', '该目录是本窗口 qd 运行环境的启动目录，不能添加进 AI 视口；换一个启动目录后才能添加');
+      return;   // empty = 防御分支（正常入口由系统对话框给路径），零用户可见话术
     }
     if (window.qqqideQoast) window.qqqideQoast.show(msg, { duration: 6000, type: 'warning' });
   }
