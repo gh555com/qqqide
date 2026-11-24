@@ -525,10 +525,9 @@ async function _executeSend(intent) {
                     var _dDot = _dQName.indexOf('.');
                     var _dTitle = _dDot >= 0 ? _dQName.slice(_dDot + 1) : ('Quest ' + _dQNum);
                     await questStore.rename(questId, _dTitle, _dQNum);
-                    // ★ 2026-08-14: 删除 f1 空壳预创建（gaea q145 f1 事故：每个草稿晋升 quest 永远带空 f1
-                    //   目录——硬编码 _makeName('f',1) + _ensureQuestDir 预建，真正的发送走 nextFloorNum
-                    //   从 f2 起）。楼层目录统一由发送路径「先 mkdir 成功再落号」创建，首楼层号与目录同步。
-                    await _ensureQuestDir(_dRoot, _dQName, null);
+                    // ★ 只建 quest 目录；楼层目录一律由 questStore.materializeFloor 独占创建
+                    //   （预建 f1 会在首个真正楼层之前留下空壳目录 → 与首层同号冲突）
+                    await _ensureQuestDir(_dRoot, _dQName);
                 }
             await renderTabs();
             if (cardPool && _isDraft(cardPool._activeId)) {
@@ -742,21 +741,24 @@ async function _executeSend(intent) {
                 try { _retryFDir = (await questStore.resolveFloorDir(qid, forceFloorNum)) || ''; } catch (_) { }
             }
         }
-        // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
-        floorNum = forceFloorNum || await questStore.nextFloorNum(qid);
-        if (!forceFloorNum && root2 && floorNum > 0) {
-            var userQuestion = _isCompress ? 'only facts' : (text || (userContent || '').split('\n')[0]);
-            var quests2 = await questStore.list();
-            var qEntry = quests2.find(function (qx) { return qx.id === qid; });
-            var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
-            var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(qid.replace('q', ''), 10) || 0;
-            qDirName2 = await _resolveQuestDirName(root2, qid, qNumericId, qTitle2);
-            fDirName2 = _makeName('f', floorNum, userQuestion);
-            var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
-            // ★ 2026-08-14: 目录物化成功后才落号（旧顺序 atomicIncr 先扣号 → 物化抛错 → 号永久蒸发，
-            //   gaea q145 f2/f4 事故；探号零写入，失败 counter 不前进，下次发送重用同号）。
-            //   commit 失败（sq3 写异常）→ 下次探号磁盘碰撞跳过，永不产生重复目录。
-            try { await questStore.commitFloorNum(qid, floorNum); } catch (_) { }
+        // ★ 统一：全新楼层走 materializeFloor（编号分配 + 独占建目录 + 高水位落号，一步完成），
+        //   同层重试（forceFloorNum）复用原楼层目录。禁在此自拼目录名/自建目录：
+        //   名字推导与建楼不一致 = 同号第二个目录；recursive mkdir + 吞错 = 把新楼写进已有目录（盖楼事故）。
+        var _ensured = null;
+        if (forceFloorNum) {
+            floorNum = forceFloorNum;
+        } else if (root2) {
+            var userQuestion = _isCompress ? 'only facts' : (text || (userContent || '').split('\n')[0]);
+            var _mat = await questStore.materializeFloor(qid, userQuestion);
+            floorNum = _mat.floorNum;
+            qDirName2 = _mat.qDirName;
+            fDirName2 = _mat.fName;
+            _allTxtDirLocal = _mat.fDir;
+            _ensured = { qDir: _mat.qDir, fDir: _mat.fDir };
+        } else {
+            floorNum = await questStore.nextFloorNum(qid);
+        }
+        if (!forceFloorNum && _ensured) {
             // ★ VIG 楼层履历（2026-09-22）：总楼层 + 等级直方 + 白嫖（免费时段）→ 壳层采集机
             //   （回填播种由壳层离线完成；此处只计正向增量。root=主项目路径，壳层归一化为计数键）
             try {
@@ -807,7 +809,13 @@ async function _executeSend(intent) {
         //   写盘名与正常路径同规（img_{id}.png），重试重复写同图 = 幂等覆盖。
         if (forceFloorNum && _retryFDir && _images && _images.length > 0) {
             var _bridgeF = window.parent && window.parent.qqqideBridge;
+            // ★ writeBase64 底层会 recursive mkdir —— 目录已被删时先复核，禁复活幽灵目录（图不落盘胜过落错目录）
+            var _retryAlive = false;
             if (_bridgeF && _bridgeF.fs) {
+                try { _retryAlive = !!(await _bridgeF.fs.stat(_retryFDir)); } catch (_) { _retryAlive = false; }
+                if (!_retryAlive) console.warn('[img-save] retry dir missing, skip: ' + _retryFDir);
+            }
+            if (_bridgeF && _bridgeF.fs && _retryAlive) {
                 for (var _imf = 0; _imf < _images.length; _imf++) {
                     var _pimgF = _images[_imf];
                     var _fileNameF = 'img_' + _pimgF.id + '.png';
@@ -866,11 +874,34 @@ async function _executeSend(intent) {
             allTxtPath: _allTxtPathLocal,
             _fDir: _allTxtDirLocal,
             createdAt: Date.now()
-        };
-        var _bridgeMk = window.parent && window.parent.qqqideBridge;
-        if (_bridgeMk && _allTxtDirLocal) { try { await _bridgeMk.fs.mkdir(_allTxtDirLocal); } catch (_) { } }
-        var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
-        if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); _pressRejectRollback(); return; }  // ★ 链 finally 自动复位 _chainBusy
+        };        // ★ 目录物化已在 materializeFloor 内完成，此处禁无条件 mkdir
+        //   （recursive mkdir 会把已删/已改名的楼层目录原地复活 = 幽灵占号）；
+        //   同层重试（复用原目录）只做存在性复核，不在就如实留痕（后续写盘自有拒写防线）
+        if (_allTxtDirLocal && !_ensured) {
+            var _dirMk = null;
+            try {
+                var _bmk = window.parent && window.parent.qqqideBridge;
+                _dirMk = (_bmk && _bmk.fs) ? await _bmk.fs.stat(_allTxtDirLocal) : null;
+            } catch (_) { _dirMk = null; }
+            if (!_dirMk) console.warn('[pipeline] floor dir missing (q=' + qid + ' f=' + floorNum + '): ' + _allTxtDirLocal);
+        }
+        var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal, { allowReuse: !!forceFloorNum });
+        if (!aiDiv) {
+            // ★ 楼层号被占用（重复分配）→ 诚实拒绝：内容回填 + 显式报错，绝不把新楼盖进旧楼层
+            try {
+                if (typeof $input !== 'undefined' && $input && !$input.value && intent.content) {
+                    $input.value = intent.content;
+                    if (typeof autoResizeInput === 'function') autoResizeInput();
+                }
+            } catch (_) { }
+            try {
+                if (window.parent && window.parent.qqqideQoast) {
+                    window.parent.qqqideQoast.show(_qq('ai.pipeline.floorOccupied', '楼层编号被占用，本次未发送——请重试'), { type: 'error', duration: 6000 });
+                }
+            } catch (_) { }
+            try { if (agent && typeof agent._writeFileLog === 'function') agent._writeFileLog('[floor-collision] q=' + qid + ' f=' + floorNum + ' — refuse to reuse existing floor DOM'); } catch (_) { }
+            agent.setStopState('idle'); updateQueueBtn(); _pressRejectRollback(); return;  // ★ 链 finally 自动复位 _chainBusy
+        }
     } catch (_allocErr) {
         // ★ 2026-08-11: 楼层物化失败（f28 类事故）→ 不静默：显式 qoast
         // ★ 2026-08-14 三补（gaea q145 f2/f4 事故）：① 号不再蒸发（探号零写入，未落号）；

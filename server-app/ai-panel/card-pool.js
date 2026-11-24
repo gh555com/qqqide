@@ -1199,7 +1199,7 @@ var CardPool = (function () {
   //   旧实现无条件「隐藏当前卡 + 显示目标卡」，却不改 questActiveId → 后台 quest（队列排水 /
   //   恢复楼 / only facts 压缩楼）一建楼就翻卡：屏幕换成后台任务，回车却仍发进旧任务
   //   （看清 A 的画面打字，楼层长进 B —— 多任务串台的根因）。
-  CardPool.prototype.startBuildingFloor = function (questId, floorNum, allTxtPath) {
+  CardPool.prototype.startBuildingFloor = function (questId, floorNum, allTxtPath, opts) {
     // ★ 兜底：若 card 不存在（新建 quest 首次发消息），自动创建
     var card = this.getOrCreate(questId);
     var _panelQuest = (typeof questActiveId !== 'undefined') ? questActiveId : null;
@@ -1218,9 +1218,18 @@ var CardPool = (function () {
       }
     }
 
-    // ★ 防重复：若该楼层已有 AI div（恢复路径），直接复用
+    // ★ 防重复：若该楼层已有 AI div（同层重试路径），直接复用
     if (card.floorDOM[floorNum] && card.floorDOM[floorNum].aiEl) {
       var _existingAi = card.floorDOM[floorNum].aiEl;
+      // ★ 编号占用守卫：只有同层重试（opts.allowReuse）才允许复用既有楼层 DOM。
+      //   全新分配的楼层号若 DOM 里已有实体 = 编号被二次分配（磁盘扫描漏看已有楼层目录）→
+      //   复用会把新内容写进旧楼层的 AI 区（用户看不到新楼、旧楼层被污染、all.json 还被
+      //   「完结密封」挡住永不落盘）。此处诚实拒绝（返回 null → 上层报错并回填内容），绝不盖楼。
+      if (!opts || opts.allowReuse !== true) {
+        console.error('[card-pool] startBuildingFloor: floor ' + floorNum + ' already has DOM in quest ' + questId + ' — refuse to reuse (floor number reallocated)');
+        try { if (window.__crashNet) window.__crashNet.throttled('floor-num-collision', 5000, { kind: 'floor-num-collision', q: questId, f: floorNum }); } catch (_) { }
+        return null;
+      }
       // 封顶其他在建楼
       if (card.buildingFloor !== null && card.buildingFloor !== floorNum) {
         this._capFloor(card, card.buildingFloor);

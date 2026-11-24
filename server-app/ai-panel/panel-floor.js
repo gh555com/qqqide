@@ -27,21 +27,24 @@ async function generateFloorTxt(ag, questId) {
         if (!dirExists) allTxtPath = '';  // 失效 → 降级到磁盘扫描
     }
     if (!allTxtPath) {
-        var quests = await questStore.list();
-        var questEntry = quests.find(function (q) { return q.id === questId; }) || null;
-        var rawQTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : '';
-        var qNumericId = (questEntry && questEntry.numericId) ? questEntry.numericId : parseInt(questId.replace('q', ''), 10) || 0;
-        var qDirName = await _resolveQuestDirName(root, questId, qNumericId, rawQTitle);
-        var _uiFallback = ag._lastUserInput;
-        var _uiTextFallback = (_uiFallback && _uiFallback.text) ? _uiFallback.text.replace(/\n/g, ' ').trim() : '';
-        var fDirName = _makeName('f', floorNum, _uiTextFallback || '');
-        dir = root + '/_qqq/quests/' + qDirName + '/' + fDirName + '/';
+        // ★ 楼层目录只由 store 解析（唯一真理源）；解析不到就写进 quest 根目录——
+        //   禁在此重推目录名（本处旧实现把换行换成空格、建楼处不换 → 多行问题必出同号第二目录）
+        var _resolvedFDir = await questStore.resolveFloorDir(questId, floorNum);
+        if (_resolvedFDir) {
+            dir = _resolvedFDir;
+        } else {
+            var _qDirPath = await questStore.resolveQuestDir(questId);
+            if (!_qDirPath) return;
+            dir = _qDirPath;
+        }
     }
     try {
         if (!(window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs)) return;
         var bridge = window.parent.qqqideBridge;
-        // ★ 目录可能已存在（_ensureQuestDir 提前创建），mkdir EEXIST 不应阻断写入
-        try { await bridge.fs.mkdir(dir); } catch (_) { }
+        // ★ 落点目录只由 store 创建，此处禁 mkdir：recursive mkdir 会自动复活被删/改名的楼层目录（幽灵占号）
+        var _dirSt = null;
+        try { _dirSt = await bridge.fs.stat(dir); } catch (_) { _dirSt = null; }
+        if (!_dirSt) { console.warn('[floor-txt] dir missing, skip: ' + dir); return; }
         var timing = ag._floorTiming;
         var lines = [];
 
@@ -229,7 +232,7 @@ async function _appendToSearchQuest(questId, floorNum) {
         try {
             var entries = await bridge.fs.list(questsDir);
             for (var ei = 0; ei < entries.length; ei++) {
-                if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+                if (entries[ei].isDir && (entries[ei].name === questId || entries[ei].name.startsWith(questId + '.'))) {
                     questDir = questsDir + entries[ei].name + '/';
                     questDirSource = 'disk-scan';
                     break;
@@ -364,7 +367,7 @@ async function _rebuildSearchQuest(questId) {
         try {
             var entries = await bridge.fs.list(questsDir);
             for (var ei = 0; ei < entries.length; ei++) {
-                if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+                if (entries[ei].isDir && (entries[ei].name === questId || entries[ei].name.startsWith(questId + '.'))) {
                     questDir = questsDir + entries[ei].name + '/';
                     break;
                 }

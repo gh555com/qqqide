@@ -6,12 +6,11 @@
 
 import { ipcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
-import * as fs from 'fs';
 import { getComponentBin } from './component-checker';
-import { BootConfig, registerWebappProtocol } from './boot';
-import { getDataDir } from './portable-paths';
+import { BootConfig } from './boot';
 import { APP_VERSION } from './version';
 import { addUiZoomListener } from './ui-zoom';
+import { resolveDiffBases, loadDiffPage, diffOpenLog } from './diff-win-loader';
 
 // Dedicated map for git diff windows (key: filePath|commitHash)
 const _gitDiffWindows: Map<string, BrowserWindow> = new Map();
@@ -76,25 +75,6 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
         _setWinBoundsGeo(win, { x: t.x, y: t.y, width: Math.max(minW, t.width), height: Math.max(minH, t.height) });
     }
 
-    async function _loadDiffUrlWithRetry(win: BrowserWindow, url: string, okSubstr: string): Promise<boolean> {
-        for (let i = 0; i < 4; i++) {
-            // 单次加载 15s 兜底（半死服务=连接挂起不归 → retry 永不触发 → 「点击出不来」；超时强断重试）
-            const r: any = await _withTimeout(win.webContents.loadURL(url), 15000);
-            if (r !== null) { return true; }
-            try { win.webContents.stop(); } catch (_) { }
-            // 页面已就位的「中断」不算失败（渲染层自愈 reload 可在初始加载期打断 loadURL promise）
-            try {
-                if (!win.isDestroyed() && !win.webContents.isLoadingMainFrame() &&
-                    (win.webContents.getURL() || '').indexOf(okSubstr) !== -1) { return true; }
-            } catch (_) { }
-            if (i >= 3) {
-                console.warn('[diff-window] loadURL failed after retries: timeout/reject');
-                return false;
-            }
-            await new Promise((r2) => setTimeout(r2, 400 + i * 700));
-        }
-        return false;
-    }
 
     // 界面缩放变更 → 已开 git diff 窗口重对齐（用户手动调过几何的不打扰）
     addUiZoomListener(() => {
@@ -188,16 +168,8 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
         diffWin.on('move', _markUserMoved);
         diffWin.on('resize', _markUserMoved);
 
-        // URL base — 本地 webapp 优先（绿色包/离线 = qqqide-webapp:// 零网络秒开；与时间线 diff 窗同口径），
-        //   dev / 无本地副本 → 回退 bootConfig.url（禁回退「恒远端」——绿包每次开窗走网络的性能与离线缺陷已修）
-        let diffBaseUrl = bootConfig.url.replace(/\/*$/, '/');
-        try {
-            const localDir = path.join(getDataDir(), 'webapp');
-            if (fs.existsSync(path.join(localDir, 'index.html'))) {
-                registerWebappProtocol(localDir);
-                diffBaseUrl = 'qqqide-webapp://app/qqqide/';
-            }
-        } catch (_) { /* 探测失败 → 保持远端 */ }
+        // 底座 URL = 发送方窗口真相（与时间线 diff 窗同一机器）——禁 existsSync 猜测
+        const _bases = resolveDiffBases(mainWin, bootConfig);
 
         // Theme detection
         let _isDark = true;
@@ -213,7 +185,7 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
         // Pass the git binary path so the diff window can run git commands
         const _gitBin = getComponentBin(portableRoot, 'git') || 'git';
 
-        const diffUrl = diffBaseUrl + 'goods/git/git-diff-window.html' +
+        const _urlFor = (base: string) => base + 'goods/git/git-diff-window.html' +
             '?filePath=' + encodeURIComponent(filePath) +
             '&projectRoot=' + encodeURIComponent(projectRoot) +
             '&gitBin=' + encodeURIComponent(_gitBin) +
@@ -222,16 +194,14 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
             (commitHash ? '&commitHash=' + encodeURIComponent(commitHash) : '') +
             (staged ? '&staged=1' : '');
 
-        console.log('[git-diff-window] loading:', diffUrl);
-
-        // 四连试加载（开发服务重启/瞬时拒绝自愈）——成功才亮相；彻底失败销毁不留黑窗
-        const _loadedOk = await _loadDiffUrlWithRetry(diffWin, diffUrl, 'git-diff-window.html');
-        if (!_loadedOk) {
+        // 亮相时机 = dom-ready（窗口骨架已出），底座逐个降级；彻底失败才销毁 + 如实报错
+        diffOpenLog('git', 'open path=' + normalizedPath + ' bases=' + _bases.join(' , '));
+        const _loaded = await loadDiffPage(diffWin, _bases, _urlFor, 'git-diff-window.html', 'git');
+        if (!_loaded.ok) {
             _gitDiffWindows.delete(winKey);
             try { if (!diffWin.isDestroyed()) { diffWin.destroy(); } } catch (_) { }
-            return { ok: false, error: 'load failed' };
+            return { ok: false, error: _loaded.error || 'load failed' };
         }
-        try { if (!diffWin.isDestroyed()) { diffWin.show(); diffWin.focus(); } } catch (_) { }
-        return { ok: true, windowId: diffWin.id };
+        return { ok: true, windowId: diffWin.id, base: _loaded.base || '' };
     });
 }

@@ -265,39 +265,16 @@ async function switchQuest(id) {
     } catch (_) { }
 }
 
-// \u2500\u2500 \u751f\u6210 quest/floor \u6587\u4ef6\u5939\u540d\uff1aq{n}.{\u5b89\u5168\u5316\u6587\u672c} \u6216 f{n}.{\u5b89\u5168\u5316\u6587\u672c} \u2500\u2500
+// ── 生成 quest/floor 文件夹名：q{n}.{安全化文本} 或 f{n}.{安全化文本} ──
+// ★ 唯一入口 = quest-store 的 makeName（本文件不再持有消毒规则的副本：
+//   两套同构实现只要差一个字符（比如换行是删还是换空格）就会造出同号第二个目录）。
 function _makeName(prefix, num, text) {
-    var MAX_BYTES = 100;
-    if (!text) return prefix + num;
-
-    var bytes = new TextEncoder().encode(text);
-    var end = Math.min(MAX_BYTES, bytes.length);
-    while (end > 0 && (bytes[end] & 0xC0) === 0x80) { end--; }
-    var truncated = bytes.slice(0, end);
-    var decoded = new TextDecoder().decode(truncated);
-
-    var sanitized = decoded
-        .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
-        .replace(/[\\/:*?"<>|]/g, '_')
-        .replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/gu, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    sanitized = sanitized.replace(/^\.+/, '').replace(/\.+$/, '');
-
-    var upper = sanitized.toUpperCase();
-    var RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/;
-    if (RESERVED.test(upper) || RESERVED.test(upper.replace(/\..*/, ''))) {
-        sanitized = '_' + sanitized;
-    }
-
-    if (!sanitized) return prefix + num;
-    return prefix + num + '.' + sanitized;
+    return questStore.makeName(prefix, num, text);
 }
 
 // \u2500\u2500 \u521b\u5efa quest \u6587\u4ef6\u5939\uff08\u542b\u5d4c\u5957 floor \u76ee\u5f55\uff09\u2500\u2500
 // \u2605 \u9632 TOCTOU \u5206\u88c2\uff1a\u4e0d\u4fe1\u4efb\u4f20\u5165\u7684 qName\uff0c\u6309\u524d\u7f00\u91cd\u67e5\u78c1\u76d8\u5b9e\u9645\u76ee\u5f55\u540d
-async function _ensureQuestDir(root, qName, fName) {
+async function _ensureQuestDir(root, qName) {
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge || !bridge.fs) return;
     // \u4ece qName \u63d0\u53d6 questId\uff08\u5982 "q48.xxx" \u2192 "q48"\uff09\uff0c\u6309\u524d\u7f00\u91cd\u67e5\u5b9e\u9645\u76ee\u5f55
@@ -308,14 +285,13 @@ async function _ensureQuestDir(root, qName, fName) {
     }
     var qDir = root + '/_qqq/quests/' + qName;
     // ★ 2026-08-14: fName 可空（草稿晋升只建 q 目录，不预建楼层目录——gaea q145 f1 空壳根治）
-    var fDir = fName ? qDir + '/' + fName + '/' : '';
-    var parts = (fDir || qDir).replace(/\\/g, '/').split('/').filter(function (p) { return p; });
+    var parts = qDir.replace(/\\/g, '/').split('/').filter(function (p) { return p; });
     var accum = '';
     for (var pi = 0; pi < parts.length; pi++) {
         accum += (accum ? '/' : '') + parts[pi];
         try { await bridge.fs.mkdir(accum); } catch (_) { }
     }
-    return { qDir: qDir, fDir: fDir };
+    return { qDir: qDir };
 }
 
 // ── 按 q{n}. 前缀搜索已有 quest 目录（只匹配编号，不依赖标题）──
@@ -332,7 +308,7 @@ async function _findQuestDirByPrefix(root, questId) {
             var entries = await bridge.fs.list(questsDir);
             var matches = [];
             for (var ei = 0; ei < entries.length; ei++) {
-                if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+                if (entries[ei].isDir && (entries[ei].name === questId || entries[ei].name.startsWith(questId + '.'))) {
                     matches.push(entries[ei].name);
                 }
             }
@@ -354,23 +330,7 @@ async function _findQuestDirByPrefix(root, questId) {
     throw new Error('_findQuestDirByPrefix: I/O error after 3 retries — ' + (lastErr && lastErr.message));
 }
 
-// ── 解析 quest 目录名录名：只按 q{n}. 前缀匹配已有目录 ──
-// B+ 方案：不再实时修复或创建新目录，只返回已有目录名
-// 若找不到（首次建楼调用此函数），则由 build 路径自己决定
-async function _resolveQuestDirName(root, questId, numericId, title) {
-    try {
-        var existing = await _findQuestDirByPrefix(root, questId);
-        if (existing) return existing;
-    } catch (e) {
-        // ★ _findQuestDirByPrefix 现在不再静默吞错；I/O 错误会抛异常
-        //   对于已存在的 quest（发后续楼层），抛异常比创建重复目录更安全
-        //   对于新 quest（首次建楼），回退到 _makeName 是合理的
-        console.warn('[quest-dir] _resolveQuestDirName: prefix scan failed for ' + questId + ', falling back to generated name:', e && e.message);
-    }
-    // ★ 找不到 → 返回 expected name（调用方 _ensureQuestDir 会按需创建）
-    //   不再实时修复目录名，懒惰修正留给 lazyRenameScan
-    return _makeName('q', numericId, title);
-}
+
 
 async function createNewQuest() {
     if (_switching) return;  // ★ quest 切换中
@@ -1176,24 +1136,17 @@ document.getElementById('ctx-snap').onclick = async function () {
         var _questList = await questStore.list();
         var _qEntry = _questList.find(function (qx) { return qx.id === questActiveId; });
         if (!_qEntry) return;
-        var _qTitle = (_qEntry.title && _qEntry.title !== 'New Chat') ? _qEntry.title : '';
-        var _qNumericId = _qEntry.numericId || parseInt(questActiveId.replace('q', ''), 10) || 0;
-        var _qDirName = await _resolveQuestDirName(_root, questActiveId, _qNumericId, _qTitle);
 
-        // ── 找最新楼层目录 ──
+        // ── 落点目录：全部由 store 解析（禁在此重推目录名 —— 推导与建楼不一致
+        //     就会 mkdir 出同号第二个楼层目录，而快照文件又让它永不被空壳清算）──
+        var _qDirPath = await questStore.resolveQuestDir(questActiveId);
+        if (!_qDirPath) return;
         var _allFloors = await questStore.loadAllFloors(questActiveId);
-        var _targetDir;
+        var _targetDir = _qDirPath;
         if (_allFloors && _allFloors.length > 0) {
             var _latestN = _allFloors[_allFloors.length - 1].floorNum;
-            var _fData = _allFloors[_allFloors.length - 1].data;
-            var _fQuestion = (_fData && _fData.question) ? _fData.question : '';
-            // ★ 剥离 [File:] 注入块，确保快照目录名与建楼时一致（防双目录 Bug）
-            var _fqStripIdx = _fQuestion.search(/\n\n\[File: /);
-            if (_fqStripIdx >= 0) _fQuestion = _fQuestion.slice(0, _fqStripIdx);
-            var _fDirName = _makeName('f', _latestN, _fQuestion);
-            _targetDir = _root + '/_qqq/quests/' + _qDirName + '/' + _fDirName + '/';
-        } else {
-            _targetDir = _root + '/_qqq/quests/' + _qDirName + '/';
+            var _fDir = await questStore.resolveFloorDir(questActiveId, _latestN);
+            if (_fDir) _targetDir = _fDir;
         }
 
         // ── 构建快照内容 ──
@@ -1209,10 +1162,17 @@ document.getElementById('ctx-snap').onclick = async function () {
             floorCount: _allFloors ? _allFloors.length : 0
         };
 
-        // ── 原子写入 ──
+        // ── 原子写入（落点存在性复核：目录在解析后被删/改名 → 退回任务根，禁 mkdir 复活幽灵目录）──
         var _bridge = window.parent && window.parent.qqqideBridge;
         if (!_bridge || !_bridge.fs) return;
-        try { await _bridge.fs.mkdir(_targetDir); } catch (_) { }
+        var _stT = null;
+        try { _stT = await _bridge.fs.stat(_targetDir); } catch (_) { _stT = null; }
+        if (!_stT) {
+            var _stQ = null;
+            try { _stQ = await _bridge.fs.stat(_qDirPath); } catch (_) { _stQ = null; }
+            if (!_stQ) throw new Error('quest dir missing: ' + _qDirPath);   // 如实报错（外层 catch → qoast）
+            _targetDir = _qDirPath;
+        }
         var _snapPath = _targetDir + 'snapshot_' + _ts + '.json';
         await _bridge.fs.write(_snapPath, JSON.stringify(_snap, null, 2));
 

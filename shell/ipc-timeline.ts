@@ -10,9 +10,10 @@ import * as fs from 'fs';
 import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlCommit, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob, _tlNormDisplayPath, _tlFoldKey, _tlReadKeys, _tlClaimPath, _tlEnqueue } from './timeline-store';
 import { BootConfig } from './boot';
 import { APP_VERSION } from './version';
-import { getDataDir } from './portable-paths';
+
 import { addUiZoomListener } from './ui-zoom';
 import { decodeFile, decodeFileSync } from './file-encoding';
+import { resolveDiffBases, loadDiffPage, diffOpenLog } from './diff-win-loader';
 
 // diff 窗口 → 参考主窗口（界面缩放变更时重对齐用；WeakMap 随窗口回收）
 const _diffRefs = new WeakMap<BrowserWindow, BrowserWindow>();
@@ -338,25 +339,6 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         });
     }
 
-    async function _loadDiffUrlWithRetry(win: BrowserWindow, url: string, okSubstr: string): Promise<boolean> {
-        for (let i = 0; i < 4; i++) {
-            // 单次加载 15s 兜底（半死服务=连接挂起不归 → retry 永不触发 → 「点击出不来」；超时强断重试）
-            const r: any = await _withTimeout(win.webContents.loadURL(url), 15000);
-            if (r !== null) { return true; }
-            try { win.webContents.stop(); } catch (_) { }
-            // 页面已就位的「中断」不算失败（渲染层自愈 reload 可在初始加载期打断 loadURL promise）
-            try {
-                if (!win.isDestroyed() && !win.webContents.isLoadingMainFrame() &&
-                    (win.webContents.getURL() || '').indexOf(okSubstr) !== -1) { return true; }
-            } catch (_) { }
-            if (i >= 3) {
-                console.warn('[diff-window] loadURL failed after retries: timeout/reject');
-                return false;
-            }
-            await new Promise((r2) => setTimeout(r2, 400 + i * 700));
-        }
-        return false;
-    }
 
     // 界面缩放变更 → 已开时间线窗口重对齐（用户手动调过几何的不打扰）
     addUiZoomListener(() => {
@@ -462,14 +444,9 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             }
         });
 
-        // ★ 绿色包/离线模式: 优先用本地 webapp 协议加载 diff-window.html
-        var diffBaseUrl = bootConfig.url.replace(/\/*$/, '/');
-        try {
-            var webappIndex = path.join(getDataDir(), 'webapp', 'index.html');
-            if (fs.existsSync(webappIndex)) {
-                diffBaseUrl = 'qqqide-webapp://app/qqqide/';
-            }
-        } catch (_) { }
+        // ★ 底座 URL = 发送方窗口真相（resolveDiffBases：窗口当前 URL → 本地副本〔显式注册协议〕→ 远端）
+        //   禁 existsSync 猜测：猜错（协议未注册）= ERR_UNKNOWN_URL_SCHEME = 「点击 A4 像哑巴」根因
+        const _bases = resolveDiffBases(_parentWin, bootConfig);
         let _isDark = true;
         try {
             if (refWin && !refWin.isDestroyed()) {
@@ -479,21 +456,21 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 if (typeof _darkVal === 'boolean') { _isDark = _darkVal; }
             }
         } catch (_) { }
-        const diffUrl = diffBaseUrl + 'timeline/diff-window.html' +
+        const _urlFor = (base: string) => base + 'timeline/diff-window.html' +
             '?path=' + encodeURIComponent(filePath) +
             '&projectRoot=' + encodeURIComponent(projectRoot) +
             '&theme=' + (_isDark ? 'dark' : 'light') +
             (beforeBlobHash ? '&before=' + encodeURIComponent(beforeBlobHash) : '') +
             (afterBlobHash ? '&after=' + encodeURIComponent(afterBlobHash) : '');
-        // 四连试加载（开发服务重启/瞬时拒绝自愈）——成功才亮相；彻底失败销毁不留黑窗（「点击 A4 出不来」治理）
-        const _loadedOk = await _loadDiffUrlWithRetry(diffWin, diffUrl, 'diff-window.html');
-        if (!_loadedOk) {
+        // 亮相时机 = dom-ready（窗口骨架已出），底座逐个降级；彻底失败才销毁 + 如实报错
+        diffOpenLog('timeline', 'open path=' + normalizedPath + ' bases=' + _bases.join(' , '));
+        const _loaded = await loadDiffPage(diffWin, _bases, _urlFor, 'diff-window.html', 'timeline');
+        if (!_loaded.ok) {
             _diffWindows.delete(normalizedPath);
             try { if (!diffWin.isDestroyed()) { diffWin.destroy(); } } catch (_) { }
-            return { ok: false, error: 'load failed' };
+            return { ok: false, error: _loaded.error || 'load failed' };
         }
-        try { if (!diffWin.isDestroyed()) { diffWin.show(); diffWin.focus(); } } catch (_) { }
-        return { ok: true, windowId: diffWin.id };
+        return { ok: true, windowId: diffWin.id, base: _loaded.base || '' };
     });
 
     // ★ 宿主窗口定位：diff 窗口创建时带 parent（A4 所在窗口）→ getParentWindow 100% 可靠

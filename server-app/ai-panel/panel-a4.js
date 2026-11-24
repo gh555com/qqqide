@@ -110,6 +110,7 @@ function _a4IsNoiseFile(filePath) {
 
 // ═══ 文件路径 → 归属项目根目录（终极架构：向上找 _qqq/timeline/ 或 .git/） ═══
 var _projectRootCache = {}; // {filePath: projectRoot}
+var _projectRootDirCache = {}; // {dir: projectRoot} —— 同目录兄弟文件直接命中（首点最坏 12 层 × 2 次 stat IPC）
 
 async function _resolveProjectRoot(filePath) {
     if (!filePath) return (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
@@ -123,24 +124,30 @@ async function _resolveProjectRoot(filePath) {
         return fallback;
     }
     var dir = filePath.replace(/\\/g, '/').replace(/\/[^\/]*$/, ''); // 父目录
+    // 单次探测：只取 isDir，任何异常/缺失一律 false（禁抛）
+    function _isDir(p) {
+        return new Promise(function (resolve) {
+            try {
+                Promise.resolve(bridge.fs.stat(p)).then(function (s) { resolve(!!(s && s.isDir)); }, function () { resolve(false); });
+            } catch (_) { resolve(false); }
+        });
+    }
     // 最多向上遍历 12 层
     for (var depth = 0; depth < 12 && dir && dir.length > 3; depth++) {
-        // 检查 {dir}/_qqq/timeline（已初始化滴项目）
-        try {
-           var st = await bridge.fs.stat(dir + '/_qqq/timeline');;
-            if (st && st.isDir) {
-                _projectRootCache[filePath] = dir;
-                return dir;
-            }
-        } catch (_) { }
-      // 检查 {dir}/.git（未初始化滴项目，后续会自动创建 _qqq/timeline）e）
-        try {
-            var st2 = await bridge.fs.stat(dir + '/.git');
-            if (st2 && st2.isDir) {
-                _projectRootCache[filePath] = dir;
-                return dir;
-            }
-        } catch (_) { }
+        if (_projectRootDirCache[dir]) {
+            _projectRootCache[filePath] = _projectRootDirCache[dir];
+            return _projectRootDirCache[dir];
+        }
+        // 两个标记并行探测（禁 24 次串行 IPC 往返：层数 × 2）
+        var hit = await Promise.all([
+            _isDir(dir + '/_qqq/timeline'),   // 已初始化滴项目
+            _isDir(dir + '/.git')              // 未初始化滴项目（后续会自动创建 _qqq/timeline）
+        ]);
+        if (hit[0] || hit[1]) {
+            _projectRootCache[filePath] = dir;
+            _projectRootDirCache[dir] = dir;
+            return dir;
+        }
         dir = dir.replace(/\/[^\/]*$/, '');
     }
     // 兜底：主项目
@@ -637,39 +644,80 @@ async function _openImagePreview(filePath, nav) {
 
 // ---- 时间线打开链失败如实提示（唯一通道 = parent qoast；禁静默吞错——「点击零反应」体验根治） ----
 function _a4Qoast(msg) {
-    try { if (window.parent && window.parent.qqqideQoast) { window.parent.qqqideQoast.show(msg, { type: 'warn', duration: 5000 }); } } catch (_) { }
+    try { if (window.parent && window.parent.qqqideQoast) { window.parent.qqqideQoast.show(msg, { type: 'warn', duration: 5000 }); return; } } catch (_) { }
+    // 宿主 qoast 不可用也不得静默
+    try { console.warn('[a4] ' + msg); } catch (_) { }
+}
+
+// ---- 打开链超时护栏：任何一步悬挂都不得变成「点下去没反应」----
+var A4_ROOT_TIMEOUT_MS = 8000;
+var A4_OPEN_TIMEOUT_MS = 25000;
+
+function _a4WithTimeout(p, ms, fallback) {
+    return new Promise(function (resolve) {
+        var done = false;
+        var t = setTimeout(function () { if (!done) { done = true; resolve(fallback); } }, ms);
+        Promise.resolve(p).then(function (v) {
+            if (!done) { done = true; clearTimeout(t); resolve(v); }
+        }, function () {
+            if (!done) { done = true; clearTimeout(t); resolve(fallback); }
+        });
+    });
+}
+
+function _a4TimelineBridge() {
+    var b = null;
+    try { b = (typeof getBridge === 'function') ? getBridge() : null; } catch (_) { }
+    if (!b) { try { b = _getBridge(); } catch (_) { } }
+    return b;
+}
+
+// ---- 时间线窗口打开唯一机（实时楼层 + 历史楼层共用；禁第二套复制实现）----
+async function _a4OpenTimelineDiff(filePath, beforeHash, afterHash) {
+    if (!filePath) return;
+    var bridge = _a4TimelineBridge();
+    if (!bridge || !bridge.timeline || typeof bridge.timeline.openDiffWindow !== 'function') {
+        _a4Qoast(_qq('editor.timelineNoBridge', '版本比较不可用：时间线桥未就绪，请重启实例后重试'));
+        return;
+    }
+    var root = await _a4WithTimeout(_resolveProjectRoot(filePath), A4_ROOT_TIMEOUT_MS, null);
+    if (!root) {
+        _a4Qoast(_qq('editor.timelineNoRoot', '无法确定该文件的项目根目录，时间线不可用'));
+        return;
+    }
+    try {
+        console.log('[a4] openDiff path=' + filePath + ' before=' + String(beforeHash || '').substring(0, 16) + ' after=' + String(afterHash || '').substring(0, 16));
+    } catch (_) { }
+    var r = await _a4WithTimeout(bridge.timeline.openDiffWindow({
+        filePath: filePath,
+        projectRoot: root,
+        beforeBlobHash: beforeHash || undefined,
+        afterBlobHash: afterHash || undefined
+    }), A4_OPEN_TIMEOUT_MS, null);
+    if (r === null) {
+        _a4Qoast(_qq('editor.timelineOpenTimeout', '版本比较窗口打开超时（暂无响应），请稍后重试'));
+        return;
+    }
+    if (r && r.ok === false) {
+        try { console.warn('[a4] openDiffWindow failed:', r.error || 'unknown'); } catch (_) { }
+        _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'));
+    }
 }
 
 // ---- 打开 diff 查看器（独立 BrowserWindow）----
 // ★ 同时传 beforeBlobHash + afterBlobHash：左右各精确选中对应版本
 async function _a4OpenDiff(snap, rowEl) {
-    // 图片文件特殊处理
-    if (_isImageFile(snap.path)) {
-        if (snap.op === 'delete_file') return; // 已删除→无原文件→不响应
-        var opened = await _openImagePreview(snap.path, _a4ImgNav(rowEl));
-        if (opened) return; // 已打开预览→不再开 diff
-    }
-    var bridge = _getBridge();
-    if (bridge && bridge.timeline) {
-        var root = await _resolveProjectRoot(snap.path); // ★ 文件自寻主
-        if (!root) {
-            // 全链解析失败：不开空窗（旧行为 = 静默零反应），如实提示
-            _a4Qoast(_qq('editor.timelineNoRoot', '无法确定该文件的项目根目录，时间线不可用'));
-            return;
+    try {
+        // 图片文件特殊处理
+        if (_isImageFile(snap.path)) {
+            if (snap.op === 'delete_file') return; // 已删除→无原文件→不响应
+            var opened = await _a4WithTimeout(_openImagePreview(snap.path, _a4ImgNav(rowEl)), A4_OPEN_TIMEOUT_MS, false);
+            if (opened) return; // 已打开预览→不再开 diff
         }
-        var beforeHash = snap.beforeBlobHash || undefined;
-        var afterHash = snap.afterBlobHash || undefined;
-        console.log('[a4] openDiff path=' + snap.path + ' before=' + (beforeHash || '').substring(0, 16) + ' after=' + (afterHash || '').substring(0, 16) + ' same=' + (beforeHash === afterHash));
-        bridge.timeline.openDiffWindow({
-            filePath: snap.path,
-            projectRoot: root,
-            beforeBlobHash: beforeHash,
-            afterBlobHash: afterHash
-        }).then(function (r) {
-            if (r && r.ok === false) { _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试')); }
-        }).catch(function () {
-            _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'));
-        });
+        await _a4OpenTimelineDiff(snap.path, snap.beforeBlobHash, snap.afterBlobHash);
+    } catch (err) {
+        try { console.warn('[a4] openDiff error:', (err && err.message) || err); } catch (_) { }
+        _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'));
     }
 }
 
@@ -801,34 +849,19 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
     block.classList.add('has-files');
 }
 
-// ---- 历史楼层 diff：唯一路径 bridge.timeline ----
+// ---- 历史楼层 diff：同一打开机（仅数据源不同）----
 async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum, rowEl) {
-    // 图片文件特殊处理
-    if (_isImageFile(meta.path)) {
-        if (meta.op === 'delete_file') return; // 已删除→无原文件→不响应
-        var opened = await _openImagePreview(meta.path, _a4ImgNav(rowEl));
-        if (opened) return; // 已打开预览→不再开 diff
-    }
-    var bridge = getBridge();
-    var root = await _resolveProjectRoot(meta.path); // ★ 文件自寻主
-
-    if (!root) {
-        // 全链解析失败：不开空窗（旧行为 = 静默零反应），如实提示
-        _a4Qoast(_qq('editor.timelineNoRoot', '无法确定该文件的项目根目录，时间线不可用'));
-        return;
-    }
-    if (bridge && bridge.timeline) {
-        try {
-            var r = await bridge.timeline.openDiffWindow({
-                filePath: meta.path,
-                projectRoot: root,
-                beforeBlobHash: meta.before_blob_hash || undefined,
-                afterBlobHash: meta.blob_hash || undefined
-            });
-            if (r && r.ok === false) { _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试')); }
-        } catch (_) {
-            _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'));
+    try {
+        // 图片文件特殊处理
+        if (_isImageFile(meta.path)) {
+            if (meta.op === 'delete_file') return; // 已删除→无原文件→不响应
+            var opened = await _a4WithTimeout(_openImagePreview(meta.path, _a4ImgNav(rowEl)), A4_OPEN_TIMEOUT_MS, false);
+            if (opened) return; // 已打开预览→不再开 diff
         }
+        await _a4OpenTimelineDiff(meta.path, meta.before_blob_hash, meta.blob_hash);
+    } catch (err) {
+        try { console.warn('[a4] openHistoricalDiff error:', (err && err.message) || err); } catch (_) { }
+        _a4Qoast(_qq('editor.timelineOpenFail', '时间线窗口打开失败，请稍后重试'));
     }
 }
 
