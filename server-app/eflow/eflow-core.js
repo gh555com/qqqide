@@ -44,6 +44,7 @@
         doc_review_days: 365,
         state_floors: 3,
         must_max: 20,
+        gdoc_chars: 900,          // 全局接管块（global.txt）软上限：所有项目每轮都付
         rule_lines: 1,          // EF2 自己的 L0 只许注册 1 次（用户自己的 rule 不受此限）
         rule_custom_chars: 20000, // 用户自定义注入面软边界（超了只 WARN，不拦人）
         dup_line: 40
@@ -382,9 +383,15 @@
         out.push('  每轮固定注入 ' + fmt(inject) + ' 字（L0 ' + fmt(nchars(l0)) + ' + 自定义 rule ' + fmt(ownChars) +
             ' + 其它 ' + fmt(extraChars) + '）' +
             (nchars(l0) > BUDGET.l0_chars ? '｜L0 超预算 ' + fmt(nchars(l0) - BUDGET.l0_chars) + ' 字' : '｜L0 在预算内'));
+        var gsS = await globalDocStat(io, opts);
+        if (gsS) {
+            out.push('  全局接管块 ' + (gsS.on ? fmt(gsS.chars) + ' 字（global.txt · 所有项目每轮都付）' : '未开启（0 字）') +
+                (gsS.on && gsS.broken ? '｜⚠ 标记块残缺 → global action=repair' : ''));
+            if (gsS.on) out.push('  合计       ' + fmt(inject + gsS.chars) + ' 字/轮（本项目 ' + fmt(inject) + ' + 全局 ' + fmt(gsS.chars) + '）');
+        }
         if (lay.applied.length) out.push('  布局放宽   ' + lay.applied.join('、') + (lay.reason ? '（' + lay.reason + '）' : ''));
         if (bud.applied.length) out.push('  预算放宽   ' + bud.applied.join('、') + (bud.reason ? '（' + bud.reason + '）' : ''));
-        return { ok: true, text: out.join('\n'), data: { inject: inject, l0: nchars(l0), ruleLines: ruleLines } };
+        return { ok: true, text: out.join('\n'), data: { inject: inject, injectAll: inject + (gsS && gsS.on ? gsS.chars : 0), l0: nchars(l0), ruleLines: ruleLines, gdoc: gsS } };
     }
 
     // ── op: check（十道闸）────────────────────────────────────────────────
@@ -451,6 +458,8 @@
             o0.push('  A  注入面    EF2 0 行 rule ｜ 自定义 ' + ownRules.length + ' 行（≈' + fmt(customChars) + ' 字）｜ 未接管');
             o0.push('  —  本项目是白纸：不建文件、不改 project.txt、不注入 L0（每轮 EF2 成本 0 字）');
             if (ownRules.length) o0.push('     自定义注入面 ≈ ' + fmt(customChars) + ' 字/轮（这部分就是你自己的知识库，EF2 不插手）');
+            var gsB = await globalDocStat(io, opts);
+            if (gsB && gsB.on) o0.push('     全局接管块 ' + fmt(gsB.chars) + ' 字/轮（global.txt · 所有项目都付；白纸项目也不例外）');
             o0.push('     要用 E-Flow → eflow upgrade（先跑 dry 看计划）');
             o0.push('-- 问题 --');
             if (!issues.length) o0.push('  （无）');
@@ -670,6 +679,18 @@
         var inject = nchars(l0 || '') + extraC + customChars;
         info.push('J  每轮固定注入 ' + fmt(inject) + ' 字（L0 ' + fmt(nchars(l0 || '')) + ' + 自定义 rule ' +
             fmt(customChars) + ' + project.txt 其它 ' + fmt(extraC) + '）');
+        // 全局接管块（global.txt）也是每轮在付：它是“所有项目都付”的那一份，必须单独报，否则合计被低报。
+        var gsC = await globalDocStat(io, opts);
+        var injectAll = inject + (gsC && gsC.on ? gsC.chars : 0);
+        if (gsC) {
+            info.push('J  全局接管块 ' + (gsC.on ? fmt(gsC.chars) + ' 字（global.txt · 所有项目每轮都付）' : '未开启（0 字）'));
+            if (gsC.on) info.push('J  合计       ' + fmt(injectAll) + ' 字/轮（本项目 ' + fmt(inject) + ' + 全局 ' + fmt(gsC.chars) + '）');
+            if (gsC.on && gsC.broken) issues.push(['BLOCK', 'global.txt 接管块标记残缺（有 begin 没 end）→ eflow op=global action=repair 补回']);
+            if (gsC.on && gsC.chars > BUDGET.gdoc_chars) {
+                issues.push(['WARN', '全局接管块 ' + fmt(gsC.chars) + ' 字 > ' + fmt(BUDGET.gdoc_chars) + '（这块是所有项目每轮都付的钱）——块内容只该写“怎么做”，细节归 arch/']);
+            }
+            if (gsC.on && !gsC.has) issues.push(['WARN', '全局接管开着，但 global.txt 里没有接管块（注入少了这一条规则）→ action=repair 补回']);
+        }
 
         var blocks = issues.filter(function (x) { return x[0] === 'BLOCK'; });
         var warns = issues.filter(function (x) { return x[0] === 'WARN'; });
@@ -681,7 +702,7 @@
         warns.forEach(function (x) { out.push('  [WARN ] ' + x[1]); });
         out.push('== 结论：' + (blocks.length ? 'FAIL' : 'PASS') + ' ｜ BLOCK ' + blocks.length + ' · WARN ' + warns.length +
             ' ｜ 每轮注入 ' + fmt(inject) + ' 字 ==');
-        return { ok: blocks.length === 0, text: out.join('\n'), data: { blocks: blocks.length, warns: warns.length, inject: inject } };
+        return { ok: blocks.length === 0, text: out.join('\n'), data: { blocks: blocks.length, warns: warns.length, inject: inject, injectAll: injectAll } };
     }
 
     // ── 模板（唯一源：新项目骨架就是这一份）───────────────────────────────
@@ -1129,6 +1150,42 @@
 
     function globalDocFile(dataRoot) { return joinp(norm(dataRoot), 'global.txt'); }
 
+    // bridge（渲染层）→ IO 适配器：全产品唯一实现。
+    //   工具（tools-exec-eflow）/ 自动接管（panel-expert）/ 设置面板（core/settings）三处共用这一份——
+    //   各写一份的下场是口径漂移（曾经三份，其中一份的 rule 正则少了空格容忍）。
+    function bridgeIO(bridge) {
+        if (!bridge || !bridge.fs) return null;
+        return {
+            read: function (p) { return bridge.fs.read(p); },
+            write: function (p, t) { return bridge.fs.write(p, t); },
+            list: function (p) { return bridge.fs.list(p); },
+            exists: function (p) { return bridge.fs.exists(p); },
+            mkdir: function (p) { return bridge.fs.mkdir(p); },
+            remove: function (p) { return bridge.fs.remove(p); },
+            rename: function (p, q) { return bridge.fs.rename(p, q); }
+        };
+    }
+
+    // 全局接管块的成本与状态：接管块是「所有项目每轮都付」的钱，不量它 = 成本谎报。
+    //   没有 dataRoot（命令行体检常没有）→ 返回 null，调用方就不印这一行（不猜）。
+    async function globalDocStat(io, opts) {
+        var dr = (opts && opts.dataRoot) ? norm(opts.dataRoot) : '';
+        if (!dr) return null;
+        var gp = globalFile(dr);
+        var cur = null;
+        try { cur = JSON.parse((await safeRead(io, gp)) || 'null'); } catch (_) { cur = null; }
+        var on = !!(cur && cur.global);
+        var dp = globalDocFile(dr);
+        var txt = (await safeRead(io, dp)) || '';
+        var c = cutDocBlock(txt);
+        var chars = 0;
+        if (c.has && !c.broken) {
+            var i = txt.indexOf(GDOC_B), e = txt.indexOf(GDOC_E);
+            if (i >= 0 && e > i) chars = nchars(txt.slice(i, e + GDOC_E.length));
+        }
+        return { on: on, chars: chars, has: c.has, broken: !!c.broken, file: dp };
+    }
+
     // ★ 这段会被原文注入（每轮都在付费）：只写「怎么做」，不写产品推销、不催人迁移。
     function globalDocBlock() {
         return [
@@ -1180,7 +1237,7 @@
         var bk = '';
         try {
             if (cur) {
-                bk = p + '.ef2bak-' + stamp(new Date().toISOString().slice(0, 16).replace('T', '-'));
+                bk = p + '.ef2bak-' + stamp(new Date().toISOString().slice(0, 19).replace('T', '-'));   // 到秒：同一分钟两次切换不互相覆盖备份
                 await io.write(bk, cur);
             }
         } catch (_) { bk = ''; }
@@ -1257,7 +1314,14 @@
             var body0 = {};
             Object.keys(cur || {}).forEach(function (k) { body0[k] = cur[k]; });
             body0.global = on;
-            body0.pending = { nonce: nonce, act: act, at: new Date().toISOString() };
+            // ★ 令牌绑定「发问这一刻的会话位置」：确认时必须证明用户在发问之后真的又说了话。
+            //   否则模型自己补一句 confirm="1" 就能替用户点头——这是本机制唯一可被伪造的入口。
+            body0.pending = {
+                nonce: nonce, act: act, at: new Date().toISOString(),
+                seq: (typeof opts.userSeq === 'number') ? opts.userSeq : -1,
+                floor: (typeof opts.userFloor === 'number') ? opts.userFloor : 0,
+                qid: String(opts.questId || '')
+            };
             body0.ver = VER;
             try {
                 if (io.mkdir) { try { await io.mkdir(dr + '/alphal'); } catch (_) { } }
@@ -1270,8 +1334,9 @@
                 ok: true,
                 text: 'E-Flow v' + VER + ' · 已发出确认请求（此刻什么都没改）\n' +
                     '  · 把下面 say 一字不改地说给用户，说完就停（禁自己补解释、禁自己往下做、禁再追问一遍）\n' +
-                    '  · 他回 1 → 调 eflow op=global action=' + act + ' token=' + nonce + ' confirm="1"\n' +
-                    '  · 他回别的一切（含「确定」「好」「取消」）→ 什么都不调、也不要再问（令牌 30 分钟内有效，他改口回 1 仍然认）',
+                    '  · 他回 1（必须是他本人新发的一条消息）→ 调 eflow op=global action=' + act + ' token=' + nonce + '\n' +
+                    '  · 他回别的一切（含「确定」「好」「取消」）→ 什么都不调、也不要再问（令牌 30 分钟内有效，他改口回 1 仍然认）\n' +
+                    '  · 禁自己替他答：confirm 由工具层从会话真相里取，你写的字没有任何作用',
                 data: { on: on, token: nonce, act: act, say: say, needAnswer: true }
             };
         }
@@ -1308,24 +1373,73 @@
         // ③ 人点头闸门（设置面板里人直接点的走 via=ui：有 UI 二次确认，不走 AI 令牌）
         var viaUi = (String(opts.via || 'ai') === 'ui');
         if (!viaUi) {
-            var jd = judgeConfirm(opts.confirm);
             var pend = (cur && cur.pending) || null;
             var tokOk = !!(pend && pend.nonce && opts.token && String(pend.nonce) === String(opts.token));
             var fresh = !!(tokOk && pend.at && (Date.now() - Date.parse(pend.at)) < PENDING_TTL_MS);
-            if (jd.v !== 'yes') {
-                return {
-                    ok: false,
-                    text: 'E-Flow v' + VER + ' · 不是 1（' + jd.why + '）——global.txt 与开关文件一个字节都没改。\n' +
-                        '  · 什么都不用做、也不用再说一遍：他回 1 就继续，不回就算了（禁追问、禁把话术换个说法再问）。',
-                    data: { on: on, needConfirm: true }
-                };
-            }
             if (!fresh) {
                 return {
                     ok: false,
-                    text: 'E-Flow v' + VER + ' · 他回了 1，但这次确认已过期或对不上号（令牌 30 分钟、一次一用）——什么都不改。\n' +
+                    text: 'E-Flow v' + VER + ' · 这次确认已过期或对不上号（令牌 30 分钟、一次一用）——什么都不改。\n' +
                         '  · 重新 action=ask 拿一句新话术，再问一遍。',
                     data: { on: on, needAsk: true, say: SAY_ON }
+                };
+            }
+            if (pend.act && String(pend.act) !== action) {
+                return {
+                    ok: false,
+                    text: 'E-Flow v' + VER + ' · 令牌问的是「' + pend.act + '」，这次要「' + action + '」——什么都不改。\n' +
+                        '  · 要换方向就重新 action=ask 问一次。',
+                    data: { on: on, needAsk: true, say: SAY_ON }
+                };
+            }
+            // ★★ 原话必须来自「会话真相」：工具层把用户真实消息喂进来（不是模型自述的 confirm）。
+            //   三道机器闸：① 他那条消息必须比发问时更新（= 他确实在发问之后又说了话）
+            //              ② 逐字就是 1  ③ 同一个任务（禁跳任务复用令牌）
+            var uSeq = (typeof opts.userSeq === 'number') ? opts.userSeq : -1;
+            if (uSeq < 0) {
+                return {
+                    ok: false,
+                    text: '✗ 拿不到当前会话（无法核对用户原话）——这一步不凭转述执行。\n' +
+                        '  · 让用户到 设置 → 高级 → E-Flow 管理 里自己点（人手点的路不需要核对）。',
+                    data: { on: on, needConfirm: true, noSession: true }
+                };
+            }
+            var pSeq = (typeof pend.seq === 'number') ? pend.seq : -1;
+            if (pSeq < 0) {
+                return {
+                    ok: false,
+                    text: 'E-Flow v' + VER + ' · 手里的令牌是旧格式（没有会话锚点）——什么都不改。\n' +
+                        '  · 重新 action=ask 拿一句新话术，再问一遍。',
+                    data: { on: on, needAsk: true, say: SAY_ON }
+                };
+            }
+            var pFloor = (typeof pend.floor === 'number') ? pend.floor : 0;
+            var uFloor = (typeof opts.userFloor === 'number') ? opts.userFloor : 0;
+            if (!(uSeq > pSeq) && !(pFloor > 0 && uFloor > pFloor)) {
+                return {
+                    ok: false,
+                    text: 'E-Flow v' + VER + ' · 他还没有回复（发问之后他一条新消息都没发）——global.txt 与开关文件一个字节都没改。\n' +
+                        '  · 现在什么都别做：等他本人回 1（禁自己替他答、禁在同一个楼层里再调一次）。',
+                    data: { on: on, needConfirm: true, notYet: true }
+                };
+            }
+            var pqid = String(pend.qid || '');
+            var cqid = String(opts.questId || '');
+            if (pqid && cqid && pqid !== cqid) {
+                return {
+                    ok: false,
+                    text: 'E-Flow v' + VER + ' · 令牌是在另一个任务里发的（' + pqid + ' ≠ ' + cqid + '）——什么都不改。\n' +
+                        '  · 在当前任务里重新 action=ask。',
+                    data: { on: on, needAsk: true, say: SAY_ON }
+                };
+            }
+            var jd = judgeConfirm(opts.confirm);
+            if (jd.v !== 'yes') {
+                return {
+                    ok: false,
+                    text: 'E-Flow v' + VER + ' · 他刚才说的不是 1（' + jd.why + '）——global.txt 与开关文件一个字节都没改。\n' +
+                        '  · 什么都不用做、也不用再说一遍：他回 1 就继续，不回就算了（禁追问、禁把话术换个说法再问）。',
+                    data: { on: on, needConfirm: true }
                 };
             }
         }
@@ -1333,7 +1447,8 @@
         var prevJson = (await safeRead(io, gp)) || '';
         var body = {
             global: nextOn,
-            since: nextOn ? ((cur && cur.since) || new Date().toISOString()) : ((cur && cur.since) || ''),
+            // since = 「这轮开启是什么时候」；先关再开要换新时间（不诚实的时间戳等于没有审计）
+            since: nextOn ? ((cur && cur.global && cur.since) || new Date().toISOString()) : ((cur && cur.since) || ''),
             offAt: nextOn ? '' : new Date().toISOString(),
             ver: VER,
             pending: null
@@ -1417,6 +1532,7 @@
         opRotate: opRotate, opUpgrade: opUpgrade, opDetach: opDetach, opGlobal: opGlobal, globalFile: globalFile,
         judgeConfirm: judgeConfirm, projectKind: projectKind, globalDocFile: globalDocFile, globalDocBlock: globalDocBlock,
         syncGlobalDoc: syncGlobalDoc, SAY_ON: SAY_ON, SAY_OFF: SAY_OFF, SAY_TAIL: SAY_TAIL,
+        bridgeIO: bridgeIO, globalDocStat: globalDocStat,
         PENDING_TTL_MS: PENDING_TTL_MS, GDOC_B: GDOC_B, GDOC_E: GDOC_E,
         parseHead: parseHead, parseFront: parseFront, buildBlock: buildBlock, sliceBlock: sliceBlock,
         nchars: nchars, tplL0: tplL0, tplArch: tplArch, tplState: tplState

@@ -1296,17 +1296,7 @@
     } catch (_) { }
     return '';
   }
-  function _eflowIO(bridge) {
-    return {
-      read: function (p) { return bridge.fs.read(p); },
-      write: function (p, t) { return bridge.fs.write(p, t); },
-      list: function (p) { return bridge.fs.list(p); },
-      exists: function (p) { return bridge.fs.exists(p); },
-      mkdir: function (p) { return bridge.fs.mkdir(p); },
-      remove: function (p) { return bridge.fs.remove(p); },
-      rename: function (p, q) { return bridge.fs.rename(p, q); }
-    };
-  }
+  // IO 适配器只有一个实现：EflowCore.bridgeIO（本面板不再自带一份）
 
   async function _eflowLoadState() {
     var st = { on: false, doc: false, docPath: '', mode: 'none', root: _eflowRoot(), err: '' };
@@ -1331,16 +1321,15 @@
       var core = (typeof EflowCore !== 'undefined') ? EflowCore : null;
       st.doc = !!(core && docTxt && docTxt.indexOf(core.GDOC_B) >= 0);
       if (st.root) {
-        var hasSkel = false;
-        try {
-          var sm = await bridge.fs.stat(st.root + '/_qqq/alphal/expert/index.md');
-          hasSkel = !!(sm && !sm.isDir);
-        } catch (_) { hasSkel = false; }
-        if (hasSkel) st.mode = 'standard';
-        else {
-          var ptxt = '';
-          try { ptxt = await bridge.fs.read(st.root + '/_qqq/alphal/rule/project.txt'); } catch (_) { ptxt = ''; }
-          st.mode = /rule"[^"]+"/.test(ptxt || '') ? 'custom' : 'none';
+        // ★ 归类只认内核 projectKind：面板自己写一份正则就会漂（曾经这里少了空格容忍 →
+        //   把 `rule "…"` 判成白纸 → 调 upgrade → 又被内核拒写 → 白弹一次失败提示）。
+        var c0 = (typeof EflowCore !== 'undefined') ? EflowCore : null;
+        if (c0 && c0.projectKind && c0.bridgeIO) {
+          try {
+            var k0 = await c0.projectKind(c0.bridgeIO(bridge), st.root);
+            st.kind = k0;
+            st.mode = (k0 === 'custom') ? 'custom' : ((k0 === 'ef2' || k0 === 'l0') ? 'standard' : 'none');
+          } catch (_) { st.mode = 'none'; }
         }
       }
     } catch (e) {
@@ -1372,7 +1361,9 @@
       var dr2 = await _eflowDataRoot(bridge);
       var o = { apply: true, keepRules: true, dataRoot: dr2, via: 'ui' };   // via=ui：人在面板里二次确认过
       if (extra) Object.keys(extra).forEach(function (k) { o[k] = extra[k]; });
-      var r = await core.run(op, _eflowIO(bridge), root, o);
+      var io2 = core.bridgeIO(bridge);
+      if (!io2) { _eflowOut = _i('settings.eflow.noBridge', '当前客户端没有文件访问能力，管理不可用'); _eflowOutBad = true; _eflowBusy = false; _eflowRenderCard(); return; }
+      var r = await core.run(op, io2, root, o);
       _eflowOut = (r && r.text) || _i('settings.eflow.noOutput', '（没有输出）');
       _eflowOutBad = !(r && r.ok);
     } catch (e) {
@@ -1417,8 +1408,14 @@
         '; border-radius:3px; background:transparent; color:' + (disabled ? textDim : color) +
         '; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:' + (disabled ? 'default' : 'pointer') + ';">' + label + '</button>';
     }
+    // 项目已有自己的知识库 → 第一枚钮变「迁移」：它会重写 project.txt（有备份），必须人手二次点击。
+    // （AI 侧已硬编码 force=false：模型永远无法自己推动这种重写）
+    var isCustom = !!(st && st.mode === 'custom');
+    var migFl = !!(isCustom && _eflowConfirm && _eflowConfirm.act === 'migrate' && (Date.now() - _eflowConfirm.at) < 4000);
     h += '<div style="display:flex; gap:8px; margin-bottom:8px;">';
-    h += btn('qqq-eflow-adopt', _i('settings.eflow.adopt', '接入 / 升级本项目'), accent, busy);
+    if (isCustom && migFl) h += btn('qqq-eflow-adopt', _i('settings.eflow.migrateConfirm', '再点一次：确认迁移（重写 project.txt，有备份）'), red, busy);
+    else if (isCustom) h += btn('qqq-eflow-adopt', _i('settings.eflow.migrate', '迁移到 E-Flow（保留我的规则）'), accent, busy);
+    else h += btn('qqq-eflow-adopt', _i('settings.eflow.adopt', '接入 / 升级本项目'), accent, busy);
     h += btn('qqq-eflow-check', _i('settings.eflow.check', '体检'), accent, busy);
     h += btn('qqq-eflow-rotate', _i('settings.eflow.rotate', '整理归档'), accent, busy);
     h += '</div>';
@@ -1451,7 +1448,21 @@
   function _eflowBindCard(card) {
     if (!card) return;
     var a = card.querySelector('#qqq-eflow-adopt');
-    if (a) a.addEventListener('click', function () { _eflowRun('upgrade'); });
+    if (a) a.addEventListener('click', function () {
+      var st0 = _eflowState || {};
+      if (st0.mode !== 'custom') { _eflowRun('upgrade'); return; }
+      var now = Date.now();
+      if (!(_eflowConfirm && _eflowConfirm.act === 'migrate' && (now - _eflowConfirm.at) < 4000)) {
+        _eflowConfirm = { act: 'migrate', at: now };
+        _eflowRenderCard();
+        setTimeout(function () {
+          if (_eflowConfirm && _eflowConfirm.at === now) { _eflowConfirm = null; _eflowRenderCard(); }
+        }, 4200);
+        return;
+      }
+      _eflowConfirm = null;
+      _eflowRun('upgrade', { force: true });
+    });
     var c = card.querySelector('#qqq-eflow-check');
     if (c) c.addEventListener('click', function () { _eflowRun('check'); });
     var rt = card.querySelector('#qqq-eflow-rotate');

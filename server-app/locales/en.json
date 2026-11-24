@@ -2400,6 +2400,8 @@
             "desc": "Knowledge base management for all projects (Takeover / Health Check / Uninstall)",
             "manage": "Manage",
             "adopt": "Connect / Upgrade Current Project",
+            "migrate": "Migrate to E-Flow (keep my rules)",
+            "migrateConfirm": "Click again to confirm migration (rewrites project.txt; backup available)",
             "check": "Health Check",
             "rotate": "Organize & Archive",
             "turnOn": "Enable Global Takeover (All Projects)",

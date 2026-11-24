@@ -2400,6 +2400,8 @@
             "desc": "Gestion de la base de connaissances pour tous les projets (prise en charge / diagnostic / désinstallation)",
             "manage": "Gérer",
             "adopt": "Connecter / Mettre à niveau ce projet",
+            "migrate": "Migrer vers E-Flow (conserver mes règles)",
+            "migrateConfirm": "Cliquez à nouveau pour confirmer la migration (réécriture de project.txt, sauvegarde disponible)",
             "check": "Diagnostic",
             "rotate": "Organiser et archiver",
             "turnOn": "Activer la prise en charge globale (tous les projets)",

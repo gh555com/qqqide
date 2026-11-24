@@ -2400,6 +2400,8 @@
             "desc": "Quản lý cơ sở tri thức cho mọi dự án (tiếp quản / kiểm tra sức khỏe / gỡ cài đặt)",
             "manage": "Quản lý",
             "adopt": "Kết nối / Nâng cấp dự án này",
+            "migrate": "Di chuyển sang E-Flow (giữ lại quy tắc của tôi)",
+            "migrateConfirm": "Nhấn thêm lần nữa: Xác nhận di chuyển (ghi đè project.txt, đã có bản sao lưu)",
             "check": "Kiểm tra sức khỏe",
             "rotate": "Sắp xếp và lưu trữ",
             "turnOn": "Bật tiếp quản toàn cục (tất cả dự án)",

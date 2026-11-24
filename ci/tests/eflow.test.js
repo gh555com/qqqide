@@ -322,7 +322,8 @@ test('eflow: global 接管 = 暗号 1（除 1 之外一律零写入，且不追�
     assert.equal(R(GD), before, '被拒时不许改 global.txt');
 
     // ② ask → 令牌 + 固定话术（此刻仍什么都不写）
-    const ask = await core.run('global', IO, r, { dataRoot: dr, action: 'ask' });
+    // 发问时必须带上「会话锚点」：用户消息计数 / 当前楼层 / 任务 id（确认时拿它对账）
+    const ask = await core.run('global', IO, r, { dataRoot: dr, action: 'ask', userSeq: 0, userFloor: 1, questId: 'q1' });
     assert.equal(ask.ok, true, ask.text);
     const tok = ask.data.token;
     assert.ok(tok && tok.length > 4, 'ask 必须给令牌');
@@ -332,7 +333,7 @@ test('eflow: global 接管 = 暗号 1（除 1 之外一律零写入，且不追�
 
     // ③ 除 1 之外的一切回复（含「确定」「好」「取消」）→ 一律不写、也不追问
     for (const a of ['', '嗯……', '你说呢？', '确定', '确定。', 'OK', '好的', '不用了', '取消', '11', '1 2']) {
-        const rr = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: a });
+        const rr = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: a, userSeq: 1, userFloor: 2, questId: 'q1' });
         assert.equal(rr.ok, false, '不是 1 不许放行：' + a + ' → ' + rr.text);
         assert.equal(fs.existsSync(GP) ? JSON.parse(R(GP)).global : false, false, '不是 1 不许开：' + a);
         assert.equal(R(GD), before, '不是 1 不许改 global.txt：' + a);
@@ -340,7 +341,7 @@ test('eflow: global 接管 = 暗号 1（除 1 之外一律零写入，且不追�
     }
 
     // ④ 他改口回 1 → 令牌仍然认（拒绝不烧令牌），开（global.txt 契约段 + 开关文件，两处回读）
-    const on2 = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1' });
+    const on2 = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1', userSeq: 1, userFloor: 2, questId: 'q1' });
     assert.equal(on2.ok, true, on2.text);
     assert.equal(JSON.parse(R(GP)).global, true);
     const doc = R(GD);
@@ -364,15 +365,76 @@ test('eflow: global 接管 = 暗号 1（除 1 之外一律零写入，且不追�
     assert.ok(R(GD).indexOf(core.GDOC_B) >= 0);
 
     // ⑨ 关：ask(off) → 明确肯定 → 段摘除，用户内容一字不动
-    const askOff = await core.run('global', IO, r, { dataRoot: dr, action: 'ask', act: 'off' });
+    const askOff = await core.run('global', IO, r, { dataRoot: dr, action: 'ask', act: 'off', userSeq: 1, userFloor: 2, questId: 'q1' });
     assert.ok(/取消/.test(askOff.data.say), askOff.data.say);
-    const off = await core.run('global', IO, r, { dataRoot: dr, action: 'off', token: askOff.data.token, confirm: '1' });
+    const off = await core.run('global', IO, r, { dataRoot: dr, action: 'off', token: askOff.data.token, confirm: '1', userSeq: 2, userFloor: 3, questId: 'q1' });
     assert.equal(off.ok, true, off.text);
     assert.equal(JSON.parse(R(GP)).global, false);
     assert.equal(R(GD), before, '关掉后必须回到用户原文（逐字节）');
 
     const bad = await core.run('global', IO, r, { action: 'on' });
     assert.equal(bad.ok, false, '缺 dataRoot 必须如实失败：' + bad.text);
+});
+
+test('eflow: 原话只认会话真相（模型自填 confirm=1 / 同楼层伪造 / 跨任务 / 反向动作 → 全拒）', async () => {
+    const r = fresh('global-forge');
+    const dr = fresh('global-forge-data');
+    const GP = dr + '/alphal/eflow.json';
+    const GD = dr + '/global.txt';
+    W(GD, '用户原有规则\n');
+    const before = R(GD);
+
+    const ask = await core.run('global', IO, r, { dataRoot: dr, action: 'ask', userSeq: 3, userFloor: 1, questId: 'q1' });
+    assert.equal(ask.ok, true, ask.text);
+    const tok = ask.data.token;
+
+    // ① 模型在同一个楼层里自己补一句 confirm="1"（用户根本没回）→ 拒绝，零写入
+    const forge = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1', userSeq: 3, userFloor: 1, questId: 'q1' });
+    assert.equal(forge.ok, false, '同楼层伪造必须拒绝：' + forge.text);
+    assert.equal(forge.data.notYet, true, forge.text);
+    assert.equal(fs.existsSync(GP) ? JSON.parse(R(GP)).global : false, false, '伪造不许开');
+    assert.equal(R(GD), before, '伪造不许改 global.txt');
+
+    // ② 用户确实发了新消息，但说的不是 1 → 拒绝
+    const notOne = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '确定', userSeq: 4, userFloor: 2, questId: 'q1' });
+    assert.equal(notOne.ok, false, notOne.text);
+    assert.equal(R(GD), before);
+
+    // ③ 跳任务复用令牌 → 拒绝
+    const cross = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1', userSeq: 4, userFloor: 2, questId: 'q2' });
+    assert.equal(cross.ok, false, '跨任务令牌必须拒绝：' + cross.text);
+
+    // ④ 问的是 on、却调 off → 拒绝
+    const wrongAct = await core.run('global', IO, r, { dataRoot: dr, action: 'off', token: tok, confirm: '1', userSeq: 4, userFloor: 2, questId: 'q1' });
+    assert.equal(wrongAct.ok, false, '动作不一致必须拒绝：' + wrongAct.text);
+
+    // ⑤ 拿不到会话（工具层给不出 userSeq）→ 拒绝，并指路设置面板
+    const noSess = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1' });
+    assert.equal(noSess.ok, false, noSess.text);
+    assert.equal(noSess.data.noSession, true, noSess.text);
+    assert.ok(/设置 → 高级 → E-Flow/.test(noSess.text), noSess.text);
+    assert.equal(R(GD), before);
+
+    // ⑥ 用户本人发了 1（新消息）→ 放行（拒绝不烧令牌）
+    const good = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1', userSeq: 4, userFloor: 2, questId: 'q1' });
+    assert.equal(good.ok, true, good.text);
+    assert.ok(R(GD).indexOf(core.GDOC_B) >= 0);
+});
+
+test('eflow: 全局接管块计入每轮成本（不量它 = 成本谎报）', async () => {
+    const r = fresh('gdoc-cost');
+    const dr = fresh('gdoc-cost-data');
+    await core.run('init', IO, r, { name: 'x' });
+    const off = await core.run('check', IO, r, { dataRoot: dr });
+    assert.equal(off.data.injectAll, off.data.inject, '接管关着时合计 = 本项目');
+    await core.run('global', IO, r, { dataRoot: dr, action: 'on', via: 'ui' });
+    const on = await core.run('check', IO, r, { dataRoot: dr });
+    assert.ok(/全局接管块/.test(on.text), on.text);
+    assert.equal(on.data.injectAll - on.data.inject, core.nchars(core.globalDocBlock()), '全局块必须一字不差地计入合计：' + on.text);
+    assert.ok(on.data.injectAll > on.data.inject, '接管开着时合计必须大于本项目');
+    // 没有 dataRoot（命令行常没有）→ 不印、不猜
+    const noDr = await core.run('check', IO, r, {});
+    assert.ok(!/全局接管块/.test(noDr.text), '没有 dataRoot 不许凭空报全局块：' + noDr.text);
 });
 
 test('eflow: 设置面板直连（via=ui）不需要令牌，但仍两处回读', async () => {
@@ -426,6 +488,13 @@ test('eflow: 接线守卫（禁第二套实现 / 禁面板自己算 / 禁 AI 冒
     const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
     const tool = read('server-app/ai-panel/tools-exec-eflow.js');
     assert.ok(/via:\s*'ai'/.test(tool), 'AI 工具层必须硬编码 via=ai（否则 JSON 里冒一个 via=ui 就绕过令牌闸门）');
+    // ★ 模型不能替用户点头：confirm 只认会话真相（模型写不出用户消息）
+    assert.ok(/confirm:\s*truth\.text/.test(tool), 'confirm 必须来自会话真相');
+    assert.ok(tool.indexOf('args.confirm') < 0, '禁读模型自填的 confirm');
+    assert.ok(/_eflowUserTruth/.test(tool), '会话真相必须由工具层从 agent.conversation 取');
+    // ★ 模型也不能自己推动「重写用户 project.txt」：force 只能由人手点（via=ui）
+    assert.ok(/force:\s*false/.test(tool), '工具层必须硬编码 force=false');
+    assert.ok(tool.indexOf('args.force') < 0, '禁把 force 交给模型');
 
     const set = read('server-app/core/settings.js');
     const core = read('server-app/eflow/eflow-core.js');
@@ -448,13 +517,23 @@ test('eflow: 接线守卫（禁第二套实现 / 禁面板自己算 / 禁 AI 冒
     assert.ok(iCore > 0 && iSet > iCore, 'index.html 必须先加载 eflow/eflow-core.js 再加载 core/settings.js');
 });
 
-test('eflow: 面板与内核同一口径（rule 判定的正则只许一份）', () => {
-    const panel = fs.readFileSync(path.join(ROOT, 'server-app/ai-panel/panel-expert.js'), 'utf8');
-    // 面板若用更严的 /rule"…"/，`rule "…"`（带空格）会被判成白纸 → 调 upgrade → 被内核第二道闸 REFUSED
-    // → 结果正确但白弹一次失败提示。两处必须同源：/rule\s*"[^"]+"/。
-    const hits = panel.match(/\/rule[^\n]{0,30}/g) || [];
-    assert.ok(hits.some((h) => h.indexOf('\\s*"') > 0), '面板的自有规则判定必须与内核同口径（/rule\\s*"…"/）：' + JSON.stringify(hits));
-    assert.ok(!hits.some((h) => h.indexOf('rule"') >= 0), '禁在面板里写第二套更严的正则（会误判白纸）：' + JSON.stringify(hits));
+test('eflow: 项目归类只许一处（面板/设置全部问内核 projectKind）', () => {
+    const coreTxt = fs.readFileSync(path.join(ROOT, 'server-app/eflow/eflow-core.js'), 'utf8');
+    assert.ok(/async function projectKind/.test(coreTxt), '内核必须有唯一 projectKind');
+    // 面板若自带一份更严的 /rule"…"/，`rule "…"`（带空格）会被判成白纸 → 调 upgrade → 被内核拒写
+    // → 结果正确但白弹一次失败提示。归类只能有一个实现。
+    for (const f of ['server-app/ai-panel/panel-expert.js', 'server-app/core/settings.js']) {
+        const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
+        assert.ok(/projectKind/.test(t), f + ' 必须问内核 projectKind');
+        const hits = t.match(/\/rule[^\n]{0,30}/g) || [];
+        assert.equal(hits.length, 0, f + ' 不许再自带 rule 判定正则（会漂）：' + JSON.stringify(hits));
+    }
+    // IO 适配器也只许一份（三处曾各一份）
+    assert.ok(/function bridgeIO/.test(coreTxt), '内核必须提供唯一 bridgeIO');
+    for (const f of ['server-app/ai-panel/tools-exec-eflow.js', 'server-app/ai-panel/panel-expert.js', 'server-app/core/settings.js']) {
+        assert.ok(fs.readFileSync(path.join(ROOT, f), 'utf8').indexOf('bridge.fs.rename(p, q)') < 0,
+            f + ' 不许再自带一份 IO 适配器（用 EflowCore.bridgeIO）');
+    }
 });
 
 test.after(() => {

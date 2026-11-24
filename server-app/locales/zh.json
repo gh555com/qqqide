@@ -2395,6 +2395,8 @@
       "desc": "一切项目的知识库管理（接管 / 体检 / 卸载）",
       "manage": "管理",
       "adopt": "接入 / 升级本项目",
+      "migrate": "迁移到 E-Flow（保留我的规则）",
+      "migrateConfirm": "再点一次：确认迁移（重写 project.txt，有备份）",
       "check": "体检",
       "rotate": "整理归档",
       "turnOn": "开启全局接管（一切项目）",

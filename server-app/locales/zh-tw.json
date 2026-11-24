@@ -2400,6 +2400,8 @@
             "desc": "所有專案的知識庫管理（接管／健檢／解除安裝）",
             "manage": "管理",
             "adopt": "接入／升級本專案",
+            "migrate": "遷移至 E-Flow（保留我的規則）",
+            "migrateConfirm": "再點一次：確認遷移（將重寫 project.txt，已有備份）",
             "check": "健檢",
             "rotate": "整理歸檔",
             "turnOn": "開啟全域接管（所有專案）",

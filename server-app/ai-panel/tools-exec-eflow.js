@@ -37,19 +37,36 @@ async function _eflowDataRoot(bridge) {
     return '';
 }
 
-function _eflowIO(bridge) {
-    return {
-        read: function (p) { return bridge.fs.read(p); },
-        write: function (p, t) { return bridge.fs.write(p, t); },
-        list: function (p) { return bridge.fs.list(p); },
-        exists: function (p) { return bridge.fs.exists(p); },
-        mkdir: function (p) { return bridge.fs.mkdir(p); },
-        remove: function (p) { return bridge.fs.remove(p); },
-        rename: function (p, q) { return bridge.fs.rename(p, q); }
-    };
+// ★ 用户原话的唯一来源 = 会话真相（禁模型自述）：
+//   取最近一条「真实用户消息」（排除 rules 注入 / GUIDE / 恢复楼系统代发），剥掉系统追加的时间块。
+//   模型自己写 confirm="1" 不算——那等于让被告自己当法官。
+function _eflowUserTruth(ag) {
+    var out = { ok: false, text: '', seq: -1, floor: 0, qid: '' };
+    try {
+        if (!ag) return out;
+        out.qid = String(ag._questId || '');
+        var conv = ag.conversation || [];
+        var last = null, n = 0;
+        for (var i = 0; i < conv.length; i++) {
+            var m = conv[i];
+            if (!m || m.role !== 'user') continue;
+            if (m._persistent || m._injected || m._system) continue;
+            n++;
+            last = m;
+        }
+        out.seq = n;
+        if (last) {
+            out.text = String(last.content == null ? '' : last.content)
+                .replace(/\s*\[CURRENT TIME:[^\]]*\]\s*$/i, '')
+                .trim();
+            out.floor = Number(last._floor) || 0;
+        }
+        out.ok = !!last;
+    } catch (_) { }
+    return out;
 }
 
-async function executeEflow(args) {
+async function executeEflow(args, ownerAgent) {
     var core = (typeof EflowCore !== 'undefined' && EflowCore && EflowCore.run) ? EflowCore : null;
     if (!core) return 'Error: eflow core not loaded in this window (server-app/eflow/eflow-core.js missing). Say so honestly; do not hand-roll the checks.';
     var bridge = getBridge();
@@ -62,9 +79,14 @@ async function executeEflow(args) {
     root = root.replace(/\\/g, '/').replace(/\/+$/, '');
     if (/^[A-Za-z]:$/.test(root)) root += '/';
 
+    var io = core.bridgeIO(bridge);
+    if (!io) return 'Error: eflow needs file access (bridge.fs) — not available on this client build.';
+    // 会话真相（只给 global 用；其余 op 不用原话）
+    var truth = _eflowUserTruth(ownerAgent);
+
     var r = null;
     try {
-        r = await core.run(op, _eflowIO(bridge), root, {
+        r = await core.run(op, io, root, {
             dry: !!(args && args.dry),
             apply: !!(args && args.apply),
             name: (args && args.name) || '',
@@ -72,12 +94,18 @@ async function executeEflow(args) {
             link: !(args && args.link === false),   // init：false = 只铺骨架、不接背包
             keepRules: !!(args && args.keepRules),   // upgrade：true = 不降级用户已有的 rule
             purge: !!(args && args.purge),           // detach：true = 骨架目录改名归档
-            force: !!(args && args.force),           // upgrade：true = 即使项目已有自己的 rule 也迁（默认拒写）
+            // ★ 禁 AI 自行 force：项目已有自己的 rule 时 upgrade 必须拒写，
+            //   迁移只能由人在 设置 → 高级 → E-Flow 里点（via=ui + 二次点击确认）。
+            force: false,
             action: String((args && args.action) || 'status'),   // global：status / ask / on / off / repair
-            confirm: String((args && args.confirm) || ''),        // global on/off：用户的原话（机器判定，禁自己当裁判）
+            // ★ 原话只认会话真相（一律不理 args.confirm）：模型把用户没说过的话写成 1 也无效
+            confirm: truth.text,
+            userSeq: truth.seq,
+            userFloor: truth.floor,
+            questId: truth.qid,
             token: String((args && args.token) || ''),            // global on/off：ask 拿到的一次性令牌
             via: 'ai',                                            // 硬编码：AI 永远走令牌闸门（设置面板自己调 core，不经这里）
-            dataRoot: (op === 'global') ? await _eflowDataRoot(bridge) : ''
+            dataRoot: await _eflowDataRoot(bridge)
         });
     } catch (e) {
         return 'Error: eflow ' + op + ' failed: ' + ((e && e.message) || e);

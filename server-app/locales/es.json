@@ -2400,6 +2400,8 @@
             "desc": "Gestión de la base de conocimientos de todos los proyectos (gestión / diagnóstico / desinstalación)",
             "manage": "Gestionar",
             "adopt": "Conectar / Actualizar este proyecto",
+            "migrate": "Migrar a E-Flow (conservar mis reglas)",
+            "migrateConfirm": "Haz clic de nuevo: confirmar migración (reescribe project.txt, hay copia de seguridad)",
             "check": "Diagnóstico",
             "rotate": "Organizar y archivar",
             "turnOn": "Activar gestión global (todos los proyectos)",

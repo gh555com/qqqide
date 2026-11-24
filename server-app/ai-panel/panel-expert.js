@@ -39,9 +39,7 @@ var ExpertFlow = (function () {
   function _normRoot(root) {
     return (root || '').replace(/\\/g, '/').replace(/\/$/, '');
   }
-  function _standardDir(root) {
-    return _normRoot(root) + '/_qqq/alphal/expert/';
-  }
+
   function _storeGet(key, fallback) {
     try {
       if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) return onlyStore.get(key, fallback);
@@ -91,27 +89,15 @@ var ExpertFlow = (function () {
     } catch (e) { return false; }
   }
 
-  async function _checkStandardExists(projectRoot) {
+  // 项目归类只问内核（projectKind）：面板不再自带第二份「有没有自己的 rule」正则——
+  //   那份副本曾经少了空格容忍（`rule "…"` 被判成白纸 → 调 upgrade → 被内核拒写 → 白弹失败提示）。
+  async function _kind(projectRoot) {
     var bridge = _bridge();
-    if (!bridge || !bridge.fs) return false;
-    try {
-      var stat = await bridge.fs.stat(_standardDir(projectRoot) + 'index.md');
-      return !!(stat && !stat.isDir);
-    } catch (e) {
-      return false;
-    }
-  }
-
-  async function _checkCustomDocs(projectRoot) {
-    var bridge = _bridge();
-    if (!bridge || !bridge.fs) return false;
-    try {
-      var text = await bridge.fs.read(_normRoot(projectRoot) + '/_qqq/alphal/rule/project.txt');
-      // ★ 与内核 projectKind 同一口径（/rule\s*"/）：allow 空格写法 `rule "…"`，
-      //   否则面板判「白纸」→ 调 upgrade → 被内核第二道闸 REFUSED → 白弹一次失败提示。
-      if (text && text.trim()) return /rule\s*"[^"]+"/.test(text);
-    } catch (e) { /* silent */ }
-    return false;
+    var core = (typeof EflowCore !== 'undefined') ? EflowCore : null;
+    if (!bridge || !bridge.fs || !core || !core.projectKind || !core.bridgeIO) return '';
+    var io = core.bridgeIO(bridge);
+    if (!io) return '';
+    try { return String((await core.projectKind(io, _normRoot(projectRoot))) || ''); } catch (e) { return ''; }
   }
 
   // ---- 全局接管：白纸项目 → 自动接入（幂等；一次会话只试一次）----
@@ -134,12 +120,16 @@ var ExpertFlow = (function () {
     if (!bridge || !bridge.fs) return;
     if (!(await globalOn())) return;
     var core = (typeof EflowCore !== 'undefined' && EflowCore && EflowCore.run) ? EflowCore : null;
-    var io = (typeof _eflowIO === 'function') ? _eflowIO(bridge) : null;
+    var io = (core && typeof core.bridgeIO === 'function') ? core.bridgeIO(bridge) : null;
     if (!core || !io) return;
     try {
       var r = await core.run('upgrade', io, root, { keepRules: true });
       if (r && r.ok) _storeSetNow(KEY_MODE, MODE_STANDARD);
-      else _toast(_i18n('ai.eflow.adoptFail', '文档地基自动接入没成功：') + ((r && r.text) || _i18n('settings.eflow.noOutput', '（没有输出）')));
+      else if (r && /已经有自己的知识库|已经是 E-Flow/.test(String(r.text || ''))) {
+        // 良性拒结：项目在检测后被用户/别人接管了，或它早就是 EF2 —— 不是失败，不出声
+      } else {
+        _toast(_i18n('ai.eflow.adoptFail', '文档地基自动接入没成功：') + ((r && r.text) || _i18n('settings.eflow.noOutput', '（没有输出）')));
+      }
     } catch (e) {
       _toast(_i18n('ai.eflow.adoptErr', '文档地基自动接入失败：') + ((e && e.message) || e));
     }
@@ -155,14 +145,11 @@ var ExpertFlow = (function () {
   // ---- 状态检测（只读；绝不落盘骨架、绝不改 project.txt）----
   async function autoDetect(projectRoot) {
     if (!projectRoot) return MODE_NONE;
+    var kind = await _kind(projectRoot);
+    // 内核/桥不可用：保持原判，不落盘、不改状态（禁把「读不到」当成「白纸」然后去接管）
+    if (!kind) return _storeGet(KEY_MODE, MODE_NONE);
+    var next = (kind === 'ef2' || kind === 'l0') ? MODE_STANDARD : (kind === 'custom' ? MODE_CUSTOM : MODE_NONE);
     var mode = _storeGet(KEY_MODE, MODE_NONE);
-    if (await _checkStandardExists(projectRoot)) {
-      if (mode !== MODE_STANDARD) _storeSetNow(KEY_MODE, MODE_STANDARD);
-      _storeSetNow(KEY_LAST, Date.now());
-      return MODE_STANDARD;
-    }
-    var hasCustom = await _checkCustomDocs(projectRoot);
-    var next = hasCustom ? MODE_CUSTOM : MODE_NONE;
     if (mode !== next) _storeSetNow(KEY_MODE, next);
     _storeSetNow(KEY_LAST, Date.now());
     // 全局接管只碰白纸：有自己的规则 = 用户自己管，一个字都不动

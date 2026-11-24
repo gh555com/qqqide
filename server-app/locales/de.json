@@ -2400,6 +2400,8 @@
             "desc": "Wissensdatenbank-Management für alle Projekte (Übernahme / Diagnose / Deinstallation)",
             "manage": "Verwalten",
             "adopt": "Dieses Projekt einbinden / aktualisieren",
+            "migrate": "Zu E-Flow migrieren (meine Regeln beibehalten)",
+            "migrateConfirm": "Erneut klicken: Migration bestätigen (project.txt wird überschrieben, Backup vorhanden)",
             "check": "Diagnose",
             "rotate": "Archivieren und aufräumen",
             "turnOn": "Globale Übernahme aktivieren (alle Projekte)",
