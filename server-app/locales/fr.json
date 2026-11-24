@@ -981,7 +981,13 @@
             "cardEverything": "Installer Everything",
             "cardStartupClean": "L'ordinateur est lent ?",
             "cardSpotlight": "Recherche Spotlight",
-            "cardLocate": "Recherche de fichiers locate"
+            "cardLocate": "Recherche de fichiers locate",
+            "promptCleanC": "Aidez-moi à nettoyer le disque C. Vérifiez également s'il y a des logiciels indésirables (type \"suite logicielle intrusive\" comme 360) sur l'ordinateur. Dressez d'abord une liste des éléments pouvant être supprimés pour que je la valide avant le nettoyage.",
+            "promptAutostartQd": "Configurez qd pour qu'il se lance automatiquement au démarrage, afin qu'il s'ouvre dès le démarrage de l'ordinateur.",
+            "promptEverything": "Installez l'outil de recherche de fichiers Everything pour moi, et placez un raccourci sur le bureau une fois l'installation terminée.",
+            "promptStartupClean": "Mon ordinateur est un peu lent. Aidez-moi à identifier les programmes qui se lancent au démarrage et qui pourraient être désactivés. Dressez d'abord une liste pour que je la valide avant la désactivation.",
+            "promptSpotlight": "Vérifiez si l'indexation Spotlight de ce Mac fonctionne correctement (si mdfind peut trouver les fichiers immédiatement). Si ce n'est pas le cas, réparez-le. Ensuite, faites-moi une démonstration avec une recherche réelle.",
+            "promptLocate": "Installez locate (de préférence plocate) sur ce Linux et générez l'index. Indiquez-moi les commandes nécessitant des privilèges administrateur afin que je les exécute moi-même. Une fois l'installation terminée, faites-moi une démonstration avec une recherche réelle."
         },
         "eflow": {
             "adoptFail": "La connexion automatique à la base documentaire a échoué :",

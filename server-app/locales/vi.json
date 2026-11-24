@@ -981,7 +981,13 @@
             "cardEverything": "Cài đặt Everything",
             "cardStartupClean": "Máy tính bị chậm?",
             "cardSpotlight": "Tìm kiếm Spotlight",
-            "cardLocate": "Tìm kiếm tệp locate"
+            "cardLocate": "Tìm kiếm tệp locate",
+            "promptCleanC": "Dọn dẹp ổ C giúp tôi, đồng thời kiểm tra xem trong máy có phần mềm độc hại kiểu 'bầy đàn' (như 360) hay không. Liệt kê danh sách các mục có thể dọn dẹp để tôi xem trước, chỉ thực hiện dọn dẹp sau khi tôi đồng ý.",
+            "promptAutostartQd": "Đặt qd để khởi động cùng hệ thống, sao cho ứng dụng tự động mở mỗi khi khởi động máy.",
+            "promptEverything": "Cài đặt công cụ tìm kiếm tệp Everything cho tôi, sau khi cài xong hãy tạo lối tắt trên màn hình nền.",
+            "promptStartupClean": "Máy tính của tôi hơi chậm, hãy kiểm tra xem có mục nào trong danh sách khởi động cùng hệ thống có thể tắt được không. Liệt kê danh sách trước, chỉ thực hiện tắt sau khi tôi đồng ý.",
+            "promptSpotlight": "Kiểm tra xem chỉ mục Spotlight trên Mac này có hoạt động bình thường không (mdfind có thể tìm thấy tệp ngay lập tức hay không), nếu không thì sửa chữa; sau khi sửa xong, hãy trình diễn bằng một lượt tìm kiếm thực tế cho tôi xem.",
+            "promptLocate": "Cài đặt locate (ưu tiên plocate) và xây dựng chỉ mục trên Linux này giúp tôi. Hãy thông báo cho tôi các lệnh cần quyền quản trị viên để tôi tự thực thi; sau khi cài xong, hãy trình diễn bằng một lượt tìm kiếm thực tế cho tôi xem."
         },
         "eflow": {
             "adoptFail": "Tự động kết nối nền tảng tài liệu không thành công:",

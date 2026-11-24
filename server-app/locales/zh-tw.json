@@ -981,7 +981,13 @@
             "cardEverything": "安裝 Everything",
             "cardStartupClean": "電腦卡頓？",
             "cardSpotlight": "Spotlight 搜尋",
-            "cardLocate": "locate 檔案搜尋"
+            "cardLocate": "locate 檔案搜尋",
+            "promptCleanC": "幫我清理 C 槽，並檢查電腦中是否有類似 360 的惡意軟體（全家桶）。請先列出可清理的項目清單，經我確認同意後再執行清理。",
+            "promptAutostartQd": "將 qd 設定為開機自動啟動，以後開機時會自動開啟。",
+            "promptEverything": "幫我安裝 Everything 檔案搜尋工具，安裝完成後在桌面建立捷徑。",
+            "promptStartupClean": "我的電腦有點卡頓，幫我檢查開機自動啟動項目中有哪些可以關閉。請先列出清單，經我確認同意後再關閉。",
+            "promptSpotlight": "幫我檢查這台 Mac 的 Spotlight 索引是否正常（mdfind 是否能立即搜尋到檔案），若不正常請修復；修復後請以實際搜尋示範給我看。",
+            "promptLocate": "幫我在這台 Linux 上安裝 locate（優先使用 plocate）並建立索引。需要管理員權限的命令請告訴我，由我自行執行；安裝完成後請以實際搜尋示範給我看。"
         },
         "eflow": {
             "adoptFail": "文件地基自動接入未成功：",

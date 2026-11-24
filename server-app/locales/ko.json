@@ -981,7 +981,13 @@
             "cardEverything": "Everything 설치",
             "cardStartupClean": "컴퓨터가 느려지나요?",
             "cardSpotlight": "Spotlight 검색",
-            "cardLocate": "locate 파일 검색"
+            "cardLocate": "locate 파일 검색",
+            "promptCleanC": "C 드라이브를 정리해 주고, 컴퓨터에 360 같은 불필요한 소프트웨어(번들웨어)가 있는지 확인해 주세요. 삭제 가능한 항목은 먼저 목록으로 보여주고, 제가 승인한 후에만 삭제해 주세요.",
+            "promptAutostartQd": "qd를 시작 프로그램으로 설정하여, 부팅 시 자동으로 실행되도록 해 주세요.",
+            "promptEverything": "Everything 파일 검색 도구를 설치하고, 설치 완료 후 바탕화면에 바로 가기를 만들어 주세요.",
+            "promptStartupClean": "컴퓨터가 약간 느려진 것 같습니다. 시작 프로그램 중 비활성화할 수 있는 항목을 확인하고, 먼저 목록으로 보여주세요. 제가 승인한 후에만 비활성화해 주세요.",
+            "promptSpotlight": "이 Mac의 Spotlight 인덱싱이 정상인지 확인해 주세요(mdfind로 파일을 즉시 검색할 수 있어야 합니다). 정상이 아니면 수정하고, 수정 후에는 실제 검색 예시를 통해 시연해 주세요.",
+            "promptLocate": "이 Linux 시스템에 locate(plocate 우선)를 설치하고 인덱스를 구축해 주세요. 관리자 권한이 필요한 명령은 알려주시면 제가 직접 실행하겠습니다. 설치 완료 후에는 실제 검색 예시를 통해 시연해 주세요."
         },
         "eflow": {
             "adoptFail": "문서 기반 자동 연결에 성공하지 못했습니다:",

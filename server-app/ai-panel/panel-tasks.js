@@ -108,13 +108,29 @@
         'spotlight-search': 'ai.tasks.cardSpotlight',
         'locate-search': 'ai.tasks.cardLocate'
     };
-    // 出厂中文标题基线（判定「服务器有没有改过这张卡的标题」的唯一依据）：
-    //   标题 == 出厂值 → 用本机语言译文；被运营改过 → 一律照服务器原文（禁译文盖掉下发）。
+    // ★ 卡片提词的多语言键（静态字面量，同标题一套口径）：
+    //   提词 = 用户气泡原文，人看到的是「自己说的话」——非中文用户看到中文气泡 = 谎报他说过什么，
+    //   所以出厂提词跟着界面语言走；服务端改过的一律原文（见下方基线判定）。
+    //   ★ 唯一例外：eflow-adopt 不上表 —— 那是接管暗号（一句中文 + 回复「1」才生效），
+    //     整套契约（确认话术 + 令牌）都是中文锁定的，半译只会更怪。
+    var CARD_PROMPT_KEYS = {
+        'clean-c': 'ai.tasks.promptCleanC',
+        'autostart-qd': 'ai.tasks.promptAutostartQd',
+        'install-everything': 'ai.tasks.promptEverything',
+        'startup-clean': 'ai.tasks.promptStartupClean',
+        'spotlight-search': 'ai.tasks.promptSpotlight',
+        'locate-search': 'ai.tasks.promptLocate'
+    };
+    // 出厂中文标题基线（判定「服务器有没有改过这张卡」的唯一依据）：
+    //   文案 == 出厂值 → 用本机语言译文；被运营改过 → 一律照服务器原文（禁译文盖掉下发）。
     var CARD_DEFAULT_TITLE = {};
+    var CARD_DEFAULT_PROMPT = {};
     (function () {
         for (var _i = 0; _i < TASK_FALLBACK.tasks.length; _i++) {
             var _t0 = TASK_FALLBACK.tasks[_i];
-            if (_t0 && _t0.id && _t0.title && _t0.title.zh) CARD_DEFAULT_TITLE[_t0.id] = _t0.title.zh;
+            if (!_t0 || !_t0.id) continue;
+            if (_t0.title && _t0.title.zh) CARD_DEFAULT_TITLE[_t0.id] = _t0.title.zh;
+            if (_t0.prompt) CARD_DEFAULT_PROMPT[_t0.id] = _t0.prompt;
         }
     })();
 
@@ -243,13 +259,18 @@
                     if (typeof ws[wi] === 'string' && ws[wi]) when.push(ws[wi]);
                 }
             }
+            // 提词同理：出厂原句 → 吃译文；服务器改过 → 原样发出去（下发永远赢过翻译）
+            var prompt = t.prompt;
+            if (CARD_PROMPT_KEYS[id] && CARD_DEFAULT_PROMPT[id] && prompt === CARD_DEFAULT_PROMPT[id]) {
+                prompt = _t(CARD_PROMPT_KEYS[id], prompt);
+            }
             seen[id] = 1;
             out.push({
                 id: id,
                 title: title,
-                desc: t.prompt,        // 说明 := 将要发出去的那句话（唯一来源；服务端 desc 不采纳）
+                desc: prompt,          // 说明 := 将要发出去的那句话（唯一来源；服务端 desc 不采纳）
                 icon: String(t.icon || ''),
-                prompt: t.prompt,
+                prompt: prompt,
                 when: when
             });
         }

@@ -981,7 +981,13 @@
             "cardEverything": "Everything をインストール",
             "cardStartupClean": "パソコンが遅い？",
             "cardSpotlight": "Spotlight 検索",
-            "cardLocate": "locate ファイル検索"
+            "cardLocate": "locate ファイル検索",
+            "promptCleanC": "Cドライブをクリーンアップし、PC内に360のような不要なソフトウェア（バンドルソフト）があるか確認してください。削除可能な項目の一覧をまず提示し、承認後に削除を実行してください。",
+            "promptAutostartQd": "qd をスタートアップに登録し、次回起動時に自動で開くように設定してください。",
+            "promptEverything": "Everything ファイル検索ツールをインストールし、完了後にデスクトップにショートカットを作成してください。",
+            "promptStartupClean": "PCの動作が遅いため、スタートアップ項目で無効化可能なものを確認してください。まず一覧を提示し、承認後に無効化を実行してください。",
+            "promptSpotlight": "このMacのSpotlightインデックスが正常か確認してください（mdfindでファイルを即時検索できるか）。異常があれば修復し、完了後に実際の検索操作で動作を確認させてください。",
+            "promptLocate": "このLinux環境にlocate（優先的にplocate）をインストールし、インデックスを作成してください。管理者権限が必要なコマンドは指示のみ行い、実行は私が行います。完了後に実際の検索操作で動作を確認させてください。"
         },
         "eflow": {
             "adoptFail": "ドキュメント基盤の自動接続が成功しませんでした：",

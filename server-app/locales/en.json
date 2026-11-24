@@ -981,7 +981,13 @@
             "cardEverything": "Install Everything",
             "cardStartupClean": "Computer Lagging?",
             "cardSpotlight": "Spotlight Search",
-            "cardLocate": "locate File Search"
+            "cardLocate": "locate File Search",
+            "promptCleanC": "Help me clean up drive C. Also, check if there are any unwanted bloatware (like 360 bundles) on the computer. List the items that can be removed first, and only proceed with cleaning after I approve.",
+            "promptAutostartQd": "Set qd to launch automatically at startup, so it opens every time the computer boots.",
+            "promptEverything": "Install the Everything file search tool for me, and place a shortcut on the desktop after installation.",
+            "promptStartupClean": "My computer is running a bit slow. Check what can be disabled in the startup items. List them first, and only disable them after I approve.",
+            "promptSpotlight": "Check if Spotlight indexing is working correctly on this Mac (whether mdfind can instantly locate files). If not, fix it. After fixing, demonstrate with a real search example.",
+            "promptLocate": "Install locate (preferably plocate) on this Linux system and build the index. Tell me which commands require admin privileges so I can execute them myself. After installation, demonstrate with a real search example."
         },
         "eflow": {
             "adoptFail": "Auto-connect to Document Foundation unsuccessful:",

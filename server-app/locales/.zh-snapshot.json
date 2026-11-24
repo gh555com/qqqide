@@ -981,7 +981,13 @@
             "cardEverything": "装 Everything",
             "cardStartupClean": "电脑卡顿？",
             "cardSpotlight": "Spotlight 搜索",
-            "cardLocate": "locate 文件搜索"
+            "cardLocate": "locate 文件搜索",
+            "promptCleanC": "帮我清一清 C 盘，顺便看看电脑里有没有类似 360 那种流氓软件（全家桶），能清的先列个清单给我看，我同意了再清。",
+            "promptAutostartQd": "把 qd 设成开机自启，以后开机就自动打开。",
+            "promptEverything": "帮我装个 Everything 文件搜索工具，装好以后在桌面放个快捷方式。",
+            "promptStartupClean": "我的电脑有点卡，帮我看看开机自启里有什么能关的，先列清单，我同意了再关。",
+            "promptSpotlight": "帮我检查这台 Mac 的 Spotlight 索引正不正常（mdfind 能不能立刻搜到文件），不正常就修好；修完用一个真实的搜索演示给我看。",
+            "promptLocate": "帮我在这台 Linux 上装好 locate（优先 plocate）并建好索引，需要管理员权限的命令你告诉我，我自己执行；装完用一个真实的搜索演示给我看。"
         },
         "eflow": {
             "adoptFail": "文档地基自动接入没成功：",

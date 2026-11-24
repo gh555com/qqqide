@@ -8,7 +8,8 @@
 //   A 代码引用的键必须全部在 zh.json（含 data-i18n* 属性；动态拼接的键在源头就不允许）
 //   B 12 语言键集必须与 zh.json 完全一致（少 = 没翻译，多 = 陈旧孤儿）
 //   C i18n.js 的 _EN_BUILTIN 必须等于 en.json（运行时英文兜底，漂移即静默降级）
-//   D 一键任务卡的标题键必须存在，且中文值 = 出厂标题（否则卡片标题会悄悄变样）
+//   D 一键任务卡的标题 / 提词键必须存在，且中文值 = 出厂文案（否则卡片标题变样、说的不再是那句人话）
+//     ★ 提词另多一道：接管暗号（eflow-adopt）永不上翻译表——它必须是一句固定中文 + 回复「1」才生效
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -112,4 +113,28 @@ test('i18n D：一键任务卡标题键存在，且中文值 = 出厂标题', ()
     const pane = /title: \{ zh: '([^']*)'/.exec(src);
     assert.ok(pane, '兜底表必须有面板标题');
     assert.strictEqual(ZH_FLAT['ai.tasks.title'], pane[1], 'ai.tasks.title 必须等于兜底面板标题');
+});
+
+test('i18n D2：一键任务提词键存在、中文值 = 出厂提词；暗号卡永不上表', () => {
+    const src = fs.readFileSync(path.join(APP, 'ai-panel', 'panel-tasks.js'), 'utf8');
+    const block = /var CARD_PROMPT_KEYS = \{([\s\S]*?)\n    \};/.exec(src);
+    assert.ok(block, 'panel-tasks.js 必须保留 CARD_PROMPT_KEYS');
+    const pairs = Array.from(block[1].matchAll(/'([a-z0-9-]+)':\s*'([A-Za-z0-9_.\-]+)'/g)).map((m) => [m[1], m[2]]);
+    assert.ok(pairs.length >= 6, '内置卡提词键至少 6 个（实际 ' + pairs.length + '）');
+    assert.ok(!pairs.some(([id]) => id === 'eflow-adopt'),
+        '接管暗号卡禁止进翻译表：它必须是一句固定中文（整套契约就靠这句 + 回复「1」）');
+    // 出厂中文提词（= 兜底表 prompt，也是运维台默认表）
+    const defaults = {};
+    for (const m of src.matchAll(/id: '([a-z0-9-]+)'[\s\S]{0,700}?prompt: '([^']*)'/g)) defaults[m[1]] = m[2];
+    for (const [id, key] of pairs) {
+        assert.ok(ZH_FLAT[key] !== undefined, '提词键未登记：' + key);
+        assert.ok(defaults[id], '找不到卡 ' + id + ' 的出厂提词');
+        assert.strictEqual(ZH_FLAT[key], defaults[id],
+            '提词键 ' + key + ' 的中文值必须逐字等于出厂提词（否则换语言时发出去的不是那张卡的意思）');
+    }
+    // 反向：出厂表里每个可执行卡都必须有提词键（漏一个 = 那个卡对非中文用户退回中文）
+    for (const id of Object.keys(defaults)) {
+        if (id === 'eflow-adopt') continue;
+        assert.ok(pairs.some(([pid]) => pid === id), '卡 ' + id + ' 缺提词翻译键');
+    }
 });

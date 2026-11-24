@@ -113,7 +113,8 @@ test('run_task: 卡片「说明」= 将要发出去的那句话（禁再维护 d
     for (const b of m[0].split(/id: '/).slice(1)) {
         assert.ok(!/desc:\s*\{/.test(b), '兜底卡不得再写 desc（说明恒等于 prompt）：' + b.slice(0, 40));
     }
-    assert.ok(/desc:\s*t\.prompt/.test(src), 'sanitize 必须把 desc 定义成 prompt（唯一来源，服务端 desc 不采纳）');
+    // desc := 已解析的提词（出厂原句吃译文 / 服务器改过用原文；两者同一变量，禁两套来源）
+    assert.ok(/desc:\s*t\.prompt/.test(src) || /desc:\s*prompt\b/.test(src), 'sanitize 必须把 desc 定义成将要发出去的 prompt（唯一来源，服务端 desc 不采纳）');
     assert.ok(/card\.title = t\.prompt/.test(src), '悬停提示必须是提词本句');
 });
 

@@ -981,7 +981,13 @@
             "cardEverything": "Everything installieren",
             "cardStartupClean": "Langsamer PC?",
             "cardSpotlight": "Spotlight-Suche",
-            "cardLocate": "locate Dateisuche"
+            "cardLocate": "locate Dateisuche",
+            "promptCleanC": "Bereinige Laufwerk C und prüfe, ob sich auf dem Computer unerwünschte Software (wie z. B. 360 oder ähnliche Bündelprogramme) befindet. Erstelle zunächst eine Liste der zu entfernenden Elemente und warte auf meine Bestätigung, bevor du sie löschst.",
+            "promptAutostartQd": "Lege qd als Autostart-Programm fest, sodass es beim Systemstart automatisch geöffnet wird.",
+            "promptEverything": "Installiere das Dateisuchtool „Everything“ und lege nach der Installation eine Verknüpfung auf dem Desktop ab.",
+            "promptStartupClean": "Mein Computer ist etwas langsam. Prüfe die Autostart-Programme und liste auf, was deaktiviert werden kann. Warte auf meine Bestätigung, bevor du etwas deaktivierst.",
+            "promptSpotlight": "Überprüfe, ob der Spotlight-Index auf diesem Mac korrekt funktioniert (ob mdfind Dateien sofort findet). Falls nicht, repariere ihn. Zeige mir danach eine echte Suchdemonstration.",
+            "promptLocate": "Installiere locate (vorzugsweise plocate) auf diesem Linux-System und erstelle den Index. Nenne mir die Befehle, die Administratorrechte erfordern, damit ich sie selbst ausführen kann. Zeige mir danach eine echte Suchdemonstration."
         },
         "eflow": {
             "adoptFail": "Automatische Einbindung des Dokumenten-Fundaments nicht erfolgreich:",

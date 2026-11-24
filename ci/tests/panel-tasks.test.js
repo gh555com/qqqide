@@ -53,6 +53,8 @@ function harness(opts) {
     };
     if (opts.questStore) win.questStore = opts.questStore;      // 条件卡判定输入（必须在 boot 前就位）
     if (opts.ExpertFlow) win.ExpertFlow = opts.ExpertFlow;
+    // 语言包替身（真实现是 ai-panel/index.html 的 window._qq → parent.i18n.t；未命中的键回退 fb）
+    if (opts.tr) win._qq = function (k, fb) { return Object.prototype.hasOwnProperty.call(opts.tr, k) ? opts.tr[k] : fb; };
     win.eval(SRC);
     return { dom: dom, win: win };
 }
@@ -221,5 +223,41 @@ test('tasks: 同名 id 去重 + 超量封顶（服务端脏数据不炸面板）
     const n = win.document.querySelectorAll('#task-pane .tp-card').length;
     assert.ok(n <= 8, '卡片数量必须封顶（实际 ' + n + '）');
     assert.strictEqual(n, 1, '同 id 只保留一张');
+    dom.window.close();
+});
+
+test('tasks: 出厂提词跟界面语言走（气泡 = 用户说的那句话的译文）', async (t) => {
+    const de = { 'ai.tasks.promptCleanC': 'Bereinige Laufwerk C und liste zuerst alles auf, was weg kann.' };
+    const { dom, win } = harness({ fetchFail: true, tr: de });
+    t.after(() => dom.window.close());
+    await tick(40);
+    const card = cards(win).filter(function (c) { return c.getAttribute('data-id') === 'clean-c'; })[0];
+    assert.strictEqual(card.title, de['ai.tasks.promptCleanC'], '悬停说明必须也是译文（说明 = 将要发出去的那句）');
+    card.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(win.document.getElementById('input').value, de['ai.tasks.promptCleanC'],
+        '非中文用户看到的中文气泡 = 谎报他说过什么；出厂提词必须走译文');
+    dom.window.close();
+});
+
+test('tasks: 服务器改过的提词原样发出（译文永不盖下发）', async (t) => {
+    const { dom, win } = harness({ tr: { 'ai.tasks.promptCleanC': 'SHOULD-NOT-WIN' } });   // 线上表 = ONLINE（提词不是出厂原句）
+    t.after(() => dom.window.close());
+    await tick(40);
+    const card = cards(win).filter(function (c) { return c.getAttribute('data-id') === 'clean-c'; })[0];
+    card.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(win.document.getElementById('input').value, '帮我清清 C 盘',
+        '运营改过的提词必须逐字发出（改服务器即下发 > 译文）');
+    dom.window.close();
+});
+
+test('tasks: 接管暗号卡恒中文（不分语言）', async (t) => {
+    const { dom, win } = harness({ fetchFail: true, tr: { 'ai.tasks.promptCleanC': 'X', 'ai.tasks.promptEverything': 'Y' } });
+    t.after(() => dom.window.close());
+    await tick(40);
+    const card = cards(win).filter(function (c) { return c.getAttribute('data-id') === 'eflow-adopt'; })[0];
+    assert.strictEqual(card.title, '一切项目接入 E-Flow');
+    card.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(win.document.getElementById('input').value, '一切项目接入 E-Flow',
+        '暗号卡禁止翻译：整套接管契约就靠这一句 + 回复「1」');
     dom.window.close();
 });
