@@ -72,7 +72,11 @@ async function executeEflow(args) {
             link: !(args && args.link === false),   // init：false = 只铺骨架、不接背包
             keepRules: !!(args && args.keepRules),   // upgrade：true = 不降级用户已有的 rule
             purge: !!(args && args.purge),           // detach：true = 骨架目录改名归档
-            action: String((args && args.action) || 'status'),   // global：status / on / off
+            force: !!(args && args.force),           // upgrade：true = 即使项目已有自己的 rule 也迁（默认拒写）
+            action: String((args && args.action) || 'status'),   // global：status / ask / on / off / repair
+            confirm: String((args && args.confirm) || ''),        // global on/off：用户的原话（机器判定，禁自己当裁判）
+            token: String((args && args.token) || ''),            // global on/off：ask 拿到的一次性令牌
+            via: 'ai',                                            // 硬编码：AI 永远走令牌闸门（设置面板自己调 core，不经这里）
             dataRoot: (op === 'global') ? await _eflowDataRoot(bridge) : ''
         });
     } catch (e) {
@@ -83,5 +87,10 @@ async function executeEflow(args) {
     var tail = (op === 'check' && !r.ok)
         ? '\n→ 结论 FAIL：把上面每条 BLOCK 改到消失再跑一次；WARN 允许存在，但要在回复里如实说。'
         : '';
-    return r.text + tail;
+    // ★ 固定话术：正文由机器给，AI 只负责搬运（禁自己编、禁改写、禁省略）
+    var say = (r && r.data && typeof r.data.say === 'string') ? r.data.say : '';
+    var sayBlock = say
+        ? '\n\n★ 必须原样发给用户的一段话（一字不改；禁改写、禁加解释、禁省略）：\n「' + say + '」'
+        : '';
+    return r.text + tail + sayBlock;
 }

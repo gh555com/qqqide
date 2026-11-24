@@ -444,9 +444,6 @@
     "bulb": {
       "left": "左 AI 面板",
       "right": "右 AI 面板"
-    },
-    "seat": {
-      "ready": "已就绪 · {p} 你可以直接开始"
     }
   },
   "editor": {
@@ -999,7 +996,9 @@
     "floorAbortedMsg": "⚠️ 楼层异常中断，对话已保存。",
     "sseSkipNote": "[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: {0}。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]",
     "share": {
-      "tabNew": "分享", "genmark": "内容由人工智能生成", "aiMark": "对外发布时请标注：内容由人工智能生成",
+      "tabNew": "分享",
+      "genmark": "内容由人工智能生成",
+      "aiMark": "对外发布时请标注：内容由人工智能生成",
       "tabMine": "我的分享",
       "close": "关闭",
       "title": "标题",
@@ -2373,6 +2372,32 @@
       "diagF.render": "渲染进程崩溃",
       "diagF.crash": "崩溃网事件流",
       "diagF.recovery": "崩溃对账报告"
+    },
+    "eflow": {
+      "label": "E-Flow",
+      "desc": "一切项目的知识库管理（接管 / 体检 / 卸载）",
+      "manage": "管理",
+      "adopt": "接入 / 升级本项目",
+      "check": "体检",
+      "rotate": "整理归档",
+      "turnOn": "开启全局接管（一切项目）",
+      "turnOff": "取消接管",
+      "confirmOn": "再点一次：确认开启接管",
+      "confirmOff": "再点一次：确认取消接管",
+      "hintOn": "全局接管：已开启",
+      "hintOff": "全局接管：未开启",
+      "on": "全局接管：开",
+      "off": "全局接管：关",
+      "docYes": "global.txt 有接管规则",
+      "docNo": "global.txt 无接管规则",
+      "mStandard": "本项目：已接入",
+      "mCustom": "本项目：你自己的规则（不动）",
+      "mNone": "本项目：白纸",
+      "loading": "读取中…",
+      "noBridge": "当前客户端没有文件访问能力，管理不可用",
+      "noDataRoot": "拿不到用户级目录",
+      "noCore": "内核没加载（eflow/eflow-core.js 缺失），这一步做不了",
+      "noRoot": "没有打开的项目"
     }
   },
   "squad": {

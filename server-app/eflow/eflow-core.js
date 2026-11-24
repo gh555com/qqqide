@@ -943,6 +943,17 @@
             if (!s) return;
             if (/rule\s*"/.test(s)) rules.push(s); else others.push(s);
         });
+        // ★ 白纸原则的机器闸门：项目已经在用自己写的 rule"…" 当注入源时，upgrade 会重写
+        //   project.txt —— 默认直接拒写（不是提示，是拒绝）。真要迁 = 用户亲口要求后带 force=true。
+        if (!opts.force && rules.length) {
+            return {
+                ok: false,
+                text: 'E-Flow v' + VER + ' · 本项目已经有自己的知识库（' + rules.length + ' 行 rule）——upgrade 要重写 ' + DEF.rule +
+                    '，所以默认一个字都不动。\n' +
+                    '  · 只读盘点：op=status / op=check（不改任何文件）。\n' +
+                    '  · 把上面这些数字报给用户；他明确说要迁，再带 force=true 重跑。'
+            };
+        }
         var legacy = [];
         for (var i = 0; i < rules.length; i++) {
             var mm = /rule\s*"([^"]+)"/.exec(rules[i]);
@@ -1078,12 +1089,119 @@
         return { ok: true, text: out.join('\n') };
     }
 
-    // ── op: global（全局接管开关）────────────────────────────────────────
-    //   真值 = 一份小 JSON：{dataRoot}/alphal/eflow.json  {"global":true,"since":…,"ver":…}
-    //   ★ 绝不往用户的 global.txt 写任何产品文案：规则文件归用户，产品状态归产品。
+    // ── op: global（全局接管开关 + 人点头闸门 + global.txt 契约段）────────
+    //   机器真值 = {dataRoot}/alphal/eflow.json  {"global":true,"since":…,"ver":…,"pending":{…}}
+    //   人可见契约 = {dataRoot}/global.txt 里一段带 GDOC 标记的规则块（可读、可删、幂等覆盖）
     //   ★ 全局接管只对「白纸项目」生效（没有自己的 rule、也没接 EF2）：
     //     已经有自己知识库的项目一个字都不动，由 AI 把数字报给用户，人拍板。
-    //   action = status | on | off
+    //   action = status | ask | on | off | repair
+    // ── 全局接管：人点头闸门（AI 无权自己开）─────────────────────────────
+    //   为什么是机器判定而不是「让 AI 自己看用户是不是同意了」：
+    //     AI 判错一次 = 往用户仓库和全局规则里写东西。词表判定宁可保守（含糊一律不动），
+    //     最多多问一句；而 AI 自我判断错一次就没人兜底。
+    //   两道闸：① 先 action=ask 拿一次性令牌（30 分钟、一次一用）
+    //           ② 用户原话必须被判为「明确肯定」——含糊 / 反问 / 换话题 / 沉默 一律什么都不写。
+    var PENDING_TTL_MS = 30 * 60 * 1000;
+    // ★ 唯一放行令牌 = 用户回复「1」（暗号）。
+    //   为什么不用词表：任何语言的「确定 / 是 / OK」都自带边界情况（反问、转折、转述、方言、
+    //   语气词、全角、换行……），要穷举就得一直打补丁，而且每加一种语言就多一套判断；
+    //   「1」在全世界只有一个含义 —— 判定 = 一次全串匹配，没有第二种解释，也不需要翻译。
+    //   （全角 １ 也认：中文输入法常驻时它和 1 是同一个动作。）
+    var CONFIRM_TOKEN = /^[1１]$/;
+
+    // 用户回复判定：'yes'（就是 1）| 'other'（不是 1 → 什么都不做）| 'empty'（空）
+    function judgeConfirm(text) {
+        var s = String(text == null ? '' : text).trim();
+        if (!s) return { v: 'empty', why: '空回答' };
+        if (CONFIRM_TOKEN.test(s)) return { v: 'yes', why: '用户回了 1' };
+        return { v: 'other', why: '不是 1（暗号之外一律不做）' };
+    }
+
+    // ── 全局接管的「人可见契约」：global.txt 里的一段带标记规则块 ────────────
+    //   双轨的理由：开关 JSON 是机器记忆（用户看不见也改不动）；global.txt 是每轮都能读到的契约。
+    //   两侧不一致时 status 如实报漂移（不自动改用户的文件；用户手动删了块 = 合法意图）。
+    // ★ 固定话术（AI 只搬运，禁自编）：正文 + 一行「怎么答」。怎么答永远只有一种：回 1。
+    var SAY_TAIL = '回复 1 代表确定，除 1 之外的一切回复我什么也不做。';
+    var SAY_ON = '从现在开始，将由 qd 的 E-Flow 接管一切项目的「知识库管理」和「AI 与 AI 之间的相互协作」，会将规则追加写入到全局规则文件 global.txt，确定吗？（将来可在齿轮按钮「高级设置」卡片里管理和取消）\n' + SAY_TAIL;
+    var SAY_OFF = '确定要取消 E-Flow 的全局接管吗？取消后会从 global.txt 里删掉那段接管规则，以后新项目不再自动接管（已经接入的项目保持现状，随时可以再打开）。\n' + SAY_TAIL;
+    var GDOC_B = '# >>> qqqide eflow begin';
+    var GDOC_E = '# <<< qqqide eflow end';
+
+    function globalDocFile(dataRoot) { return joinp(norm(dataRoot), 'global.txt'); }
+
+    function globalDocBlock() {
+        return [
+            GDOC_B + '（qd 文档地基 · 整块删除 = 不再接管）',
+            '## E-Flow 文档地基（qd 接管）',
+            '- 每个项目的知识库由 qd 维护：_qqq/alphal/expert/（L0 背包 index.md + arch/ 细则 + exp/ 经验）。',
+            '- 白纸项目（没有自己的规则）自动铺骨架并接入；已有自己规则库的项目一个字都不动，只报每轮注入字数。',
+            '- 动任何项目前先读它的 _qqq/alphal/expert/index.md（L0 背包），按路由表按需读 arch/，禁通读。',
+            '- 收尾跑 eflow op=check：BLOCK 必须清零，WARN 要如实说；文档只收「违反即返工」的规则。',
+            '- 反悔：设置 → 高级 → E-Flow 管理 → 取消接管（会删掉本块）。',
+            GDOC_E
+        ].join('\n') + '\n';
+    }
+
+    function cutDocBlock(text) {
+        var cur = String(text || '');
+        var i = cur.indexOf(GDOC_B);
+        if (i < 0) return { has: false, head: cur, tail: '' };
+        var e = cur.indexOf(GDOC_E);
+        if (e < i) return { has: true, broken: true, head: cur, tail: '' };
+        var eol = cur.indexOf('\n', e);
+        return {
+            has: true, broken: false,
+            head: cur.slice(0, i),
+            tail: eol >= 0 ? cur.slice(eol + 1) : ''
+        };
+    }
+
+    // 幂等：开 = 有则原样替换、无则追加到末尾；关 = 只摘掉自己那一块，用户其它内容逐字节保留
+    async function syncGlobalDoc(io, dataRoot, on) {
+        var p = globalDocFile(dataRoot);
+        var cur = (await safeRead(io, p)) || '';
+        var c = cutDocBlock(cur);
+        var next;
+        if (on) {
+            if (c.has && !c.broken) next = String(c.head || '') + globalDocBlock() + String(c.tail || '');
+            else if (c.has && c.broken) next = cur.replace(/\s*$/, '') + '\n\n' + globalDocBlock();
+            else {
+                var body = cur.replace(/\s*$/, '');
+                next = body ? body + '\n\n' + globalDocBlock() : globalDocBlock();
+            }
+        } else {
+            if (!c.has) return { changed: false, wrote: false, has: false };
+            if (c.broken) return { changed: false, wrote: false, has: true, broken: true };
+            var head2 = String(c.head || '').replace(/\s*$/, '');
+            var tail2 = String(c.tail || '').replace(/^\s*/, '');
+            next = head2 && tail2 ? head2 + '\n\n' + tail2 : (head2 || tail2);
+            if (next && !/\n$/.test(next)) next += '\n';
+        }
+        var bk = '';
+        try {
+            if (cur) {
+                bk = p + '.ef2bak-' + stamp(new Date().toISOString().slice(0, 16).replace('T', '-'));
+                await io.write(bk, cur);
+            }
+        } catch (_) { bk = ''; }
+        await io.write(p, next);
+        var back = (await safeRead(io, p)) || '';
+        var okHas = back.indexOf(GDOC_B) >= 0 && back.indexOf(GDOC_E) >= 0;
+        return { changed: true, wrote: true, has: okHas, backup: bk, want: !!on };
+    }
+
+    // 当前项目属于哪一类（决定「全局接管开完以后要不要动它」）——
+    //   ef2    已是 E-Flow v2（L0 有生成区）→ 一个字都不动，只跑 check 报数字
+    //   l0     已有一份自己的 index.md（不是 EF2 生成的）→ 一个字都不动
+    //   custom project.txt 里是自己写的 rule → 一个字都不动
+    //   white  白纸（没自己的 rule、也没 L0）→ 可以接
+    async function projectKind(io, root) {
+        var l0 = await safeRead(io, joinp(root, DEF.l0));
+        if (l0 != null) return (sliceBlock(l0) != null) ? 'ef2' : 'l0';
+        var ruleTxt = (await safeRead(io, joinp(root, DEF.rule))) || '';
+        return /rule\s*"/.test(ruleTxt) ? 'custom' : 'white';
+    }
+
     function globalFile(dataRoot) {
         return joinp(norm(dataRoot), 'alphal/eflow.json');
     }
@@ -1094,54 +1212,177 @@
         var dr = opts.dataRoot ? norm(opts.dataRoot) : '';
         if (!dr) return { ok: false, text: '✗ 缺 dataRoot（全局开关需要一个用户级目录：win/dev = {appRoot}/Data，mac = bootinfo.userData）', data: { on: false, known: false } };
         var gp = globalFile(dr);
+        var dp = globalDocFile(dr);
         var cur = null;
         try { cur = JSON.parse((await safeRead(io, gp)) || 'null'); } catch (_) { cur = null; }
         var on = !!(cur && cur.global);
+
+        var docTxt = (await safeRead(io, dp)) || '';
+        var docHas = docTxt.indexOf(GDOC_B) >= 0;
 
         if (action === 'status' || action === '') {
             var out = [];
             out.push('E-Flow v' + VER + ' · 全局接管：' + (on ? '开' : '关'));
             out.push('  开关文件   ' + gp + (cur ? '' : '（还没建 = 关）'));
+            out.push('  规则块     ' + (docHas ? '在 ' + dp : '不在 ' + dp + '（全局规则文件里没有接管规则）'));
+            if (on !== docHas) {
+                out.push('  ⚠ 漂移     ' + (on
+                    ? '开关是开的，但 global.txt 里没有规则块 → action=repair 补回'
+                    : '开关是关的，但 global.txt 里还留着规则块 → action=off 清掉'));
+            }
+            if (cur && cur.pending && cur.pending.nonce) {
+                var age = Date.now() - Date.parse(cur.pending.at || 0);
+                out.push('  待确认     ' + (age < PENDING_TTL_MS
+                    ? '有（' + Math.round(age / 1000) + ' 秒前发出的问话，还剩约 ' + Math.max(1, Math.round((PENDING_TTL_MS - age) / 60000)) + ' 分钟）'
+                    : '已过期（' + Math.round(age / 60000) + ' 分钟前）——要重新问'));
+            }
             if (on) {
                 out.push('  生效方式   打开任何白纸项目 → 自动铺 L0 骨架并接一行 rule（幂等；已有自己规则的项目不动）');
             } else {
                 out.push('  生效方式   什么都不做：项目只有在你明确要求时才接入');
             }
-            return { ok: true, text: out.join('\n'), data: { on: on, known: !!cur } };
+            return { ok: true, text: out.join('\n'), data: { on: on, known: !!cur, doc: docHas } };
         }
+
+        // ① 发问：拿一次性令牌 + 固定话术（AI 只负责原样复述，禁自己编）
+        if (action === 'ask') {
+            var act = (String(opts.act || 'on').toLowerCase() === 'off') ? 'off' : 'on';
+            if (act === 'on' && on) {
+                return { ok: true, text: 'E-Flow v' + VER + ' · 全局接管本来就是开着的（已回读开关文件）——不用再确认，也不用重复写 global.txt。', data: { on: true, already: true } };
+            }
+            if (act === 'off' && !on) {
+                return { ok: true, text: 'E-Flow v' + VER + ' · 全局接管本来就是关着的——不用再确认。', data: { on: false, already: true } };
+            }
+            var nonce = 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            var body0 = {};
+            Object.keys(cur || {}).forEach(function (k) { body0[k] = cur[k]; });
+            body0.global = on;
+            body0.pending = { nonce: nonce, act: act, at: new Date().toISOString() };
+            body0.ver = VER;
+            try {
+                if (io.mkdir) { try { await io.mkdir(dr + '/alphal'); } catch (_) { } }
+                await io.write(gp, JSON.stringify(body0, null, 2) + '\n');
+            } catch (e) {
+                return { ok: false, text: '✗ 写确认令牌失败：' + ((e && e.message) || e), data: { on: on, known: !!cur } };
+            }
+            var say = (act === 'on') ? SAY_ON : SAY_OFF;
+            return {
+                ok: true,
+                text: 'E-Flow v' + VER + ' · 已发出确认请求（此刻什么都没改）\n' +
+                    '  · 把下面 say 一字不改地说给用户，说完就停（禁自己补解释、禁自己往下做、禁再追问一遍）\n' +
+                    '  · 他回 1 → 调 eflow op=global action=' + act + ' token=' + nonce + ' confirm="1"\n' +
+                    '  · 他回别的一切（含「确定」「好」「取消」）→ 什么都不调、也不要再问（令牌 30 分钟内有效，他改口回 1 仍然认）',
+                data: { on: on, token: nonce, act: act, say: say, needAnswer: true }
+            };
+        }
+
+        // ② 对账：开关开着但规则块丢了（用户手删 / 迁移）→ 补回
+        if (action === 'repair') {
+            if (!on) return { ok: false, text: 'E-Flow v' + VER + ' · 全局接管现在是关着的，没有需要补的规则块。要开就先 action=ask。', data: { on: false } };
+            var rp = await syncGlobalDoc(io, dr, true);
+            return {
+                ok: !!rp.has,
+                text: 'E-Flow v' + VER + ' · global.txt 规则块已' + (rp.has ? '补回（回读确认）' : '写失败（回读没找到）') + '：' + dp,
+                data: { on: on, doc: !!rp.has }
+            };
+        }
+
         if (action !== 'on' && action !== 'off') {
-            return { ok: false, text: '✗ 未知动作：' + action + '（status / on / off）', data: { on: on, known: !!cur } };
+            return { ok: false, text: '✗ 未知动作：' + action + '（status / ask / on / off / repair）', data: { on: on, known: !!cur } };
         }
 
         var nextOn = (action === 'on');
+        // 幂等：状态已经是目标 → 不重复写；只对账规则块
+        if (nextOn === on) {
+            if (nextOn && !docHas) {
+                var fx = await syncGlobalDoc(io, dr, true);
+                return {
+                    ok: !!fx.has,
+                    text: 'E-Flow v' + VER + ' · 全局接管本来就是开着的；global.txt 里缺规则块，已' + (fx.has ? '补回（回读确认）' : '补写失败') + '。',
+                    data: { on: true, doc: !!fx.has, repaired: true }
+                };
+            }
+            return { ok: true, text: 'E-Flow v' + VER + ' · 全局接管本来就是' + (nextOn ? '开' : '关') + '的，没有重复写入。', data: { on: on, doc: docHas, already: true } };
+        }
+
+        // ③ 人点头闸门（设置面板里人直接点的走 via=ui：有 UI 二次确认，不走 AI 令牌）
+        var viaUi = (String(opts.via || 'ai') === 'ui');
+        if (!viaUi) {
+            var jd = judgeConfirm(opts.confirm);
+            var pend = (cur && cur.pending) || null;
+            var tokOk = !!(pend && pend.nonce && opts.token && String(pend.nonce) === String(opts.token));
+            var fresh = !!(tokOk && pend.at && (Date.now() - Date.parse(pend.at)) < PENDING_TTL_MS);
+            if (jd.v !== 'yes') {
+                return {
+                    ok: false,
+                    text: 'E-Flow v' + VER + ' · 不是 1（' + jd.why + '）——global.txt 与开关文件一个字节都没改。\n' +
+                        '  · 什么都不用做、也不用再说一遍：他回 1 就继续，不回就算了（禁追问、禁把话术换个说法再问）。',
+                    data: { on: on, needConfirm: true }
+                };
+            }
+            if (!fresh) {
+                return {
+                    ok: false,
+                    text: 'E-Flow v' + VER + ' · 他回了 1，但这次确认已过期或对不上号（令牌 30 分钟、一次一用）——什么都不改。\n' +
+                        '  · 重新 action=ask 拿一句新话术，再问一遍。',
+                    data: { on: on, needAsk: true, say: SAY_ON }
+                };
+            }
+        }
+
+        var prevJson = (await safeRead(io, gp)) || '';
         var body = {
             global: nextOn,
-            since: nextOn ? ((cur && cur.since) || new Date().toISOString()) : (cur && cur.since) || '',
+            since: nextOn ? ((cur && cur.since) || new Date().toISOString()) : ((cur && cur.since) || ''),
             offAt: nextOn ? '' : new Date().toISOString(),
-            ver: VER
+            ver: VER,
+            pending: null
         };
         try {
             if (io.mkdir) { try { await io.mkdir(dr + '/alphal'); } catch (_) { } }
+            var docR = await syncGlobalDoc(io, dr, nextOn);
+            if (nextOn && !docR.has) throw new Error('global.txt 写完回读没找到规则块');
             await io.write(gp, JSON.stringify(body, null, 2) + '\n');
         } catch (e) {
-            return { ok: false, text: '✗ 写开关失败：' + ((e && e.message) || e), data: { on: on, known: !!cur } };
+            // 两处必须同生同灭：任一失败 → 尽力回滚，然后如实报错（禁假成功）
+            var rb = '回滚失败，请手动检查 global.txt 与 alphal/eflow.json';
+            try {
+                await io.write(dp, docTxt);
+                await io.write(gp, prevJson);
+                rb = '已回滚到动手之前的状态';
+            } catch (_) { /* 保持 rb 原文 */ }
+            return { ok: false, text: '✗ 写盘失败：' + ((e && e.message) || e) + '（' + rb + '）', data: { on: on } };
         }
-        // 回读验真（写成功不等于生效）
+        // 回读验真（写成功不等于生效；两处都要读回来）
         var back = null;
         try { back = JSON.parse((await safeRead(io, gp)) || 'null'); } catch (_) { back = null; }
-        var okNow = !!(back && back.global === nextOn);
+        var backDoc = (await safeRead(io, dp)) || '';
+        var okJson = !!(back && back.global === nextOn);
+        var okDoc = nextOn
+            ? (backDoc.indexOf(GDOC_B) >= 0 && backDoc.indexOf(GDOC_E) >= 0)
+            : (backDoc.indexOf(GDOC_B) < 0);
+        var okNow = okJson && okDoc;
         var o = [];
-        o.push('E-Flow v' + VER + ' · 全局接管：' + (nextOn ? '已开启' : '已关闭') + (okNow ? '（已回读确认）' : '（⚠ 写入后回读不一致）'));
+        o.push('E-Flow v' + VER + ' · 全局接管：' + (nextOn ? '已开启' : '已关闭') +
+            (okNow ? '（开关文件与 global.txt 均已回读确认）'
+                : '（⚠ 回读不一致：' + (!okJson ? '开关文件' : '') + (!okJson && !okDoc ? ' + ' : '') + (!okDoc ? 'global.txt' : '') + '）'));
+        var kind = (nextOn && root) ? await projectKind(io, root) : '';
         if (nextOn) {
+            o.push('  · 规则块已写入 ' + dp + '（带标记，随时可整块删除）');
             o.push('  · 以后任何白纸项目（没有自己的规则、也没接过）→ 自动铺骨架 + 接一行 rule，用户什么都不用做');
             o.push('  · 已经有自己知识库的项目：一个字都不动，只把每轮注入字数报出来');
-            o.push('  · 当前项目：' + (root ? '现在就按上面这条规则接入（本楼层继续用 upgrade 落地）' : '（没有打开的项目）'));
-            o.push('  · 关掉：eflow op=global action=off');
+            if (kind === 'white') o.push('  · 当前项目：白纸 → 立刻 eflow op=upgrade keep-rules=true 把它接进来，再 op=check 把数字报给用户');
+            else if (kind === 'ef2') o.push('  · 当前项目：已经是 E-Flow v2 → 刚才一个字都没改；跑一次 op=check 把数字报给用户就行');
+            else if (kind === 'l0') o.push('  · 当前项目：已经有一份自己的 ' + DEF.l0 + '（不是 EF2 生成的）→ 一个字都不动；要不要换成 EF2 由用户亲口说，禁自己 upgrade');
+            else if (kind === 'custom') o.push('  · 当前项目：有自己的知识库（project.txt 里是自己写的 rule）→ 一个字都不动，只把 op=status 的字数报给用户');
+            else o.push('  · 当前项目：（没有打开的项目）');
+            o.push('  · 关掉：eflow op=global action=ask act=off（先问用户，回 1 才动）');
         } else {
+            o.push('  · global.txt 里的规则块已摘除（用户其它内容逐字节保留）');
             o.push('  · 已接入的项目保持现状（它们各自 project.txt 里的那一行不动）；要拆某个项目：eflow op=detach');
-            o.push('  · 想再开：eflow op=global action=on');
+            o.push('  · 想再开：eflow op=global action=ask');
         }
-        return { ok: okNow, text: o.join('\n'), data: { on: nextOn, known: true } };
+        return { ok: okNow, text: o.join('\n'), data: { on: nextOn, known: true, doc: okDoc, kind: kind, nextAction: (nextOn && kind === 'white') ? 'upgrade' : '' } };
     }
 
     // ── 统一入口（工具与 CLI 都走这里）───────────────────────────────────
@@ -1174,6 +1415,9 @@
         // 供测试直接调
         opStatus: opStatus, opCheck: opCheck, opIndex: opIndex, opInit: opInit,
         opRotate: opRotate, opUpgrade: opUpgrade, opDetach: opDetach, opGlobal: opGlobal, globalFile: globalFile,
+        judgeConfirm: judgeConfirm, projectKind: projectKind, globalDocFile: globalDocFile, globalDocBlock: globalDocBlock,
+        syncGlobalDoc: syncGlobalDoc, SAY_ON: SAY_ON, SAY_OFF: SAY_OFF, SAY_TAIL: SAY_TAIL,
+        PENDING_TTL_MS: PENDING_TTL_MS, GDOC_B: GDOC_B, GDOC_E: GDOC_E,
         parseHead: parseHead, parseFront: parseFront, buildBlock: buildBlock, sliceBlock: sliceBlock,
         nchars: nchars, tplL0: tplL0, tplArch: tplArch, tplState: tplState
     };

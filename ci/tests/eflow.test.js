@@ -187,16 +187,26 @@ test('eflow: 经验条目合规 → PASS；rotate --apply 归档 + INDEX 重建'
     assert.equal(tsv.trim().split('\n').length, 1, 'INDEX.tsv 只剩表头（已归档的不进索引）');
 });
 
-test('eflow: upgrade — 单片注入降到 L0 预算内，project.txt 单行，旧文档一个字节不动', async () => {
+test('eflow: upgrade — 已有自己 rule 默认拒写；force=true 才迁；旧文档一个字节不动', async () => {
     const r = fresh('legacy');
     const mono = r + '/do/总纲.txt';
     const body = '# 老总纲\n' + '铁律'.repeat(4000) + '\n';
     W(mono, body);
-    W(RULE(r), 'rule"' + mono + '"\n\n随手写的说明一行\n');
-    const plan = await core.run('upgrade', IO, r, { dry: true });
+    const beforeRule = 'rule"' + mono + '"\n\n随手写的说明一行\n';
+    W(RULE(r), beforeRule);
+    // ★ 白纸原则的机器闸门：默认拒写（不是提示）
+    const refuse = await core.run('upgrade', IO, r, { name: 'legacy' });
+    assert.equal(refuse.ok, false, refuse.text);
+    assert.ok(/默认一个字都不动/.test(refuse.text), refuse.text);
+    assert.equal(R(RULE(r)), beforeRule, '拒写时 project.txt 必须逐字节不变');
+    assert.ok(!fs.existsSync(L0(r)), '拒写时不许建骨架');
+    // 只读盘点永远允许
+    const stt = await core.run('status', IO, r, {});
+    assert.ok(/每轮固定注入/.test(stt.text), stt.text);
+    const plan = await core.run('upgrade', IO, r, { dry: true, force: true });
     assert.ok(/每轮注入/.test(plan.text), plan.text);
     assert.ok(!fs.existsSync(L0(r)), 'dry 不许建任何文件');
-    const out = await core.run('upgrade', IO, r, { name: 'legacy' });
+    const out = await core.run('upgrade', IO, r, { name: 'legacy', force: true });
     assert.ok(out.ok, out.text);
     assert.ok(/省/.test(out.text), '必须报出省了多少：' + out.text);
     assert.equal(R(mono), body, '旧文档不许改一个字节');
@@ -292,25 +302,150 @@ test('eflow: 自家 L0 路径只差大小写 = 仍认作背包（禁误判成别
     assert.ok(/EF2 1 行 rule/.test(chk.text), chk.text);
 });
 
-test('eflow: global 开关（on/off 回读一致；绝不碰用户的 global.txt）', async () => {
+test('eflow: global 接管 = 暗号 1（除 1 之外一律零写入，且不追问）', async () => {
     const r = fresh('global-proj');
     const dr = fresh('global-data');
+    const GP = dr + '/alphal/eflow.json';
+    const GD = dr + '/global.txt';
+    // 用户原本的全局规则：以下所有操作一个字都不许动
+    W(GD, '## 命名铁律\n- project → quest\n');
+    const before = R(GD);
+
     let s = await core.run('global', IO, r, { dataRoot: dr, action: 'status' });
     assert.equal(s.data.on, false, s.text);
-    const on = await core.run('global', IO, r, { dataRoot: dr, action: 'on' });
-    assert.equal(on.ok, true, on.text);
-    assert.equal(on.data.on, true, on.text);
-    assert.ok(/已回读确认/.test(on.text), on.text);
-    assert.equal(fs.existsSync(dr + '/alphal/eflow.json'), true, '开关必须落盘');
-    assert.equal(JSON.parse(R(dr + '/alphal/eflow.json')).global, true);
-    assert.equal(fs.existsSync(dr + '/global.txt'), false, '禁往用户的全局规则文件写产品文案');
-    s = await core.run('global', IO, r, { dataRoot: dr, action: 'status' });
-    assert.equal(s.data.on, true, s.text);
-    const off = await core.run('global', IO, r, { dataRoot: dr, action: 'off' });
-    assert.equal(off.data.on, false, off.text);
-    assert.equal(JSON.parse(R(dr + '/alphal/eflow.json')).global, false);
+    assert.equal(s.data.doc, false, s.text);
+
+    // ① 没有令牌直接开 → 拒绝且零写入
+    let on = await core.run('global', IO, r, { dataRoot: dr, action: 'on', confirm: '1' });
+    assert.equal(on.ok, false, on.text);
+    assert.equal(fs.existsSync(GP), false, '被拒时不许留下开关文件');
+    assert.equal(R(GD), before, '被拒时不许改 global.txt');
+
+    // ② ask → 令牌 + 固定话术（此刻仍什么都不写）
+    const ask = await core.run('global', IO, r, { dataRoot: dr, action: 'ask' });
+    assert.equal(ask.ok, true, ask.text);
+    const tok = ask.data.token;
+    assert.ok(tok && tok.length > 4, 'ask 必须给令牌');
+    assert.ok(/确定吗/.test(ask.data.say), '话术必须是那句确认语：' + ask.data.say);
+    assert.ok(/回复 1 代表确定/.test(ask.data.say), '话术必须写清怎么答：' + ask.data.say);
+    assert.equal(R(GD), before, 'ask 阶段什么都不许改');
+
+    // ③ 除 1 之外的一切回复（含「确定」「好」「取消」）→ 一律不写、也不追问
+    for (const a of ['', '嗯……', '你说呢？', '确定', '确定。', 'OK', '好的', '不用了', '取消', '11', '1 2']) {
+        const rr = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: a });
+        assert.equal(rr.ok, false, '不是 1 不许放行：' + a + ' → ' + rr.text);
+        assert.equal(fs.existsSync(GP) ? JSON.parse(R(GP)).global : false, false, '不是 1 不许开：' + a);
+        assert.equal(R(GD), before, '不是 1 不许改 global.txt：' + a);
+        assert.equal(rr.data.say, undefined, '不是 1 = 什么都不做（禁再追问一遍）：' + a);
+    }
+
+    // ④ 他改口回 1 → 令牌仍然认（拒绝不烧令牌），开（global.txt 契约段 + 开关文件，两处回读）
+    const on2 = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1' });
+    assert.equal(on2.ok, true, on2.text);
+    assert.equal(JSON.parse(R(GP)).global, true);
+    const doc = R(GD);
+    assert.ok(doc.indexOf(core.GDOC_B) >= 0 && doc.indexOf(core.GDOC_E) >= 0, 'global.txt 必须有接管规则块');
+    assert.equal(doc.indexOf(before), 0, '用户原有内容必须逐字节保留在前');
+    assert.ok(/已回读确认/.test(on2.text), on2.text);
+    assert.equal(on2.data.kind, 'white', '白纸项目必须被认出来：' + on2.text);
+    assert.equal(on2.data.nextAction, 'upgrade', '白纸项目才允许开完直接接进来');
+
+    // ⑦ 幂等：再开一次不重复写
+    const again = await core.run('global', IO, r, { dataRoot: dr, action: 'on' });
+    assert.equal(again.ok, true, again.text);
+    assert.equal(R(GD).split(core.GDOC_B).length - 1, 1, '规则块只许一份');
+
+    // ⑧ 手删规则块 → status 报漂移 → repair 补回
+    W(GD, before);
+    const st2 = await core.run('global', IO, r, { dataRoot: dr, action: 'status' });
+    assert.ok(/漂移/.test(st2.text), st2.text);
+    const rep = await core.run('global', IO, r, { dataRoot: dr, action: 'repair' });
+    assert.equal(rep.ok, true, rep.text);
+    assert.ok(R(GD).indexOf(core.GDOC_B) >= 0);
+
+    // ⑨ 关：ask(off) → 明确肯定 → 段摘除，用户内容一字不动
+    const askOff = await core.run('global', IO, r, { dataRoot: dr, action: 'ask', act: 'off' });
+    assert.ok(/取消/.test(askOff.data.say), askOff.data.say);
+    const off = await core.run('global', IO, r, { dataRoot: dr, action: 'off', token: askOff.data.token, confirm: '1' });
+    assert.equal(off.ok, true, off.text);
+    assert.equal(JSON.parse(R(GP)).global, false);
+    assert.equal(R(GD), before, '关掉后必须回到用户原文（逐字节）');
+
     const bad = await core.run('global', IO, r, { action: 'on' });
     assert.equal(bad.ok, false, '缺 dataRoot 必须如实失败：' + bad.text);
+});
+
+test('eflow: 设置面板直连（via=ui）不需要令牌，但仍两处回读', async () => {
+    const r = fresh('global-ui');
+    const dr = fresh('global-ui-data');
+    const on = await core.run('global', IO, r, { dataRoot: dr, action: 'on', via: 'ui' });
+    assert.equal(on.ok, true, on.text);
+    assert.ok(R(dr + '/global.txt').indexOf(core.GDOC_B) >= 0);
+    assert.equal(JSON.parse(R(dr + '/alphal/eflow.json')).global, true);
+    const off = await core.run('global', IO, r, { dataRoot: dr, action: 'off', via: 'ui' });
+    assert.equal(off.ok, true, off.text);
+    assert.ok(R(dr + '/global.txt').indexOf(core.GDOC_B) < 0);
+    assert.equal(JSON.parse(R(dr + '/alphal/eflow.json')).global, false);
+});
+
+test('eflow: judgeConfirm = 只认 1（任何语言都没有边界情况）', () => {
+    for (const s of ['1', ' 1 ', '1\n', '１']) assert.equal(core.judgeConfirm(s).v, 'yes', JSON.stringify(s));
+    for (const s of ['11', '21', '1x', '确定', '确定。', '确认', '好', '好的', '可以', 'OK', 'yes', '是',
+        '取消', '不用', '嗯', '你说呢？', '确定吗？', '用户说确定', '1 2', 'x'.repeat(300)]) {
+        assert.equal(core.judgeConfirm(s).v, 'other', s + ' → ' + JSON.stringify(core.judgeConfirm(s)));
+    }
+    assert.equal(core.judgeConfirm('').v, 'empty');
+    assert.equal(core.judgeConfirm(null).v, 'empty');
+    // 固定话术必须自带「怎么答」那一行（跨语言只认 1，不需要翻译）
+    assert.ok(/回复 1 代表确定/.test(core.SAY_ON), core.SAY_ON);
+    assert.ok(/回复 1 代表确定/.test(core.SAY_OFF), core.SAY_OFF);
+});
+
+test('eflow: 已有自己知识库的项目 —— 全局接管只报数字，一个字都不动', async () => {
+    const r = fresh('custom-proj');
+    const dr = fresh('custom-data');
+    const own = r + '/do/总纲.txt';
+    W(own, '铁律'.repeat(2000));
+    const before = 'rule"' + own + '"\n';
+    W(RULE(r), before);
+    const on = await core.run('global', IO, r, { dataRoot: dr, action: 'on', via: 'ui' });
+    assert.equal(on.ok, true, on.text);
+    assert.equal(on.data.kind, 'custom', '自有知识库必须被认出来：' + on.text);
+    assert.equal(on.data.nextAction, '', '自有知识库绝不许自动 upgrade：' + on.text);
+    assert.ok(/一个字都不动/.test(on.text), on.text);
+    assert.equal(R(RULE(r)), before, 'project.txt 必须逐字节不变');
+    assert.ok(!fs.existsSync(L0(r)), '不许建骨架');
+    // 机器闸门：upgrade 直接拒写（不靠 AI 自觉）
+    const up = await core.run('upgrade', IO, r, {});
+    assert.equal(up.ok, false, up.text);
+    assert.ok(/默认一个字都不动/.test(up.text), up.text);
+    assert.equal(R(RULE(r)), before, '拒写后 project.txt 仍逐字节不变');
+});
+
+test('eflow: 接线守卫（禁第二套实现 / 禁面板自己算 / 禁 AI 冒充 UI）', () => {
+    const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+    const tool = read('server-app/ai-panel/tools-exec-eflow.js');
+    assert.ok(/via:\s*'ai'/.test(tool), 'AI 工具层必须硬编码 via=ai（否则 JSON 里冒一个 via=ui 就绕过令牌闸门）');
+
+    const set = read('server-app/core/settings.js');
+    const core = read('server-app/eflow/eflow-core.js');
+    const ui = set.slice(set.indexOf('E-Flow 管理（文档地基'), set.indexOf('function _eflowBind()'));
+    assert.ok(ui.length > 500, '设置面板的 E-Flow 区块必须存在');
+    // 零算术：预算/字数一律由内核给，面板里搜不到预算常量
+    for (const bad of ['l0_chars', '2500', '20000', 'must_max']) {
+        assert.ok(ui.indexOf(bad) < 0, '设置面板不得自带预算常量（' + bad + '）——数字必须来自内核');
+    }
+    assert.ok(/EflowCore/.test(set), '设置面板必须调唯一内核');
+    assert.ok(/via:\s*'ui'/.test(set), '设置面板直连必须标 via=ui（与 AI 的令牌闸门区分）');
+    // 词表只有一份
+    assert.ok(/function judgeConfirm/.test(core), 'judgeConfirm 必须在内核');
+    assert.ok(set.indexOf('CONFIRM_YES') < 0, '禁在面板里写第二份确认词表');
+
+    // 内核必须在 settings.js 之前加载（否则面板拿不到 EflowCore）
+    const html = read('server-app/index.html');
+    const iCore = html.indexOf('eflow/eflow-core.js');
+    const iSet = html.indexOf('core/settings.js');
+    assert.ok(iCore > 0 && iSet > iCore, 'index.html 必须先加载 eflow/eflow-core.js 再加载 core/settings.js');
 });
 
 test.after(() => {

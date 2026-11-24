@@ -68,6 +68,8 @@ test('tasks: 线上任务表渲染（无提词 / 旧版 action 卡整条丢弃�
     assert.deepStrictEqual(titles(win), ['装 Everything', '清理 C 盘', '电脑卡顿'],
         '没有 prompt 的卡（含旧版 action 卡）必须丢弃——点了没话说的卡不显示');
     assert.strictEqual(win.document.querySelector('#task-pane .tp-title').textContent, '线上任务表');
+    assert.strictEqual(win.document.querySelectorAll('#task-pane .tp-sub').length, 0,
+        '副标题已删除（服务端还发 subtitle 也不采纳）');
     dom.window.close();
 });
 
@@ -105,8 +107,11 @@ test('tasks: 线路全挂 → 出厂兜底 5 张卡（清理 / 自启 / 文档�
     await tick(40);
     const ids = cards(win).map(function (c) { return c.getAttribute('data-id'); });
     assert.deepStrictEqual(ids, ['clean-c', 'autostart-qd', 'eflow-adopt', 'install-everything', 'startup-clean']);
-    assert.deepStrictEqual(titles(win), ['清理 C 盘', 'qd 开机自启', 'AI 读懂我的项目', '装 Everything', '电脑卡顿？'],
+    assert.deepStrictEqual(titles(win), ['清理 C 盘', 'qd 开机自启', 'E-Flow', '装 Everything', '电脑卡顿？'],
         '兜底标题必须与下发台 DEFAULT_TASKS 逐字一致');
+    // ★ 暗号卡：发出去的就是那一句话（多一个字都会让 AI 判成「项目级接入」）
+    assert.strictEqual(cards(win)[2].title, '一切项目接入 E-Flow',
+        'E-Flow 卡的提词（= 悬停说明）必须就是暗号本身');
     dom.window.close();
 });
 
@@ -127,7 +132,7 @@ for (const [name, state, want] of [
         const { dom, win } = harnessWhen(state);
         t.after(() => dom.window.close());
         await tick(80);
-        const has = titles(win).indexOf('AI 读懂我的项目') >= 0;
+        const has = titles(win).indexOf('E-Flow') >= 0;
         assert.strictEqual(has, want, '实际卡片：' + JSON.stringify(titles(win)));
         dom.window.close();
     });

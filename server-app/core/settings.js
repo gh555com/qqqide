@@ -93,6 +93,16 @@
       defaultValue: ''
     },
     {
+      key: 'eflow.manage',
+      label: 'E-Flow',
+      labelKey: 'settings.eflow.label',
+      desc: '一切项目的知识库管理（接管 / 体检 / 卸载）',
+      descKey: 'settings.eflow.desc',
+      type: 'eflow',
+      tab: 'advanced',
+      defaultValue: ''
+    },
+    {
       key: 'ai.compressLevel',
       label: '自动压缩 上下文背包',
       labelKey: 'settings.compress.label',
@@ -1254,6 +1264,241 @@
   };
   var _pyConfirmOv = null;
 
+  // ── ★ E-Flow 管理（文档地基：接管 / 体检 / 整理 / 取消）─────────────────
+  //   逻辑一个字都不在这里：唯一内核 = eflow/eflow-core.js（EflowCore.run），与 AI 工具、命令行体检同一份。
+  //   本面板只做三件事：读状态、发指令、把返回文本原样显示（禁在这里写预算常量、禁自己算字数）。
+  var _eflowOpen = false;
+  var _eflowBusy = false;
+  var _eflowOut = '';        // 上一条指令的原始输出（含失败原因）
+  var _eflowOutBad = false;
+  var _eflowState = null;    // { on, doc, docPath, mode, root, err }
+  var _eflowConfirm = null;  // { act:'on'|'off', at } —— 二次点击确认（4s 内有效）
+
+  function _eflowBridge() { try { return window.qqqideBridge || null; } catch (_) { return null; } }
+  function _eflowEsc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function _eflowRoot() {
+    try { if (typeof window._workspaceRoot === 'string' && window._workspaceRoot) return window._workspaceRoot.replace(/\\/g, '/').replace(/\/+$/, ''); } catch (_) { }
+    try { if (window.__qqq_project_root) return String(window.__qqq_project_root).replace(/\\/g, '/').replace(/\/+$/, ''); } catch (_) { }
+    return '';
+  }
+  async function _eflowDataRoot(bridge) {
+    try {
+      if (bridge && bridge.boot && bridge.boot.getInfo) {
+        var bi = await bridge.boot.getInfo();
+        if (bi && bi.userData) return String(bi.userData).replace(/\\/g, '/').replace(/\/+$/, '');
+      }
+    } catch (_) { }
+    try {
+      var r = await bridge.app.root();
+      if (r) return String(r).replace(/\\/g, '/').replace(/\/+$/, '') + '/Data';
+    } catch (_) { }
+    return '';
+  }
+  function _eflowIO(bridge) {
+    return {
+      read: function (p) { return bridge.fs.read(p); },
+      write: function (p, t) { return bridge.fs.write(p, t); },
+      list: function (p) { return bridge.fs.list(p); },
+      exists: function (p) { return bridge.fs.exists(p); },
+      mkdir: function (p) { return bridge.fs.mkdir(p); },
+      remove: function (p) { return bridge.fs.remove(p); },
+      rename: function (p, q) { return bridge.fs.rename(p, q); }
+    };
+  }
+
+  async function _eflowLoadState() {
+    var st = { on: false, doc: false, docPath: '', mode: 'none', root: _eflowRoot(), err: '' };
+    var bridge = _eflowBridge();
+    if (!bridge || !bridge.fs || !bridge.fs.read) {
+      st.err = _i('settings.eflow.noBridge', '当前客户端没有文件访问能力，管理不可用');
+      _eflowState = st; return st;
+    }
+    try {
+      var dr = await _eflowDataRoot(bridge);
+      if (!dr) { st.err = _i('settings.eflow.noDataRoot', '拿不到用户级目录'); _eflowState = st; return st; }
+      var gp = dr + '/alphal/eflow.json';
+      var dp = dr + '/global.txt';
+      st.docPath = dp;
+      var raw = '';
+      try { raw = await bridge.fs.read(gp); } catch (_) { raw = ''; }
+      var j = null;
+      try { j = raw ? JSON.parse(raw) : null; } catch (_) { j = null; }
+      st.on = !!(j && j.global === true);
+      var docTxt = '';
+      try { docTxt = await bridge.fs.read(dp); } catch (_) { docTxt = ''; }
+      var core = (typeof EflowCore !== 'undefined') ? EflowCore : null;
+      st.doc = !!(core && docTxt && docTxt.indexOf(core.GDOC_B) >= 0);
+      if (st.root) {
+        var hasSkel = false;
+        try {
+          var sm = await bridge.fs.stat(st.root + '/_qqq/alphal/expert/index.md');
+          hasSkel = !!(sm && !sm.isDir);
+        } catch (_) { hasSkel = false; }
+        if (hasSkel) st.mode = 'standard';
+        else {
+          var ptxt = '';
+          try { ptxt = await bridge.fs.read(st.root + '/_qqq/alphal/rule/project.txt'); } catch (_) { ptxt = ''; }
+          st.mode = /rule"[^"]+"/.test(ptxt || '') ? 'custom' : 'none';
+        }
+      }
+    } catch (e) {
+      st.err = (e && e.message) || String(e);
+    }
+    _eflowState = st;
+    return st;
+  }
+
+  async function _eflowRun(op, extra) {
+    if (_eflowBusy) return;
+    var bridge = _eflowBridge();
+    var core = (typeof EflowCore !== 'undefined') ? EflowCore : null;
+    if (!core) {
+      _eflowOut = _i('settings.eflow.noCore', '内核没加载（eflow/eflow-core.js 缺失），这一步做不了');
+      _eflowOutBad = true; _eflowRenderCard(); return;
+    }
+    if (!bridge || !bridge.fs) {
+      _eflowOut = _i('settings.eflow.noBridge', '当前客户端没有文件访问能力，管理不可用');
+      _eflowOutBad = true; _eflowRenderCard(); return;
+    }
+    var root = _eflowRoot();
+    if (!root) {
+      _eflowOut = _i('settings.eflow.noRoot', '没有打开的项目');
+      _eflowOutBad = true; _eflowRenderCard(); return;
+    }
+    _eflowBusy = true; _eflowOutBad = false; _eflowRenderCard();
+    try {
+      var dr2 = await _eflowDataRoot(bridge);
+      var o = { apply: true, keepRules: true, dataRoot: dr2, via: 'ui' };   // via=ui：人在面板里二次确认过
+      if (extra) Object.keys(extra).forEach(function (k) { o[k] = extra[k]; });
+      var r = await core.run(op, _eflowIO(bridge), root, o);
+      _eflowOut = (r && r.text) || '（没有输出）';
+      _eflowOutBad = !(r && r.ok);
+    } catch (e) {
+      _eflowOut = '✗ ' + ((e && e.message) || e);
+      _eflowOutBad = true;
+    }
+    _eflowBusy = false;
+    await _eflowLoadState();
+    _eflowRenderCard();
+  }
+
+  function _eflowCardInner() {
+    var t = _faTheme || {};
+    var accent = t.accent || '#d99325';
+    var border = t.border || '#d3c6aa';
+    var text = t.text || '#656360';
+    var textDim = t.textDim || '#a8a6a2';
+    var bg = t.bg || '#fdf6e3';
+    var red = t.red || '#dc322f';
+    var busy = !!_eflowBusy;
+    var st = _eflowState;
+    var h = '';
+
+    var line = '';
+    var lineRed = false;
+    if (!st) line = _i('settings.eflow.loading', '读取中…');
+    else if (st.err) { line = st.err; lineRed = true; }
+    else {
+      var onTxt = st.on ? _i('settings.eflow.on', '全局接管：开') : _i('settings.eflow.off', '全局接管：关');
+      var docTxt2 = st.doc ? _i('settings.eflow.docYes', 'global.txt 有接管规则') : _i('settings.eflow.docNo', 'global.txt 无接管规则');
+      var modeTxt = st.mode === 'standard'
+        ? _i('settings.eflow.mStandard', '本项目：已接入')
+        : (st.mode === 'custom' ? _i('settings.eflow.mCustom', '本项目：你自己的规则（不动）') : _i('settings.eflow.mNone', '本项目：白纸'));
+      line = onTxt + ' · ' + docTxt2 + ' · ' + modeTxt;
+      if (!st.root) line += ' · ' + _i('settings.eflow.noRoot', '没有打开的项目');
+    }
+    h += '<div style="font-size:11px; color:' + (lineRed ? red : textDim) + '; line-height:1.5; margin-bottom:8px; word-break:break-word;">' + _eflowEsc(line) + '</div>';
+
+    function btn(id, label, color, disabled) {
+      return '<button id="' + id + '" ' + (disabled ? 'disabled ' : '') +
+        'style="flex:1 1 0; min-width:0; min-height:32px; padding:6px 8px; border:1px solid ' + (disabled ? border : color) +
+        '; border-radius:3px; background:transparent; color:' + (disabled ? textDim : color) +
+        '; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:' + (disabled ? 'default' : 'pointer') + ';">' + label + '</button>';
+    }
+    h += '<div style="display:flex; gap:8px; margin-bottom:8px;">';
+    h += btn('qqq-eflow-adopt', _i('settings.eflow.adopt', '接入 / 升级本项目'), accent, busy);
+    h += btn('qqq-eflow-check', _i('settings.eflow.check', '体检'), accent, busy);
+    h += btn('qqq-eflow-rotate', _i('settings.eflow.rotate', '整理归档'), accent, busy);
+    h += '</div>';
+
+    var wantAct = (st && st.on) ? 'off' : 'on';
+    var cfl = !!(_eflowConfirm && _eflowConfirm.act === wantAct && (Date.now() - _eflowConfirm.at) < 4000);
+    var globalLabel = (wantAct === 'on')
+      ? (cfl ? _i('settings.eflow.confirmOn', '再点一次：确认开启接管') : _i('settings.eflow.turnOn', '开启全局接管（一切项目）'))
+      : (cfl ? _i('settings.eflow.confirmOff', '再点一次：确认取消接管') : _i('settings.eflow.turnOff', '取消接管'));
+    h += '<div style="display:flex; gap:8px;">';
+    h += btn('qqq-eflow-global', globalLabel, (wantAct === 'on' ? accent : red), busy || !st || !!st.err);
+    h += '</div>';
+
+    if (_eflowOut) {
+      h += '<pre style="margin:8px 0 0; padding:8px 10px; max-height:220px; overflow:auto; border:1px solid ' + (_eflowOutBad ? red : border) +
+        '; border-radius:4px; background:' + bg + '; color:' + text +
+        '; font-family:Consolas,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji; font-size:11px; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' +
+        _eflowEsc(_eflowOut) + '</pre>';
+    }
+    return h;
+  }
+
+  function _eflowRenderCard() {
+    var card = document.getElementById('qqq-eflow-card');
+    if (card) { card.innerHTML = _eflowCardInner(); _eflowBindCard(card); return; }
+    // 卡片没展开 / 提示行要更新 → 整面板重绘（设置面板很轻，且只在 E-Flow 区变动）
+    _renderPanel();
+  }
+
+  function _eflowBindCard(card) {
+    if (!card) return;
+    var a = card.querySelector('#qqq-eflow-adopt');
+    if (a) a.addEventListener('click', function () { _eflowRun('upgrade'); });
+    var c = card.querySelector('#qqq-eflow-check');
+    if (c) c.addEventListener('click', function () { _eflowRun('check'); });
+    var rt = card.querySelector('#qqq-eflow-rotate');
+    if (rt) rt.addEventListener('click', function () { _eflowRun('rotate', { apply: true }); });
+    var g = card.querySelector('#qqq-eflow-global');
+    if (g) g.addEventListener('click', function () {
+      var st = _eflowState || {};
+      var act = st.on ? 'off' : 'on';
+      var now = Date.now();
+      if (!(_eflowConfirm && _eflowConfirm.act === act && (now - _eflowConfirm.at) < 4000)) {
+        _eflowConfirm = { act: act, at: now };
+        _eflowRenderCard();
+        setTimeout(function () {
+          if (_eflowConfirm && _eflowConfirm.at === now) { _eflowConfirm = null; _eflowRenderCard(); }
+        }, 4200);
+        return;
+      }
+      _eflowConfirm = null;
+      _eflowRun('global', { action: act, via: 'ui' });
+    });
+  }
+
+  function _eflowBind() {
+    var openBtn = document.getElementById('qqq-eflow-open');
+    if (openBtn) openBtn.addEventListener('click', function () {
+      _eflowOpen = !_eflowOpen;
+      _renderPanel();
+      if (_eflowOpen) {
+        _eflowLoadState().then(function () { _eflowRenderCard(); });
+      }
+    });
+    var card = document.getElementById('qqq-eflow-card');
+    if (card) _eflowBindCard(card);
+    if (!_eflowState) {
+      _eflowLoadState().then(function () {
+        var hint = document.getElementById('qqq-eflow-hint');
+        if (!hint || !_eflowState) return;
+        var st = _eflowState;
+        hint.style.color = '';
+        hint.textContent = st.err ? st.err
+          : (st.on ? _i('settings.eflow.hintOn', '全局接管：已开启') : _i('settings.eflow.hintOff', '全局接管：未开启'));
+        if (st.err) hint.style.color = (_faTheme && _faTheme.red) || '#dc322f';
+        if (_eflowOpen) _eflowRenderCard();
+      });
+    }
+  }
+
   function _renderPanel() {
     if (!_$panel) return;
     // 获取主题色
@@ -1462,6 +1707,22 @@
           html += '</div>';
         }
         html += '</div>';
+      } else if (def.type === 'eflow') {
+        // ★ E-Flow 管理（文档地基）：行内只有一枚〔管理〕按钮（高度恒定，不挤占任何既有行）；
+        //   展开 = 子卡片（状态 + 四枚动作 + 原始输出）。与音量/文件关联的「1 by 1」同一套按钮语言。
+        html += '<div style="display:flex; align-items:center; gap:8px;">';
+        html += '<button id="qqq-eflow-open" style="padding:6px 14px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:13px; font-weight:bold; white-space:nowrap; cursor:pointer;">';
+        html += _i('settings.eflow.manage', '管理');
+        html += '</button>';
+        var _efHint2 = '';
+        var _efHintRed = false;
+        if (_eflowState && _eflowState.err) { _efHint2 = _eflowState.err; _efHintRed = true; }
+        else if (_eflowState) _efHint2 = _eflowState.on ? _i('settings.eflow.hintOn', '全局接管：已开启') : _i('settings.eflow.hintOff', '全局接管：未开启');
+        html += '<span id="qqq-eflow-hint" style="font-size:11px; color:' + (_efHintRed ? red : textDim) + '; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 0; min-width:0;" title="' + _efHint2.replace(/"/g, '&quot;') + '">' + _efHint2 + '</span>';
+        html += '</div>';
+        if (_eflowOpen) {
+          html += '<div id="qqq-eflow-card" style="margin-top:10px; padding:10px 12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg + ';">' + _eflowCardInner() + '</div>';
+        }
       } else if (def.type === 'fileassoc') {
         // ★ 文件关联行：头行 = 标题 + 说明（自动维护）+ 右侧 1 by 1；此处按钮区 = 〔设为默认〕；
         //   参与族夺默认（72 类文本/代码 − 1 by 1 不参与 − 系统解释器族）；
@@ -1591,6 +1852,9 @@
     if ($sysnodeBtn) $sysnodeBtn.addEventListener('click', function () { _onInterpClick('node'); });
     var $syspyBtn = document.getElementById('qqq-syspy-btn');
     if ($syspyBtn) $syspyBtn.addEventListener('click', function () { _onInterpClick('python'); });
+
+    // ★ E-Flow 管理行（管理按钮开合 + 子卡片动作；唯一内核 = eflow/eflow-core.js）
+    _eflowBind();
 
     // ★ 文件关联行〔设为默认〕（文本/代码整族；确认框 → apply-editor → qoast 结果）
     var $faBtn = document.getElementById('qqq-fa-editor-btn');

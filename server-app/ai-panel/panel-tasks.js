@@ -18,7 +18,7 @@
 //
 // 契约（只增不改，老客户端永远不炸）：
 //   · 未知字段一律忽略；没 prompt 的卡整条丢弃（点了没话说的卡不显示）
-//   · 卡片只有一句话（title）+ 一个提词（prompt），没有描述行——信息越少越快做决定
+//   · 面板只有标题（一行），没有副标题、没有描述行——信息越少越快做决定
 //   · 卡片悬停说明 = 这句提词本身（sanitize 里 desc := prompt；服务端 desc 字段一律不采纳 →
 //     「说明」永远就是将要发出去的那句话，不可能与消息不一致）
 //   · 显示层文案支持字符串或 {lang: 文案} 对象（取当前语言 → zh → en → 首值）
@@ -50,7 +50,6 @@
     //   提词一律「用户口吻一句话」——它就是楼层里用户气泡的原文。
     var TASK_FALLBACK = {
         title: { zh: '一键任务', en: 'Quick tasks' },
-        subtitle: { zh: '点一下就开始', en: 'One click to start' },
         tasks: [
             {
                 id: 'clean-c', icon: 'trash', platforms: ['win'],
@@ -65,9 +64,12 @@
             {
                 // 全局接管的唯一主入口（发现层）：点一下 = 发一句话 = 把文档地基交给 qd 管。
                 // 已经开了 → 整张卡不出现（when 由客户端本地判定，见 _ensureWhen），不当广告。
+                // ★ 接上 = 写 global.txt 契约段 + 开开关：AI 先 action=ask 把那句固定话术原样问一遍，
+                //   用户回「1」才动手；不是 1 的一切回复 = 什么都不做（暗号只有一种，不分语言）。
                 id: 'eflow-adopt', icon: 'compass', platforms: ['win', 'mac', 'linux'], when: ['eflow.off'],
-                title: { zh: 'AI 读懂我的项目', en: 'Make AI understand my project' },
-                prompt: '我把项目文档交给你管：以后每个项目你都自动接管（铺好骨架、维护知识库）；这个项目也现在接进来，接完告诉我每轮给 AI 塞多少字、省了多少。我自己的规则不要乱改。'
+                title: { zh: 'E-Flow', en: 'E-Flow' },
+                // 提词就是暗号本身（完整一句，不解释）：AI 收到这句才会走「全局接管」两段式确认。
+                prompt: '一切项目接入 E-Flow'
             },
             {
                 id: 'install-everything', icon: 'search', platforms: ['win'],
@@ -221,15 +223,12 @@
             });
         }
         if (!out.length) return null;
-        return {
-            title: _pick(raw.title) || TASK_FALLBACK.title.zh,
-            subtitle: _pick(raw.subtitle) || TASK_FALLBACK.subtitle.zh,
-            tasks: out
-        };
+        // 副标题旧字段一律不采纳（面板只有一行标题）
+        return { title: _pick(raw.title) || TASK_FALLBACK.title.zh, tasks: out };
     }
     function _fallback() {
         var f = _sanitize(TASK_FALLBACK);
-        return f || { title: '一键任务', subtitle: '', tasks: [] };
+        return f || { title: '一键任务', tasks: [] };
     }
 
     // ── 拉取（三级线路，逐级降级，失败静默）──────────────────────────────
@@ -367,7 +366,7 @@
         el.style.display = 'none';
         el.innerHTML =
             '<div class="tp-inner">' +
-            '  <div class="tp-head"><span class="tp-title"></span><span class="tp-sub"></span></div>' +
+            '  <div class="tp-head"><span class="tp-title"></span></div>' +
             '  <div class="tp-grid"></div>' +
             '</div>';
         // 点击委托（卡片全部动态重绘，恒在容器上监听一次）
@@ -388,9 +387,7 @@
         if (!_pane) return;
         var data = _data || _fallback();
         var q = _pane.querySelector('.tp-title');
-        var s = _pane.querySelector('.tp-sub');
         if (q) q.textContent = data.title || '';
-        if (s) s.textContent = data.subtitle || '';
         var grid = _pane.querySelector('.tp-grid');
         if (!grid) return;
         grid.innerHTML = '';
