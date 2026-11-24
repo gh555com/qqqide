@@ -1097,10 +1097,12 @@
             var _nr = (data.projectRoot || '').replace(/\\/g, '/').replace(/\/$/, '');
             var _cr = (PROJECT_ROOT || '').replace(/\\/g, '/').replace(/\/$/, '');
             if (_np && _nr && (!_cr || _cr !== _nr || !FILE_PATH)) {
+                // 主题以壳层推送为准（预热种子停在无参数页，自身主题可能已是上一轮）
+                var _th = (data.theme === 'dark' || data.theme === 'light') ? data.theme : (_isDark ? 'dark' : 'light');
                 try {
                     location.replace(location.pathname + '?path=' + encodeURIComponent(_np) +
                         '&projectRoot=' + encodeURIComponent(_nr) +
-                        '&theme=' + (_isDark ? 'dark' : 'light') +
+                        '&theme=' + _th +
                         (data.beforeBlobHash ? '&before=' + encodeURIComponent(data.beforeBlobHash) : '') +
                         (data.afterBlobHash ? '&after=' + encodeURIComponent(data.afterBlobHash) : ''));
                 } catch (_) { }

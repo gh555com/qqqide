@@ -87,6 +87,11 @@
       retry: () => { location.reload(); return Promise.resolve(true); },
       probe: () => Promise.resolve(true),
     },
+    tasks: {
+      probe: () => Promise.resolve({ ok: false, platform: 'browser' }),
+      run: () => Promise.reject(new Error('not in shell')),
+      onProgress: () => () => { },
+    },
     roam: {
       get: () => Promise.resolve(null),
       set: () => Promise.resolve(true),

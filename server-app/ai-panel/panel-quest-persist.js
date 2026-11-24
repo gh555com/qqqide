@@ -162,7 +162,8 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
             // 未找到（本楼层无 conversation 消息）→ 沿用 0 保底（空 floor 不损坏数据）
         }
 
-        // ★ 统一 payload 构建（使用该楼层自己的 startIdx，非 ag._floorStartIdx 可能已变化）
+        // ★ 统一 payload 构建（使用该楼层自己的 startIdx，非 ag._floorStartIdx 可能已变化）
+        //   注：saveFloor 返回 false = 拒写（目录已不在磁盘），由下方统一上报
         var floorPayload = (typeof window._a4BuildCompleteFloorPayload === 'function')
             ? window._a4BuildCompleteFloorPayload(ag, floorNum, opts)
             : {
@@ -224,7 +225,20 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
             } catch (_a4Err) { console.warn('[a4] persist failed:', _a4Err); }
         }
 
-        await questStore.saveFloor(questId, floorNum, floorPayload);
+        var _sfOk = true;
+        try { _sfOk = (await questStore.saveFloor(questId, floorNum, floorPayload)) !== false; } catch (_sfErr) { _sfOk = false; }
+        if (!_sfOk && !(ag._floorSaveWarned && ag._floorSaveWarned[floorNum])) {
+            // ★ 禁静默：楼层目录已不在磁盘（被移走/删除）→ 本次内容没落盘，必须告知
+            if (!ag._floorSaveWarned) ag._floorSaveWarned = {};
+            ag._floorSaveWarned[floorNum] = 1;
+            try { if (typeof ag._writeFileLog === 'function') ag._writeFileLog('✗ floor save MISSED q=' + questId + ' f=' + floorNum + ' (floor dir gone on disk)'); } catch (_) { }
+            try { if (window.__crashNet) window.__crashNet.log({ kind: 'floor-save-missed', q: questId, f: floorNum }); } catch (_) { }
+            try {
+                if (parent && parent.qqqideQoast) {
+                    parent.qqqideQoast.show((typeof _qq === 'function' ? _qq('ai.pipeline.saveFloorMissed', '楼层保存失败：磁盘上的楼层目录已不存在（被移走或删除），本次内容未落盘') : '楼层保存失败：磁盘上的楼层目录已不存在，本次内容未落盘'), { type: 'error', duration: 8000 });
+                }
+            } catch (_) { }
+        }
 
         await generateFloorTxt(ag, questId).catch(function () { });
         _appendToSearchQuest(questId, floorNum).catch(function (e) { console.error('[search_quest] inner fail for q=' + questId + ' f=' + floorNum + ':', e && e.message); });

@@ -465,12 +465,13 @@ function setStreaming(val, optAgent) {
 
 // ★★★ 渲染事件日志：写入 _qqq/new_log/render-log.jsonl，每行一个 JSON 事件
 // 主进程 append 侧 2MB 双代轮转（总量 ≤4MB）；window.__qqq_file_log=false 可关闭
+// ★ 去重（每事件只记「变化」）：同事件同长度同头部 = 无信息增量 → 不写（旧实现每次卡重建都追加一行）
+var _renderLogLast = {};
 function _logRenderEvent(eventType, questId, floorNum, detail) {
     try {
         if (typeof window !== "undefined" && window.__qqq_file_log === false) return;
         var bridge = window.parent && window.parent.qqqideBridge;
         if (!bridge || !bridge.fs) return;
-        var ts = new Date().toISOString();
         var preview = '';
         var len = 0;
         if (typeof detail === 'string') {
@@ -480,6 +481,10 @@ function _logRenderEvent(eventType, questId, floorNum, detail) {
             len = detail.content.length;
             preview = detail.content.slice(0, 200).replace(/\n/g, '\\n');
         }
+        var _sig = (questId || '') + '|' + (floorNum || 0) + '|' + len + '|' + preview.slice(0, 80);
+        if (_renderLogLast[eventType] === _sig) return;
+        _renderLogLast[eventType] = _sig;
+        var ts = new Date().toISOString();
         var line = JSON.stringify({
             ts: ts,
             event: eventType,

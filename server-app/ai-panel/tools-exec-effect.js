@@ -1195,6 +1195,7 @@ async function executeSearchWeb(args, ownerAgent) {
     }
 }
 
+
 // ═══ sys_python — 系统 Python 解释器（.py 双击关联 → 绿色包内置 Python） ═══
 //   唯一后端 = bridge.sysPy（壳层 shell/ipc-syspy.ts）。
 //   check 只读；apply 系统级写入——检测到其他解释器时复用设置面板同一确认弹框

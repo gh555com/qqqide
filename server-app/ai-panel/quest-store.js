@@ -1363,6 +1363,23 @@ var QuestStore = (function () {
         return best ? best.path : entry.path;
     }
 
+    // ★ quests/ 目录扫描（带可信标记）：空结果只有「quests/ 目录本身不存在（全新项目）」才算可信。
+    //   壳层 fs.list 出错恒返空数组（无错误信号）——空结果若被当成「目录不存在」，
+    //   materializeFloor 就会据此新建第二个 q{n} 目录（楼层分裂落进两处 = 整 quest 合并事故）。
+    //   宁拒一次发送（如实报错 + 内容回填），绝不盲建。
+    async function _scanQuestDirList() {
+        var bf = _bridgeFs();
+        var list = null;
+        for (var t = 0; t < 3; t++) {
+            try { list = await _safeList(_rootDir + '/_qqq/quests'); } catch (_) { list = null; }
+            if (list && list.length) return { list: list, trusted: true };
+            if (t < 2) await new Promise(function (r) { setTimeout(r, 60); });
+        }
+        var st = null;
+        try { st = bf ? await bf.stat(_rootDir + '/_qqq/quests') : null; } catch (_) { st = null; }
+        return { list: list || [], trusted: !st };
+    }
+
     // ★ 解析 quest 目录名 — 永远从磁盘编号匹配（sq3 的 dirName 只是给 UI 看的摘要，不参与路径解析）
     async function _resolveQuestDirName(questId, _dirName) {
         // ★ 调用方显式传入已验证的 dirName → 直接信任（如 deleteQuest）
@@ -1384,15 +1401,14 @@ var QuestStore = (function () {
             if (_cst && _cst.isDir !== false) return _cached;
             delete _questDirCache[questId];
         }
-        try {
-            var list = await _safeList(_rootDir + '/_qqq/quests');
-            for (var i = 0; i < list.length; i++) {
-                if (list[i].isDir && (list[i].name === questId || list[i].name.indexOf(questId + '.') === 0)) {
-                    _questDirCache[questId] = list[i].name;
-                    return list[i].name;
-                }
+        var _scan = await _scanQuestDirList();
+        var list = _scan.list || [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].isDir && (list[i].name === questId || list[i].name.indexOf(questId + '.') === 0)) {
+                _questDirCache[questId] = list[i].name;
+                return list[i].name;
             }
-        } catch (_) { }
+        }
         return null;
     }
 
@@ -1480,6 +1496,8 @@ var QuestStore = (function () {
 
     // ★ 写入 all.json（真理源）— 串行锁防 auto-save/onDone 并发 → tmp→rename 竞态残留
     var _floorWriteLocks = {};  // 本实例兜底锁（parent 不可用时降级）
+    // ★ tmp 残留清扫台账（每楼层每会话只扫一次）：残留来自上次崩溃，本次 tmp 由写入路径自清
+    var _tmpCleaned = {};
     // ★ 2026-08-10: 跨实例写锁 — 三面板 auto-save 遍历共享 agentPool（建楼 agent stopState='sending'
     //   三面板均可见）→ 同楼层 3 路并发 _doWriteFloorFile → 双 tmp + rename EPERM → tmp 残留（q172/f34 9 个实锤）。
     //   锁提升到 parent 级（同窗口三 iframe 共享同一 map），同一楼层写入真串行。
@@ -1502,8 +1520,10 @@ var QuestStore = (function () {
         locks[key] = chain;
         // 完成后释放槽位（防长链堆积；已有新调用链入时不删）
         chain.then(function () { if (locks[key] === chain) delete locks[key]; }).catch(function () { });
-        // 写完后异步清扫，不阻塞返回
+        // 写完后异步清扫（每楼层每会话只扫一次——存量残留清完即止，避免每次 auto-save 多一次 list）
         chain.then(function () {
+            if (_tmpCleaned[key]) return;
+            _tmpCleaned[key] = 1;
             var fDir = _floorDirCache && _floorDirCache[questId + '\x00' + floorNum];
             if (fDir) _cleanTmpInDir(fDir, _bridgeFs());
         }).catch(function () { });
@@ -1654,9 +1674,13 @@ var QuestStore = (function () {
     };
 
     // ★ 楼层目录名预期（新 quest 首层：目录还不存在，按索引里的编号+标题推）
+    //   铁律：只在「扫描可信地证明目录不存在」时才允许推名新建——扫描不可信恒抛错，
+    //   绝不盲建（盲建 = 同号第二个 quest 目录 → 楼层分裂落进两处）。
     async function _questDirNameForCreate(questId) {
         var n = await _resolveQuestDirName(questId);
         if (n) return n;
+        var _scan = await _scanQuestDirList();
+        if (!_scan.trusted) throw new Error('quest-store: quests scan unreliable — refuse to create dir for ' + questId);
         var idx = _idx() || [];
         for (var i = 0; i < idx.length; i++) {
             if (idx[i].id !== questId) continue;
@@ -1705,6 +1729,11 @@ var QuestStore = (function () {
                 okNew = !!(r && r.ok);
                 failCode = (r && r.code) || '';
                 if (!okNew && failCode !== 'EEXIST') {
+                    // 父目录（quest 目录）被外部删除/移动 → 重建一次再重试（不静默放弃，也不无限重试）
+                    if (failCode === 'ENOENT' && attempt < 2) {
+                        try { await bf.mkdir(qDir); } catch (_) { }
+                        continue;
+                    }
                     throw new Error('quest-store: mkdir failed for ' + fDir + ' (' + failCode + ')');
                 }
             } else {
@@ -1746,17 +1775,27 @@ var QuestStore = (function () {
         try { if (window.__crashNet) window.__crashNet.throttled('save', 2000, { kind: 'save', q: questId, f: floorNum }); } catch (_) { }
 
         // 1) ★ 写 all.json（真理源）— 串行锁防 auto-save/onDone 并发 tmp→rename 竞态
-        await _writeFloorFile(questId, floorNum, floorData);
+        //    返回 false = 磁盘楼层目录已不存在 / 拒写 → 如实回给调用方（禁静默当成功）
+        var _writeOk = false;
+        try { _writeOk = (await _writeFloorFile(questId, floorNum, floorData)) !== false; } catch (_wErr0) { _writeOk = false; }
 
         // 2) 解析当前路径写入 sq3 轻量索引（quest 元数据 + 快速查找）
         // ★ 2026-08-10: 始终动态解析 — 改名后 all.json 内嵌 _fDir 过期 → sq3 索引必须同步磁盘真理
         //   （防幽灵目录引用残留；_doWriteFloorFile 已缓存正确路径 → 常规路径零额外 IO）
         var _fDir = '';
+        var _fDirResolved = '';
         try {
             var resolved = await _resolveFloorDir(questId, floorNum);
-            if (resolved) _fDir = resolved;
+            if (resolved) { _fDir = resolved; _fDirResolved = resolved; }
         } catch (_) { }
         if (!_fDir) _fDir = floorData._fDir || '';
+        // ★ 拒写且磁盘无目录 → 不写幽灵索引（否则 sq3 记一楼层、磁盘永远读不回 = 重启后静默消失）
+        //   注意：判定必须看「解析结果」而非 floorData._fDir 回退值（回退值就是那个已消失的旧路径）
+        if (!_writeOk && !_fDirResolved) {
+            console.warn('[quest-store] saveFloor refused (no floor dir on disk) ' + questId + '.' + floorNum + ' — index untouched');
+            _notify(this, 'floor-save-refused', questId, { floorNum: floorNum });
+            return false;
+        }
         // ★ 索引条目存 dirName（精确匹配，防同编号多目录）
         var idx = _idx();
         if (_fDir && idx) {
@@ -1807,6 +1846,7 @@ var QuestStore = (function () {
         await _setNow(QUEST_NS + '.' + questId, qData);
 
         _notify(this, 'floor-saved', questId, { floorNum: floorNum });
+        return _writeOk;
     };
 
     // 加载单层楼 — 全部来自 all.json（唯一真理源）

@@ -655,6 +655,17 @@ const QQQ = {    // ---- app info ----
         syncShortcut: (enabled: boolean) => ipcRenderer.invoke('qqqide:desktop:sync-shortcut', enabled),
     },
 
+    // ---- 一键任务（空白面板默认任务卡；动作白名单在 shell/task-ops.ts）----
+    tasks: {
+        probe: () => ipcRenderer.invoke('qqqide:task:probe'),
+        run: (id: string, opts?: any) => ipcRenderer.invoke('qqqide:task:run', id, opts),
+        onProgress: (cb: (msg: any) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[tasks.onProgress]', err); } };
+            ipcRenderer.on('qqqide:task:progress', handler);
+            return () => ipcRenderer.removeListener('qqqide:task:progress', handler);
+        },
+    },
+
     // ---- sysPy (系统解释器：.py/.js 关联 → 内置 Python/Node，一次性写入只管当；target 缺省 = python) ----
     sysPy: {
         check: (target?: string) => ipcRenderer.invoke('qqqide:syspy:check', target),

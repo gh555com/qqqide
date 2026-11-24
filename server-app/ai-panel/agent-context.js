@@ -375,6 +375,7 @@
                     case 'find_files':      return _trunc(obj.pattern || '', 80);
                     case 'fetch_webpage':   return _trunc(obj.url || '', 100);
                     case 'search_web':      return '"' + _trunc(obj.query || '', 110) + '"';
+                    case 'run_task':        return (obj.task || '') + (obj.confirmed ? ' confirmed' : ' scan');
                     case 'sys_python':      return obj.action || 'check';
                     case 'sys_node':        return obj.action || 'check';
                     // ── Absolute box (5 tools, ABS_HEAD_CAP unified) ──

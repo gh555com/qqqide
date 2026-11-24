@@ -438,6 +438,20 @@ var TOOL_DEFINITIONS = [
     {
         type: 'function',
         function: {
+            name: 'run_task',
+            description: 'Run the ONE client built-in task that has a native, deterministic implementation: install_everything (Windows; instant file-search tool — fixed version + SHA-256 verify + atomic unpack + desktop shortcuts in every real desktop folder). ALWAYS use this instead of hand-rolling the same job with run_command or fetch_webpage. Every other maintenance job (cleaning the C drive, autostart, Spotlight/locate search, startup items) is NOT a shell task — do those yourself with run_command, following the recipes in the bundled system-tasks capability (the C-drive scanner must be called before any deletion is proposed). Returns human-readable result text.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    task: { type: 'string', enum: ['install_everything'], description: 'Task id' }
+                },
+                required: ['task']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
             name: 'sys_python',
             description: 'Check, set up, or remove the system Python interpreter (one-time setup, no maintenance). "check" = read the current state (mode: ours = qqqide built-in Python is the .py interpreter / other / none, plus the current target). "apply" = make the built-in Python the system interpreter — double-clicking any .py runs it with the built-in Python (output window stays open after the run), and `python` in newly opened terminals resolves to it; when another interpreter is already configured a confirmation dialog appears first (a system authorization prompt may also appear). On new Windows versions that protect file associations, apply may end with a one-time manual pick in a system dialog — the tool opens that dialog and returns instructions; the pick is permanent. "remove" = uninstall (only when mode=ours): clears the qqqide entries so the system goes back to a blank state — a plain cleanup, it does NOT restore any previous interpreter; a confirmation dialog appears first. Only call apply/remove when the user asks for it or confirms after your suggestion. If the installation is moved later, run apply once more to refresh. Windows and macOS.',
             parameters: {
@@ -476,7 +490,7 @@ var TOOL_CATEGORY = {
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
     revert_file: 'WRITE',
     diff_versions: 'READ',
-    run_command: 'EFFECT',
+    run_command: 'EFFECT', run_task: 'EFFECT',
     generate_image: 'EFFECT', analyze_image: 'EFFECT', remove_background: 'EFFECT', search_web: 'EFFECT',
     sys_python: 'EFFECT',
     sys_node: 'EFFECT'

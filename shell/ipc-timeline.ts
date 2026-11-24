@@ -13,7 +13,7 @@ import { APP_VERSION } from './version';
 
 import { addUiZoomListener } from './ui-zoom';
 import { decodeFile, decodeFileSync } from './file-encoding';
-import { resolveDiffBases, loadDiffPage, diffOpenLog } from './diff-win-loader';
+import { resolveDiffBases, loadDiffPage, diffOpenLog, diffWinTouch, takeDiffSeed, diffBaseFromUrl, recycleDiffWindowToSeed } from './diff-win-loader';
 
 // diff 窗口 → 参考主窗口（界面缩放变更时重对齐用；WeakMap 随窗口回收）
 const _diffRefs = new WeakMap<BrowserWindow, BrowserWindow>();
@@ -361,7 +361,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         if (existingWin && !existingWin.isDestroyed()) {
             try {
                 // 复用推送必须带 projectRoot——渲染层「坏窗自愈」依此裁决是否整页重载（空根旧窗不得永久遮蔽文件）
-                existingWin.webContents.send('qqqide:diff:update', { filePath: normalizedPath, projectRoot, beforeBlobHash, afterBlobHash });
+                existingWin.webContents.send('qqqide:diff:update', { filePath: normalizedPath, projectRoot, beforeBlobHash, afterBlobHash, theme: null });
+                diffWinTouch(existingWin);   // 复用 = 最近使用（LRU 记账）
                 // 复用同时重对齐（用户未手动调过几何时）——主窗口移动/界面缩放已变，再次点击也必须落回正位
                 const _ref0 = _diffRefs.get(existingWin);
                 if (_ref0 && !_ref0.isDestroyed() && !(existingWin as any).__qqqUserMoved) { void _refitDiffWindow(existingWin, _ref0); }
@@ -381,7 +382,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         const zf = _picked.zf;
         const minW = Math.round(1100 * zf), minH = Math.round(800 * zf);
         const _initW = Math.max(minW, mainRect.width), _initH = Math.max(minH, mainRect.height);
-        const diffWin = new BrowserWindow({
+        const _fileName = filePath.split(/[\\/]/).pop() || filePath;
+        const _createFresh = () => new BrowserWindow({
             x: mainRect.x,
             y: mainRect.y,
             width: _initW,
@@ -390,7 +392,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             minHeight: minH,
             show: false, // 亮相即成品：加载成功才 show（失败重试/销毁，绝不残留黑窗）
             frame: false,
-            title: 'Timeline Diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
+            title: 'Timeline Diff — ' + _fileName,
             backgroundColor: '#1e1e1e',
             parent: _parentWin || undefined,
             modal: false,
@@ -407,46 +409,88 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 ],
             },
         });
-        diffWin.removeMenu();
-        diffWin.on('closed', () => {
-            _diffWindows.delete(normalizedPath);
-            for (const [k, v] of _diffWindows) {
-                if (v === diffWin) _diffWindows.delete(k);
-            }
-        });
-        _diffWindows.set(normalizedPath, diffWin);
-        if (refWin && !refWin.isDestroyed()) { _diffRefs.set(diffWin, refWin); }
-        // 已知几何记录：系统在 show()/首帧会补发一次「与创建值相同」的 move/resize 噪声——同值绝不算用户动过
-        (diffWin as any).__qqqLastGeo = { x: mainRect.x, y: mainRect.y, width: _initW, height: _initH };
-        // 用户手动拖动/缩放 → 接管几何：此后复用点击与缩放变更都不再自动重对齐
-        const _markUserMoved = () => {
-            if ((diffWin as any).__qqqGeoApplying) { return; }
-            try {
-                const b = diffWin.getBounds();
-                const g = (diffWin as any).__qqqLastGeo;
-                if (g && Math.abs(b.x - g.x) <= 2 && Math.abs(b.y - g.y) <= 2 && Math.abs(b.width - g.width) <= 2 && Math.abs(b.height - g.height) <= 2) {
-                    return;
-                }
-            } catch (_) { }
 
-            (diffWin as any).__qqqUserMoved = true;
+        // ═══ 窗口装配（唯一机器：冷开新窗与预热种子共用同一套）═══
+        const _wire = (win: BrowserWindow, isSeed: boolean) => {
+            try { const d = (win as any).__qqqDetach; if (typeof d === 'function') d(); } catch (_) { }
+            win.removeMenu();
+            try { win.setTitle('Timeline Diff — ' + _fileName); } catch (_) { }
+            try { win.setMinimumSize(minW, minH); } catch (_) { }
+            // 已知几何记录：系统在 show()/首帧会补发一次「与创建值相同」的 move/resize 噪声——同值绝不算用户动过
+            (win as any).__qqqLastGeo = { x: mainRect.x, y: mainRect.y, width: _initW, height: _initH };
+            (win as any).__qqqUserMoved = false;
+            _setWinBoundsGeo(win, { x: mainRect.x, y: mainRect.y, width: _initW, height: _initH });
+            const _dropFromMap = () => {
+                _diffWindows.delete(normalizedPath);
+                for (const [k, v] of _diffWindows) { if (v === win) _diffWindows.delete(k); }
+            };
+            const _onClosed = () => { _dropFromMap(); };
+            win.on('closed', _onClosed);
+            _diffWindows.set(normalizedPath, win);
+            if (refWin && !refWin.isDestroyed()) { _diffRefs.set(win, refWin); }
+            // 用户手动拖动/缩放 → 接管几何：此后复用点击与缩放变更都不再自动重对齐
+            const _markUserMoved = () => {
+                if ((win as any).__qqqGeoApplying) { return; }
+                try {
+                    const b = win.getBounds();
+                    const g = (win as any).__qqqLastGeo;
+                    if (g && Math.abs(b.x - g.x) <= 2 && Math.abs(b.y - g.y) <= 2 && Math.abs(b.width - g.width) <= 2 && Math.abs(b.height - g.height) <= 2) { return; }
+                } catch (_) { }
+                (win as any).__qqqUserMoved = true;
+            };
+            win.on('move', _markUserMoved);
+            win.on('resize', _markUserMoved);
+            const _onIpcMsg = (_ev: any, ch: string, ...args: any[]) => {
+                if (ch === 'qqqide:diff:set-path') {
+                    const newPath = (args && args[0]) ? String(args[0]).replace(/\\/g, '/') : '';
+                    if (newPath && newPath !== normalizedPath) { _diffWindows.delete(normalizedPath); _diffWindows.set(newPath, win); }
+                }
+            };
+            win.webContents.on('ipc-message', _onIpcMsg);
+            // ★ 回收式预热：用户点 X → 不销毁，隐藏并导航回无参数预热页（下次点击 50~110ms 出窗）
+            const _onClose = (ev: any) => {
+                if (recycleDiffWindowToSeed(win, 'timeline', () => { _dropFromMap(); })) { ev.preventDefault(); }
+            };
+            win.on('close', _onClose);
+            (win as any).__qqqDetach = () => {
+                try { win.removeListener('move', _markUserMoved); } catch (_) { }
+                try { win.removeListener('resize', _markUserMoved); } catch (_) { }
+                try { win.removeListener('close', _onClose); } catch (_) { }
+                try { win.removeListener('closed', _onClosed); } catch (_) { }
+                try { win.webContents.removeListener('ipc-message', _onIpcMsg); } catch (_) { }
+                (win as any).__qqqDetach = null;
+            };
+            // LRU 记账（超出上限即关掉最久未用的那个）
+            diffWinTouch(win);
+            if (isSeed) { diffOpenLog('timeline', 'adopted seed win=' + win.id); }
         };
-        diffWin.on('move', _markUserMoved);
-        diffWin.on('resize', _markUserMoved);
 
-        diffWin.webContents.on('ipc-message', (_ev, ch, ...args) => {
-            if (ch === 'qqqide:diff:set-path') {
-                const newPath = (args && args[0]) ? String(args[0]).replace(/\\/g, '/') : '';
-                if (newPath && newPath !== normalizedPath) {
-                    _diffWindows.delete(normalizedPath);
-                    _diffWindows.set(newPath, diffWin);
-                }
+        // ★ 优先吃预热种子（上一枚 diff 窗关闭时回收的：渲染进程与 V8 已编译脚本缓存都在，不用新建进程）
+        let _seed = takeDiffSeed();
+        if (_seed) {
+            try {
+                _seed.setParentWindow(_parentWin || null);
+                _wire(_seed, true);
+            } catch (e: any) {
+                diffOpenLog('timeline', 'seed reclaim failed → 冷开: ' + ((e && e.message) || e));
+                try { if (!_seed.isDestroyed()) { _seed.destroy(); } } catch (_) { }
+                _seed = null;
             }
-        });
+        }
+        const _adopted = !!_seed;
+        let diffWin: BrowserWindow = _seed || _createFresh();
+        if (!_adopted) { _wire(diffWin, false); }
 
         // ★ 底座 URL = 发送方窗口真相（resolveDiffBases：窗口当前 URL → 本地副本〔显式注册协议〕→ 远端）
         //   禁 existsSync 猜测：猜错（协议未注册）= ERR_UNKNOWN_URL_SCHEME = 「点击 A4 像哑巴」根因
         const _bases = resolveDiffBases(_parentWin, bootConfig);
+        if (_adopted) {
+            // 种子已停在预热页 → 它此刻的 URL 就是最可信的加载源（同源同协议，已验证能渲染同一套页面）
+            try {
+                const _sb = diffBaseFromUrl(diffWin.webContents.getURL() || '');
+                if (_sb && _bases.indexOf(_sb) === -1) { _bases.unshift(_sb); }
+            } catch (_) { /* ignore */ }
+        }
         let _isDark = true;
         try {
             if (refWin && !refWin.isDestroyed()) {
@@ -464,7 +508,17 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             (afterBlobHash ? '&after=' + encodeURIComponent(afterBlobHash) : '');
         // 亮相时机 = dom-ready（窗口骨架已出），底座逐个降级；彻底失败才销毁 + 如实报错
         diffOpenLog('timeline', 'open path=' + normalizedPath + ' bases=' + _bases.join(' , '));
-        const _loaded = await loadDiffPage(diffWin, _bases, _urlFor, 'diff-window.html', 'timeline');
+        // 种子与冷开走同一条加载链（只差「进程是否已预热」）——禁第二套导航语义：
+        //   种子里的 IPC 推送快捷路径会在「预热页尚未加载完」时丢掉消息（窗口亮出“缺少参数”空壳）。
+        //   就位判定 = URL 带 projectRoot=（预热页只有 ?theme=，绝不会误判）。
+        let _loaded = await loadDiffPage(diffWin, _bases, _urlFor, 'projectRoot=', 'timeline');
+        if (!_loaded.ok && _adopted) {
+            diffOpenLog('timeline', 'seed load failed（' + (_loaded.error || '') + '）→ 销毁种子退回冷开');
+            try { if (!diffWin.isDestroyed()) { diffWin.destroy(); } } catch (_) { }
+            diffWin = _createFresh();
+            _wire(diffWin, false);
+            _loaded = await loadDiffPage(diffWin, resolveDiffBases(_parentWin, bootConfig), _urlFor, 'projectRoot=', 'timeline');
+        }
         if (!_loaded.ok) {
             _diffWindows.delete(normalizedPath);
             try { if (!diffWin.isDestroyed()) { diffWin.destroy(); } } catch (_) { }

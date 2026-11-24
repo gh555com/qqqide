@@ -16,14 +16,19 @@
 //      永久错（未知协议/文件不存在/无权限/域名解析失败）不重试——空等 400ms 纯浪费。
 //   ④ 全链留痕 Data/Logs/diff-open.log（256KB 截断）——客户现场唯一可回收的证据。
 //      日志必须异步串行写：主进程上的同步 fs 会卡整个 UI/IPC 事件循环。
-//   ⑤ 零常驻开销：无定时器、无轮询、无长驻监听（每次加载自建自拆），窗口数量与旧实现一致。
+//   ⑤ 开销上限硬定：同时存活的 diff 窗 ≤ DIFF_WIN_LRU_MAX=6（超出关最久未用）；
+//      预热种子常驻最多 1 枚（闲置 SEED_IDLE_MAX_MS 自毁、父窗关闭/退出即毁）。
+//      加载链本身零长驻（每次加载自建自拆监听）。
 // ============================================================================
 
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getDataDir } from './portable-paths';
 import { registerWebappProtocol, WEBAPP_PROTOCOL } from './boot';
+
+const DIFF_WIN_LRU_MAX = 6;        // 同时存活的 diff 窗上限（超出即关掉最久未用的那个）
+const SEED_IDLE_MAX_MS = 30 * 60000; // 预热种子闲置超时（到点销毁，释放内存）
 
 const ATTEMPT_TIMEOUT_MS = 12000;   // 单底座单次观察窗（dom-ready 的正常量级 = 100ms 级）
 const FORCE_SHOW_MS = 8000;         // 连 dom-ready 都不来 → 强制亮相（禁哑巴）
@@ -81,6 +86,8 @@ async function _flushLog(): Promise<void> {
 }
 
 /** 从 URL 反推 webapp 底座（含 /qqqide/ 的那一层）；推不出返回 ''。 */
+export function diffBaseFromUrl(cur: string): string { return _baseFromUrl(cur); }
+
 function _baseFromUrl(cur: string): string {
     if (!cur) return '';
     const idx = cur.indexOf('/qqqide/');
@@ -133,6 +140,112 @@ export function resolveDiffBases(refWin: BrowserWindow | null, bootConfig: { url
     return out;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LRU：diff 窗同时存活上限（禁无限堆积渲染进程）
+//   记账时机 = 新建完成 / 点击复用；超出上限 → destroy 最久未用的那个
+//   （destroy 会触发 closed，各 IPC 模块的 closed 钩子自行清 map）
+// ══════════════════════════════════════════════════════════════════════════
+const _lruWins: BrowserWindow[] = [];
+
+export function diffWinTouch(win: BrowserWindow): void {
+    if (!win || win.isDestroyed()) return;
+    const i = _lruWins.indexOf(win);
+    if (i !== -1) _lruWins.splice(i, 1);
+    _lruWins.push(win);
+    while (_lruWins.length > DIFF_WIN_LRU_MAX) {
+        const victim = _lruWins.shift();
+        if (!victim || victim.isDestroyed()) continue;
+        diffOpenLog('lru', 'evict win=' + victim.id + ' (max=' + DIFF_WIN_LRU_MAX + ')');
+        try { victim.destroy(); } catch (_) { /* ignore */ }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 回收式预热种子（唯一入口）
+//   关窗 ≠ 销毁：把窗隐藏并导航回「无参数预热页」——渲染进程 + V8 隔离 + 已编译
+//   脚本缓存全部留着（实测：再开 50~110ms，冷开 540ms），内存回落到 ~74MB
+//   （真实使用态 139MB / 全新壳 32MB）。只留一枚；闲置 30min 或父窗关闭即销毁。
+// ══════════════════════════════════════════════════════════════════════════
+let _seedWin: BrowserWindow | null = null;
+let _seedTimer: any = null;
+let _appQuitting = false;
+try { app.on('before-quit', () => { _appQuitting = true; killDiffSeed('quit'); }); } catch (_) { /* ignore */ }
+
+function killDiffSeed(why: string): void {
+    if (_seedTimer) { try { clearTimeout(_seedTimer); } catch (_) { /* ignore */ } _seedTimer = null; }
+    const w = _seedWin;
+    _seedWin = null;
+    if (w && !w.isDestroyed()) {
+        diffOpenLog('seed', 'destroy (' + why + ') win=' + w.id);
+        try { w.destroy(); } catch (_) { /* ignore */ }
+    }
+}
+
+/** 取走预热种子（取走即失效；返回 null = 没有可用种子，调用方走冷开）。 */
+export function takeDiffSeed(): BrowserWindow | null {
+    const w = _seedWin;
+    _seedWin = null;
+    if (_seedTimer) { try { clearTimeout(_seedTimer); } catch (_) { /* ignore */ } _seedTimer = null; }
+    if (!w) return null;
+    if (w.isDestroyed()) { diffOpenLog('seed', 'stale（已销毁）'); return null; }
+    diffOpenLog('seed', 'take win=' + w.id);
+    return w;
+}
+
+/**
+ * 把即将关闭的 diff 窗回收成预热种子（在 'close' 事件里调；返回 true = 已回收，调用方必须 preventDefault）。
+ * onRecycled：调用方清自己的 map / 摘自己挂的监听（本函数随后会调 win.__qqqDetach）。
+ */
+export function recycleDiffWindowToSeed(win: BrowserWindow, tag: string, onRecycled: () => void): boolean {
+    if (_appQuitting || !win || win.isDestroyed()) return false;
+    if (_seedWin && !_seedWin.isDestroyed()) return false;      // 只留一枚种子
+    const par = win.getParentWindow();
+    if (par && (par as any).__qqqCloseBypass) return false;      // 父窗正在退出 → 正常关闭
+    let prewarmUrl = '';
+    try {
+        const cur = win.webContents.getURL() || '';
+        const marker = '/timeline/diff-window.html';
+        const idx = cur.indexOf(marker);
+        if (idx !== -1) { prewarmUrl = cur.slice(0, idx + marker.length) + '?theme=dark'; }
+    } catch (_) { /* ignore */ }
+    if (!prewarmUrl) return false;
+    try {
+        _seedWin = win;
+        // 种子不占 LRU 活跃名额（它不是用户正在用的窗）
+        const _li = _lruWins.indexOf(win);
+        if (_li !== -1) _lruWins.splice(_li, 1);
+        try { const d = (win as any).__qqqDetach; if (typeof d === 'function') d(); } catch (_) { /* ignore */ }
+        onRecycled();
+        win.hide();
+        win.setParentWindow(null);
+        win.webContents.loadURL(prewarmUrl).catch(() => { /* 预热页失败不影响下次冷开 */ });
+        diffOpenLog(tag, 'recycle→seed win=' + win.id + ' url=' + prewarmUrl);
+        // 监听只装一次：种子可被反复「回收 → 唤醒 → 再用」，每轮重装会累积监听（MaxListeners 噪声）
+        if (!(win as any).__qqqSeedClosedWired) {
+            (win as any).__qqqSeedClosedWired = true;
+            win.once('closed', () => { if (_seedWin === win) _seedWin = null; });
+        }
+        // 父窗关闭 → 立即销毁种子；换父前先摘旧监听（跨父窗不堆积）
+        const _prevPar: any = (win as any).__qqqSeedPar;
+        if (_prevPar && _prevPar.win && !_prevPar.win.isDestroyed()) {
+            try { _prevPar.win.removeListener('closed', _prevPar.h); } catch (_) { /* ignore */ }
+        }
+        (win as any).__qqqSeedPar = null;
+        if (par && !par.isDestroyed()) {
+            const _h = () => { if (_seedWin === win) killDiffSeed('parent-closed'); };
+            par.once('closed', _h);
+            (win as any).__qqqSeedPar = { win: par, h: _h };
+        }
+        _seedTimer = setTimeout(() => { if (_seedWin === win) killDiffSeed('idle'); }, SEED_IDLE_MAX_MS);
+        if (_seedTimer && _seedTimer.unref) _seedTimer.unref();
+        return true;
+    } catch (e: any) {
+        _seedWin = null;
+        diffOpenLog(tag, 'recycle failed ' + ((e && e.message) || e));
+        return false;
+    }
+}
+
 // 页面真就位判定：dom-ready 已到（!= Chromium 错误页）+ URL 停在目标页
 // （单看 getURL 不行——加载失败时它也会回失败目标 URL，会把错误页当成功）
 function _pageLanded(win: BrowserWindow, okSubstr: string, domSeen: boolean): boolean {
@@ -162,6 +275,8 @@ function _attemptLoad(win: BrowserWindow, url: string, tag: string): Promise<str
         const onReady = () => finish('ready');
         const onFail = (_e: any, code: number, desc: string, _url: string, isMainFrame: boolean) => {
             if (!isMainFrame) return;
+            // -3 = ERR_ABORTED：被后续导航/页面自刷新顶掉（非真失败）——继续等 dom-ready，禁误判重试
+            if (code === -3) { diffOpenLog(tag, 'did-fail-load -3 (aborted，忽略)'); return; }
             diffOpenLog(tag, 'did-fail-load code=' + code + ' desc=' + desc);
             finish('fail:' + code);
         };
@@ -235,8 +350,7 @@ export async function loadDiffPage(
                     if (_pageLanded(win, okSubstr, domSeen)) { showNow('landed-slow ' + base); return { ok: true, base }; }
                     break;   // 换下一个底座
                 }
-                // -3 = ERR_ABORTED（渲染层自愈 reload / 内部导航打断）——页面就在目标页则不算失败
-                if (r === 'fail:-3' && _pageLanded(win, okSubstr, domSeen)) { showNow('landed-abort ' + base); return { ok: true, base }; }
+
                 // 永久错（未知协议/文件不存在/无权限/解析失败）：换底座，禁空等重试
                 if (r.indexOf('fail:') === 0 && PERMANENT_FAIL.has(Number(r.slice(5)))) {
                     diffOpenLog(tag, 'permanent code=' + r.slice(5) + ' → 直接换底座');

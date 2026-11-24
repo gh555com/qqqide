@@ -252,6 +252,8 @@ async function switchQuest(id) {
         setStreaming(!!(_activeAgent && _activeAgent._streaming));  // ★ 切 quest 后按实际 agent 状态刷新按钮（不是无条件 false）
         // ★ 切换后同步电子钟状态
         if (typeof _updateQuestClock === 'function') _updateQuestClock();
+        // ★ 空白面板任务卡重判（切回草稿 / 切到有楼层任务——change 信号可能早已在蒙板期发过）
+        try { if (window.qqqTaskPane) window.qqqTaskPane.refresh(); } catch (_) { }
     }
     // ★ 2026-10-14：切回收尾补偿点（队列=用户财产）——目标 quest 空闲且队列有残留（历史漏排/异常中断
     //   留下的待命项）时立即接续。条件与 finally 排水同规：空闲 + 链条真空 + 未暂停 + 非 fatal；
@@ -408,6 +410,8 @@ function _unloadQuest() {
         child.remove();
     }
     renderTabs();
+    // ★ 回到空白草稿 → 重判任务卡可见性（卡已全部移除）
+    try { if (window.qqqTaskPane) window.qqqTaskPane.refresh(); } catch (_) { }
 }
 
 async function deleteQuest(id) {

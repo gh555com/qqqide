@@ -22,6 +22,7 @@ const ENTRIES = [
   { name: 'paste-fetch', src: path.join(ROOT, 'shell', 'paste-fetch.ts') },
   { name: 'tmp-machine', src: path.join(ROOT, 'shell', 'tmp-machine.ts') },
   { name: 'timeline-store', src: path.join(ROOT, 'shell', 'timeline-store.ts') },
+  { name: 'task-ops', src: path.join(ROOT, 'shell', 'task-ops.ts') },
 ];
 
 async function buildAll() {

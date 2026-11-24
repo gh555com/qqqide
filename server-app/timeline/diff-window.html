@@ -164,6 +164,10 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
 /* ═══ BOTTOM BUTTONS ═══ */
 #big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;line-height:1;outline:none}
 #big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
+/* 关闭 ✕ 图标盒尺寸（唯一入口）：圆径 56px，qqi-close 墨迹只占 16 网格的 45%（4.4→11.6）且笔触 1.4/16 ——
+   盒 13px 时可见 ✕ 仅 ~5.9px（进圆 10%，看着像没有）；盒 40px → 墨迹 ~18px / 笔触 ~3.5px（进圆 32%），与底部其余按钮观感对齐。
+   改此值只缩放整枚图标（mask contain 等比），禁在 HTML 写内联尺寸、禁另画第二个 ✕。 */
+#big-close .qqi{width:40px;height:40px}
 
 #btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 144px));height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;white-space:nowrap;outline:none}
 #btn-diff-only:hover{background:var(--bg)}
@@ -266,7 +270,7 @@ body.vault-open #btn-diff-only,body.vault-open #btn-edit,body.vault-open #big-cl
 </div>
 
 <button id="btn-diff-only" data-i18n="timeline.diffOnly">仅差异</button>
-<button id="big-close"><span class="qqi qqi-close" style="width:13px;height:13px"></span></button>
+<button id="big-close"><span class="qqi qqi-close"></span></button>
 <button id="btn-edit" data-i18n="timeline.editBtn">编辑</button>
 <div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.editTooltip">编辑当前磁盘最新文件（而非任何一个历史快照）</span></div>
 <div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.closeHint">= Right Click</span></div>

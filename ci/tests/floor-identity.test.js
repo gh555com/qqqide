@@ -149,6 +149,40 @@ test('materializeFloor：磁盘已被外部占号 → 跳号（EEXIST 绝不复�
     fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('saveFloor 返回值：正常落盘 = true；目录已删 = false 且 sq3 不留幽灵楼层（重启后不静默消失）', async () => {
+    const root = tmpRoot();
+    const { store, bridge } = loadStore(root);
+    await store.create('测试任务');
+    const r1 = await store.materializeFloor('q1', '第一层');
+    const ok1 = await store.saveFloor('q1', r1.floorNum, { question: '第一层', _fDir: r1.fDir, conversation: [] });
+    assert.strictEqual(ok1, true, '正常路径必须返回 true');
+    const r2 = await store.materializeFloor('q1', '第二层');
+    await fs.promises.rm(r2.fDir, { recursive: true, force: true });     // 建好目录但用户/Roam 立刻删掉
+    const ok2 = await store.saveFloor('q1', r2.floorNum, { question: '第二层', _fDir: r2.fDir, conversation: [] });
+    assert.strictEqual(ok2, false, '拒写必须如实返回 false（禁当成功）');
+    const q = await bridge.get('quest.q1');
+    const floors = (q && q.floors) || [];
+    assert.strictEqual(floors.filter(function (f) { return f.n === r2.floorNum; }).length, 0,
+        '拒写时不得写幽灵楼层索引（索引说在、磁盘读不回 = 重启后静默消失）');
+    assert.strictEqual(floors.filter(function (f) { return f.n === r1.floorNum; }).length, 1, '已成功落盘的楼层索引必须保留');
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('坏扫描（fs.list 恒返空）→ 绝不新建第二个 quest 目录（宁拒发送）', async () => {
+    const root = tmpRoot();
+    const { store, sandbox } = loadStore(root);
+    await store.create('测试任务');
+    await store.materializeFloor('q1', '第一层');            // 确保 quest 目录在磁盘上
+    sandbox.parent.qqqideBridge.fs.list = async function () { return []; };   // 壳层出错语义
+    store.setProjectRoot(root);                                // 清缓存 = 跨面板/重启首次解析
+    let threw = false;
+    try { await store.materializeFloor('q1', '第二层'); } catch (_) { threw = true; }
+    const dirs = fs.readdirSync(path.join(root, '_qqq', 'quests')).filter(function (n) { return n.indexOf('q1') === 0; });
+    assert.strictEqual(dirs.length, 1, '空结果不得当「目录不存在」→ 绝不可建第二个 q1（实得 ' + dirs.join(',') + '）');
+    assert.ok(threw, '扫描不可信必须如实抛错（禁静默盲建目录）');
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('写盘复核：楼层目录已被删 → 如实拒写，绝不 mkdir 复活幽灵目录', async () => {
     const root = tmpRoot();
     const { store } = loadStore(root);

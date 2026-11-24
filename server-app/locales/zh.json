@@ -804,6 +804,7 @@
       "allocRequeued": "——排队消息已保留在队列中，可重试",
       "allocImgsRestored": "——图片已放回编辑条，请重试",
       "floorOccupied": "楼层编号被占用，本次未发送——请重试",
+      "saveFloorMissed": "楼层保存失败：磁盘上的楼层目录已不存在（被移走或删除），本次内容未落盘",
       "stallAbort": "发送停滞（>20 分钟无进展）已自动终止",
       "stallAbortQoast": "发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复",
       "stallAbortTool": "工具执行停滞（超 2 小时无进展）已自动终止",
@@ -967,6 +968,9 @@
     "autoCompressFacts": "自动压缩：已按全托管档位提取事实（仅此一次，5 层冷却内不再自动提取）",
     "allTxtTooBig": "⚠️ all.txt {0}MB 超过 {1}MB 上限，归档已暂停（SQLite 完好）",
     "featureWip": "该功能正在建设中",
+    "tasks": {
+      "inputBusy": "编辑框里已有内容，先发送或清空再点任务"
+    },
     "auditBtn": "审计",
     "translateBtn": "翻译",
     "auditCopied": "审计文本已复制到剪贴板 ({0} KB)，可粘贴到任意 AI 对话框。",

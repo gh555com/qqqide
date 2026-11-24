@@ -636,6 +636,24 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 #qqq-switch-hint .sw-hint-stext{opacity:.8}
 #qqq-switch-hint .sw-hint-dot{width:10.5px;height:10.5px;border-radius:50%;background:#e8a030;animation:qqqSwHintPulse 1.1s ease-in-out infinite}
 @keyframes qqqSwHintPulse{0%,100%{opacity:.2}50%{opacity:1}}
+/* ── 空白面板：一键任务卡（唯一消费方 panel-tasks.js）──────────────────────────
+   只在「~New quest~ 空白草稿」出现：绝对定位盖住空 #messages，入场即内容，退场零残留。
+   配色全部走主题变量（禁自带颜色）；图标走 qqq-icons（禁 emoji）。 */
+.tp-wrap{position:absolute;inset:0;z-index:4;overflow-y:auto;padding:16px 18px;display:flex;justify-content:center}
+/* 垂直居中：margin:auto 0 是唯一安全写法（内容超高时自动退化为顶部对齐，不会被裁顶） */
+.tp-inner{width:100%;max-width:700px;margin:auto 0}
+.tp-head{display:flex;align-items:baseline;gap:9px;margin:2px 0 13px;padding-left:1px}
+.tp-title{font-size:14.5px;font-weight:600;letter-spacing:.2px;color:var(--text-primary)}
+.tp-sub{font-size:12px;color:var(--base01);opacity:.9}
+.tp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(206px,1fr));gap:9px}
+.tp-card{position:relative;display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:12px 13px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-bg);color:var(--text-primary);font-family:inherit;font-size:13px;line-height:1.45;cursor:pointer;transition:border-color .12s,background .12s}
+.tp-card:hover{border-color:var(--blue)}
+.tp-card:active{background:var(--background-color)}
+
+.tp-ico{flex:none;width:15px;height:15px;font-size:15px;color:var(--blue);opacity:.85}
+.tp-txt{display:block;min-width:0;overflow:hidden}
+.tp-t{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 </style>
 <div id="clock-tooltip"></div>
 <script>
@@ -878,6 +896,7 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="byok.js"></script>
 <script src="tools-defs.js"></script>
 <script src="tools-exec-write.js"></script>
+<script src="tools-exec-task.js"></script>
 <script src="tools-exec.js"></script>
 <script src="tools-exec-effect.js"></script>
 <script src="agent-envelope.js"></script>
@@ -927,6 +946,8 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <!-- ★ 分享（快照 + 租约 + 三投影）：唯一机器 + 唯一 UI；样式全部在 index.html -->
 <script src="share-machine.js"></script>
 <script src="panel-share.js"></script>
+<!-- ★ 空白面板一键任务卡（服务器真理源 + 离线兜底；末尾加载以拿到全部面板全局） -->
+<script src="panel-tasks.js"></script>
 <!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 roam（F75，F99 补：AI 面板是 iframe，父窗口收不到内部按键） -->
 <script>
 (function () {

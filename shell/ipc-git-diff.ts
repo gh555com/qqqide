@@ -10,7 +10,7 @@ import { getComponentBin } from './component-checker';
 import { BootConfig } from './boot';
 import { APP_VERSION } from './version';
 import { addUiZoomListener } from './ui-zoom';
-import { resolveDiffBases, loadDiffPage, diffOpenLog } from './diff-win-loader';
+import { resolveDiffBases, loadDiffPage, diffOpenLog, diffWinTouch } from './diff-win-loader';
 
 // Dedicated map for git diff windows (key: filePath|commitHash)
 const _gitDiffWindows: Map<string, BrowserWindow> = new Map();
@@ -102,6 +102,7 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
                 // 复用同时重对齐（用户未手动调过几何时）——主窗口移动/界面缩放已变，再次点击也必须落回正位
                 const _ref0 = _gitDiffRefs.get(existingWin);
                 if (_ref0 && !_ref0.isDestroyed() && !(existingWin as any).__qqqUserMoved) { void _refitGitDiffWindow(existingWin, _ref0); }
+                diffWinTouch(existingWin);   // 复用 = 最近使用（LRU 记账）
                 if (!existingWin.isVisible()) existingWin.show();
                 if (existingWin.isMinimized()) existingWin.restore();
                 existingWin.focus();
@@ -152,6 +153,7 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
             _gitDiffWindows.delete(winKey);
         });
         _gitDiffWindows.set(winKey, diffWin);
+        diffWinTouch(diffWin);   // LRU 记账（与时间线 diff 窗同一池：总上限 DIFF_WIN_LRU_MAX）
         if (mainWin && !mainWin.isDestroyed()) { _gitDiffRefs.set(diffWin, mainWin); }
         // 已知几何记录：系统在 show()/首帧会补发一次「与创建值相同」的 move/resize 噪声——同值绝不算用户动过
         (diffWin as any).__qqqLastGeo = { x: diffX, y: diffY, width: _initW, height: _initH };

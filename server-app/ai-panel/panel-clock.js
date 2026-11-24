@@ -56,7 +56,15 @@ function _saveAgentFloor(ag, questId, force) {
             createdAt: Date.now()
         };
     }
-    questStore.saveFloor(questId, floorNum, payload).catch(function (e) {
+    questStore.saveFloor(questId, floorNum, payload).then(function (_autoOk) {
+        // ★ 拒写（false）= 楼层目录已不在磁盘 → 只留痕（终局保存那边会给用户可见提示）
+        if (_autoOk === false && !(ag._floorSaveWarned && ag._floorSaveWarned[floorNum])) {
+            if (!ag._floorSaveWarned) ag._floorSaveWarned = {};
+            ag._floorSaveWarned[floorNum] = 1;
+            console.warn('[auto-save] saveFloor refused for q=' + questId + ' f=' + floorNum + ' (floor dir gone)');
+            if (typeof _writeFileLog === 'function') _writeFileLog('⚠ auto-save refused q=' + questId + ' f=' + floorNum + ' (floor dir gone on disk)');
+        }
+    }).catch(function (e) {
         console.warn('[auto-save] saveFloor failed for q=' + questId + ' f=' + floorNum + ': ' + (e && e.message || e));
         if (typeof _writeFileLog === 'function') _writeFileLog('⚠ auto-save fail q=' + questId + ' f=' + floorNum + ': ' + (e && e.message || e));
     });

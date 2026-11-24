@@ -92,6 +92,7 @@ import { registerVigIpc } from './ipc-vig';
 import { vigFlush, vigSquadSummon, vigStartFloorsSeed } from './vig';
 import { registerPlayerVigIpc, playerVigFlush } from './player-vig';
 import { registerTmpMachineIpc, startTmpMachine } from './tmp-machine';
+import { registerTaskOpsIpc, desktopDirsForShortcut, createShortcuts, resolveDesktopDirSync } from './task-ops';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
 import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
@@ -550,6 +551,7 @@ function registerAllIpc(): void {
     registerProjectLockIpc();
     registerUiZoomIpc();
     registerTmpMachineIpc(stateStore);   // _qqq/tmp 轮转机器（手动 sweep + 状态快照）
+    registerTaskOpsIpc(portable.root, portable.userData);   // 一键任务（空白面板默认任务卡的动作端）
 }
 
 // ── wq 偿还 IPC — Savor 播放状态 → ping playing=true（2026-09-19） ──
@@ -571,10 +573,14 @@ function registerDesktopShortcutIpc(): void {
         if (process.platform !== 'win32') return { ok: true, skipped: true };
         try {
             // ★ 双位置：桌面 + 开始菜单（Win11 无桌面图标用户走开始菜单）
-            const lnkPaths = [
-                path.join(os.homedir(), 'Desktop', 'qqqide.lnk'),
-                path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'qqqide.lnk')
-            ];
+            // ★ 桌面目录恒读系统真值（不能用 homedir/Desktop 拼——客户把桌面重定向到 D 盘/OneDrive 是常态，
+            //   拼出来的路径往往不存在 → 快捷方式静默不出现）。唯一源 = task-ops.desktopDirsForShortcut。
+            // ★ 桌面目录清单含「系统真值桌面 + C 盘用户桌面 + 公共桌面」（task-ops 唯一源）
+            const lnkPaths: string[] = [];
+            desktopDirsForShortcut().forEach(d => { lnkPaths.push(path.join(d, 'qqqide.lnk')); });
+            const progDir = path.join((process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')),
+                'Microsoft', 'Windows', 'Start Menu', 'Programs');
+            if (progDir) lnkPaths.push(path.join(progDir, 'qqqide.lnk'));
 
             // ★ portable.root 在打包模式下 = gh555.com/，qqqide.exe 在上层
             //    开发模式下 portable.root = 项目根，qqqide.exe 就在下面
@@ -603,29 +609,14 @@ function registerDesktopShortcutIpc(): void {
             }
 
             if (enabled) {
-                // 创建/更新快捷方式（桌面 + 开始菜单 Programs 根 = Win11「所有应用」最显著层）
-                // ★ PS 单引号字符串内反斜杠为字面量 → 直接用单斜杠路径，禁止双写（双斜杠会写进 .lnk 的 WorkDir）
-                //   唯一需要转义的是单引号（路径含 ' 时 → '' 为 PS 转义）
-                const psQ = (s: string) => s.replace(/'/g, "''");
-                const parts = [
-                    '$ws = New-Object -ComObject WScript.Shell;'
-                ];
-                for (const lnkPath of lnkPaths) {
-                    // 父目录不存在则跳过（如无桌面目录的改造型 Win11）
-                    if (!fs.existsSync(path.dirname(lnkPath))) continue;
-                    parts.push(
-                        '$s = $ws.CreateShortcut(\'' + psQ(lnkPath) + '\');',
-                        '$s.TargetPath = \'' + psQ(targetExe) + '\';',
-                        '$s.WorkingDirectory = \'' + psQ(rootDir) + '\';',
-                        '$s.IconLocation = \'' + psQ(iconLocation) + '\';',
-                        '$s.Save();'
-                    );
-                }
-                require('child_process').execSync(
-                    'powershell -NoProfile -Command "' + parts.join(' ') + '"',
-                    { timeout: 15000, windowsHide: true }
-                );
-                return { ok: true, action: 'created' };
+                // 创建/更新快捷方式（桌面族 + 开始菜单 Programs 根 = Win11「所有应用」最显著层）
+                // ★ 唯一实现 = task-ops.createShortcuts（单次 PowerShell、回读真实落盘；禁再写第二套 PS）
+                const r = createShortcuts(lnkPaths.map(lnk => ({
+                    lnk, target: targetExe, workDir: rootDir, icon: iconLocation, desc: 'qd (qqqide)'
+                })));
+                // 失败必须可见（禁假成功）：一个也没落盘 = 如实报错
+                if (!r.ok || !r.made.length) return { ok: false, error: r.error || 'no-shortcut-created', desktop: resolveDesktopDirSync() };
+                return { ok: true, action: 'created', paths: r.made, desktop: resolveDesktopDirSync() };
             } else {
                 // 关闭时不删除 — 用户可自行手动删除
                 return { ok: true, action: 'skipped' };
