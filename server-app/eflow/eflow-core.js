@@ -1129,14 +1129,14 @@
 
     function globalDocFile(dataRoot) { return joinp(norm(dataRoot), 'global.txt'); }
 
+    // ★ 这段会被原文注入（每轮都在付费）：只写「怎么做」，不写产品推销、不催人迁移。
     function globalDocBlock() {
         return [
-            GDOC_B + '（qd 文档地基 · 整块删除 = 不再接管）',
-            '## E-Flow 文档地基（qd 接管）',
-            '- 每个项目的知识库由 qd 维护：_qqq/alphal/expert/（L0 背包 index.md + arch/ 细则 + exp/ 经验）。',
-            '- 白纸项目（没有自己的规则）自动铺骨架并接入；已有自己规则库的项目一个字都不动，只报每轮注入字数。',
-            '- 动任何项目前先读它的 _qqq/alphal/expert/index.md（L0 背包），按路由表按需读 arch/，禁通读。',
-            '- 收尾跑 eflow op=check：BLOCK 必须清零，WARN 要如实说；文档只收「违反即返工」的规则。',
+            GDOC_B + '（qd 文档地基 · 整块删除 = 不再接管；产品状态另存，删块不等于关开关）',
+            '## E-Flow 文档地基（只接管白纸项目）',
+            '- 白纸项目（project.txt 里没有自己的 rule）：骨架在 _qqq/alphal/expert/（L0 背包 index.md + arch/ 细则 + exp/ 经验）；动它之前先读 L0，按路由表按需读 arch/，禁通读。',
+            '- 用户自己的知识库（project.txt 里有自己写的 rule"…"）：一个字都不动，也不催他迁移；只把每轮注入字数如实报给他。',
+            '- 已接入 E-Flow 的项目：收尾跑 eflow op=check，BLOCK 必须清零、WARN 要如实说；文档只收「违反即返工」的规则。',
             '- 反悔：设置 → 高级 → E-Flow 管理 → 取消接管（会删掉本块）。',
             GDOC_E
         ].join('\n') + '\n';
