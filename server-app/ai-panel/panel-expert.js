@@ -107,7 +107,9 @@ var ExpertFlow = (function () {
     if (!bridge || !bridge.fs) return false;
     try {
       var text = await bridge.fs.read(_normRoot(projectRoot) + '/_qqq/alphal/rule/project.txt');
-      if (text && text.trim()) return /rule"[^"]+"/.test(text);
+      // ★ 与内核 projectKind 同一口径（/rule\s*"/）：allow 空格写法 `rule "…"`，
+      //   否则面板判「白纸」→ 调 upgrade → 被内核第二道闸 REFUSED → 白弹一次失败提示。
+      if (text && text.trim()) return /rule\s*"[^"]+"/.test(text);
     } catch (e) { /* silent */ }
     return false;
   }

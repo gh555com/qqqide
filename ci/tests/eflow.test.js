@@ -448,6 +448,15 @@ test('eflow: 接线守卫（禁第二套实现 / 禁面板自己算 / 禁 AI 冒
     assert.ok(iCore > 0 && iSet > iCore, 'index.html 必须先加载 eflow/eflow-core.js 再加载 core/settings.js');
 });
 
+test('eflow: 面板与内核同一口径（rule 判定的正则只许一份）', () => {
+    const panel = fs.readFileSync(path.join(ROOT, 'server-app/ai-panel/panel-expert.js'), 'utf8');
+    // 面板若用更严的 /rule"…"/，`rule "…"`（带空格）会被判成白纸 → 调 upgrade → 被内核第二道闸 REFUSED
+    // → 结果正确但白弹一次失败提示。两处必须同源：/rule\s*"[^"]+"/。
+    const hits = panel.match(/\/rule[^\n]{0,30}/g) || [];
+    assert.ok(hits.some((h) => h.indexOf('\\s*"') > 0), '面板的自有规则判定必须与内核同口径（/rule\\s*"…"/）：' + JSON.stringify(hits));
+    assert.ok(!hits.some((h) => h.indexOf('rule"') >= 0), '禁在面板里写第二套更严的正则（会误判白纸）：' + JSON.stringify(hits));
+});
+
 test.after(() => {
     try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) { /* ignore */ }
 });
