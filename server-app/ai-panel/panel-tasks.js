@@ -38,7 +38,9 @@
         'https://direct-cn.gh555.com/static/qqqide/tasks.json',
         'https://www.gh555.com/static/qqqide/tasks.json'
     ];
-    var FETCH_TIMEOUT = 6000;
+    var FETCH_TIMEOUT = 6000;              // 单源上限
+    var HEDGE_MS = 900;                    // 高优先级源 900ms 未答 → 并行拉起下一源（优先级仍是仲裁者）
+    var BUDGET_MS = 9000;                  // 整链上限（最坏 9s 收工，不再 4×6s 串成 24s）
     var REFRESH_MS = 30 * 60 * 1000;       // 30min 静默刷新（与通知机同节奏）
     var MAX_CARDS = 8;
     var CACHE_KEY = 'tasks';               // qgs ns = qqq.tasks
@@ -95,6 +97,26 @@
             }
         ]
     };
+
+    // ★ 卡片标题的多语言键（静态字面量——禁动态拼 'ai.tasks.'+id，键名必须可 grep）：
+    //   只覆盖「内置卡」；运维台新增的自定义卡永远显示服务器下发的原文（下发即生效）。
+    var CARD_TITLE_KEYS = {
+        'clean-c': 'ai.tasks.cardCleanC',
+        'autostart-qd': 'ai.tasks.cardAutostartQd',
+        'install-everything': 'ai.tasks.cardEverything',
+        'startup-clean': 'ai.tasks.cardStartupClean',
+        'spotlight-search': 'ai.tasks.cardSpotlight',
+        'locate-search': 'ai.tasks.cardLocate'
+    };
+    // 出厂中文标题基线（判定「服务器有没有改过这张卡的标题」的唯一依据）：
+    //   标题 == 出厂值 → 用本机语言译文；被运营改过 → 一律照服务器原文（禁译文盖掉下发）。
+    var CARD_DEFAULT_TITLE = {};
+    (function () {
+        for (var _i = 0; _i < TASK_FALLBACK.tasks.length; _i++) {
+            var _t0 = TASK_FALLBACK.tasks[_i];
+            if (_t0 && _t0.id && _t0.title && _t0.title.zh) CARD_DEFAULT_TITLE[_t0.id] = _t0.title.zh;
+        }
+    })();
 
     var _data = null;         // 已清洗的任务数据
     var _pane = null;
@@ -181,10 +203,16 @@
             else fin(p);
         } catch (_) { fin(null); }
     }
-    function _saveCache(raw) {
+    function _saveCache(raw, at) {
         var h = _handle();
         if (!h) return;
-        try { h.set(CACHE_KEY, raw); } catch (_) { }
+        try { h.set(CACHE_KEY, { at: at || Date.now(), raw: raw }); } catch (_) { }
+    }
+    // 缓存信封 {at, raw}；旧格式（裸表，无 at）→ at=0 = 当作过期（下次启动立刻拉网络）
+    function _unwrapCache(c) {
+        if (!c || typeof c !== 'object') return null;
+        if (c.raw && typeof c.raw === 'object') return { at: Number(c.at) || 0, raw: c.raw };
+        return { at: 0, raw: c };
     }
 
     // ── 数据清洗 ─────────────────────────────────────────────────────────
@@ -200,6 +228,9 @@
             if (!id || seen[id]) continue;
             if (!_platMatch(t.platforms)) continue;
             var title = _pick(t.title);
+            if (title && CARD_TITLE_KEYS[id] && CARD_DEFAULT_TITLE[id] && title === CARD_DEFAULT_TITLE[id]) {
+                title = _t(CARD_TITLE_KEYS[id], title);   // 内置卡 = 出厂文案 → 吃译文（zh 时与原句相同）
+            }
             if (!title) continue;
             // 旧版卡（kind=action / 无 prompt）一律丢弃：本面板只负责「说一句话」，
             // 干活由对话里的 AI 决定（老客户端读旧表照旧，契约只增不改）
@@ -224,18 +255,21 @@
         }
         if (!out.length) return null;
         // 副标题旧字段一律不采纳（面板只有一行标题）
-        return { title: _pick(raw.title) || TASK_FALLBACK.title.zh, tasks: out };
+        var paneTitle = _pick(raw.title);
+        if (!paneTitle || paneTitle === TASK_FALLBACK.title.zh) paneTitle = _t('ai.tasks.title', TASK_FALLBACK.title.zh);
+        return { title: paneTitle, tasks: out };
     }
     function _fallback() {
         var f = _sanitize(TASK_FALLBACK);
-        return f || { title: '一键任务', tasks: [] };
+        return f || { title: _t('ai.tasks.title', TASK_FALLBACK.title.zh), tasks: [] };
     }
 
-    // ── 拉取（三级线路，逐级降级，失败静默）──────────────────────────────
-    function _fetchOne(url) {
+    // ── 拉取（优先级 + 对冲，失败静默）────────────────────────────────────
+    //   老实现逐级串行：慢网时最坏 4×6s = 24s 才到底（三个面板各自跑，日志成堆、卡表迟迟不出）。
+    //   现实现：按优先级错峰 900ms 并行拉起，先到先上屏；主源在预算内回来则覆盖（优先级仍是仲裁者）。
+    function _fetchOne(url, ctl) {
         return new Promise(function (resolve, reject) {
             var settled = false;
-            var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
             var to = setTimeout(function () {
                 if (settled) return;
                 settled = true;
@@ -259,27 +293,60 @@
                 });
         });
     }
-    function _fetchAll(i) {
-        i = i || 0;
-        if (i >= URLS.length) return Promise.reject(new Error('all sources failed'));
-        return _fetchOne(URLS[i]).catch(function (e) {
-            console.warn('[tasks] source ' + i + ' failed: ' + (e && e.message));
-            return _fetchAll(i + 1);
+    // 返回 Promise<boolean>；任何情况都不 reject（失败 = 沿用屏上数据 / 出厂兜底）
+    function _fetch() {
+        return new Promise(function (resolve) {
+            var best = -1, open = 0, finished = false;
+            var timers = [], ctls = [];
+
+            function stop() {
+                finished = true;
+                for (var i = 0; i < timers.length; i++) { try { clearTimeout(timers[i]); } catch (_) { } }
+                for (var j = 0; j < ctls.length; j++) { try { ctls[j].abort(); } catch (_) { } }
+            }
+            function fin(ok) { if (finished) return; stop(); resolve(!!ok); }
+            function settle() { if (--open <= 0) fin(best >= 0); }
+
+            timers.push(setTimeout(function () { fin(best >= 0); }, BUDGET_MS));   // 整链封顶
+            URLS.forEach(function (url, i) {
+                timers.push(setTimeout(function () {
+                    if (finished) return;
+                    open++;
+                    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                    if (ctl) ctls.push(ctl);
+                    _fetchOne(url, ctl).then(function (raw) {
+                        if (finished) return;
+                        var clean = null;
+                        try { clean = _sanitize(raw); } catch (_) { clean = null; }
+                        if (!clean) {
+                            console.warn('[tasks] source ' + i + ' 空表/坏表');
+                        } else if (best < 0 || i < best) {
+                            best = i;
+                            _data = clean;
+                            _saveCache(raw, Date.now());
+                            _loadedOnce = true;
+                            _paint();
+                            if (i === 0) { fin(true); return; }    // 主源到手 = 收工
+                        }
+                        settle();
+                    }, function (e) {
+                        if (finished) return;
+                        console.warn('[tasks] source ' + i + ' failed: ' + (e && e.message));
+                        settle();
+                    });
+                }, i * HEDGE_MS));
+            });
         });
     }
+    var _inflight = null;
     function _reload() {
-        return _fetchAll(0).then(function (raw) {
-            var clean = _sanitize(raw);
-            if (!clean) throw new Error('empty payload');
-            _data = clean;
-            _saveCache(raw);
-            _loadedOnce = true;
-            _paint();
-            return true;
-        }).catch(function () {
-            if (!_loadedOnce) { _data = _fallback(); _paint(); }
-            return false;
+        if (_inflight) return _inflight;          // 单飞：定时器与手动 reload 不叠链
+        _inflight = _fetch().then(function (ok) {
+            if (!ok && !_loadedOnce) { _data = _fallback(); _paint(); }
+            _inflight = null;
+            return !!ok;
         });
+        return _inflight;
     }
 
     // ── 条件卡：本地判定「这张卡现在值得出现吗」──────────────────────────
@@ -459,14 +526,17 @@
 
     function _boot2() {
         _loadCache(function (cached) {
-            if (cached) {
-                var c = _sanitize(cached);
-                if (c) { _data = c; }
-            }
+            var wrap = _unwrapCache(cached);
+            var c = wrap ? _sanitize(wrap.raw) : null;
+            if (c) { _data = c; }
             if (!_data) _data = _fallback();
             _refresh();
-            _reload();                       // 后台拉服务器真理源（不阻塞首次绘制）
-            _timer = setInterval(function () { _reload(); }, REFRESH_MS);
+            // 缓存够新 → 启动不打网络（三个面板 × 四线路的启动洪峰归零）；首次刷新排在缓存到期点，
+            // 服务端改表的可见延迟恒 ≤ REFRESH_MS（与「30 分钟内静默刷新」的对外口径一致）
+            var age = c ? (Date.now() - wrap.at) : REFRESH_MS;
+            function loop() { _reload(); _timer = setTimeout(loop, REFRESH_MS); }
+            if (age >= REFRESH_MS) loop();
+            else _timer = setTimeout(loop, Math.max(5000, REFRESH_MS - age));
         });
         _watch();
         try {

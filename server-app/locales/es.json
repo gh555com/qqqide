@@ -283,8 +283,11 @@
             "filterPh": "Filtrar...",
             "sortByName": "Ordenar por nombre de archivo",
             "sortByMtime": "Ordenar por fecha de modificación",
-            "rejectProgram": "Este directorio es un directorio de programa y no puede utilizarse como proyecto",
+            "rejectProgram": "Este directorio tiene una relación de inclusión con el directorio de ejecución de qd en esta ventana ({p}), no se puede añadir a la vista de IA",
             "rejectRoot": "La raíz del disco no puede ser un proyecto"
+        },
+        "seat": {
+            "ready": "Listo · {p} Puede comenzar directamente"
         },
         "gaeaHostLoading": "Cargando gaea host...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "Panel izquierdo de IA",
             "right": "Panel derecho de IA"
-        },
-        "seat": {
-            "ready": "Listo · {p} Puede comenzar directamente"
         }
     },
     "editor": {
         "copyPath": "Copiar ruta",
         "timelineNoRoot": "No se puede determinar el directorio raíz del proyecto para este archivo; la línea de tiempo no está disponible",
         "timelineOpenFail": "Error al abrir la ventana de línea de tiempo. Inténtalo de nuevo más tarde.",
+        "timelineOpenTimeout": "Tiempo de espera agotado al abrir la ventana de comparación de versiones (sin respuesta), inténtalo de nuevo más tarde",
+        "timelineNoBridge": "La comparación de versiones no está disponible: el puente de línea de tiempo no está listo, reinicia la instancia e inténtalo de nuevo",
         "minimap": "Minimapa",
         "run": "Ejecutar",
         "runNoInterp": "El intérprete integrado no está listo (faltan componentes)",
@@ -801,12 +803,19 @@
             "allocShown": "——El contenido no enviado se muestra en el área de mensajes superior",
             "allocRequeued": "—— El mensaje en cola se ha mantenido en la lista, puede reintentarse",
             "allocImgsRestored": "——Las imágenes se han devuelto a la barra de edición, inténtelo de nuevo",
+            "floorOccupied": "El número de piso está ocupado, no se envió — inténtalo de nuevo",
+            "saveFloorMissed": "Error al guardar el piso: el directorio del piso en el disco ya no existe (se movió o eliminó), el contenido no se guardó",
             "stallAbort": "El envío se ha detenido (>20 minutos sin progreso) y se ha terminado automáticamente",
             "stallAbortQoast": "El envío se ha detenido (>20 minutos sin progreso) y se ha terminado automáticamente; puedes hacer clic en el recuadro rojo del nivel «Continuar tarea» para reanudar",
             "stallAbortTool": "La ejecución de la herramienta se ha detenido (sin progreso durante más de 2 horas) y se ha terminado automáticamente",
             "stallAbortToolQoast": "La ejecución de la herramienta se ha estancado (sin progreso durante más de 2 horas) y se ha terminado automáticamente. Puedes hacer clic en el recuadro rojo del nivel para «Continuar tarea» y reanudar."
         },
         "needLogin": "Por favor, inicia sesión primero desde el menú superior",
+        "seat": {
+            "blocked": "La carpeta del proyecto está siendo utilizada por otra ventana: continúa en esa ventana o selecciona otra carpeta aquí",
+            "ask": "No se encuentra un directorio de proyecto disponible: selecciona una carpeta",
+            "cancel": "Aún no hay carpeta principal: el contenido permanece en el cuadro de edición, envíalo después de seleccionar la carpeta"
+        },
         "errUnknown": "Error desconocido",
         "errUnknownReason": "Causa desconocida",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "Compresión automática: hechos extraídos según el nivel de gestión total (solo esta vez, no se extraerán automáticamente durante el enfriamiento de 5 niveles)",
         "allTxtTooBig": "⚠️ all.txt {0}MB supera el límite de {1}MB, el archivado se ha pausado (SQLite intacto)",
         "featureWip": "Esta función está en desarrollo",
+        "tasks": {
+            "inputBusy": "Ya hay contenido en el cuadro de edición, envíalo o límpialo antes de seleccionar la tarea",
+            "title": "Tareas rápidas",
+            "cardCleanC": "Limpiar unidad C",
+            "cardAutostartQd": "Inicio automático de qd",
+            "cardEverything": "Instalar Everything",
+            "cardStartupClean": "¿El ordenador va lento?",
+            "cardSpotlight": "Búsqueda Spotlight",
+            "cardLocate": "Búsqueda de archivos locate"
+        },
+        "eflow": {
+            "adoptFail": "La conexión automática de la base documental no tuvo éxito:",
+            "adoptErr": "Error al conectar automáticamente la base documental:"
+        },
         "auditBtn": "Auditar",
         "translateBtn": "Traducir",
         "auditCopied": "Texto de auditoría copiado al portapapeles ({0} KB), puede pegarlo en cualquier cuadro de diálogo de IA.",
@@ -2365,6 +2388,33 @@
                 "status": "Último intento de actualización",
                 "state": "Eventos de la base de datos de estado"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "Gestión de la base de conocimientos de todos los proyectos (gestión / diagnóstico / desinstalación)",
+            "manage": "Gestionar",
+            "adopt": "Conectar / Actualizar este proyecto",
+            "check": "Diagnóstico",
+            "rotate": "Organizar y archivar",
+            "turnOn": "Activar gestión global (todos los proyectos)",
+            "turnOff": "Cancelar gestión",
+            "confirmOn": "Haz clic de nuevo para confirmar la activación de la gestión",
+            "confirmOff": "Haz clic de nuevo para confirmar la cancelación de la gestión",
+            "hintOn": "Gestión global: Activada",
+            "hintOff": "Gestión global: No activada",
+            "on": "Gestión global: Activada",
+            "off": "Gestión global: Desactivada",
+            "docYes": "global.txt tiene reglas de gestión",
+            "docNo": "global.txt no tiene reglas de gestión",
+            "mStandard": "Este proyecto: Conectado",
+            "mCustom": "Este proyecto: Tus propias reglas (sin cambios)",
+            "mNone": "Este proyecto: En blanco",
+            "loading": "Cargando…",
+            "noBridge": "El cliente actual no tiene capacidad de acceso a archivos, la gestión no está disponible",
+            "noDataRoot": "No se puede acceder al directorio de nivel de usuario",
+            "noCore": "El núcleo no se ha cargado (falta eflow/eflow-core.js), esta acción no puede realizarse",
+            "noRoot": "Ningún proyecto abierto",
+            "noOutput": "(Sin salida)"
         },
         "uiZoom": {}
     },

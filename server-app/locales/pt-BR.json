@@ -283,8 +283,11 @@
             "filterPh": "Filtrar...",
             "sortByName": "Ordenar por nome do arquivo",
             "sortByMtime": "Ordenar por data de modificação",
-            "rejectProgram": "Este diretório é um diretório de programa e não pode ser usado como projeto",
+            "rejectProgram": "Este diretório tem relação de inclusão com o diretório de execução do qd nesta janela ({p}), não pode ser adicionado à viewport da IA",
             "rejectRoot": "A raiz do disco não pode ser usada como projeto"
+        },
+        "seat": {
+            "ready": "Pronto · {p} Você pode começar diretamente"
         },
         "gaeaHostLoading": "Carregando gaea host...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "Painel de IA esquerdo",
             "right": "Painel de IA direito"
-        },
-        "seat": {
-            "ready": "Pronto · {p} Você pode começar diretamente"
         }
     },
     "editor": {
         "copyPath": "Copiar caminho",
         "timelineNoRoot": "Não foi possível determinar o diretório raiz do projeto para este arquivo. A linha do tempo não está disponível.",
         "timelineOpenFail": "Falha ao abrir a janela da linha do tempo. Tente novamente mais tarde.",
+        "timelineOpenTimeout": "Tempo esgotado ao abrir a janela de comparação de versões (sem resposta), tente novamente mais tarde",
+        "timelineNoBridge": "Comparação de versões indisponível: a ponte da linha do tempo não está pronta, reinicie a instância e tente novamente",
         "minimap": "Minimapa",
         "run": "Executar",
         "runNoInterp": "O interpretador integrado não está pronto (componentes ausentes)",
@@ -801,12 +803,19 @@
             "allocShown": "——O conteúdo não enviado foi exibido na área de mensagens acima",
             "allocRequeued": "—— Mensagem enfileirada mantida na fila, pode tentar novamente",
             "allocImgsRestored": "—— As imagens foram retornadas à barra de edição, tente novamente",
+            "floorOccupied": "Número do nível já em uso, envio não realizado — tente novamente",
+            "saveFloorMissed": "Falha ao salvar o nível: o diretório do nível no disco não existe mais (foi movido ou excluído), o conteúdo não foi salvo",
             "stallAbort": "Envio travado (>20 minutos sem progresso) foi encerrado automaticamente",
             "stallAbortQoast": "Envio travado (>20 minutos sem progresso) foi encerrado automaticamente; clique na caixa vermelha do andar \"Continuar tarefa\" para retomar",
             "stallAbortTool": "Execução da ferramenta estagnada (mais de 2 horas sem progresso) foi encerrada automaticamente",
             "stallAbortToolQoast": "A execução da ferramenta foi interrompida automaticamente devido à inatividade (sem progresso por mais de 2 horas). Clique na caixa vermelha do andar para «Continuar tarefa» e retomar."
         },
         "needLogin": "Por favor, faça login no menu primeiro",
+        "seat": {
+            "blocked": "A pasta do projeto está sendo usada por outra janela: continue nessa janela ou selecione outra pasta aqui",
+            "ask": "Diretório do projeto não encontrado: selecione uma pasta",
+            "cancel": "Ainda sem pasta principal: o conteúdo permanece na caixa de edição, envie após selecionar a pasta"
+        },
         "errUnknown": "Erro desconhecido",
         "errUnknownReason": "Motivo desconhecido",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "Compressão automática: fatos extraídos conforme o nível de gestão total (apenas uma vez; não será extraído automaticamente durante o período de resfriamento de 5 camadas)",
         "allTxtTooBig": "⚠️ all.txt {0}MB excede o limite de {1}MB, arquivamento pausado (SQLite intacto)",
         "featureWip": "Esta funcionalidade está em desenvolvimento",
+        "tasks": {
+            "inputBusy": "Já há conteúdo na caixa de edição, envie ou limpe antes de selecionar a tarefa",
+            "title": "Tarefas rápidas",
+            "cardCleanC": "Limpar disco C",
+            "cardAutostartQd": "Iniciar qd com o sistema",
+            "cardEverything": "Instalar Everything",
+            "cardStartupClean": "Computador lento?",
+            "cardSpotlight": "Busca Spotlight",
+            "cardLocate": "Busca de arquivos locate"
+        },
+        "eflow": {
+            "adoptFail": "A integração automática da base de documentos não foi bem-sucedida:",
+            "adoptErr": "Falha na integração automática da base de documentos:"
+        },
         "auditBtn": "Auditar",
         "translateBtn": "Traduzir",
         "auditCopied": "Texto de auditoria copiado para a área de transferência ({0} KB), pode ser colado em qualquer caixa de diálogo de IA.",
@@ -2365,6 +2388,33 @@
                 "render": "Falha no processo de renderização",
                 "fails": "Contagem de falhas"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "Gerenciamento da base de conhecimento de todos os projetos (controle / diagnóstico / desinstalação)",
+            "manage": "Gerenciar",
+            "adopt": "Integrar / Atualizar este projeto",
+            "check": "Diagnóstico",
+            "rotate": "Organizar e arquivar",
+            "turnOn": "Ativar controle global (todos os projetos)",
+            "turnOff": "Cancelar controle",
+            "confirmOn": "Clique novamente para confirmar a ativação do controle",
+            "confirmOff": "Clique novamente para confirmar o cancelamento do controle",
+            "hintOn": "Controle global: Ativado",
+            "hintOff": "Controle global: Não ativado",
+            "on": "Controle global: Ativado",
+            "off": "Controle global: Desativado",
+            "docYes": "global.txt com regras de controle",
+            "docNo": "global.txt sem regras de controle",
+            "mStandard": "Este projeto: Integrado",
+            "mCustom": "Este projeto: Suas próprias regras (inalteradas)",
+            "mNone": "Este projeto: Em branco",
+            "loading": "Carregando…",
+            "noBridge": "O cliente atual não possui capacidade de acesso a arquivos, gerenciamento indisponível",
+            "noDataRoot": "Não foi possível acessar o diretório do usuário",
+            "noCore": "O núcleo não foi carregado (eflow/eflow-core.js ausente), esta ação não pode ser realizada",
+            "noRoot": "Nenhum projeto aberto",
+            "noOutput": "(Sem saída)"
         },
         "uiZoom": {}
     },

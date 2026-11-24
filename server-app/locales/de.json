@@ -283,8 +283,11 @@
             "filterPh": "Filtern...",
             "sortByName": "Nach Dateiname sortieren",
             "sortByMtime": "Nach Änderungsdatum sortieren",
-            "rejectProgram": "Dieses Verzeichnis ist ein Programmverzeichnis und kann nicht als Projekt verwendet werden.",
+            "rejectProgram": "Dieses Verzeichnis steht in einer Inklusionsbeziehung zum Ausführungsverzeichnis von qd in diesem Fenster ({p}) und kann nicht zum AI-Viewports hinzugefügt werden",
             "rejectRoot": "Das Stammverzeichnis eines Laufwerks kann nicht als Projekt verwendet werden"
+        },
+        "seat": {
+            "ready": "Bereit · {p} Sie können direkt beginnen"
         },
         "gaeaHostLoading": "gaea host wird geladen...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "Linkes AI-Panel",
             "right": "Rechtes AI-Panel"
-        },
-        "seat": {
-            "ready": "Bereit · {p} Sie können direkt beginnen"
         }
     },
     "editor": {
         "copyPath": "Pfad kopieren",
         "timelineNoRoot": "Das Projekt-Stammverzeichnis dieser Datei kann nicht ermittelt werden, die Zeitleiste ist nicht verfügbar",
         "timelineOpenFail": "Fehler beim Öffnen des Zeitachsenfensters, bitte versuchen Sie es später erneut",
+        "timelineOpenTimeout": "Zeitüberschreitung beim Öffnen des Versionsvergleichsfensters (keine Antwort), bitte später erneut versuchen",
+        "timelineNoBridge": "Versionsvergleich nicht verfügbar: Timeline-Brücke nicht bereit, bitte Instanz neu starten und erneut versuchen",
         "minimap": "Minikarte",
         "run": "Ausführen",
         "runNoInterp": "Integrierter Interpreter nicht bereit (fehlende Komponenten)",
@@ -801,12 +803,19 @@
             "allocShown": "—— Nicht gesendeter Inhalt wird oben im Nachrichtenbereich angezeigt",
             "allocRequeued": "—— Warteschlangennachricht wurde in der Warteschlange behalten und kann erneut versucht werden",
             "allocImgsRestored": "——Bilder wurden in die Bearbeitungsleiste zurückgelegt, bitte erneut versuchen",
+            "floorOccupied": "Abschnittsnummer bereits vergeben, Senden abgebrochen – bitte erneut versuchen",
+            "saveFloorMissed": "Speichern des Abschnitts fehlgeschlagen: Das Verzeichnis auf dem Datenträger existiert nicht mehr (verschoben oder gelöscht), Inhalt wurde nicht gespeichert",
             "stallAbort": "Sendevorgang aufgrund von Stillstand (>20 Minuten ohne Fortschritt) automatisch abgebrochen",
             "stallAbortQoast": "Sendevorgang aufgrund von Stillstand (>20 Minuten ohne Fortschritt) automatisch abgebrochen. Klicken Sie auf den roten Rahmen der Ebene „Aufgabe fortsetzen“, um fortzusetzen.",
             "stallAbortTool": "Tool-Ausführung stagniert (keine Fortschritte seit über 2 Stunden), automatisch abgebrochen",
             "stallAbortToolQoast": "Tool-Ausführung stagniert (keine Fortschritte seit über 2 Stunden) und wurde automatisch abgebrochen. Klicken Sie auf den roten Rahmen der Ebene „Aufgabe fortsetzen“, um fortzufahren."
         },
         "needLogin": "Bitte melden Sie sich zuerst über das Menü an",
+        "seat": {
+            "blocked": "Der Projektordner wird bereits von einem anderen Fenster verwendet: Bitte fahren Sie dort fort oder wählen Sie hier einen anderen Ordner",
+            "ask": "Kein verfügbares Projektverzeichnis gefunden: Bitte wählen Sie einen Ordner aus",
+            "cancel": "Noch kein Hauptordner festgelegt: Inhalt verbleibt im Editor, senden Sie erst nach Auswahl eines Ordners"
+        },
         "errUnknown": "Unbekannter Fehler",
         "errUnknownReason": "Unbekannte Ursache",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "Automatische Komprimierung: Fakten wurden gemäß der vollautomatischen Stufe extrahiert (nur einmalig; keine automatische Extraktion innerhalb der 5-Ebenen-Abkühlphase)",
         "allTxtTooBig": "⚠️ all.txt {0}MB überschreitet das Limit von {1}MB, Archivierung pausiert (SQLite ist intakt)",
         "featureWip": "Diese Funktion ist noch in Entwicklung",
+        "tasks": {
+            "inputBusy": "Der Editor enthält bereits Inhalt. Bitte zuerst senden oder löschen, bevor Sie eine Aufgabe starten",
+            "title": "One-Click-Aufgaben",
+            "cardCleanC": "Laufwerk C bereinigen",
+            "cardAutostartQd": "qd beim Start automatisch ausführen",
+            "cardEverything": "Everything installieren",
+            "cardStartupClean": "Langsamer PC?",
+            "cardSpotlight": "Spotlight-Suche",
+            "cardLocate": "locate Dateisuche"
+        },
+        "eflow": {
+            "adoptFail": "Automatische Einbindung des Dokumenten-Fundaments nicht erfolgreich:",
+            "adoptErr": "Automatische Einbindung des Dokumenten-Fundaments fehlgeschlagen:"
+        },
         "auditBtn": "Prüfung",
         "translateBtn": "Übersetzen",
         "auditCopied": "Audit-Text in die Zwischenablage kopiert ({0} KB). Kann in jeden KI-Dialog eingefügt werden.",
@@ -2365,6 +2388,33 @@
                 "status": "Letzter Update-Versuch",
                 "state": "Statusbibliotheks-Ereignisse"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "Wissensdatenbank-Management für alle Projekte (Übernahme / Diagnose / Deinstallation)",
+            "manage": "Verwalten",
+            "adopt": "Dieses Projekt einbinden / aktualisieren",
+            "check": "Diagnose",
+            "rotate": "Archivieren und aufräumen",
+            "turnOn": "Globale Übernahme aktivieren (alle Projekte)",
+            "turnOff": "Übernahme aufheben",
+            "confirmOn": "Erneut klicken, um die Übernahme zu bestätigen",
+            "confirmOff": "Erneut klicken, um die Aufhebung der Übernahme zu bestätigen",
+            "hintOn": "Globale Übernahme: Aktiviert",
+            "hintOff": "Globale Übernahme: Nicht aktiviert",
+            "on": "Globale Übernahme: An",
+            "off": "Globale Übernahme: Aus",
+            "docYes": "global.txt enthält Übernahmeregeln",
+            "docNo": "global.txt enthält keine Übernahmeregeln",
+            "mStandard": "Dieses Projekt: Eingebunden",
+            "mCustom": "Dieses Projekt: Eigene Regeln (unverändert)",
+            "mNone": "Dieses Projekt: Leer",
+            "loading": "Lädt…",
+            "noBridge": "Der aktuelle Client hat keinen Dateizugriff, Verwaltung ist nicht verfügbar",
+            "noDataRoot": "Benutzerverzeichnis kann nicht abgerufen werden",
+            "noCore": "Kernel nicht geladen (eflow/eflow-core.js fehlt), dieser Schritt kann nicht ausgeführt werden",
+            "noRoot": "Kein Projekt geöffnet",
+            "noOutput": "(Keine Ausgabe)"
         },
         "uiZoom": {}
     },

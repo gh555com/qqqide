@@ -283,8 +283,11 @@
             "filterPh": "Filter...",
             "sortByName": "Sort by filename",
             "sortByMtime": "Sort by modification time",
-            "rejectProgram": "This directory is a program directory and cannot be used as a project",
+            "rejectProgram": "This directory has a containment relationship with the qd running directory of this window ({p}) and cannot be added to the AI viewport",
             "rejectRoot": "Disk root directory cannot be used as a project"
+        },
+        "seat": {
+            "ready": "Ready · {p} You can start now"
         },
         "gaeaHostLoading": "Loading gaea host...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "Left AI Panel",
             "right": "Right AI Panel"
-        },
-        "seat": {
-            "ready": "Ready · {p} You can start now"
         }
     },
     "editor": {
         "copyPath": "Copy Path",
         "timelineNoRoot": "Unable to determine the project root directory for this file; timeline is unavailable",
         "timelineOpenFail": "Failed to open the timeline window. Please try again later.",
+        "timelineOpenTimeout": "Version comparison window timed out (no response); please try again later",
+        "timelineNoBridge": "Version comparison unavailable: Timeline bridge not ready; please restart the instance and try again",
         "minimap": "Minimap",
         "run": "Run",
         "runNoInterp": "Built-in interpreter not ready (missing components)",
@@ -801,12 +803,19 @@
             "allocShown": "— Unsent content is displayed in the message area above.",
             "allocRequeued": "-- Queued message retained in queue, retry available",
             "allocImgsRestored": "— Images restored to the edit bar, please try again",
+            "floorOccupied": "Floor number already in use; message not sent. Please try again.",
+            "saveFloorMissed": "Failed to save floor: Directory on disk no longer exists (moved or deleted); content not saved",
             "stallAbort": "Send stalled (>20 minutes without progress); automatically terminated",
             "stallAbortQoast": "Send stalled (>20 minutes without progress); automatically terminated. Click the layer's red box \"Resume Task\" to restore.",
             "stallAbortTool": "Tool execution stalled (no progress for over 2 hours); automatically terminated",
             "stallAbortToolQoast": "Tool execution stalled (no progress for over 2 hours) and was automatically terminated. Click the red box on the floor to \"Resume Task\"."
         },
         "needLogin": "Please log in via the menu bar first",
+        "seat": {
+            "blocked": "Project folder is occupied by another window: Continue there or select a different folder here",
+            "ask": "No available project directory found: Please select a folder",
+            "cancel": "No main folder selected yet: Content remains in the editor; select a folder before sending"
+        },
         "errUnknown": "Unknown error",
         "errUnknownReason": "Unknown reason",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "Auto-compress: Facts extracted per fully managed tier (one-time only; no further auto-extraction within 5-layer cooldown)",
         "allTxtTooBig": "⚠️ all.txt {0}MB exceeds the {1}MB limit. Archiving paused (SQLite intact).",
         "featureWip": "This feature is under construction",
+        "tasks": {
+            "inputBusy": "Editor contains content; send or clear it before selecting a task",
+            "title": "One-Click Tasks",
+            "cardCleanC": "Clean C Drive",
+            "cardAutostartQd": "qd Auto-start on Boot",
+            "cardEverything": "Install Everything",
+            "cardStartupClean": "Computer Lagging?",
+            "cardSpotlight": "Spotlight Search",
+            "cardLocate": "locate File Search"
+        },
+        "eflow": {
+            "adoptFail": "Auto-connect to Document Foundation unsuccessful:",
+            "adoptErr": "Auto-connect to Document Foundation failed:"
+        },
         "auditBtn": "Audit",
         "translateBtn": "Translate",
         "auditCopied": "Audit text copied to clipboard ({0} KB). You can paste it into any AI chat.",
@@ -2365,6 +2388,33 @@
                 "status": "Latest update attempt",
                 "state": "State store events"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "Knowledge base management for all projects (Takeover / Health Check / Uninstall)",
+            "manage": "Manage",
+            "adopt": "Connect / Upgrade Current Project",
+            "check": "Health Check",
+            "rotate": "Organize & Archive",
+            "turnOn": "Enable Global Takeover (All Projects)",
+            "turnOff": "Unlink",
+            "confirmOn": "Click again to confirm enabling takeover",
+            "confirmOff": "Click again to confirm unlinking",
+            "hintOn": "Global Takeover: Enabled",
+            "hintOff": "Global Takeover: Disabled",
+            "on": "Global Takeover: On",
+            "off": "Global Takeover: Off",
+            "docYes": "global.txt has takeover rules",
+            "docNo": "global.txt has no takeover rules",
+            "mStandard": "Current Project: Connected",
+            "mCustom": "Current Project: Your Custom Rules (Unchanged)",
+            "mNone": "Current Project: Blank Slate",
+            "loading": "Loading…",
+            "noBridge": "File access unavailable in current client; management disabled",
+            "noDataRoot": "Unable to access user directory",
+            "noCore": "Core not loaded (eflow/eflow-core.js missing); action unavailable",
+            "noRoot": "No project open",
+            "noOutput": "(No output)"
         },
         "uiZoom": {}
     },

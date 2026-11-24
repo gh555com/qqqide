@@ -119,6 +119,11 @@ var ExpertFlow = (function () {
     try { if (typeof _qoast === 'function') return _qoast(msg, { type: 'error', duration: 6000 }); } catch (e) { /* silent */ }
     try { console.warn('[eflow] ' + msg); } catch (e) { /* silent */ }
   }
+  // i18n 助手（面板内唯一入口；缺 i18n 时回退中文原文）
+  function _i18n(key, fb) {
+    try { if (typeof window !== 'undefined' && typeof window._qq === 'function') return window._qq(key, fb); } catch (e) { /* silent */ }
+    return fb;
+  }
 
   async function _adopt(projectRoot) {
     var root = _normRoot(projectRoot);
@@ -132,9 +137,9 @@ var ExpertFlow = (function () {
     try {
       var r = await core.run('upgrade', io, root, { keepRules: true });
       if (r && r.ok) _storeSetNow(KEY_MODE, MODE_STANDARD);
-      else _toast('文档地基自动接入没成功：' + ((r && r.text) || '（没有输出）'));
+      else _toast(_i18n('ai.eflow.adoptFail', '文档地基自动接入没成功：') + ((r && r.text) || _i18n('settings.eflow.noOutput', '（没有输出）')));
     } catch (e) {
-      _toast('文档地基自动接入失败：' + ((e && e.message) || e));
+      _toast(_i18n('ai.eflow.adoptErr', '文档地基自动接入失败：') + ((e && e.message) || e));
     }
   }
 

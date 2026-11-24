@@ -283,8 +283,11 @@
             "filterPh": "Filtrer...",
             "sortByName": "Trier par nom de fichier",
             "sortByMtime": "Trier par date de modification",
-            "rejectProgram": "Ce répertoire est un répertoire de programme et ne peut pas être utilisé comme projet",
+            "rejectProgram": "Ce répertoire a une relation d'inclusion avec le répertoire d'exécution de qd dans cette fenêtre ({p}), il ne peut pas être ajouté à la vue IA",
             "rejectRoot": "La racine du disque ne peut pas servir de projet"
+        },
+        "seat": {
+            "ready": "Prêt · {p} Vous pouvez commencer directement"
         },
         "gaeaHostLoading": "Chargement de gaea host...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "Panneau IA gauche",
             "right": "Panneau IA droit"
-        },
-        "seat": {
-            "ready": "Prêt · {p} Vous pouvez commencer directement"
         }
     },
     "editor": {
         "copyPath": "Copier le chemin",
         "timelineNoRoot": "Impossible de déterminer le répertoire racine du projet pour ce fichier, la chronologie n'est pas disponible",
         "timelineOpenFail": "Échec de l'ouverture de la fenêtre de chronologie, veuillez réessayer ultérieurement",
+        "timelineOpenTimeout": "Délai d'ouverture de la fenêtre de comparaison des versions dépassé (aucune réponse), veuillez réessayer ultérieurement",
+        "timelineNoBridge": "Comparaison des versions indisponible : le pont de la chronologie n'est pas prêt, veuillez redémarrer l'instance et réessayer",
         "minimap": "Minimap",
         "run": "Exécuter",
         "runNoInterp": "L'interpréteur intégré n'est pas prêt (composants manquants)",
@@ -801,12 +803,19 @@
             "allocShown": "—— Le contenu non envoyé est affiché dans la zone de messages ci-dessus.",
             "allocRequeued": "—— Le message en file d'attente a été conservé et peut être réessayé",
             "allocImgsRestored": "—— Les images ont été replacées dans la barre d'édition, veuillez réessayer",
+            "floorOccupied": "Numéro d'étage déjà utilisé, envoi annulé — veuillez réessayer",
+            "saveFloorMissed": "Échec de l'enregistrement de l'étage : le répertoire de l'étage sur le disque n'existe plus (déplacé ou supprimé), le contenu n'a pas été sauvegardé",
             "stallAbort": "L'envoi bloqué (>20 minutes sans progression) a été automatiquement arrêté",
             "stallAbortQoast": "L'envoi bloqué (>20 minutes sans progression) a été automatiquement arrêté, vous pouvez cliquer sur le cadre rouge du niveau « Continuer la tâche » pour reprendre",
             "stallAbortTool": "Exécution de l'outil bloquée (aucune progression depuis plus de 2 heures), arrêt automatique",
             "stallAbortToolQoast": "L'exécution de l'outil est bloquée (aucune progression depuis plus de 2 heures) et a été automatiquement arrêtée. Vous pouvez cliquer sur le cadre rouge de l'étage pour « Continuer la tâche »."
         },
         "needLogin": "Veuillez d'abord cliquer sur Connexion dans le menu",
+        "seat": {
+            "blocked": "Le dossier du projet est déjà utilisé par une autre fenêtre : veuillez continuer dans cette fenêtre ou sélectionner un autre dossier ici",
+            "ask": "Impossible de trouver un répertoire de projet disponible : veuillez sélectionner un dossier",
+            "cancel": "Aucun dossier principal défini : le contenu reste dans la zone d'édition, envoyez après avoir sélectionné un dossier"
+        },
         "errUnknown": "Erreur inconnue",
         "errUnknownReason": "Raison inconnue",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "Compression automatique : faits extraits selon le niveau de gestion complète (une seule fois, aucune extraction automatique pendant le refroidissement de 5 niveaux)",
         "allTxtTooBig": "⚠️ all.txt {0}MB dépasse la limite de {1}MB, l'archivage est suspendu (SQLite intact)",
         "featureWip": "Cette fonctionnalité est en cours de développement",
+        "tasks": {
+            "inputBusy": "La zone d'édition contient déjà du contenu, veuillez envoyer ou effacer avant de lancer la tâche",
+            "title": "Tâches en un clic",
+            "cardCleanC": "Nettoyer le disque C",
+            "cardAutostartQd": "Démarrage automatique de qd",
+            "cardEverything": "Installer Everything",
+            "cardStartupClean": "L'ordinateur est lent ?",
+            "cardSpotlight": "Recherche Spotlight",
+            "cardLocate": "Recherche de fichiers locate"
+        },
+        "eflow": {
+            "adoptFail": "La connexion automatique à la base documentaire a échoué :",
+            "adoptErr": "Échec de la connexion automatique à la base documentaire :"
+        },
         "auditBtn": "Audit",
         "translateBtn": "Traduire",
         "auditCopied": "Texte d'audit copié dans le presse-papiers ({0} Ko), vous pouvez le coller dans n'importe quelle boîte de dialogue IA.",
@@ -2365,6 +2388,33 @@
                 "status": "Dernière tentative de mise à jour",
                 "state": "Événements de la base d'états"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "Gestion de la base de connaissances pour tous les projets (prise en charge / diagnostic / désinstallation)",
+            "manage": "Gérer",
+            "adopt": "Connecter / Mettre à niveau ce projet",
+            "check": "Diagnostic",
+            "rotate": "Organiser et archiver",
+            "turnOn": "Activer la prise en charge globale (tous les projets)",
+            "turnOff": "Annuler la prise en charge",
+            "confirmOn": "Cliquez à nouveau pour confirmer l'activation de la prise en charge",
+            "confirmOff": "Cliquez à nouveau pour confirmer l'annulation de la prise en charge",
+            "hintOn": "Prise en charge globale : Activée",
+            "hintOff": "Prise en charge globale : Non activée",
+            "on": "Prise en charge globale : Activée",
+            "off": "Prise en charge globale : Désactivée",
+            "docYes": "global.txt contient des règles de prise en charge",
+            "docNo": "global.txt ne contient aucune règle de prise en charge",
+            "mStandard": "Ce projet : Connecté",
+            "mCustom": "Ce projet : Vos propres règles (inchangées)",
+            "mNone": "Ce projet : Page blanche",
+            "loading": "Chargement…",
+            "noBridge": "Le client actuel n'a pas la capacité d'accès aux fichiers, la gestion est indisponible",
+            "noDataRoot": "Impossible d'accéder au répertoire utilisateur",
+            "noCore": "Le noyau n'est pas chargé (eflow/eflow-core.js manquant), cette action est impossible",
+            "noRoot": "Aucun projet ouvert",
+            "noOutput": "(Aucune sortie)"
         },
         "uiZoom": {}
     },

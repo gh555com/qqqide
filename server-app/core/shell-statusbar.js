@@ -894,16 +894,27 @@
     }
   }
 
-  // 从公共时间服务器获取 UTC 时间（不请求我们服务器）
-  function calibrateFromPublicTime() {
-    // 首先检查是否有新的 SSE 锚点（最高优先级）
+  // 从公共时间服务器获取 UTC 时间（不请求我们服务器）  // ★ 失败退避：两个公共源同时挂（502/DNS）时不再每分钟敲一遍（日志噪音 + 无谓请求）。
+  //   退避 1/2/5/10/15 分钟封顶；成功即清零。校准只服务于时钟显示，缺它照常走本地钟。
+  var _calFails = 0;
+  var _calNextAt = 0;
+  function _calOk() { _calFails = 0; _calNextAt = 0; }
+  function _calFail() {
+    _calFails++;
+    var ladder = [60000, 120000, 300000, 600000, 900000];
+    _calNextAt = Date.now() + ladder[Math.min(_calFails - 1, ladder.length - 1)];
+  }
+
+  function calibrateFromPublicTime() {
+    // 首先检查是否有新的 SSE 锚点（最高优先级）
     pollSseAnchor();
     // ★ 2026-10-02 请求治理：任何来源新鲜锚点（<10 分钟）→ 跳过公共校准
     //   （旧实现只认 'sse' 源 → 无 SSE 时每分钟重拉一次 cloudflare trace；单调钟漂移可忽略）
     if (_timeAnchor && _timeAnchor.perfNow) {
       var age = performance.now() - _timeAnchor.perfNow;
       if (age < 600000) return; // 锚点 < 10 分钟，够新鲜
-    }
+    }
+    if (Date.now() < _calNextAt) return;   // 两源刚都失败过 → 退避期不打网络
 
     // 主：Cloudflare trace（全球 CDN，含中国）→ 解析 ts=Unix秒
     fetch('https://www.cloudflare.com/cdn-cgi/trace', { cache: 'no-cache' })
@@ -913,11 +924,11 @@
         if (m) {
           _timeAnchor = {
             perfNow: performance.now(),
-            utcMs: parseFloat(m[1]) * 1000,
-            source: 'cf'
-          };
-          return;
-        }
+            utcMs: parseFloat(m[1]) * 1000,            source: 'cf'
+          };
+          _calOk();
+          return;
+        }
         throw new Error('no ts');
       })
       .catch(function () {
@@ -929,14 +940,16 @@
               var dt = data.dateTime;
               if (!/[Zz+\-]\d{2}:\d{2}$/.test(dt) && !/[Zz]$/.test(dt)) dt += 'Z';
               _timeAnchor = {
-                perfNow: performance.now(),
-                utcMs: new Date(dt).getTime(),
-                source: 'timeapi'
-              };
-            }
+                perfNow: performance.now(),                utcMs: new Date(dt).getTime(),
+                source: 'timeapi'
+              };
+              _calOk();
+            } else {
+              _calFail();
+            }
           });
       })
-      .catch(function () { /* 两次都失败，沿用旧锚点 */ });
+      .catch(function () { _calFail(); /* 两次都失败，沿用旧锚点 + 退避 */ });
   }
 
   // 从单调锚点推算当前 UTC 毫秒

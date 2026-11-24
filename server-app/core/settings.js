@@ -1373,7 +1373,7 @@
       var o = { apply: true, keepRules: true, dataRoot: dr2, via: 'ui' };   // via=ui：人在面板里二次确认过
       if (extra) Object.keys(extra).forEach(function (k) { o[k] = extra[k]; });
       var r = await core.run(op, _eflowIO(bridge), root, o);
-      _eflowOut = (r && r.text) || '（没有输出）';
+      _eflowOut = (r && r.text) || _i('settings.eflow.noOutput', '（没有输出）');
       _eflowOutBad = !(r && r.ok);
     } catch (e) {
       _eflowOut = '✗ ' + ((e && e.message) || e);

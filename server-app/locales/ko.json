@@ -283,8 +283,11 @@
             "filterPh": "필터링...",
             "sortByName": "파일 이름 순 정렬",
             "sortByMtime": "수정 시간 순 정렬",
-            "rejectProgram": "해당 디렉터리는 프로그램 디렉터리이므로 프로젝트로 사용할 수 없습니다.",
+            "rejectProgram": "이 디렉터리는 현재 창의 qd 실행 디렉터리({p})와 포함 관계가 있어 AI 뷰포트에 추가할 수 없습니다.",
             "rejectRoot": "디스크 루트 디렉터리는 프로젝트로 사용할 수 없습니다"
+        },
+        "seat": {
+            "ready": "준비 완료 · {p} 바로 시작할 수 있습니다"
         },
         "gaeaHostLoading": "gaea host 로딩 중...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "왼쪽 AI 패널",
             "right": "오른쪽 AI 패널"
-        },
-        "seat": {
-            "ready": "준비 완료 · {p} 바로 시작할 수 있습니다"
         }
     },
     "editor": {
         "copyPath": "경로 복사",
         "timelineNoRoot": "이 파일의 프로젝트 루트 디렉터리를 확인할 수 없어 타임라인을 사용할 수 없습니다",
         "timelineOpenFail": "타임라인 창을 열 수 없습니다. 잠시 후 다시 시도하세요.",
+        "timelineOpenTimeout": "버전 비교 창 열기 시간 초과 (응답 없음). 잠시 후 다시 시도하세요.",
+        "timelineNoBridge": "버전 비교를 사용할 수 없습니다: 타임라인 브릿지가 준비되지 않았습니다. 인스턴스를 재시작한 후 다시 시도하세요.",
         "minimap": "미니맵",
         "run": "실행",
         "runNoInterp": "내장 인터프리터가 준비되지 않았습니다 (구성 요소 누락)",
@@ -801,12 +803,19 @@
             "allocShown": "-- 전송되지 않은 내용은 위 메시지 영역에 표시되었습니다.",
             "allocRequeued": "—— 대기열에 메시지가 유지되었으며, 재시도할 수 있습니다",
             "allocImgsRestored": "——이미지가 편집 막대로 반환되었습니다. 다시 시도하세요.",
+            "floorOccupied": "레이어 번호가 이미 사용 중이므로 전송되지 않았습니다. 다시 시도하세요.",
+            "saveFloorMissed": "레이어 저장 실패: 디스크의 레이어 디렉터리가 존재하지 않습니다 (이동 또는 삭제됨). 이번 내용은 저장되지 않았습니다.",
             "stallAbort": "전송 정체(20분 이상 진행 없음)로 인해 자동으로 종료되었습니다.",
             "stallAbortQoast": "전송 정체(20분 이상 진행 없음)로 인해 자동으로 종료되었습니다. 층의 빨간 프레임에 있는 '작업 계속하기'를 클릭하여 복구할 수 있습니다.",
             "stallAbortTool": "도구 실행이 중단되어(2시간 이상 진행 없음) 자동으로 종료되었습니다",
             "stallAbortToolQoast": "도구 실행이 중단되었습니다(2시간 이상 진행 없음). 자동으로 종료되었으며, 층의 빨간 프레임에 있는 '작업 계속'을 클릭하여 재개할 수 있습니다."
         },
         "needLogin": "메뉴 바에서 먼저 로그인하세요.",
+        "seat": {
+            "blocked": "프로젝트 폴더가 다른 창에서 사용 중입니다. 해당 창에서 계속하거나 여기에서 다른 폴더를 선택하세요.",
+            "ask": "사용 가능한 프로젝트 디렉터리를 찾을 수 없습니다: 폴더를 선택하세요.",
+            "cancel": "기본 폴더가 아직 설정되지 않았습니다. 내용은 편집기에 유지되며, 폴더를 선택한 후 다시 보내세요."
+        },
         "errUnknown": "알 수 없는 오류",
         "errUnknownReason": "알 수 없는 이유",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "자동 압축: 완전 자동화 모드로 사실 추출 완료 (이번 한 번만 적용, 5층 쿨다운 기간 동안에는 자동 추출되지 않음)",
         "allTxtTooBig": "⚠️ all.txt {0}MB가 {1}MB 상한을 초과하여 아카이브가 일시 중지되었습니다(SQLite는 정상입니다).",
         "featureWip": "이 기능은 개발 중입니다.",
+        "tasks": {
+            "inputBusy": "편집기에 내용이 있습니다. 작업을 시작하기 전에 먼저 보내거나 지우세요.",
+            "title": "원클릭 작업",
+            "cardCleanC": "C 드라이브 정리",
+            "cardAutostartQd": "qd 부팅 시 자동 시작",
+            "cardEverything": "Everything 설치",
+            "cardStartupClean": "컴퓨터가 느려지나요?",
+            "cardSpotlight": "Spotlight 검색",
+            "cardLocate": "locate 파일 검색"
+        },
+        "eflow": {
+            "adoptFail": "문서 기반 자동 연결에 성공하지 못했습니다:",
+            "adoptErr": "문서 기반 자동 연결 실패:"
+        },
         "auditBtn": "감사",
         "translateBtn": "번역",
         "auditCopied": "감사 텍스트가 클립보드에 복사되었습니다 ({0} KB). AI 대화창에 붙여넣을 수 있습니다.",
@@ -2365,6 +2388,33 @@
                 "status": "최근 업데이트 시도",
                 "state": "상태 저장소 이벤트"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "모든 프로젝트의 지식 베이스 관리 (연결 / 진단 / 제거)",
+            "manage": "관리",
+            "adopt": "현재 프로젝트 연결 / 업그레이드",
+            "check": "진단",
+            "rotate": "정리 및 아카이브",
+            "turnOn": "전역 연결 켜기 (모든 프로젝트)",
+            "turnOff": "연결 해제",
+            "confirmOn": "다시 클릭: 연결 활성화 확인",
+            "confirmOff": "다시 클릭: 연결 해제 확인",
+            "hintOn": "전역 연결: 활성화됨",
+            "hintOff": "전역 연결: 비활성화됨",
+            "on": "전역 연결: 켜기",
+            "off": "전역 연결: 끄기",
+            "docYes": "global.txt 에 연결 규칙 있음",
+            "docNo": "global.txt 에 연결 규칙 없음",
+            "mStandard": "현재 프로젝트: 연결됨",
+            "mCustom": "현재 프로젝트: 사용자 정의 규칙 (변경 불가)",
+            "mNone": "현재 프로젝트: 미설정",
+            "loading": "읽는 중…",
+            "noBridge": "현재 클라이언트에 파일 접근 권한이 없어 관리 기능을 사용할 수 없습니다.",
+            "noDataRoot": "사용자 디렉터리를 가져올 수 없습니다.",
+            "noCore": "코어가 로드되지 않았습니다 (eflow/eflow-core.js 누락). 이 작업은 수행할 수 없습니다.",
+            "noRoot": "열린 프로젝트가 없습니다.",
+            "noOutput": "(출력 없음)"
         },
         "uiZoom": {}
     },

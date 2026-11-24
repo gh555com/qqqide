@@ -33,6 +33,9 @@ function harness(opts) {
         { url: 'https://qqq.test/', runScripts: 'outside-only', pretendToBeVisual: true }
     );
     const win = dom.window;
+    // ★ jsdom 构造完 readyState 仍是 'loading'，模块会把 boot 挂在 DOMContentLoaded 上（真实触发时刻随机器浮动，
+    //   实测首测可达 200ms）→ 固定 tick(40) 会随机扑空。钉成 'complete'：模块走同步 boot 分支，测试窗口恒定。
+    Object.defineProperty(win.document, 'readyState', { configurable: true, get: function () { return 'complete'; } });
     win.qqqBootInfo = { platform: opts.platform || 'win32', arch: opts.arch || 'x64' };
     // ★ 卡片不再直接调壳层：桥只要存在即可（真跑在对话里，走 run_task 工具）
     win.qqqideBridge = { tasks: { run: function () { win.__ran = true; return Promise.resolve({ ok: true }); }, onProgress: function () { return function () { }; } } };
@@ -48,6 +51,8 @@ function harness(opts) {
         if (opts.fetchFail) return Promise.reject(new Error('offline'));
         return Promise.resolve({ ok: true, json: function () { return Promise.resolve(opts.payload || ONLINE); } });
     };
+    if (opts.questStore) win.questStore = opts.questStore;      // 条件卡判定输入（必须在 boot 前就位）
+    if (opts.ExpertFlow) win.ExpertFlow = opts.ExpertFlow;
     win.eval(SRC);
     return { dom: dom, win: win };
 }
@@ -117,11 +122,12 @@ test('tasks: 线路全挂 → 出厂兜底 5 张卡（清理 / 自启 / 文档�
 
 // ── 条件卡（when）：服务器只给条件名，判定在客户端本地 ─────────────────────────
 function harnessWhen(state) {
-    const h = harness({ fetchFail: true });
-    const win = h.win;
-    win.questStore = { getProjectRoot: function () { return 'C:/proj'; } };
-    win.ExpertFlow = { globalOn: function () { return Promise.resolve(!!state.globalOn); } };
-    return h;
+    // ★ 必须在 eval 前就位：模块 boot 是同步的，boot 时读不到 ExpertFlow 会当场 fail-open 并把判定缓存进 _whenState
+    return harness({
+        fetchFail: true,
+        questStore: { getProjectRoot: function () { return 'C:/proj'; } },
+        ExpertFlow: { globalOn: function () { return Promise.resolve(!!state.globalOn); } }
+    });
 }
 
 for (const [name, state, want] of [

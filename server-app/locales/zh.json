@@ -974,7 +974,18 @@
     "allTxtTooBig": "⚠️ all.txt {0}MB 超过 {1}MB 上限，归档已暂停（SQLite 完好）",
     "featureWip": "该功能正在建设中",
     "tasks": {
-      "inputBusy": "编辑框里已有内容，先发送或清空再点任务"
+      "inputBusy": "编辑框里已有内容，先发送或清空再点任务",
+      "title": "一键任务",
+      "cardCleanC": "清理 C 盘",
+      "cardAutostartQd": "qd 开机自启",
+      "cardEverything": "装 Everything",
+      "cardStartupClean": "电脑卡顿？",
+      "cardSpotlight": "Spotlight 搜索",
+      "cardLocate": "locate 文件搜索"
+    },
+    "eflow": {
+      "adoptFail": "文档地基自动接入没成功：",
+      "adoptErr": "文档地基自动接入失败："
     },
     "auditBtn": "审计",
     "translateBtn": "翻译",
@@ -2397,7 +2408,8 @@
       "noBridge": "当前客户端没有文件访问能力，管理不可用",
       "noDataRoot": "拿不到用户级目录",
       "noCore": "内核没加载（eflow/eflow-core.js 缺失），这一步做不了",
-      "noRoot": "没有打开的项目"
+      "noRoot": "没有打开的项目",
+      "noOutput": "（没有输出）"
     }
   },
   "squad": {

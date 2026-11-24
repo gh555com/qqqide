@@ -283,8 +283,11 @@
             "filterPh": "筛选...",
             "sortByName": "按文件名排序",
             "sortByMtime": "按修改时间排序",
-            "rejectProgram": "该目录是程序目录，不能作为项目",
+            "rejectProgram": "该目录与本窗口 qd 的运行目录（{p}）有包含关系，不能添加进 AI 视口",
             "rejectRoot": "磁盘根目录不能作为项目"
+        },
+        "seat": {
+            "ready": "已就绪 · {p} 你可以直接开始"
         },
         "gaeaHostLoading": "gaea host 加载中...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "左 AI 面板",
             "right": "右 AI 面板"
-        },
-        "seat": {
-            "ready": "已就绪 · {p} 你可以直接开始"
         }
     },
     "editor": {
         "copyPath": "复制路径",
         "timelineNoRoot": "无法确定该文件的项目根目录，时间线不可用",
         "timelineOpenFail": "时间线窗口打开失败，请稍后重试",
+        "timelineOpenTimeout": "版本比较窗口打开超时（暂无响应），请稍后重试",
+        "timelineNoBridge": "版本比较不可用：时间线桥未就绪，请重启实例后重试",
         "minimap": "小地图",
         "run": "运行",
         "runNoInterp": "内置解释器未就绪（组件缺失）",
@@ -801,12 +803,19 @@
             "allocShown": "——未发出的内容已显示在上方消息区",
             "allocRequeued": "——排队消息已保留在队列中，可重试",
             "allocImgsRestored": "——图片已放回编辑条，请重试",
+            "floorOccupied": "楼层编号被占用，本次未发送——请重试",
+            "saveFloorMissed": "楼层保存失败：磁盘上的楼层目录已不存在（被移走或删除），本次内容未落盘",
             "stallAbort": "发送停滞（>20 分钟无进展）已自动终止",
             "stallAbortQoast": "发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复",
             "stallAbortTool": "工具执行停滞（超 2 小时无进展）已自动终止",
             "stallAbortToolQoast": "工具执行停滞（超 2 小时无进展）已自动终止，可点击楼层红框「继续任务」恢复"
         },
         "needLogin": "请先在菜单栏点击登录",
+        "seat": {
+            "blocked": "项目文件夹已被另一个窗口占用：请在那个窗口继续，或在这里选择其他文件夹",
+            "ask": "找不到可用的项目目录：请选择一个文件夹",
+            "cancel": "还没有主文件夹：内容留在编辑框，选好文件夹后再发送"
+        },
         "errUnknown": "未知错误",
         "errUnknownReason": "未知原因",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "自动压缩：已按全托管档位提取事实（仅此一次，5 层冷却内不再自动提取）",
         "allTxtTooBig": "⚠️ all.txt {0}MB 超过 {1}MB 上限，归档已暂停（SQLite 完好）",
         "featureWip": "该功能正在建设中",
+        "tasks": {
+            "inputBusy": "编辑框里已有内容，先发送或清空再点任务",
+            "title": "一键任务",
+            "cardCleanC": "清理 C 盘",
+            "cardAutostartQd": "qd 开机自启",
+            "cardEverything": "装 Everything",
+            "cardStartupClean": "电脑卡顿？",
+            "cardSpotlight": "Spotlight 搜索",
+            "cardLocate": "locate 文件搜索"
+        },
+        "eflow": {
+            "adoptFail": "文档地基自动接入没成功：",
+            "adoptErr": "文档地基自动接入失败："
+        },
         "auditBtn": "审计",
         "translateBtn": "翻译",
         "auditCopied": "审计文本已复制到剪贴板 ({0} KB)，可粘贴到任意 AI 对话框。",
@@ -2360,6 +2383,33 @@
             "diagF.render": "渲染进程崩溃",
             "diagF.crash": "崩溃网事件流",
             "diagF.recovery": "崩溃对账报告"
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "一切项目的知识库管理（接管 / 体检 / 卸载）",
+            "manage": "管理",
+            "adopt": "接入 / 升级本项目",
+            "check": "体检",
+            "rotate": "整理归档",
+            "turnOn": "开启全局接管（一切项目）",
+            "turnOff": "取消接管",
+            "confirmOn": "再点一次：确认开启接管",
+            "confirmOff": "再点一次：确认取消接管",
+            "hintOn": "全局接管：已开启",
+            "hintOff": "全局接管：未开启",
+            "on": "全局接管：开",
+            "off": "全局接管：关",
+            "docYes": "global.txt 有接管规则",
+            "docNo": "global.txt 无接管规则",
+            "mStandard": "本项目：已接入",
+            "mCustom": "本项目：你自己的规则（不动）",
+            "mNone": "本项目：白纸",
+            "loading": "读取中…",
+            "noBridge": "当前客户端没有文件访问能力，管理不可用",
+            "noDataRoot": "拿不到用户级目录",
+            "noCore": "内核没加载（eflow/eflow-core.js 缺失），这一步做不了",
+            "noRoot": "没有打开的项目",
+            "noOutput": "（没有输出）"
         }
     },
     "squad": {

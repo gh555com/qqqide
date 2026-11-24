@@ -283,8 +283,11 @@
             "filterPh": "Lọc...",
             "sortByName": "Sắp xếp theo tên tệp",
             "sortByMtime": "Sắp xếp theo thời gian sửa đổi",
-            "rejectProgram": "Thư mục này là thư mục chương trình, không thể dùng làm dự án",
+            "rejectProgram": "Thư mục này có quan hệ bao hàm với thư mục chạy qd của cửa sổ hiện tại ({p}), không thể thêm vào khung nhìn AI",
             "rejectRoot": "Thư mục gốc của ổ đĩa không thể làm dự án"
+        },
+        "seat": {
+            "ready": "Sẵn sàng · {p} Bạn có thể bắt đầu ngay"
         },
         "gaeaHostLoading": "Đang tải gaea host...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "Bảng AI bên trái",
             "right": "Bảng AI bên phải"
-        },
-        "seat": {
-            "ready": "Sẵn sàng · {p} Bạn có thể bắt đầu ngay"
         }
     },
     "editor": {
         "copyPath": "Sao chép đường dẫn",
         "timelineNoRoot": "Không thể xác định thư mục gốc của dự án cho tệp này, dòng thời gian không khả dụng",
         "timelineOpenFail": "Không thể mở cửa sổ dòng thời gian, vui lòng thử lại sau",
+        "timelineOpenTimeout": "Hết thời gian chờ mở cửa sổ so sánh phiên bản (chưa có phản hồi), vui lòng thử lại sau",
+        "timelineNoBridge": "So sánh phiên bản không khả dụng: Cầu nối dòng thời gian chưa sẵn sàng, vui lòng khởi động lại instance và thử lại",
         "minimap": "Bản đồ nhỏ",
         "run": "Chạy",
         "runNoInterp": "Trình thông dịch tích hợp chưa sẵn sàng (thiếu thành phần)",
@@ -801,12 +803,19 @@
             "allocShown": "——Nội dung chưa gửi đã được hiển thị trong khu vực tin nhắn phía trên",
             "allocRequeued": "—— Tin nhắn xếp hàng đã được giữ lại trong hàng đợi, có thể thử lại",
             "allocImgsRestored": "——Ảnh đã được đưa trở lại thanh chỉnh sửa, vui lòng thử lại",
+            "floorOccupied": "Số tầng đã bị chiếm dụng, lần này không gửi — vui lòng thử lại",
+            "saveFloorMissed": "Lưu tầng thất bại: Thư mục tầng trên đĩa đã không còn tồn tại (đã bị di chuyển hoặc xóa), nội dung lần này chưa được ghi vào đĩa",
             "stallAbort": "Gửi bị đình trệ (>20 phút không tiến triển) đã tự động hủy",
             "stallAbortQoast": "Gửi bị đình trệ (>20 phút không tiến triển) đã tự động hủy, có thể nhấp vào khung đỏ của tầng \"Tiếp tục nhiệm vụ\" để khôi phục",
             "stallAbortTool": "Thực thi công cụ bị treo (không có tiến triển sau hơn 2 giờ) đã tự động dừng",
             "stallAbortToolQoast": "Công cụ thực thi bị treo (không có tiến triển sau hơn 2 giờ) đã tự động dừng. Nhấp vào khung đỏ ở tầng để «Tiếp tục tác vụ» và khôi phục."
         },
         "needLogin": "Vui lòng nhấp vào Đăng nhập trên thanh menu trước",
+        "seat": {
+            "blocked": "Thư mục dự án đang bị chiếm dụng bởi cửa sổ khác: Vui lòng tiếp tục trong cửa sổ đó hoặc chọn thư mục khác tại đây",
+            "ask": "Không tìm thấy thư mục dự án khả dụng: Vui lòng chọn một thư mục",
+            "cancel": "Chưa có thư mục chính: Nội dung vẫn giữ trong khung soạn thảo, hãy chọn thư mục rồi gửi sau"
+        },
         "errUnknown": "Lỗi không xác định",
         "errUnknownReason": "Nguyên nhân không xác định",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "Tự động nén: Đã trích xuất sự kiện theo mức quản lý hoàn toàn (chỉ một lần, không tự động trích xuất trong thời gian chờ 5 tầng)",
         "allTxtTooBig": "⚠️ all.txt {0}MB vượt quá giới hạn {1}MB, việc lưu trữ đã tạm dừng (SQLite vẫn hoạt động tốt)",
         "featureWip": "Tính năng này đang được phát triển",
+        "tasks": {
+            "inputBusy": "Khung soạn thảo đã có nội dung, hãy gửi hoặc xóa trước khi chọn tác vụ",
+            "title": "Tác vụ một chạm",
+            "cardCleanC": "Dọn dẹp ổ C",
+            "cardAutostartQd": "qd khởi động cùng hệ thống",
+            "cardEverything": "Cài đặt Everything",
+            "cardStartupClean": "Máy tính bị chậm?",
+            "cardSpotlight": "Tìm kiếm Spotlight",
+            "cardLocate": "Tìm kiếm tệp locate"
+        },
+        "eflow": {
+            "adoptFail": "Tự động kết nối nền tảng tài liệu không thành công:",
+            "adoptErr": "Tự động kết nối nền tảng tài liệu thất bại:"
+        },
         "auditBtn": "Kiểm toán",
         "translateBtn": "Dịch",
         "auditCopied": "Văn bản kiểm tra đã được sao chép vào clipboard ({0} KB), có thể dán vào bất kỳ hộp thoại AI nào.",
@@ -2365,6 +2388,33 @@
                 "render": "Tiến trình render bị sập",
                 "fails": "Số lần thất bại"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "Quản lý cơ sở tri thức cho mọi dự án (tiếp quản / kiểm tra sức khỏe / gỡ cài đặt)",
+            "manage": "Quản lý",
+            "adopt": "Kết nối / Nâng cấp dự án này",
+            "check": "Kiểm tra sức khỏe",
+            "rotate": "Sắp xếp và lưu trữ",
+            "turnOn": "Bật tiếp quản toàn cục (tất cả dự án)",
+            "turnOff": "Hủy tiếp quản",
+            "confirmOn": "Nhấn lại lần nữa: Xác nhận bật tiếp quản",
+            "confirmOff": "Nhấn lại lần nữa: Xác nhận hủy tiếp quản",
+            "hintOn": "Tiếp quản toàn cục: Đã bật",
+            "hintOff": "Tiếp quản toàn cục: Chưa bật",
+            "on": "Tiếp quản toàn cục: Bật",
+            "off": "Tiếp quản toàn cục: Tắt",
+            "docYes": "global.txt có quy tắc tiếp quản",
+            "docNo": "global.txt không có quy tắc tiếp quản",
+            "mStandard": "Dự án này: Đã kết nối",
+            "mCustom": "Dự án này: Quy tắc tùy chỉnh của bạn (không thay đổi)",
+            "mNone": "Dự án này: Trống",
+            "loading": "Đang đọc…",
+            "noBridge": "Ứng dụng khách hiện tại không có khả năng truy cập tệp, tính năng quản lý không khả dụng",
+            "noDataRoot": "Không thể lấy thư mục cấp người dùng",
+            "noCore": "Nhân chưa được tải (thiếu eflow/eflow-core.js), không thể thực hiện bước này",
+            "noRoot": "Chưa mở dự án nào",
+            "noOutput": "(Không có đầu ra)"
         },
         "uiZoom": {}
     },

@@ -283,8 +283,11 @@
             "filterPh": "篩選...",
             "sortByName": "依檔名排序",
             "sortByMtime": "依修改時間排序",
-            "rejectProgram": "該目錄為程式目錄，無法作為專案",
+            "rejectProgram": "該目錄與本視窗 qd 的執行目錄（{p}）存在包含關係，無法加入 AI 視口",
             "rejectRoot": "磁碟根目錄不能作為專案"
+        },
+        "seat": {
+            "ready": "已就緒 · {p} 您可以直接開始"
         },
         "gaeaHostLoading": "gaea host 載入中...",
         "onl": {
@@ -441,15 +444,14 @@
         "bulb": {
             "left": "左側 AI 面板",
             "right": "右側 AI 面板"
-        },
-        "seat": {
-            "ready": "已就緒 · {p} 您可以直接開始"
         }
     },
     "editor": {
         "copyPath": "複製路徑",
         "timelineNoRoot": "無法確定該檔案的專案根目錄，時間軸不可用",
         "timelineOpenFail": "時間軸視窗開啟失敗，請稍後再試",
+        "timelineOpenTimeout": "版本比較視窗開啟逾時（暫無回應），請稍後重試",
+        "timelineNoBridge": "版本比較不可用：時間線橋接器尚未就緒，請重新啟動執行個體後重試",
         "minimap": "縮圖導覽",
         "run": "執行",
         "runNoInterp": "內建直譯器尚未就緒（缺少元件）",
@@ -801,12 +803,19 @@
             "allocShown": "——未發出的內容已顯示在上方訊息區",
             "allocRequeued": "——排隊訊息已保留在佇列中，可重試",
             "allocImgsRestored": "——圖片已放回編輯列，請重試",
+            "floorOccupied": "樓層編號已被佔用，本次未發送——請重試",
+            "saveFloorMissed": "樓層儲存失敗：磁碟上的樓層目錄已不存在（被移動或刪除），本次內容未寫入磁碟",
             "stallAbort": "傳送停滯（>20 分鐘無進展）已自動終止",
             "stallAbortQoast": "發送停滯（>20 分鐘無進展）已自動終止，可點擊樓層紅框「繼續任務」恢復",
             "stallAbortTool": "工具執行停滯（超過 2 小時無進展）已自動終止",
             "stallAbortToolQoast": "工具執行停滯（超過 2 小時無進展）已自動終止，可點擊樓層紅框「繼續任務」恢復"
         },
         "needLogin": "請先在選單列點擊登入",
+        "seat": {
+            "blocked": "專案資料夾已被另一個視窗佔用：請在該視窗繼續操作，或在此選擇其他資料夾",
+            "ask": "找不到可用的專案目錄：請選擇一個資料夾",
+            "cancel": "尚未設定主資料夾：內容保留在編輯框中，請選好資料夾後再發送"
+        },
         "errUnknown": "未知錯誤",
         "errUnknownReason": "未知原因",
         "diag": {
@@ -964,6 +973,20 @@
         "autoCompressFacts": "自動壓縮：已按全託管檔位提取事實（僅此一次，5 層冷卻內不再自動提取）",
         "allTxtTooBig": "⚠️ all.txt {0}MB 超過 {1}MB 上限，歸檔已暫停（SQLite 完好）",
         "featureWip": "該功能正在開發中",
+        "tasks": {
+            "inputBusy": "編輯框中已有內容，請先發送或清空後再點擊任務",
+            "title": "一鍵任務",
+            "cardCleanC": "清理 C 槽",
+            "cardAutostartQd": "qd 開機自動啟動",
+            "cardEverything": "安裝 Everything",
+            "cardStartupClean": "電腦卡頓？",
+            "cardSpotlight": "Spotlight 搜尋",
+            "cardLocate": "locate 檔案搜尋"
+        },
+        "eflow": {
+            "adoptFail": "文件地基自動接入未成功：",
+            "adoptErr": "文件地基自動接入失敗："
+        },
         "auditBtn": "審計",
         "translateBtn": "翻譯",
         "auditCopied": "審計文字已複製到剪貼簿 ({0} KB)，可貼上到任意 AI 對話框。",
@@ -2365,6 +2388,33 @@
                 "render": "渲染程序崩潰",
                 "fails": "失敗次數"
             }
+        },
+        "eflow": {
+            "label": "E-Flow",
+            "desc": "所有專案的知識庫管理（接管／健檢／解除安裝）",
+            "manage": "管理",
+            "adopt": "接入／升級本專案",
+            "check": "健檢",
+            "rotate": "整理歸檔",
+            "turnOn": "開啟全域接管（所有專案）",
+            "turnOff": "取消接管",
+            "confirmOn": "再點一次：確認開啟接管",
+            "confirmOff": "再點一次：確認取消接管",
+            "hintOn": "全域接管：已開啟",
+            "hintOff": "全域接管：未開啟",
+            "on": "全域接管：開啟",
+            "off": "全域接管：關閉",
+            "docYes": "global.txt 有接管規則",
+            "docNo": "global.txt 無接管規則",
+            "mStandard": "本專案：已接入",
+            "mCustom": "本專案：自訂規則（不變動）",
+            "mNone": "本專案：白紙",
+            "loading": "讀取中…",
+            "noBridge": "目前用戶端不具備檔案存取能力，管理功能不可用",
+            "noDataRoot": "無法取得使用者層級目錄",
+            "noCore": "核心未載入（eflow/eflow-core.js 缺失），無法執行此步驟",
+            "noRoot": "尚未開啟任何專案",
+            "noOutput": "（沒有輸出）"
         },
         "uiZoom": {}
     },
