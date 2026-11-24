@@ -198,11 +198,13 @@ off). No module talks to the OS any other way.
 | panel-fav.js | Floor-favourite star + naming UI |
 | panel-search.js | In-panel search |
 | panel-drop.js | Drag&drop into AI panels |
-| panel-expert.js | E-Flow expert-docs panel |
+| panel-expert.js | E-Flow mode detection (read-only state probe) |
+| panel-eflow-ui.js | E-Flow panel UI (word count + upgrade/check/rotate/detach; zero arithmetic — calls the kernel) |
+| panel-tasks.js | ~New quest~ one-click task cards (server-fed; optional `when` conditions judged locally) |
 | panel-floor-indicator.js | Floor position indicator |
 | panel-health.js | Module health check (red banner on missing exports) |
 | panel-state.js | Panel UI state (queue, tier persistence) |
-| expert-template/ | Expert-docs skeleton (E-Flow) |
+| eflow/ | E-Flow v2 kernel (templates + 10 gates + rotate; the single implementation behind tool / panel / CLI) |
 | index.html | Panel document |
 
 ## 5 · `server-app/goods/` — built-in components

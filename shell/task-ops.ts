@@ -18,7 +18,10 @@
 //   · 服务器下发的 JSON 永不能变成可执行内容——只认本文件 ACTION 表，未知 id 直接拒。
 //   · 桌面 / 启动文件夹一律走系统真值（[Environment]::GetFolderPath），禁拼 %USERPROFILE%\Desktop
 //     ——客户把桌面搬到 D 盘是常态（详 do/拓扑/arch/界面）。
-//   · 一切目录选择按「目录阶梯」：首选 qd 同级 program，不可写则回退 %LOCALAPPDATA%，选定即记账。
+//   · 一切目录选择按「目录阶梯」：qd 同级 program → qd 所在盘 program → 已有 program → %LOCALAPPDATA%
+//     （qd 不在系统盘就绝不落到系统盘），选定即记账。
+//   · 已有安装一律复用（Program Files / 稳定目录里正在跑的便携版），禁装第二份（双实例抢同一份索引）。
+//   · 失败必须说清「被谁挡住」（PID + 路径），禁只回一句「请先退出」——模型据此无法自救。
 //   · 非 Windows 平台一律如实拒绝（返回 ok:false + 人话原因），绝不假装成功。
 //   · PowerShell 一律写临时 .ps1 再执行（禁引号拼接），脚本恒 PS2.0 语法（Win7 基线）。
 // ============================================================================
@@ -246,33 +249,132 @@ function _writable(dir: string): boolean {
     } catch { return false; }
 }
 
+/** 安装目标至少要有这么多剩余空间（Everything 只有 ~7MB，余量给索引/临时件） */
+const MIN_FREE_BYTES = 512 * 1024 * 1024;
+
+interface DriveInfo { root: string; free: number; }
+let _drivesCache: DriveInfo[] | null = null;
+
+/** 固定盘清单（带可用空间）。可移动盘/网络盘一律排除——程序不能装在会被拔走的盘上。 */
+function _listFixedDrives(): DriveInfo[] {
+    if (_drivesCache) return _drivesCache;
+    const out: DriveInfo[] = [];
+    if (_isWin()) {
+        const script = [
+            "$ErrorActionPreference = 'SilentlyContinue'",
+            'foreach ($d in [System.IO.DriveInfo]::GetDrives()) {',
+            '  try {',
+            '    if (-not $d.IsReady) { continue }',
+            "    if ([string]$d.DriveType -ne 'Fixed') { continue }",
+            '    [Console]::Out.WriteLine($d.Name + \'|\' + [int64]$d.AvailableFreeSpace)',
+            '  } catch { }',
+            '}'
+        ].join('\r\n');
+        const r = _runPs(script, 15000);
+        String(r.out || '').split(/\r?\n/).forEach(line => {
+            const m = /^([A-Za-z]:[\\\/])\|(\d+)\s*$/.exec(String(line).trim());
+            if (m) out.push({ root: m[1], free: parseInt(m[2], 10) });
+        });
+    }
+    _drivesCache = out;
+    return out;
+}
+
+function _driveInfo(root: string): DriveInfo | null {
+    if (!root) return null;
+    const key = root.replace(/[\\\/]+$/, '').toLowerCase();
+    for (const d of _listFixedDrives()) {
+        if (d.root.replace(/[\\\/]+$/, '').toLowerCase() === key) return d;
+    }
+    return null;
+}
+
+function _systemDriveRoot(): string {
+    return (process.env.SystemDrive || 'C:').replace(/[\\\/]+$/, '') + '\\';
+}
+
+function _normPath(p: string): string {
+    try { return path.resolve(p).toLowerCase(); } catch { return String(p || '').toLowerCase(); }
+}
+
+function _samePath(a: string, b: string): boolean {
+    if (!a || !b) return false;
+    return _normPath(a) === _normPath(b);
+}
+
+/** file 是否落在 dir 之内（含 dir 本身；用于判定「要覆盖的文件是否正被占用」） */
+function _insideDir(file: string, dir: string): boolean {
+    if (!file || !dir) return false;
+    const f = _normPath(file);
+    const d = _normPath(dir).replace(/[\\\/]+$/, '');
+    return f === d || f.indexOf(d + '\\') === 0 || f.indexOf(d + '/') === 0;
+}
+
+export interface InstallBase { dir: string; base: string; via: string; viaText: string; }
+
 /**
  * 任务安装根目录（一万年规则）：
  *   ① 记账目录仍可写 → 直接用（老用户路径永不漂移）
- *   ② qd 启动器所在目录的父目录名为 program（不区分大小写）→ <父>/everything
- *   ③ 兜底 %LOCALAPPDATA%\qd\program\everything（任何机器都可写，无需管理员）
+ *   ② qd 包根所在目录的父目录名为 program（D:\program\qd 布局）→ <父>/everything
+ *   ③ qd 所在盘是固定盘且剩余 ≥512MB → <该盘>\program（没有就建）——qd 不在 C 盘就绝不装 C 盘
+ *   ④ 其它固定盘上已存在的 <盘>\program（可写）→ 用它（尊重用户既有布局；非系统盘优先）
+ *   ⑤ 兜底 %LOCALAPPDATA%\qd\program（唯一恒可写位置）
  * 选定即记账（task-ops.state.json），下次直接用同一处。
+ * commit=false（只报告不落盘，探针用）：绝不建目录、绝不写 state。
  */
-function _installBase(): { dir: string; via: string } {
+function _installBase(commit: boolean = true): InstallBase {
     const st = _state();
-    if (st.installBase && fs.existsSync(st.installBase) && _writable(st.installBase)) {
-        return { dir: path.join(st.installBase, EV.dirName), via: 'state' };
+    const usable = (dir: string) => {
+        if (commit) return _writable(dir);
+        // 非提交态（探针）：不建目录、不写 state；已在 = 可用，不在 = 只要所在盘够大就当作「计划可用」
+        if (fs.existsSync(dir)) return true;
+        const di = _driveInfo(path.parse(dir).root);
+        return !!di && di.free >= MIN_FREE_BYTES;
+    };
+    const remember = (base: string, via: string, viaText: string): InstallBase => {
+        if (commit) _statePatch({ installBase: base });
+        return { dir: path.join(base, EV.dirName), base, via, viaText };
+    };
+
+    if (st.installBase && fs.existsSync(st.installBase) && usable(st.installBase)) {
+        return { dir: path.join(st.installBase, EV.dirName), base: st.installBase, via: 'state', viaText: '上次安装目录' };
     }
+
     const ld = _launcherDir();
+    const packDrive = ld ? path.parse(ld).root : '';
+    const sysRoot = _systemDriveRoot();
+
+    // ② qd 装在 program 目录里（D:\program\qd → D:\program\everything）
     if (ld) {
         const parent = path.dirname(ld);
-        if (path.basename(parent).toLowerCase() === 'program' && _writable(parent)) {
-            _statePatch({ installBase: parent });
-            return { dir: path.join(parent, EV.dirName), via: 'program' };
+        if (path.basename(parent).toLowerCase() === 'program' && usable(parent)) {
+            return remember(parent, 'program', 'qd 同级 program');
         }
     }
+
+    // ③ 跟着 qd 走：装在 qd 所在的盘（绿包在 D 盘就绝不落到 C 盘）
+    if (packDrive && !_samePath(packDrive, sysRoot)) {
+        const di = _driveInfo(packDrive);
+        if (di && di.free >= MIN_FREE_BYTES) {
+            const base = path.join(di.root, 'program');
+            if (usable(base)) {
+                return remember(base, 'pack-drive', 'qd 所在盘（' + di.root.replace(/[\\\/]+$/, '') + '）');
+            }
+        }
+    }
+
+    // ④ 别的固定盘上已经有 program 目录（尊重用户既有布局；系统盘另算，作为最后候选）
+    const byProgramDir = _listFixedDrives()
+        .filter(d => d.free >= MIN_FREE_BYTES && !_samePath(d.root, sysRoot))
+        .map(d => path.join(d.root, 'program'))
+        .filter(p => fs.existsSync(p) && usable(p));
+    if (byProgramDir.length) return remember(byProgramDir[0], 'program-existing', '已有 program 目录');
+
+    // ⑤ 兜底：用户应用数据（任何机器可写，无需管理员）
     const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
     const base = path.join(local, 'qd', 'program');
-    if (_writable(base)) {
-        _statePatch({ installBase: base });
-        return { dir: path.join(base, EV.dirName), via: 'localappdata' };
-    }
-    return { dir: '', via: 'none' };
+    if (usable(base)) return remember(base, 'localappdata', '用户应用数据（兜底）');
+    return { dir: '', base: '', via: 'none', viaText: '无可用目录' };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -378,12 +480,40 @@ function _rmrf(p: string): void {
 // ════════════════════════════════════════════════════════════════════════════
 // 动作：Everything
 // ════════════════════════════════════════════════════════════════════════════
-function _everythingRunning(): boolean {
-    if (!_isWin()) return false;
+interface EvProc { pid: number; path: string; }
+
+/** 正在运行的 Everything 实例（含 1.5a 的 every64.exe / Every.exe 变体；带上真实 exe 路径） */
+function _everythingProcs(): EvProc[] {
+    if (!_isWin()) return [];
+    const out: EvProc[] = [];
+    const script = [
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        'Get-Process -Name Everything*,Every,every64 -ErrorAction SilentlyContinue | ForEach-Object {',
+        "  $p = ''",
+        "  try { $p = $_.Path } catch { $p = '' }",
+        "  [Console]::Out.WriteLine($_.Id.ToString() + '|' + $p)",
+        '}'
+    ].join('\r\n');
+    const r = _runPs(script, 15000);
+    String(r.out || '').split(/\r?\n/).forEach(line => {
+        const m = /^(\d+)\|(.*)$/.exec(String(line).trim());
+        if (m) out.push({ pid: parseInt(m[1], 10), path: String(m[2] || '').trim() });
+    });
+    return out;
+}
+
+/** 临时目录里的副本（测试残留 / 解压即用的一次性副本）——这种不算「已有安装」 */
+function _isTransientExe(p: string): boolean {
+    const s = String(p || '').replace(/\//g, '\\').toLowerCase();
+    if (!s) return false;
+    if (/\\_qqq\\tmp\\/.test(s)) return true;
+    if (/\\appdata\\local\\temp\\/.test(s)) return true;
+    if (/\\windows\\temp\\/.test(s)) return true;
     try {
-        const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq Everything.exe', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 8000 });
-        return /Everything\.exe/i.test(out || '');
-    } catch { return false; }
+        const t = os.tmpdir().replace(/\//g, '\\').toLowerCase().replace(/\\+$/, '');
+        if (t && s.indexOf(t + '\\') === 0) return true;
+    } catch { /* 取不到 tmp 就只认上面三条 */ }
+    return false;
 }
 
 /** 系统里已装的 Everything（Program Files 两处 + PATH 探测）；找不到返回 '' */
@@ -424,32 +554,66 @@ async function _actionInstallEverything(taskId: string): Promise<any> {
     const st = _state();
     const target = _installBase();
     const marker = st.everything || null;
+    const running = _everythingProcs();
+    const runTag = (exe: string) => {
+        const hit = running.filter(r => !!r.path && _samePath(r.path, exe))[0];
+        return hit ? '（正在运行，PID ' + hit.pid + '）' : '';
+    };
+    const reuse = (dir: string, via: string, head: string, s: { ok: boolean; message: string }) => ({
+        ok: s.ok, warn: !s.ok, message: head + s.message, running,
+        install: { dir, version: 'external', via, reused: true }
+    });
 
-    // ① 我们自己装过且在位 → 只补快捷方式（幂等）
-    if (marker && marker.dir && fs.existsSync(path.join(marker.dir, EV.exe))) {
-        if (marker.version === EV.version) {
-            const s = _shortcutEverything(path.join(marker.dir, EV.exe), taskId);
-            return { ok: s.ok, warn: !s.ok, message: s.ok ? 'Everything 已安装（' + marker.dir + '），' + s.message : s.message };
-        }
-        // 版本不同 → 走重装（保留目录，非破坏式覆盖）
+    // ① 我们自己装过且在位 → 只补快捷方式（幂等；正在跑也不拦）
+    if (marker && marker.dir && marker.version === EV.version && fs.existsSync(path.join(marker.dir, EV.exe))) {
+        const exe = path.join(marker.dir, EV.exe);
+        const s = _shortcutEverything(exe, taskId);
+        return reuse(marker.dir, 'state', 'Everything 已安装（' + marker.dir + '）' + runTag(exe) + '；', s);
     }
 
-    // ② 系统已有 Everything（用户自己装过）→ 只做快捷方式，绝不重复安装
+    // ①b 上次认领的已有安装仍在位 → 继续复用（装了第二份才是事故）
+    const adoptedExe = (st.adoptedEverything && st.adoptedEverything.exe && fs.existsSync(st.adoptedEverything.exe)) ? String(st.adoptedEverything.exe) : '';
+    if (adoptedExe) {
+        const s = _shortcutEverything(adoptedExe, taskId);
+        return reuse(path.dirname(adoptedExe), 'adopted', '复用已有的 Everything（' + adoptedExe + '）' + runTag(adoptedExe) + '，未重复安装；', s);
+    }
+
+    // ② 系统里已有正式安装 → 复用，绝不重复装第二份
     const existing = _existingEverything();
-    if (existing && !marker) {
+    if (existing) {
         const s = _shortcutEverything(existing, taskId);
-        return { ok: s.ok, warn: !s.ok, message: s.ok ? '系统已有 Everything，' + s.message : s.message };
+        return reuse(path.dirname(existing), 'system', '系统已有 Everything（' + existing + '）' + runTag(existing) + '，直接复用、未重复安装；', s);
     }
 
-    if (_everythingRunning()) {
-        return { ok: false, warn: true, message: '检测到 Everything 正在运行（它与新装实例共用同一份），请先退出 Everything 再执行本任务。' };
+    // ③ 用户自己的便携版已在稳定目录里跑 → 复用（双实例会抢同一份索引）
+    const stable = running.filter(r => !!r.path && !_isTransientExe(r.path) && !_insideDir(r.path, target.dir));
+    if (stable.length) {
+        const exe = stable[0].path;
+        _statePatch({ adoptedEverything: { exe, at: Date.now() } });
+        const s = _shortcutEverything(exe, taskId);
+        return reuse(path.dirname(exe), 'running', '检测到已在运行的 Everything（' + exe + '），已复用这一份并补快捷方式、未重复安装；', s);
+    }
+
+    // ④ 目标目录里的实例在跑 → 文件被占用（必须报清 PID + 路径，否则模型无法自救）
+    const conflict = running.filter(r => !!r.path && _insideDir(r.path, target.dir))[0];
+    if (conflict) {
+        return {
+            ok: false, warn: true, running,
+            message: '安装目录里已有 Everything 正在运行（PID ' + conflict.pid + '，' + conflict.path + '），请先退出它再试一次。'
+        };
     }
 
     if (!target.dir) {
-        return { ok: false, message: '找不到可写的安装目录（qd 同级 program 与 %LOCALAPPDATA% 都不可写）。' };
+        return { ok: false, running, message: '找不到可写的安装目录（qd 同级 program / qd 所在盘 / %LOCALAPPDATA% 都不可写）。' };
     }
 
-    // ③ 下载（内容锁定：size + sha256 双校验）
+    // ⑤ 目标盘空间闸（宁可提前如实拒，不装到一半没地方）
+    const di = _driveInfo(path.parse(target.dir).root);
+    if (di && di.free < MIN_FREE_BYTES) {
+        return { ok: false, running, message: '安装目标盘剩余空间不足（' + _sizeText(di.free) + '）：' + target.dir };
+    }
+
+    // ⑥ 下载（内容锁定：size + sha256 双校验）
     _progress({ id: taskId, phase: 'download', pct: 0, text: '准备下载 Everything…' });
     const dlDir = path.join(os.tmpdir(), 'qd-dl');
     try { fs.mkdirSync(dlDir, { recursive: true }); } catch { /* 忽略 */ }
@@ -464,7 +628,7 @@ async function _actionInstallEverything(taskId: string): Promise<any> {
         return { ok: false, message: '安装包校验不通过（sha256 不符），已丢弃。请稍后重试。' };
     }
 
-    // ④ 解压到临时目录 → 校验 → 原子换入（失败绝不破坏旧目录）
+    // ⑦ 解压到临时目录 → 校验 → 原子换入（失败绝不破坏旧目录）
     _progress({ id: taskId, phase: 'extract', pct: 100, text: '解压中…' });
     const staging = target.dir + '.staging';
     const oldDir = target.dir + '.replacing';
@@ -491,12 +655,20 @@ async function _actionInstallEverything(taskId: string): Promise<any> {
     if (!fs.existsSync(exePath)) {
         return { ok: false, message: '安装后未找到 ' + EV.exe + '（' + target.dir + '）' };
     }
-    _statePatch({ everything: { dir: target.dir, version: EV.version, sha256: EV.sha256, at: Date.now(), exe: exePath } });
+    _statePatch({ everything: { dir: target.dir, version: EV.version, sha256: EV.sha256, at: Date.now(), exe: exePath }, adoptedEverything: null });
 
-    // ⑤ 桌面快捷方式（系统真值目录）
+    // ⑥ 桌面快捷方式（系统真值目录）
     const s = _shortcutEverything(exePath, taskId);
-    if (!s.ok) return { ok: true, warn: true, message: 'Everything 已安装到 ' + target.dir + '，但' + s.message };
-    return { ok: true, message: 'Everything 已安装到 ' + target.dir + '，' + s.message };
+    const notes: string[] = [];
+    const transient = running.filter(r => !!r.path && _isTransientExe(r.path));
+    if (transient.length) {
+        notes.push('另检测到 ' + transient.length + ' 个临时目录里的实例（' + transient.map(r => r.path + ' · PID ' + r.pid).join('；') + '），它们不是正式安装，建议关掉以免抢索引');
+    }
+    const tail = notes.length ? '。' + notes.join('；') : '';
+    const head = 'Everything 已安装到 ' + target.dir + '（' + target.viaText + '）';
+    const install = { dir: target.dir, version: EV.version, via: target.via };
+    if (!s.ok) return { ok: true, warn: true, running, install, message: head + '，但' + s.message + tail };
+    return { ok: true, running, install, message: head + '，' + s.message + tail };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -518,14 +690,16 @@ export function registerTaskOpsIpc(root: string, userData: string, ipc: any = ip
     ipc.handle('qqqide:task:probe', async () => {
         const folders = _isWin() ? _resolveShellFolders() : null;
         const st = _state();
-        const target = _installBase();
+        const target = _installBase(false);   // 探针只报告，绝不建目录/写 state
         return {
             ok: true,
             platform: process.platform,
             arch: process.arch,
             launcherDir: _launcherDir(),
             installDir: target.dir,
+            installBase: target.base,
             installVia: target.via,
+            installViaText: target.viaText,
             desktop: folders ? folders.desktop : path.join(os.homedir(), 'Desktop'),
             desktopDirs: desktopDirsForShortcut(),
             desktopSource: folders ? folders.source : 'fallback',
@@ -558,6 +732,10 @@ export const __test = {
     extractZip: _extractZip,
     sizeText: _sizeText,
     launcherDirFor: _launcherDirFor,
+    installBase: _installBase,
+    isTransientExe: _isTransientExe,
+    insideDir: _insideDir,
+    samePath: _samePath,
     everything: EV
 };
 

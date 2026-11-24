@@ -90,7 +90,8 @@ test('run_task: 系统维护类知识在 capabilities（脚本 + 配方同包，
     }
     const tips = read('server-app/capabilities/tasks.md');
     assert.ok(/install_everything/.test(tips), 'tasks.md 必须指向 run_task 的 Everything 动作');
-    assert.ok(/E-Flow/.test(tips), 'tasks.md 必须写明 E-Flow 升级通道未上线时如实说明');
+    assert.ok(/E-Flow/.test(tips), 'tasks.md 必须写明 E-Flow 的入口');
+    assert.ok(/eflow/.test(tips), 'tasks.md 必须让 AI 去调 eflow 工具（禁手工数数 / 禁手改生成区）');
 });
 
 test('run_task: 出厂兜底卡全部带提词（点一张卡 = 说一句话）', () => {
@@ -103,6 +104,56 @@ test('run_task: 出厂兜底卡全部带提词（点一张卡 = 说一句话）'
         assert.ok(/prompt:\s*'/.test(b), '每张兜底卡都必须有 prompt：' + b.slice(0, 40));
         assert.ok(!/kind:\s*'action'|action:\s*'/.test(b), '卡片不得再带壳层动作：' + b.slice(0, 40));
     }
+});
+
+test('run_task: 卡片「说明」= 将要发出去的那句话（禁再维护 desc）', () => {
+    const src = read('server-app/ai-panel/panel-tasks.js');
+    const m = src.match(/var TASK_FALLBACK = \{[\s\S]*?\n    \};/);
+    assert.ok(m, '必须保留 TASK_FALLBACK');
+    for (const b of m[0].split(/id: '/).slice(1)) {
+        assert.ok(!/desc:\s*\{/.test(b), '兜底卡不得再写 desc（说明恒等于 prompt）：' + b.slice(0, 40));
+    }
+    assert.ok(/desc:\s*t\.prompt/.test(src), 'sanitize 必须把 desc 定义成 prompt（唯一来源，服务端 desc 不采纳）');
+    assert.ok(/card\.title = t\.prompt/.test(src), '悬停提示必须是提词本句');
+});
+
+test('run_task: 兜底表与下发台 DEFAULT_TASKS 逐字一致（禁双写漂移）', () => {
+    // 运维台在 gaea 仓库（本机才可能有）——不在就跳过，绝不把测试绑死在某一台机器
+    const p = 'E:/s/wol/py/gaea/cf/qqqide/默认任务.py';
+    if (!fs.existsSync(p)) return;
+    const py = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+    const seg = py.slice(py.indexOf('DEFAULT_TASKS = {'));
+
+    // 只认 DEFAULT_TASKS 里的块：每块以 `        },` 收尾
+    const pyTasks = [];
+    const re = /"id": "([^"]+)"[\s\S]*?\n        \},/g;
+    let mm;
+    while ((mm = re.exec(seg))) pyTasks.push(mm[0]);
+    const pyIds = pyTasks.map((b) => /"id": "([^"]+)"/.exec(b)[1]);
+    const pyTitles = pyTasks.map((b) => (/"title": \{"zh": "([^"]*)"/.exec(b) || [])[1]);
+    const pyPrompts = pyTasks.map((b) => {
+        const i = b.indexOf('"prompt":');
+        const rest = b.slice(i).replace(/^"prompt":\s*/, '');
+        return Array.from(rest.matchAll(/"([^"]*)"/g)).map((x) => x[1]).join('');
+    });
+
+    const js = read('server-app/ai-panel/panel-tasks.js');
+    const fb = js.match(/var TASK_FALLBACK = \{[\s\S]*?\n    \};/)[0];
+    const jsTasks = [];
+    const re2 = /id: '([a-z0-9-]+)'[\s\S]*?\n            \},?(?=\n)/g;
+    let m2;
+    while ((m2 = re2.exec(fb))) jsTasks.push(m2[0]);
+    const jsIds = jsTasks.map((b) => /id: '([a-z0-9-]+)'/.exec(b)[1]);
+    const jsTitles = jsTasks.map((b) => (/title: \{ zh: '([^']*)'/.exec(b) || [])[1]);
+    const jsPrompts = jsTasks.map((b) => {
+        const i = b.indexOf("prompt: '");
+        return b.slice(i).replace(/^prompt: '/, '').split("'\n")[0];
+    });
+
+    assert.ok(pyIds.length >= 5, '下发台解析失败（实际 ' + pyIds.length + '）');
+    assert.deepStrictEqual(jsIds, pyIds, '卡片 id 与顺序必须两处一致');
+    assert.deepStrictEqual(jsTitles, pyTitles, '标题必须两处逐字一致');
+    assert.deepStrictEqual(jsPrompts, pyPrompts, '提词（= 卡片说明 = 发出去的消息）必须两处逐字一致');
 });
 
 test('run_task: 搜索类卡片把机器准备好，而不是「随便找个文件」', () => {

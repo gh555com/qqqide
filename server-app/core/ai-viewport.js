@@ -2506,6 +2506,7 @@
   // ---- 项目路径收口（唯一谓词；落座机器与 addProject 共用）----
   //   两条硬禁（都不是评价用户品味，而是会写坏我们自己）：
   //     program — 项目域与程序域必须互斥（项目 ⊂ 程序 → 家目录随换版进交换域；程序 ⊂ 项目 → 时间线/索引扫全包）
+  //               三种关系各带一支 code，只为给对得上的话术（= 启动目录 / 在其内部 / 含它）
   //     root    — 盘根（家目录/时间线/搜索会把整盘当项目扫）
   let _progRoot = null;
   function _clsNorm(p) {
@@ -2537,30 +2538,26 @@
       var a = fold ? raw.toLowerCase() : raw;
       var b = fold ? prog.toLowerCase() : prog;
       if (a === b) return { ok: false, code: 'program' };
-      if (a.indexOf(b + '/') === 0) return { ok: false, code: 'program' };
-      if (b.indexOf(a + '/') === 0) return { ok: false, code: 'program' };
+      if (a.indexOf(b + '/') === 0) return { ok: false, code: 'programInside' };
+      if (b.indexOf(a + '/') === 0) return { ok: false, code: 'programParent' };
       return { ok: true };
     }).catch(function () { return { ok: true }; });
   }
 
-  // 拒收处置：主文件夹场景不教育、不重开框 → 直接落座（唯一例外）；辅项目场景一句 qoast
+  // 拒收处置：只如实提示——永不回落铸造（用户挑的路径被拒后另造一个基地 = 看不懂的副作用；
+  //   自动建目录只走 seat.run 的正规入口 = 发送闸门 / 真首启）
   function _rejectProjectPath(folderPath, cls) {
-    console.warn('[ai-viewport] project path rejected: ' + folderPath + ' (' + cls.code + ')');
-    var msg = cls.code === 'root'
-      ? window._i('shell.viewport.rejectRoot', '磁盘根目录不能作为项目')
-      : window._i('shell.viewport.rejectProgram', '该目录是程序目录，不能作为项目');
-    if (projects.length === 0 && window.qqqideSeat && typeof window.qqqideSeat.run === 'function') {
-      var job = null;
-      try { job = window.qqqideSeat.run(); } catch (_) { job = null; }
-      if (job && job.then) {
-        job.then(function (r) {
-          if (r && r.ok) return;
-          if (window.qqqideQoast) window.qqqideQoast.show(msg, { duration: 6000, type: 'warning' });
-        }, function () { });
-      } else if (window.qqqideQoast) {
-        window.qqqideQoast.show(msg, { duration: 6000, type: 'warning' });
-      }
-      return;
+    var code = (cls && cls.code) || 'empty';
+    console.warn('[ai-viewport] project path rejected: ' + folderPath + ' (' + code + ')');
+    var msg;
+    if (code === 'root') {
+      msg = window._i('shell.viewport.rejectRoot', '磁盘根目录不能作为项目');
+    } else if (code === 'programInside') {
+      msg = window._i('shell.viewport.rejectProgramInside', '该目录位于本窗口 qd 运行环境内部，不能添加进 AI 视口');
+    } else if (code === 'programParent') {
+      msg = window._i('shell.viewport.rejectProgramParent', '该目录包含本窗口 qd 运行环境的启动目录，不能添加进 AI 视口；请选择它下面的具体项目目录');
+    } else {
+      msg = window._i('shell.viewport.rejectProgram', '该目录是本窗口 qd 运行环境的启动目录，不能添加进 AI 视口；换一个启动目录后才能添加');
     }
     if (window.qqqideQoast) window.qqqideQoast.show(msg, { duration: 6000, type: 'warning' });
   }

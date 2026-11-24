@@ -108,6 +108,10 @@ test('task-ops: probe 回真值（平台/桌面/安装目录）', async () => {
     assert.ok(p.desktop, 'probe 必须给出桌面真值');
     if (IS_WIN) assert.ok(Array.isArray(p.desktopDirs) && p.desktopDirs.length >= 1, 'probe 必须给出桌面快捷方式目录清单');
     if (IS_WIN) assert.ok(/everything$/.test(p.installDir.replace(/\\/g, '/')) || p.installDir === '');
+    if (IS_WIN) {
+        assert.ok(p.installVia && p.installViaText, 'probe 必须给出安装目录的判定依据（via + 人话）');
+        assert.strictEqual(path.dirname(p.installDir), p.installBase, 'installBase 必须是 installDir 的父目录');
+    }
     assert.strictEqual(p.autostart, undefined, '开机自启已移出壳层，probe 不得再报');
 });
 
@@ -124,6 +128,40 @@ test('task-ops: 装 Everything 资源链（下载 → sha256 → 解压）', asy
     assert.strictEqual(ex.ok, true, '解压失败：' + (ex.error || ''));
     assert.ok(fs.existsSync(path.join(out, 'Everything.exe')), '解压产物缺 Everything.exe');
     assert.ok(fs.existsSync(path.join(out, 'Everything.ini')), '解压产物缺预设 ini（显示层预设随包）');
+});
+
+test('task-ops: 临时目录里的 Everything 副本不算「已有安装」', () => {
+    const t = ops.__test.isTransientExe;
+    assert.strictEqual(t('E:\\s\\wol\\py\\qqq-shell-v2\\_qqq\\tmp\\ev-shot\\Everything.exe'), true, '_qqq/tmp 下的测试残留必须算临时');
+    assert.strictEqual(t('C:\\Users\\x\\AppData\\Local\\Temp\\a\\Everything.exe'), true, '%TEMP% 下的副本必须算临时');
+    assert.strictEqual(t('E:\\r\\every\\every64.exe'), false, '用户自己的便携版不得被当成临时副本');
+    assert.strictEqual(t('D:\\program\\everything\\Everything.exe'), false, '正式安装目录不得被当成临时副本');
+    assert.strictEqual(t(''), false, '空路径直接判否（不得抛）');
+});
+
+test('task-ops: 目标目录占用判定（同目录内的 exe 才算占用）', { skip: !IS_WIN }, () => {
+    const f = ops.__test.insideDir;
+    assert.strictEqual(f('E:\\program\\everything\\Everything.exe', 'E:\\program\\everything'), true);
+    assert.strictEqual(f('E:\\program\\everything\\Everything.exe', 'E:\\program\\everything\\'), true);
+    assert.strictEqual(f('E:\\program\\everything2\\Everything.exe', 'E:\\program\\everything'), false, '前缀相同但不同目录 ≠ 占用');
+    assert.strictEqual(f('E:\\r\\every\\every64.exe', 'E:\\program\\everything'), false);
+});
+
+test('task-ops: 安装目录阶梯（跟 qd 走 + 永不落可移动盘）', { skip: !IS_WIN }, () => {
+    const a = ops.__test.installBase(false);   // commit=false = 只算不落盘（探针同款）
+    const b = ops.__test.installBase(false);
+    assert.ok(a.dir && b.dir, '必须算出一个安装目录');
+    assert.strictEqual(a.dir, b.dir, '同机两次判定必须一致（禁随机/禁随时间漂）');
+    assert.ok(['state', 'program', 'pack-drive', 'program-existing', 'localappdata'].includes(a.via), 'via 必须是已知档：' + a.via);
+    assert.ok(/[\\\/]everything$/.test(a.dir), '安装目录必须以 everything 收尾：' + a.dir);
+    assert.ok(a.viaText && a.viaText.length > 2, '必须给出人话依据：' + a.viaText);
+    // 真查盘类型：选中的根必须出现在「固定盘」清单里（可移动盘/网络盘一律不许）
+    const { execFileSync } = require('child_process');
+    const psOut = execFileSync('powershell', ['-NoProfile', '-Command',
+        "([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and ([string]$_.DriveType -eq 'Fixed') } | ForEach-Object { $_.Name }) -join ','"],
+        { encoding: 'utf8' }).trim();
+    const fixed = psOut.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    assert.ok(fixed.includes(path.parse(a.dir).root.toUpperCase()), '安装目录必须落在固定盘（' + a.dir + '；固定盘=' + fixed.join(' ') + '）');
 });
 
 test('task-ops: 已移出壳层的动作一律拒（清 C 盘 / 开机自启 / E-Flow 归 AI + capabilities）', async () => {

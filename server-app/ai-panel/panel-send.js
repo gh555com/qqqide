@@ -714,13 +714,18 @@ window.qqqideAiAttach = insertChipAtCursor;
 
 window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-ai-attach') {
-        if (!_hasMainProject()) { _ensureMainProject(); return; }
-        var path = e.data.path;
-        var isDir = e.data.isDir;
-        var lineRange = e.data.lineRange;
-        if (path) {
-            insertChipAtCursor(path, isDir, lineRange);
+        var _path = e.data.path;
+        var _isDir = e.data.isDir;
+        var _lineRange = e.data.lineRange;
+        if (!_path) return;
+        // 喂给 AI 是明确意图 → 无主文件夹时先落座再插入（成功即重放，不丢这次附加）
+        if (!_hasMainProject()) {
+            _ensureMainProject().then(function (ok) {
+                if (ok) insertChipAtCursor(_path, _isDir, _lineRange);
+            });
+            return;
         }
+        insertChipAtCursor(_path, _isDir, _lineRange);
     }
 });
 
@@ -1221,7 +1226,7 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
     }
 
     _bulletBtn.onclick = async function () {
-        if (!_hasMainProject()) { _ensureMainProject(); return; }
+        if (!_hasMainProject() && !(await _ensureMainProject())) return;
 
         // 1. 读粘贴板 — 走 IPC bridge（Electron 主进程 clipboard），绕过 iframe 权限限制
         var clipText = '';

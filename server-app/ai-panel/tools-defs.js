@@ -439,13 +439,35 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_task',
-            description: 'Run the ONE client built-in task that has a native, deterministic implementation: install_everything (Windows; instant file-search tool — fixed version + SHA-256 verify + atomic unpack + desktop shortcuts in every real desktop folder). ALWAYS use this instead of hand-rolling the same job with run_command or fetch_webpage. Every other maintenance job (cleaning the C drive, autostart, Spotlight/locate search, startup items) is NOT a shell task — do those yourself with run_command, following the recipes in the bundled system-tasks capability (the C-drive scanner must be called before any deletion is proposed). Returns human-readable result text.',
+            description: 'Run the ONE client built-in task that has a native, deterministic implementation: install_everything (Windows; instant file-search tool — fixed version + SHA-256 verify + atomic unpack + install-location ladder that never drops to the system drive when qd lives elsewhere + desktop shortcuts in every real desktop folder; reuses an existing install instead of adding a second copy, and reports PID + path when files are in use). ALWAYS use this instead of hand-rolling the same job with run_command or fetch_webpage. Every other maintenance job (cleaning the C drive, autostart, Spotlight/locate search, startup items) is NOT a shell task — do those yourself with run_command, following the recipes in the bundled system-tasks capability (the C-drive scanner must be called before any deletion is proposed). Returns human-readable result text.',
             parameters: {
                 type: 'object',
                 properties: {
                     task: { type: 'string', enum: ['install_everything'], description: 'Task id' }
                 },
                 required: ['task']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'eflow',
+            description: 'E-Flow v2 — an OPTIONAL per-project document foundation that is injected into every round. ★ Blank-slate rule: a project starts with nothing; never run init/upgrade unless the user asks for it (they write files into the user repo and edit project.txt). When in doubt run op=status first and ask. op=status measures how many characters are injected per round plus the layer inventory (returns 0 / blank state when the project has not opted in); op=check runs the 10 machine gates (A injection surface / B size / C dead links & routes / D experience schema / E index sync / F rot / G secrets / H overrides / J cost & duplicates) and returns PASS or FAIL — a blank project always PASSes and is never judged; op=index rebuilds the L0 route table and iron-law projection from each doc header (WHEN/MUST) — never hand-edit that block; op=init scaffolds a new project (idempotent, never overwrites; link=false = skeleton only, do not touch project.txt); op=upgrade migrates a project that injects one huge doc into layered docs (mechanical part only — moving the laws into place is your job; keep-rules=true keeps the user own rule lines); op=detach removes ONLY the E-Flow rule line (the user own rules and notes stay byte-identical; purge=true renames the skeleton dir to an archive). ALWAYS use this instead of hand-counting characters or hand-aligning route tables.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    op: { type: 'string', enum: ['status', 'check', 'index', 'init', 'upgrade', 'detach', 'rotate'], description: 'Operation' },
+                    root: { type: 'string', description: 'Project root (absolute). Omit = current project' },
+                    dry: { type: 'boolean', description: 'Plan only, change nothing' },
+                    apply: { type: 'boolean', description: 'rotate: actually archive + rebuild (default = report only)' },
+                    name: { type: 'string', description: 'init/upgrade: project display name' },
+                    days: { type: 'number', description: 'rotate: archive drafts older than N days (default 30)' },
+                    link: { type: 'boolean', description: 'init: false = skeleton only, leave project.txt untouched' },
+                    keepRules: { type: 'boolean', description: 'upgrade: true = keep the user existing rule lines injecting (do not demote them)' },
+                    purge: { type: 'boolean', description: 'detach: true = also rename the skeleton dir to an archive (never deletes)' }
+                },
+                required: ['op']
             }
         }
     },
@@ -490,7 +512,7 @@ var TOOL_CATEGORY = {
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
     revert_file: 'WRITE',
     diff_versions: 'READ',
-    run_command: 'EFFECT', run_task: 'EFFECT',
+    run_command: 'EFFECT', run_task: 'EFFECT', eflow: 'EFFECT',
     generate_image: 'EFFECT', analyze_image: 'EFFECT', remove_background: 'EFFECT', search_web: 'EFFECT',
     sys_python: 'EFFECT',
     sys_node: 'EFFECT'

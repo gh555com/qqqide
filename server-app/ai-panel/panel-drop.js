@@ -17,9 +17,9 @@
 // 交互:
 //   · 拖入本面板任意位置 → 橙色虚线框覆盖整个面板（= 接收范围）
 //   · 外部拖拽一律 preventDefault（防链接/URL 拖入触发 iframe 默认导航）
-//   · 无主文件夹时拖入 → 弹文件夹选择（与粘贴守卫同语义）
+//   · 无主文件夹时拖入 → 零磁盘变化（纯内存暂存；落座只发生在发送闸门）
 //
-// 依赖: panel-input.js（_enqueuePasteBusy/_pasteImages/_insertPlainText/_hasMainProject/_ensureMainProject）
+// 依赖: panel-input.js（_enqueuePasteBusy/_pasteImages/_insertPlainText）
 //       panel-send.js（insertChipAtCursor）
 //       ../core/drag-text.js（window.qqqDragText: classify/extractText/installInternalGuard）
 // 加载点: ai-panel/index.html（core/drag-text.js 之后、panel-send.js 之后）
@@ -100,7 +100,7 @@
 
     // ══ 文本分支: 等同在编辑框 Ctrl+V（插入机与粘贴同源）══
     if (k === 'text') {
-      if (!_hasMainProject()) { _ensureMainProject(); return; }   // 与粘贴守卫同语义
+      // 纯文本 = 零磁盘变化 → 不落座（正文写入只发生在发送时）
       var text = DT ? DT.extractText(dt) : '';
       if (!text) return;   // 空文本载荷 → 定义为 no-op（默认导航已由 preventDefault 封死）
       _enqueuePasteBusy(function () {
@@ -119,8 +119,8 @@
     var files = [];
     for (var i = 0; i < dt.files.length; i++) files.push(dt.files[i]);
 
-    // 无主文件夹 → 与粘贴守卫同语义：弹文件夹选择
-    if (!_hasMainProject()) { _ensureMainProject(); return; }
+    // 文件/图片都是一些纯内存暂存（图片 base64 入条、文件只取路径）→ 不落座；
+    // 写盘只发生在发送时（楼层目录 img_N.png），由发送闸门落座。
 
     var imgs = [];
     var others = [];

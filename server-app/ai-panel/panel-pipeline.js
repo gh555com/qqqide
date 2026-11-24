@@ -445,7 +445,21 @@ async function _executeSend(intent) {
             ]);
         } catch (_bindWait) { }
     }
-    if (!_hasMainProject()) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); _ensureMainProject(); return; }
+    // ★ 无主文件夹 → 先落座再继续（内容已冻结：落座成功就往下走，失败才归还/回滚，绝不静默蒸发）
+    if (!_hasMainProject()) {
+        var _seatOk = false;
+        try { _seatOk = await _ensureMainProject(); } catch (_seatFail) { _seatOk = false; }
+        if (!_seatOk) { if (intent.fromQueue) _requeueFromQueue(); _pressRejectRollback(); return; }
+        // 落座成功但本面板尚未绑定 → 等绑定完成再建楼（禁止拿空 root 进建楼）
+        if (!_workspaceRoot && !(typeof _lockBlocked !== 'undefined' && _lockBlocked)) {
+            try {
+                await Promise.race([
+                    bindMainProject(),
+                    new Promise(function (r) { setTimeout(r, 3000); })
+                ]);
+            } catch (_bindWait2) { }
+        }
+    }
     // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
     if (!_isLoggedIn()) {
         if (intent.fromQueue) _requeueFromQueue();
@@ -1055,24 +1069,9 @@ async function _executeSend(intent) {
         }
     }
     if (typeof _registerBuilding === 'function') _registerBuilding(qid, typeof _panelId !== 'undefined' ? _panelId : 1);
-    if (typeof updateQuestTofu === 'function') updateQuestTofu();
+    if (typeof updateQuestTofu === 'function') updateQuestTofu();    // ── 文档地基：不再在楼层里随机推销（入口 = AI 面板底排按钮 / ~New quest~ 卡片 / eflow 工具）──
+
 
-    // ── E-flow ──
-    try {
-        var _firstQuest = false;
-        try {
-            if (typeof onlyStore !== 'undefined' && onlyStore.isInited() && typeof _checkFirstQuestFlag === 'function') {
-                _firstQuest = _checkFirstQuestFlag(questStore.getProjectRoot());
-            }
-        } catch (_) { }
-        // ★ Only center panel (main project) triggers E-Flow
-        if (typeof ExpertFlow !== 'undefined' && ExpertFlow.shouldTrigger(_firstQuest, floorNum) && typeof _panelId !== 'undefined' && _panelId === 1) {
-            ExpertFlow.markTriggered();
-            ExpertFlow.setMode(ExpertFlow.MODE_PENDING);
-            // ★ _system:true → AI sees it, UI does NOT render it (unlike _injected guide blocks)
-            agent.inject('[E-FLOW trigger]', { _system: true });
-        }
-    } catch (_) { }
 
     // ★ 楼层尘埃落定音效 — 局部函数，_capAbort（停滞终止）与 finally 共用
     //   正常建完（agent._floorCompletedCleanly）→ ok endfloor；除此之外滴一切尘埃落定（异常/用户停止/停滞）→ bad endfloor

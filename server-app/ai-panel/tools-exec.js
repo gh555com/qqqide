@@ -262,6 +262,7 @@ async function executeTool(name, args, ownerAgent) {
         case 'remove_background': _result = executeRemoveBackground(args, ownerAgent); break;
         case 'search_web': _result = executeSearchWeb(args, ownerAgent); break;
         case 'run_task': _result = executeRunTask(args); break;
+        case 'eflow': _result = executeEflow(args); break;
         case 'sys_python': _result = executeSysPython(args); break;
         case 'sys_node': _result = executeSysNode(args); break;
         case 'timeline_versions': _result = executeTimelineVersions(args); break;

@@ -19,6 +19,8 @@
 // 契约（只增不改，老客户端永远不炸）：
 //   · 未知字段一律忽略；没 prompt 的卡整条丢弃（点了没话说的卡不显示）
 //   · 卡片只有一句话（title）+ 一个提词（prompt），没有描述行——信息越少越快做决定
+//   · 卡片悬停说明 = 这句提词本身（sanitize 里 desc := prompt；服务端 desc 字段一律不采纳 →
+//     「说明」永远就是将要发出去的那句话，不可能与消息不一致）
 //   · 显示层文案支持字符串或 {lang: 文案} 对象（取当前语言 → zh → en → 首值）
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -41,6 +43,9 @@
     var MAX_CARDS = 8;
     var CACHE_KEY = 'tasks';               // qgs ns = qqq.tasks
     var PANE_ID = 'task-pane';
+    // 条件卡（when）本地判定：只认白名单条件，未知条件恒 true（老客户端/新条件不互噬）
+    var WHEN_TTL = 5 * 60 * 1000;          // 判定结果缓存 5min（进空白面板不反复读盘）
+    var WHEN_DOCS_MIN = 12000;             // 「值得整理」阈值：每轮固定注入 ≥ 12000 字（≈5K tokens/轮）
 
     // ★ 出厂兜底（运维台 gaea/cf/qqqide/默认任务.py 的 DEFAULT_TASKS 双写同步点）
     //   提词一律「用户口吻一句话」——它就是楼层里用户气泡的原文。
@@ -51,45 +56,40 @@
             {
                 id: 'clean-c', icon: 'trash', platforms: ['win'],
                 title: { zh: '清理 C 盘', en: 'Clean C drive' },
-                desc: { zh: '先列清单，你同意了再删', en: 'Lists first, deletes after you approve' },
-                prompt: '帮我清一清 C 盘，先把能删的东西列出来给我看，我同意了再删。'
+                prompt: '帮我清一清 C 盘，顺便看看电脑里有没有类似 360 那种流氓软件（全家桶），能清的先列个清单给我看，我同意了再清。'
             },
             {
                 id: 'autostart-qd', icon: 'clock', platforms: ['win'],
-                title: { zh: '开机自启', en: 'Start on boot' },
-                desc: { zh: 'qd 开机自动打开', en: 'Launch qd automatically after sign-in' },
+                title: { zh: 'qd 开机自启', en: 'Start qd on boot' },
                 prompt: '把 qd 设成开机自启，以后开机就自动打开。'
             },
             {
-                id: 'eflow-upgrade', icon: 'download', platforms: ['win', 'mac', 'linux'],
-                title: { zh: '升级 E-Flow', en: 'Upgrade E-Flow' },
-                desc: { zh: '把本机 E-Flow 升到最新', en: 'Upgrade local E-Flow to latest' },
-                prompt: '帮我把本机的 E-Flow 升级到最新版。'
+                // 只在「真能省钱」时出现（when 由客户端本地判定，见 _ensureWhen）——
+                // 已接入 / 本来就没多长 → 这张卡不出现（不当广告）。
+                id: 'eflow-upgrade', icon: 'compass', platforms: ['win', 'mac', 'linux'], when: ['docs.gain'],
+                title: { zh: 'AI 读懂我的项目', en: 'Make AI understand my project' },
+                prompt: '帮我看看这个项目现在每轮要给 AI 塞多少字的说明文档，如果太多就帮我理成一份精简的（保留铁律和路线、删重复），弄完告诉我省了多少；如果我已经有自己的规则就别乱改，只把数字报给我看。'
             },
             {
                 id: 'install-everything', icon: 'search', platforms: ['win'],
                 title: { zh: '装 Everything', en: 'Install Everything' },
-                desc: { zh: '秒级全盘搜索 + 桌面快捷方式', en: 'Instant file search + desktop shortcut' },
                 prompt: '帮我装个 Everything 文件搜索工具，装好以后在桌面放个快捷方式。'
             },
             {
                 id: 'startup-clean', icon: 'snow', platforms: ['win', 'mac', 'linux'],
-                title: { zh: '电脑卡顿', en: 'Slow PC' },
-                desc: { zh: '列出自启项，你同意了再关', en: 'Lists startup items, closes after you approve' },
+                title: { zh: '电脑卡顿？', en: 'Slow PC?' },
                 prompt: '我的电脑有点卡，帮我看看开机自启里有什么能关的，先列清单，我同意了再关。'
             },
             {
                 // macOS 没有 Everything，等价物是系统自带 Spotlight 索引（要的是把索引弄好，不是「随便找个文件」）
                 id: 'spotlight-search', icon: 'search', platforms: ['mac'],
-                title: { zh: '启用 Spotlight', en: 'Enable Spotlight' },
-                desc: { zh: '检查索引，坏了就修好', en: 'Check and repair the Spotlight index' },
+                title: { zh: 'Spotlight 搜索', en: 'Spotlight search' },
                 prompt: '帮我检查这台 Mac 的 Spotlight 索引正不正常（mdfind 能不能立刻搜到文件），不正常就修好；修完用一个真实的搜索演示给我看。'
             },
             {
                 // Linux 没有 Everything，等价物是 locate（plocate/mlocate）索引
                 id: 'locate-search', icon: 'search', platforms: ['linux'],
-                title: { zh: '装 locate', en: 'Install locate' },
-                desc: { zh: '装 plocate 建索引，秒查文件', en: 'Install plocate and build the index' },
+                title: { zh: 'locate 文件搜索', en: 'locate search' },
                 prompt: '帮我在这台 Linux 上装好 locate（优先 plocate）并建好索引，需要管理员权限的命令你告诉我，我自己执行；装完用一个真实的搜索演示给我看。'
             }
         ]
@@ -203,13 +203,22 @@
             // 旧版卡（kind=action / 无 prompt）一律丢弃：本面板只负责「说一句话」，
             // 干活由对话里的 AI 决定（老客户端读旧表照旧，契约只增不改）
             if (!t.prompt || typeof t.prompt !== 'string') continue;
+            // 条件卡（可选）：服务器只给条件名，判定在客户端本地（见 _ensureWhen）
+            var when = [];
+            if (t.when) {
+                var ws = Array.isArray(t.when) ? t.when : [t.when];
+                for (var wi = 0; wi < ws.length; wi++) {
+                    if (typeof ws[wi] === 'string' && ws[wi]) when.push(ws[wi]);
+                }
+            }
             seen[id] = 1;
             out.push({
                 id: id,
                 title: title,
-                desc: _pick(t.desc),
+                desc: t.prompt,        // 说明 := 将要发出去的那句话（唯一来源；服务端 desc 不采纳）
                 icon: String(t.icon || ''),
-                prompt: t.prompt
+                prompt: t.prompt,
+                when: when
             });
         }
         if (!out.length) return null;
@@ -275,6 +284,78 @@
         });
     }
 
+    // ── 条件卡：本地判定「这张卡现在值得出现吗」──────────────────────────
+    // 只认白名单条件（未知条件 = 恒 true，新条件不会把老客户端卡全灭）：
+    //   docs.gain — 未接入文档地基，且每轮固定注入 ≥ WHEN_DOCS_MIN 字（真能省 token 才推）
+    // 失败一律 fail-open（显示）：卡片本身零副作用，点了 AI 也会先看数字再动手。
+    var _whenState = null;          // { root, at, map }
+    var _whenBusy = false;
+    function _whenHit(t) {
+        if (!t.when || !t.when.length) return true;
+        if (!_whenState) return false;    // 未判定：先不画（避免“出现再消失”的闪动）
+        var map = _whenState.map || {};
+        for (var i = 0; i < t.when.length; i++) {
+            if (map[t.when[i]] === false) return false;
+        }
+        return true;
+    }
+    function _visibleTasks() {
+        var list = (_data && _data.tasks) || [];
+        var out = [];
+        for (var i = 0; i < list.length; i++) { if (_whenHit(list[i])) out.push(list[i]); }
+        return out;
+    }
+    function _needWhen() {
+        var list = (_data && _data.tasks) || [];
+        for (var i = 0; i < list.length; i++) { if (list[i].when && list[i].when.length) return true; }
+        return false;
+    }
+    function _ensureWhen() {
+        if (!_needWhen()) return;
+        var root = '';
+        try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) root = String(questStore.getProjectRoot() || '').replace(/\\/g, '/'); } catch (_) { root = ''; }
+        if (_whenState && _whenState.root === root && (Date.now() - _whenState.at) < WHEN_TTL) return;
+        if (_whenBusy) return;
+        var core = (typeof EflowCore !== 'undefined' && EflowCore && EflowCore.run) ? EflowCore : null;
+        var br = null;
+        try { br = (typeof getBridge === 'function') ? getBridge() : null; } catch (_) { br = null; }
+        if (!br) { try { br = window.qqqideBridge || null; } catch (_) { br = null; } }
+        if (!core || !br || !br.fs || !root) {
+            _whenState = { root: root, at: Date.now(), map: { 'docs.gain': true } };   // fail-open
+            _paint();
+            return;
+        }
+        _whenBusy = true;
+        var io = {
+            read: function (p) { return br.fs.read(p); },
+            write: function (p, t) { return br.fs.write(p, t); },
+            list: function (p) { return br.fs.list(p); },
+            exists: function (p) { return br.fs.exists(p); },
+            mkdir: function (p) { return br.fs.mkdir(p); },
+            remove: function (p) { return br.fs.remove(p); },
+            rename: function (p, q) { return br.fs.rename(p, q); }
+        };
+        (async function () {
+            var map = { 'docs.gain': true };
+            try {
+                var adopted = false;
+                try {
+                    var stat = await br.fs.stat(String(root).replace(/\/+$/, '') + '/_qqq/alphal/expert/index.md');
+                    adopted = !!(stat && !stat.isDir);
+                } catch (_) { adopted = false; }
+                var r = await core.run('status', io, root, {});
+                var d = (r && r.data) || {};
+                var inject = (typeof d.inject === 'number') ? d.inject : 0;
+                map['docs.gain'] = (!adopted && inject >= WHEN_DOCS_MIN);
+            } catch (_) {
+                map['docs.gain'] = true;          // fail-open
+            }
+            _whenState = { root: root, at: Date.now(), map: map };
+            _whenBusy = false;
+            _paint();
+        })();
+    }
+
     // ── 可见性：只在「空白草稿面板」出现（唯一判定）────────────────────
     function _isBlankDraft() {
         try {
@@ -334,7 +415,9 @@
         var grid = _pane.querySelector('.tp-grid');
         if (!grid) return;
         grid.innerHTML = '';
-        for (var i = 0; i < data.tasks.length; i++) {
+        var shown = _visibleTasks();
+        if (!shown.length) { _pane.style.display = 'none'; return; }   // 全被条件过滤 = 回到纯空白（不留空标题）
+        for (var i = 0; i < shown.length; i++) {
             (function (t) {
                 var card = document.createElement('button');
                 card.type = 'button';
@@ -348,17 +431,21 @@
                 tt.textContent = t.title;
                 txt.appendChild(tt);
                 card.appendChild(txt);
-                // 卡片只留标题；描述只作悬停提示，不占版面
-                if (t.desc) card.title = t.desc;
+                // 卡片只留标题；悬停说明 = 将要发出去的那句话（不占版面）
+                if (t.prompt) card.title = t.prompt;
                 grid.appendChild(card);
-            })(data.tasks[i]);
+            })(shown[i]);
         }
     }
     function _refresh() {
         var show = _isBlankDraft();
         if (show && !_pane) { _pane = _build(); }
+        var was = _pane ? (_pane.style.display !== 'none') : false;
         if (_pane) _pane.style.display = show ? '' : 'none';
         if (show && !_data) { _data = _fallback(); _paint(); }
+        // 只在「从无到有」时重绘（空白↔有内容的变化由 MutationObserver 驱动，不是每次都要重排）
+        else if (show && !was) { _paint(); }
+        if (show) { _ensureWhen(); }
     }
 
     // ── 执行：替用户说一句话（等同打字 + Enter，唯一发送管线）────────────

@@ -13,8 +13,8 @@ function updateQueueBtn() {
     var hasImages = (typeof pendingImages !== 'undefined') && pendingImages.length > 0;
     $queueBtn.disabled = !(hasText || hasImages);
     // ★ 2026-08-20 修订：自动暂停已整体废除（队列直通发送不触碰编辑框），此处无自愈逻辑
-}// ── 无主文件夹守卫：先落座（主窗口 workspace-seat 打样），失败才回落到系统对话框 ──
-//   落座成功 → 自动聚焦编辑框（吞掉的那次点击必须替用户补回来，否则就是「点了没反应」）
+}// ── 无主文件夹守卫：先落座（唯一机器 = 主窗口 workspace-seat），失败才回落到系统对话框 ──
+//   触发面唯一闸门 = 发送（Enter / 发送钮）；点击/聚焦/打字/纯文本粘贴 = 零磁盘变化。
 var _selectingProject = false;
 function _hasMainProject() {
     try {
@@ -50,6 +50,12 @@ async function _pickMainProjectDialog() {
     }
     return false;
 }
+function _seatToast(key, fallback) {
+    try {
+        var txt = (typeof _qq === 'function') ? _qq(key, fallback) : fallback;
+        if (parent && parent.qqqideQoast) parent.qqqideQoast.show(txt, { type: 'warning', duration: 6000 });
+    } catch (_) { }
+}
 // 唯一入口：保证有主文件夹（幂等 / 单飞 / 已有一律短路）
 async function _ensureMainProject() {
     if (_hasMainProject()) return true;
@@ -57,61 +63,51 @@ async function _ensureMainProject() {
     if (_selectingProject) return false;
     _selectingProject = true;
     var ok = false;
+    var r = null;
     try {
         var seat = _seatMachine();
         if (seat && typeof seat.run === 'function') {
-            var r = null;
             try { r = await seat.run(); } catch (_) { r = null; }
             ok = !!(r && r.ok);
         }
-        if (!ok) ok = await _pickMainProjectDialog();
+        if (!ok) {
+            // 落座失败必须可见（禁静默）：先说清原因，再把选择权交回用户
+            if (r && r.code === 'blocked') _seatToast('ai.seat.blocked', '项目文件夹已被另一个窗口占用：请在那个窗口继续，或在这里选择其他文件夹');
+            else if (r && r.code === 'ask') _seatToast('ai.seat.ask', '找不到可用的项目目录：请选择一个文件夹');
+            ok = await _pickMainProjectDialog();
+            if (!ok) _seatToast('ai.seat.cancel', '还没有主文件夹：内容留在编辑框，选好文件夹后再发送');
+        }
     } finally {
         _selectingProject = false;
     }
     return ok;
 }
-function _ensureMainProjectThenFocus() {
-    _ensureMainProject().then(function (ok) {
-        if (!ok) return;
-        try {
-            if ($input) {
-                $input.focus();
-                var n = $input.value.length;
-                $input.setSelectionRange(n, n);
-                _lastInputCaret = n;
-            }
-        } catch (_) { }
+// ═══ 落座后重放发送（唯一触发面：真的要写盘的那一刻）═══
+//   闸门拒绝发生在冻结之前 → 内容（文字+图片）一直在编辑框，落座成功即重放，用户无需按第二下。
+var _seatBusy = false;
+function _waitMainProject(ms) {
+    var t0 = Date.now();
+    return new Promise(function (resolve) {
+        (function poll() {
+            if (_hasMainProject()) return resolve(true);
+            if (Date.now() - t0 >= ms) return resolve(false);
+            setTimeout(poll, 100);
+        })();
     });
 }
-
-// ═══ 统一守卫管线：无主项目时先落座再放行 ═══
-// ① 所有鼠标点击 → 在 #input-area 内直接触发
-document.addEventListener('mousedown', function (e) {
-    if (_hasMainProject() || _selectingProject) return;
-    var el = e.target;
-    if (el.closest('#input-area')) {
-        _ensureMainProjectThenFocus();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
-// ② Enter 键发送
-document.addEventListener('keydown', function (e) {
-    if (_hasMainProject() || _selectingProject) return;
-    if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
-        _ensureMainProjectThenFocus();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
-// ③ 粘贴拦截
-$input.addEventListener('paste', function (e) {
-    if (!_hasMainProject() && !_selectingProject) {
-        _ensureMainProjectThenFocus();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-    }
-}, true);
+function _seatThenReplay() {
+    if (_seatBusy) return;
+    _seatBusy = true;
+    _ensureMainProject().then(function (ok) {
+        if (!ok) { _seatBusy = false; return; }
+        // 视口落主文件夹与面板绑定都是异步的 → 等落地再重放（禁出现「选完文件夹就没了」）
+        _waitMainProject(2500).then(function (ready) {
+            _seatBusy = false;
+            if (!ready) return;
+            if (_gateBeforeSend()) _freezeAndSendFromInput();
+        });
+    }, function () { _seatBusy = false; });
+}
 
 // ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──
 async function _copyAlphalDir(srcDir, dstDir) {
@@ -361,6 +357,8 @@ function _panelSendTarget() {
 // 一切拒绝都在冻结之前完成（内容零消费：编辑框/图片条原样保留），且必有可见反馈——禁静默吞点击。
 function _gateBeforeSend() {
     if (_switching) return false;                       // quest 切换中（瞬时态，静默）
+    // 无主文件夹 → 先落座（成功即重放本次发送；内容零消费，绝不让用户按第二下）
+    if (!_hasMainProject()) { _seatThenReplay(); return false; }
     var _qid = _panelSendTarget();                      // 闸门与发送目标同源（不读 questActiveId）
     // 本任务建楼中（面板真身派生）或同 quest 的链在执行（跨面板 / 草稿晋升窗口）→ 拒
     if (_sending || (typeof _sendActive === 'function' && _sendActive(_qid))) { _limitQoast('send-busy'); return false; }
