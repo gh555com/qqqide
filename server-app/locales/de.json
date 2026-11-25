@@ -982,6 +982,7 @@
             "cardStartupClean": "Langsamer PC?",
             "cardSpotlight": "Spotlight-Suche",
             "cardLocate": "locate Dateisuche",
+            "promptEflowAdopt": "Alle Projekte an E-Flow anbinden",
             "promptCleanC": "Bereinige Laufwerk C und prüfe, ob sich auf dem Computer unerwünschte Software (wie z. B. 360 oder ähnliche Bündelprogramme) befindet. Erstelle zunächst eine Liste der zu entfernenden Elemente und warte auf meine Bestätigung, bevor du sie löschst.",
             "promptAutostartQd": "Lege qd als Autostart-Programm fest, sodass es beim Systemstart automatisch geöffnet wird.",
             "promptEverything": "Installiere das Dateisuchtool „Everything“ und lege nach der Installation eine Verknüpfung auf dem Desktop ab.",
@@ -991,7 +992,9 @@
         },
         "eflow": {
             "adoptFail": "Automatische Einbindung des Dokumenten-Fundaments nicht erfolgreich:",
-            "adoptErr": "Automatische Einbindung des Dokumenten-Fundaments fehlgeschlagen:"
+            "adoptErr": "Automatische Einbindung des Dokumenten-Fundaments fehlgeschlagen:",
+            "sayOn": "Ab jetzt übernimmt qds E-Flow die „Wissensdatenbankverwaltung“ und die „KI-zu-KI-Zusammenarbeit“ für alle Projekte. Die entsprechenden Regeln werden in die globale Regeldatei global.txt geschrieben. Sind Sie sicher? (Sie können dies später über das Zahnrad-Symbol im Bereich „Erweiterte Einstellungen“ verwalten und rückgängig machen.)\nAntworten Sie mit 1, um zu bestätigen. Bei jeder anderen Antwort werde ich nichts unternehmen.",
+            "sayOff": "Möchten Sie die globale Übernahme durch E-Flow wirklich aufheben? Dadurch wird der entsprechende Regelabschnitt aus global.txt entfernt. Neue Projekte werden künftig nicht mehr automatisch übernommen (bereits angebundene Projekte bleiben unverändert und können jederzeit wieder aktiviert werden).\nAntworten Sie mit 1, um zu bestätigen. Bei jeder anderen Antwort werde ich nichts unternehmen."
         },
         "auditBtn": "Prüfung",
         "translateBtn": "Übersetzen",

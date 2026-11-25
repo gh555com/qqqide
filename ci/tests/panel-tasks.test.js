@@ -122,6 +122,23 @@ test('tasks: 线路全挂 → 出厂兜底 5 张卡（清理 / 自启 / 文档�
     dom.window.close();
 });
 
+test('tasks: 暗号卡也跟界面语言（非中文用户不许冒出中文气泡）', async (t) => {
+    const { dom, win } = harness({
+        fetchFail: true,
+        tr: { 'ai.tasks.promptEflowAdopt': 'Alle Projekte an E-Flow anbinden' }
+    });
+    t.after(() => dom.window.close());
+    await tick(40);
+    const card = cards(win).filter(function (c) { return c.getAttribute('data-id') === 'eflow-adopt'; })[0];
+    assert.ok(card, '暗号卡必须存在');
+    assert.strictEqual(card.title, 'Alle Projekte an E-Flow anbinden',
+        '提词（= 将发出去的用户气泡）必须吃译文；品牌词 E-Flow 必须保留');
+    card.dispatchEvent(win.Event ? new win.Event('click', { bubbles: true }) : (function () { var e = win.document.createEvent('MouseEvents'); e.initEvent('click', true, true); return e; })());
+    assert.strictEqual(win.document.getElementById('input').value, 'Alle Projekte an E-Flow anbinden',
+        '点卡 = 把译文那句话填进编辑框（用户气泡原文）');
+    assert.strictEqual(win.__sent, 1, '仍然走正常发送管线');
+});
+
 // ── 条件卡（when）：服务器只给条件名，判定在客户端本地 ─────────────────────────
 function harnessWhen(state) {
     // ★ 必须在 eval 前就位：模块 boot 是同步的，boot 时读不到 ExpertFlow 会当场 fail-open 并把判定缓存进 _whenState

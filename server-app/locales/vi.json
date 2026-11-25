@@ -982,6 +982,7 @@
             "cardStartupClean": "Máy tính bị chậm?",
             "cardSpotlight": "Tìm kiếm Spotlight",
             "cardLocate": "Tìm kiếm tệp locate",
+            "promptEflowAdopt": "Tất cả dự án đều tích hợp E-Flow",
             "promptCleanC": "Dọn dẹp ổ C giúp tôi, đồng thời kiểm tra xem trong máy có phần mềm độc hại kiểu 'bầy đàn' (như 360) hay không. Liệt kê danh sách các mục có thể dọn dẹp để tôi xem trước, chỉ thực hiện dọn dẹp sau khi tôi đồng ý.",
             "promptAutostartQd": "Đặt qd để khởi động cùng hệ thống, sao cho ứng dụng tự động mở mỗi khi khởi động máy.",
             "promptEverything": "Cài đặt công cụ tìm kiếm tệp Everything cho tôi, sau khi cài xong hãy tạo lối tắt trên màn hình nền.",
@@ -991,7 +992,9 @@
         },
         "eflow": {
             "adoptFail": "Tự động kết nối nền tảng tài liệu không thành công:",
-            "adoptErr": "Tự động kết nối nền tảng tài liệu thất bại:"
+            "adoptErr": "Tự động kết nối nền tảng tài liệu thất bại:",
+            "sayOn": "Từ bây giờ, E-Flow của qd sẽ đảm nhận việc «quản lý cơ sở tri thức» và «sự phối hợp giữa các AI với nhau» cho mọi dự án. Các quy tắc sẽ được ghi thêm vào tệp quy tắc toàn cục global.txt. Bạn có chắc chắn không? (Sau này bạn có thể quản lý và hủy bỏ trong thẻ «Cài đặt nâng cao» tại nút bánh răng)\nNhập 1 để xác nhận, mọi phản hồi khác ngoài 1 sẽ không thực hiện thao tác nào.",
+            "sayOff": "Bạn có chắc chắn muốn hủy việc E-Flow đảm nhận toàn cục không? Sau khi hủy, đoạn quy tắc đảm nhận đó sẽ bị xóa khỏi global.txt, các dự án mới sau này sẽ không tự động được đảm nhận nữa (các dự án đã tích hợp vẫn giữ nguyên trạng thái hiện tại và có thể bật lại bất cứ lúc nào).\nNhập 1 để xác nhận, mọi phản hồi khác ngoài 1 sẽ không thực hiện thao tác nào."
         },
         "auditBtn": "Kiểm toán",
         "translateBtn": "Dịch",

@@ -111,9 +111,11 @@
     // ★ 卡片提词的多语言键（静态字面量，同标题一套口径）：
     //   提词 = 用户气泡原文，人看到的是「自己说的话」——非中文用户看到中文气泡 = 谎报他说过什么，
     //   所以出厂提词跟着界面语言走；服务端改过的一律原文（见下方基线判定）。
-    //   ★ 唯一例外：eflow-adopt 不上表 —— 那是接管暗号（一句中文 + 回复「1」才生效），
-    //     整套契约（确认话术 + 令牌）都是中文锁定的，半译只会更怪。
+    //   ★ eflow-adopt 也在表里：暗号本身也跟界面语言走（否则非中文用户点卡就冒出一句中文气泡）。
+    //     能翻的前提是判定不靠语言：怎么答永远只有一个字符「1」（内核 judgeConfirm），
+    //     所以拍翻多少种语言都不会多出一套边界情况；译文必须保留品牌词 `E-Flow`（AI 靠它定向）。
     var CARD_PROMPT_KEYS = {
+        'eflow-adopt': 'ai.tasks.promptEflowAdopt',
         'clean-c': 'ai.tasks.promptCleanC',
         'autostart-qd': 'ai.tasks.promptAutostartQd',
         'install-everything': 'ai.tasks.promptEverything',

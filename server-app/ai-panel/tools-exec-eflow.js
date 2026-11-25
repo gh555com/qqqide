@@ -22,6 +22,20 @@ function _eflowRoot() {
     return '';
 }
 
+// 话术翻译：内核只能给「键 + 中文基线」（它是零依赖纯逻辑，命令行也在用），
+//   真正的译文只在渲染层有（i18n.js）。键缺了就退回中文基线 —— 绝不空白、绝不漏句。
+//   ★ 翻译不改变判定：怎么答永远只有一个字符「1」，与语言无关。
+function _eflowSay(key, fb) {
+    if (!key) return fb;
+    try {
+        if (typeof _qq === 'function') {
+            var v = _qq(key, fb);
+            if (v && v !== key) return v;
+        }
+    } catch (_) { }
+    return fb;
+}
+
 // 用户级目录（全局开关的家）：mac 的 app.root() 在 bundle 内 → 真值走 bootinfo.userData
 async function _eflowDataRoot(bridge) {
     try {
@@ -98,7 +112,7 @@ async function executeEflow(args, ownerAgent) {
             //   迁移只能由人在 设置 → 高级 → E-Flow 里点（via=ui + 二次点击确认）。
             force: false,
             action: String((args && args.action) || 'status'),   // global：status / ask / on / off / repair
-            // ★ 原话只认会话真相（一律不理 args.confirm）：模型把用户没说过的话写成 1 也无效
+            // ★ 原话只认会话真相（模型自填的那份一律不理）：把用户没说过的话写成 1 也无效
             confirm: truth.text,
             userSeq: truth.seq,
             userFloor: truth.floor,
@@ -117,6 +131,7 @@ async function executeEflow(args, ownerAgent) {
         : '';
     // ★ 固定话术：正文由机器给，AI 只负责搬运（禁自己编、禁改写、禁省略）
     var say = (r && r.data && typeof r.data.say === 'string') ? r.data.say : '';
+    if (say && r.data && r.data.sayKey) say = _eflowSay(String(r.data.sayKey), say);
     var sayBlock = say
         ? '\n\n★ 必须原样发给用户的一段话（一字不改；禁改写、禁加解释、禁省略）：\n「' + say + '」'
         : '';

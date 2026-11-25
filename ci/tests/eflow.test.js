@@ -239,7 +239,7 @@ test('eflow: 产品只有一份实现（工具/面板/能力清单/加载顺序�
     assert.ok(/name: 'eflow'/.test(defs), 'eflow 工具必须在 tools-defs 里');
     assert.ok(/eflow: 'EFFECT'/.test(defs), 'eflow 必须有分类（并行调度要用）');
     const exec = R(path.join(ROOT, 'server-app/ai-panel/tools-exec.js'));
-    assert.ok(/case 'eflow': _result = executeEflow\(args\)/.test(exec), 'eflow 必须被分发');
+    assert.ok(/case 'eflow': _result = executeEflow\(args, ownerAgent\)/.test(exec), 'eflow 必须被分发（且必须把 ownerAgent 透传：原话核对靠它）');
     const html = R(path.join(ROOT, 'server-app/ai-panel/index.html'));
     const iCore = html.indexOf('../eflow/eflow-core.js');
     const iExec = html.indexOf('tools-exec-eflow.js');
@@ -247,7 +247,7 @@ test('eflow: 产品只有一份实现（工具/面板/能力清单/加载顺序�
     const panel = R(path.join(ROOT, 'server-app/ai-panel/panel-expert.js'));
     assert.ok(panel.indexOf('_skeletonIndex') < 0, '面板里禁再写第二套模板（内核是唯一源）');
     assert.ok(!/EflowCore\.run\('init'/.test(panel), '面板禁在启动时自动铺骨架（白纸原则）：只能由用户主动触发');
-    assert.ok(/_checkStandardExists/.test(panel), '面板只许“看”，不许“建”');
+    assert.ok(/projectKind/.test(panel), '面板只许“看”（归类问内核），不许“建”');
     assert.ok(!fs.existsSync(path.join(ROOT, 'server-app/ai-panel/expert-template')), '旧模板目录必须删掉（双源 = 迟早矛盾）');
     const cap = R(path.join(ROOT, 'server-app/capabilities/eflow.md'));
     const probe = (/probe:\s*(.+)/.exec(cap) || [])[1].trim();
@@ -329,6 +329,9 @@ test('eflow: global 接管 = 暗号 1（除 1 之外一律零写入，且不追�
     assert.ok(tok && tok.length > 4, 'ask 必须给令牌');
     assert.ok(/确定吗/.test(ask.data.say), '话术必须是那句确认语：' + ask.data.say);
     assert.ok(/回复 1 代表确定/.test(ask.data.say), '话术必须写清怎么答：' + ask.data.say);
+    // ★ 话术要跟界面语言：内核只给「键 + 中文基线」，译文由渲染层 i18n 接管
+    //   （翻译不改变判定：怎么答永远只有一个字符 1）
+    assert.strictEqual(ask.data.sayKey, 'ai.eflow.sayOn', 'ask(on) 必须带 sayKey：' + ask.data.sayKey);
     assert.equal(R(GD), before, 'ask 阶段什么都不许改');
 
     // ③ 除 1 之外的一切回复（含「确定」「好」「取消」）→ 一律不写、也不追问
@@ -404,9 +407,10 @@ test('eflow: 原话只认会话真相（模型自填 confirm=1 / 同楼层伪造
     const cross = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1', userSeq: 4, userFloor: 2, questId: 'q2' });
     assert.equal(cross.ok, false, '跨任务令牌必须拒绝：' + cross.text);
 
-    // ④ 问的是 on、却调 off → 拒绝
+    // ④ 拿着 on 的令牌去调 off（反向动作）→ 幂等短路：不写盘就结束
     const wrongAct = await core.run('global', IO, r, { dataRoot: dr, action: 'off', token: tok, confirm: '1', userSeq: 4, userFloor: 2, questId: 'q1' });
-    assert.equal(wrongAct.ok, false, '动作不一致必须拒绝：' + wrongAct.text);
+    assert.equal(wrongAct.data.already, true, '反向动作必须是幂等空转：' + wrongAct.text);
+    assert.equal(R(GD), before, '空转不许碰 global.txt');
 
     // ⑤ 拿不到会话（工具层给不出 userSeq）→ 拒绝，并指路设置面板
     const noSess = await core.run('global', IO, r, { dataRoot: dr, action: 'on', token: tok, confirm: '1' });
@@ -534,6 +538,38 @@ test('eflow: 项目归类只许一处（面板/设置全部问内核 projectKind
         assert.ok(fs.readFileSync(path.join(ROOT, f), 'utf8').indexOf('bridge.fs.rename(p, q)') < 0,
             f + ' 不许再自带一份 IO 适配器（用 EflowCore.bridgeIO）');
     }
+});
+
+test('eflow: 会话真相取值器（排除注入消息 / 剥时间块 / 拿不到就给 -1）', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'server-app/ai-panel/tools-exec-eflow.js'), 'utf8');
+    const i = src.indexOf('function _eflowUserTruth(');
+    assert.ok(i > 0, '工具层必须有 _eflowUserTruth（原话唯一来源）');
+    // 取到配对的收尾括号（禁把整个文件 eval 进来）
+    let depth = 0, end = -1;
+    for (let k = src.indexOf('{', i); k < src.length; k++) {
+        if (src[k] === '{') depth++;
+        else if (src[k] === '}') { depth--; if (depth === 0) { end = k + 1; break; } }
+    }
+    assert.ok(end > 0, '函数体必须完整');
+    const fn = new Function('return (' + src.slice(i, end) + ')')();
+
+    assert.equal(fn(null).seq, -1, '没有 agent → -1（拿不到会话，内核必须拒绝）');
+    const ag = {
+        _questId: 'q7', conversation: [
+            { role: 'user', content: 'RULES', _persistent: true },
+            { role: 'user', content: '[GUIDE] x', _injected: true },
+            { role: 'assistant', content: 'ok' },
+            { role: 'user', content: '1\n\n[CURRENT TIME: 2026-11-25 (Wed) 03:00:00 UTC+8]', _floor: 5 },
+            { role: 'user', content: '系统代发', _system: true, _floor: 6 }
+        ]
+    };
+    const t = fn(ag);
+    assert.equal(t.text, '1', '必须剥掉尾部时间块：' + JSON.stringify(t.text));
+    assert.equal(t.floor, 5, '_floor 必须取真实用户消息的楼层');
+    assert.equal(t.seq, 1, '注入消息 / 系统代发都不算用户消息：' + t.seq);
+    assert.equal(t.qid, 'q7');
+    // 没有真实用户消息（全新会话）→ seq=0，仍然「可核对」
+    assert.equal(fn({ conversation: [{ role: 'user', content: 'RULES', _persistent: true }] }).seq, 0);
 });
 
 test.after(() => {

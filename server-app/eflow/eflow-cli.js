@@ -11,6 +11,7 @@
 //   node server-app/eflow/eflow-cli.js rotate  [root] [--apply] [--days N]
 //   node server-app/eflow/eflow-cli.js upgrade [root] [--dry] [--keep-rules]
 //   node server-app/eflow/eflow-cli.js detach  [root] [--purge]
+//   任意 op 可加 --data <用户级目录>：有了它才会把 global.txt 接管块计入每轮成本
 //
 // root 缺省 = 当前工作目录。逻辑全在 eflow-core.js（与面板共用同一份）——
 // 这里只做 fs 适配与参数解析，禁写任何判断。
@@ -58,6 +59,7 @@ async function main() {
         else if (a === '--today') opts.today = argv[++i];
         else if (a === '--purge') opts.purge = true;
         else if (a === '--keep-rules') opts.keepRules = true;
+        else if (a === '--data') opts.dataRoot = argv[++i];   // 用户级目录（能算全局接管块的成本；缺省 = 不算，不猜）
         else if (a === '--no-link') opts.link = false;
         else if (a.charAt(0) !== '-') root = a;
     }

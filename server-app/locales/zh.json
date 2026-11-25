@@ -982,6 +982,7 @@
       "cardStartupClean": "电脑卡顿？",
       "cardSpotlight": "Spotlight 搜索",
       "cardLocate": "locate 文件搜索",
+      "promptEflowAdopt": "一切项目接入 E-Flow",
       "promptCleanC": "帮我清一清 C 盘，顺便看看电脑里有没有类似 360 那种流氓软件（全家桶），能清的先列个清单给我看，我同意了再清。",
       "promptAutostartQd": "把 qd 设成开机自启，以后开机就自动打开。",
       "promptEverything": "帮我装个 Everything 文件搜索工具，装好以后在桌面放个快捷方式。",
@@ -991,7 +992,9 @@
     },
     "eflow": {
       "adoptFail": "文档地基自动接入没成功：",
-      "adoptErr": "文档地基自动接入失败："
+      "adoptErr": "文档地基自动接入失败：",
+      "sayOn": "从现在开始，将由 qd 的 E-Flow 接管一切项目的「知识库管理」和「AI 与 AI 之间的相互协作」，会将规则追加写入到全局规则文件 global.txt，确定吗？（将来可在齿轮按钮「高级设置」卡片里管理和取消）\n回复 1 代表确定，除 1 之外的一切回复我什么也不做。",
+      "sayOff": "确定要取消 E-Flow 的全局接管吗？取消后会从 global.txt 里删掉那段接管规则，以后新项目不再自动接管（已经接入的项目保持现状，随时可以再打开）。\n回复 1 代表确定，除 1 之外的一切回复我什么也不做。"
     },
     "auditBtn": "审计",
     "translateBtn": "翻译",

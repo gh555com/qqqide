@@ -1145,6 +1145,12 @@
     var SAY_TAIL = '回复 1 代表确定，除 1 之外的一切回复我什么也不做。';
     var SAY_ON = '从现在开始，将由 qd 的 E-Flow 接管一切项目的「知识库管理」和「AI 与 AI 之间的相互协作」，会将规则追加写入到全局规则文件 global.txt，确定吗？（将来可在齿轮按钮「高级设置」卡片里管理和取消）\n' + SAY_TAIL;
     var SAY_OFF = '确定要取消 E-Flow 的全局接管吗？取消后会从 global.txt 里删掉那段接管规则，以后新项目不再自动接管（已经接入的项目保持现状，随时可以再打开）。\n' + SAY_TAIL;
+
+    // ★ 话术的多语言键（静态字面量）：内核只给「键 + 中文基线」，译文由调用方（渲染层 i18n）替换——
+    //   内核是零依赖纯逻辑（命令行也用它），不能自己去查语言表。
+    //   中文基线永远是唯一真理源（zh.json 里那两条必须与 SAY_ON / SAY_OFF 逐字相等，有闸门守着）。
+    //   ★ 翻译不改变判定：怎么答永远只有一个字符「1」（judgeConfirm），与语言无关。
+    var SAY_KEYS = { on: 'ai.eflow.sayOn', off: 'ai.eflow.sayOff' };
     var GDOC_B = '# >>> qqqide eflow begin';
     var GDOC_E = '# <<< qqqide eflow end';
 
@@ -1337,7 +1343,7 @@
                     '  · 他回 1（必须是他本人新发的一条消息）→ 调 eflow op=global action=' + act + ' token=' + nonce + '\n' +
                     '  · 他回别的一切（含「确定」「好」「取消」）→ 什么都不调、也不要再问（令牌 30 分钟内有效，他改口回 1 仍然认）\n' +
                     '  · 禁自己替他答：confirm 由工具层从会话真相里取，你写的字没有任何作用',
-                data: { on: on, token: nonce, act: act, say: say, needAnswer: true }
+                data: { on: on, token: nonce, act: act, say: say, sayKey: SAY_KEYS[act], needAnswer: true }
             };
         }
 
@@ -1381,7 +1387,7 @@
                     ok: false,
                     text: 'E-Flow v' + VER + ' · 这次确认已过期或对不上号（令牌 30 分钟、一次一用）——什么都不改。\n' +
                         '  · 重新 action=ask 拿一句新话术，再问一遍。',
-                    data: { on: on, needAsk: true, say: SAY_ON }
+                    data: { on: on, needAsk: true, say: SAY_ON, sayKey: SAY_KEYS.on }
                 };
             }
             if (pend.act && String(pend.act) !== action) {
@@ -1389,7 +1395,7 @@
                     ok: false,
                     text: 'E-Flow v' + VER + ' · 令牌问的是「' + pend.act + '」，这次要「' + action + '」——什么都不改。\n' +
                         '  · 要换方向就重新 action=ask 问一次。',
-                    data: { on: on, needAsk: true, say: SAY_ON }
+                    data: { on: on, needAsk: true, say: SAY_ON, sayKey: SAY_KEYS.on }
                 };
             }
             // ★★ 原话必须来自「会话真相」：工具层把用户真实消息喂进来（不是模型自述的 confirm）。
@@ -1531,7 +1537,7 @@
         opStatus: opStatus, opCheck: opCheck, opIndex: opIndex, opInit: opInit,
         opRotate: opRotate, opUpgrade: opUpgrade, opDetach: opDetach, opGlobal: opGlobal, globalFile: globalFile,
         judgeConfirm: judgeConfirm, projectKind: projectKind, globalDocFile: globalDocFile, globalDocBlock: globalDocBlock,
-        syncGlobalDoc: syncGlobalDoc, SAY_ON: SAY_ON, SAY_OFF: SAY_OFF, SAY_TAIL: SAY_TAIL,
+        syncGlobalDoc: syncGlobalDoc, SAY_ON: SAY_ON, SAY_OFF: SAY_OFF, SAY_TAIL: SAY_TAIL, SAY_KEYS: SAY_KEYS,
         bridgeIO: bridgeIO, globalDocStat: globalDocStat,
         PENDING_TTL_MS: PENDING_TTL_MS, GDOC_B: GDOC_B, GDOC_E: GDOC_E,
         parseHead: parseHead, parseFront: parseFront, buildBlock: buildBlock, sliceBlock: sliceBlock,

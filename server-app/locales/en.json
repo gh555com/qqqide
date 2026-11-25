@@ -982,6 +982,7 @@
             "cardStartupClean": "Computer Lagging?",
             "cardSpotlight": "Spotlight Search",
             "cardLocate": "locate File Search",
+            "promptEflowAdopt": "Integrate all projects with E-Flow",
             "promptCleanC": "Help me clean up drive C. Also, check if there are any unwanted bloatware (like 360 bundles) on the computer. List the items that can be removed first, and only proceed with cleaning after I approve.",
             "promptAutostartQd": "Set qd to launch automatically at startup, so it opens every time the computer boots.",
             "promptEverything": "Install the Everything file search tool for me, and place a shortcut on the desktop after installation.",
@@ -991,7 +992,9 @@
         },
         "eflow": {
             "adoptFail": "Auto-connect to Document Foundation unsuccessful:",
-            "adoptErr": "Auto-connect to Document Foundation failed:"
+            "adoptErr": "Auto-connect to Document Foundation failed:",
+            "sayOn": "From now on, qd's E-Flow will take over \"Knowledge Base Management\" and \"AI-to-AI Collaboration\" for all projects. This will append rules to the global rules file global.txt. Are you sure? (You can manage or cancel this later in the Gear button > \"Advanced Settings\" card.)\nReply 1 to confirm. Any other reply will result in no action.",
+            "sayOff": "Are you sure you want to cancel E-Flow's global takeover? This will remove the takeover rules from global.txt, and new projects will no longer be automatically taken over (existing integrated projects remain unchanged and can be re-enabled at any time).\nReply 1 to confirm. Any other reply will result in no action."
         },
         "auditBtn": "Audit",
         "translateBtn": "Translate",

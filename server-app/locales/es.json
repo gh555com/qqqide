@@ -982,6 +982,7 @@
             "cardStartupClean": "¿El ordenador va lento?",
             "cardSpotlight": "Búsqueda Spotlight",
             "cardLocate": "Búsqueda de archivos locate",
+            "promptEflowAdopt": "Integrar todos los proyectos en E-Flow",
             "promptCleanC": "Limpia la unidad C por mí y revisa si hay software malicioso o bloatware (como los paquetes completos de 360) en el equipo. Muéstrame primero una lista de lo que se puede eliminar; solo elimínalo tras mi aprobación.",
             "promptAutostartQd": "Configura qd para que se inicie automáticamente al encender el equipo, de modo que se abra solo al iniciar sesión.",
             "promptEverything": "Instálame la herramienta de búsqueda de archivos Everything y, una vez instalada, coloca un acceso directo en el escritorio.",
@@ -991,7 +992,9 @@
         },
         "eflow": {
             "adoptFail": "La conexión automática de la base documental no tuvo éxito:",
-            "adoptErr": "Error al conectar automáticamente la base documental:"
+            "adoptErr": "Error al conectar automáticamente la base documental:",
+            "sayOn": "A partir de ahora, el E-Flow de qd se hará cargo de la «gestión de la base de conocimientos» y de la «colaboración mutua entre IAs» para todos los proyectos. Las reglas se añadirán al archivo de reglas global global.txt. ¿Estás seguro? (Podrás gestionarlo y cancelarlo más tarde en la tarjeta de «Configuración avanzada» del botón de engranaje).\nResponde 1 para confirmar; cualquier otra respuesta no tendrá efecto.",
+            "sayOff": "¿Estás seguro de que deseas cancelar la gestión global de E-Flow? Al cancelar, se eliminará esa regla de gestión del archivo global.txt y los nuevos proyectos ya no se integrarán automáticamente (los proyectos ya integrados permanecerán como están y podrás volver a activarlo en cualquier momento).\nResponde 1 para confirmar; cualquier otra respuesta no tendrá efecto."
         },
         "auditBtn": "Auditar",
         "translateBtn": "Traducir",

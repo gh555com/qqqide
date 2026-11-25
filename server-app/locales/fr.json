@@ -982,6 +982,7 @@
             "cardStartupClean": "L'ordinateur est lent ?",
             "cardSpotlight": "Recherche Spotlight",
             "cardLocate": "Recherche de fichiers locate",
+            "promptEflowAdopt": "Intégrer tous les projets à E-Flow",
             "promptCleanC": "Aidez-moi à nettoyer le disque C. Vérifiez également s'il y a des logiciels indésirables (type \"suite logicielle intrusive\" comme 360) sur l'ordinateur. Dressez d'abord une liste des éléments pouvant être supprimés pour que je la valide avant le nettoyage.",
             "promptAutostartQd": "Configurez qd pour qu'il se lance automatiquement au démarrage, afin qu'il s'ouvre dès le démarrage de l'ordinateur.",
             "promptEverything": "Installez l'outil de recherche de fichiers Everything pour moi, et placez un raccourci sur le bureau une fois l'installation terminée.",
@@ -991,7 +992,9 @@
         },
         "eflow": {
             "adoptFail": "La connexion automatique à la base documentaire a échoué :",
-            "adoptErr": "Échec de la connexion automatique à la base documentaire :"
+            "adoptErr": "Échec de la connexion automatique à la base documentaire :",
+            "sayOn": "À partir de maintenant, E-Flow de qd prendra en charge la « gestion de la base de connaissances » et la « collaboration entre IA » pour tous les projets. Les règles seront ajoutées au fichier de règles global global.txt. Êtes-vous sûr ? (Vous pourrez gérer et annuler cette option plus tard dans la carte « Paramètres avancés » du bouton engrenage.)\nRépondez 1 pour confirmer. Toute autre réponse n'entraînera aucune action.",
+            "sayOff": "Êtes-vous sûr de vouloir annuler la prise en charge globale par E-Flow ? L'annulation supprimera la règle de prise en charge du fichier global.txt. Les nouveaux projets ne seront plus automatiquement pris en charge (les projets déjà intégrés restent inchangés et peuvent être réactivés à tout moment).\nRépondez 1 pour confirmer. Toute autre réponse n'entraînera aucune action."
         },
         "auditBtn": "Audit",
         "translateBtn": "Traduire",

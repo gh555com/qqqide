@@ -9,7 +9,9 @@
 //   B 12 语言键集必须与 zh.json 完全一致（少 = 没翻译，多 = 陈旧孤儿）
 //   C i18n.js 的 _EN_BUILTIN 必须等于 en.json（运行时英文兜底，漂移即静默降级）
 //   D 一键任务卡的标题 / 提词键必须存在，且中文值 = 出厂文案（否则卡片标题变样、说的不再是那句人话）
-//     ★ 提词另多一道：接管暗号（eflow-adopt）永不上翻译表——它必须是一句固定中文 + 回复「1」才生效
+//     ★ 提词另多一道：暗号卡（eflow-adopt）也要上表（非中文用户不能冒出中文气泡），
+//       前提是判定不靠语言（怎么答永远只有一个字符「1」），且译文必须保留品牌词 `E-Flow`
+//   E 接管话术（sayOn / sayOff）：中文基线 = 内核常量（逐字相等），13 语言都必须含「1」与 `E-Flow`
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -18,6 +20,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const APP = path.join(ROOT, 'server-app');
+const core = require(path.join(APP, 'eflow', 'eflow-core.js'));
 const LOCALES = path.join(APP, 'locales');
 const LANGS = ['zh-tw', 'en', 'ja', 'ko', 'de', 'fr', 'es', 'ru', 'ar', 'hi', 'vi', 'pt-BR'];
 
@@ -115,14 +118,22 @@ test('i18n D：一键任务卡标题键存在，且中文值 = 出厂标题', ()
     assert.strictEqual(ZH_FLAT['ai.tasks.title'], pane[1], 'ai.tasks.title 必须等于兜底面板标题');
 });
 
-test('i18n D2：一键任务提词键存在、中文值 = 出厂提词；暗号卡永不上表', () => {
+test('i18n D2：一键任务提词键存在、中文值 = 出厂提词；暗号卡也上表（译文必留 E-Flow）', () => {
     const src = fs.readFileSync(path.join(APP, 'ai-panel', 'panel-tasks.js'), 'utf8');
     const block = /var CARD_PROMPT_KEYS = \{([\s\S]*?)\n    \};/.exec(src);
     assert.ok(block, 'panel-tasks.js 必须保留 CARD_PROMPT_KEYS');
     const pairs = Array.from(block[1].matchAll(/'([a-z0-9-]+)':\s*'([A-Za-z0-9_.\-]+)'/g)).map((m) => [m[1], m[2]]);
     assert.ok(pairs.length >= 6, '内置卡提词键至少 6 个（实际 ' + pairs.length + '）');
-    assert.ok(!pairs.some(([id]) => id === 'eflow-adopt'),
-        '接管暗号卡禁止进翻译表：它必须是一句固定中文（整套契约就靠这句 + 回复「1」）');
+    // ★ 暗号卡必须上表：否则非中文用户点卡就冒出一句中文气泡（谎报他说过什么）。
+    //   能翻的前提是判定不靠语言：怎么答永远只有一个字符「1」（内核 judgeConfirm）。
+    assert.ok(pairs.some(([id, key]) => id === 'eflow-adopt' && key === 'ai.tasks.promptEflowAdopt'),
+        '暗号卡 eflow-adopt 必须上翻译表（键 ai.tasks.promptEflowAdopt）');
+    for (const lang of ['zh', ...LANGS]) {
+        const f = lang === 'zh' ? ZH : readJson(path.join(LOCALES, lang + '.json'));
+        const v = flat(f, '')['ai.tasks.promptEflowAdopt'];
+        assert.ok(typeof v === 'string' && v.indexOf('E-Flow') >= 0,
+            '[' + lang + '] 暗号提词必须保留品牌词 E-Flow（AI 靠它定向）：' + JSON.stringify(v));
+    }
     // 出厂中文提词（= 兜底表 prompt，也是运维台默认表）
     const defaults = {};
     for (const m of src.matchAll(/id: '([a-z0-9-]+)'[\s\S]{0,700}?prompt: '([^']*)'/g)) defaults[m[1]] = m[2];
@@ -134,7 +145,33 @@ test('i18n D2：一键任务提词键存在、中文值 = 出厂提词；暗号�
     }
     // 反向：出厂表里每个可执行卡都必须有提词键（漏一个 = 那个卡对非中文用户退回中文）
     for (const id of Object.keys(defaults)) {
-        if (id === 'eflow-adopt') continue;
         assert.ok(pairs.some(([pid]) => pid === id), '卡 ' + id + ' 缺提词翻译键');
+    }
+});
+
+test('i18n E：接管话术（sayOn/sayOff）= 内核常量逐字一致，13 语言都写清「怎么答」', () => {
+    // 中文基线只能有一处：内核常量。zh.json 里那两条不许另有写法（漂移 = 用户看到的话术
+    // 与实际判定对不上，最轻的后果是用户照着做也不生效）。
+    assert.strictEqual(ZH_FLAT['ai.eflow.sayOn'], core.SAY_ON, 'zh.json 的 ai.eflow.sayOn 必须逐字等于内核 SAY_ON');
+    assert.strictEqual(ZH_FLAT['ai.eflow.sayOff'], core.SAY_OFF, 'zh.json 的 ai.eflow.sayOff 必须逐字等于内核 SAY_OFF');
+    assert.deepStrictEqual(core.SAY_KEYS, { on: 'ai.eflow.sayOn', off: 'ai.eflow.sayOff' },
+        '内核 SAY_KEYS 必须就是这两个键（工具层靠它找译文）');
+    // 工具层必须真的用上 sayKey：否则译文写好了也不会被用（静默退回中文）
+    const tool = fs.readFileSync(path.join(APP, 'ai-panel', 'tools-exec-eflow.js'), 'utf8');
+    assert.ok(/data\.sayKey/.test(tool) && /_eflowSay\(/.test(tool),
+        'tools-exec-eflow.js 必须把 data.sayKey 交给 i18n 渲染（禁只剩中文基线）');
+    // 每种语言都必须让读者知道「回 1」—— 否则那句确认语在那边等于没有落地方式
+    for (const lang of ['zh', ...LANGS]) {
+        const f = lang === 'zh' ? ZH : readJson(path.join(LOCALES, lang + '.json'));
+        const m = flat(f, '');
+        for (const k of ['ai.eflow.sayOn', 'ai.eflow.sayOff']) {
+            const v = m[k];
+            assert.ok(typeof v === 'string' && v.length > 20, '[' + lang + '] ' + k + ' 缺失或为空');
+            assert.ok(v.indexOf('1') >= 0, '[' + lang + '] ' + k + ' 必须含阿拉伯数字 1（怎么答的唯一暗号）：' + v);
+            assert.ok(v.indexOf('E-Flow') >= 0, '[' + lang + '] ' + k + ' 必须保留品牌词 E-Flow：' + v);
+            if (lang !== 'zh') {
+                assert.ok(v !== ZH_FLAT[k], '[' + lang + '] ' + k + ' 没翻译（与中文基线相同）；跑 `python op/qky.py --cli`');
+            }
+        }
     }
 });
