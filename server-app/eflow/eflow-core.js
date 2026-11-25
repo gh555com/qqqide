@@ -965,14 +965,21 @@
             if (/rule\s*"/.test(s)) rules.push(s); else others.push(s);
         });
         // ★ 白纸原则的机器闸门：项目已经在用自己写的 rule"…" 当注入源时，upgrade 会重写
-        //   project.txt —— 默认直接拒写（不是提示，是拒绝）。真要迁 = 用户亲口要求后带 force=true。
+        //   project.txt —— 默认直接拒写（不是提示，是拒绝）。
+        //   迁移是人手专属：AI 工具层把 force 硬编码 false、命令行也没有 --force
+        //   ⇒ 这个分支里任何调用方都推不动它，唯一入口 = 设置 → 高级 → E-Flow →〔迁移到 E-Flow〕二次点击（via=ui）。
+        //   ★ 提示里禁出现「带 force 重跑」——那是对着一扇开不了的门的说明书（对 AI 是死循环，对命令行是假选项）。
         if (!opts.force && rules.length) {
+            var byAiCaller = opts.via === 'ai';
             return {
                 ok: false,
                 text: 'E-Flow v' + VER + ' · 本项目已经有自己的知识库（' + rules.length + ' 行 rule）——upgrade 要重写 ' + DEF.rule +
                     '，所以默认一个字都不动。\n' +
                     '  · 只读盘点：op=status / op=check（不改任何文件）。\n' +
-                    '  · 把上面这些数字报给用户；他明确说要迁，再带 force=true 重跑。'
+                    '  · 迁移只能由人做：设置 → 高级 → E-Flow →〔迁移到 E-Flow（保留我的规则）〕点两次确认。' +
+                    (byAiCaller
+                        ? '\n  · ★ 你不要重试、不要换参数、也不要用写文件/命令去改 ' + DEF.rule + ' —— 那等于替人动他自己的规则库。把上面这些数字报给用户，并告诉他去上面那个入口。'
+                        : '')
             };
         }
         var legacy = [];
@@ -1506,6 +1513,43 @@
         return { ok: okNow, text: o.join('\n'), data: { on: nextOn, known: true, doc: okDoc, kind: kind, nextAction: (nextOn && kind === 'white') ? 'upgrade' : '' } };
     }
 
+    // ── 决策留痕（L5）：唯一能回答「它当时为什么没动」的东西 ─────────────────
+    //   只记「会改盘」或「明确拒绝」的动作（status/check/index 这类只读不记，否则账本自己就是噪音）。
+    //   位置：用户级目录优先（dataRoot/alphal/eflow-audit.jsonl = 跨项目一本账）；
+    //        没有 dataRoot 时，只有项目本身已是 EF2 才写进项目 _qqq/alphal/（绝不往别人的仓库里落文件）。
+    //   ★ 留痕失败绝不阻断动作本身，但要在返回文本里如实说一句（禁静默失败）。
+    var AUDIT_MAX_BYTES = 128 * 1024;
+    var AUDIT_KEEP_LINES = 400;
+    var AUDIT_OPS = { init: 1, upgrade: 1, detach: 1, rotate: 1, global: 1 };
+
+    async function auditPath(io, opts, root) {
+        var dr = (opts && opts.dataRoot) ? norm(opts.dataRoot) : '';
+        if (dr) return joinp(dr, 'alphal/eflow-audit.jsonl');
+        if (!root) return '';
+        var k = '';
+        try { k = await projectKind(io, root); } catch (_) { k = ''; }
+        return (k === 'ef2') ? joinp(norm(root), '_qqq/alphal/eflow-audit.jsonl') : '';
+    }
+
+    async function auditAppend(io, opts, root, entry) {
+        if (!io || !io.read || !io.write) return 'skip';
+        var p = await auditPath(io, opts, root);
+        if (!p) return 'skip';
+        try {
+            var cur = (await safeRead(io, p)) || '';
+            if (cur.length > AUDIT_MAX_BYTES) {          // 轮转：只留最后 400 行（账本不许无限长）
+                var ls = lines(cur);
+                cur = ls.slice(Math.max(0, ls.length - AUDIT_KEEP_LINES)).join('\n');
+                if (cur && cur.charAt(cur.length - 1) !== '\n') cur += '\n';
+            }
+            if (io.mkdir) { try { await io.mkdir(dirOf(p)); } catch (_) { } }
+            await io.write(p, cur + JSON.stringify(entry) + '\n');
+            return 'ok';
+        } catch (e) {
+            return 'fail:' + ((e && e.message) || e);
+        }
+    }
+
     // ── 统一入口（工具与 CLI 都走这里）───────────────────────────────────
     async function run(op, io, root, opts) {
         opts = opts || {};
@@ -1523,6 +1567,18 @@
                 case 'detach': r = await opDetach(io, root, opts); break;
                 case 'global': r = await opGlobal(io, root, opts); break;
                 default: return { ok: false, text: '✗ 未知操作：' + op + '（status/check/index/init/rotate/upgrade/detach/global）' };
+            }
+            // 决策留痕：只记会改盘 / 明确拒绝的动作（dry 不算真做）；写不进去不影响这次操作，但要如实说
+            if (AUDIT_OPS[op] && r && !opts.dry) {
+                var audit = await auditAppend(io, opts, root, {
+                    ts: new Date().toISOString(), op: op, ok: r.ok ? 1 : 0,
+                    via: String(opts.via || 'cli'),
+                    why: String(r.text || '').split('\n')[0].slice(0, 140),
+                    inject: (r.data && typeof r.data.injectAll === 'number') ? r.data.injectAll : null
+                });
+                if (audit.indexOf('fail:') === 0) r.text = String(r.text || '') + '\n  · ⚠ 审计留痕失败：' + audit.slice(5) + '（这次操作本身已生效）';
+                if (r.data && typeof r.data === 'object') r.data.audit = audit;
+                else if (audit.indexOf('fail:') === 0) r.data = { audit: audit };   // 失败必须能被上层读到
             }
             return r;
         } catch (e) {

@@ -2420,6 +2420,7 @@
             "mStandard": "Este projeto: Integrado",
             "mCustom": "Este projeto: Suas próprias regras (inalteradas)",
             "mNone": "Este projeto: Em branco",
+            "docOpen": "Documentação oficial",
             "loading": "Carregando…",
             "noBridge": "O cliente atual não possui capacidade de acesso a arquivos, gerenciamento indisponível",
             "noDataRoot": "Não foi possível acessar o diretório do usuário",

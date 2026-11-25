@@ -2420,6 +2420,7 @@
             "mStandard": "Este proyecto: Conectado",
             "mCustom": "Este proyecto: Tus propias reglas (sin cambios)",
             "mNone": "Este proyecto: En blanco",
+            "docOpen": "Documentación oficial",
             "loading": "Cargando…",
             "noBridge": "El cliente actual no tiene capacidad de acceso a archivos, la gestión no está disponible",
             "noDataRoot": "No se puede acceder al directorio de nivel de usuario",

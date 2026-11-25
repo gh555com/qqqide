@@ -2420,6 +2420,7 @@
             "mStandard": "Dự án này: Đã kết nối",
             "mCustom": "Dự án này: Quy tắc tùy chỉnh của bạn (không thay đổi)",
             "mNone": "Dự án này: Trống",
+            "docOpen": "Tài liệu chính thức",
             "loading": "Đang đọc…",
             "noBridge": "Ứng dụng khách hiện tại không có khả năng truy cập tệp, tính năng quản lý không khả dụng",
             "noDataRoot": "Không thể lấy thư mục cấp người dùng",

@@ -2420,6 +2420,7 @@
             "mStandard": "Current Project: Connected",
             "mCustom": "Current Project: Your Custom Rules (Unchanged)",
             "mNone": "Current Project: Blank Slate",
+            "docOpen": "Official Documentation",
             "loading": "Loading…",
             "noBridge": "File access unavailable in current client; management disabled",
             "noDataRoot": "Unable to access user directory",

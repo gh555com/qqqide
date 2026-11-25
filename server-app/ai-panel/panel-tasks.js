@@ -191,10 +191,11 @@
         console.log('[tasks] ' + msg);
     }
     function _platMatch(plats) {
-        if (!plats || !plats.length) return true;
+        if (!plats || !plats.length || typeof plats.length !== 'number') return true;
         var plat = _plat(), arch = _arch();
         for (var i = 0; i < plats.length; i++) {
-            var p = String(plats[i] || '').toLowerCase();
+            if (typeof plats[i] !== 'string') continue;      // 脏数组元素一律跳过（字符串化会抛）
+            var p = plats[i].toLowerCase();
             if (p === 'all' || p === plat) return true;
             if (arch && p === plat + '-' + arch.toLowerCase()) return true;
         }
@@ -221,35 +222,62 @@
             else fin(p);
         } catch (_) { fin(null); }
     }
+    // ── rev 单调闸（防降级）────────────────────────────────────────────
+    //   服务端每次发布 rev 只增不减；CDN 边缘 / 备份回滚 / 老线路可能把「更旧的一张表」送到客户端。
+    //   旧表静默覆盖新表 = 用户看到已下线的卡、少了一张新卡，而且没人知道为什么（与「下发台丢表」同一类事故）。
+    //   规则：表里的 rev 比已用过的更小 → 整张丢弃（不上屏、不写缓存）+ 如实打一行日志。
+    var _rev = { cached: 0, live: 0 };
+    // 数字归一：只认 number 与纯数字字符串（不可信 JSON 里的 rev/at 可能是对象、数组、NaN——
+    // 直接 Number(obj) 会抛 "Cannot convert object to primitive value"，一张脏表就能把面板弄死）
+    function _num(v) {
+        if (typeof v === 'number') return (isFinite(v)) ? v : 0;
+        if (typeof v === 'string' && /^-?\d{1,15}$/.test(v)) return parseInt(v, 10);
+        return 0;
+    }
+    function _revOf(raw) {
+        if (!raw || typeof raw !== 'object') return 0;
+        var n = _num(raw.rev);
+        return n > 0 ? Math.floor(n) : 0;   // 0 = 这张表没报 rev（无法比较 → 放行）
+    }
     function _saveCache(raw, at) {
         var h = _handle();
         if (!h) return;
-        try { h.set(CACHE_KEY, { at: at || Date.now(), raw: raw }); } catch (_) { }
+        try { h.set(CACHE_KEY, { at: at || Date.now(), rev: _revOf(raw), raw: raw }); } catch (_) { }
     }
-    // 缓存信封 {at, raw}；旧格式（裸表，无 at）→ at=0 = 当作过期（下次启动立刻拉网络）
+    // 缓存信封 {at, rev, raw}；旧格式（裸表 / 无 rev）→ at=0 或 rev=0（= 不参与防降级比较）
     function _unwrapCache(c) {
         if (!c || typeof c !== 'object') return null;
-        if (c.raw && typeof c.raw === 'object') return { at: Number(c.at) || 0, raw: c.raw };
-        return { at: 0, raw: c };
+        if (c.raw && typeof c.raw === 'object') {
+            var rv = _num(c.rev);
+            if (!(rv > 0)) rv = _revOf(c.raw);      // 旧信封没存 rev → 退回表里那一个
+            return { at: _num(c.at), rev: rv > 0 ? Math.floor(rv) : 0, raw: c.raw };
+        }
+        return { at: 0, rev: _revOf(c), raw: c };
     }
 
     // ── 数据清洗 ─────────────────────────────────────────────────────────
     function _sanitize(raw) {
         if (!raw || !raw.tasks || !raw.tasks.length) return null;
         var out = [];
-        var seen = {};
+        // 无原型字典：id 叫 __proto__ / constructor 也不会读到 Object.prototype 上的东西
+        var seen = Object.create(null);
         for (var i = 0; i < raw.tasks.length && out.length < MAX_CARDS; i++) {
             var t = raw.tasks[i];
             if (!t || typeof t !== 'object') continue;
             if (t.enabled === false) continue;
-            var id = String(t.id || '').trim();
-            if (!id || seen[id]) continue;
+            var id = '';
+            if (typeof t.id === 'string') id = t.id.trim();
+            else if (typeof t.id === 'number' && isFinite(t.id)) id = String(t.id);
+            // id 只接“普通名字”：__proto__ / constructor / 控制字符 / 过长一律丢弃（id 进 data-id 与去重表）
+            if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(id)) continue;
+            if (seen[id]) continue;
             if (!_platMatch(t.platforms)) continue;
             var title = _pick(t.title);
             if (title && CARD_TITLE_KEYS[id] && CARD_DEFAULT_TITLE[id] && title === CARD_DEFAULT_TITLE[id]) {
                 title = _t(CARD_TITLE_KEYS[id], title);   // 内置卡 = 出厂文案 → 吃译文（zh 时与原句相同）
             }
-            if (!title) continue;
+            title = String(title == null ? '' : title).trim();
+            if (!title) continue;                     // 空白标题 = 一张看不见的卡（点了也不知道发什么）
             // 旧版卡（kind=action / 无 prompt）一律丢弃：本面板只负责「说一句话」，
             // 干活由对话里的 AI 决定（老客户端读旧表照旧，契约只增不改）
             if (!t.prompt || typeof t.prompt !== 'string') continue;
@@ -266,6 +294,7 @@
             if (CARD_PROMPT_KEYS[id] && CARD_DEFAULT_PROMPT[id] && prompt === CARD_DEFAULT_PROMPT[id]) {
                 prompt = _t(CARD_PROMPT_KEYS[id], prompt);
             }
+            if (!String(prompt).trim()) continue;      // 空白提词 = 点了啥也不说（旧契约：没话说的卡不显示）
             seen[id] = 1;
             out.push({
                 id: id,
@@ -344,12 +373,19 @@
                         if (!clean) {
                             console.warn('[tasks] source ' + i + ' 空表/坏表');
                         } else if (best < 0 || i < best) {
-                            best = i;
-                            _data = clean;
-                            _saveCache(raw, Date.now());
-                            _loadedOnce = true;
-                            _paint();
-                            if (i === 0) { fin(true); return; }    // 主源到手 = 收工
+                            var rv = _revOf(raw);
+                            if (rv > 0 && _rev.live > 0 && rv < _rev.live) {
+                                // 旧表（云端回滚 / 边缘缓存 / 老备份）——不覆盖屏上，也不写缓存
+                                console.warn('[tasks] source ' + i + ' rev=' + rv + ' < 已用 rev=' + _rev.live + ' → 丢弃（防降级）');
+                            } else {
+                                if (rv > _rev.live) _rev.live = rv;
+                                best = i;
+                                _data = clean;
+                                _saveCache(raw, Date.now());
+                                _loadedOnce = true;
+                                _paint();
+                                if (i === 0) { fin(true); return; }    // 主源到手 = 收工
+                            }
                         }
                         settle();
                     }, function (e) {
@@ -365,7 +401,9 @@
     function _reload() {
         if (_inflight) return _inflight;          // 单飞：定时器与手动 reload 不叠链
         _inflight = _fetch().then(function (ok) {
-            if (!ok && !_loadedOnce) { _data = _fallback(); _paint(); }
+            // ★ 只在「手里一张表都没有」时才落兜底：缓存是亚于出厂表的真相，
+            //   网络全挂（或全被防降级闸丢掉）不得把缓存冲成出厂表
+            if (!ok && !_data) { _data = _fallback(); _paint(); }
             _inflight = null;
             return !!ok;
         });
@@ -378,6 +416,14 @@
     // 失败一律 fail-open（显示）：卡片本身零副作用，点了 AI 也会先看状态再动手。
     var _whenState = null;          // { root, at, map }
     var _whenBusy = false;
+    // ★ 条件判定表（唯一实现）：服务器只给条件名，判定在本地。
+    //   出厂兜底表里出现的每个条件名都必须在这张表里（ci/tests/panel-tasks.test.js 守着）——
+    //   否则「服务器加了条件、客户端没实现」会静默变成 fail-open（卡片永远显示），下发等于空操作。
+    //   表外的名字仍按 fail-open 处理（新条件不把老客户端卡全灭——这是契约，不是漏洞）。
+    var WHEN_IMPL = {
+        // 全局接管还没开（开了这张卡就不出现：它只是一次性开关，不当广告）
+        'eflow.off': async function (ef) { return !(await ef.globalOn()); }
+    };
     function _whenHit(t) {
         if (!t.when || !t.when.length) return true;
         if (!_whenState) return false;    // 未判定：先不画（避免“出现再消失”的闪动）
@@ -398,25 +444,39 @@
         for (var i = 0; i < list.length; i++) { if (list[i].when && list[i].when.length) return true; }
         return false;
     }
+    // 当前任务表里所有条件名（去重）——判定与「出厂表覆盖闸」共用同一份收集
+    function _needNames() {
+        var list = (_data && _data.tasks) || [];
+        var out = [];
+        for (var i = 0; i < list.length; i++) {
+            var w = list[i].when || [];
+            for (var j = 0; j < w.length; j++) { if (w[j] && out.indexOf(w[j]) < 0) out.push(w[j]); }
+        }
+        return out;
+    }
     function _ensureWhen() {
         if (!_needWhen()) return;
         var root = '';
         try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) root = String(questStore.getProjectRoot() || '').replace(/\\/g, '/'); } catch (_) { root = ''; }
         if (_whenState && _whenState.root === root && (Date.now() - _whenState.at) < WHEN_TTL) return;
         if (_whenBusy) return;
+        var names = _needNames();
         var ef = (typeof ExpertFlow !== 'undefined' && ExpertFlow && ExpertFlow.globalOn) ? ExpertFlow : null;
         if (!root || !ef) {
-            _whenState = { root: root, at: Date.now(), map: { 'eflow.off': true } };   // fail-open（显示）
+            // 判不了 → fail-open（显示）：卡片零副作用，点了 AI 也会先看状态再动手
+            var m0 = {};
+            for (var a = 0; a < names.length; a++) m0[names[a]] = true;
+            _whenState = { root: root, at: Date.now(), map: m0 };
             _paint();
             return;
         }
         _whenBusy = true;
         (async function () {
-            var map = { 'eflow.off': true };
-            try {
-                map['eflow.off'] = !(await ef.globalOn());     // 全局接管已开 → 这张卡不出现
-            } catch (_) {
-                map['eflow.off'] = true;                       // fail-open
+            var map = {};
+            for (var k = 0; k < names.length; k++) {
+                var fn = WHEN_IMPL[names[k]];
+                if (typeof fn !== 'function') { map[names[k]] = true; continue; }   // 未知条件 = 恒 true
+                try { map[names[k]] = !!(await fn(ef)); } catch (_) { map[names[k]] = true; }   // 判错 = fail-open
             }
             _whenState = { root: root, at: Date.now(), map: map };
             _whenBusy = false;
@@ -551,6 +611,8 @@
         _loadCache(function (cached) {
             var wrap = _unwrapCache(cached);
             var c = wrap ? _sanitize(wrap.raw) : null;
+            // 缓存里的 rev = 已知最新（防降级基准）：网络送来更小的表一律丢弃
+            if (wrap) { _rev.cached = wrap.rev || 0; _rev.live = _rev.cached; }
             if (c) { _data = c; }
             if (!_data) _data = _fallback();
             _refresh();
@@ -570,7 +632,10 @@
     window.qqqTaskPane = {
         refresh: _refresh,
         reload: _reload,
-        isBlankDraft: _isBlankDraft
+        isBlankDraft: _isBlankDraft,
+        // 诊断口（只读，不参与渲染）：当前生效的 rev + 已实现的条件名（下发排查用）
+        rev: function () { return { live: _rev.live, cached: _rev.cached }; },
+        whenConditions: function () { return Object.keys(WHEN_IMPL); }
     };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _boot2);

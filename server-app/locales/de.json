@@ -2420,6 +2420,7 @@
             "mStandard": "Dieses Projekt: Eingebunden",
             "mCustom": "Dieses Projekt: Eigene Regeln (unverändert)",
             "mNone": "Dieses Projekt: Leer",
+            "docOpen": "Offizielle Dokumentation",
             "loading": "Lädt…",
             "noBridge": "Der aktuelle Client hat keinen Dateizugriff, Verwaltung ist nicht verfügbar",
             "noDataRoot": "Benutzerverzeichnis kann nicht abgerufen werden",

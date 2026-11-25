@@ -1275,6 +1275,17 @@
   var _eflowConfirm = null;  // { act:'on'|'off', at } —— 二次点击确认（4s 内有效）
 
   function _eflowBridge() { try { return window.qqqideBridge || null; } catch (_) { return null; } }
+  // 官方文档：进系统外部浏览器（bridge.shell.openExternal，window.open 兜底）——与帮助菜单同一套口径
+  function _eflowOpenDoc() {
+    var lang = 'zh';
+    try { if (window.i18n && window.i18n.getLang) lang = window.i18n.getLang() || 'zh'; } catch (_) { }
+    var url = 'https://www.gh555.com/gaea/d/qqqide?lang=' + encodeURIComponent(lang) + '#docs/e-flow';
+    try {
+      var br = _eflowBridge();
+      if (br && br.shell && typeof br.shell.openExternal === 'function') { br.shell.openExternal(url); return; }
+    } catch (_) { }
+    try { window.open(url, '_blank'); } catch (_) { }
+  }
   function _eflowEsc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -1432,7 +1443,7 @@
     if (_eflowOut) {
       h += '<pre style="margin:8px 0 0; padding:8px 10px; max-height:220px; overflow:auto; border:1px solid ' + (_eflowOutBad ? red : border) +
         '; border-radius:4px; background:' + bg + '; color:' + text +
-        '; font-family:Consolas,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji; font-size:11px; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' +
+        '; font-family:Consolas,monospace,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,qd-emoji; font-size:12px; line-height:1.55; white-space:pre-wrap; word-break:break-all;">' +
         _eflowEsc(_eflowOut) + '</pre>';
     }
     return h;
@@ -1486,6 +1497,8 @@
   }
 
   function _eflowBind() {
+    var docBtn = document.getElementById('qqq-eflow-doc');
+    if (docBtn) docBtn.addEventListener('click', function () { _eflowOpenDoc(); });
     var openBtn = document.getElementById('qqq-eflow-open');
     if (openBtn) openBtn.addEventListener('click', function () {
       _eflowOpen = !_eflowOpen;
@@ -1724,6 +1737,10 @@
         html += '<div style="display:flex; align-items:center; gap:8px;">';
         html += '<button id="qqq-eflow-open" style="padding:6px 14px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:13px; font-weight:bold; white-space:nowrap; cursor:pointer;">';
         html += _i('settings.eflow.manage', '管理');
+        html += '</button>';
+        // ★〔官方文档〕：紧挨在〔管理〕右边（学 → 再做，同一屏）。次级样式（灰边/正文色），不与〔管理〕抢视线。
+        html += '<button id="qqq-eflow-doc" style="padding:6px 12px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + text + '; font-size:13px; font-weight:bold; white-space:nowrap; cursor:pointer;">';
+        html += _i('settings.eflow.docOpen', '官方文档');
         html += '</button>';
         var _efHint2 = '';
         var _efHintRed = false;

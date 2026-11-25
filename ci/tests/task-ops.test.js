@@ -179,3 +179,28 @@ test('task-ops: 单飞登记不残留（未知动作不占登记表）', async (
     const again = await handlers['qqqide:task:run'](null, 'clean_c', {});
     assert.ok(!/正在执行中/.test(again.message), '未知动作不得残留单飞登记');
 });
+
+// ── 壳层体重闸（把「能干就别进壳层」从口号变成拦门员）────────────────────
+//   壳层代码 = 每次发版都要背的账。慢性回潮是必然的：今天加一条明天加一条，
+//   一年后 task-ops.ts 就长成了第二套 capabilities。所以：新增动作 → 本测试直接红，
+//   必须在这里登记并写清「为什么这件事 AI 用 run_command + capabilities 配方做不好」。
+test('task-ops: 壳层动作预算闸（新增动作必须在这里登记理由）', () => {
+    const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'shell', 'task-ops.ts'), 'utf8');
+    const i = SRC.indexOf('const ACTIONS');
+    assert.ok(i > 0, 'ACTIONS 表必须存在（它是壳层动作的唯一白名单）');
+    const j = SRC.indexOf('\n};', i);
+    assert.ok(j > i, 'ACTIONS 表必须闭合');
+    const block = SRC.slice(i, j);
+    const keys = [];
+    block.replace(/^\s{4}([A-Za-z_$][\w$]*)\s*:/gm, (m, k) => { keys.push(k); return m; });
+
+    // ★ 允许清单（唯一真理源）：键 = 动作名，值 = 它非进壳层不可的理由。
+    //   登记不上 = 这件事应该交给 AI（capabilities/ 里写配方），不该进壳层。
+    const ALLOWED = {
+        install_everything: '版本号 + sha256 + 原子换入 + 三处桌面快捷方式：AI 猜不出来也不该猜'
+    };
+    assert.deepStrictEqual(keys.slice().sort(), Object.keys(ALLOWED).sort(),
+        '壳层动作变了。新增/删除都必须先改本测试的 ALLOWED，并写清理由（壳层 = 每次发版都要背的账）');
+    assert.ok(keys.length <= 2, '壳层常驻动作预算 ≤2（现 ' + keys.length + '）；超了先问：AI 用 run_command + capabilities 真做不好吗？',
+        keys.join(','));
+});
