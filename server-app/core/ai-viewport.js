@@ -2554,7 +2554,8 @@
     } else if (code === 'program') {
       // 提示里的路径按用户看得见的写法给（Windows 反斜杠——与资源管理器一致，降低理解成本）
       var disp = _progRoot || '';
-      if (((window.qqqBootInfo && window.qqqBootInfo.platform) || 'win32') !== 'linux') disp = disp.replace(/\//g, '\\');
+      //   只有 Windows 才转反斜杠（mac / linux 的路径就是正斜杠，转了就变成看不懂的写法）
+      if (((window.qqqBootInfo && window.qqqBootInfo.platform) || 'win32') === 'win32') disp = disp.replace(/\//g, '\\');
       msg = window._i('shell.viewport.rejectProgram', '该目录与本窗口 qd 的运行目录（{p}）有包含关系，不能添加进 AI 视口', { p: disp });
     } else {
       return;   // empty = 防御分支（正常入口由系统对话框给路径），零用户可见话术

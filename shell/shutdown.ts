@@ -17,7 +17,7 @@ import { _timelineDbs, _tlFlushNow } from './timeline-store';
 import { _windowProjectMap, snapshotOpenWindows, packWsKey } from './window-manager';
 import { releaseAllProjectLocks } from './project-lock';
 import { wsStateSetKey } from './ipc-ws-state';
-import { crashNetMarkCleanQuit } from './crash-net';
+import { crashNetMarkCleanQuit, crashNetNoteQuitSource } from './crash-net';
 
 // ── 自动版本递增 ──────────────────────────────────────────────────────────
 const AUTO_VERSION_TOGGLE_OFF = 'auto-version-off';
@@ -259,15 +259,15 @@ export function registerExitHandlers(
         try { _flushQgfSync('exit'); } catch { /* ignore */ }
 
         // ★ 天罗地网: 正常退出标记 — app.exit 跳过 will-quit, 必须在此处显式标记
-        try { crashNetMarkCleanQuit(); } catch { /* ignore */ }
+        try { crashNetMarkCleanQuit('before-quit'); } catch { /* ignore */ }
 
         app.exit(0);
         setTimeout(() => { process.exit(0); }, 500);
     });
 
     // SIGINT/SIGTERM
-    process.on('SIGINT', () => { _flushStateSync('SIGINT'); _flushQgfSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
-    process.on('SIGTERM', () => { _flushStateSync('SIGTERM'); _flushQgfSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
+    process.on('SIGINT', () => { try { crashNetNoteQuitSource('signal-sigint'); } catch { /* ignore */ } _flushStateSync('SIGINT'); _flushQgfSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
+    process.on('SIGTERM', () => { try { crashNetNoteQuitSource('signal-sigterm'); } catch { /* ignore */ } _flushStateSync('SIGTERM'); _flushQgfSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
 
     // Global uncaught exception handler
     let _ueInHandler = false;
@@ -310,7 +310,7 @@ export function registerExitHandlers(
     // All windows closed → quit
     app.on('window-all-closed', () => {
         console.log('[window-all-closed] FIRED — all windows closed, quitting');
-        if (process.platform !== 'darwin') { app.quit(); }
+        if (process.platform !== 'darwin') { try { crashNetNoteQuitSource('window-all-closed'); } catch { /* ignore */ } app.quit(); }
     });
 }
 

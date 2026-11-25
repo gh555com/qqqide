@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as cp from 'child_process';
 import { URL } from 'url';
 import { BootConfig, getWebappBaseUrl } from './boot';
+import { crashNetNoteQuitSource } from './crash-net';
 import { mi } from './main-i18n';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
 import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState, beginQuitAllBatch, recordWindowOpen, openDevToolsTracked } from './window-manager';
@@ -644,6 +645,7 @@ if (-not $ok) { throw 'SetFileDropList failed' }
 
     // ---- app quit (退出全部窗口) — 菜单退出，跳过关闭确认 ——
     ipcMain.handle('qqqide:app:quitAll', async () => {
+        try { crashNetNoteQuitSource('quit-all-ipc'); } catch { /* ignore */ }
         // ★ 整组退出快照先写死 (2026-08-16): 菜单退出 = 整组窗口一次性关闭,
         //   重启必须还原整组 — 快照在 quitAll 瞬间捕获, 不被后续 close 事件逐步收缩
         beginQuitAllBatch(stateStore);

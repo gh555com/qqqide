@@ -16,11 +16,18 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as util from 'util';
 
 const HB_INTERVAL_MS = 10000;      // 心跳周期: 死亡时间下界误差 ±10s
 const FLUSH_BATCH = 200;           // events.log 批量落盘阈值(条)
 const FLUSH_DEBOUNCE_MS = 1000;    // events.log 兜底落盘间隔
 const EVENTS_MAX_BYTES = 8 * 1024 * 1024;
+
+// ── 主进程 console 落盘 (Data/Logs/main.log) ──
+const MAIN_LOG_MAX_BYTES = 1024 * 1024;   // main.log 上限 (超出轮转 main.log.old, 合计 2MB)
+const MAIN_LOG_FLUSH_MS = 700;            // 缓冲落盘间隔
+const MAIN_LOG_MAX_LINE = 4000;           // 单行截断 (防巨型对象打爆日志)
+const MAIN_LOG_MAX_BUF = 2000;            // 缓冲行上限
 
 // ── 内存看门狗 (2026-08-20 F51 性能审计落地) ──
 const MEM_HISTORY_MS = 5 * 60 * 1000;         // mem.log 历史序列周期 (定位涨速)
@@ -36,6 +43,15 @@ let _eventsBuf: string[] = [];
 let _flushTimer: NodeJS.Timeout | null = null;
 let _cleanQuitMarked = false;
 const _activity = new Map<number, any>();   // winId → 渲染层最近活动 {q,f,h,state,detail}
+
+// 主进程 console sink 状态
+let _conLogDir = '';
+let _conBuf: string[] = [];
+let _conTimer: NodeJS.Timeout | null = null;
+let _conInstalled = false;
+
+// 退出意图来源 (先声明者为准 — 越靠近真因的入口越先声明)
+let _quitSrc = '';
 
 // ── 内部工具 ──
 
@@ -72,6 +88,91 @@ function _windowsSnap(): any[] {
                 return { winId: w.id, title, activity: _activity.get(w.id) || null };
             });
     } catch { return []; }
+}
+
+// ── 主进程 console 落盘 ──
+// 背景: 绿色包由启动器 CreateProcessW(无管道) 拉起 → 主进程 console.* 输出全丢,
+//   跨模块溯源只能靠散落各处的专用日志。此处挂全局 sink → {Data}/Logs/main.log。
+// 纪律: ① 原 console 行为一字不改（原调用照常, 仅就地吞 EPIPE——无控制台时 stdout 断裂）
+//       ② 写盘失败恒静默（记录本身永不阻塞/影响业务）③ 环形缓冲+定时刷盘（不逐行 IO）
+
+function _conStamp(): string {
+    try {
+        const d = new Date();
+        const p = (n: number, w?: number) => String(n).padStart(w || 2, '0');
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+            p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + p(d.getMilliseconds(), 3);
+    } catch { return String(Date.now()); }
+}
+
+function _conFlush(): void {
+    if (_conTimer) { clearTimeout(_conTimer); _conTimer = null; }
+    if (_conBuf.length === 0 || !_conLogDir) return;
+    const batch = _conBuf;
+    _conBuf = [];
+    try {
+        fs.mkdirSync(_conLogDir, { recursive: true });
+        const p = path.join(_conLogDir, 'main.log');
+        fs.appendFileSync(p, batch.join('\n') + '\n', 'utf8');
+        try {
+            if (fs.statSync(p).size > MAIN_LOG_MAX_BYTES) {
+                try { fs.unlinkSync(p + '.old'); } catch { /* ignore */ }
+                fs.renameSync(p, p + '.old');
+            }
+        } catch { /* ignore */ }
+    } catch { /* ignore */ }
+}
+
+function _conPush(level: string, args: any[]): void {
+    try {
+        if (_conBuf.length >= MAIN_LOG_MAX_BUF) { _conBuf.splice(0, _conBuf.length - MAIN_LOG_MAX_BUF + 1); }
+        let msg = '';
+        try {
+            // 限深/限长：超大对象参数（帧树/整包快照）不得把主进程拖进字符串拼接
+            msg = (util as any).formatWithOptions({ depth: 2, maxArrayLength: 50, maxStringLength: MAIN_LOG_MAX_LINE, breakLength: 120 }, ...args);
+        } catch {
+            try { msg = util.format.apply(util, args as any); } catch { msg = ''; }
+        }
+        if (msg.length > MAIN_LOG_MAX_LINE) { msg = msg.slice(0, MAIN_LOG_MAX_LINE) + '…[truncated]'; }
+        _conBuf.push('[' + _conStamp() + '] ' + level + ' ' + msg);
+        if (!_conTimer) { _conTimer = setTimeout(_conFlush, MAIN_LOG_FLUSH_MS); }
+    } catch { /* ignore */ }
+}
+
+/** 挂主进程 console 落盘 sink（幂等；日志目录 = {Data}/Logs）。 */
+export function installMainLogSink(logsDir: string): void {
+    if (_conInstalled || !logsDir) return;
+    _conInstalled = true;
+    _conLogDir = logsDir;
+    const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'];
+    for (const lv of levels) {
+        try {
+            const orig = (console as any)[lv];
+            if (typeof orig !== 'function') continue;
+            (console as any)[lv] = function (...args: any[]) {
+                try { orig.apply(console, args); } catch { /* 无控制台时 stdout 断裂 — 就地吞, 禁进崩溃台账 */ }
+                _conPush(lv, args);
+            };
+        } catch { /* ignore */ }
+    }
+    try { process.stdout.on('error', () => { /* ignore */ }); } catch { /* ignore */ }
+    try { process.stderr.on('error', () => { /* ignore */ }); } catch { /* ignore */ }
+}
+
+// 报告内嵌事件瘦身: 历史 boot 事件里嵌着上一份 report（再嵌 tailEvents…）→ 逐次指数膨胀。
+// 只留标量定位字段，禁再嵌结构。
+function _slimEvent(e: any): any {
+    if (!e || typeof e !== 'object') return null;
+    const out: any = { ts: e.ts, kind: e.kind };
+    try {
+        for (const k of Object.keys(e)) {
+            if (k === 'ts' || k === 'kind') continue;
+            const v = (e as any)[k];
+            if (typeof v === 'string') { out[k] = v.length > 300 ? v.slice(0, 300) + '…' : v; }
+            else if (typeof v === 'number' || typeof v === 'boolean') { out[k] = v; }
+        }
+    } catch { /* ignore */ }
+    return out;
 }
 
 // ── 崩溃摘要（跨重启累计；wq-ping 搭便车上报——只传计数，永不传内容/堆栈）──
@@ -230,12 +331,28 @@ export function crashNetLog(evt: any): void {
 
 // ── 正常退出标记 (shutdown.ts 在 app.exit(0) 前调用) ──
 
-export function crashNetMarkCleanQuit(): void {
+/** 声明退出意图来源（quit-all-ipc / window-all-closed / signal-sigint / second-instance / forced-update / mac-update…）。
+ *  先声明者为准：异常退出时 clean-quit 缺失，此标签串在最后一刻的 quit-begin 事件里，直接给出真因。 */
+export function crashNetNoteQuitSource(src: string): void {
+    try {
+        if (!src || _quitSrc) return;
+        _quitSrc = String(src).slice(0, 48);
+    } catch { /* ignore */ }
+}
+
+export function crashNetMarkCleanQuit(from?: string): void {
     if (_cleanQuitMarked) return;
     _cleanQuitMarked = true;
-    _appendEvent('quit-clean');
+    const src = _quitSrc || '';
+    _appendEvent('quit-clean', { src, from: from || '' });
     _flushEvents();
-    _atomicWrite('clean-quit.json', JSON.stringify({ ts: Date.now(), pid: process.pid }));
+    _atomicWrite('clean-quit.json', JSON.stringify({
+        ts: Date.now(),
+        pid: process.pid,
+        src,
+        from: from || '',
+        uptimeSec: Math.round(process.uptime()),
+    }));
 }
 
 // ── 渲染层事件 (IPC: qqqide:crashnet:event) ──
@@ -266,7 +383,13 @@ function _checkLastExit(): any {
 
         if (cleanExists) {
             report.lastExit = 'clean';
-            try { report.cleanTs = JSON.parse(fs.readFileSync(cleanPath, 'utf8')).ts; } catch { /* ignore */ }
+            try {
+                const cq = JSON.parse(fs.readFileSync(cleanPath, 'utf8'));
+                report.cleanTs = cq.ts;
+                report.cleanSrc = cq.src || '';
+                report.cleanFrom = cq.from || '';
+                if (cq.uptimeSec) report.cleanUptimeSec = cq.uptimeSec;
+            } catch { /* ignore */ }
         } else if (hbExists) {
             report.lastExit = 'abnormal';
             try {
@@ -282,11 +405,10 @@ function _checkLastExit(): any {
             try {
                 const lines = fs.readFileSync(eventsPath, 'utf8').trim().split('\n').filter(Boolean);
                 if (lines.length > 0) {
-                    const last = JSON.parse(lines[lines.length - 1]);
-                    report.lastEvent = last;
                     report.eventsCount = lines.length;
-                    // 倒数 5 条 (供死因链条)
-                    report.tailEvents = lines.slice(-5).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+                    // 倒数 5 条 (供死因链条) — 必须瘦身: 历史 boot 事件内嵌上一份 report = 指数膨胀
+                    report.tailEvents = lines.slice(-5).map(l => { try { return _slimEvent(JSON.parse(l)); } catch { return null; } }).filter(Boolean);
+                    if (report.tailEvents.length > 0) { report.lastEvent = report.tailEvents[report.tailEvents.length - 1]; }
                 }
             } catch { /* ignore */ }
         }
@@ -297,6 +419,8 @@ function _checkLastExit(): any {
 // ── 初始化 (main.ts whenReady 最前调用) ──
 
 export function crashNetInit(userData: string): void {
+    // ★ 主进程 console 落盘最先挂（其后一切 console 输出均入 Data/Logs/main.log）
+    try { installMainLogSink(path.join(userData, 'Logs')); } catch { /* ignore */ }
     _dir = path.join(userData, 'alphal', 'crash-net');
     if (!_ensureDir()) return;
 
@@ -314,7 +438,10 @@ export function crashNetInit(userData: string): void {
 
     // 主进程全局异常 (记录 + 快照, 不退出 — 错误可恢复则继续服务)
     process.on('uncaughtException', (err: any) => {
-        _appendEvent('uncaught-exception', { msg: (err && err.message) || String(err) });
+        const _m = String((err && err.message) || err || '');
+        // stdout 断裂（无控制台时 console 写入）不是崩溃: 吞掉, 禁污染崩溃台账/快照/遥测计数
+        if (_m.indexOf('EPIPE') >= 0 || _m.indexOf('broken pipe') >= 0 || _m.indexOf('ECONNRESET') >= 0) return;
+        _appendEvent('uncaught-exception', { msg: _m });
         crashNetSnapshot('uncaught-exception');
     });
     process.on('unhandledRejection', (reason: any) => {
@@ -333,9 +460,13 @@ export function crashNetInit(userData: string): void {
     });
 
     // 退出轨迹: will-quit 兜底标记 (正常路径 shutdown.ts 会先调 crashNetMarkCleanQuit)
-    app.on('before-quit', () => { _appendEvent('quit-begin'); });
+    app.on('before-quit', () => {
+        _appendEvent('quit-begin', { src: _quitSrc || '', wins: _windowsSnap().length });
+        _conFlush();
+    });
     app.on('will-quit', () => {
-        crashNetMarkCleanQuit();
+        _conFlush();
+        crashNetMarkCleanQuit('will-quit');
     });
 
     // 心跳

@@ -151,7 +151,8 @@
 		for (var i = 0; i < lines.length; i++) {
 			var p = lines[i].trim().replace(/^"+|"+$/g, '');
 			if (!p) continue;
-			if (!/^[a-zA-Z]:[\\/]/.test(p) && p.indexOf('\\\\') !== 0) continue;
+			// 三形态：盘符 E:/ · POSIX /Users · UNC \\\\srv（少了 POSIX 这一支，mac/linux 上 Roam 自己复制的路径行全部不认）
+			if (!/^(?:[a-zA-Z]:[\\/]|\/|\\\\)/.test(p)) continue;
 			try { if (await bridge.fs.exists(p)) out.push(p); } catch (e) { }
 		}
 		return out;

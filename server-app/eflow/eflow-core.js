@@ -90,16 +90,23 @@
 
     // ── 小工具 ────────────────────────────────────────────────────────────
     function joinp() {
-        var a = [];
+        var a = [], abs = false;
         for (var i = 0; i < arguments.length; i++) {
             var s = String(arguments[i] == null ? '' : arguments[i]);
             if (!s) continue;
-            a.push(s.replace(/[\\]+/g, '/').replace(/^\/+|\/+$/g, ''));
+            s = s.replace(/[\\]+/g, '/');
+            // 首段是 POSIX 绝对路径（/Users/x、/home/x）→ 保住前导斜杠（否则拼出来是相对路径）
+            if (a.length === 0 && s.charAt(0) === '/') abs = true;
+            a.push(s.replace(/^\/+|\/+$/g, ''));
         }
         // 首段可能是盘符（E:/x），保留其形态
-        return a.join('/');
+        return (abs ? '/' : '') + a.join('/');
     }
     function norm(p) { return String(p || '').replace(/[\\]+/g, '/'); }
+    // 绝对路径判定（三形态）：盘符 E:/ · POSIX /Users · UNC \\\\srv
+    function isAbs(p) { return /^(?:[A-Za-z]:[\\/]|\\|\/)/.test(String(p || '').trim()); }
+    // 统一解析：绝对路径原样归一，其余按项目根拼接
+    function resolveTo(root, p) { return isAbs(p) ? norm(p) : joinp(root, p); }
     function nchars(s) { return String(s || '').replace(/\s/g, '').length; }
     function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
     function today(opts) { return (opts && opts.today) || new Date().toISOString().slice(0, 10); }
@@ -128,8 +135,10 @@
     function uniq(a) { var o = {}, out = []; a.forEach(function (x) { if (!o[x]) { o[x] = 1; out.push(x); } }); return out; }
 
     // ── IO 包装：任何一步取不到都不许抛（闸门必须永远给出结论）───────────
+    //   读失败 / 文件不存在 → null（调用方用 == null 判「不在」）；空文件 → ''（存在但无内容）
+    //   ★ 这两者必须分开：旧实现把非字符串也归成 '' → projectKind 会把任何白纸项目误判成 'l0'
     async function safeRead(io, p) {
-        try { var t = await io.read(p); return typeof t === 'string' ? t : ''; } catch (_) { return null; }
+        try { var t = await io.read(p); return typeof t === 'string' ? t : null; } catch (_) { return null; }
     }
     async function safeList(io, p) {
         try { var a = await io.list(p); return Array.isArray(a) ? a : []; } catch (_) { return null; }
@@ -359,7 +368,7 @@
             var sm = /rule\s*"([^"]+)"/.exec(rls[si]);
             if (!sm) continue;
             var st2 = sm[1].trim();
-            var sf = /^[A-Za-z]:[\\/]/.test(st2) ? norm(st2) : joinp(root, st2);
+            var sf = resolveTo(root, st2);
             if (samePath(sf, joinp(root, DEF.l0))) continue;
             var sc = await targetChars(io, sf);
             if (sc) ownChars += sc;
@@ -418,7 +427,7 @@
             if (!mm) continue;
             var tgt = mm[1].trim();
             if (tgt.indexOf('{') >= 0) { issues.push(['BLOCK', 'rule 路径还是占位符：' + tgt]); continue; }
-            var full = /^[A-Za-z]:[\\/]/.test(tgt) ? norm(tgt) : joinp(root, tgt);
+            var full = resolveTo(root, tgt);
             if (samePath(full, l0abs)) { ef2Count++; continue; }
             // 形如别的项目的 EF2 L0 → 一定是路径搬过 / 手写错，必须拦（否则背包注入空气）
             if (/\/alphal\/expert\/index\.md$/i.test(norm(full))) {
@@ -514,7 +523,7 @@
             while ((m2 = re.exec(txt))) {
                 var t = m2[1].split('#')[0].split('?')[0].trim();
                 if (!t || /^(https?:|mailto:|tel:|#)/.test(t) || t.indexOf('{{') >= 0) continue;
-                var fp = /^[A-Za-z]:[\\/]/.test(t) ? norm(t) : (t.charAt(0) === '/' ? joinp(root, t) : joinp(root, relBase, t));
+                var fp = isAbs(t) ? norm(t) : joinp(root, relBase, t);
                 if (!(await io.exists(fp))) { dead++; issues.push(['BLOCK', '死链：' + base(linkTargets[li].rel) + ' → ' + t]); }
             }
             // 反引号路径：只查 L0 的生成区（那里每行就是一条真路由，写错必炸）；
@@ -524,7 +533,7 @@
             while ((m3 = re2.exec(btSrc))) {
                 var tp = norm(m3[1]);
                 if (tp.indexOf('*') >= 0) continue;
-                var fp2 = /^[A-Za-z]:[\\/]/.test(tp) ? tp : joinp(root, tp);
+                var fp2 = isAbs(tp) ? tp : joinp(root, tp);
                 var okk = (await io.exists(fp2)) || (await io.exists(joinp(root, relBase, tp))) || (await io.exists(joinp(root, DEF.l0.replace(/index\.md$/, '') + tp)));
                 if (!okk) { dead++; issues.push(['BLOCK', '死路由：' + base(linkTargets[li].rel) + ' → ' + tp]); }
             }
@@ -987,7 +996,7 @@
             var mm = /rule\s*"([^"]+)"/.exec(rules[i]);
             if (!mm) continue;
             var tgt = mm[1].trim();
-            var full = /^[A-Za-z]:[\\/]/.test(tgt) ? norm(tgt) : joinp(root, tgt);
+            var full = resolveTo(root, tgt);
             var body = await safeRead(io, full);
             if (body == null) continue;
             if (norm(full).toLowerCase() === l0p.toLowerCase()) continue;   // 已是 L0
@@ -1034,7 +1043,7 @@
             var qm = /rule\s*"([^"]+)"/.exec(rules[qi]);
             if (!qm) continue;
             var qt = qm[1].trim();
-            var qf = /^[A-Za-z]:[\\/]/.test(qt) ? norm(qt) : joinp(root, qt);
+            var qf = resolveTo(root, qt);
             if (samePath(qf, l0p)) continue;                                            // 原 EF2 行 → 由下面统一追加
             if (/\/alphal\/expert\/index\.md$/i.test(norm(qf))) continue;              // 别的项目的 EF2 残留 → 丢
             var isLegacy = legacy.some(function (x) { return norm(x.path).toLowerCase() === norm(qt).toLowerCase(); });
@@ -1048,7 +1057,7 @@
             var m = /rule\s*"([^"]+)"/.exec(l);
             if (!m) return true;
             var t = m[1].trim();
-            var f = /^[A-Za-z]:[\\/]/.test(t) ? norm(t) : joinp(root, t);
+            var f = resolveTo(root, t);
             if (samePath(f, l0p)) return false;
             if (/\/alphal\/expert\/index\.md$/i.test(norm(f))) return false;
             if (demoted.indexOf(t) >= 0) return false;
@@ -1092,7 +1101,7 @@
                 var mm = s ? /rule\s*"([^"]+)"/.exec(s) : null;
                 if (mm) {
                     var t = mm[1].trim();
-                    var f = /^[A-Za-z]:[\\/]/.test(t) ? norm(t) : joinp(root, t);
+                    var f = resolveTo(root, t);
                     if (samePath(f, l0p)) { removed++; continue; }
                 }
                 keep.push(raw);   // 逐行原样保留（含空行），只拆 EF2 那一行

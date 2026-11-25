@@ -81,7 +81,7 @@ import { registerGitDiffIpc } from './ipc-git-diff';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers, hardenWebContents } from './shutdown';
-import { crashNetInit } from './crash-net';
+import { crashNetInit, crashNetNoteQuitSource } from './crash-net';
 import { isSmokeMode, runSmoke, smokeFailFast } from './smoke';
 import { memMeterInit } from './mem-meter';
 import { checkRank0Components } from './component-checker';
@@ -814,6 +814,7 @@ app.whenReady().then(async () => {
     if (_shouldQuitEarly) {
         // ★ 冒烟测试: 单例锁被占 = 明确失败（exitCode=2，报告照写）——绝不静默退出码 0
         if (isSmokeFlag) { smokeFailFast(portable.userData, 'single-instance-lock-held', 2); return; }
+        try { crashNetNoteQuitSource('second-instance'); } catch (_) { }
         app.quit();
         return;
     }
@@ -855,6 +856,7 @@ app.whenReady().then(async () => {
         if (result === 0) {
             shell.openExternal(DOWNLOAD_URL);
         }
+        try { crashNetNoteQuitSource('forced-update'); } catch (_) { }
         app.quit();
         return;
     }

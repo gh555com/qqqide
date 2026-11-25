@@ -47,6 +47,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { APP_VERSION } from './version';
 import { getAppRoot, getDataDir, getHostDir } from './portable-paths';
 import { notifyUpdateFailed } from './wq-ping'; // 升级健康遥测: 失败即时补发 ping（同 Windows 通道）
+import { crashNetNoteQuitSource } from './crash-net';
 
 // ★ Ed25519 公钥（与 launcher/launcher.c SIGN_PUBKEY / auto-updater.ts 同一信任根）
 const PUBKEY_HEX = '82a61e3ae4d30b47015ef652b6878415b213c25b272db7dd0507bfc4ddc3946d';
@@ -362,7 +363,10 @@ function applyNow(mode: 'restart' | 'quiet' = 'restart'): { ok: boolean; error?:
     log(ctx, 'update: apply requested (mode=%s, helper detached; target v%s)', mode, staged.version);
     recordStatus(ctx, 'waiting');
     if (mode !== 'quiet') {
-      setTimeout(() => { try { app.quit(); } catch (_) { } }, 900);
+      setTimeout(() => {
+        try { crashNetNoteQuitSource('mac-update-restart'); } catch (_) { }
+        try { app.quit(); } catch (_) { }
+      }, 900);
     }
     return { ok: true };
   } catch (e: any) {

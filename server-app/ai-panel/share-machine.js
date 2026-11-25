@@ -143,10 +143,11 @@
         { kind: 'api-key', re: /\bsk-[A-Za-z0-9._\-]{16,}/g, to: '⟨api-key⟩' },
         { kind: 'secret', re: /((?:api[_-]?key|secret|passwd|password|access[_-]?token)\s*[:=]\s*["']?)[A-Za-z0-9._\-]{16,}/gi, to: '$1⟨redacted⟩' },
         { kind: 'ip', re: /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g, to: '⟨ip⟩' },
-        { kind: 'win-path', re: /[A-Za-z]:[\\/][^\s"'<>|)`]+/g, to: '⟨本机路径⟩' },
+        // 盘符路径：前面不得紧贴字母/数字（否则 URL 的 https: + // 会被当成 s: 盘符，整条链接被吃掉）
+        { kind: 'win-path', re: /(?<![A-Za-z0-9+.\-])[A-Za-z]:[\\/][^\s"'<>|)`]+/g, to: '⟨本机路径⟩' },
         // mac / Linux 家目录路径（含用户名 = 个人信息，与 Windows 盘符路径同待遇）
         { kind: 'unix-home', re: /(?<![\w.:\/-])\/(?:Users|home)\/[^\s"'<>|)`]+/g, to: '⟨本机路径⟩' },
-        { kind: 'unix-path', re: /\/(?:srv|var\/www|root|opt|etc)\/[^\s"'<>|)`]*/g, to: '⟨服务器路径⟩' },
+        { kind: 'unix-path', re: /(?<![\w.:\/-])\/(?:srv|var\/www|root|opt|etc)\/[^\s"'<>|)`]*/g, to: '⟨服务器路径⟩' },
         { kind: 'file-url', re: /file:\/\/\/[^\s"'<>|)`]+/gi, to: '⟨本地文件⟩' }
     ];
 

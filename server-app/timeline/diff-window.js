@@ -449,6 +449,14 @@
     var _VP_PAGE = 300;
 
     function _vpKey(p) { return String(p || '').replace(/\\/g, '/'); }
+    // 路径相等判定：先精确比（POSIX 区分大小写），仅 Windows 形态（盘符 / UNC）才折叠大小写。
+    // 统一 toLowerCase 会在 mac/linux 上把 /a/A.md 与 /a/a.md 认成同一个文件（当前行高亮错位）。
+    function _samePath(a, b) {
+        var x = _vpKey(a), y = _vpKey(b);
+        if (x === y) return true;
+        var winShape = /^[A-Za-z]:\//.test(x) || /^[A-Za-z]:\//.test(y) || x.indexOf('//') === 0 || y.indexOf('//') === 0;
+        return winShape ? (x.toLowerCase() === y.toLowerCase()) : false;
+    }
 
     // 全库文件 → 目录树（聚合 fcount 文件数 / scount 快照数 / gcount 已删除数 / gscount 已删快照）
     function _vpBuildTree(files) {
@@ -530,7 +538,7 @@
         var rel = _relTime(item.ts);
         if (rel) meta2 += (meta2 ? ' · ' : '') + rel;
         var cls = 'vault-row v-row-file' + (item.showDir ? ' v-row-search' : '') + (gone ? ' v-row-gone' : '');
-        if (FILE_PATH && _vpKey(p).toLowerCase() === _vpKey(FILE_PATH).toLowerCase()) cls += ' v-row-cur';
+        if (FILE_PATH && _samePath(p, FILE_PATH)) cls += ' v-row-cur';
         return '<div class="' + cls + '" data-path="' + _escAttr(p) + '">' +
             '<span class="v-ico qqi ' + (gone ? 'qqi-trash' : 'qqi-file') + '"></span>' +
             '<span class="v-name">' + (item.hits ? _hlSeg(name, p.length - name.length, item.hits) : _escHtml(name)) + '</span>' +
