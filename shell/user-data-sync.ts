@@ -33,7 +33,8 @@ import { getAuthPhone, getAuthToken } from './auth-state';
 import { roamGetAllForSync, roamSetManyForSync } from './ipc-roam';
 import { kopeExportRows, kopeImportRows } from './ipc-kope';
 
-const API_HOST = 'gh555.com';
+// ★ 2026-11-25 去 apex（apex 二次被境内涉诈名单处置）：用户数据同步走子域。
+const API_HOST = 'www.gh555.com';
 const PUSH_PATH = '/api/gaea/qqqide/user-data';
 const PULL_PATH = '/api/gaea/qqqide/user-data/pull';
 const REQ_TIMEOUT_MS = 30000;

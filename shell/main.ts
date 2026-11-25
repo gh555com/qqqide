@@ -823,7 +823,8 @@ app.whenReady().then(async () => {
     const forced = checkForcedUpdate();
     if (forced.required) {
         // 下载直链 = CDN 分发（/qd 已交还网站营销 301，不再指向 webapp）
-        const DOWNLOAD_URL = 'https://gh555.com/dl/qqqide';
+        // ★ 2026-11-25 去 apex（apex 二次被境内涉诈名单处置）
+        const DOWNLOAD_URL = 'https://www.gh555.com/dl/qqqide';
         const result = dialog.showMessageBoxSync({
             type: 'warning',
             title: 'qd (qqqide) — ' + mi('main.update.title'),

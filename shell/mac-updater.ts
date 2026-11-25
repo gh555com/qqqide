@@ -52,7 +52,8 @@ import { crashNetNoteQuitSource } from './crash-net';
 // ★ Ed25519 公钥（与 launcher/launcher.c SIGN_PUBKEY / auto-updater.ts 同一信任根）
 const PUBKEY_HEX = '82a61e3ae4d30b47015ef652b6878415b213c25b272db7dd0507bfc4ddc3946d';
 
-const MANIFEST_URL = 'https://gh555.com/dl/qqqide-up/mac.json';
+// ★ 2026-11-25 去 apex（apex 二次被境内涉诈名单处置）
+const MANIFEST_URL = 'https://www.gh555.com/dl/qqqide-up/mac.json';
 const MANIFEST_MIRROR = 'https://gh555-shanghai.oss-cn-shanghai.aliyuncs.com/qqqide-up/mac.json';
 
 const START_DELAY_MS = 20 * 1000;          // 启动 20s 后开始（不与 IDE 启动抢资源）

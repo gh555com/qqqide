@@ -29,7 +29,8 @@ import * as http from 'http';
 import { URL } from 'url';
 import { StateStore } from './state-sqlite';
 
-const CLOUD_BASE = process.env.QQQ_CLOUD_BASE || 'https://gh555.com';
+// ★ 2026-11-25 去 apex（apex 二次被境内涉诈名单处置）：云同步一律走子域。
+const CLOUD_BASE = process.env.QQQ_CLOUD_BASE || 'https://www.gh555.com';
 const REQ_TIMEOUT_MS = 12000;
 
 interface Auth { phone: string; token: string; device_name?: string; }

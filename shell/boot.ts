@@ -144,7 +144,9 @@ async function _cleanOldSlots(portableRoot: string): Promise<void> {
 // ----------------------------------------------------------------------------
 /** ★ 唯一真理源：IDE 部署根 URL。webapp 加载路径。
  * ★ 2026-09-03 终案：webapp 兜底通道 = gh555.com/qqqide/（/qd 只属于网站营销 301 → 落地页 gaea/d/qqqide，客户端不走 qd）；对外品牌词 = "qd (qqqide)"，代码/行文恒 qqqide（详铁律 13.1）。 */
-export const PRODUCTION_URL = 'https://gh555.com/qqqide/';
+// ★ 2026-11-25 去 apex：apex `gh555.com` 二次被境内涉诈名单处置（阿里 DNS→0.0.0.0 / SNI RST），
+//   子域不受影响 → 部署根一律走 www（铁律：禁任何文件再写死 apex）。
+export const PRODUCTION_URL = 'https://www.gh555.com/qqqide/';
 
 // ----------------------------------------------------------------------------
 // Boot configuration
